@@ -64,7 +64,24 @@ export type {
   AttributeProjectionResult,
   AttributeProjectionMetadata,
   ResolvedParameter,
+  ProjectedParameterOrigin,
+  ProjectedParameterRuleRef,
+  ProjectedParameterSource,
+  ProjectedParameterOutcome,
 } from './application/types/attribute-projection.types';
+export {
+  ProjectedParameterSourceValues,
+  ProjectedParameterOutcomeValues,
+} from './application/types/attribute-projection.types';
+export type { IAttributeProjectionPreviewService } from './application/interfaces/attribute-projection-preview.service.interface';
+export type {
+  AttributeProjectionPreviewInput,
+  AttributeProjectionPreviewItem,
+  AttributeProjectionPreviewEntry,
+  AttributeProjectionPreviewFailure,
+  AttributeProjectionPreviewResult,
+} from './application/types/attribute-projection-preview.types';
+export { AttributeProjectionPreviewFailureValues } from './application/types/attribute-projection-preview.types';
 export { buildProjectionMetadata } from './application/services/build-projection-metadata';
 export type { IOfferLinkingService } from './application/interfaces/offer-linking.service.interface';
 export type {
@@ -94,8 +111,12 @@ export type {
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
+  OfferAttentionCounts,
+  OfferShopBlockedConnection,
+  OfferAccountProblemSummary,
+  OfferStaleSignalFilter,
 } from './domain/types/offer-mapping.types';
-export { deriveVariantLabel } from './domain/types/offer-mapping.types';
+export { deriveVariantLabel, OfferStaleSignalFilterValues } from './domain/types/offer-mapping.types';
 
 // Offer lifecycle (#2025) — the five disjoint buckets the redesigned listings
 // page partitions on, plus the pure derivation off a status snapshot.
@@ -304,6 +325,7 @@ export type {
   EanMatchMethod,
   EanMatchResult,
   EanMatchCandidate,
+  EanMatchCardRef,
   BatchCategoryByEanInput,
 } from './domain/types/ean-category-match.types';
 export {

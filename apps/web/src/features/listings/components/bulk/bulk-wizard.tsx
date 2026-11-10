@@ -17,7 +17,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
-import type { StatusBadgeTone } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -32,6 +31,8 @@ import { captureDemoEvent } from '../../../demo';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
+import { useAttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
+import type { AttributeProjectionPreviewItem, OfferParameter } from '../../api/listings.types';
 import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
 import { publishDestinationKind } from '../../lib/publish-destinations';
 import { DuplicateGuardModal } from '../duplicate-guard-modal';
@@ -56,7 +57,7 @@ import {
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
-import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
+import { gatingBlockers, resolveBlockerChips, type ChipDescriptor } from './bulk-blockers';
 import { describeBulkSubmitOutcome } from './bulk-submit-summary';
 import {
   computeResolvedPrice,
@@ -65,6 +66,7 @@ import {
   effectiveStockPolicy,
   effectiveVariantEan,
   productCategoryIdOf,
+  submitCategoryIdOf,
   recomputeVariantBlockers,
   type PreflightContext,
 } from './bulk-policy';
@@ -77,6 +79,7 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 interface BulkWizardProps {
   /** Selected products from the Products page (already hydrated with variants). */
@@ -117,6 +120,7 @@ const SHOP_WIZARD_STEPS: { id: BulkWizardStep }[] = [{ id: 'config' }, { id: 're
 
 /** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
 const EMPTY_CATEGORY_IDS: readonly string[] = [];
+const EMPTY_PROJECTION_ITEMS: AttributeProjectionPreviewItem[] = [];
 
 /** Stable empty set so a render without published-variant data keeps a constant ref. */
 const EMPTY_ALREADY_LISTED: ReadonlySet<string> = new Set<string>();
@@ -269,6 +273,37 @@ export function BulkWizard({
     isResolving: paramsResolving,
   } = useBulkRequiredProductParams(config?.connectionId, categoryIdsForParamSchema);
 
+  // What the connection's attribute mappings and rules will fill (#3995). Asked
+  // for every included variant that has a submit category, under that category
+  // and its EAN override - the same inputs the publish projects with. Only on
+  // Review: earlier steps have no settled category to ask about.
+  const projectionItems = useMemo<AttributeProjectionPreviewItem[]>(() => {
+    if (step !== 'review' || isShop || !batchPlatform?.offerValidation?.needsCategoryParameterSchema) {
+      return EMPTY_PROJECTION_ITEMS;
+    }
+    const items: AttributeProjectionPreviewItem[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (!variant.included) continue;
+        const categoryId = submitCategoryIdOf(row, variant);
+        if (!categoryId) continue;
+        const ean = variant.override.overrides?.ean?.trim();
+        items.push({ variantId: variant.variantId, categoryId, ...(ean ? { ean } : {}) });
+      }
+    }
+    return items;
+  }, [rows, step, isShop, batchPlatform]);
+  const projectionPreview = useAttributeProjectionPreview(config?.connectionId, projectionItems);
+  const projectedByVariant = useMemo(() => {
+    const map = new Map<string, { categoryId: string; parameters: readonly OfferParameter[] }>();
+    for (const [variantId, entry] of projectionPreview.byVariant) {
+      if (entry.status === 'ok') {
+        map.set(variantId, { categoryId: entry.categoryId, parameters: entry.parameters });
+      }
+    }
+    return map;
+  }, [projectionPreview.byVariant]);
+
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
@@ -286,18 +321,10 @@ export function BulkWizard({
   // Same merge the Review step builds (#1741 review #11's "never drift" rule) -
   // readiness here must agree with the banner's readiness, or a row the banner
   // calls ready gets excluded at submit for an advisory-only chip (#2243/#3492).
-  const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
-    const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
-    for (const chip of platformBlockerChips) {
-      merged[chip.id] = {
-        tone: chip.tone as StatusBadgeTone,
-        label: chip.label,
-        fixable: true,
-        advisory: chip.advisory === true,
-      };
-    }
-    return merged;
-  }, [platformBlockerChips]);
+  const blockerChips = useMemo<Record<string, ChipDescriptor>>(
+    () => resolveBlockerChips(platformBlockerChips),
+    [platformBlockerChips],
+  );
 
   const destinationBrowsesCategories =
     (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
@@ -339,8 +366,9 @@ export function BulkWizard({
       schemaByCategory,
       failedCategoryIds,
       catalogueConsulted: catalogueLookupPerformed === true,
+      projectedByVariant,
     }),
-    [schemaByCategory, failedCategoryIds, catalogueLookupPerformed],
+    [schemaByCategory, failedCategoryIds, catalogueLookupPerformed, projectedByVariant],
   );
 
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
@@ -488,6 +516,43 @@ export function BulkWizard({
               ean: effectiveVariantEan({ ...v, override: nextOverride }),
             };
           }),
+        };
+      }));
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
+  );
+
+  // #3994 - the operator chose the catalogue card the resolver set aside in
+  // favour of their mapping. Only offered for a single-variant product: a
+  // multi-variant family shares ONE category (the server strips a per-variant
+  // one), so a sibling's card cannot be adopted on its own. The card and its
+  // category travel together - a card is only linkable in its own category.
+  const handleUseCardCategory = useCallback(
+    (productId: string) => {
+      if (!config) return;
+      setHasEdits(true);
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
+        if (row.productId !== productId || row.variants.length !== 1) return row;
+        const card = row.variants[0].overriddenCard;
+        if (!card) return row;
+        const override: BulkPerProductOverride = {
+          ...row.override,
+          overrides: {
+            ...(row.override.overrides ?? {}),
+            categoryId: card.allegroCategoryId,
+            productCardId: card.productCardId,
+          },
+        };
+        return {
+          ...row,
+          override,
+          variants: row.variants.map((v) => ({
+            ...v,
+            override: {
+              ...v.override,
+              overrides: { ...(v.override.overrides ?? {}), ...override.overrides },
+            },
+          })),
         };
       }));
     },
@@ -883,7 +948,7 @@ export function BulkWizard({
                 config={config}
                 demoReadOnly={write.demoReadOnly}
                 isSubmitting={shopMutation.isPending}
-                errorMessage={shopMutation.error ? shopMutation.error.message : null}
+                errorMessage={shopMutation.error ? describeApiError(shopMutation.error, 'listings') : null}
                 alreadyListedVariantIds={alreadyListedSet}
                 destinationName={dupGuardDestinationName}
                 onSetVariantIncluded={setVariantIncluded}
@@ -912,8 +977,11 @@ export function BulkWizard({
                 onSetVariantIncluded={setVariantIncluded}
                 onSetProductIncluded={setProductIncluded}
                 onSaveEditor={handleSaveEditor}
+                onUseCardCategory={handleUseCardCategory}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
                 onApproveAll={handleApproveAll}
                 onBack={() => { setStep('config'); }}
+                projection={projectionItems.length > 0 ? projectionPreview : undefined}
               />
             )}
           </div>
@@ -934,7 +1002,7 @@ export function BulkWizard({
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
             demoReadOnly={write.demoReadOnly}
-            errorMessage={mutation.error ? mutation.error.message : null}
+            errorMessage={mutation.error ? describeApiError(mutation.error, 'listings') : null}
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);
             }}
@@ -1185,6 +1253,8 @@ export function mergeResolveOutcomes(
           resolvedCategoryId: vo.resolvedCategoryId,
           resolvedProductCardId: vo.resolvedProductCardId,
           resolutionMethod: vo.resolutionMethod,
+          overriddenCard: vo.overriddenCard,
+          mappingAgrees: vo.mappingAgrees,
           masterStock: vo.masterStock,
           masterPrice: vo.masterPrice,
           masterCurrency: vo.masterCurrency,
@@ -1222,6 +1292,8 @@ function seedVariantRow(
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
   };

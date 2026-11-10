@@ -15,6 +15,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { WoocommerceSetupForm } from './woocommerce-setup-form';
+import { getMessages } from '../../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../demo', () => ({
@@ -298,7 +299,7 @@ describe('WoocommerceSetupForm', () => {
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     expect(await screen.findByText('Unable to create connection')).toBeInTheDocument();
-    expect(screen.getByText('API create failed')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('disables the submit button during the mutation', async () => {

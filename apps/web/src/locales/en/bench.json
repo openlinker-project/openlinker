@@ -438,6 +438,24 @@
       "wrongItemTitle": "That item does not belong in this box"
     }
   },
+  "sourceChange": {
+    "countLabel": "Take out",
+    "ean": "EAN {ean}",
+    "heldBody": "The shop changed this order, so leave the box as it is - the office decides what goes in it.",
+    "sku": "SKU {sku}",
+    "takeOutBin": {
+      "one": "The shop lowered this item, so take {n} out and put it back on shelf {bin}.",
+      "other": "The shop lowered this item, so take {n} out and put them back on shelf {bin}."
+    },
+    "takeOutNote": "The box goes back to packing on its own.",
+    "takeOutShelf": {
+      "one": "The shop lowered this item, so take {n} out and put it back on the shelf.",
+      "other": "The shop lowered this item, so take {n} out and put them back on the shelf."
+    },
+    "takenOutAction": "Done, I took it out",
+    "takenOutFailed": "That did not go through, so check the box and confirm again.",
+    "unnamedItem": "This item"
+  },
   "work": {
     "emptyIdle": {
       "body": "Every parcel routed to this bench has been packed. New work turns up here on its own - you do not need to refresh, and you can stay signed in.",

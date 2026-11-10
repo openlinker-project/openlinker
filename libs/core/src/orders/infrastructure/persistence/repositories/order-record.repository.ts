@@ -59,7 +59,7 @@ import {
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
-import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
+import { DUE_WITHIN_WINDOW_MS, SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
   grossRevenueLineAmountSql,
@@ -109,9 +109,14 @@ import {
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
   isTaxRateEra,
+  readSalesDocumentBlockParams,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import { isPaymentMethod } from '../../../domain/types/payment-method.types';
+import {
+  readPaymentWriteback,
+  type PaymentWritebackEntry,
+} from '../../../domain/types/payment-writeback.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
@@ -475,9 +480,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     if (filters.dueBefore) {
       // SLA "breaching / overdue" filter (#927) — only records with a known
       // ship-by deadline at or before the cutoff. NULL deadlines are excluded.
-      qb.andWhere('rec.dispatchByAt IS NOT NULL AND rec.dispatchByAt <= :dueBefore', {
-        dueBefore: filters.dueBefore,
-      });
+      // #4025 - `DUE_BEFORE` is shared with `countByHealth.dueWithin24h`.
+      qb.andWhere(OrderRecordRepository.DUE_BEFORE, { dueBefore: filters.dueBefore });
     }
 
     if (filters.health) {
@@ -571,6 +575,26 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.omsAttentionReason !== undefined) {
+      // #3961 - one named attention reason. The reason is BOUND as a jsonpath
+      // variable, never interpolated: it arrives from a query string.
+      qb.andWhere(
+        `jsonb_path_exists(COALESCE(rec."omsAttention", '[]'::jsonb), '$[*] ? (@.reason == $r)', jsonb_build_object('r', CAST(:omsAttentionReason AS text)))`,
+        { omsAttentionReason: filters.omsAttentionReason }
+      );
+    }
+
+    if (filters.paymentNotSent !== undefined) {
+      // #3963 - its own axis, ANDed like `omsAttention`. Reads the flag the
+      // writer recomputes in the same statement as the jsonb, served by a
+      // partial index, so the filter never scans the jsonb.
+      qb.andWhere(
+        filters.paymentNotSent
+          ? OrderRecordRepository.HAS_PAYMENT_NOT_SENT
+          : `NOT (${OrderRecordRepository.HAS_PAYMENT_NOT_SENT})`
+      );
+    }
+
     if (filters.activeHoldReason) {
       // #2342 — the hold REASON axis, ANDed with the others. It reads the same
       // #2340 projection column the lifecycle `CASE`'s `held` arm tests, which
@@ -636,9 +660,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // an order that went back to `awaiting_mapping` keeps the flag but is not
       // one an operator can work on. `false` is deliberately unchanged.
       qb.andWhere(
-        filters.hasBuyerNote
-          ? `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
-          : 'rec."hasBuyerNote" = false'
+        filters.hasBuyerNote ? OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE : 'rec."hasBuyerNote" = false'
       );
     }
 
@@ -793,6 +815,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION})`,
         'oms_attention'
       )
+      // #3963 - same predicate as the filter arm, so the chip and its rows agree.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_PAYMENT_NOT_SENT})`,
+        'payment_not_sent'
+      )
       // #2703 / #2704 — its own count, never inside any health bucket. Reads the
       // SAME predicate the filter arm does, so the chip's number and the rows it
       // reveals can never disagree (#2100's badge/count/filter rule).
@@ -827,25 +854,92 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'sales_document_issued_on_request'
       );
 
+    // #4025 - counts for the redesigned orders filters. Every one reads the
+    // SAME predicate its list filter arm uses, and the three `attention_*`
+    // totals are UNIONS (an order matching two members counts once), which is
+    // why they are computed here rather than summed in the browser.
+    const now = new Date();
+    const openReturnIds = filters.openReturnOrderIds ?? [];
+    const hasOpenReturn =
+      openReturnIds.length > 0 ? `rec."internalOrderId" IN (:...summaryOpenReturnIds)` : 'FALSE';
+    const notShipped = OrderRecordRepository.NOT_SHIPPED;
+    // SLA overdue OR at risk == not shipped with a deadline at or before the
+    // at-risk cutoff - the union of `applySlaFilter`'s two arms.
+    const slaLate = `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :summarySlaCutoff`;
+    // Bound under its own name so a list-filter `:dueBefore` on a shared scope
+    // can never replace the summary's window.
+    const dueSoon = OrderRecordRepository.DUE_BEFORE.replace(':dueBefore', ':summaryDueBefore');
+    const stuck = [
+      OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED,
+      OrderRecordRepository.HAS_OMS_ATTENTION,
+      OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED,
+      OrderRecordRepository.IS_WAITING_IN_OPENLINKER,
+      OrderRecordRepository.HAS_TAX_RATE_CONFLICT,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    const toHandle = [
+      OrderRecordRepository.IS_ON_PACK_BENCH,
+      OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE,
+      hasOpenReturn,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    qb.addSelect(`COUNT(*) FILTER (WHERE ${hasOpenReturn})`, 'open_return')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`, 'has_buyer_note')
+      .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
+      .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
+      .addSelect(`COUNT(*) FILTER (WHERE ${toHandle})`, 'attention_to_handle')
+      .setParameters({
+        summaryDueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
+        summarySlaCutoff: new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS),
+        ...(openReturnIds.length > 0 ? { summaryOpenReturnIds: openReturnIds } : {}),
+      });
+
     OrderRecordRepository.applySummaryScope(qb, filters);
 
-    const raw = await qb.getRawOne<{
-      total: string;
-      source_deleted: string;
-      awaiting_mapping: string;
-      needs_attention: string;
-      synced: string;
-      awaiting_dispatch: string;
-      sales_document_blocked: string;
-      tax_rate_conflict: string;
-      oms_attention: string;
-      destination_routing_blocked: string;
-      waiting_in_openlinker: string;
-      waiting_in_openlinker_oldest_at: Date | null;
-      on_pack_bench: string;
-      sales_document_blocked_oldest_at: Date | null;
-      sales_document_issued_on_request: string;
-    }>();
+    // #4025 - per-source counts with the source axis itself removed, so the
+    // Source filter keeps a number beside every option while one is selected.
+    // Independent of the main aggregate, so the two scans run concurrently.
+    const bySourceQb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."sourceConnectionId"', 'source_connection_id')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('rec."sourceConnectionId"');
+    OrderRecordRepository.applySummaryScope(bySourceQb, { ...filters, sourceConnectionId: undefined });
+
+    const [raw, bySourceRows] = await Promise.all([
+      qb.getRawOne<{
+        total: string;
+        source_deleted: string;
+        awaiting_mapping: string;
+        needs_attention: string;
+        synced: string;
+        awaiting_dispatch: string;
+        sales_document_blocked: string;
+        tax_rate_conflict: string;
+        oms_attention: string;
+        payment_not_sent: string;
+        destination_routing_blocked: string;
+        waiting_in_openlinker: string;
+        waiting_in_openlinker_oldest_at: Date | null;
+        on_pack_bench: string;
+        sales_document_blocked_oldest_at: Date | null;
+        sales_document_issued_on_request: string;
+        open_return: string;
+        has_buyer_note: string;
+        due_within_24h: string;
+        attention_late_to_ship: string;
+        attention_stuck: string;
+        attention_to_handle: string;
+      }>(),
+      bySourceQb.getRawMany<{ source_connection_id: string; count: string }>(),
+    ]);
+    const bySource: Record<string, number> = {};
+    for (const row of bySourceRows) {
+      bySource[row.source_connection_id] = Number(row.count);
+    }
 
     return {
       total: Number(raw?.total ?? 0),
@@ -857,12 +951,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
       omsAttention: Number(raw?.oms_attention ?? 0),
+      paymentNotSent: Number(raw?.payment_not_sent ?? 0),
       destinationRoutingBlocked: Number(raw?.destination_routing_blocked ?? 0),
       waitingInOpenLinker: Number(raw?.waiting_in_openlinker ?? 0),
       waitingInOpenLinkerOldestAt: raw?.waiting_in_openlinker_oldest_at ?? null,
       onPackBench: Number(raw?.on_pack_bench ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
+      openReturn: Number(raw?.open_return ?? 0),
+      hasBuyerNote: Number(raw?.has_buyer_note ?? 0),
+      dueWithin24h: Number(raw?.due_within_24h ?? 0),
+      bySource,
+      attention: {
+        lateToShip: Number(raw?.attention_late_to_ship ?? 0),
+        stuck: Number(raw?.attention_stuck ?? 0),
+        toHandle: Number(raw?.attention_to_handle ?? 0),
+      },
     };
   }
 
@@ -1780,6 +1884,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #4025 - the `hasBuyerNote: true` list filter and `countByHealth.hasBuyerNote`
+   * read this ONE predicate (`recordStatus = 'ready'` per #3538 N-20), so the
+   * count and the rows it reveals cannot disagree.
+   */
+  private static readonly HAS_ACTIONABLE_BUYER_NOTE = `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`;
+  /**
+   * #4025 - the `dueBefore` list filter (#927) and `countByHealth.dueWithin24h`
+   * read this ONE predicate; the caller binds `:dueBefore`.
+   */
+  private static readonly DUE_BEFORE = `rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :dueBefore`;
+
+  /**
    * Constant SQL fragments shared by `applyHealthFilter` and `countByHealth`
    * (no user input). `HAS_*` use `@>` containment — matches when `syncStatus[]`
    * contains an entry with the given status; `IS_SOURCE_DELETED` keys the
@@ -2008,6 +2124,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `COALESCE(…, '')` for — `jsonb_path_exists(NULL, …)` yields NULL, so the
    * column is coalesced to an empty array before the test rather than after.
    */
+  /** #3963 - a shop still shows the order unpaid and OpenLinker gave up. */
+  private static readonly HAS_PAYMENT_NOT_SENT = `rec."paymentWritebackProblem" = true`;
+
   private static readonly HAS_OMS_ATTENTION =
     AuthorityAttentionCountedReasonValues.length === 0
       ? // An empty counted set means nothing is attention-worthy, so the honest
@@ -2103,6 +2222,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const d = (fallback: 'ASC' | 'DESC'): 'ASC' | 'DESC' =>
       dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : fallback;
     switch (sort) {
+      case 'placedAt':
+        // #4025 - NULLS LAST in BOTH directions: a source that reports no
+        // placement time must never put its orders on top of "newest first".
+        // `IDX_order_records_placedAt_desc` matches the DESC form exactly.
+        qb.orderBy('rec.placedAt', d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
+        return;
       case 'dispatchBy':
         qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST')
           .addOrderBy('rec.createdAt', 'DESC')
@@ -2585,6 +2712,88 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return false;
   }
 
+  /**
+   * The `paymentWritebackProblem` flag computed from a jsonb expression that is
+   * ALSO the value being written, so the flag can never disagree with the
+   * column it summarises. Reads the reasons straight from
+   * `isPaymentWritebackProblem`'s definition: `not-sent` for a reason an
+   * operator has to act on.
+   */
+  private static paymentWritebackProblemSql(nextValueSql: string): string {
+    return (
+      `EXISTS (SELECT 1 FROM jsonb_each(${nextValueSql}) AS e ` +
+      `WHERE e.value->>'state' = 'not-sent' ` +
+      `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total'))`
+    );
+  }
+
+  async claimPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    staleBefore: Date
+  ): Promise<boolean> {
+    // SET expressions are evaluated against the row version the UPDATE locks,
+    // so a racing claim that lost the row lock re-reads the winner's `sending`
+    // entry in the WHERE and affects nothing (READ COMMITTED re-check).
+    const next =
+      `jsonb_set(COALESCE("paymentWriteback", '{}'::jsonb), ARRAY[$2]::text[], ` +
+      `jsonb_build_object('state', 'sending', 'at', $3::text, 'attempts', ` +
+      `COALESCE(("paymentWriteback"->$2->>'attempts')::int, 0)))`;
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" SET "paymentWriteback" = ${next}, ` +
+        `"paymentWritebackProblem" = ${OrderRecordRepository.paymentWritebackProblemSql(next)} ` +
+        `WHERE "internalOrderId" = $1 AND (` +
+        `"paymentWriteback" IS NULL OR NOT ("paymentWriteback" ? $2) ` +
+        `OR "paymentWriteback"->$2->>'state' IN ('awaiting', 'retrying') ` +
+        `OR ("paymentWriteback"->$2->>'state' = 'sending' ` +
+        `AND ("paymentWriteback"->$2->>'at')::timestamptz < $4)) ` +
+        `RETURNING "internalOrderId"`,
+      [internalOrderId, destinationConnectionId, new Date().toISOString(), staleBefore.toISOString()]
+    )) as unknown[];
+    return OrderRecordRepository.affectedRows(rows) > 0;
+  }
+
+  async recordPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    entry: PaymentWritebackEntry
+  ): Promise<void> {
+    const next = `jsonb_set(COALESCE("paymentWriteback", '{}'::jsonb), ARRAY[$2]::text[], $3::jsonb)`;
+    await this.repository.query(
+      `UPDATE "order_records" SET "paymentWriteback" = ${next}, ` +
+        `"paymentWritebackProblem" = ${OrderRecordRepository.paymentWritebackProblemSql(next)} ` +
+        `WHERE "internalOrderId" = $1`,
+      [internalOrderId, destinationConnectionId, JSON.stringify(entry)]
+    );
+  }
+
+  async markPaymentWritebackHandled(internalOrderIds: readonly string[]): Promise<number> {
+    if (internalOrderIds.length === 0) return 0;
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" AS r SET "paymentWriteback" = (` +
+        `SELECT jsonb_object_agg(e.key, CASE WHEN e.value->>'state' = 'not-sent' ` +
+        `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total') ` +
+        `THEN e.value || jsonb_build_object('state', 'handled', 'at', $2::text) ELSE e.value END) ` +
+        `FROM jsonb_each(r."paymentWriteback") AS e), ` +
+        `"paymentWritebackProblem" = false ` +
+        `WHERE r."internalOrderId" = ANY($1::text[]) AND r."paymentWritebackProblem" = true ` +
+        `RETURNING r."internalOrderId"`,
+      [internalOrderIds, new Date().toISOString()]
+    )) as unknown[];
+    return OrderRecordRepository.affectedRows(rows);
+  }
+
+  /**
+   * `repository.query` returns the RETURNING rows for a plain UPDATE on the
+   * postgres driver, but `[rows, count]` when TypeORM wraps it; accept both.
+   */
+  private static affectedRows(result: unknown[]): number {
+    if (result.length === 2 && Array.isArray(result[0]) && typeof result[1] === 'number') {
+      return result[1];
+    }
+    return result.length;
+  }
+
   async claimShippedNotification(internalOrderId: string): Promise<boolean> {
     const result = await this.repository
       .createQueryBuilder()
@@ -2689,6 +2898,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       block?.detail ?? null,
       block?.connectionId ?? null,
       block?.documentKind ?? null,
+      block?.params ? JSON.stringify(block.params) : null,
     ];
     let matchedRuleAssignment = '';
     let matchedRuleGuard = '';
@@ -2708,6 +2918,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
               "salesDocumentBlockDetail" = $3,
               "salesDocumentBlockConnectionId" = $4,
               "salesDocumentBlockDocumentKind" = $5,
+              "salesDocumentBlockParams" = $6::jsonb,
               ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
@@ -2725,6 +2936,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
             OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
             OR "salesDocumentBlockConnectionId" IS DISTINCT FROM $4
             OR "salesDocumentBlockDocumentKind" IS DISTINCT FROM $5
+            OR "salesDocumentBlockParams" IS DISTINCT FROM $6::jsonb
             ${matchedRuleGuard})`,
       params
     );
@@ -4017,7 +4229,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.buyerOrderCount ?? null,
       entity.buyerNoteChangedAt ?? null,
       orderEdits === null ? null : entity.orderSnapshot,
-      orderEdits
+      orderEdits,
+      // #3963 - coerced at the mapping boundary: an entry this build does not
+      // recognise is absent, never present-and-unrenderable.
+      readPaymentWriteback(entity.paymentWriteback),
+      readSalesDocumentBlockParams(entity.salesDocumentBlockParams)
     );
   }
 

@@ -1,11 +1,13 @@
 /**
  * Integrations Content Publisher — Unit Tests
  *
- * Master path: resolves the ProductMaster adapter and calls
- * `updateProduct` with a single-field patch keyed by `fieldKey`.
+ * Master path: resolves the product's OWN ProductMaster through
+ * `IProductMasterResolverService` (#4068) and calls `updateProduct` with a
+ * single-field patch keyed by `fieldKey`. No or two claimants refuse.
  *
  * Channel path: resolves an OfferManager adapter for the target connection,
- * type-guards `isOfferFieldUpdater`, walks the product's variants →
+ * type-guards `isOfferFieldUpdater`, walks the product's variants (from the
+ * catalogue, `IProductsService`, never a live master) →
  * `IOfferMappingsService.findForVariant` → distinct `externalOfferId`s, and
  * issues one `updateOfferFields` call per distinct offer wrapping the value
  * in the Allegro-shaped TEXT section payload.
@@ -17,9 +19,11 @@ import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exception
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
 import { EmptyAfterDescriptionFormatException } from '../../domain/exceptions/empty-after-description-format.exception';
 import { NoLinkedOffersException } from '../../domain/exceptions/no-linked-offers.exception';
+import { AmbiguousProductMasterException } from '../../domain/exceptions/ambiguous-product-master.exception';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
+import type { IProductMasterResolverService } from './product-master-resolver.service.interface';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { ProductMasterPort } from '@openlinker/core/products';
+import type { IProductsService, ProductMasterPort } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
 import type { ProductVariant } from '@openlinker/core/products';
 import type { DescriptionFormat } from '../../../listings';
@@ -35,9 +39,30 @@ function buildOfferMappingsMock(): jest.Mocked<Pick<IOfferMappingsService, 'find
   };
 }
 
+function resolverReturning(adapter: ProductMasterPort): jest.Mocked<IProductMasterResolverService> {
+  return { resolve: jest.fn().mockResolvedValue(adapter) };
+}
+
+/** The channel path must never ask for a master; a call is a test failure. */
+const NO_RESOLVER: IProductMasterResolverService = {
+  resolve: () => Promise.reject(new Error('the channel path must not resolve a ProductMaster')),
+};
+
+/** The master path reads no variants. */
+const NO_PRODUCTS = {} as IProductsService;
+
 describe('IntegrationsContentPublisher', () => {
   describe('master path (connectionId === null)', () => {
-    it('should resolve ProductMaster and call updateProduct with the keyed patch', async () => {
+    function publisherWith(resolver: IProductMasterResolverService): IntegrationsContentPublisher {
+      return new IntegrationsContentPublisher(
+        { getCapabilityAdapter: jest.fn() } as unknown as IIntegrationsService,
+        buildOfferMappingsMock() as unknown as IOfferMappingsService,
+        resolver,
+        NO_PRODUCTS,
+      );
+    }
+
+    it("should write to the product's own ProductMaster with the keyed patch", async () => {
       const adapterUpdateProduct = jest.fn<
         Promise<Product>,
         Parameters<ProductMasterPort['updateProduct']>
@@ -52,58 +77,38 @@ describe('IntegrationsContentPublisher', () => {
           updatedAt: new Date('2026-04-22T10:30:00.000Z'),
         } as Product),
       );
-      const integrationsService: jest.Mocked<
-        Pick<IIntegrationsService, 'listCapabilityAdapters' | 'getCapabilityAdapter'>
-      > = {
-        listCapabilityAdapters: jest.fn().mockResolvedValue([
-          {
-            connectionId: 'conn-master',
-            connection: {} as unknown,
-            adapter: { updateProduct: adapterUpdateProduct } as unknown as ProductMasterPort,
-            metadata: {} as unknown,
-          },
-        ]),
-        getCapabilityAdapter: jest.fn(),
-      };
-      const publisher = new IntegrationsContentPublisher(
-        integrationsService as unknown as IIntegrationsService,
-        buildOfferMappingsMock() as unknown as IOfferMappingsService,
-      );
+      const resolver = resolverReturning({ updateProduct: adapterUpdateProduct } as unknown as ProductMasterPort);
 
-      const result = await publisher.publish({
+      const result = await publisherWith(resolver).publish({
         productId: 'ol_product_abc',
         connectionId: null,
         fieldKey: 'description',
         value: 'new value',
       });
 
-      expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith({
-        capability: 'ProductMaster',
-      });
+      expect(resolver.resolve).toHaveBeenCalledWith('ol_product_abc', 'description');
       expect(adapterUpdateProduct).toHaveBeenCalledWith('ol_product_abc', {
         description: 'new value',
       });
       expect(result.baseVersion).toBe('2026-04-22T10:30:00.000Z');
     });
 
-    it('should throw NoProductMasterAdapterException when no ProductMaster adapter is registered', async () => {
-      const integrationsService = {
-        listCapabilityAdapters: jest.fn().mockResolvedValue([]),
-        getCapabilityAdapter: jest.fn(),
-      } as unknown as IIntegrationsService;
-      const publisher = new IntegrationsContentPublisher(
-        integrationsService,
-        buildOfferMappingsMock() as unknown as IOfferMappingsService,
-      );
+    it.each([
+      ['no ProductMaster claims the product', new NoProductMasterAdapterException('ol_product_abc', 'description')],
+      ['two ProductMasters claim the product', new AmbiguousProductMasterException('ol_product_abc', ['a', 'b'])],
+    ])('should refuse and write nothing when %s', async (_case, error) => {
+      const resolver: jest.Mocked<IProductMasterResolverService> = {
+        resolve: jest.fn().mockRejectedValue(error),
+      };
 
       await expect(
-        publisher.publish({
+        publisherWith(resolver).publish({
           productId: 'ol_product_abc',
           connectionId: null,
           fieldKey: 'description',
           value: 'v',
         }),
-      ).rejects.toBeInstanceOf(NoProductMasterAdapterException);
+      ).rejects.toBe(error);
     });
 
     it('should throw ContentPublishMissingVersionException when adapter omits updatedAt', async () => {
@@ -118,24 +123,10 @@ describe('IntegrationsContentPublisher', () => {
           images: null,
           updatedAt: undefined as unknown as Date,
         } as Product);
-      const integrationsService = {
-        listCapabilityAdapters: jest.fn().mockResolvedValue([
-          {
-            connectionId: 'conn-master',
-            connection: {},
-            adapter: { updateProduct: adapterUpdateProduct } as unknown as ProductMasterPort,
-            metadata: {},
-          },
-        ]),
-        getCapabilityAdapter: jest.fn(),
-      } as unknown as IIntegrationsService;
-      const publisher = new IntegrationsContentPublisher(
-        integrationsService,
-        buildOfferMappingsMock() as unknown as IOfferMappingsService,
-      );
+      const resolver = resolverReturning({ updateProduct: adapterUpdateProduct } as unknown as ProductMasterPort);
 
       await expect(
-        publisher.publish({
+        publisherWith(resolver).publish({
           productId: 'ol_product_abc',
           connectionId: null,
           fieldKey: 'description',
@@ -153,7 +144,9 @@ describe('IntegrationsContentPublisher', () => {
     }) {
       const updateOfferFields = jest.fn<Promise<void>, [UpdateOfferFieldsCommand]>()
         .mockResolvedValue(undefined);
-      const getProductVariants = jest.fn().mockResolvedValue(opts.variants);
+      const products = {
+        getVariantsByProductId: jest.fn().mockResolvedValue(opts.variants),
+      } as unknown as IProductsService;
       const channelAdapter = opts.hasUpdateOfferFields
         ? ({ updateOfferFields } as unknown as OfferManagerPort)
         : ({} as unknown as OfferManagerPort);
@@ -162,14 +155,6 @@ describe('IntegrationsContentPublisher', () => {
           if (capability === 'OfferManager') return Promise.resolve(channelAdapter);
           throw new Error(`unexpected capability: ${capability}`);
         }),
-        listCapabilityAdapters: jest.fn().mockResolvedValue([
-          {
-            connectionId: 'conn-master',
-            connection: {},
-            adapter: { getProductVariants } as unknown as ProductMasterPort,
-            metadata: {},
-          },
-        ]),
       } as unknown as IIntegrationsService;
       const offerMappings = buildOfferMappingsMock();
       offerMappings.findForVariant.mockImplementation((connectionId, variantId) => {
@@ -198,7 +183,7 @@ describe('IntegrationsContentPublisher', () => {
           total: ids.length,
         });
       });
-      return { updateOfferFields, integrationsService, offerMappings };
+      return { updateOfferFields, integrationsService, offerMappings, products };
     }
 
     it('should refuse the publish when the description survives the format as empty', async () => {
@@ -206,7 +191,7 @@ describe('IntegrationsContentPublisher', () => {
       // change nothing, and still return a fresh `baseVersion` - marking the
       // draft published and clearing the conflict flag on a publish that never
       // happened. Refusing names the real condition instead.
-      const { updateOfferFields, integrationsService, offerMappings } = channelFixture({
+      const { updateOfferFields, integrationsService, offerMappings, products } = channelFixture({
         hasUpdateOfferFields: true,
         variants: [{ id: 'ol_variant_a' } as ProductVariant],
         offerMappingsByVariant: { ol_variant_a: ['offer-1'] },
@@ -231,7 +216,9 @@ describe('IntegrationsContentPublisher', () => {
         });
       const publisher = new IntegrationsContentPublisher(
         integrationsService,
-        offerMappings as unknown as IOfferMappingsService
+        offerMappings as unknown as IOfferMappingsService,
+        NO_RESOLVER,
+        products,
       );
 
       await expect(
@@ -247,7 +234,7 @@ describe('IntegrationsContentPublisher', () => {
     });
 
     it('should update every distinct offer on the connection when publishing a channel override', async () => {
-      const { updateOfferFields, integrationsService, offerMappings } = channelFixture({
+      const { updateOfferFields, integrationsService, offerMappings, products } = channelFixture({
         hasUpdateOfferFields: true,
         variants: [
           { id: 'ol_variant_a' } as ProductVariant,
@@ -260,7 +247,9 @@ describe('IntegrationsContentPublisher', () => {
       });
       const publisher = new IntegrationsContentPublisher(
         integrationsService,
-        offerMappings as unknown as IOfferMappingsService
+        offerMappings as unknown as IOfferMappingsService,
+        NO_RESOLVER,
+        products,
       );
 
       const result = await publisher.publish({
@@ -295,7 +284,7 @@ describe('IntegrationsContentPublisher', () => {
     });
 
     it('should dedupe variants that share the same external offer id', async () => {
-      const { updateOfferFields, integrationsService, offerMappings } = channelFixture({
+      const { updateOfferFields, integrationsService, offerMappings, products } = channelFixture({
         hasUpdateOfferFields: true,
         variants: [
           { id: 'ol_variant_a' } as ProductVariant,
@@ -308,7 +297,9 @@ describe('IntegrationsContentPublisher', () => {
       });
       const publisher = new IntegrationsContentPublisher(
         integrationsService,
-        offerMappings as unknown as IOfferMappingsService
+        offerMappings as unknown as IOfferMappingsService,
+        NO_RESOLVER,
+        products,
       );
 
       await publisher.publish({
@@ -322,14 +313,16 @@ describe('IntegrationsContentPublisher', () => {
     });
 
     it('should throw NoLinkedOffersException when the product has no offers on the connection', async () => {
-      const { integrationsService, offerMappings } = channelFixture({
+      const { integrationsService, offerMappings, products } = channelFixture({
         hasUpdateOfferFields: true,
         variants: [{ id: 'ol_variant_a' } as ProductVariant],
         offerMappingsByVariant: {},
       });
       const publisher = new IntegrationsContentPublisher(
         integrationsService,
-        offerMappings as unknown as IOfferMappingsService
+        offerMappings as unknown as IOfferMappingsService,
+        NO_RESOLVER,
+        products,
       );
 
       await expect(
@@ -343,14 +336,16 @@ describe('IntegrationsContentPublisher', () => {
     });
 
     it('should throw ChannelAdapterLacksFieldUpdaterException when adapter has no updateOfferFields', async () => {
-      const { integrationsService, offerMappings } = channelFixture({
+      const { integrationsService, offerMappings, products } = channelFixture({
         hasUpdateOfferFields: false,
         variants: [{ id: 'ol_variant_a' } as ProductVariant],
         offerMappingsByVariant: { ol_variant_a: ['offer-1'] },
       });
       const publisher = new IntegrationsContentPublisher(
         integrationsService,
-        offerMappings as unknown as IOfferMappingsService
+        offerMappings as unknown as IOfferMappingsService,
+        NO_RESOLVER,
+        products,
       );
 
       await expect(

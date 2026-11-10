@@ -531,6 +531,13 @@ export class ErliOrderSourceAdapter
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     switch (event.type) {
       case 'delivered':
+      case 'paid': {
+        // #3963: a marketplace is where a payment comes FROM; never a target.
+        return {
+          outcome: 'unsupported',
+          detail: 'Erli is the source of the payment; nothing to write back',
+        };
+      }
       case 'in-progress': {
         return {
           outcome: 'unsupported',

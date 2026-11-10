@@ -69,6 +69,20 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_fulfillmentBlockReason', ['fulfillmentBlockReason'], {
   where: '"fulfillmentBlockReason" IS NOT NULL',
 })
+@Index('IDX_order_records_paymentWritebackProblem', ['paymentWritebackProblem'], {
+  where: '"paymentWritebackProblem" = true',
+})
+// #4025: the orders list's "newest first" sort is `placedAt DESC NULLS LAST`.
+// The plain `placedAt` index above is ASC NULLS LAST, whose backward scan yields
+// DESC NULLS FIRST - the wrong null position, so the planner cannot use it for a
+// LIMIT and sorts the whole scope instead. The migration builds this index as
+// `("placedAt" DESC NULLS LAST)`. TypeORM's `@Index` cannot express a sort order
+// and does not compare one, so the declaration here carries only the name and
+// column: it keeps a future `migration:generate` from dropping the index, and
+// gives the `synchronize`-built test schema an index of the same name. That
+// schema's index is therefore ASCENDING under this name: a migration-parity spec
+// on `order_records` must compare this index by name, not by definition.
+@Index('IDX_order_records_placedAt_desc', ['placedAt'])
 // Batch issuing queue (#3583): the orders waiting for one connection's next
 // batch run, keyset-paged by order id. Partial on the one reason that means
 // "queued", so it holds only queued orders. Declared here AND in the migration
@@ -220,6 +234,14 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   salesDocumentBlockDetail!: string | null;
+
+  /**
+   * The values behind `salesDocumentBlockDetail` (#3866), for the frontend to
+   * phrase in the operator's language. Same PII rule and single writer as the
+   * detail; coerced on read.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  salesDocumentBlockParams!: Record<string, unknown> | null;
 
   /**
    * The connection and document kind the block above is ABOUT (#3583), when
@@ -632,6 +654,26 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   omsAttention!: AuthorityAttentionEntry[] | null;
+
+  /**
+   * Per-destination payment writeback record (#3963), keyed by destination
+   * connection id: whether a payment that arrived after a shop got the order
+   * reached that shop. It is also the at-most-once claim (a per-key
+   * conditional `jsonb_set`). Sole writers `claimPaymentWriteback` /
+   * `recordPaymentWriteback` / `markPaymentWritebackHandled`; deliberately NOT
+   * round-tripped through `toOrm`, so a re-ingestion can never reset a claim.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  paymentWriteback!: Record<string, unknown> | null;
+
+  /**
+   * Denormalised "a shop still shows this order unpaid and OpenLinker gave up"
+   * flag (#3963), recomputed in the same statement as every write to
+   * `paymentWriteback`. It exists so the orders-list filter and its count use a
+   * tiny partial index instead of a jsonb scan (the #2943 pattern).
+   */
+  @Column({ type: 'boolean', default: false })
+  paymentWritebackProblem!: boolean;
 
   /**
    * Why the fulfilment intercept HELD this order (#2396) — or NULL when it did

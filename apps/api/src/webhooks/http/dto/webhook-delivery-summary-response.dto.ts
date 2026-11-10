@@ -7,7 +7,11 @@
  * @module apps/api/src/webhooks/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WebhookDeliveryStatusValues } from '@openlinker/core/webhooks';
+import {
+  WebhookDeliveryStatusValues,
+  WebhookDlqCodeValues,
+  type WebhookDlqCode,
+} from '@openlinker/core/webhooks';
 
 export class WebhookDeliverySummaryResponseDto {
   @ApiProperty() id!: string;
@@ -25,7 +29,17 @@ export class WebhookDeliverySummaryResponseDto {
   @ApiPropertyOptional({ nullable: true }) publishedMessageId!: string | null;
   @ApiPropertyOptional({ nullable: true }) downstreamJobId!: string | null;
   @ApiPropertyOptional({ nullable: true }) downstreamJobType!: string | null;
-  @ApiPropertyOptional({ nullable: true }) dlqReason!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'English detail for developers; the operator reads dlqCode.',
+  })
+  dlqReason!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: WebhookDlqCodeValues,
+    description: 'Why the delivery was dead-lettered, as a stable code (#3866).',
+  })
+  dlqCode!: WebhookDlqCode | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
 }

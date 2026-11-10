@@ -39,12 +39,13 @@ import { Alert, Button } from '../../../../shared/ui';
 import { useApiClient } from '../../../../app/api/api-client-provider';
 import { inventoryQueryKeys } from '../../../inventory';
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
-import type { EanMatchCandidate, EanMatchResult } from '../../api/listings.types';
+import type { EanMatchCandidate, EanMatchCardRef, EanMatchResult } from '../../api/listings.types';
 import {
   computeBlockers,
   effectiveVariantEan,
   imageCountForVariant,
   isValidGtin,
+  operatorPickedCategory,
   productCategoryIdOf,
   siblingStockBlockers,
   titleForVariant,
@@ -63,6 +64,7 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 // Re-exported so call sites (and the availability queries below) keep one
 // import path for the retry policy the stream loop owns.
@@ -75,6 +77,8 @@ export interface BulkResolveVariantOutcome {
   resolvedCategoryId: string | null;
   resolvedProductCardId: string | null;
   resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  overriddenCard: EanMatchCardRef | null;
+  mappingAgrees: boolean;
   masterPrice: number | null;
   masterStock: number | null;
   masterCurrency: string | null;
@@ -321,6 +325,10 @@ export function BulkResolveStep({
           effectiveTitle: titleForVariant(row, variant),
           platformValidate,
           destinationResolvesCategoryAtSubmit: categoryResolvesAtSubmit,
+          cardInOtherCategory:
+            categoryResult.kind === 'matched' &&
+            categoryResult.overriddenCard !== undefined &&
+            !operatorPickedCategory(row, variant),
         });
         if (isMulti) blockers = siblingStockBlockers(blockers, masterStock);
         // A supplied-but-invalid barcode is a hard GS1 gate (plan §10.1 / B5) and
@@ -347,6 +355,9 @@ export function BulkResolveStep({
               : null,
           resolutionMethod:
             categoryResult.kind === 'matched' ? (categoryResult.method ?? 'auto_detect') : null,
+          overriddenCard:
+            categoryResult.kind === 'matched' ? (categoryResult.overriddenCard ?? null) : null,
+          mappingAgrees: categoryResult.kind === 'matched' && categoryResult.mappingAgrees === true,
           masterPrice,
           masterStock,
           masterCurrency,
@@ -448,7 +459,7 @@ export function BulkResolveStep({
   if (hasError) {
     const message =
       stream.errorMessage ??
-      (availabilityError instanceof Error ? availabilityError.message : copy.resolutionFailed);
+      describeApiError(availabilityError, 'listings');
     const resolvedSoFar = Object.keys(stream.results).length;
     return (
       // No `role="alert"` on the wrapper: `Alert` carries it, and nesting the

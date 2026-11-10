@@ -45,6 +45,8 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Fulfilment task | Zadanie realizacji | |
 | Pack bench | Stanowisko pakowania | |
 | Packer | Pakowacz | |
+| Box | Karton | the physical box a packer fills at the bench |
+| Shelf | Półka | where a packer takes an item from or puts it back |
 | Return | Zwrot | goods coming back |
 | Refund | Zwrot pieniędzy | money going back; never just "zwrot" |
 | Restock | Przyjęcie na stan | |
@@ -64,10 +66,13 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Gross / net | Brutto / netto | |
 | Price change | Zmiana ceny | |
 | Pricing rule | Reguła cenowa | |
+| Attribute rule | Reguła atrybutów | an operator rule that fills a marketplace parameter |
 | Category | Kategoria | |
 | Attribute | Atrybut | |
 | Parameter | Parametr | marketplace category parameter |
 | Mapping | Mapowanie | |
+| Barcode | Kod kreskowy | EAN / GTIN on a product or variant |
+| Catalog product | Produkt z katalogu | a marketplace's own product record a barcode can match, e.g. "produkt z katalogu Allegro" |
 | Sync | Synchronizacja | verb: synchronizuj |
 | Job | Zadanie w tle | background job; never shortened to bare "zadanie", which means the fulfilment task |
 | Webhook | Webhook | |

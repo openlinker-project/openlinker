@@ -74,6 +74,7 @@ import { BenchPackedTodayRow } from './bench-packed-today-row';
 import { BenchUnlabelledRow } from './bench-unlabelled-row';
 import { BenchWorkEmpty } from './bench-work-empty';
 import { BenchWorkRow } from './bench-work-row';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface BenchWorkListProps {
   /** Injected in tests so deadline phrasing is deterministic. */
@@ -242,7 +243,7 @@ export function BenchWorkList({
     return (
       <ErrorState
         title={copy.errors.loadTitle}
-        message={query.error.message}
+        message={describeApiError(query.error, 'bench')}
         action={
           <Button
             tone="secondary"

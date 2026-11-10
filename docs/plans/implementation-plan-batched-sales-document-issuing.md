@@ -40,7 +40,7 @@
 - One document per order (#2047) must keep holding: a run enqueues the SAME jobs with the SAME deterministic idempotency keys (`invoice:{conn}:{order}` / `fiscal:{conn}:{order}`) the auto path uses, and each job still takes `invoice:issue:{orderId}` (ADR-041 § 3a).
 - Invoicing must not import `orders` (F3 one-way edge): the run orchestration therefore lives in `orders`, which already depends on invoicing.
 - `sales-documents` stays a zero-outbound-edge leaf; only pure types/rules are added there.
-- Migration timestamp must sort after every open PR's migration on the stack (#3837 uses `1937440000000`, #3844 `1937460000000`): use `1938500000000` (bumped from `1937500000000` after `1938310000000` landed on main).
+- Migration timestamp must sort after every open PR's migration on the stack (#3837 uses `1937440000000`, #3844 `1937460000000`): use `1938780000000` (bumped from `1937500000000`, then from `1938500000000` after `1938770000000` landed on main).
 
 ---
 
@@ -153,7 +153,7 @@ None. Providers are reached only through existing issuance jobs.
    - **Acceptance**: no `save(entity)` full-row write; item FK `ON DELETE CASCADE` (migration-only, the `return_lines` precedent).
 
 3. **Migration**
-   - **File**: `apps/api/src/migrations/1938500000000-add-sales-document-batch-runs.ts`
+   - **File**: `apps/api/src/migrations/1938780000000-add-sales-document-batch-runs.ts`
    - **Action**: the two `order_records` columns + partial index; `sales_document_batch_runs` (+ index `(connectionId, startedAt DESC)`, partial unique `(connectionId) WHERE status = 'running'` so two runs on one connection cannot overlap - enforced by the index, not a read); `sales_document_batch_run_items` (+ index `(runId)`). `down()` drops all. Add both tables to the integration harness truncate lists.
    - **Acceptance**: `migration:show` clean; timestamp check passes.
 
@@ -208,7 +208,7 @@ None. Providers are reached only through existing issuance jobs.
 
 **Configuration Changes**: `Connection.config.salesDocument.batchSchedules[kind] = { frequency, time, everyHours, timeZone, effectiveFrom }` (JSONB; `timeZone` defaults to `Europe/Warsaw`); env `OL_SALES_DOCUMENT_BATCH_ENABLED` (default `true`).
 
-**Database Migrations**: `1938500000000-add-sales-document-batch-runs.ts` (two tables, two columns, two indexes, one partial unique index).
+**Database Migrations**: `1938780000000-add-sales-document-batch-runs.ts` (two tables, two columns, two indexes, one partial unique index).
 
 **Events**: none emitted or consumed.
 

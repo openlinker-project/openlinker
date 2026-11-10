@@ -36,6 +36,7 @@ const sampleDelivery: WebhookDeliverySummary = {
   dedupResult: 'new',
   rejectionReason: null,
   dlqReason: null,
+  dlqCode: null,
   publishedMessageId: null,
   downstreamJobId: null,
   downstreamJobType: null,

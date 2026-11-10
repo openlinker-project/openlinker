@@ -337,7 +337,7 @@ export class SalesDocumentBatchService implements ISalesDocumentBatchService {
   }
 
   /**
-   * A `trigger-model-batched` block written before migration `1938500000000`
+   * A `trigger-model-batched` block written before migration `1938780000000`
    * carries no target connection, so it sits in no queue - and since #3583 the
    * batched reason no longer counts as attention, so without this pass such an
    * order would be visible nowhere. Each is re-evaluated through the SAME gate

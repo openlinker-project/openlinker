@@ -29,7 +29,7 @@ import {
 } from './edit-offer-fields.schema';
 import { OfferDescriptionEditor } from './offer-description-editor';
 import { SuggestionDialog } from '../../content';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface EditOfferDrawerProps {
   isOpen: boolean;
@@ -42,7 +42,6 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
   const { showToast } = useToast();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const copy = useMessages('listings').editOfferDrawer;
-  const common = useMessages('listings').common;
   const format = useFormat();
   const schema = useMemo(() => createEditOfferFieldsSchema(copy.validation), [copy.validation]);
 
@@ -102,8 +101,8 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
     [setFormValue],
   );
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   // ADR-046: the destination's own byte cap, enforced before dispatch. The
@@ -192,7 +191,7 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
         <div className="drawer__body">
           {mutation.error ? (
             <Alert tone="error" title={copy.updateFailed}>
-              {serverErrorText(common.serverSaid, mutation.error.message, common.unknownError)}
+              {describeApiError(mutation.error, 'listings')}
             </Alert>
           ) : null}
 

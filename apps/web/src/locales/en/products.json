@@ -1,10 +1,6 @@
 {
   "costCoverageBanner": {
-    "addCostPrices": "Add cost prices",
-    "bodyAddCosts": "Add costs and orders placed from now on count toward margin.",
     "bodyNetSales": "They made {amount} of net sales, which is left out of margin.",
-    "bodyNothingElse": "Nothing else changes: orders, listings and invoices work the same with or without a cost.",
-    "dismiss": "Dismiss for this session",
     "title": {
       "one": "{n} variant you sold in the last {days} days has no cost price",
       "other": "{n} variants you sold in the last {days} days have no cost price"
@@ -144,7 +140,6 @@
     },
     "toasts": {
       "bulkCountsFromNext": "It counts toward margin from the next order.",
-      "bulkSaveFailed": "The costs could not be saved.",
       "bulkSaved": {
         "one": "Cost saved for {n} variant",
         "other": "Cost saved for {n} variants"
@@ -152,8 +147,7 @@
       "bulkSkipped": {
         "one": "{n} already had a cost and was left as it was.",
         "other": "{n} already had a cost and were left as it was."
-      },
-      "saveFailed": "The cost could not be saved."
+      }
     },
     "toolbar": {
       "allChannels": "All channels",
@@ -357,56 +351,131 @@
     },
     "eyebrow": "Operations",
     "filters": {
-      "all": "All {total}",
       "clear": "Clear filters",
-      "hideDeleted": "Hide deleted at source",
-      "noCostPrice": "No cost price",
-      "panel": {
-        "asc": "Asc",
-        "deletedAtSource": "Deleted at source",
-        "desc": "Desc",
-        "listings": "Listings",
-        "sort": "Sort",
-        "sortBy": "Sort by",
-        "source": "Source",
-        "stock": "Stock"
-      },
       "results": {
         "one": "{total} result",
         "other": "{total} results"
       },
       "searchLabel": "Search products by name or SKU",
       "searchPlaceholder": "Search by name or SKU…",
-      "sourceAll": "Source: All connections",
       "sourceLabel": "Filter by source connection",
       "stockChips": {
         "low": "Low stock",
         "out": "Out of stock",
         "oversold": "Oversold"
       },
-      "toggle": "Filters",
       "unlistedOn": "Unlisted on {name}"
     },
-    "kpi": {
-      "listingGaps": "Listing gaps",
-      "lowStock": "Low stock",
-      "noTaxRate": "No tax rate",
-      "outOfStock": "Out of stock",
-      "products": "Products"
+    "listFilters": {
+      "allConnections": "All connections",
+      "allFiltersTitle": "All filters",
+      "allProducts": "All products",
+      "anyListing": "Any listing state",
+      "anyStock": "Any stock",
+      "anyTax": "Any",
+      "attention": {
+        "cost": {
+          "label": "Cost price",
+          "setCostPrices": "Set cost prices",
+          "short": "no cost price"
+        },
+        "gaps": {
+          "any": {
+            "desc": "At least one variant is not listed on a marketplace you sell on.",
+            "title": "On any marketplace"
+          },
+          "label": "Listing gaps",
+          "on": {
+            "desc": "Has a variant with no offer on {platform}.",
+            "title": "Unlisted on {name}"
+          },
+          "short": "listing gaps"
+        },
+        "tax": {
+          "label": "Tax rate",
+          "missing": {
+            "desc": "The shop has no VAT rate for it. Invoices for these products wait.",
+            "title": "Missing"
+          },
+          "notChecked": {
+            "desc": "Rates arrive with the ordinary product sync. Run one to find out.",
+            "title": "Never checked"
+          },
+          "short": "no tax rate"
+        }
+      },
+      "clearAll": "Clear all",
+      "closeFilters": "Close filters",
+      "filterGroupAria": "Filters",
+      "filters": "Filters",
+      "filtersTitle": "All filters (F)",
+      "groups": {
+        "deleted": "Deleted at source",
+        "listings": "Listings",
+        "source": "Source",
+        "stock": "Stock",
+        "taxRate": "Tax rate"
+      },
+      "hideDeleted": "Hide products deleted at source",
+      "needsLook": "Needs a look",
+      "panelHint": "Every filter for the products list. Changes apply at once.",
+      "pills": {
+        "anyMarketplace": "any marketplace",
+        "deleted": "Deleted at source",
+        "hidden": "Hidden",
+        "search": "Search",
+        "source": "Source",
+        "taxRate": "Tax rate",
+        "unlistedOn": "Unlisted on"
+      },
+      "sectionAny": "Any",
+      "sectionShown": "Shown",
+      "showProducts": {
+        "one": "Show {n} product",
+        "other": "Show {n} products"
+      },
+      "showProductsAtLeast": {
+        "one": "Show {n}+ product",
+        "other": "Show {n}+ products"
+      },
+      "showProductsUnknown": "Show products",
+      "sortMenu": {
+        "createdAt": "Newest first",
+        "name": "Name, A to Z",
+        "price": "Highest price",
+        "sku": "SKU",
+        "stock": "Lowest stock",
+        "updatedAt": "Recently updated"
+      },
+      "sortMenuAria": "Sort products",
+      "statusTabsAria": "Products by stock",
+      "tax": {
+        "missing": "Missing",
+        "notChecked": "Never checked"
+      },
+      "unlistedAnyMarketplace": "Unlisted on any marketplace",
+      "unlistedAnywhere": "Unlisted anywhere"
     },
     "loading": "Loading products…",
+    "peek": {
+      "description": "Stock, listings and variants for this product. Up and down arrows move between products.",
+      "details": "Details",
+      "detailsAria": "Open details for {name}",
+      "editContent": "Edit content",
+      "kicker": "Product",
+      "listings": "Listings",
+      "openProduct": "Open product",
+      "stateAria": "Product state",
+      "stock": "Stock",
+      "taxRate": "Tax rate",
+      "taxSet": "Set"
+    },
     "price": {
       "currencyUnknown": "Currency unknown"
     },
     "row": {
       "capReached": "Maximum {max} products per batch reached",
       "capTooltip": "Max {max} per batch",
-      "cardVariants": {
-        "one": "{n} variant",
-        "other": "{n} variants"
-      },
-      "collapse": "Collapse variant stock for {name}",
-      "expand": "Expand variant stock for {name}",
       "publish": "+ Publish",
       "select": "Select {name}",
       "sku": "SKU: <value>{sku}</value>",
@@ -434,14 +503,6 @@
       "toSellWithStatus": "{n} to sell · {status}"
     },
     "tableCaption": "Products",
-    "taxRateSuggestion": {
-      "body": "Rates arrive with the ordinary product sync. Run one to find out which items have a rate and which are missing it.",
-      "dismiss": "Dismiss for this session",
-      "title": {
-        "one": "{n} product has never been checked for a tax rate",
-        "other": "{n} products have never been checked for a tax rate"
-      }
-    },
     "title": "Products"
   },
   "variantCost": {
@@ -452,14 +513,12 @@
       "description": "What you pay for one unit, excluding VAT. Used for margin on orders placed from now on; earlier orders keep no cost.",
       "label": "Cost price, net per unit",
       "netSuffix": "net",
-      "save": "Save cost",
-      "saveFailed": "The cost could not be saved."
+      "save": "Save cost"
     },
     "notRecorded": "Not recorded",
     "section": {
       "add": "Add cost",
       "clear": "Clear cost",
-      "clearFailed": "The cost could not be cleared.",
       "clearHint": "Clearing a cost affects orders placed from now on only.",
       "demoReadOnlyReason": "This is a read-only demo, so cost prices cannot be changed.",
       "edit": "Edit cost",

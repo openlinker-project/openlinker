@@ -40,6 +40,7 @@ import { useMemo } from 'react';
 import { listingCountFilters, listingsQueryKeys } from '../api/listings.query-keys';
 import type {
   ListingsFilters,
+  OfferAttentionCounts,
   OfferLifecycleCounts,
   OfferMapping,
   OfferMappingCount,
@@ -87,6 +88,12 @@ export interface ListingsTotalResult extends PaginatedTotalResult<OfferMappingCo
    * first fix did not reach.
    */
   lifecycleCountsState: PaginatedTotalState;
+
+  /**
+   * "Needs a look" counts (#4045/#4046) from the same count request as the
+   * buckets, or `null` while unknown - never rendered as zeroes.
+   */
+  attentionCounts: OfferAttentionCounts | null;
 }
 
 export function useListingsTotal(
@@ -147,6 +154,7 @@ export function useListingsTotal(
     total: inferred ?? stage.total,
     state: inferred !== null ? 'known' : stage.state,
     lifecycleCounts: buckets,
+    attentionCounts: stage.data?.attentionCounts ?? null,
     // Deliberately NOT the overridden `state` above, and not `stage.state`
     // either - see the field's docblock. A settled response with no buckets is
     // `unavailable` however readable its total was.

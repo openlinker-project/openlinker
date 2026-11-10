@@ -120,12 +120,6 @@
       "receipt": "Paragon",
       "unknown": "Jeszcze nie wystawiono"
     },
-    "error": {
-      "alreadyIssued": "To zamówienie ma już wystawioną fakturę.",
-      "capabilityDisabled": "Fakturowanie nie jest włączone dla tego połączenia.",
-      "forbidden": "Nie masz uprawnień do wystawiania faktur - ta akcja wymaga konta administratora.",
-      "generic": "Nie udało się wystawić faktury. Spróbuj ponownie."
-    },
     "failed": {
       "retryHint": "Odrzucona - nic nie zostało wystawione, można bezpiecznie ponowić po usunięciu przyczyny."
     },

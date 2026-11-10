@@ -7,6 +7,11 @@
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ConnectionTestOutcome,
+  ConnectionTestOutcomeValues,
+  resolveConnectionTestOutcome,
+} from '@openlinker/core/integrations';
 import type { ConnectionTestResult } from '@openlinker/core/integrations';
 
 export class ConnectionTestResultDto {
@@ -16,8 +21,18 @@ export class ConnectionTestResultDto {
   @ApiPropertyOptional({ example: 200 })
   status?: number;
 
-  @ApiProperty({ example: 'OK' })
+  @ApiProperty({
+    example: 'OK',
+    description: "The tester's own English detail, for developers; the operator reads `outcome`.",
+  })
   message!: string;
+
+  @ApiProperty({
+    enum: ConnectionTestOutcomeValues,
+    example: 'ok',
+    description: 'What the test found, as a stable code (#3866).',
+  })
+  outcome!: ConnectionTestOutcome;
 
   @ApiProperty({ example: 342 })
   latencyMs!: number;
@@ -27,6 +42,7 @@ export class ConnectionTestResultDto {
     dto.success = result.success;
     dto.status = result.status;
     dto.message = result.message;
+    dto.outcome = resolveConnectionTestOutcome(result);
     dto.latencyMs = result.latencyMs;
     return dto;
   }

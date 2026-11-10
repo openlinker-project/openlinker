@@ -246,7 +246,7 @@ A parameterized test at `apps/web/src/app/routes/route-lazy.test.ts` asserts the
 
 A screen never shows a loader for a check that takes a moment: the session-check placeholders (`.guest-layout--pending`, `.shell--pending`) stay invisible for 400 ms and only then fade in, so a quick check shows the plain page background. The page that follows fades in once (`.shell--app`, `.login-stage`, 320 ms, no delay of its own). Nothing waits on purpose. A new top-level layout's loading branch takes the `--pending` class.
 
-The first page after signing in, or of a new tab, lets its content rise in: each block of the page (`.page-section > *`) and each card of a KPI row (`.status-strip`, `.ds-grid`) rises 8 px while it fades in, 50 ms after the one before. `AppShell` adds `.shell--intro` for that one page (`shared/lib/entrance.ts` remembers it per tab, and a fresh sign-in resets it), so moving around afterwards stays quick. Any container can take `.reveal-stagger` to give its children the same reveal every time it mounts. CSS only, transform and opacity, nothing left behind when it ends, off under reduced motion.
+Every page lets its content rise in: each block of the page (the outermost `.page-section`'s children) and each card of a KPI row (`.status-strip`, `.ds-grid`) rises 8 px while it fades in, 50 ms after the one before. `AppShell` re-keys its content per route (`key={location.pathname}`), so each page plays it once when it mounts, while a filter or search-param change does not. Any container can take `.reveal-stagger` to give its children the same reveal. CSS only, transform and opacity, nothing left behind when it ends, off under reduced motion.
 
 ### Breadcrumb metadata on routes (#610)
 
@@ -701,11 +701,24 @@ There is no locale prefix in the URL: this is a signed-in app with no SEO need, 
 
 ### Server text
 
-**Planned (#3860 to #3867):** API errors will carry a stable `code` (and `params` / `fields`) next to an English `message` that exists only as a developer fallback, and the frontend will resolve the code to copy. That envelope does not exist yet: `ApiError` has no `code` field today, and only a few endpoints send a machine value (for example `ORDER_ALREADY_ON_HOLD` in the `error` field).
+An API error carries a stable `code` (and `params`, `fields`, `providerMessage`) next to an English `message` that exists only for developers and logs (#3860 to #3865). The frontend never renders that `message`: every failed request reaches the operator through `describeApiError(error, '<namespace>')` (`shared/api/describe-api-error.ts`, #3862, #3867), which picks the sentence in the active language:
 
-**Until then:** map the machine values an endpoint already sends (`error`, `reason`) to copy in the feature's copy file. For anything else, show the server `message` behind a translated prefix, for example "The server said: {message}". Never build Polish around an English server sentence.
+1. the feature's own `apiErrors.<CODE>` in its namespace, when a screen needs to say something more specific;
+2. the shared `errors.codes.<CODE>` (`locales/<lang>/errors.json`, one entry per code the API sends);
+3. the copy for the status family (`errors.status.*`: 404, 409, 5xx, network, timeout, ...) when the code is unknown or absent.
 
-Text a third-party provider returns is always shown verbatim behind a translated prefix.
+It is never blank, so a caller passes no fallback string. A provider refusal (`PROVIDER_REJECTED`) shows a translated prefix plus the provider's own words verbatim, and in a development build an untranslated code reads `[untranslated:<CODE>] <message>`. Branch on `error.code` (or a typed reader over it), never on the message text. A form maps a 400's `fields` with `applyFieldErrors`.
+
+Stored or returned reasons carry a code beside their English sentence (#3866), and the frontend phrases the code:
+
+- a dead-lettered webhook delivery: `dlqCode` beside `dlqReason` (`webhook-deliveries.dlqCodes.<code>`);
+- a sales-document block: `salesDocumentBlockParams` (counts, ids, the routed connection's state, the missing tax-rate counts) beside `salesDocumentBlockDetail`, phrased by `describeSalesDocumentBlockDetail` (`orders.salesDocumentBlockDetail`);
+- an operational setting: the reason for each ceiling is the frontend's own copy per setting (`settings.operationalSettingsPage.boundReasons`), and a refused write names `params.rule` and `params.limit`;
+- a connection test: `outcome` beside `message` (`connections.testOutcome.<outcome>`, through `describeConnectionTestFailure`).
+
+The English sentence stays in the API for developers and logs. The frontend shows it only when there is no code (a row written before the code existed, a line-total mismatch, `sync_jobs.lastError`) or after the translated sentence, through `ui.apiError.technicalDetailsWith` (`Technical details (not translated): {details}`); a provider's own words the error carries only in `message` are shown the same way. A successful connection test shows no message, since its title already says it passed. The frontend copies of the code lists are held identical to core by `scripts/check-stored-reason-code-mirror.mjs`, which also fails on a code with no English copy.
+
+**Guard:** two `no-restricted-syntax` selectors (`API_ERROR_MESSAGE_SYNTAX` in `.eslintrc.js`) fail on `x.error.message` and on `error.message` / `fooError.message` in `app`, `features`, `pages`, `plugins` and `shared/ui`, outside tests. Form field errors (`fieldState.error.message`) and copy objects (`copy.error.message`) are not matched. Any other legitimate read (a non-API error, a value written to `details`) carries an `eslint-disable-next-line no-restricted-syntax -- <reason>`. `scripts/check-i18n-lint-rule.mjs` resolves the real config for a `.ts` and a `.tsx` in each covered folder and runs fixtures through it, so a later override that replaces `no-restricted-syntax` cannot silence the guard while `pnpm lint` stays green.
 
 ### Product rules for copy
 

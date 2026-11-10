@@ -24,6 +24,7 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useKsefMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export function KsefCredentialsPanel({ connection }: { connection: Connection }): ReactElement {
   const messages = useKsefMessages();
@@ -73,7 +74,7 @@ export function KsefCredentialsPanel({ connection }: { connection: Connection })
     >
       {showRotate ? (
         <div className="form-grid">
-          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+          {rotate.error ? <Alert tone="error">{describeApiError(rotate.error, 'ksef')}</Alert> : null}
           <Select
             value={authType}
             onChange={(event) =>

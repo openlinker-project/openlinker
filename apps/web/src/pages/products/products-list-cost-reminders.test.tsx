@@ -1,4 +1,5 @@
 import { act, cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProductsListPage } from './products-list-page';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
@@ -32,20 +33,25 @@ function renderList(trackMargin: boolean): { getSettings: ReturnType<typeof vi.f
   return { getSettings };
 }
 
-describe('ProductsListPage cost reminders (#3588)', () => {
-  it('should offer Cost prices, the banner and the No cost price chip', async () => {
+describe('ProductsListPage cost reminders (#3588, #4027)', () => {
+  it('should offer Cost prices and a "no cost price" group that links to the work list', async () => {
+    const user = userEvent.setup();
     renderList(true);
-    expect(await screen.findByTestId('cost-coverage-banner')).toBeInTheDocument();
     expect(screen.getByTestId('products-open-cost-prices')).toHaveAttribute(
       'href',
       '/products/cost-prices'
     );
-    const chip = await screen.findByTestId('products-filter-no-cost');
-    expect(chip).toHaveTextContent('146');
-    expect(chip).toHaveAttribute('href', '/products/cost-prices?tab=all');
+    // The cost banner's sentence and link live in Needs a look now.
+    const group = await screen.findByRole('button', { name: /9\s*no cost price/ });
+    await user.click(group);
+    expect(await screen.findByText(/9 variants you sold in the last 30 days have no cost price/)).toBeInTheDocument();
+    expect(screen.getByTestId('products-attention-cost-link')).toHaveAttribute(
+      'href',
+      '/products/cost-prices?tab=all'
+    );
   });
 
-  it('should hide the banner and the chip but keep the Cost prices action when margin tracking is off', async () => {
+  it('should leave the cost group out but keep the Cost prices action when margin tracking is off', async () => {
     const { getSettings } = renderList(false);
     await screen.findByTestId('products-open-cost-prices');
     // Positive signal first: the settings read was made and React re-rendered.
@@ -55,7 +61,6 @@ describe('ProductsListPage cost reminders (#3588)', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('products-filter-no-cost')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /no cost price/ })).not.toBeInTheDocument();
   });
 });

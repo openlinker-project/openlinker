@@ -541,6 +541,30 @@ describe('ConnectionService', () => {
         credentials: { webserviceApiKey: 'RAW' },
       };
 
+      it('should list each refused field under VALIDATION_FAILED (#3864)', async () => {
+        const error = await service
+          .create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa', rate: 'fixed' } },
+            },
+          })
+          .catch((caught: unknown) => caught);
+
+        const body = (error as BadRequestException).getResponse() as Record<string, unknown>;
+        expect(body['code']).toBe('VALIDATION_FAILED');
+        expect(body['fields']).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: expect.stringMatching(/^config\.deliveryOnDocuments\.default/),
+              code: 'invalid',
+            }),
+          ])
+        );
+        expect(body['errors']).toBeDefined();
+      });
+
       it('should refuse a delivery name that already carries a percentage', async () => {
         await expect(
           service.create({
@@ -1085,6 +1109,19 @@ describe('ConnectionService', () => {
     });
 
     describe('config.rateLimit validation (#1810)', () => {
+      it('should name the field, the rule and its bounds on a refusal (#3864)', async () => {
+        const error = await service
+          .create({ ...payload, config: { ...payload.config, rateLimit: { maxConcurrent: 99 } } })
+          .catch((caught: unknown) => caught);
+
+        expect((error as BadRequestException).getResponse()).toEqual({
+          statusCode: 400,
+          code: 'CONNECTION_CONFIG_INVALID',
+          message: 'config.rateLimit.maxConcurrent must be a number between 1 and 64',
+          params: { field: 'config.rateLimit.maxConcurrent', rule: 'range', min: 1, max: 64 },
+        });
+      });
+
       it('should accept a create with both knobs within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);
 
@@ -1453,6 +1490,10 @@ describe('ConnectionService', () => {
           expect(error).toBeInstanceOf(BadRequestException);
           const response = (error as BadRequestException).getResponse();
           expect(response).toMatchObject({ error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE });
+          expect(response).toMatchObject({
+            code: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+            params: { reason: 'unknown-location', locationId: 'ol_location_ghost' },
+          });
         }
       });
 
@@ -1570,6 +1611,18 @@ describe('ConnectionService', () => {
       connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
       await expect(service.get('connection-123')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should name the code and the connection when it is not found (#3864)', async () => {
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
+
+      const error = await service.get('connection-123').catch((caught: unknown) => caught);
+
+      expect((error as NotFoundException).getResponse()).toMatchObject({
+        statusCode: 404,
+        code: 'CONNECTION_NOT_FOUND',
+        params: { connectionId: 'connection-123' },
+      });
     });
   });
 
@@ -2338,6 +2391,25 @@ describe('ConnectionService', () => {
           service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' })
         ).rejects.toThrow(BadRequestException);
         expect(credentials.update).not.toHaveBeenCalled();
+      });
+
+      it('should send the rewriter refusal as PROVIDER_REJECTED with its words apart (#3864)', async () => {
+        const refusal = new ConnectionCredentialsRewriteException('Stub', 'source connection is invalid');
+        credentialsRewriterRegistry.register('prestashop.webservice.v1', {
+          rewrite: jest.fn().mockRejectedValue(refusal),
+        });
+
+        const error = await service
+          .updateCredentials('connection-123', { webserviceApiKey: 'NEW' })
+          .catch((caught: unknown) => caught);
+
+        expect((error as BadRequestException).getResponse()).toEqual({
+          statusCode: 400,
+          code: 'PROVIDER_REJECTED',
+          message: refusal.message,
+          params: { provider: 'prestashop.webservice.v1' },
+          providerMessage: refusal.message,
+        });
       });
     });
   });

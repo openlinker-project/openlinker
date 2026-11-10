@@ -526,8 +526,7 @@
       "invoice": "Zamówienie w kraju <b>{country}</b>, które nie pasuje do żadnej reguły powyżej, dostaje dokument <b>{kind}</b> przez <b>{connection}</b>.",
       "receipt": "Zamówienie w kraju <b>{country}</b>, które nie pasuje do żadnej reguły powyżej, dostaje dokument <b>{kind}</b> przez <b>{connection}</b>."
     },
-    "restOfWorld": "★ Reszta świata",
-    "unknownError": "Nieznany błąd"
+    "restOfWorld": "★ Reszta świata"
   },
   "salesDocumentCountryRoutingDialog": {
     "acknowledged": {
@@ -549,7 +548,6 @@
       "title": "Zresetować {country}?",
       "warning": "Resetowanie usuwa wszystkie reguły i ustawienia domyślne skonfigurowane dla kraju {country} w OpenLinker. Nie zmienia niczego u dostawcy - nie dotyczy żadnej już wystawionej faktury ani paragonu."
     },
-    "resetFailed": "Nie udało się zresetować kraju",
     "restOfWorld": "★ Reszta świata",
     "saveNote": "Każda kontrolka tutaj zapisuje się przy zmianie - nie ma czego zatwierdzać.",
     "tiers": {
@@ -766,8 +764,7 @@
       "label": "tylko źródła podające NIP",
       "title": "Pasuje tylko wtedy, gdy źródło zamówienia zapisało NIP kupującego - warunkowo dla każdego źródła"
     },
-    "taxIdWarning": "Warunek NIP kupującego pasuje tylko do zamówienia, którego źródło faktycznie zapisało tę informację. Sklep podaje ją tylko wtedy, gdy kupujący wpisał numer VAT w adresie; marketplace tylko wtedy, gdy kupujący poprosił o fakturę VAT; niektóre sklepy tylko wtedy, gdy mają obsługiwaną wtyczkę numeru VAT. Zamówienie, którego źródło nie podało NIP, nigdy nie pasuje do tej reguły.",
-    "unknownError": "Nieznany błąd"
+    "taxIdWarning": "Warunek NIP kupującego pasuje tylko do zamówienia, którego źródło faktycznie zapisało tę informację. Sklep podaje ją tylko wtedy, gdy kupujący wpisał numer VAT w adresie; marketplace tylko wtedy, gdy kupujący poprosił o fakturę VAT; niektóre sklepy tylko wtedy, gdy mają obsługiwaną wtyczkę numeru VAT. Zamówienie, którego źródło nie podało NIP, nigdy nie pasuje do tej reguły."
   },
   "salesDocumentTemplateScreen": {
     "adopt": "Przejrzyj i przyjmij",

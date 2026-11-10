@@ -8,6 +8,7 @@ import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
 import { useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type PageCopy = ResolvedCopy<Messages['adapters']>['adaptersCatalogPage'];
 
@@ -89,7 +90,7 @@ export function AdaptersCatalogPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
+          message={describeApiError(query.error, 'adapters')}
           action={
             <Button onClick={() => { void query.refetch(); }}>{common.retry}</Button>
           }

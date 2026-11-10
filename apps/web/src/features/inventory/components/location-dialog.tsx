@@ -50,6 +50,7 @@ import {
   type LocationDialogFormSubmission,
   type LocationDialogFormValues,
 } from './location-dialog.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export type LocationDialogTarget = { mode: 'create' } | { mode: 'edit'; location: InventoryLocation };
 
@@ -146,14 +147,14 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
       if (error instanceof ApiError && error.isConflict()) {
         // DuplicateLocationCodeError → 409. Only reachable on create — the
         // edit form never sends `code`.
-        form.setError('code', { message: error.message });
+        form.setError('code', { message: describeApiError(error, 'inventory') });
         return;
       }
       if (error instanceof ApiError && error.status === 422) {
         // LocationOwnerConnectionNotFoundError → 422, in practice unreachable
         // through the select (it's populated from real connections) but
         // handled for a stale cache / direct-edit race.
-        form.setError('ownerConnectionId', { message: error.message });
+        form.setError('ownerConnectionId', { message: describeApiError(error, 'inventory') });
         return;
       }
       // Surfaced via mutation.error → <Alert> below.
@@ -178,7 +179,7 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
 
         {mutation.error && isUnmappedApiError(mutation.error, (e) => e.isConflict() || e.status === 422) ? (
           <Alert tone="error" title={copy.saveError}>
-            {mutation.error.message}
+            {describeApiError(mutation.error, 'inventory')}
           </Alert>
         ) : null}
 

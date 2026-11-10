@@ -45,6 +45,8 @@ import type {
   BulkShopPublishBatchResponse,
   PublishedVariantsRequest,
   PublishedVariantsResponse,
+  AttributeProjectionPreviewRequest,
+  AttributeProjectionPreviewResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
@@ -229,6 +231,14 @@ export interface ListingsApi {
     body: ResolveCategoriesBatchRequest,
   ) => Promise<ResolveCategoriesBatchResponse>;
   /**
+   * What the connection's attribute mappings and rules will fill, per variant
+   * (#3995). The same projection an offer publish runs, without publishing.
+   */
+  previewAttributeProjection: (
+    connectionId: string,
+    body: AttributeProjectionPreviewRequest,
+  ) => Promise<AttributeProjectionPreviewResponse>;
+  /**
    * Streaming sibling of {@link ListingsApi.resolveCategoriesBatch} (#2211).
    * Same request body and same resolution, delivered one variant at a time so
    * the bulk wizard's Resolve step can show real progress instead of waiting on
@@ -283,6 +293,8 @@ const LISTINGS_FILTER_KEYS: Record<keyof ListingsFilters, true> = {
   search: true,
   lifecycle: true,
   includeLifecycleCounts: true,
+  staleSignal: true,
+  shopBlocked: true,
 };
 
 function buildQuery(
@@ -298,6 +310,8 @@ function buildQuery(
   if (filters?.search) params.set('search', filters.search);
   if (filters?.lifecycle) params.set('lifecycle', filters.lifecycle);
   if (filters?.includeLifecycleCounts) params.set('includeLifecycleCounts', 'true');
+  if (filters?.staleSignal) params.set('staleSignal', filters.staleSignal);
+  if (filters?.shopBlocked) params.set('shopBlocked', 'true');
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   if (options?.withTotal === false) params.set('withTotal', 'false');
@@ -658,6 +672,16 @@ export function createListingsApi(
     resolveCategory(connectionId, body): Promise<ResolveCategoryResponse> {
       return request<ResolveCategoryResponse>(
         `/listings/connections/${connectionId}/categories/resolve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    previewAttributeProjection(connectionId, body): Promise<AttributeProjectionPreviewResponse> {
+      return request<AttributeProjectionPreviewResponse>(
+        `/listings/connections/${connectionId}/attribute-projection/preview`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

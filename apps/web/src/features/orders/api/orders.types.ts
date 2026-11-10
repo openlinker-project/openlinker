@@ -294,6 +294,40 @@ export interface SalesDocumentMatchedRuleView {
 }
 
 /** Everything a surface needs about one order's sales document (ADR-065). */
+/**
+ * Mirror of core's `RoutedConnectionStateValues` (#3866; apps/web cannot import
+ * core, #591), held identical by `scripts/check-stored-reason-code-mirror.mjs`.
+ */
+export const RoutedConnectionStateValues = [
+  'not-found',
+  'unreadable',
+  'disabled',
+  'error',
+  'needs-reauth',
+  'archived',
+  'missing-capability',
+  'changed',
+] as const;
+
+export type RoutedConnectionState = (typeof RoutedConnectionStateValues)[number];
+
+/** Values behind a sales-document block's detail (#3866); ids, counts and codes only. */
+export interface SalesDocumentBlockParams {
+  readonly candidateCount?: number;
+  readonly eligibleCount?: number;
+  readonly primaryCount?: number;
+  readonly poolKind?: 'invoice' | 'fiscal-receipt' | 'mixed';
+  readonly connectionId?: string;
+  readonly ruleId?: string;
+  readonly documentKind?: string;
+  readonly connectionState?: RoutedConnectionState;
+  readonly missingCapabilities?: readonly string[];
+  readonly taxRateScope?: 'lines' | 'shipping';
+  readonly lineCount?: number;
+  readonly totalLines?: number;
+  readonly firstLineRef?: string;
+}
+
 export interface SalesDocumentView {
   readonly orderId: string;
   /**
@@ -310,6 +344,8 @@ export interface SalesDocumentView {
   readonly unresolvedReason: SalesDocumentUnresolvedReasonValue | null;
   /** Free-text elaboration the gate stored; never parsed, only displayed. */
   readonly blockDetail: string | null;
+  /** The values behind `blockDetail` (#3866); the operator reads these, phrased by the frontend. */
+  readonly blockParams?: SalesDocumentBlockParams | null;
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
   /**
    * The rule that decided this order's document kind (#3186); `null` when none
@@ -566,6 +602,8 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /** The values behind `salesDocumentBlockDetail` (#3866), phrased by the frontend. */
+  salesDocumentBlockParams?: SalesDocumentBlockParams | null;
   /**
    * How a fulfilment routing decision narrowed this order's destination fan-out
    * (#2703/#2704), or `null` when it narrowed nothing — which is every order
@@ -715,6 +753,12 @@ export interface OrderRecord {
    * narrows it and renders an unrecognised one neutrally and uncounted.
    */
   omsAttention?: OrderOmsAttentionEntry[] | null;
+  /**
+   * Per destination shop: did a payment that arrived after the shop got the
+   * order reach it (#3963)? Optional for an older API; empty for an order no
+   * shop got before it was paid.
+   */
+  paymentWriteback?: OrderPaymentWritebackEntry[] | null;
   /**
    * The reason of this order's OPEN hold, or null when it is not held (#2340).
    * Present on EVERY row — list and detail — because the column is already
@@ -905,6 +949,9 @@ export interface ReleaseOrderHoldResult {
 // sortable table columns (server-side).
 export const OrderSortValues = [
   'createdAt',
+  // #4025 - when the buyer placed the order (NULLs last both ways). Mirrors
+  // `OrderRecordSortValues` in core.
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',
@@ -999,6 +1046,33 @@ export interface OrderHealthSummary {
    * Optional for graceful degradation against an older API.
    */
   omsAttention?: number;
+  /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never inside the health
+   * partition. Optional for an older API.
+   */
+  paymentNotSent?: number;
+  /**
+   * #4025 - counts for the redesigned orders filters. All optional for graceful
+   * degradation against an older API; an absent count is "unknown", never `0`.
+   * `openReturn` / `hasBuyerNote` / `dueWithin24h` use the same predicates as
+   * the `openReturn` / `hasBuyerNote` / `dueBefore` filters.
+   */
+  openReturn?: number;
+  hasBuyerNote?: number;
+  dueWithin24h?: number;
+  /** Order count per source connection id, with the source scope itself removed. Absent id = no orders. */
+  bySource?: Record<string, number>;
+  /** "Needs a look" group totals - each a UNION, never the sum of its members' counts. */
+  attention?: OrderAttentionSummary;
+}
+
+/** #4025 - mirrors core `OrderAttentionSummary`. */
+export interface OrderAttentionSummary {
+  lateToShip: number;
+  stuck: number;
+  /** Absent when the open returns could not be read (unknown, never 0). */
+  toHandle?: number;
 }
 
 export interface OrderFilters {
@@ -1062,6 +1136,13 @@ export interface OrderFilters {
    * stayed the operator-facing `attention`.
    */
   attention?: boolean;
+  /** #3963 - orders whose payment did not reach a shop (`?paymentNotSent=`). */
+  paymentNotSent?: boolean;
+  /**
+   * Narrow to orders carrying ONE attention reason (#3961), sent as
+   * `?attentionReason=`. Backs the "Changed by the shop" chip.
+   */
+  attentionReason?: string;
   /**
    * Narrow to orders held for ONE reason (#2342), sent as `?hold=`.
    *
@@ -1454,3 +1535,69 @@ export interface OrderDocumentEmailEntry {
   failureMessage: string | null;
   createdAt: string;
 }
+
+/**
+ * What "Check again" / "Keep as is" did to an order the source changed after it
+ * went to packing (#3961). Codes only; the sentences live under `orders.sourceChange` in the locale files.
+ */
+export const SourceChangeOutcomeValues = [
+  'nothing-to-do',
+  'applied',
+  'held',
+  'shipped',
+  'accepted',
+  'contended',
+  'failed',
+] as const;
+export type SourceChangeOutcome = (typeof SourceChangeOutcomeValues)[number];
+
+export interface SourceChangeLine {
+  orderLineId: string;
+  from: number;
+  to: number;
+}
+
+export interface SourceChangeResult {
+  outcome: SourceChangeOutcome;
+  cause: string | null;
+  lines: SourceChangeLine[];
+}
+
+/**
+ * What OpenLinker knows about a payment at ONE destination shop (#3963).
+ * `state` stays a plain string: the column is jsonb, and a value from a newer
+ * release must round-trip; the UI renders an unrecognised one neutrally.
+ */
+export const PaymentWritebackStateValues = [
+  'awaiting',
+  'sending',
+  'paid-in-shop',
+  'created-paid',
+  'retrying',
+  'not-sent',
+  'cod',
+  'not-tracked',
+  'skipped-by-setting',
+  'handled',
+] as const;
+export type PaymentWritebackState = (typeof PaymentWritebackStateValues)[number];
+
+export interface OrderPaymentWritebackEntry {
+  destinationConnectionId: string;
+  state: string;
+  at: string;
+  attempts: number;
+  reason: string | null;
+  detail: string | null;
+  /** The shop still shows the order unpaid and OpenLinker gave up. */
+  problem: boolean;
+}
+
+export interface PaymentWritebackRetryResult {
+  enqueued: number;
+}
+
+export interface PaymentWritebackHandledResult {
+  updated: number;
+}
+

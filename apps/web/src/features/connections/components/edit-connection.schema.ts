@@ -416,6 +416,10 @@ export const editConnectionSchema = z
     stockLocationOverride: stockLocationOverrideFormSchema,
     // Per-connection "this system packs and ships orders itself" flag (#2118) — platform-neutral.
     fulfilmentOwnedByDestination: z.boolean().nullable().optional(),
+    // "When the buyer pays later" (#3963) — platform-neutral.
+    paymentWriteback: z
+      .object({ mode: z.enum(['mark-paid', 'leave']), paidStateId: z.string() })
+      .optional(),
   });
 
 /**
@@ -593,6 +597,12 @@ export type StructuredConfigPatch = {
    * keeps the shallow-spread merge honest (see `rateLimit`).
    */
   fulfilmentOwnedByDestination?: boolean | null;
+  /**
+   * "When the buyer pays later" (#3963) — flat `config.paymentWriteback`.
+   * Platform-neutral. `paidStateId: ''` is written as `null` (the shop's own
+   * default paid state).
+   */
+  paymentWriteback?: { mode: 'mark-paid' | 'leave'; paidStateId: string };
 };
 
 /**
@@ -970,6 +980,15 @@ export function mergeStructuredIntoConfig(
   // `true` is a statement, everything else is written as an explicit `false`.
   if (structured.fulfilmentOwnedByDestination !== undefined) {
     next.fulfilmentOwnedByDestination = structured.fulfilmentOwnedByDestination === true;
+  }
+  // "When the buyer pays later" (#3963). Written whole, never deleted, so the
+  // shallow-spread merge stays honest (see `rateLimit`).
+  if (structured.paymentWriteback !== undefined) {
+    const stateId = structured.paymentWriteback.paidStateId.trim();
+    next.paymentWriteback = {
+      mode: structured.paymentWriteback.mode,
+      paidStateId: stateId.length === 0 ? null : stateId,
+    };
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch

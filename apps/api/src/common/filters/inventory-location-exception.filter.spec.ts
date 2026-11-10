@@ -27,6 +27,8 @@ describe('InventoryLocationExceptionFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.CONFLICT,
+      code: 'INVENTORY_LOCATION_CODE_DUPLICATE',
+      params: { code: 'WH1' },
       error: 'DuplicateLocationCodeError',
       message: expect.stringContaining('WH1'),
     });
@@ -40,6 +42,8 @@ describe('InventoryLocationExceptionFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.NOT_FOUND,
+      code: 'INVENTORY_LOCATION_NOT_FOUND',
+      params: { locationId: 'ol_location_missing' },
       error: 'LocationNotFoundException',
       message: expect.stringContaining('ol_location_missing'),
     });
@@ -53,6 +57,8 @@ describe('InventoryLocationExceptionFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.CONFLICT,
+      code: 'INVENTORY_LOCATION_IN_USE',
+      params: { locationId: 'ol_location_1', positionCount: 3 },
       error: 'LocationInUseError',
       message: expect.stringContaining('3'),
     });

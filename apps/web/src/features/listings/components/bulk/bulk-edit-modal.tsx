@@ -76,9 +76,8 @@ import {
   FormField,
   Input,
   RichTextEditor,
-  StatusBadge,
 } from '../../../../shared/ui';
-import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
+import type { DescriptionFormat } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
 import {
   interpolate,
@@ -86,8 +85,10 @@ import {
   useFormat,
   useMessages,
   usePlural,
+  type PluralFn,
 } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
+import { Link } from 'react-router-dom';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
 import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
@@ -111,15 +112,16 @@ import { ShopAttributePicker } from './shop-attribute-picker';
 import { BulkImageLightbox } from './bulk-image-lightbox';
 import { BulkImageStrip } from './bulk-image-strip';
 import {
-  blockerLabel,
+  chipFor,
+  resolveBlockerChips,
+  type ChipDescriptor,
   categoryNotSetApplies,
   isCategoryBlocker,
   isVariantScopeFixable,
   describeBlocker,
   CATEGORY_EFFECT_CHIP,
-  NEUTRAL_BLOCKER_CHIPS,
-  FALLBACK_CHIP,
 } from './bulk-blockers';
+import { missingRequiredProductParameterNames } from '../../lib/missing-product-parameters';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import { useCategoryParameterSchemas } from '../../hooks/use-category-parameter-schemas';
@@ -134,7 +136,16 @@ import {
   isEanParameterName,
   prefillFromVariantAttributes,
 } from '../auto-prefill-parameters';
-import type { CategoryParameter, OfferParameter } from '../../api/listings.types';
+import type {
+  CategoryParameter,
+  OfferParameter,
+  ProjectedParameterOrigin,
+} from '../../api/listings.types';
+import {
+  describeOrigin,
+  type AttributeRulesCopy,
+  type ProjectionSummary,
+} from '../../lib/attribute-projection-summary';
 import type { CategoryParameterFormValues, FormParameterValue } from '../category-parameter-form.types';
 import {
   makeBulkEditModalSchema,
@@ -160,10 +171,6 @@ import {
 } from './bulk-policy';
 import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-listings.types';
 
-/** Chip tone for a blocker id (#2240) - neutral map first, generic fallback after. */
-function chipToneOf(blocker: string): StatusBadgeTone {
-  return (NEUTRAL_BLOCKER_CHIPS[blocker] ?? FALLBACK_CHIP).tone;
-}
 
 // Grouping-determining category parameters - shared across siblings, edited on
 // the base scope only (a per-variant Brand/Condition would split the Allegro
@@ -244,6 +251,11 @@ function resolveBasePrice(
 }
 
 interface BulkEditModalProps {
+  /**
+   * What the connection's attribute rules fill, per variant id (#3995). The
+   * editor shows those values where nothing the operator set replaces them.
+   */
+  projectionSummaries?: ReadonlyMap<string, ProjectionSummary>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   row: BulkWizardRow;
@@ -341,6 +353,7 @@ export function BulkEditModal({
   canBrowseShopCategories = false,
   canPickShopAttributes = false,
   demoReadOnly = false,
+  projectionSummaries,
 }: BulkEditModalProps): ReactElement | null {
   const copy = useMessages('listings').bulkEditModal;
   const [dirty, setDirty] = useState(false);
@@ -415,6 +428,7 @@ export function BulkEditModal({
             />
           ) : (
             <BulkEditModalForm
+              projectionSummaries={projectionSummaries}
               focusField={focusField}
               row={row}
               connection={connection}
@@ -526,6 +540,23 @@ function withoutAutoFilledParams(
   return out;
 }
 
+/**
+ * Focus the parameter field labelled `name` inside `root` (#4003). Parameter
+ * controls carry their marketplace name as `aria-label` (a range control adds
+ * " from"), which is the only handle the blocker list has on them. Returns
+ * whether a field was found, so the caller can try another scope.
+ */
+function focusParameterField(root: ParentNode | null, name: string): boolean {
+  const selector = [name, `${name} from`]
+    .map((label) => `[aria-label="${label.replace(/"/g, '\\"')}"]`)
+    .join(', ');
+  const field = root?.querySelector<HTMLElement>(selector) ?? null;
+  if (!field) return false;
+  field.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  field.focus({ preventScroll: true });
+  return true;
+}
+
 /** Same URLs in the same order - the published list is ordered, so order matters. */
 function sameImageList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((url, i) => url === b[i]);
@@ -568,6 +599,7 @@ function initVariantEdit(variant: BulkVariantRow): VariantEdit {
 type ScopeStatusKind = 'base' | 'ok' | 'attn' | 'off';
 
 interface BulkEditModalFormProps {
+  projectionSummaries?: ReadonlyMap<string, ProjectionSummary>;
   row: BulkWizardRow;
   connection: Connection;
   canBrowseCategories: boolean;
@@ -597,6 +629,7 @@ function BulkEditModalForm({
   focusVariantId,
   focusField,
   demoReadOnly,
+  projectionSummaries,
   onDirtyChange,
   onRequestClose,
   onSave,
@@ -617,7 +650,24 @@ function BulkEditModalForm({
   const platform = usePlatform(connection.platformType);
   const platforms = usePlatforms();
   const platformName = resolvePlatformLabel(platforms, connection);
+
+  // What the attribute rules fill, said on the shared form (#3995). A simple
+  // product's shared form IS its only variant; on a multi-variant product the
+  // rules fill per variant, so the hint only says whether a blank field is
+  // covered for all of them.
+  const editorRulesCopy = useMessages('listings').attributeRules.editor;
+  const baseRuleHints = useMemo(
+    () => buildBaseRuleHints(row, projectionSummaries, platformName, editorRulesCopy, plural),
+    [row, projectionSummaries, platformName, editorRulesCopy, plural],
+  );
   const platformSection = platform?.bulkOfferRowSection;
+  // The same neutral + platform merge the Review step reads (#4003), so a
+  // blocker the row chip names is never nameless in here.
+  const platformBlockers = platform?.offerValidation?.blockers;
+  const blockerChips = useMemo(
+    () => resolveBlockerChips(platformBlockers ?? []),
+    [platformBlockers],
+  );
   const isMultiVariant = row.variants.length > 1;
   const masterImages = useMemo(
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
@@ -659,6 +709,18 @@ function BulkEditModalForm({
       cancelAnimationFrame(frame);
     };
   }, [focusField, scope]);
+
+  // A missing-parameter token whose field lives on the shared base (#4003)
+  // switches scope and asks for the field by name. An effect runs after the
+  // base scope has committed, so the field is in the DOM by then - no frame
+  // counting. Cleared on every run: a name the base does not render either
+  // must not focus something later, out of the blue.
+  const [pendingParameterFocus, setPendingParameterFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingParameterFocus === null) return;
+    focusParameterField(document.querySelector('[role="dialog"]'), pendingParameterFocus);
+    setPendingParameterFocus(null);
+  }, [pendingParameterFocus, scope]);
 
   // Per-variant edit model + inclusion (source of truth for override presence).
   const [variantEdits, setVariantEdits] = useState<Record<string, VariantEdit>>(() => {
@@ -1364,6 +1426,7 @@ function BulkEditModalForm({
             />
           ) : null}
           <BaseScopeForm
+            ruleHints={baseRuleHints}
             readOnly={demoReadOnly}
             descriptionFormat={descriptionFormat}
             mode={isMultiVariant ? 'base' : 'simple'}
@@ -1420,6 +1483,12 @@ function BulkEditModalForm({
                   />
                   {scope === v.variantId ? (
                     <VariantScopeForm
+                      projection={projectionSummaries?.get(v.variantId) ?? null}
+                      marketplaceName={platformName}
+                      cardLinked={
+                        v.resolvedProductCardId !== null ||
+                        Boolean(variantEdits[v.variantId]?.productCardId)
+                      }
                       readOnly={demoReadOnly}
                       descriptionFormat={descriptionFormat}
                       variant={v}
@@ -1446,6 +1515,10 @@ function BulkEditModalForm({
                       onParamChange={(paramId, value) => setVariantParam(v.variantId, paramId, value)}
                       onIncludedChange={(next) => setIncluded((prev) => ({ ...prev, [v.variantId]: next }))}
                       onFixOnBase={() => setScope('base')}
+                      onJumpToBaseParameter={(name) => {
+                        setScope('base');
+                        setPendingParameterFocus(name);
+                      }}
                       // The product-tier fix (#2240): switch to the shared scope
                       // AND open the picker, so one click lands on the control
                       // instead of on a scope the operator then has to read.
@@ -1460,6 +1533,14 @@ function BulkEditModalForm({
                       // catalogue was consulted. Falls back to the platform label.
                       destinationName={connection.name || platformName}
                       batchCurrency={currency}
+                      blockerChips={blockerChips}
+                      categorySchemaState={
+                        categoryParametersQuery.isError
+                          ? 'failed'
+                          : categoryParametersQuery.isSuccess
+                            ? 'loaded'
+                            : 'pending'
+                      }
                     />
                   ) : null}
                 </Fragment>
@@ -1595,9 +1676,163 @@ function ProvBadge({ kind }: { kind: Provenance }): ReactElement {
   return <span className={`bulk-editor__prov bulk-editor__prov--${kind}`}>{labels[kind]}</span>;
 }
 
+type EditorRulesCopy = AttributeRulesCopy['editor'];
+
+interface BaseRuleHints {
+  /** One sentence for the whole section, naming what the rules fill. */
+  note: string | null;
+  /** Per-field lines, only where a field is an exception. */
+  fields: Record<string, string>;
+}
+
+/**
+ * What the shared form says about the attribute rules (#3995). One sentence
+ * names the parameters the rules fill when left empty; a field gets its own
+ * line only when it is an exception - a value the destination rejects, partial
+ * coverage on a multi-variant product, or, on a simple product, the concrete
+ * value a blank field will receive. A card-linked variant's product-section
+ * values come from the card, so its rule values are left out.
+ */
+function buildBaseRuleHints(
+  row: BulkWizardRow,
+  summaries: ReadonlyMap<string, ProjectionSummary> | undefined,
+  destinationName: string,
+  copy: EditorRulesCopy,
+  plural: PluralFn,
+): BaseRuleHints | undefined {
+  if (!summaries) return undefined;
+  const perParam = new Map<string, ProjectedParameterOrigin[]>();
+  let consulted = 0;
+  for (const variant of row.variants) {
+    if (!variant.included) continue;
+    const summary = summaries.get(variant.variantId);
+    if (!summary) continue;
+    consulted += 1;
+    const cardLinked = variant.resolvedProductCardId !== null;
+    for (const origin of summary.byParameterId.values()) {
+      if (origin.source !== 'rule' || (cardLinked && origin.section === 'product')) continue;
+      perParam.set(origin.parameterId, [...(perParam.get(origin.parameterId) ?? []), origin]);
+    }
+  }
+  if (perParam.size === 0) return undefined;
+  const fields: Record<string, string> = {};
+  const covered: string[] = [];
+  for (const [parameterId, origins] of perParam) {
+    const rejected = origins.filter((o) => o.outcome === 'rejected');
+    if (rejected.length > 0) {
+      fields[parameterId] =
+        consulted === 1
+          ? interpolate(copy.rejectedHint, { destination: destinationName, value: rejected[0].rawValue })
+          : plural(consulted, copy.rejectedSome, { destination: destinationName, rejected: rejected.length });
+      continue;
+    }
+    covered.push(origins[0].parameterName);
+    if (consulted === 1) fields[parameterId] = interpolate(copy.ruleValue, { value: origins[0].rawValue });
+    else if (origins.length < consulted) {
+      fields[parameterId] = plural(consulted, copy.partial, { filled: origins.length });
+    }
+  }
+  const note =
+    covered.length === 0
+      ? null
+      : consulted === 1
+        ? interpolate(copy.baseNote, { names: covered.join(', ') })
+        : interpolate(copy.baseNotePerVariant, { names: covered.join(', ') });
+  return { note, fields };
+}
+
+/**
+ * One line at the top of a variant's parameters saying how many come from the
+ * attribute rules (#3995), with the way to change them.
+ */
+function RulesContextLine({
+  connectionId,
+  filled,
+  total,
+}: {
+  connectionId: string;
+  filled: number;
+  total: number;
+}): ReactElement | null {
+  const copy = useMessages('listings').attributeRules;
+  if (filled === 0) return null;
+  return (
+    <p className="bulk-editor__rules-line">
+      <span className="bulk-editor__rules-dot" aria-hidden="true" />
+      {interpolate(copy.editor.context, { filled, total })}{' '}
+      <Link to={`/connections/${connectionId}/mappings?tab=attribute-rules`}>{copy.manage}</Link>
+    </p>
+  );
+}
+
+/**
+ * The `from rule` provenance badge (#3995). Says where the value comes from on
+ * hover or focus - the rule's kind and source - so the field itself carries no
+ * explanatory prose.
+ */
+function RuleProvBadge({ origin }: { origin: ProjectedParameterOrigin }): ReactElement {
+  const copy = useMessages('listings').attributeRules;
+  const originCopy = copy.origin;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="bulk-editor__prov bulk-editor__prov--rule" tabIndex={0}>
+          {copy.editor.badgeRule}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start">
+        {describeOrigin(origin, originCopy)}: <b>{origin.rawValue}</b>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The badge on a field whose rule value the destination rejects (#3995). */
+function RuleRejectedBadge(): ReactElement {
+  const label = useMessages('listings').attributeRules.editor.badgeRejected;
+  return <span className="bulk-editor__prov bulk-editor__prov--rejected">{label}</span>;
+}
+
+/**
+ * A line under a category parameter, only where the attribute rule's value is
+ * NOT simply what gets sent (#3995): a value the destination rejects, or a
+ * rule value something the operator set replaces. The ordinary case - the
+ * rule fills it - is the badge alone.
+ */
+function RuleHint({
+  origin,
+  overridden,
+  baseSet,
+  destinationName,
+}: {
+  origin: ProjectedParameterOrigin | undefined;
+  overridden: boolean;
+  baseSet: boolean;
+  destinationName: string;
+}): ReactElement | null {
+  const copy = useMessages('listings').attributeRules.editor;
+  if (!origin) return null;
+  if (origin.outcome === 'rejected') {
+    if (overridden || baseSet) return null;
+    return (
+      <p className="bulk-editor__rule-hint bulk-editor__rule-hint--warn" role="note">
+        {interpolate(copy.rejectedHint, { destination: destinationName, value: origin.rawValue })}
+      </p>
+    );
+  }
+  if (overridden || baseSet) {
+    return (
+      <p className="bulk-editor__rule-hint">{interpolate(copy.replacesHint, { value: origin.rawValue })}</p>
+    );
+  }
+  return null;
+}
+
 // ── Base / simple scope form (the only RHF form) ─────────────────────────────
 
 interface BaseScopeFormProps {
+  /** What the attribute rules fill when a field is left empty (#3995). */
+  ruleHints?: BaseRuleHints;
   /**
    * Demo read-only. Passed explicitly rather than relying on the wrapping
    * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
@@ -1699,6 +1934,7 @@ function BaseScopeForm({
   onEanAcknowledgedForChange,
   onReady,
   onValuesChange,
+  ruleHints,
 }: BaseScopeFormProps): ReactElement {
   const copy = useMessages('listings').bulkEditModal;
   const effectiveImages = baseImageUrls ?? masterImages;
@@ -2049,6 +2285,7 @@ function BaseScopeForm({
             watchedCategoryId={watchedCategoryId}
             parametersQuery={categoryParametersQuery}
             categoryParameters={categoryParameters}
+            ruleHints={ruleHints}
           />
         ) : null}
 
@@ -2160,12 +2397,14 @@ interface BaseParameterSectionProps {
   watchedCategoryId: string | undefined;
   parametersQuery: ReturnType<typeof useCategoryParametersQuery>;
   categoryParameters: CategoryParameter[];
+  ruleHints?: BaseRuleHints;
 }
 
 function BaseParameterSection({
   watchedCategoryId,
   parametersQuery,
   categoryParameters,
+  ruleHints,
 }: BaseParameterSectionProps): ReactElement | null {
   const copy = useMessages('listings').bulkEditModal.parameters;
   if (!watchedCategoryId) return null;
@@ -2189,7 +2428,17 @@ function BaseParameterSection({
       <div className="bulk-editor__slot-tag">
         <span className="eyebrow">{copy.eyebrow}</span>
       </div>
-      <CategoryParametersStep parameters={categoryParameters} formNamespace="parameters" />
+      {ruleHints?.note ? (
+        <p className="bulk-editor__rules-line">
+          <span className="bulk-editor__rules-dot" aria-hidden="true" />
+          {ruleHints.note}
+        </p>
+      ) : null}
+      <CategoryParametersStep
+        parameters={categoryParameters}
+        formNamespace="parameters"
+        extraHints={ruleHints?.fields}
+      />
     </div>
   );
 }
@@ -2197,6 +2446,19 @@ function BaseParameterSection({
 // ── Variant scope form (controlled off the edit model) ───────────────────────
 
 interface VariantScopeFormProps {
+  /**
+   * What the connection's attribute rules fill for this variant (#3995). Shown
+   * on a parameter only while nothing the operator set replaces it - the same
+   * precedence the publish applies.
+   */
+  projection: ProjectionSummary | null;
+  /** The marketplace's own name (e.g. "Allegro"), for sentences about its list of values. */
+  marketplaceName: string;
+  /**
+   * Linked to a catalogue card: product-section values come from the card and
+   * rule values for them are not sent, so they are not shown as rule-filled.
+   */
+  cardLinked: boolean;
   /**
    * Demo read-only. Passed explicitly rather than relying on the wrapping
    * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
@@ -2263,6 +2525,8 @@ interface VariantScopeFormProps {
   onParamChange: (paramId: string, value: FormParameterValue) => void;
   onIncludedChange: (next: boolean) => void;
   onFixOnBase: () => void;
+  /** Open the shared base and focus the parameter field with this name (#4003). */
+  onJumpToBaseParameter: (name: string) => void;
   /**
    * Set the PRODUCT-tier category, covering every sibling that has no override
    * of its own (#2240). The primary fix for a category blocker: the submit pins
@@ -2275,6 +2539,14 @@ interface VariantScopeFormProps {
   destinationName: string;
   /** Batch currency, for the currency-mismatch sentence (#2240). */
   batchCurrency: string;
+  /** Neutral + destination blocker chips (#4003) - see `resolveBlockerChips`. */
+  blockerChips: Record<string, ChipDescriptor>;
+  /**
+   * Where the shared base category's parameter schema stands (#4003). Decides
+   * whether the missing-parameter list can be stated at all: `pending` is not
+   * an empty list, and `failed` is said out loud rather than left blank.
+   */
+  categorySchemaState: 'pending' | 'loaded' | 'failed';
 }
 
 function VariantScopeForm({
@@ -2301,12 +2573,19 @@ function VariantScopeForm({
   onParamChange,
   onIncludedChange,
   onFixOnBase,
+  onJumpToBaseParameter,
   onSetProductCategory,
   variantCount,
   destinationName,
   batchCurrency,
+  blockerChips,
+  categorySchemaState,
+  projection,
+  cardLinked,
+  marketplaceName,
 }: VariantScopeFormProps): ReactElement {
   const copy = useMessages('listings').bulkEditModal;
+  const rulesCopy = useMessages('listings').attributeRules;
   const plural = usePlural();
   const platformName = resolvePlatformLabel(usePlatforms(), connection);
   const label = distinguishingLabel(variant, index);
@@ -2420,7 +2699,43 @@ function VariantScopeForm({
     [effectiveCategoryParameters, effectiveParamValues],
   );
   const requiredParams = visibleParams.filter((p) => p.required);
+
+  // Which required product parameters still have no value (#4003), in three
+  // states the blocker sentence keeps apart: not known yet, could not be
+  // loaded, or the actual (possibly empty) list. Read from the live form values,
+  // so the list shrinks as the operator types.
+  const ownSchema = ownCategoryParameters ?? ownCategoryParametersQuery.data;
+  const missingParameterNames: readonly string[] | null | undefined = hasOwnCategory
+    ? ownCategoryParametersFailed
+      ? null
+      : ownSchema
+        ? missingRequiredProductParameterNames(ownSchema, effectiveParamValues)
+        : undefined
+    : categorySchemaState === 'failed'
+      ? null
+      : categorySchemaState === 'loaded'
+        ? missingRequiredProductParameterNames(categoryParameters, effectiveParamValues)
+        : undefined;
+  const panelCopy = useMessages('listings').bulkBlockers.panel;
+
+  // A missing-parameter token takes the operator to the field (#4003). Product
+  // parameters usually live on the shared base, so when this variant's form
+  // does not render the field, switch to the base scope and focus it there.
+  const focusParameter = (name: string): void => {
+    if (focusParameterField(document.querySelector(`[data-form="${variant.variantId}"]`), name)) return;
+    onJumpToBaseParameter(name);
+  };
   const optionalParams = visibleParams.filter((p) => !p.required);
+
+  // The attribute rule's answer for a parameter (#3995), unless the variant is
+  // card-linked and the parameter comes from the card - then the rule's value
+  // is not sent and claiming it would be false.
+  const ruleOriginFor = (param: CategoryParameter): ProjectedParameterOrigin | undefined => {
+    const origin = projection?.byParameterId.get(param.id);
+    if (!origin || origin.source !== 'rule') return undefined;
+    if (cardLinked && origin.section === 'product') return undefined;
+    return origin;
+  };
 
   // The type-appropriate editable control for a param (dictionary select /
   // combobox, number, or text). `opts.splitBadge` / `opts.onReset` customise the
@@ -2436,7 +2751,25 @@ function VariantScopeForm({
     const filled = autoFilledParams?.[param.id];
     const stillPrefilled =
       filled !== undefined && JSON.stringify(edit.params[param.id]) === JSON.stringify(filled);
-    if (!stillPrefilled) return control;
+    const ruleHint = stillPrefilled ? null : (
+      <RuleHint
+        origin={ruleOriginFor(param)}
+        overridden={edit.params[param.id] !== undefined}
+        baseSet={baseParamDisplay(param, baseValues) !== ''}
+        destinationName={marketplaceName}
+      />
+    );
+    if (!stillPrefilled) {
+      // One grid cell: the hint belongs to its field, not to the next column.
+      return ruleHint ? (
+        <div key={param.id} className="bulk-editor__vparam">
+          {control}
+          {ruleHint}
+        </div>
+      ) : (
+        control
+      );
+    }
     return (
       <Fragment key={param.id}>
         {control}
@@ -2454,9 +2787,21 @@ function VariantScopeForm({
     const override = edit.params[param.id];
     const overridden = override !== undefined;
     const ariaLabel = interpolate(copy.variant.fieldFor, { field: param.name, variant: label });
-    const baseDisplay = baseParamDisplay(param, baseValues);
+    const baseOwn = baseParamDisplay(param, baseValues);
+    // Nothing the operator set covers this parameter, so the publish sends the
+    // rule's value (#3995) - show it as what this variant inherits.
+    const origin = ruleOriginFor(param);
+    const ruleSupplies = !overridden && baseOwn === '' && origin?.outcome === 'accepted';
+    const ruleRejected = !overridden && baseOwn === '' && origin?.outcome === 'rejected';
+    const baseDisplay = ruleSupplies && origin ? origin.rawValue : baseOwn;
+    const inheritLabel =
+      ruleSupplies && origin ? interpolate(rulesCopy.editor.inheritFromRule, { value: origin.rawValue }) : undefined;
     const provNode = opts?.splitBadge ? (
       <span className="bulk-editor__prov bulk-editor__prov--split">{copy.variant.splitsListing}</span>
+    ) : ruleSupplies && origin ? (
+      <RuleProvBadge origin={origin} />
+    ) : ruleRejected ? (
+      <RuleRejectedBadge />
     ) : undefined;
     const onReset = opts?.onReset;
 
@@ -2474,6 +2819,7 @@ function VariantScopeForm({
             overridden={overridden}
             value={override}
             baseDisplay={baseDisplay}
+            inheritLabel={inheritLabel}
             ariaLabel={ariaLabel}
             provNode={provNode}
             onReset={onReset}
@@ -2489,6 +2835,7 @@ function VariantScopeForm({
           value={typeof override === 'string' ? override : undefined}
           options={(param.dictionary ?? []).map((e) => ({ id: e.id, label: e.value }))}
           baseDisplay={baseDisplay}
+          inheritLabel={inheritLabel}
           ariaLabel={ariaLabel}
           provNode={provNode}
           onReset={onReset}
@@ -2594,20 +2941,36 @@ function VariantScopeForm({
     }
 
     // State 1 - inherited: read-only base value + a quiet "override" affordance.
+    // With nothing on base, the publish sends the rule's value (#3995).
+    const lockedOrigin = baseLabel === '' ? ruleOriginFor(param) : undefined;
+    const lockedRuleValue = lockedOrigin?.outcome === 'accepted' ? lockedOrigin.rawValue : '';
     return (
       <div className="bulk-editor__field" key={param.id}>
         <label>
-          {param.name} <ProvBadge kind="inherit" />
+          {param.name}{' '}
+          {lockedRuleValue && lockedOrigin ? (
+            <RuleProvBadge origin={lockedOrigin} />
+          ) : lockedOrigin ? (
+            <RuleRejectedBadge />
+          ) : (
+            <ProvBadge kind="inherit" />
+          )}
         </label>
         <Input
           className="bulk-editor__input bulk-editor__input--inherited"
-          value={baseLabel || copy.variant.notSetOnBase}
+          value={baseLabel || lockedRuleValue || copy.variant.notSetOnBase}
           readOnly
           aria-readonly="true"
         />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {copy.variant.groupingParamHint}
         </div>
+        <RuleHint
+          origin={lockedOrigin}
+          overridden={false}
+          baseSet={false}
+          destinationName={marketplaceName}
+        />
         <button
           type="button"
           className="bulk-editor__override-link"
@@ -2649,98 +3012,99 @@ function VariantScopeForm({
         </div>
       ) : null}
 
-      {/* Cause + consequence, side by side (#2240). The Review table shows the
-          cause alone; here there is room for both, and the operator arrived
-          because something is wrong. `category not set` is derived, not a
-          blocker id: a cause other than `invalid-barcode` can only have been
-          emitted where the destination does NOT resolve the category at submit,
-          so the consequence is true by construction and never guessed. */}
+      {/* What blocks this variant (#2240, #4003): one list, one row per cause,
+          each naming the cause, explaining it, and carrying its own action.
+          `category not set` is derived, not a blocker id - see
+          `categoryNotSetApplies` - so it is a quiet consequence row, never a
+          cause of its own. Advisory rows (#2243) stay muted: they do not gate
+          the batch and must not read as if they did. */}
       {variant.blockers.length > 0 ? (
-        <div className="bulk-editor__blocker-chips">
-          {variant.blockers.map((blocker) => (
-            <StatusBadge key={blocker} tone={chipToneOf(blocker)} withDot>
-              {blockerLabel(blocker)}
-            </StatusBadge>
-          ))}
+        <ul className="blocker-list" aria-label={panelCopy.ariaLabel}>
+          {variant.blockers.map((blocker) => {
+            // #2240: name the cause and the offending value, then offer actions
+            // that change state. A category blocker's primary action is the
+            // PRODUCT-tier category - the submit pins it for every sibling and
+            // readiness reads it.
+            const blockerCopy = describeBlocker(blocker, {
+              ean: edit.ean.trim() === '' ? null : edit.ean.trim(),
+              destinationName,
+              variantCount,
+              batchCurrency,
+              chips: blockerChips,
+              missingParameterNames,
+            });
+            const chip = chipFor(blocker, blockerChips);
+            const advisory = chip.advisory === true;
+            const categoryBlocker = isCategoryBlocker(blocker);
+            const variantScope = isVariantScopeFixable(blocker);
+            // The category action belongs on a row that actually lacks a
+            // category; `invalid barcode` survives a set category, and there the
+            // fix is the barcode field below.
+            const needsCategory = categoryBlocker && !productCategorySet && !hasOwnCategory;
+            const items = blockerCopy.items ?? [];
+            // The per-variant category override is deliberately NOT offered here:
+            // the editor's save requires a category on the product, so a
+            // per-variant-only route would end in a refused Save (#2240).
+            const action = needsCategory ? (
+              <Button tone="primary" type="button" className="button--sm" onClick={onSetProductCategory}>
+                {canOverrideCategory
+                  ? plural(variantCount, copy.variant.setCategoryForAll)
+                  : copy.variant.setProductCategory}
+              </Button>
+            ) : variantScope || advisory || items.length > 0 ? null : (
+              <Button tone="secondary" type="button" className="button--sm" onClick={onFixOnBase}>
+                {copy.variant.openSharedBase}
+              </Button>
+            );
+            return (
+              <li
+                key={blocker}
+                className={`blocker-list__item blocker-list__item--${advisory ? 'advisory' : chip.tone}`}
+                data-blocker={blocker}
+              >
+                <span className="blocker-list__mark" aria-hidden="true" />
+                <div className="blocker-list__body">
+                  <div className="blocker-list__head">
+                    <span className="blocker-list__label">{chip.label}</span>
+                    {advisory ? (
+                      <span className="blocker-list__note">{panelCopy.advisoryNote}</span>
+                    ) : null}
+                  </div>
+                  <p className="blocker-list__title">{blockerCopy.title}</p>
+                  {items.length > 0 ? (
+                    <div className="blocker-list__tokens">
+                      {items.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className="blocker-list__token"
+                          onClick={() => focusParameter(name)}
+                          title={interpolate(panelCopy.jumpTo, { name })}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {blockerCopy.detail ? <p className="blocker-list__detail">{blockerCopy.detail}</p> : null}
+                  {action ? <div className="blocker-list__actions">{action}</div> : null}
+                </div>
+              </li>
+            );
+          })}
           {categoryNotSetApplies(variant.blockers, liveCategoryId) ? (
-            <StatusBadge tone={CATEGORY_EFFECT_CHIP.tone} withDot>
-              {CATEGORY_EFFECT_CHIP.label}
-            </StatusBadge>
+            <li className="blocker-list__item blocker-list__item--consequence">
+              <span className="blocker-list__mark" aria-hidden="true" />
+              <div className="blocker-list__body">
+                <div className="blocker-list__head">
+                  <span className="blocker-list__label">{CATEGORY_EFFECT_CHIP.label}</span>
+                  <span className="blocker-list__note">{panelCopy.consequence}</span>
+                </div>
+              </div>
+            </li>
           ) : null}
-        </div>
+        </ul>
       ) : null}
-
-      {variant.blockers.map((blocker) => {
-        // #2240: name the cause and the offending value, then offer actions that
-        // change state. A category blocker's primary action is the PRODUCT-tier
-        // category - the submit pins it for every sibling and readiness now reads
-        // it, which is exactly what the old "Fix on base" button did not do.
-        const blockerCopy = describeBlocker(blocker, {
-          ean: edit.ean.trim() === '' ? null : edit.ean.trim(),
-          destinationName,
-          variantCount,
-          batchCurrency,
-        });
-        const categoryBlocker = isCategoryBlocker(blocker);
-        const variantScope = isVariantScopeFixable(blocker);
-        // The category action belongs on a row that actually lacks a category.
-        // A blocker like `invalid barcode` is category-adjacent but survives a
-        // set category, and there the fix is the barcode field below - offering
-        // "set the category" would point at a control that is already filled in.
-        const needsCategory = categoryBlocker && !productCategorySet && !hasOwnCategory;
-        return (
-          <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
-            <b>{blockerCopy.title}</b> {blockerCopy.detail}
-            {/* The per-variant override is deliberately NOT offered here as an
-                alternative: the editor's own save requires a category on the
-                product (the base schema's `requireCategory` for a browsable
-                destination), so a per-variant-only route would end in a Save
-                refused on a scope the operator never chose. Once the product
-                carries one, the category field below offers the override as the
-                refinement it is. */}
-            {needsCategory && canOverrideCategory ? (
-              <div
-                className="bulk-editor__scope-toggles"
-                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-              >
-                <Button
-                  tone="primary"
-                  type="button"
-                  className="button--sm"
-                  onClick={onSetProductCategory}
-                >
-                  {plural(variantCount, copy.variant.setCategoryForAll)}
-                </Button>
-              </div>
-            ) : needsCategory ? (
-              // The destination forbids a per-variant category (its grouping is
-              // parent-child or explicit), so the product tier is the only tier.
-              <div
-                className="bulk-editor__scope-toggles"
-                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-              >
-                <Button
-                  tone="primary"
-                  type="button"
-                  className="button--sm"
-                  onClick={onSetProductCategory}
-                >
-                  {copy.variant.setProductCategory}
-                </Button>
-              </div>
-            ) : variantScope ? null : (
-              <div
-                className="bulk-editor__scope-toggles"
-                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-              >
-                <Button tone="ghost" type="button" className="button--sm" onClick={onFixOnBase}>
-                  {copy.variant.openSharedBase}
-                </Button>
-              </div>
-            )}
-          </div>
-        );
-      })}
 
       <div className="eyebrow" style={{ marginBottom: 'var(--space-3)' }}>
         {copy.variant.perVariant}
@@ -3053,6 +3417,14 @@ function VariantScopeForm({
               ? copy.parameters.ownCategoryHint
               : copy.parameters.inheritHint}
           </div>
+          <RulesContextLine
+            connectionId={connection.id}
+            filled={visibleParams.filter((p) => {
+              const o = ruleOriginFor(p);
+              return o?.outcome === 'accepted' && edit.params[p.id] === undefined && baseParamDisplay(p, baseValues) === '';
+            }).length}
+            total={visibleParams.length}
+          />
           {requiredParams.length > 0 ? (
             <div className="bulk-editor__vparams-grid">{requiredParams.map(renderVariantParam)}</div>
           ) : null}
@@ -3176,6 +3548,7 @@ function InheritableSelectField({
   value,
   options,
   baseDisplay,
+  inheritLabel,
   ariaLabel,
   provNode,
   onReset,
@@ -3186,6 +3559,8 @@ function InheritableSelectField({
   value: string | undefined;
   options: { id: string; label: string }[];
   baseDisplay: string;
+  /** Replaces the "Inherit from base" sentinel text, e.g. when a rule supplies the value (#3995). */
+  inheritLabel?: string;
   ariaLabel: string;
   provNode?: ReactNode;
   onReset?: () => void;
@@ -3213,7 +3588,8 @@ function InheritableSelectField({
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
       >
         <option value="">
-          {baseDisplay ? interpolate(copy.variant.inheritWithValue, { value: baseDisplay }) : copy.variant.inherit}
+          {inheritLabel ??
+            (baseDisplay ? interpolate(copy.variant.inheritWithValue, { value: baseDisplay }) : copy.variant.inherit)}
         </option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
@@ -3237,6 +3613,7 @@ function InheritableComboboxField({
   overridden,
   value,
   baseDisplay,
+  inheritLabel,
   ariaLabel,
   provNode,
   onReset,
@@ -3247,6 +3624,8 @@ function InheritableComboboxField({
   overridden: boolean;
   value: FormParameterValue;
   baseDisplay: string;
+  /** Replaces the inherit placeholder, e.g. when a rule supplies the value (#3995). */
+  inheritLabel?: string;
   ariaLabel: string;
   provNode?: ReactNode;
   onReset?: () => void;
@@ -3272,9 +3651,10 @@ function InheritableComboboxField({
         value={toComboboxValue(parameter, value)}
         onChange={(next: ComboboxValue | null) => onChange(fromComboboxValue(parameter, next))}
         placeholder={
-          baseDisplay
+          inheritLabel ??
+          (baseDisplay
             ? interpolate(copy.variant.inheritWithValue, { value: baseDisplay })
-            : copy.variant.pickOrInherit
+            : copy.variant.pickOrInherit)
         }
         invalid={false}
       />

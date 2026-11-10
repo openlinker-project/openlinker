@@ -11,15 +11,27 @@
  * @see {@link ConnectionPort} for the core port
  */
 import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
+import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
 import { resolveReceiptLineNameLimit } from './resolve-receipt-line-name-limit';
+import {
+  GENERIC_FIELD_CODE,
+  toConfigShapeErrorBody,
+  VALIDATION_FAILED,
+} from './connection-shape-error-body';
+import type { ConnectionConfigRule } from './connection-errors.types';
+import {
+  allowedValues,
+  capabilitiesUnsupported,
+  connectionConfigInvalid,
+  connectionNotFound,
+  credentialsInputAmbiguous,
+  providerRejected,
+  stockLocationOverrideInvalid,
+} from './connection-errors';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import type {
   Connection,
@@ -33,6 +45,8 @@ import {
   ConnectionNotFoundException,
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
+  describeInvalidPaymentWritebackConfig,
+  PaymentWritebackModeValues,
   ConnectionInUseException,
   BUYER_EMAILS_CONFIG_KEY,
   buyerEmailChannelKindOf,
@@ -95,7 +109,8 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
  * `apps/web/src/features/connections/lib/stock-location-override-error.ts` —
  * the `ORDER_ALREADY_ON_HOLD` / `HOLD_ALREADY_RELEASED` precedent (#2341).
  */
-export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
+export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE: KnownApiErrorCode =
+  'STOCK_LOCATION_OVERRIDE_INVALID';
 
 /**
  * Machine-readable code for the #2407 refusal to enable routing with no active
@@ -104,7 +119,8 @@ export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRI
  * this 400 to an inline remedy and must not match on the message. Mirrored in
  * `apps/web/src/features/oms-onboarding/lib/routing-requires-location-error.ts`.
  */
-export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE = 'ROUTING_REQUIRES_ACTIVE_LOCATION';
+export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE: KnownApiErrorCode =
+  'ROUTING_REQUIRES_ACTIVE_LOCATION';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
@@ -189,14 +205,16 @@ export class ConnectionService implements IConnectionService {
     }
 
     if ((await this.locations.countActiveLocations()) === 0) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
-        message:
-          'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
           "Create one first — the connection's routing readiness panel offers a default, " +
           'or POST /inventory/locations.',
-      });
+        undefined,
+        // Kept for clients that branch on `error` (#2407).
+        { error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE }
+      );
     }
   }
 
@@ -217,34 +235,46 @@ export class ConnectionService implements IConnectionService {
     if (raw === undefined || raw === null) {
       return;
     }
-    const fail = (message: string): never => {
-      throw new BadRequestException(`config.${BUYER_EMAILS_CONFIG_KEY}: ${message}`);
+    const root = `config.${BUYER_EMAILS_CONFIG_KEY}`;
+    const fail = (
+      field: string,
+      rule: ConnectionConfigRule,
+      message: string,
+      bounds?: ApiErrorParams
+    ): never => {
+      throw connectionConfigInvalid(field, rule, `${root}: ${message}`, bounds);
     };
     if (typeof raw !== 'object' || Array.isArray(raw)) {
-      return fail('must be an object');
+      return fail(root, 'object', 'must be an object');
     }
     const body = raw as Record<string, unknown>;
     if (typeof body.enabled !== 'boolean') {
-      return fail('enabled must be true or false');
+      return fail(`${root}.enabled`, 'boolean', 'enabled must be true or false');
     }
     const templates = body.templates ?? {};
     if (typeof templates !== 'object' || templates === null || Array.isArray(templates)) {
-      return fail('templates must be an object');
+      return fail(`${root}.templates`, 'object', 'templates must be an object');
     }
     const previous = readBuyerEmailsConfig(persistedConfig);
     const isMarketplace = buyerEmailChannelKindOf(capabilities) === 'marketplace';
     for (const [key, value] of Object.entries(templates)) {
       if (!isBuyerEmailTemplate(key)) {
-        return fail(`unknown template "${key}"`);
+        return fail(`${root}.templates.${key}`, 'known-template', `unknown template "${key}"`, {
+          template: key,
+        });
       }
       if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        return fail(`template "${key}" must be an object`);
+        return fail(`${root}.templates.${key}`, 'object', `template "${key}" must be an object`);
       }
       const template = value as Record<string, unknown>;
       for (const field of ['fromAddress', 'replyTo'] as const) {
         const address = template[field];
         if (address !== undefined && address !== null && !isSingleEmailAddress(address)) {
-          return fail(`${field} of "${key}" must be a single email address`);
+          return fail(
+            `${root}.templates.${key}.${field}`,
+            'email',
+            `${field} of "${key}" must be a single email address`
+          );
         }
       }
       const newlyEnabled = template.enabled === true && previous.templates[key]?.enabled !== true;
@@ -254,8 +284,11 @@ export class ConnectionService implements IConnectionService {
         !(MarketplaceBuyerEmailTemplateValues as readonly string[]).includes(key)
       ) {
         return fail(
+          `${root}.templates.${key}.enabled`,
+          'shop-only-template',
           `"${key}" is sent by a shop; a marketplace connection can enable only ` +
-            `${MarketplaceBuyerEmailTemplateValues.join(', ')}. Enable it on the shop connection instead.`
+            `${MarketplaceBuyerEmailTemplateValues.join(', ')}. Enable it on the shop connection instead.`,
+          { template: key, allowed: allowedValues(MarketplaceBuyerEmailTemplateValues) }
         );
       }
     }
@@ -278,10 +311,13 @@ export class ConnectionService implements IConnectionService {
       enabledCapabilities.includes('InventoryMaster') &&
       enabledCapabilities.includes('OfferManager')
     ) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CONNECTION_CAPABILITIES_CONFLICT',
         'InventoryMaster and OfferManager cannot both be enabled on the same connection: ' +
           'the inventory master is the stock source of truth and must not be a stock ' +
-          'write-back target. Disable InventoryMaster before enabling OfferManager (or vice versa).'
+          'write-back target. Disable InventoryMaster before enabling OfferManager (or vice versa).',
+        { capabilities: 'InventoryMaster, OfferManager' }
       );
     }
   }
@@ -377,10 +413,7 @@ export class ConnectionService implements IConnectionService {
       await validator.validate(config, previous !== undefined ? { previous } : undefined);
     } catch (error) {
       if (error instanceof InvalidConnectionConfigException) {
-        throw new BadRequestException({
-          message: error.message,
-          errors: error.errors,
-        });
+        throw new BadRequestException(toConfigShapeErrorBody(error));
       }
       throw error;
     }
@@ -397,7 +430,7 @@ export class ConnectionService implements IConnectionService {
     const rateLimit = config.rateLimit;
     if (rateLimit === undefined || rateLimit === null) return;
     if (typeof rateLimit !== 'object' || Array.isArray(rateLimit)) {
-      throw new BadRequestException('config.rateLimit must be an object');
+      throw connectionConfigInvalid('config.rateLimit', 'object', 'config.rateLimit must be an object');
     }
 
     const { requestsPerMinute, maxConcurrent } = rateLimit as Record<string, unknown>;
@@ -405,16 +438,22 @@ export class ConnectionService implements IConnectionService {
       requestsPerMinute !== undefined &&
       (typeof requestsPerMinute !== 'number' || requestsPerMinute < 1 || requestsPerMinute > 6000)
     ) {
-      throw new BadRequestException(
-        'config.rateLimit.requestsPerMinute must be a number between 1 and 6000'
+      throw connectionConfigInvalid(
+        'config.rateLimit.requestsPerMinute',
+        'range',
+        'config.rateLimit.requestsPerMinute must be a number between 1 and 6000',
+        { min: 1, max: 6000 }
       );
     }
     if (
       maxConcurrent !== undefined &&
       (typeof maxConcurrent !== 'number' || maxConcurrent < 1 || maxConcurrent > 64)
     ) {
-      throw new BadRequestException(
-        'config.rateLimit.maxConcurrent must be a number between 1 and 64'
+      throw connectionConfigInvalid(
+        'config.rateLimit.maxConcurrent',
+        'range',
+        'config.rateLimit.maxConcurrent must be a number between 1 and 64',
+        { min: 1, max: 64 }
       );
     }
   }
@@ -431,10 +470,36 @@ export class ConnectionService implements IConnectionService {
    */
   private validateFulfilmentOwnedByDestinationConfig(config: Record<string, unknown>): void {
     if (isPresentButInvalidFulfilmentOwnedByDestination(config)) {
-      throw new BadRequestException(
+      throw connectionConfigInvalid(
+        `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY}`,
+        'boolean',
         `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY} must be true or false`
       );
     }
+  }
+
+  /**
+   * Refuse a malformed `config.paymentWriteback` (#3963) instead of storing a
+   * setting the coercer would silently read as the default - an operator who
+   * chose "leave it" must not get "mark paid". `null` (a cleared knob) and an
+   * absent key are accepted and read as the default.
+   */
+  private validatePaymentWritebackConfig(config: Record<string, unknown>): void {
+    const problem = describeInvalidPaymentWritebackConfig(config);
+    if (problem === null) return;
+    // The core check names the offending path first; the code and its params
+    // are derived from that path so the frontend can render it (#3864).
+    const field = `config.${problem.split(' ')[0]}`;
+    if (field.endsWith('.mode')) {
+      throw connectionConfigInvalid(field, 'one-of', `config.${problem}`, {
+        allowed: allowedValues(PaymentWritebackModeValues),
+      });
+    }
+    throw connectionConfigInvalid(
+      field,
+      field.endsWith('.paidStateId') ? 'string' : 'object',
+      `config.${problem}`
+    );
   }
 
   /**
@@ -479,7 +544,12 @@ export class ConnectionService implements IConnectionService {
       const value = config[key];
       if (value === undefined || value === null) continue;
       if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-        throw new BadRequestException(`config.${key} must be a number of 0 or more`);
+        throw connectionConfigInvalid(
+          `config.${key}`,
+          'min',
+          `config.${key} must be a number of 0 or more`,
+          { min: 0 }
+        );
       }
     }
 
@@ -505,19 +575,32 @@ export class ConnectionService implements IConnectionService {
     const limit = await resolveReceiptLineNameLimit(this.integrationsService, this.logger);
     const errors = validateDeliveryOnDocumentsShape(value, limit.maxLength);
     if (errors.length > 0) {
-      throw new BadRequestException({
-        message: `Invalid config.deliveryOnDocuments: ${errors
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        VALIDATION_FAILED,
+        `Invalid config.deliveryOnDocuments: ${errors
           .map((issue) => `${issue.path} ${issue.message}`)
           .join('; ')}`,
-        errors,
-      });
+        undefined,
+        {
+          errors,
+          fields: errors.map((issue) => ({
+            path: `config.${issue.path}`,
+            code: GENERIC_FIELD_CODE,
+          })),
+        }
+      );
     }
   }
 
   private validatePricingRuleConfig(pricingRule: unknown): void {
     if (pricingRule === undefined || pricingRule === null) return;
     if (typeof pricingRule !== 'object' || Array.isArray(pricingRule)) {
-      throw new BadRequestException('config.pricingRule must be an object');
+      throw connectionConfigInvalid(
+        'config.pricingRule',
+        'object',
+        'config.pricingRule must be an object'
+      );
     }
 
     const candidate = pricingRule as Record<string, unknown>;
@@ -542,7 +625,11 @@ export class ConnectionService implements IConnectionService {
       const sourceOverrides = candidate['sourceOverrides'];
       if (sourceOverrides !== undefined && sourceOverrides !== null) {
         if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
-          throw new BadRequestException('config.pricingRule.sourceOverrides must be an object');
+          throw connectionConfigInvalid(
+            'config.pricingRule.sourceOverrides',
+            'object',
+            'config.pricingRule.sourceOverrides must be an object'
+          );
         }
         for (const [sourceConnectionId, rule] of Object.entries(
           sourceOverrides as Record<string, unknown>
@@ -562,13 +649,18 @@ export class ConnectionService implements IConnectionService {
 
   private validateOnePricingRule(rule: unknown, path: string): void {
     if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) {
-      throw new BadRequestException(`${path} must be an object`);
+      throw connectionConfigInvalid(path, 'object', `${path} must be an object`);
     }
 
     const { type, percent, rounding } = rule as Record<string, unknown>;
     const types = ['passthrough', 'markup', 'margin'];
     if (type !== undefined && (typeof type !== 'string' || !types.includes(type))) {
-      throw new BadRequestException(`${path}.type must be one of ${types.join(', ')}`);
+      throw connectionConfigInvalid(
+        `${path}.type`,
+        'one-of',
+        `${path}.type must be one of ${types.join(', ')}`,
+        { allowed: allowedValues(types) }
+      );
     }
     // A rule carrying `percent`/`rounding` but no `type` is accepted here and
     // then silently dropped by `coercePricingRule` on read (it requires a
@@ -579,22 +671,38 @@ export class ConnectionService implements IConnectionService {
     // review, SUGGESTION 1); an entirely empty `{}` is left alone — it
     // configures nothing either way and isn't the shape this guards against.
     if (type === undefined && (percent !== undefined || rounding !== undefined)) {
-      throw new BadRequestException(
-        `${path}.type is required (one of ${types.join(', ')}) when percent or rounding is set`
+      throw connectionConfigInvalid(
+        `${path}.type`,
+        'required-with',
+        `${path}.type is required (one of ${types.join(', ')}) when percent or rounding is set`,
+        { allowed: allowedValues(types), with: 'percent, rounding' }
       );
     }
     const roundings = ['none', 'nearestWhole', 'endingIn99'];
     if (rounding !== undefined && (typeof rounding !== 'string' || !roundings.includes(rounding))) {
-      throw new BadRequestException(`${path}.rounding must be one of ${roundings.join(', ')}`);
+      throw connectionConfigInvalid(
+        `${path}.rounding`,
+        'one-of',
+        `${path}.rounding must be one of ${roundings.join(', ')}`,
+        { allowed: allowedValues(roundings) }
+      );
     }
     if (percent !== undefined && percent !== null) {
       if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
-        throw new BadRequestException(`${path}.percent must be a number of 0 or more`);
+        throw connectionConfigInvalid(
+          `${path}.percent`,
+          'min',
+          `${path}.percent must be a number of 0 or more`,
+          { min: 0 }
+        );
       }
       if (type === 'margin' && percent >= 100) {
-        throw new BadRequestException(
+        throw connectionConfigInvalid(
+          `${path}.percent`,
+          'below-100',
           `${path}.percent must be below 100 for a margin rule. To add more than the catalogue ` +
-            'price, use a markup instead.'
+            'price, use a markup instead.',
+          { max: 100 }
         );
       }
     }
@@ -603,7 +711,9 @@ export class ConnectionService implements IConnectionService {
   private validatePriceSyncModeConfig(priceSyncMode: unknown): void {
     if (priceSyncMode === undefined || priceSyncMode === null) return;
     if (typeof priceSyncMode !== 'object' || Array.isArray(priceSyncMode)) {
-      throw new BadRequestException(
+      throw connectionConfigInvalid(
+        'config.priceSyncMode',
+        'object',
         'config.priceSyncMode must be an object of the shape { default, sourceOverrides }'
       );
     }
@@ -615,22 +725,32 @@ export class ConnectionService implements IConnectionService {
       candidate['default'] !== undefined &&
       (typeof candidate['default'] !== 'string' || !modes.includes(candidate['default']))
     ) {
-      throw new BadRequestException(
-        `config.priceSyncMode.default must be one of ${modes.join(', ')}`
+      throw connectionConfigInvalid(
+        'config.priceSyncMode.default',
+        'one-of',
+        `config.priceSyncMode.default must be one of ${modes.join(', ')}`,
+        { allowed: allowedValues(modes) }
       );
     }
 
     const sourceOverrides = candidate['sourceOverrides'];
     if (sourceOverrides === undefined || sourceOverrides === null) return;
     if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
-      throw new BadRequestException('config.priceSyncMode.sourceOverrides must be an object');
+      throw connectionConfigInvalid(
+        'config.priceSyncMode.sourceOverrides',
+        'object',
+        'config.priceSyncMode.sourceOverrides must be an object'
+      );
     }
     for (const [sourceConnectionId, mode] of Object.entries(
       sourceOverrides as Record<string, unknown>
     )) {
       if (typeof mode !== 'string' || !modes.includes(mode)) {
-        throw new BadRequestException(
-          `config.priceSyncMode.sourceOverrides.${sourceConnectionId} must be one of ${modes.join(', ')}`
+        throw connectionConfigInvalid(
+          `config.priceSyncMode.sourceOverrides.${sourceConnectionId}`,
+          'one-of',
+          `config.priceSyncMode.sourceOverrides.${sourceConnectionId} must be one of ${modes.join(', ')}`,
+          { allowed: allowedValues(modes) }
         );
       }
     }
@@ -672,16 +792,28 @@ export class ConnectionService implements IConnectionService {
     const autoDispatch = config.autoDispatch;
     if (autoDispatch === undefined || autoDispatch === null) return;
     if (typeof autoDispatch !== 'object' || Array.isArray(autoDispatch)) {
-      throw new BadRequestException('config.autoDispatch must be an object');
+      throw connectionConfigInvalid(
+        'config.autoDispatch',
+        'object',
+        'config.autoDispatch must be an object'
+      );
     }
 
     const { enabled, parcelTemplate, defaultWeightGrams, lengthMm, widthMm, heightMm } =
       autoDispatch as Record<string, unknown>;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
-      throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
+      throw connectionConfigInvalid(
+        'config.autoDispatch.enabled',
+        'boolean',
+        'config.autoDispatch.enabled must be a boolean'
+      );
     }
     if (parcelTemplate !== undefined && typeof parcelTemplate !== 'string') {
-      throw new BadRequestException('config.autoDispatch.parcelTemplate must be a string');
+      throw connectionConfigInvalid(
+        'config.autoDispatch.parcelTemplate',
+        'string',
+        'config.autoDispatch.parcelTemplate must be a string'
+      );
     }
     if (
       defaultWeightGrams !== undefined &&
@@ -689,7 +821,9 @@ export class ConnectionService implements IConnectionService {
         !Number.isFinite(defaultWeightGrams) ||
         defaultWeightGrams <= 0)
     ) {
-      throw new BadRequestException(
+      throw connectionConfigInvalid(
+        'config.autoDispatch.defaultWeightGrams',
+        'greater-than-zero',
         'config.autoDispatch.defaultWeightGrams must be a number greater than 0'
       );
     }
@@ -699,15 +833,20 @@ export class ConnectionService implements IConnectionService {
         value !== undefined &&
         (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
       ) {
-        throw new BadRequestException(
+        throw connectionConfigInvalid(
+          `config.autoDispatch.${field}`,
+          'greater-than-zero',
           `config.autoDispatch.${field} must be a number greater than 0`
         );
       }
     }
     const setCount = Object.values(dimensions).filter((value) => value !== undefined).length;
     if (setCount !== 0 && setCount !== 3) {
-      throw new BadRequestException(
-        'config.autoDispatch.lengthMm, widthMm and heightMm must be set together'
+      throw connectionConfigInvalid(
+        'config.autoDispatch',
+        'set-together',
+        'config.autoDispatch.lengthMm, widthMm and heightMm must be set together',
+        { with: 'lengthMm, widthMm, heightMm' }
       );
     }
   }
@@ -764,11 +903,10 @@ export class ConnectionService implements IConnectionService {
     const value = config.stockLocationOverride;
     if (value === undefined || value === null) return;
     if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
-        message: 'config.stockLocationOverride must be a non-empty string',
-      });
+      throw stockLocationOverrideInvalid(
+        'config.stockLocationOverride must be a non-empty string',
+        { reason: 'empty' }
+      );
     }
 
     // Shape-only read of the persisted value: `Connection.config` is JSONB, so
@@ -788,21 +926,18 @@ export class ConnectionService implements IConnectionService {
 
     const location = await this.locations.getLocation(locationId);
     if (!location) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
-        message: `config.stockLocationOverride names an unknown location: ${locationId}`,
-      });
+      throw stockLocationOverrideInvalid(
+        `config.stockLocationOverride names an unknown location: ${locationId}`,
+        { reason: 'unknown-location', locationId }
+      );
     }
     if (location.status !== 'active') {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
-        message:
-          `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
+      throw stockLocationOverrideInvalid(
+        `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
           'Stock written to an inactive location is filtered out by fulfilment routing, so the ' +
           'override would decide nothing. Name an active location, or reactivate this one.',
-      });
+        { reason: 'inactive-location', locationId }
+      );
     }
   }
 
@@ -848,9 +983,17 @@ export class ConnectionService implements IConnectionService {
         const value = (config[key] as string).trim();
         const siblingValue = siblingConfig[key];
         if (typeof siblingValue === 'string' && siblingValue.trim() === value) {
-          throw new BadRequestException(
+          throw codedHttpError(
+            HttpStatus.BAD_REQUEST,
+            'CONNECTION_CONFIG_NOT_UNIQUE',
             `config.${key} must be unique across active ${metadata.platformType} connections — ` +
-              `"${value}" is already used by connection "${sibling.name}" (${sibling.id}).`
+              `"${value}" is already used by connection "${sibling.name}" (${sibling.id}).`,
+            {
+              field: `config.${key}`,
+              value,
+              otherConnectionId: sibling.id,
+              otherConnectionName: sibling.name,
+            }
           );
         }
       }
@@ -867,7 +1010,14 @@ export class ConnectionService implements IConnectionService {
       await validator.validate(credentials);
     } catch (error) {
       if (error instanceof InvalidCredentialsShapeException) {
-        throw new BadRequestException(error.message);
+        // One sentence and no path, so no `fields`; the body keeps the shape
+        // a string-bodied BadRequestException had, plus the code (#3861).
+        throw new BadRequestException({
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: error.message,
+          error: 'Bad Request',
+          code: VALIDATION_FAILED,
+        });
       }
       throw error;
     }
@@ -893,7 +1043,7 @@ export class ConnectionService implements IConnectionService {
       return await rewriter.rewrite(credentials);
     } catch (error) {
       if (error instanceof ConnectionCredentialsRewriteException) {
-        throw new BadRequestException(error.message);
+        throw providerRejected(adapterKey, error.message);
       }
       throw error;
     }
@@ -914,8 +1064,11 @@ export class ConnectionService implements IConnectionService {
     });
     const provisioner = this.webhookProvisioningRegistry.get(metadata.adapterKey);
     if (!provisioner) {
-      throw new BadRequestException(
-        `Webhook auto-provisioning is not supported for adapter ${metadata.adapterKey}`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'WEBHOOK_PROVISIONING_UNSUPPORTED',
+        `Webhook auto-provisioning is not supported for adapter ${metadata.adapterKey}`,
+        { adapterKey: metadata.adapterKey }
       );
     }
     this.logger.log(
@@ -935,8 +1088,11 @@ export class ConnectionService implements IConnectionService {
     });
     const tester = this.connectionTesterRegistry.get(metadata.adapterKey);
     if (!tester) {
-      throw new BadRequestException(
-        `Connection testing is not supported for adapter ${metadata.adapterKey}`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CONNECTION_TEST_UNSUPPORTED',
+        `Connection testing is not supported for adapter ${metadata.adapterKey}`,
+        { adapterKey: metadata.adapterKey }
       );
     }
     this.logger.log(`Testing connection ${connectionId} (adapter: ${metadata.adapterKey})`);
@@ -959,16 +1115,16 @@ export class ConnectionService implements IConnectionService {
     // db-backed branch. So this stays unconditional and stays here, above the
     // adapter lookup — it needs no manifest to be wrong.
     if (credentials && credentialsRef) {
-      throw new BadRequestException(
-        'Exactly one of `credentials` or `credentialsRef` must be provided'
-      );
+      throw credentialsInputAmbiguous();
     }
     // Likewise unconditional: a raw key written into the column reads as
     // "not db-backed" to `connection-response.dto.ts` and `updateCredentials`,
     // yet is TRUTHY to every plugin factory's `if (connection.credentialsRef)`
     // guard, which would then resolve it from the environment.
     if (credentialsRef && !credentialsRef.startsWith('db:')) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CREDENTIALS_REF_INVALID',
         'credentialsRef must start with "db:" — raw keys are no longer accepted'
       );
     }
@@ -991,9 +1147,7 @@ export class ConnectionService implements IConnectionService {
       // check by name would be unavailable to any third-party OMS adapter,
       // which is precisely the design ADR-055 rejects.
       if (resolveRequiresCredentials(metadata) && !credentials && !credentialsRef) {
-        throw new BadRequestException(
-          'Exactly one of `credentials` or `credentialsRef` must be provided'
-        );
+        throw credentialsInputAmbiguous();
       }
 
       // Stock write-back defaults OFF for inventory-master-capable shops
@@ -1029,9 +1183,7 @@ export class ConnectionService implements IConnectionService {
         (c) => !metadata.supportedCapabilities.includes(c)
       );
       if (invalid.length > 0) {
-        throw new BadRequestException(
-          `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
-        );
+        throw capabilitiesUnsupported(metadata.adapterKey, invalid);
       }
       this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
 
@@ -1045,6 +1197,7 @@ export class ConnectionService implements IConnectionService {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
+        this.validatePaymentWritebackConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateDeliveryOnDocumentsConfig(rest.config);
         this.validateBuyerEmailsConfig(rest.config, enabledCapabilities, undefined);
@@ -1267,7 +1420,7 @@ export class ConnectionService implements IConnectionService {
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
         this.logger.warn(`Connection not found: ${connectionId}`);
-        throw new NotFoundException(error.message);
+        throw connectionNotFound(connectionId, error.message);
       }
       this.logger.error(`Failed to get connection: ${connectionId}`, error);
       throw error;
@@ -1288,19 +1441,27 @@ export class ConnectionService implements IConnectionService {
       // restore(), so it cannot be re-enabled around the step that makes an
       // operator re-enter its credentials.
       if (patch.status === 'archived') {
-        throw new BadRequestException(
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'CONNECTION_ARCHIVE_NOT_BY_STATUS',
           'A connection is archived with PATCH /connections/:id/archive, not by setting its status'
         );
       }
       if (existing.status === 'archived' && patch.status !== undefined) {
-        throw new ConflictException(
-          `Connection ${connectionId} is archived; restore it with PATCH /connections/:id/restore first`
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'CONNECTION_ARCHIVED',
+          `Connection ${connectionId} is archived; restore it with PATCH /connections/:id/restore first`,
+          { connectionId }
         );
       }
 
       if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
-        throw new BadRequestException(
-          `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'CONNECTION_ADAPTER_KEY_IMMUTABLE',
+          `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`,
+          { current: existing.adapterKey ?? '' }
         );
       }
 
@@ -1325,9 +1486,7 @@ export class ConnectionService implements IConnectionService {
           (c) => !metadata.supportedCapabilities.includes(c)
         );
         if (invalid.length > 0) {
-          throw new BadRequestException(
-            `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
-          );
+          throw capabilitiesUnsupported(metadata.adapterKey, invalid);
         }
         this.assertNoWriteBackAuthorityConflict(patch.enabledCapabilities);
       }
@@ -1344,6 +1503,7 @@ export class ConnectionService implements IConnectionService {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
+        this.validatePaymentWritebackConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateDeliveryOnDocumentsConfig(patch.config);
         this.validateBuyerEmailsConfig(
@@ -1394,7 +1554,7 @@ export class ConnectionService implements IConnectionService {
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
         this.logger.warn(`Connection not found for update: ${connectionId}`);
-        throw new NotFoundException(error.message);
+        throw connectionNotFound(connectionId, error.message);
       }
       this.logger.error(`Failed to update connection: ${connectionId}`, error);
       throw error;
@@ -1409,8 +1569,11 @@ export class ConnectionService implements IConnectionService {
     // #3657 — archiving deleted the credential on purpose; storing a new one
     // on a row that is still archived would re-arm a connection nobody can see.
     if (connection.status === 'archived') {
-      throw new ConflictException(
-        `Connection ${connectionId} is archived; restore it before entering credentials`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_ARCHIVED',
+        `Connection ${connectionId} is archived; restore it before entering credentials`,
+        { connectionId }
       );
     }
     if (connection.credentialsRef === '') {
@@ -1418,9 +1581,12 @@ export class ConnectionService implements IConnectionService {
       return;
     }
     if (!connection.credentialsRef.startsWith('db:')) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CREDENTIALS_ROTATION_UNSUPPORTED',
         `Connection ${connectionId} does not have a db-backed credentials reference ` +
-          `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`
+          `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`,
+        { connectionId }
       );
     }
     const metadata = await this.integrationsService.resolveAdapterMetadata({
@@ -1457,8 +1623,11 @@ export class ConnectionService implements IConnectionService {
       adapterKey: connection.adapterKey,
     });
     if (!resolveRequiresCredentials(metadata)) {
-      throw new BadRequestException(
-        `Connection ${connection.id} uses an adapter that takes no credentials`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CREDENTIALS_NOT_ACCEPTED',
+        `Connection ${connection.id} uses an adapter that takes no credentials`,
+        { connectionId: connection.id }
       );
     }
     const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
@@ -1486,8 +1655,11 @@ export class ConnectionService implements IConnectionService {
       return existing;
     }
     if (existing.status !== 'disabled') {
-      throw new ConflictException(
-        `Connection ${connectionId} is ${existing.status}; disable it before archiving`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_NOT_DISABLED',
+        `Connection ${connectionId} is ${existing.status}; disable it before archiving`,
+        { status: existing.status }
       );
     }
     // Declared by the adapter, never inferred from platformType (ADR-055):
@@ -1498,8 +1670,11 @@ export class ConnectionService implements IConnectionService {
       adapterKey: existing.adapterKey,
     });
     if (!resolveArchivable(metadata)) {
-      throw new ConflictException(
-        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_NOT_ARCHIVABLE',
+        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`,
+        { adapterKey: metadata.adapterKey }
       );
     }
     // The pairing is a JSONB value with no FK, so only this service can refuse
@@ -1551,8 +1726,11 @@ export class ConnectionService implements IConnectionService {
   async restore(connectionId: string): Promise<Connection> {
     const existing = await this.get(connectionId);
     if (existing.status !== 'archived') {
-      throw new ConflictException(
-        `Connection ${connectionId} is ${existing.status}; only an archived connection can be restored`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_NOT_ARCHIVED',
+        `Connection ${connectionId} is ${existing.status}; only an archived connection can be restored`,
+        { status: existing.status }
       );
     }
     const connection = await this.connectionPort.update(connectionId, { status: 'disabled' });
@@ -1574,7 +1752,7 @@ export class ConnectionService implements IConnectionService {
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
         this.logger.warn(`Connection not found for disable: ${connectionId}`);
-        throw new NotFoundException(error.message);
+        throw connectionNotFound(connectionId, error.message);
       }
       this.logger.error(`Failed to disable connection: ${connectionId}`, error);
       throw error;

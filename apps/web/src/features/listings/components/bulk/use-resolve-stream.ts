@@ -25,6 +25,7 @@
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ApiError } from '../../../../shared/api/api-error';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 import { getMessages } from '../../../../shared/i18n';
 import { RESOLVE_CATEGORY_STREAM_CHUNK_SIZE } from '../../api/listings.api';
 import type { EanCategoryMatchStreamEvent, EanMatchResult } from '../../api/listings.types';
@@ -399,7 +400,13 @@ export function useResolveStream({
           }, delay);
           return;
         }
-        dispatch({ type: 'error', message: failure.message });
+        dispatch({
+          type: 'error',
+          message:
+            error instanceof Error
+              ? describeApiError(error, 'listings')
+              : getMessages('listings').useResolveStream.resolutionFailed,
+        });
       }
     };
 

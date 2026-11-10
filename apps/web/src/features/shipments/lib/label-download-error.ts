@@ -141,7 +141,11 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
   }
 
   if (error.status === 422) {
-    if (error.message.includes('generate the label first')) {
+    if (
+      error.code === 'SHIPMENT_LABEL_NOT_GENERATED' ||
+      // eslint-disable-next-line no-restricted-syntax -- fallback match for a backend that predates the SHIPMENT_LABEL_NOT_GENERATED code; not rendered
+      error.message.includes('generate the label first')
+    ) {
       return withTone({
         title: copy.noLabelYet.title,
         description: copy.noLabelYet.description,
@@ -159,6 +163,7 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
     if (hasProviderCode(error.details)) {
       const body = error.details;
       const code = body.providerCode;
+      // eslint-disable-next-line no-restricted-syntax -- the carrier's own words, shown behind a translated title like a provider refusal
       const message = body.message ?? error.message;
       return withTone({
         title: copy.providerRejected.title,

@@ -83,6 +83,7 @@ import { salesDocumentRulesQueryKeys } from '../api/sales-document-rules.query-k
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 import { describeSalesDocumentCountryReset } from '../lib/describe-sales-document-country-reset';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface SalesDocumentCountryRoutingDialogProps {
   open: boolean;
@@ -179,7 +180,7 @@ export function SalesDocumentCountryRoutingDialog({
       await queryClient.invalidateQueries({ queryKey: salesDocumentRulesQueryKeys.all });
       setConfirmResetOpen(false);
     } catch (error) {
-      setResetError(error instanceof Error ? error.message : copy.resetFailed);
+      setResetError(describeApiError(error, 'sales-documents'));
     } finally {
       setIsResetting(false);
     }
@@ -337,10 +338,14 @@ export function SalesDocumentCountryRoutingDialog({
               </Alert>
             ) : null}
             {acknowledgeMutation.error ? (
-              <Alert tone="error">{acknowledgeMutation.error.message}</Alert>
+              <Alert tone="error">
+                {describeApiError(acknowledgeMutation.error, 'sales-documents')}
+              </Alert>
             ) : null}
             {clearAcknowledgmentMutation.error ? (
-              <Alert tone="error">{clearAcknowledgmentMutation.error.message}</Alert>
+              <Alert tone="error">
+                {describeApiError(clearAcknowledgmentMutation.error, 'sales-documents')}
+              </Alert>
             ) : null}
 
             {tiers.map((tier, index) => (

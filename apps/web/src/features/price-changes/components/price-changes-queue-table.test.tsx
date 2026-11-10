@@ -129,7 +129,7 @@ describe('PriceChangesQueueTable', () => {
         new ApiError(
           'Price change episode ep-1 changed since it was last read (expected version …, current …)',
           409,
-          null,
+          { code: 'PRICE_CHANGE_STALE' },
         ),
       );
     const apiClient = createMockApiClient({
@@ -507,10 +507,13 @@ describe('PriceChangesQueueTable', () => {
     renderWithProviders(<PriceChangesQueueTable />, { apiClient });
     await screen.findByText('Ergonomic Office Chair');
 
-    const group = await screen.findByRole('group', { name: 'Filter by connection' });
-    expect(within(group).getByRole('button', { name: 'All 202' })).toBeInTheDocument();
-    expect(within(group).getByRole('button', { name: 'Allegro — PL 201' })).toBeInTheDocument();
-    expect(within(group).getByRole('button', { name: 'WooCommerce — EU Store 1' })).toBeInTheDocument();
+    // One joined filter group since #4046; the counts ride the Connection options.
+    const group = await screen.findByRole('group', { name: 'Filters' });
+    await userEvent.click(within(group).getByRole('button', { name: /^Connection/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Allegro — PL/ })).toHaveTextContent('201');
+    });
+    expect(screen.getByRole('button', { name: /^WooCommerce — EU Store/ })).toHaveTextContent('1');
   });
 
   describe('write-access gating (listings:write, useWriteAccess + ReadOnlyLock, #3164 review)', () => {
@@ -565,12 +568,15 @@ describe('PriceChangesQueueTable', () => {
 
       renderWithProviders(<PriceChangesQueueTable />, { apiClient });
 
-      const group = await screen.findByRole('group', { name: 'Filter by connection' });
-      const allChip = within(group).getByRole('button', { name: /^All/ });
-      await waitFor(() => expect(allChip).toHaveTextContent('—'));
+      const group = await screen.findByRole('group', { name: 'Filters' });
+      await userEvent.click(within(group).getByRole('button', { name: /^Connection/ }));
       // The point of the fix: a failed read must not read as "zero open
-      // episodes", which is a different and usually false claim.
-      expect(allChip).not.toHaveTextContent('0');
+      // episodes", which is a different and usually false claim - so no option
+      // carries a number at all.
+      await waitFor(() => {
+        expect(document.querySelectorAll('.choice-pop__opt').length).toBeGreaterThan(0);
+      });
+      expect(document.querySelectorAll('.choice-pop__meta')).toHaveLength(0);
     });
 
     it('renders no count at all while the counts read is still in flight', async () => {
@@ -580,9 +586,12 @@ describe('PriceChangesQueueTable', () => {
 
       renderWithProviders(<PriceChangesQueueTable />, { apiClient });
 
-      const group = await screen.findByRole('group', { name: 'Filter by connection' });
-      const allChip = within(group).getByRole('button', { name: /^All/ });
-      expect(allChip.querySelector('.chip__count')).toBeNull();
+      const group = await screen.findByRole('group', { name: 'Filters' });
+      await userEvent.click(within(group).getByRole('button', { name: /^Connection/ }));
+      await waitFor(() => {
+        expect(document.querySelectorAll('.choice-pop__opt').length).toBeGreaterThan(0);
+      });
+      expect(document.querySelectorAll('.choice-pop__meta')).toHaveLength(0);
     });
   });
 
@@ -704,11 +713,16 @@ describe('PriceChangesQueueTable', () => {
       renderWithProviders(<PriceChangesQueueTable />, { apiClient });
       await screen.findByText('Ergonomic Office Chair');
 
-      await userEvent.click(screen.getByRole('button', { name: /Allegro — PL/ }));
+      await userEvent.click(
+        within(screen.getByRole('group', { name: 'Filters' })).getByRole('button', { name: /^Connection/ }),
+      );
+      await userEvent.click(await screen.findByRole('button', { name: /^Allegro — PL/ }));
 
       await waitFor(() => {
         expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ connectionId: 'dest-1' }));
       });
+      // The applied filter reads back as a pill.
+      expect(document.querySelector('.filter-chip__value')?.textContent).toBe('Allegro — PL');
     });
 
     describe('mobile card view', () => {

@@ -11,6 +11,7 @@ import {
   capabilityToggleTestId,
 } from './ConnectionCapabilitiesPanel';
 import type { Connection } from '../api/connections.types';
+import { getMessages } from '../../../shared/i18n';
 
 describe('ConnectionCapabilitiesPanel', () => {
   afterEach(cleanup);
@@ -94,7 +95,7 @@ describe('ConnectionCapabilitiesPanel', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
 
     expect(await screen.findByText(/Unable to update capabilities/)).toBeInTheDocument();
-    expect(screen.getByText('API update failed')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('shows a notice when there are no supported capabilities', () => {

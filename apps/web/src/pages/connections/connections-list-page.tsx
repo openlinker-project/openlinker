@@ -20,6 +20,7 @@ import { ArchiveConnectionButton } from '../../features/connections/components/a
 import { RestoreConnectionButton } from '../../features/connections/components/restore-connection-button';
 import { describeConnectionStatus } from '../oms/oms-connection';
 import { useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type PageCopy = ResolvedCopy<Messages['connections']>['connectionsListPage'];
 
@@ -250,7 +251,7 @@ export function ConnectionsListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
+          message={describeApiError(query.error, 'connections')}
           action={
             <Button onClick={() => { void query.refetch(); }}>{common.retry}</Button>
           }

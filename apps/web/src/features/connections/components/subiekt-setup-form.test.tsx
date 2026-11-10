@@ -16,6 +16,7 @@ import {
 } from '../../../test/test-utils';
 import { SubiektSetupForm } from './subiekt-setup-form';
 import { SUBIEKT_GT_IDENTITY, SUBIEKT_NEXO_IDENTITY } from './subiekt-setup.schema';
+import { getMessages } from '../../../shared/i18n';
 
 describe('SubiektSetupForm', () => {
   afterEach(cleanup);
@@ -298,7 +299,7 @@ describe('SubiektSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
-    expect(screen.getByText(/Bridge offline/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
     // The success/fail result alert must NOT appear on the rejected path.
     expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();

@@ -43,7 +43,6 @@
  * @module apps/api/src/returns/http
  */
 import {
-  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -117,6 +116,7 @@ import {
   RecordReturnResponseDto,
 } from '../dto/return-write.dto';
 import { ReturnCorrectionProposalResponseDto } from '../dto/return-correction-proposal.dto';
+import { refundAmountPrecision } from '../../orders/http/orders-errors';
 
 @ApiBearerAuth()
 @ApiTags('returns')
@@ -467,7 +467,7 @@ export class ReturnWritesController {
         });
       }
       if (error instanceof RefundAmountPrecisionException) {
-        throw new BadRequestException(error.message);
+        throw refundAmountPrecision(error);
       }
       throw error;
     }

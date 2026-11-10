@@ -202,6 +202,13 @@ export interface SalesDocumentBlock {
   readonly unresolvedReason?: SalesDocumentUnresolvedReason;
   readonly detail?: string;
   /**
+   * The facts `detail` states, as values (#3866), so the frontend can say the
+   * same thing in the operator's language. Same PII rule as `detail`: ids,
+   * counts and codes only. Absent where there is nothing to parametrise (the
+   * `'line-total-mismatch'` detail is the mapper's own sentence).
+   */
+  readonly params?: SalesDocumentBlockParams;
+  /**
    * The connection and kind routing resolved the order to, when the block is
    * about THAT target (#3583). Set for `trigger-model-batched`, where it is
    * what puts the order in that connection's batch queue; absent where routing
@@ -210,6 +217,114 @@ export interface SalesDocumentBlock {
   readonly connectionId?: string;
   /** A `SalesDocumentKind`; typed `string` (its definition) to keep this module import-free. */
   readonly documentKind?: string;
+}
+
+/**
+ * Why the connection a routing decision names cannot issue the document
+ * (`'routed-connection-unavailable'`, #3866).
+ */
+export const RoutedConnectionStateValues = [
+  /** The connection no longer exists. */
+  'not-found',
+  /** It could not be read back. */
+  'unreadable',
+  'disabled',
+  'error',
+  'needs-reauth',
+  'archived',
+  /** Active, but the capability the document needs is not enabled (`missingCapability`). */
+  'missing-capability',
+  /** Active and capable on a re-read: it changed while the order was checked. */
+  'changed',
+] as const;
+
+export type RoutedConnectionState = (typeof RoutedConnectionStateValues)[number];
+
+/** The kind of the eligible pool an ambiguity was found in. */
+export const SalesDocumentPoolKindValues = ['invoice', 'fiscal-receipt', 'mixed'] as const;
+
+export type SalesDocumentPoolKind = (typeof SalesDocumentPoolKindValues)[number];
+
+/** The half of a document `'missing-tax-rate'` is about. */
+export const MissingTaxRateScopeValues = ['lines', 'shipping'] as const;
+
+export type MissingTaxRateScope = (typeof MissingTaxRateScopeValues)[number];
+
+/**
+ * Values behind a block's `detail`. Every field is optional; which ones are
+ * set depends on the reason. Persisted as jsonb and coerced on read through
+ * {@link readSalesDocumentBlockParams}.
+ */
+export interface SalesDocumentBlockParams {
+  /** `'no-connection-declares-document-kind'`: connections that could issue, none declaring a kind. */
+  readonly candidateCount?: number;
+  /** `'ambiguous-connection-no-primary'` and the generic unresolved case. */
+  readonly eligibleCount?: number;
+  /** `'ambiguous-connection-no-primary'`: 0 = none marked primary, more = several. */
+  readonly primaryCount?: number;
+  readonly poolKind?: SalesDocumentPoolKind;
+  readonly connectionId?: string;
+  readonly ruleId?: string;
+  /** The decided document kind; open-world, so a plain string. */
+  readonly documentKind?: string;
+  readonly connectionState?: RoutedConnectionState;
+  /** Capability name(s) the routed connection lacks, `connectionState: 'missing-capability'`. */
+  readonly missingCapabilities?: readonly string[];
+  readonly taxRateScope?: MissingTaxRateScope;
+  readonly lineCount?: number;
+  readonly totalLines?: number;
+  /** Internal product id of the first rate-less line (auto-issue gate only). */
+  readonly firstLineRef?: string;
+}
+
+function includesValue<T extends string>(values: readonly T[], value: unknown): value is T {
+  return typeof value === 'string' && (values as readonly string[]).includes(value);
+}
+
+/**
+ * Coerce a persisted jsonb value into {@link SalesDocumentBlockParams}: keeps
+ * the fields this build knows with the right type, drops anything else, and
+ * returns `null` when nothing is left. A row written by another release
+ * therefore degrades to "no params" (the frontend falls back to `detail`)
+ * rather than reaching the UI as a shape it cannot render.
+ */
+export function readSalesDocumentBlockParams(value: unknown): SalesDocumentBlockParams | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const count = (key: string): number | undefined => {
+    const v = raw[key];
+    return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined;
+  };
+  const text = (key: string): string | undefined => {
+    const v = raw[key];
+    return typeof v === 'string' && v.length > 0 ? v : undefined;
+  };
+  const capabilities = Array.isArray(raw.missingCapabilities)
+    ? raw.missingCapabilities.filter((c): c is string => typeof c === 'string' && c.length > 0)
+    : [];
+  const params: { -readonly [K in keyof SalesDocumentBlockParams]: SalesDocumentBlockParams[K] } = {
+    candidateCount: count('candidateCount'),
+    eligibleCount: count('eligibleCount'),
+    primaryCount: count('primaryCount'),
+    poolKind: includesValue(SalesDocumentPoolKindValues, raw.poolKind) ? raw.poolKind : undefined,
+    connectionId: text('connectionId'),
+    ruleId: text('ruleId'),
+    documentKind: text('documentKind'),
+    connectionState: includesValue(RoutedConnectionStateValues, raw.connectionState)
+      ? raw.connectionState
+      : undefined,
+    missingCapabilities: capabilities.length > 0 ? capabilities : undefined,
+    taxRateScope: includesValue(MissingTaxRateScopeValues, raw.taxRateScope)
+      ? raw.taxRateScope
+      : undefined,
+    lineCount: count('lineCount'),
+    totalLines: count('totalLines'),
+    firstLineRef: text('firstLineRef'),
+  };
+  const kept = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== undefined)
+  ) as SalesDocumentBlockParams;
+  return Object.keys(kept).length > 0 ? kept : null;
 }
 
 /** What the gate enqueued on a `none` outcome (#3583), so a batch run can record it. */

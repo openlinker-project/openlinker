@@ -106,12 +106,6 @@
       "receipt": "Receipt",
       "unknown": "Not yet issued"
     },
-    "error": {
-      "alreadyIssued": "This order already has an issued invoice.",
-      "capabilityDisabled": "Invoicing is not enabled for this connection.",
-      "forbidden": "You don't have permission to issue invoices - this action requires an administrator account.",
-      "generic": "Could not issue the invoice. Please try again."
-    },
     "failed": {
       "retryHint": "Rejected - nothing was issued, safe to retry once the cause is fixed."
     },

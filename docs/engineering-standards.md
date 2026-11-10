@@ -1156,6 +1156,15 @@ export class IdentifierMappingService {
 }
 ```
 
+**Error codes on HTTP responses (#3860):**
+
+Every error the API sends carries a stable `code` next to its English `message` (`ApiErrorEnvelope` in `@openlinker/shared/errors`). The frontend picks its copy by `code` (ADR-081); `message` is for developers and logs.
+
+- The catch-all `ApiErrorCodeFilter` fills `code` for any error that has none: a legacy upper-snake-case `error` value, else `HTTP_<status>`. A domain filter wraps its body in `withApiErrorCode(body, status)`.
+- When an operator should be told WHY a request was refused, throw `CodedHttpException(status, code, message, params?)` (`apps/api/src/common/errors`) and add the code to `ApiErrorCodeValues`. A code is a contract: never rename it or change its meaning. `params` are values for the copy, never sentences.
+- A request body that fails DTO validation answers `code: 'VALIDATION_FAILED'` with one `fields` entry per failed constraint: dotted `path` (`items.0.quantity`), `code` = the class-validator constraint key, `params` = its primitive arguments (`{ min: 1 }`). Register the pipe through `createValidationPipe()` (`apps/api/src/common/validation`), the one producer `main.ts` and the integration harness share; a plugin's config shape errors carry the same `fields`.
+- `ApiErrorCodeFilter` must stay first in `buildGlobalExceptionFilters`: Nest checks global filters in reverse order and its empty `@Catch()` matches everything.
+
 ### Nullability
 
 **Use strict null checks** and handle null/undefined explicitly.
@@ -1290,7 +1299,7 @@ Every word an operator reads in `apps/web` comes from a translation file, in Eng
 - **Plurals**: `{ one, other }` in English, `{ one, few, many, other }` in Polish, rendered with `usePlural`; the count is `{n}`. An object with exactly the keys `one` and `other` is a plural, so never name a section that way.
 - **Numbers, money, dates**: `useFormat`. Never `toLocaleString()` without the active locale, `toFixed()` for display, or a hard-coded `'en-US'`.
 - **Style**: sentence case, plain hyphen (no em dash), British English, operator vocabulary, Polish terms from [i18n-glossary.md](./i18n-glossary.md).
-- **Server text**: the error `code` envelope is planned (#3860 to #3867). Until then, map the machine values an endpoint already sends (`error`, `reason`) to copy, and show any other server `message` behind a translated prefix.
+- **Server text**: never render an API error's `message`. Show `describeApiError(error, '<namespace>')`, which picks the copy by the error's `code` (`locales/<lang>/errors.json`, or the feature's `apiErrors.<CODE>`); branch on `error.code`, never on the message text (#3867). A reason the backend stores or returns gets a code (and params) beside its English sentence, and the frontend phrases the code; the sentence is shown only under the not-translated label (#3866).
 
 ✅ **Good**:
 ```tsx

@@ -29,7 +29,9 @@ import {
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
+import { PaymentWritebackSection } from './payment-writeback-section';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
+import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -55,6 +57,7 @@ import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
 import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
 import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // A technical example, not prose: the same in every language.
 const ADAPTER_KEY_EXAMPLE = 'prestashop.webservice.v1';
@@ -511,6 +514,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       stockLocationOverride: readStockLocationOverride(connection.config),
       // "This system packs and ships orders itself" (#2118) — platform-neutral.
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
+      // "When the buyer pays later" (#3963) — platform-neutral.
+      paymentWriteback: readPaymentWritebackForm(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -734,6 +739,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #3963 — re-serialize `config.paymentWriteback` into configText. Same shape
+  // as `syncFulfilmentOwnershipToJson`: the section sets the value FIRST.
+  function syncPaymentWritebackToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      paymentWriteback: form.getValues('paymentWriteback'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -832,7 +848,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // prose the backend is free to reword, and a reworded message would
       // have silently reverted this to the generic banner (review finding).
       if (error instanceof ApiError && isStockLocationOverrideValidationError(error)) {
-        form.setError('stockLocationOverride', { message: error.message });
+        form.setError('stockLocationOverride', { message: describeApiError(error, 'connections') });
         updateConnection.reset();
         // The field and the summary already carry the message; the toast
         // points at them rather than repeating it a third time.
@@ -842,9 +858,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // Covers the PATCH rejecting (also shown in the top-of-form `Alert`) and
       // anything thrown before it - the pre-submit refetch or the input
       // mapping - which `updateConnection.error` never sees.
-      showSaveFailedToast(
-        error instanceof Error && error.message ? error.message : copy.unexpectedError,
-      );
+      showSaveFailedToast(describeApiError(error, 'connections'));
     }
   }, (errors) => {
     showSaveFailedToast(
@@ -867,7 +881,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       ) : null}
       {updateConnection.error ? (
         <Alert tone="error" title={copy.errorTitle}>
-          {updateConnection.error.message}
+          {describeApiError(updateConnection.error, 'connections')}
         </Alert>
       ) : null}
       {saveWarnings.length > 0 ? (
@@ -1028,6 +1042,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         />
       ) : null}
 
+      {/* #3963 — read only where a late payment can be mirrored: an order destination. */}
+      {connection.enabledCapabilities.includes('OrderProcessorManager') ? (
+        <PaymentWritebackSection
+          connectionId={connection.id}
+          form={form}
+          configIsParseable={configIsParseable}
+          syncPaymentWritebackToJson={syncPaymentWritebackToJson}
+        />
+      ) : null}
+
       <div className="config-panel__toggle">
         <Button
           tone="secondary"
@@ -1106,7 +1130,7 @@ function MarketplaceCatalogPicker({
             </Button>
           }
         >
-          {loadError.message}
+          {describeApiError(loadError, 'connections')}
         </Alert>
       ) : null}
 

@@ -17,6 +17,7 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
+import { getMessages } from '../../shared/i18n';
 import type {
   PaginatedOrders,
   OrderRecord,
@@ -145,6 +146,21 @@ function mockMobileViewport(): { restore: () => void } {
   return { restore: () => spy.mockRestore() };
 }
 
+/**
+ * #4026 - the quick-filter chips live inside "Needs a look": open the group
+ * (late to ship / stuck / to handle), then press the item.
+ */
+async function pickAttention(
+  user: ReturnType<typeof userEvent.setup>,
+  group: RegExp,
+  item: RegExp,
+): Promise<HTMLElement> {
+  await user.click(await screen.findByRole('button', { name: group }));
+  const button = await screen.findByRole('button', { name: item });
+  await user.click(button);
+  return button;
+}
+
 describe('OrdersListPage', () => {
   beforeEach(() => {
     captureDemoEvent.mockClear();
@@ -186,7 +202,7 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h' }));
+    await pickAttention(user, /late to ship/, /^Ships within 24 h/);
 
     expect(captureDemoEvent).toHaveBeenCalledWith('demo_orders_filtered', {
       filter: 'sla_breaching',
@@ -233,8 +249,9 @@ describe('OrdersListPage', () => {
     // line, an optional tax-rate-conflict badge, and created: five facts at
     // the tallest, so the skeleton must reserve five bars or the real row
     // (with a conflicting-rate order) grows past it on load.
-    const lastCell = container.querySelector('tbody tr td:last-child');
-    expect(lastCell?.querySelectorAll('.data-table-skeleton__bar').length).toBe(5);
+    // #4026 - the pinned arrow column is last, the money column just before it.
+    const moneyCell = container.querySelector('tbody tr td:nth-last-child(2)');
+    expect(moneyCell?.querySelectorAll('.data-table-skeleton__bar').length).toBe(5);
   });
 
   it('should reserve the extra mobile-card line for the multi-fact money column (#2555)', () => {
@@ -264,7 +281,8 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load orders')).toBeInTheDocument();
-    expect(screen.getByText('The server said: Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
+    expect(screen.queryByText(/Network error/)).not.toBeInTheDocument();
   });
 
   it('should show empty state with a Manage connections CTA when no orders exist and no filter is active', async () => {
@@ -423,19 +441,15 @@ describe('OrdersListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
-    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('All orders')).toBeInTheDocument();
-    expect(screen.getByText('Needs attention')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting mapping')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting dispatch')).toBeInTheDocument();
-
+    // #4026 - the health tiles became tabs: same partition, same counts.
+    expect(await screen.findByRole('tab', { name: /All orders/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Needs attention/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Awaiting mapping/ })).toBeInTheDocument();
     await vi.waitFor(() => {
-      const values = Array.from(container.querySelectorAll('.metric-card__value')).map(
-        (el) => el.textContent
-      );
-      expect(values).toContain('11'); // total
-      expect(values).toContain('9'); // awaiting dispatch
+      expect(screen.getByRole('tab', { name: /All orders/ })).toHaveTextContent('11');
+      expect(screen.getByRole('tab', { name: /Awaiting dispatch/ })).toHaveTextContent('9');
     });
   });
 
@@ -450,7 +464,7 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: /Needs attention/ }));
+    await user.click(screen.getByRole('tab', { name: /Needs attention/ }));
 
     await vi.waitFor(() => {
       const calledWithHealth = list.mock.calls.some(
@@ -488,7 +502,7 @@ describe('OrdersListPage', () => {
     });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: /OpenLinker stopped/ }));
+    await pickAttention(user, /stuck/, /^OpenLinker stopped/);
 
     await vi.waitFor(() => {
       const calledWithAttention = list.mock.calls.some(
@@ -548,7 +562,7 @@ describe('OrdersListPage', () => {
     expect(within(row).getByText('Warszawa')).toBeInTheDocument();
   });
 
-  it('should expand the row detail with the item count when the row is clicked (#1620)', async () => {
+  it('should open the order peek with the items when the row is clicked (#4026)', async () => {
     const user = userEvent.setup();
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
@@ -558,19 +572,18 @@ describe('OrdersListPage', () => {
     const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
 
     const row = container.querySelector('.data-table__row') as HTMLElement;
     await user.click(row);
 
-    const detailRow = container.querySelector('.data-table__detail-row') as HTMLElement;
-    expect(detailRow).not.toBeNull();
-    // The accordion now leads with an itemised list headed "Items (N)" (#1713).
-    expect(within(detailRow).getByText('Items (1)')).toBeInTheDocument();
-    expect(row).toHaveAttribute('class', expect.stringContaining('data-table__row--expanded'));
+    // The peek replaced the inline expanded row; it lists the items.
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /Items/ })).toHaveTextContent('1');
+    expect(within(dialog).getByText('1 of 1')).toBeInTheDocument();
 
-    await user.click(row);
-    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+    await user.keyboard('{Escape}');
+    await vi.waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull(); });
   });
 
   it('should not expand the row when the select checkbox is clicked (#1620)', async () => {
@@ -591,6 +604,7 @@ describe('OrdersListPage', () => {
     await user.click(checkbox);
 
     expect(container.querySelector('.data-table__detail-row')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(checkbox).toBeChecked();
   });
 
@@ -613,15 +627,16 @@ describe('OrdersListPage', () => {
 
       const card = container.querySelector('.data-table__card') as HTMLElement;
       expect(card).not.toBeNull();
-      // The full field set is collapsed behind a "View full details" disclosure
-      // now (#1713); the summary shows up front. Expand it, then assert a field.
-      const disclosure = within(card).getByRole('button', { name: /view full details/i });
-      await user.click(disclosure);
-      expect(within(card).getByText('Items (1)')).toBeInTheDocument();
 
       const checkbox = within(card).getByRole('checkbox', { name: 'Select ol_order_synced' });
       await user.click(checkbox);
       expect(checkbox).toBeChecked();
+
+      // #4026 - a card opens the same peek as a desktop row, with the full detail.
+      // Re-query: selecting the row re-rendered the card.
+      fireEvent.click(container.querySelector('.data-table__card') as HTMLElement);
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByRole('heading', { name: /Items/ })).toHaveTextContent('1');
     } finally {
       viewport.restore();
     }
@@ -747,7 +762,7 @@ describe('OrdersListPage', () => {
     });
   });
 
-  it('should default the list query to the dispatchBy (ship-by) sort (#927)', async () => {
+  it('should default the list query to Recently synced, newest first (#4026)', async () => {
     const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
     const mockApi = createMockApiClient({ orders: { list } });
 
@@ -755,7 +770,7 @@ describe('OrdersListPage', () => {
 
     await screen.findByText('ALG-882414');
     expect(list).toHaveBeenCalledWith(
-      expect.objectContaining({ sort: 'dispatchBy' }),
+      expect.objectContaining({ sort: 'createdAt', dir: 'desc' }),
       expect.anything()
     );
   });
@@ -787,8 +802,7 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    // Exact name targets the chip, not the sortable "Ship-by" column header (#944).
-    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h' }));
+    await pickAttention(user, /late to ship/, /^Ships within 24 h/);
 
     await vi.waitFor(() => {
       const calledWithDue = list.mock.calls.some(
@@ -902,16 +916,25 @@ describe('OrdersListPage', () => {
     });
   });
 
-  it('should no longer render the standalone sort dropdown — headers own sort now (#944)', async () => {
+  it('should offer a Sort menu beside the headers, naming the default (#4026)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
     const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      orders: { list },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    expect(screen.queryByLabelText('Sort orders')).not.toBeInTheDocument();
+    const menu = screen.getByRole('button', { name: 'Sort orders' });
+    expect(menu).toHaveTextContent('Recently synced');
+    await user.click(menu);
+    await user.click(await screen.findByRole('button', { name: /^Newest first/ }));
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls.some(([f]) => (f as { sort?: string }).sort === 'placedAt')).toBe(true);
+    });
   });
 
   it('should widen the created-from date to a start-of-day ISO instant (#939)', async () => {
@@ -1437,11 +1460,13 @@ describe('OrdersListPage', () => {
 
       renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-      const chip = await screen.findByRole('button', { name: /sales docs blocked/i });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: /stuck/ }));
+      const chip = await screen.findByRole('button', { name: /^Sales document blocked/ });
       expect(chip).toHaveTextContent('2');
 
       const before = list.mock.calls.length;
-      await userEvent.setup().click(chip);
+      await user.click(chip);
 
       await vi.waitFor(() => {
         expect(list.mock.calls.length).toBeGreaterThan(before);
@@ -1469,11 +1494,12 @@ describe('OrdersListPage', () => {
 
       renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-      const chip = await screen.findByRole('button', { name: /sales docs blocked/i });
-      // The blocked chip's own count is unaffected by the separate figure.
+      await userEvent.setup().click(await screen.findByRole('button', { name: /stuck/ }));
+      const chip = await screen.findByRole('button', { name: /^Sales document blocked/ });
+      // The blocked item's own count is unaffected by the separate figure.
       expect(chip).toHaveTextContent('2');
-      // #3507 — the neutral figure rides on the chip's tooltip rather than as a
-      // third text item in the quick-filter row; it is still never a filter.
+      // #3507 — the neutral figure rides on the item's tooltip rather than as a
+      // third text item; it is still never a filter.
       expect(chip).toHaveAttribute('title', expect.stringContaining('3 more are issued on request'));
       expect(screen.queryByRole('button', { name: /issued on request/i })).not.toBeInTheDocument();
     });
@@ -1586,12 +1612,14 @@ describe('OrdersListPage', () => {
         route: '/orders?invoicing=blocked&offset=20',
       });
 
-      const chip = await screen.findByRole('button', { name: /sales docs blocked/i });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: /stuck/ }));
+      const chip = await screen.findByRole('button', { name: /^Sales document blocked/ });
       expect(chip).toHaveAttribute('aria-pressed', 'true');
       expect(list.mock.calls[0][0]).toMatchObject({ salesDocumentBlocked: true });
 
       const before = list.mock.calls.length;
-      await userEvent.setup().click(chip);
+      await user.click(chip);
 
       await vi.waitFor(() => {
         expect(list.mock.calls.length).toBeGreaterThan(before);
@@ -1623,11 +1651,13 @@ describe('OrdersListPage', () => {
         route: '/orders?invoicing=blocked',
       });
 
-      // Gating the chip on the count alone unmounted the ONLY control for this
+      // Gating the control on the count alone unmounted the ONLY control for this
       // param exactly when the remediation succeeded, stranding an applied filter.
+      await userEvent.setup().click(await screen.findByRole('button', { name: /stuck/ }));
       expect(
-        await screen.findByRole('button', { name: /sales docs blocked/i }),
-      ).toBeInTheDocument();
+        await screen.findByRole('button', { name: /^Sales document blocked/ }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await userEvent.setup().keyboard('{Escape}');
       // And the empty state must not claim nothing has ever synced.
       // `findByText` (not `getByText`): the chip is sync-derived from the URL
       // param alone and can mount before the orders query resolves, so a
@@ -1747,9 +1777,15 @@ describe('OrdersListPage', () => {
 
         renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-        const waiting = await screen.findByRole('button', { name: /waiting in openlinker/i });
-        expect(waiting).toHaveTextContent('3 · oldest 5 h');
-        const bench = screen.getByRole('button', { name: /on pack bench/i });
+        const user = userEvent.setup();
+        await user.click(await screen.findByRole('button', { name: /stuck/ }));
+        const waiting = await screen.findByRole('button', { name: /^Waiting in OpenLinker/ });
+        expect(waiting).toHaveTextContent('3');
+        expect(waiting).toHaveTextContent('5 h');
+        await user.keyboard('{Escape}');
+
+        await user.click(screen.getByRole('button', { name: /to handle/ }));
+        const bench = await screen.findByRole('button', { name: /^On pack bench/ });
         expect(bench).toHaveTextContent('14');
       } finally {
         vi.useRealTimers();
@@ -2295,12 +2331,11 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    await user.click(
-      screen.getByRole('button', { name: /Expand details for order ol_order_crosschannel/ })
-    );
+    await user.click(container.querySelector('.data-table__row') as HTMLElement);
 
-    const detail = container.querySelector('.orders-detail') as HTMLElement;
-    expect(within(detail).getByText('WooCommerce')).toBeInTheDocument();
+    // #4026 - the peek header names the destination.
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/WooCommerce/)).toBeInTheDocument();
   });
 });
 
@@ -2389,6 +2424,7 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
+    await userEvent.setup().click(await screen.findByRole('button', { name: /late to ship/ }));
     const link = await screen.findByRole('link', { name: /dispatch risk/i });
     expect(link).toHaveAttribute('href', '/orders/dispatch-risk');
     // #2441 review I4 — carries the ≥44 px coarse-pointer tap-target class.
@@ -2405,11 +2441,13 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    expect(await screen.findByRole('button', { name: /Blocked 2/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Ready 1/ })).toBeInTheDocument();
-    // Structurally 0 until Waves 2/4 supply a producer — a dead control, so hidden.
-    expect(screen.queryByRole('button', { name: /On hold/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Change pending/ })).toBeNull();
+    // #4026 - the stage chips became the Stage dropdown.
+    await userEvent.setup().click(await screen.findByRole('button', { name: /^Stage/ }));
+    expect(await screen.findByRole('button', { name: /^Blocked\s*2/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Ready\s*1/ })).toBeInTheDocument();
+    // Structurally 0 until Waves 2/4 supply a producer — a dead option, so hidden.
+    expect(screen.queryByRole('button', { name: /^On hold/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Change pending/ })).toBeNull();
   });
 
   it('should set ?phase= when a chip is clicked and clear it when clicked again', async () => {
@@ -2422,8 +2460,8 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    const chip = await screen.findByRole('button', { name: /Blocked 2/ });
-    await user.click(chip);
+    await user.click(await screen.findByRole('button', { name: /^Stage/ }));
+    await user.click(await screen.findByRole('button', { name: /^Blocked\s*2/ }));
 
     await vi.waitFor(() => {
       expect(list.mock.calls[list.mock.calls.length - 1][0]).toMatchObject({ phase: 'blocked' });
@@ -2433,7 +2471,8 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
       value: 'blocked',
     });
 
-    await user.click(await screen.findByRole('button', { name: /Blocked 2/ }));
+    await user.click(await screen.findByRole('button', { name: /^Stage/ }));
+    await user.click(await screen.findByRole('button', { name: 'Any stage' }));
 
     await vi.waitFor(() => {
       const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
@@ -2459,8 +2498,10 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
 
     // Gating on the count alone would unmount the only control for an applied
     // filter exactly when its last order moved on (#2100's lesson).
-    const chip = await screen.findByRole('button', { name: /Blocked/ });
-    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    const stage = await screen.findByRole('button', { name: /^Stage/ });
+    expect(stage).toHaveTextContent('Blocked');
+    await userEvent.setup().click(stage);
+    expect(await screen.findByRole('button', { name: /^Blocked/ })).toHaveAttribute('aria-pressed', 'true');
     expect(list.mock.calls[0][0]).toMatchObject({ phase: 'blocked' });
   });
 

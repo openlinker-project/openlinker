@@ -46,7 +46,6 @@
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md §5
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -54,7 +53,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -86,6 +84,8 @@ import {
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { automationFieldNotAllowed, automationRunNotFound } from '../automation-errors';
 import {
   AUTOMATION_DRY_RUN_SERVICE_TOKEN,
   type IAutomationDryRunService,
@@ -301,7 +301,8 @@ export class AutomationsController {
     // is merely WIDER than asked — visible, and recoverable by fixing the URL.
     if (scopedSubjectId !== undefined && scopedSubjectId.length > 0) {
       if (!isAutomationRunSubjectKind(scopedSubjectKind)) {
-        throw new BadRequestException(
+        throw automationFieldNotAllowed(
+          'subjectKind',
           `Filtering by subject needs a recognised "subjectKind". Expected one of: ` +
             `${AutomationRunSubjectKindValues.join(', ')}.`,
         );
@@ -380,7 +381,7 @@ export class AutomationsController {
   ): Promise<AutomationRunResponseDto> {
     const run = await this.runs.dismiss(runId, user.id, new Date());
     if (run === null) {
-      throw new NotFoundException(`Automation run "${runId}" not found.`);
+      throw automationRunNotFound(runId);
     }
     return AutomationRunResponseDto.fromDomain(run);
   }
@@ -394,7 +395,7 @@ export class AutomationsController {
   async getRun(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<AutomationRunResponseDto> {
     const run = await this.runs.getRunById(runId);
     if (run === null) {
-      throw new NotFoundException(`Automation run "${runId}" not found.`);
+      throw automationRunNotFound(runId);
     }
     return AutomationRunResponseDto.fromDomain(run);
   }
@@ -514,7 +515,8 @@ export class AutomationsController {
 
   private assertTrigger(trigger: string): AutomationTrigger {
     if (!isAutomationTrigger(trigger)) {
-      throw new BadRequestException(
+      throw automationFieldNotAllowed(
+        'trigger',
         `Unknown automation trigger "${trigger}". Expected one of: ${AutomationTriggerValues.join(', ')}.`
       );
     }
@@ -581,11 +583,15 @@ export class AutomationsController {
       return null;
     }
     if (dto.moneyAcknowledged !== true) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'AUTOMATION_MONEY_ACK_REQUIRED',
         `Arming this rule needs an explicit acknowledgement: it can ${irreversible.join(' and ')}, ` +
           `which cannot be undone, and OpenLinker cannot test it for you first. ` +
-          `Re-send with "moneyAcknowledged": true.`
+          `Re-send with "moneyAcknowledged": true.`,
+        { actions: irreversible.join(', ') }
       );
+
     }
     return { byUserId: user.id };
   }

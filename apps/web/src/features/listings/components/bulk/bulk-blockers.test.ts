@@ -9,10 +9,13 @@
  * master stock and a hand-set stock does not reach it.
  */
 import { describe, expect, it } from 'vitest';
+import type { OfferBlockerCopy } from '../../../../shared/plugins';
 import {
   blockerLabel,
   categoryNotSetApplies,
+  chipFor,
   describeBlocker,
+  resolveBlockerChips,
   type BlockerCopyContext,
 } from './bulk-blockers';
 
@@ -65,6 +68,49 @@ describe('blockerLabel', () => {
   it('should render every chip label in sentence case', () => {
     expect(blockerLabel('no-ean')).toBe('No barcode');
     expect(blockerLabel('no-tax-rate')).toBe('No tax rate');
-    expect(blockerLabel('some-plugin:unknown')).toBe('Needs attention');
+    expect(blockerLabel('some-plugin:unknown')).toBe('Needs attention: some-plugin:unknown');
+  });
+});
+
+describe('resolveBlockerChips', () => {
+  const describeFn = (): { title: string; detail: string } => ({ title: 't', detail: 'd' });
+
+  it('should keep a platform descriptor field and describe when merging', () => {
+    const chips = resolveBlockerChips([
+      { id: 'acme:x', tone: 'error', label: 'x label', field: 'title', describe: describeFn },
+    ]);
+    expect(chips['acme:x']).toMatchObject({ label: 'x label', field: 'title', fixable: true });
+    expect(chips['acme:x'].describe).toBe(describeFn);
+    expect(chips['no-ean']?.label).toBe('No barcode');
+  });
+
+  it('should carry the raw id when no descriptor knows the blocker', () => {
+    expect(chipFor('acme:gone', resolveBlockerChips([])).label).toBe('Needs attention: acme:gone');
+    expect(blockerLabel('acme:gone')).toBe('Needs attention: acme:gone');
+  });
+});
+
+describe('describeBlocker for a platform blocker (#4003)', () => {
+  const base = { ean: null, destinationName: 'Acme', variantCount: 2, batchCurrency: 'PLN' };
+
+  it('should use the descriptor sentence when the chip declares one', () => {
+    const chips = resolveBlockerChips([
+      {
+        id: 'acme:x',
+        tone: 'error',
+        label: 'x',
+        describe: (ctx): OfferBlockerCopy => ({ title: 'T', detail: 'D', items: ctx.missingParameterNames ?? [] }),
+      },
+    ]);
+    expect(describeBlocker('acme:x', { ...base, chips, missingParameterNames: ['Model'] })).toEqual({
+      title: 'T',
+      detail: 'D',
+      items: ['Model'],
+    });
+  });
+
+  it('should name the chip label in the generic sentence when there is no descriptor sentence', () => {
+    const chips = resolveBlockerChips([{ id: 'acme:y', tone: 'error', label: 'y label' }]);
+    expect(describeBlocker('acme:y', { ...base, chips }).title).toBe('y label.');
   });
 });

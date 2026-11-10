@@ -80,6 +80,8 @@ export { CommandPalette, CommandPaletteTrigger } from './command-palette';
 export type { CommandPaletteProps, PaletteItem, PaletteGroup } from './command-palette';
 export { Dialog } from './dialog';
 export { ConfirmDialog } from './confirm-dialog';
+export { SidePanel } from './side-panel';
+export type { SidePanelProps } from './side-panel';
 export { DropdownMenu } from './dropdown-menu';
 export { Popover, PopoverTrigger, PopoverContent } from './popover';
 export type { PopoverProps } from './popover';

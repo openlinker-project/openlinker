@@ -795,7 +795,10 @@ describe('AutoIssueTriggerService', () => {
           'src-1',
         );
 
-        expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'missing-tax-rate' } });
+        expect(outcome).toMatchObject({
+          kind: 'blocked',
+          block: { reason: 'missing-tax-rate', params: { taxRateScope: 'lines' } },
+        });
         expect(syncJobs.schedule).not.toHaveBeenCalled();
       } finally {
         if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
@@ -1160,6 +1163,7 @@ describe('AutoIssueTriggerService', () => {
           reason: 'unresolved-routing',
           unresolvedReason: 'ambiguous-connection-no-primary',
           detail: '2 invoicing connections, none marked primary',
+          params: { eligibleCount: 2, primaryCount: 0, poolKind: 'invoice' },
         },
       });
     });
@@ -1181,7 +1185,10 @@ describe('AutoIssueTriggerService', () => {
       );
 
       expect(outcome).toMatchObject({
-        block: { detail: '2 invoicing connections, more than one marked primary' },
+        block: {
+          detail: '2 invoicing connections, more than one marked primary',
+          params: { eligibleCount: 2, primaryCount: 2, poolKind: 'invoice' },
+        },
       });
     });
 
@@ -1744,6 +1751,7 @@ describe('AutoIssueTriggerService', () => {
           reason: 'unresolved-routing',
           unresolvedReason: 'threshold-currency-mismatch',
           detail: expect.stringContaining('threshold-currency-mismatch') as unknown as string,
+          params: { eligibleCount: expect.any(Number) as unknown as number },
         },
       });
     });
@@ -1780,6 +1788,7 @@ describe('AutoIssueTriggerService', () => {
           // The count an operator can act on is the pool they go and fix, not
           // the empty eligible set.
           detail: '1 capable connection, none declaring a document kind',
+          params: { candidateCount: 1 },
         },
       });
     });
@@ -1848,6 +1857,12 @@ describe('AutoIssueTriggerService', () => {
           reason: 'unresolved-routing',
           unresolvedReason: 'routed-connection-unavailable',
           detail: "Rule rule-1 routes this order's invoice to connection conn-disabled, which is disabled",
+          params: {
+            connectionId: 'conn-disabled',
+            connectionState: 'disabled',
+            ruleId: 'rule-1',
+            documentKind: 'invoice',
+          },
         },
         matchedRuleId: 'rule-1',
       });
@@ -1870,6 +1885,11 @@ describe('AutoIssueTriggerService', () => {
           reason: 'unresolved-routing',
           unresolvedReason: 'routed-connection-unavailable',
           detail: "Routing sends this order's receipt to connection conn-gone, which no longer exists",
+          params: {
+            connectionId: 'conn-gone',
+            connectionState: 'not-found',
+            documentKind: 'fiscal-receipt',
+          },
         },
       });
     });
@@ -1892,6 +1912,10 @@ describe('AutoIssueTriggerService', () => {
         block: {
           unresolvedReason: 'routed-connection-unavailable',
           detail: "Rule rule-1 routes this order's receipt to connection conn-inv, which does not have Fiscalization enabled",
+          params: {
+            connectionState: 'missing-capability',
+            missingCapabilities: ['Fiscalization'],
+          },
         },
       });
     });
@@ -1933,6 +1957,7 @@ describe('AutoIssueTriggerService', () => {
           detail: expect.stringContaining(
             'which is not an active connection that can issue it',
           ) as unknown as string,
+          params: { connectionState: 'unreadable' },
         },
       });
     });

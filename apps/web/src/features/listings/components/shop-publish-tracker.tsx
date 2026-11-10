@@ -31,6 +31,7 @@ import type {
   ShopPublishStatus,
   ShopPublishStatusResponse,
 } from '../api/listings.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type TrackerCopy = ResolvedCopy<Messages['listings']>['shopPublishTracker'];
 
@@ -96,7 +97,7 @@ function SingleTracker({
       <section className="shop-publish-tracker" aria-live="polite">
         <p className="muted-text">
           {query.error
-            ? interpolate(copy.single.loadError, { message: query.error.message })
+            ? `${copy.single.loadError} ${describeApiError(query.error, 'listings')}`
             : copy.single.none}
         </p>
       </section>
@@ -208,7 +209,7 @@ function BulkTracker({ batchId }: { batchId: string }): ReactElement {
       <section className="shop-publish-tracker" aria-live="polite">
         <p className="muted-text">
           {query.error
-            ? interpolate(copy.bulk.loadError, { message: query.error.message })
+            ? `${copy.bulk.loadError} ${describeApiError(query.error, 'listings')}`
             : copy.bulk.none}
         </p>
       </section>
