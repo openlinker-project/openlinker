@@ -36,7 +36,8 @@ import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization'
 // `import()` type (banned by `@typescript-eslint/consistent-type-imports`).
 import type { FISCAL_REGISTRATION_SERVICE_TOKEN as FiscalRegistrationServiceTokenType } from '@openlinker/core/fiscalization';
 
-import type { IInvoiceService } from './invoice.service.interface';
+import type { IInvoiceService, IssueInvoiceOptions } from './invoice.service.interface';
+import { invoiceRetryRootKey } from '../../domain/types/invoice-idempotency-key.types';
 import {
   InvoiceRecordRepositoryPort,
   type InvoiceRecordKeysetPage,
@@ -70,7 +71,11 @@ import { MissingNumberingSeriesException } from '../../domain/exceptions/missing
 import { deriveCorrectionFallbackKey } from '../../domain/idempotency/correction-fallback-key';
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
-import { isTaxRateEnforced, notifySalesDocumentIssued } from '@openlinker/core/sales-documents';
+import {
+  isTaxRateEnforced,
+  notifySalesDocumentIssued,
+  withAttemptSuffix,
+} from '@openlinker/core/sales-documents';
 import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // One classification for the stored record and the HTTP answer (#3772).
@@ -252,7 +257,7 @@ export class InvoiceService implements IInvoiceService {
    * invariant (ADR-041 §3b), so it has no cross-connection exclusivity to
    * enforce.
    */
-  async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+  async issueInvoice(cmd: IssueInvoiceCommand, opts?: IssueInvoiceOptions): Promise<InvoiceRecord> {
     // #2248 (ADR-063 § 6): refuse before the lock and before any persisted
     // state is touched. This is the write-path half of the gate, and it is what
     // closes the MANUAL routes - `POST /invoices`, the panel button, bulk issue
@@ -276,7 +281,7 @@ export class InvoiceService implements IInvoiceService {
     }
 
     try {
-      return await this.issueLocked(cmd);
+      return await this.issueLocked(cmd, opts?.retryOf);
     } finally {
       // Best-effort release — never let a release failure mask the issuance
       // result (a real fiscal document may already exist at this point).
@@ -353,7 +358,7 @@ export class InvoiceService implements IInvoiceService {
     throw new InvoiceIssueContendedException(cmd.orderId);
   }
 
-  private async issueLocked(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+  private async issueLocked(cmd: IssueInvoiceCommand, retryOf?: string): Promise<InvoiceRecord> {
     // (0) One-invoice-per-order guard (#2047). Runs BEFORE the idempotency gate
     // and before any row is created, so a cross-connection second issuance
     // creates nothing at all. It is the backstop that survives a mis-set primary,
@@ -362,6 +367,19 @@ export class InvoiceService implements IInvoiceService {
     // tabs" case holds only BECAUSE the per-order lock above serializes the
     // guard with the create that follows it.
     await this.assertNotInvoicedElsewhere(cmd.orderId, cmd.connectionId);
+
+    // (0') #3960: an operator retry of a refused invoice starts the NEXT attempt
+    // under its own key. Decided under the per-order lock, so two retries of the
+    // same refusal cannot both start one.
+    let link: { attempt: number; previousAttemptId: string } | null = null;
+    if (retryOf !== undefined) {
+      const next = await this.resolveRetryAttempt(cmd, retryOf);
+      if (next.kind === 'resume') {
+        return this.resumeExisting(cmd, next.record);
+      }
+      cmd = { ...cmd, idempotencyKey: next.key };
+      link = { attempt: next.attempt, previousAttemptId: next.previousAttemptId };
+    }
 
     // (1) Idempotency read-gate. Only when a key is supplied (R1: keyless calls
     // are never deduplicated). An already-`issued` hit is returned verbatim — no
@@ -399,6 +417,7 @@ export class InvoiceService implements IInvoiceService {
         // (#3188). See `freezeBuyerTaxIdAtIssue` for why it can never contradict
         // the document.
         buyerTaxId: freezeBuyerTaxIdAtIssue(cmd),
+        ...(link ?? {}),
       });
     } catch (error) {
       // (5) Create-race: a concurrent same-key call won the dedup guard between
@@ -626,6 +645,47 @@ export class InvoiceService implements IInvoiceService {
    *                           only on a WIN, re-cross the boundary. A lost claim
    *                           returns the contended row WITHOUT a provider call.
    */
+  /**
+   * What an operator retry of `retryOf` works on (#3960).
+   *
+   * A refused record of this connection and order with no successor yet gets
+   * the next attempt key. One that already has a successor resumes that
+   * successor, so a double click never starts a third attempt. Anything else
+   * resumes the record as it stands, which `resumeExisting` never re-sends
+   * unless it is safe to.
+   */
+  private async resolveRetryAttempt(
+    cmd: IssueInvoiceCommand,
+    retryOf: string,
+  ): Promise<
+    | { kind: 'resume'; record: InvoiceRecord }
+    | { kind: 'next'; key: string; attempt: number; previousAttemptId: string }
+  > {
+    const refused = await this.repo.findById(retryOf);
+    if (
+      !refused ||
+      refused.connectionId !== cmd.connectionId ||
+      refused.orderId !== cmd.orderId
+    ) {
+      throw new InvoiceRecordNotFoundException(retryOf);
+    }
+    if (!refused.isReattemptableFailure) {
+      return { kind: 'resume', record: refused };
+    }
+    const successor = await this.repo.findSuccessorAttempt(refused.id);
+    if (successor) {
+      return { kind: 'resume', record: successor };
+    }
+    // One root shape for keyed and keyless chains (`invoiceRetryRootKey`).
+    const root = invoiceRetryRootKey(refused);
+    return {
+      kind: 'next',
+      key: withAttemptSuffix(root, refused.attempt + 1),
+      attempt: refused.attempt + 1,
+      previousAttemptId: refused.id,
+    };
+  }
+
   private async resumeExisting(
     cmd: IssueInvoiceCommand,
     existing: InvoiceRecord,
@@ -921,6 +981,25 @@ export class InvoiceService implements IInvoiceService {
     }
     if (seriesId === null) {
       throw new MissingNumberingSeriesException(cmd.connectionId);
+    }
+
+    // #3960: a retry attempt takes over its refused predecessor's number, so
+    // the refused number is not left as a gap - but ONLY when that number
+    // provably never reached the provider (`canInheritRefusedDocumentNumber`,
+    // applied by the repository under the predecessor's row lock). A number the
+    // provider saw may be recorded there, and sending it on a second document
+    // risks a duplicate number; a gap is the recoverable choice. `null` means
+    // nothing moved (not provably unsent, no number, another series, already
+    // moved) and a fresh number is allocated.
+    if (record.previousAttemptId !== null) {
+      const inherited = await this.numberingRepo.inheritNumber({
+        fromRecordId: record.previousAttemptId,
+        toRecordId: record.id,
+        seriesId,
+      });
+      if (inherited !== null) {
+        return inherited.documentNumber;
+      }
     }
 
     const allocation = await this.numberingRepo.allocateNumber({

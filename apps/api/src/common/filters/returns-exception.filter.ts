@@ -82,6 +82,8 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
+import { codedErrorBody } from '../errors/coded-http.exception';
 import {
   ReturnAuthorizeRefusedError,
   ReturnCustodyContendedError,
@@ -142,36 +144,85 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
     const statusCode = this.resolveStatus(exception);
 
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-      // The blocked trigger, on the ONE exception that carries it (#2336).
-      //
-      // This docblock has always said a structured rendering must read the
-      // `trigger` FIELD rather than parse the message — the two drift the first
-      // time the wording changes. Until now the field never crossed the HTTP
-      // boundary, so that instruction described a contract no consumer could
-      // honour and left message-parsing as the only option. Additive: no status
-      // changes, nothing is removed, and the other two exceptions have no such
-      // field so the key is simply absent for them.
-      ...(exception instanceof ReturnNotAttributedError
-        ? { trigger: exception.trigger }
-        : {}),
-      // The actionable code (#2376). Emitted as a FIELD for every refusal that
-      // carries a closed reason union, so a client branches on the vocabulary
-      // rather than parsing a message that will be reworded.
-      ...(this.resolveReason(exception) === null
-        ? {}
-        : { reason: this.resolveReason(exception) }),
-    });
+    const reason = this.resolveReason(exception);
+    const trigger = exception instanceof ReturnNotAttributedError ? exception.trigger : null;
+
+    response.status(statusCode).json(
+      codedErrorBody(
+        statusCode,
+        this.resolveCode(exception),
+        exception.message,
+        {
+          ...this.resolveParams(exception),
+          ...(trigger === null ? {} : { trigger }),
+          ...(reason === null ? {} : { reason }),
+        },
+        {
+          error: exception.name,
+          // The blocked trigger, on the ONE exception that carries it (#2336).
+          // Kept top-level for the clients that read it there; also in `params`.
+          ...(trigger === null ? {} : { trigger }),
+          // The actionable reason (#2376), kept top-level for the same clients.
+          ...(reason === null ? {} : { reason }),
+        }
+      )
+    );
+  }
+
+  /**
+   * One explicit code per refusal (#3863). The exception class name used to be
+   * the only identifier and still travels in `error`, but it is no longer the
+   * contract: renaming a class cannot change the code.
+   */
+  private resolveCode(exception: ReturnRefusal): KnownApiErrorCode {
+    if (exception instanceof ReturnNotFoundError) return 'RETURN_NOT_FOUND';
+    if (exception instanceof ReturnNotAttributedError) return 'RETURN_NOT_ATTRIBUTED';
+    if (exception instanceof ReturnDeclineUnsupportedError) return 'RETURN_DECLINE_UNSUPPORTED';
+    if (exception instanceof ReturnDeclineInvalidRequestError) return 'RETURN_DECLINE_INVALID';
+    if (exception instanceof ReturnLineNotFoundError) return 'RETURN_LINE_NOT_FOUND';
+    if (exception instanceof ReturnCustodyTransitionError) return 'RETURN_CUSTODY_TRANSITION_REFUSED';
+    if (exception instanceof ReturnCustodyContendedError) return 'RETURN_CUSTODY_CONTENDED';
+    if (exception instanceof ReturnRestockAlreadyBlockedError) {
+      return 'RETURN_RESTOCK_ALREADY_BLOCKED';
+    }
+    if (exception instanceof ReturnRestockAttestationInvalidError) {
+      return 'RETURN_RESTOCK_ATTESTATION_INVALID';
+    }
+    if (exception instanceof ReturnAuthorizeRefusedError) return 'RETURN_AUTHORIZE_REFUSED';
+    if (exception instanceof ReturnMatchRefusedError) return 'RETURN_MATCH_REFUSED';
+    if (exception instanceof ReturnRecordRefusedError) return 'RETURN_RECORD_REFUSED';
+    if (exception instanceof ReturnRefundBlockedError) return 'RETURN_REFUND_BLOCKED';
+    if (exception instanceof ReturnRefundContendedError) return 'RETURN_REFUND_CONTENDED';
+    return 'RETURN_REFUND_OBSERVATION_INVALID';
+  }
+
+  /** The ids a refusal names, as params. Never a detail sentence. */
+  private resolveParams(exception: ReturnRefusal): ApiErrorParams {
+    if (
+      exception instanceof ReturnNotFoundError ||
+      exception instanceof ReturnRefundContendedError ||
+      exception instanceof ReturnRefundObservationInvalidError
+    ) {
+      return { returnId: exception.returnId };
+    }
+    if (exception instanceof ReturnDeclineUnsupportedError) {
+      return { returnId: exception.returnId, sourceConnectionId: exception.sourceConnectionId };
+    }
+    if (exception instanceof ReturnDeclineInvalidRequestError) {
+      return { field: exception.field };
+    }
+    if (
+      exception instanceof ReturnLineNotFoundError ||
+      exception instanceof ReturnCustodyContendedError ||
+      exception instanceof ReturnRestockAttestationInvalidError
+    ) {
+      return { lineId: exception.lineId };
+    }
+    return {};
   }
 
   private resolveStatus(exception: ReturnRefusal): number {
-    if (
-      exception instanceof ReturnNotFoundError ||
-      exception instanceof ReturnLineNotFoundError
-    ) {
+    if (exception instanceof ReturnNotFoundError || exception instanceof ReturnLineNotFoundError) {
       return HttpStatus.NOT_FOUND;
     }
 
@@ -179,9 +230,7 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
     // operator supplied an order id OL never minted — so it is the one reason on
     // this error that is not a state conflict. See the header.
     if (exception instanceof ReturnMatchRefusedError) {
-      return exception.reason === 'unknown-order'
-        ? HttpStatus.BAD_REQUEST
-        : HttpStatus.CONFLICT;
+      return exception.reason === 'unknown-order' ? HttpStatus.BAD_REQUEST : HttpStatus.CONFLICT;
     }
 
     // #3933: a missing price is the catalogue's state (409); a bad selection is

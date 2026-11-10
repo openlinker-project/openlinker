@@ -1,4 +1,11 @@
 {
+  "dlqCodes": {
+    "connection-unavailable": "Połączenie zostało usunięte lub wyłączone",
+    "no-translator": "To połączenie nie przyjmuje webhooków",
+    "translator-threw": "Integracja nie mogła odczytać tego webhooka",
+    "undecodable": "Webhook nie zawierał zmiany obsługiwanej przez OpenLinker",
+    "ungated": "Połączenie nie ma włączonej funkcji wymaganej dla tej zmiany"
+  },
   "statuses": {
     "deadlettered": "w kolejce błędów",
     "failed": "błąd",
@@ -52,6 +59,7 @@
     "fields": {
       "connection": "Połączenie",
       "dedup": "Deduplikacja",
+      "dlqCode": "Przyczyna przeniesienia do kolejki błędów",
       "downstreamJob": "Powiązane zadanie w tle",
       "eventId": "ID zdarzenia",
       "externalId": "ID zewnętrzne",
@@ -69,7 +77,7 @@
       "title": "Wczytywanie doręczenia"
     },
     "panels": {
-      "dlqReason": "Przyczyna w kolejce błędów",
+      "dlqReason": "Szczegóły kolejki błędów (bez tłumaczenia)",
       "payload": "Dane",
       "rejectionReason": "Przyczyna odrzucenia"
     },

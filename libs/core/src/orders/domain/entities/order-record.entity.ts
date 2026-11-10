@@ -43,6 +43,7 @@ import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
+  SalesDocumentBlockParams,
   TaxRateEra,
 } from '@openlinker/core/sales-documents';
 import { OrderStatusValues } from '../types/order.types';
@@ -559,7 +560,13 @@ export class OrderRecord {
      * round-tripped through `toOrm`. Already coerced through
      * `readPaymentWriteback`. Appended LAST: positional constructor.
      */
-    public readonly paymentWriteback: PaymentWriteback = {}
+    public readonly paymentWriteback: PaymentWriteback = {},
+    /**
+     * The values behind {@link salesDocumentBlockDetail} (#3866), coerced on
+     * read; `null` when the block has none or predates the column. Appended
+     * LAST: positional constructor.
+     */
+    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null
   ) {}
 
   /**

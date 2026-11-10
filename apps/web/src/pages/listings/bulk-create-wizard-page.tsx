@@ -33,7 +33,7 @@ import { MAX_WIZARD_PRODUCTS } from '../../features/listings/lib/batch-recovery'
 import { useConnectionsQuery } from '../../features/connections';
 import { useProductsBatchQuery } from '../../features/products';
 import type { Product } from '../../features/products';
-import { serverErrorText } from '../../features/listings/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /**
  * Shared with the batch-recovery helpers (#2234) so the failed-batch "Fix and
@@ -46,7 +46,6 @@ export function BulkCreateWizardPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const copy = useMessages('listings').bulkCreateWizardPage;
-  const common = useMessages('listings').common;
   const plural = usePlural();
 
   const ids = useMemo<string[]>(() => {
@@ -108,7 +107,7 @@ export function BulkCreateWizardPage(): ReactElement {
     return (
       <ErrorState
         title={copy.errorTitle}
-        message={serverErrorText(common.serverSaid, failed.error.message, common.unknownError)}
+        message={describeApiError(failed.error, 'listings')}
         action={
           <Button
             onClick={() => {

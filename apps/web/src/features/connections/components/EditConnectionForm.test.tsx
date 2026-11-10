@@ -14,6 +14,7 @@ import { EditConnectionForm } from './EditConnectionForm';
 import { ApiError } from '../../../shared/api/api-error';
 import type { PaginatedInventoryLocations } from '../../inventory';
 import type * as ReactRouterDom from 'react-router-dom';
+import { getMessages } from '../../../shared/i18n';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -150,11 +151,11 @@ describe('EditConnectionForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(await screen.findByText('Unable to update connection')).toBeInTheDocument();
-    expect(screen.getByText('Server error', { selector: '.alert__description' })).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other, { selector: '.alert__description' })).toBeInTheDocument();
     // #3765 - the Alert sits at the top of a long form, so the failure is
     // also reported where the operator is looking.
     expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
-    expect(getToastDescription('Server error')).toBeInTheDocument();
+    expect(getToastDescription(getMessages('errors').status.other)).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -172,7 +173,7 @@ describe('EditConnectionForm', () => {
 
     expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
     expect(
-      getToastDescription('Network unreachable'),
+      getToastDescription(getMessages('errors').status.other),
     ).toBeInTheDocument();
     expect(updateFn).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -279,7 +280,7 @@ describe('EditConnectionForm', () => {
     // bug this test guards against). Exactly two, not `> 0` (#3207
     // review) — the count is deterministic here, and a fixed length also
     // fails loudly if the field and the summary ever stop agreeing.
-    const fieldErrors = await screen.findAllByText(fieldErrorMessage);
+    const fieldErrors = await screen.findAllByText(getMessages('errors').codes.STOCK_LOCATION_OVERRIDE_INVALID);
     expect(fieldErrors).toHaveLength(2);
     // The generic "Unable to update connection" banner must not also render
     // — before the fix, `updateConnection.error` stayed set independently of

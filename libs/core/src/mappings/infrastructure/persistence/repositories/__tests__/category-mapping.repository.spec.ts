@@ -186,4 +186,107 @@ describe('CategoryMappingRepository', () => {
       });
     });
   });
+
+  describe('source-connection scoping (#3993)', () => {
+    it('should prefer the source own row over an older source-agnostic one when a source is given', async () => {
+      repo.find.mockResolvedValue([
+        ormRow({ id: 'wildcard', sourceConnectionId: null, destinationCategoryId: 'dest-cat-NULL' }),
+        ormRow({ id: 'own', sourceConnectionId: 'master-1', destinationCategoryId: 'dest-cat-OWN' }),
+      ]);
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      const result = await sut.findBySourceCategory('dest-1', 'src-cat-1', 'master-1');
+
+      expect(repo.find).toHaveBeenCalledWith({
+        where: [
+          { destinationConnectionId: 'dest-1', sourceCategoryId: 'src-cat-1', sourceConnectionId: 'master-1' },
+          { destinationConnectionId: 'dest-1', sourceCategoryId: 'src-cat-1', sourceConnectionId: IsNull() },
+        ],
+        order: { createdAt: 'ASC', id: 'ASC' },
+      });
+      expect(result?.id).toBe('own');
+      warn.mockRestore();
+    });
+
+    it('should list one row per source category, preferring the source own row, when listing for a source', async () => {
+      repo.find.mockResolvedValue([
+        ormRow({ id: 'wildcard', sourceCategoryId: 'c1', sourceConnectionId: null }),
+        ormRow({ id: 'own', sourceCategoryId: 'c1', sourceConnectionId: 'master-1' }),
+        ormRow({ id: 'only-wildcard', sourceCategoryId: 'c2', sourceConnectionId: null }),
+      ]);
+
+      const result = await sut.findByDestinationConnection('dest-1', 'master-1');
+
+      expect(result.map((m) => m.id).sort()).toEqual(['only-wildcard', 'own']);
+    });
+
+    it('should delete only the source own row and keep the shared fallback when a source is given', async () => {
+      await sut.deleteMapping('dest-1', 'c1', 'master-1');
+
+      expect(repo.delete).toHaveBeenCalledTimes(1);
+      expect(repo.delete).toHaveBeenCalledWith({
+        destinationConnectionId: 'dest-1',
+        sourceCategoryId: 'c1',
+        sourceConnectionId: 'master-1',
+      });
+    });
+  });
+
+  describe('reassignDestination (#3993)', () => {
+    function withTransaction(): jest.Mocked<Pick<Repository<CategoryMappingOrmEntity>, 'find' | 'save' | 'delete'>> {
+      const txRepo = { find: jest.fn(), save: jest.fn(), delete: jest.fn() };
+      const manager = { getRepository: jest.fn().mockReturnValue(txRepo) };
+      (repo as unknown as { manager: unknown }).manager = {
+        transaction: jest.fn((work: (m: unknown) => unknown) => work(manager)),
+      };
+      return txRepo as never;
+    }
+
+    it('should move a master-keyed row onto the marketplace with the master as its source', async () => {
+      const tx = withTransaction();
+      const legacy = ormRow({ id: 'legacy', destinationConnectionId: 'master-1', sourceCategoryId: 'c1' });
+      tx.find.mockResolvedValueOnce([legacy]).mockResolvedValueOnce([]);
+
+      const result = await sut.reassignDestination('master-1', 'alg-1');
+
+      expect(tx.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'legacy', destinationConnectionId: 'alg-1', sourceConnectionId: 'master-1' })
+      );
+      expect(result).toEqual({ moved: 1, keptSourceCategoryIds: [] });
+    });
+
+    it('should keep the marketplace mapping and drop the moved row when the category is already mapped there', async () => {
+      const tx = withTransaction();
+      const legacy = ormRow({ id: 'legacy', destinationConnectionId: 'master-1', sourceCategoryId: 'c1' });
+      const existing = ormRow({ id: 'there', destinationConnectionId: 'alg-1', sourceCategoryId: 'c1', sourceConnectionId: 'master-1' });
+      tx.find.mockResolvedValueOnce([legacy]).mockResolvedValueOnce([existing]);
+
+      const result = await sut.reassignDestination('master-1', 'alg-1');
+
+      expect(tx.save).not.toHaveBeenCalled();
+      expect(tx.delete).toHaveBeenCalledWith({ id: 'legacy' });
+      expect(result).toEqual({ moved: 0, keptSourceCategoryIds: ['c1'] });
+    });
+
+    it('should move nothing and delete nothing when both connections are the same', async () => {
+      const tx = withTransaction();
+
+      const result = await sut.reassignDestination('alg-1', 'alg-1');
+
+      expect(result).toEqual({ moved: 0, keptSourceCategoryIds: [] });
+      expect(tx.find).not.toHaveBeenCalled();
+      expect(tx.delete).not.toHaveBeenCalled();
+    });
+
+    it('should not treat a row authored for another master as a clash', async () => {
+      const tx = withTransaction();
+      const legacy = ormRow({ id: 'legacy', destinationConnectionId: 'master-1', sourceCategoryId: 'c1' });
+      const otherMaster = ormRow({ id: 'other', destinationConnectionId: 'alg-1', sourceCategoryId: 'c1', sourceConnectionId: 'master-2' });
+      tx.find.mockResolvedValueOnce([legacy]).mockResolvedValueOnce([otherMaster]);
+
+      const result = await sut.reassignDestination('master-1', 'alg-1');
+
+      expect(result.moved).toBe(1);
+    });
+  });
 });

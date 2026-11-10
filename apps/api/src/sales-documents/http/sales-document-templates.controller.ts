@@ -12,7 +12,7 @@
  *
  * @module apps/api/src/sales-documents/http
  */
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Inject, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
@@ -28,6 +28,7 @@ import {
 import { AdoptSalesDocumentTemplateDto } from './dto/adopt-sales-document-template.dto';
 import { SalesDocumentRuleResponseDto } from './dto/sales-document-rule-response.dto';
 import { SalesDocumentCapabilityGuardService } from '../sales-document-capability-guard.service';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -83,7 +84,12 @@ export class SalesDocumentTemplatesController {
   } {
     const template = getSalesDocumentStarterTemplate(country);
     if (template === null) {
-      throw new NotFoundException(`No curated sales-document starter template for '${country}'.`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'SALES_DOCUMENT_TEMPLATE_NOT_FOUND',
+        `No curated sales-document starter template for '${country}'.`,
+        { country },
+      );
     }
     return {
       country: template.country,
@@ -114,7 +120,12 @@ export class SalesDocumentTemplatesController {
   ): Promise<SalesDocumentRuleResponseDto[]> {
     const template = getSalesDocumentStarterTemplate(country);
     if (template === null) {
-      throw new NotFoundException(`No curated sales-document starter template for '${country}'.`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'SALES_DOCUMENT_TEMPLATE_NOT_FOUND',
+        `No curated sales-document starter template for '${country}'.`,
+        { country },
+      );
     }
     const provenance = SALES_DOCUMENT_TEMPLATE_PROVENANCE_BY_COUNTRY[template.country] ?? null;
     const selectionBySlot = new Map(dto.selections.map((s) => [s.slot, s.connectionId] as const));
@@ -123,7 +134,12 @@ export class SalesDocumentTemplatesController {
     for (const templateRule of template.rules) {
       const connectionId = selectionBySlot.get(templateRule.slot);
       if (connectionId === undefined) {
-        throw new BadRequestException(`Missing a connection selection for slot '${templateRule.slot}'.`);
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'SALES_DOCUMENT_TEMPLATE_SLOT_UNSELECTED',
+          `Missing a connection selection for slot '${templateRule.slot}'.`,
+          { slot: templateRule.slot },
+        );
       }
       await this.capabilityGuard.assertConnectionSupportsKind(connectionId, templateRule.documentKind);
       const rule = await this.service.createRule({

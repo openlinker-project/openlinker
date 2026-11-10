@@ -38,7 +38,13 @@ describe('erliOfferValidation', () => {
 
   it('declares the missing-image chip once with the namespaced id', () => {
     expect(erliOfferValidation.blockers).toEqual([
-      { id: ERLI_MISSING_IMAGE_BLOCKER, tone: 'error', label: 'no image' },
+      {
+        id: ERLI_MISSING_IMAGE_BLOCKER,
+        tone: 'error',
+        label: 'no image',
+        field: 'images',
+        describe: expect.any(Function),
+      },
     ]);
   });
 

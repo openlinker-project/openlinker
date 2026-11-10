@@ -29,8 +29,7 @@
       "console": "Konsola (tylko log, e-mail nie jest wysyłany)",
       "smtp": "SMTP"
     },
-    "transportLabel": "Sposób wysyłki",
-    "unknownError": "Nieznany błąd"
+    "transportLabel": "Sposób wysyłki"
   },
   "mailerSettingsFormSchema": {
     "fromInvalid": "Wpisz poprawny adres e-mail, opcjonalnie z nazwą wyświetlaną (np. \"OpenLinker <noreply@example.com>\")",
@@ -49,7 +48,7 @@
     "eyebrow": "Poczta wychodząca",
     "fromLabel": "Adres nadawcy",
     "hostLabel": "Host",
-    "loadError": "Nie udało się wczytać ustawień poczty: {message}",
+    "loadError": "Nie udało się wczytać ustawień poczty.",
     "loading": "Wczytywanie ustawień poczty…",
     "notSet": "Nie ustawiono",
     "passwordLabel": "Hasło SMTP",

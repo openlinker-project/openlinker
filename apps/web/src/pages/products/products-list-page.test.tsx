@@ -10,6 +10,7 @@ import {
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
 import type * as DemoModule from '../../features/demo';
+import { getMessages } from '../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../features/demo', async (importOriginal): Promise<typeof DemoModule> => {
@@ -368,7 +369,7 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load products')).toBeInTheDocument();
-    expect(screen.getAllByText('Network error').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(getMessages('errors').status.other).length).toBeGreaterThan(0);
   });
 
   it('should render a thumbnail image for products with an image URL', async () => {
@@ -486,6 +487,30 @@ describe('ProductsListPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: /Oversold/ })).toHaveTextContent('2');
     });
+  });
+
+  it('counts the KPI and per-connection probes through /products/count, never a limit:1 list read (#4027)', async () => {
+    const list = vi.fn().mockResolvedValue(sampleProducts);
+    const count = vi.fn().mockResolvedValue({ total: 2 });
+    const mockApi = createMockApiClient({
+      products: { list, count },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Oversold/ })).toHaveTextContent('2');
+    });
+    expect(count).toHaveBeenCalledWith(
+      expect.objectContaining({ stock: 'oversold' }),
+      expect.anything(),
+    );
+    expect(count).toHaveBeenCalledWith(
+      expect.objectContaining({ unlistedOn: ['conn_allegro'] }),
+      expect.anything(),
+    );
+    expect(list.mock.calls.some(([, pagination]) => pagination?.limit === 1)).toBe(false);
   });
 
   // ── Needs a look (#4027) ────────────────────────────────────────────

@@ -16,6 +16,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useId, useMemo, useState, type ReactElement } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, messagesIn, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -324,7 +325,7 @@ export function LoginPageSettingsEditor({
         </div>
         {mutation.error ? (
           <Alert tone="error" title={copy.saveError}>
-            {mutation.error.message}
+            {describeApiError(mutation.error, 'login-page-settings')}
           </Alert>
         ) : null}
         {justSaved && !dirty ? <Alert tone="success">{copy.saved}</Alert> : null}

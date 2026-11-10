@@ -33,6 +33,7 @@ import {
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import { AddPackerDialog } from './add-packer-dialog';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface PackingStatusProps {
   readonly live: boolean;
@@ -220,7 +221,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
 
       {props.toggleError !== null ? (
         <Alert tone="error" title={COPY.status.toggleFailedTitle}>
-          {props.toggleError.message}
+          {describeApiError(props.toggleError)}
         </Alert>
       ) : null}
 

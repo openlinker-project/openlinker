@@ -18,13 +18,11 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
 import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
-import { markEntrancePlayed, shouldPlayEntrance } from '../shared/lib/entrance';
 import { interpolate, useMessages, useNumberFormat, usePlural } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
 import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
@@ -372,16 +370,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // shell with a "Preparing workspace" placeholder. It stays invisible for a
   // short check (`.shell--pending`), and the shell fades in once it is settled.
   const settled = isReady && !systemConfigQuery.isPending;
-  // The first page after signing in, or of a new tab, lets its content rise in
-  // (`.shell--intro`); the page the visitor moves to next does not. Read once,
-  // at mount, so the class is there on the first frame the content shows.
-  const [introPath] = useState<string | null>(() =>
-    shouldPlayEntrance() ? location.pathname : null
-  );
-  const intro = introPath !== null && introPath === location.pathname;
-  useEffect(() => {
-    if (settled && introPath !== null) markEntrancePlayed();
-  }, [settled, introPath]);
   // Initialize density at boot so <html data-density="..."> is set before
   // any .data-table renders (avoids a flash of cozy-density rows for
   // users who selected compact). useDensity is a no-op hook for the
@@ -466,15 +454,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
   return (
     <CommandPaletteProvider>
-      <div
-        className={[
-          'shell',
-          settled ? 'shell--app' : 'shell--pending',
-          intro ? 'shell--intro' : '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
+      <div className={settled ? 'shell shell--app' : 'shell shell--pending'}>
         <div className="shell-sidebar">
           <SidebarBrand />
           <SidebarNav ariaLabel={copy.shell.navPrimary} counts={counts} groups={groups} />

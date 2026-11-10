@@ -4,8 +4,9 @@
  * One test per rendered path: the confirmed cancel, the pending (202) progress
  * view, each refusal layout, and the soft gate. Refusals are produced as the
  * real client produces them - an `ApiError` whose body carries a machine code and
- * the server's sentence - and asserted on that sentence, because the point is
- * that the operator reads the server's reason rather than a generic error.
+ * the server's sentence - and asserted on the copy for that code, in the active
+ * language. Where the server's sentence carries a carrier's or a channel's own
+ * reason, that sentence is asserted too, shown as untranslated detail.
  */
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -13,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CancelOrderDialog, type CancelOrderDialogProps } from './cancel-order-dialog';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { CancelOrderResult } from '../api/order-cancel.types';
 
@@ -33,6 +35,8 @@ function result(overrides: Partial<CancelOrderResult> = {}): CancelOrderResult {
     ...overrides,
   };
 }
+
+const codes = getMessages('errors').codes;
 
 function refusal(code: string, message: string, status = 409): ApiError {
   return new ApiError(message, status, { statusCode: status, error: code, message });
@@ -192,7 +196,11 @@ describe('CancelOrderDialog (#3541)', () => {
 
     await user.click(await screen.findByTestId('order-cancel-submit'));
 
-    expect(await screen.findByTestId('order-cancel-label-refusal')).toHaveTextContent(reason);
+    expect(await screen.findByTestId('order-cancel-label-refusal')).toHaveTextContent(
+      codes.LABEL_NOT_VOIDABLE,
+    );
+    // The carrier's own reason stays readable beside the coded sentence.
+    expect(screen.getByTestId('order-cancel-refusal-detail')).toHaveTextContent(reason);
     expect(screen.getByText('Cancel the shipment first')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('order-cancel-label-go-to-shipment'));
@@ -208,27 +216,36 @@ describe('CancelOrderDialog (#3541)', () => {
 
     await user.click(await screen.findByTestId('order-cancel-submit'));
 
-    expect(await screen.findByTestId('order-cancel-shipped-refusal')).toHaveTextContent(reason);
+    expect(await screen.findByTestId('order-cancel-shipped-refusal')).toHaveTextContent(
+      codes.ORDER_ALREADY_SHIPPED,
+    );
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
     expect(screen.getByText(/Ask the buyer to refuse the parcel/)).toBeInTheDocument();
     expect(screen.queryByTestId('order-cancel-submit')).not.toBeInTheDocument();
   });
 
   it.each([
-    ['ORDER_HAS_FISCAL_RECEIPT', 'A fiscal receipt was registered for this order.', 'A fiscal receipt blocks the cancel'],
-    ['INVOICE_NOT_SETTLED', 'The invoice has not finished issuing.', 'The invoice has not finished issuing'],
-    ['ORDER_ALREADY_CANCELLED', 'Order is already cancelled.', 'This order is already cancelled'],
-    ['CHANNEL_REFUSED_CANCEL', 'Allegro refused: the order is paid out.', 'The sales channel refused the cancellation'],
-    ['ORDER_CANCEL_IN_FLIGHT', 'A cancellation of this order is already running.', 'A cancellation is already in progress'],
-    ['ORDER_CANCEL_CONTENDED', 'Another operator holds the cancel lock; try again shortly.', 'Someone else is cancelling this order right now'],
-  ])('should render the server reason for %s on the form (C-51)', async (code, message, title) => {
+    ['ORDER_HAS_FISCAL_RECEIPT', 'A fiscal receipt was registered for this order.', 'A fiscal receipt blocks the cancel', false],
+    ['INVOICE_NOT_SETTLED', 'The invoice has not finished issuing.', 'The invoice has not finished issuing', false],
+    ['ORDER_ALREADY_CANCELLED', 'Order is already cancelled.', 'This order is already cancelled', false],
+    ['CHANNEL_REFUSED_CANCEL', 'Allegro refused: the order is paid out.', 'The sales channel refused the cancellation', true],
+    ['ORDER_CANCEL_IN_FLIGHT', 'A cancellation of this order is already running.', 'A cancellation is already in progress', false],
+    ['ORDER_CANCEL_CONTENDED', 'Another operator holds the cancel lock; try again shortly.', 'Someone else is cancelling this order right now', false],
+  ] as const)('should render the copy for %s on the form (C-51)', async (code, message, title, keepsDetail) => {
     renderDialog(vi.fn().mockRejectedValue(refusal(code, message)));
     const user = userEvent.setup();
 
     await user.click(await screen.findByTestId('order-cancel-submit'));
 
     const error = await screen.findByTestId('order-cancel-error');
-    expect(error).toHaveTextContent(message);
+    expect(error).toHaveTextContent(codes[code]);
     expect(error).toHaveTextContent(title);
+    // Only the channel's own refusal is kept, as untranslated detail.
+    if (keepsDetail) {
+      expect(screen.getByTestId('order-cancel-refusal-detail')).toHaveTextContent(message);
+    } else {
+      expect(screen.queryByTestId('order-cancel-refusal-detail')).not.toBeInTheDocument();
+    }
     // The form stays, so the operator can read the reason next to what they sent.
     expect(screen.getByTestId('order-cancel-submit')).toBeInTheDocument();
   });
@@ -266,7 +283,7 @@ describe('CancelOrderDialog (#3541)', () => {
     await user.click(await screen.findByTestId('order-cancel-submit'));
 
     expect(await screen.findByTestId('order-cancel-error')).toHaveTextContent(
-      'A packer already claimed this order.',
+      codes.ORDER_WORK_ACCEPTED_NEEDS_ACK,
     );
     const submit = screen.getByTestId('order-cancel-submit');
     expect(submit).toBeDisabled();

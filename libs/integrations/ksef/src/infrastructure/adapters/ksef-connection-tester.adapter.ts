@@ -61,6 +61,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       if (!env || !KsefEnvironmentValues.includes(env)) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'KSeF connection has no valid environment',
           latencyMs: Date.now() - startedAt,
         };
@@ -69,6 +70,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       if (!connection.credentialsRef) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Connection has no stored credentials',
           latencyMs: Date.now() - startedAt,
         };
@@ -77,6 +79,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       if (!credentials?.authType || !credentials?.secret) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'KSeF credentials missing authType or secret',
           latencyMs: Date.now() - startedAt,
         };
@@ -84,6 +87,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       if (credentials.authType !== 'ksef-token') {
         return {
           success: false,
+          outcome: 'unsupported',
           message: `Connection testing for authType '${credentials.authType}' is not yet supported (qualified-seal deferred)`,
           latencyMs: Date.now() - startedAt,
         };
@@ -93,6 +97,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       if (!contextNip) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'KSeF connection has no seller NIP configured',
           latencyMs: Date.now() - startedAt,
         };

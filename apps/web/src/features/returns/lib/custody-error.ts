@@ -17,6 +17,7 @@
  * @module apps/web/src/features/returns/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { getMessages } from '../../../shared/i18n';
 
 /**
@@ -39,10 +40,11 @@ export function describeCustodyError(error: unknown): string {
   const copy = getMessages('returns').custody.error;
   const byReason: Record<string, string> = copy.byReason;
 
+  // A failure that never reached the server (or came back unreadable) keeps
+  // the feature's own sentence: it tells the operator nothing was saved, which
+  // the shared status copy cannot promise for a custody write.
   if (!(error instanceof ApiError)) {
-    return error instanceof Error && error.message.length > 0
-      ? error.message
-      : copy.generic;
+    return copy.generic;
   }
 
   if (error.status === 404) {
@@ -63,5 +65,5 @@ export function describeCustodyError(error: unknown): string {
     return copy.forbidden;
   }
 
-  return error.message.length > 0 ? error.message : copy.generic;
+  return describeApiError(error, 'returns');
 }

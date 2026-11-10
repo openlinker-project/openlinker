@@ -8,6 +8,7 @@
     "networkFailed": "Żądanie sieciowe nie powiodło się",
     "noReadableBody": "Serwer zwrócił pustą odpowiedź.",
     "requestFailed": "Żądanie nie powiodło się",
+    "technicalDetailsWith": "Szczegóły techniczne (bez tłumaczenia): {details}",
     "timedOut": "Upłynął limit czasu żądania."
   },
   "attentionSummary": {

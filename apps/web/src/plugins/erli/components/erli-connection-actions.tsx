@@ -20,6 +20,7 @@ import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { renderRich } from '../../../shared/i18n';
 import { useErliMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ErliConnectionActionsProps {
   connection: Connection;
@@ -70,7 +71,7 @@ export function ErliConnectionActions({
       showToast({
         tone: 'error',
         title: copy.toast.failed.title,
-        description: (error as Error).message,
+        description: describeApiError(error, 'erli'),
       });
     }
   }

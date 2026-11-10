@@ -15,7 +15,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
 } from '@nestjs/common';
@@ -29,6 +28,7 @@ import {
   type IOrderTagService,
 } from '@openlinker/core/orders';
 import { AssignOrderTagDto } from './dto/assign-order-tag.dto';
+import { orderTagNotFound } from './orders-errors';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -63,7 +63,7 @@ export class OrderTagAssignmentsController {
       await this.service.assign(dto.tagId, internalOrderId, user.id);
     } catch (error) {
       if (error instanceof OrderTagNotFoundError) {
-        throw new NotFoundException(`Order tag not found: ${dto.tagId}`);
+        throw orderTagNotFound(dto.tagId);
       }
       throw error;
     }

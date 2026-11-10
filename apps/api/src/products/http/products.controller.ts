@@ -11,14 +11,12 @@
  * @module apps/api/src/products/http
  */
 import {
-  BadRequestException,
   Controller,
   Get,
   Query,
   Param,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Inject,
   Res,
 } from '@nestjs/common';
@@ -75,6 +73,13 @@ import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { CountProductsQueryDto } from './dto/count-products-query.dto';
 import { CountProductVariantsQueryDto } from './dto/count-product-variants-query.dto';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import {
+  productImageNotFound,
+  productNotFound,
+  productVariantImageNotFound,
+  productVariantNotFound,
+} from './products-errors';
 import { ListProductVariantsQueryDto } from './dto/list-product-variants-query.dto';
 import {
   ProductResponseDto,
@@ -590,8 +595,12 @@ export class ProductsController {
     if (ids.length === 0) return undefined;
     const invalid = ids.filter((id) => !UUID_RE.test(id));
     if (invalid.length > 0) {
-      throw new BadRequestException(
-        `unlistedOn must be a CSV of connection UUIDs; invalid entries: ${invalid.join(', ')}`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'VALIDATION_FAILED',
+        `unlistedOn must be a CSV of connection UUIDs; invalid entries: ${invalid.join(', ')}`,
+        undefined,
+        { fields: [{ path: 'unlistedOn', code: 'isUuid' }] }
       );
     }
     return ids.slice(0, MAX_UNLISTED_ON_CONNECTION_IDS);
@@ -629,7 +638,7 @@ export class ProductsController {
   ): Promise<ProductVariantSummaryResponseDto> {
     const variant = await this.productsService.getVariant(variantId);
     if (!variant) {
-      throw new NotFoundException(`Variant not found: ${variantId}`);
+      throw productVariantNotFound(variantId, `Variant not found: ${variantId}`);
     }
     const productImages = await loadProductImages(this.productsService, [variant]);
     return this.toVariantSummaryDto(variant, productImages.get(variant.productId));
@@ -661,12 +670,12 @@ export class ProductsController {
   ): Promise<void> {
     const parsed = Number(index);
     if (!Number.isInteger(parsed) || parsed < 0) {
-      throw new NotFoundException(`No image ${index} for variant ${variantId}`);
+      throw productVariantImageNotFound(variantId, index);
     }
 
     const result = await this.productImages.getVariantImage(variantId, parsed);
     if (result.kind === 'failure') {
-      throw new NotFoundException(`No image ${index} for variant ${variantId}`);
+      throw productVariantImageNotFound(variantId, index);
     }
 
     sendImage(response, result.image);
@@ -685,7 +694,7 @@ export class ProductsController {
   async getProduct(@Param('id') id: string): Promise<ProductResponseDto> {
     const product = await this.productsService.getProduct(id);
     if (!product) {
-      throw new NotFoundException(`Product not found: ${id}`);
+      throw productNotFound(id);
     }
 
     // Load variants
@@ -762,12 +771,12 @@ export class ProductsController {
   ): Promise<void> {
     const parsed = Number(index);
     if (!Number.isInteger(parsed) || parsed < 0) {
-      throw new NotFoundException(`No image ${index} for product ${productId}`);
+      throw productImageNotFound(productId, index);
     }
 
     const result = await this.productImages.getImage(productId, parsed);
     if (result.kind === 'failure') {
-      throw new NotFoundException(`No image ${index} for product ${productId}`);
+      throw productImageNotFound(productId, index);
     }
 
     sendImage(response, result.image);
@@ -887,7 +896,7 @@ export class ProductsController {
     // indistinguishable from a mistyped id.
     const product = await this.productsService.getProduct(productId);
     if (!product) {
-      throw new NotFoundException(`Product not found: ${productId}`);
+      throw productNotFound(productId);
     }
 
     const entries = await this.taxRateJournal.getLatestPerConnection(productId, variantId ?? null);

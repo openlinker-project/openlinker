@@ -30,6 +30,8 @@ export type {
   OfferBlockerTone,
   OfferBatchIssue,
   OfferBatchValidationInput,
+  OfferBlockerCopy,
+  OfferBlockerDescribeContext,
   OfferBlockerDescriptor,
   OfferRowValidationInput,
   OfferRowBundleInput,

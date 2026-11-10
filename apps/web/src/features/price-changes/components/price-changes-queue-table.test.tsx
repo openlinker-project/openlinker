@@ -129,7 +129,7 @@ describe('PriceChangesQueueTable', () => {
         new ApiError(
           'Price change episode ep-1 changed since it was last read (expected version …, current …)',
           409,
-          null,
+          { code: 'PRICE_CHANGE_STALE' },
         ),
       );
     const apiClient = createMockApiClient({

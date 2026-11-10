@@ -9,6 +9,7 @@ import {
 import { Routes, Route } from 'react-router-dom';
 import { BulkBatchProgressPage } from './bulk-batch-progress-page';
 import type { BulkBatchSummary } from '../../features/listings/api/bulk-listings.types';
+import { getMessages } from '../../shared/i18n';
 
 const BATCH_ID = 'b1d05bc3-9a6e-4c8d-9ff0-12cd0acddc7a';
 
@@ -250,7 +251,7 @@ describe('BulkBatchProgressPage', () => {
     renderPage(apiClient);
 
     expect(await screen.findByText('Could not load batch')).toBeInTheDocument();
-    expect(screen.getByText('The server said: Network is down')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('renders one record row per record', async () => {

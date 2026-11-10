@@ -268,6 +268,51 @@
     "validating": "Walidacja w marketplace…"
   },
   "bulkBlockers": {
+    "allegro": {
+      "eanUnverified": {
+        "detail": "Kod może być poprawny. Możesz opublikować mimo to; sprawdź kod, jeśli to niespodziewane.",
+        "title": "Tego kodu kreskowego nie ma w katalogu Allegro."
+      },
+      "inStoreBarcode": {
+        "detail": "Takie kody służą do użytku wewnątrz jednego sklepu. Możesz opublikować mimo to.",
+        "title": "Ten kod wygląda na kod wewnętrzny sklepu, a nie kod produktu."
+      },
+      "needsProductParameters": {
+        "allFilledDetail": "Zapisz, żeby zdjąć tę blokadę.",
+        "allFilledTitle": "Każdy wymagany parametr produktu ma już wartość.",
+        "listDetail": "Wybierz parametr, żeby przejść do jego pola.",
+        "listTitle": {
+          "few": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "many": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "one": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "other": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:"
+        },
+        "notCheckedDetail": "Lista pojawi się w edytorze, gdy wczytają się parametry kategorii.",
+        "notCheckedTitle": "Allegro potrzebuje parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu.",
+        "notLoadedDetail": "Dlatego OpenLinker nie wie, których brakuje. Wczytaj parametry ponownie albo wybierz kategorię jeszcze raz.",
+        "notLoadedTitle": "Allegro wymaga parametrów produktu w tej kategorii, ale nie udało się wczytać ich listy."
+      },
+      "noPhoto": {
+        "detail": "Allegro wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      },
+      "paramValueInvalid": {
+        "detail": "Sprawdź parametry poniżej z limitami podanymi obok nich.",
+        "title": "Wartość parametru przekracza limit tej kategorii Allegro."
+      },
+      "siblingsWithoutCard": {
+        "detail": "Allegro wiąże nową kartę produktu z pierwszym przyjętym wariantem i odrzuca pozostałe. Daj każdemu wariantowi kod kreskowy pasujący do produktu z katalogu.",
+        "title": "Wszystkie te warianty utworzyłyby jedną nową kartę produktu."
+      },
+      "titleTooLong": {
+        "detail": "Skróć go w polu tytułu.",
+        "title": "Tytuł oferty jest dłuższy, niż pozwala Allegro."
+      },
+      "titleTooShort": {
+        "detail": "Allegro wymaga co najmniej 12 znaków i 3 słów.",
+        "title": "Tytuł oferty jest za krótki dla Allegro."
+      }
+    },
     "chips": {
       "alreadyListed": "Już wystawiony",
       "cardCategoryDiffers": "katalog ≠ mapowanie",
@@ -355,6 +400,18 @@
         "detail": "Wybierz kategorię, aby kontynuować. Wynik wyszukiwania nie był pusty - nie udało się go odczytać, więc niczego nie wykluczono.",
         "title": "{destination} zwrócił wynik kategorii, którego ta wersja nie rozpoznaje."
       }
+    },
+    "erli": {
+      "missingImage": {
+        "detail": "Erli wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      }
+    },
+    "panel": {
+      "advisoryNote": "Można opublikować",
+      "ariaLabel": "Co blokuje ten wariant",
+      "consequence": "Wynika z przyczyny powyżej",
+      "jumpTo": "Przejdź do pola {name}"
     }
   },
   "bulkCardCategoryDialog": {
@@ -911,7 +968,6 @@
       "other": "Gotowe: {done} z {n} produktu"
     },
     "pullingTitle": "Pobieranie głównej ceny i stanu",
-    "resolutionFailed": "Ustalanie nie powiodło się.",
     "resolvedSoFar": {
       "few": "Ustalono już {resolved} z {n} wariantów. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa.",
       "many": "Ustalono już {resolved} z {n} wariantów. Ponowienie obsłuży pozostałe zamiast zaczynać od nowa.",
@@ -1355,10 +1411,6 @@
     "selectPlaceholder": "Wybierz…",
     "showOptional": "Pokaż pola opcjonalne ({count})"
   },
-  "common": {
-    "serverSaid": "Serwer odpowiedział: {message}",
-    "unknownError": "Coś poszło nie tak. Spróbuj ponownie."
-  },
   "duplicateGuardModal": {
     "cancel": "Wróć",
     "confirmMarketplace": "Opublikuj pozostałe warianty",
@@ -1434,8 +1486,7 @@
     "loading": "Wczytywanie cenników dostaw…",
     "placeholder": "Wybierz cennik dostaw…",
     "refresh": "Odśwież",
-    "retry": "Ponów",
-    "tryAgain": "Spróbuj ponownie."
+    "retry": "Ponów"
   },
   "erliDeliveryPriceListOverrideField": {
     "batchDefault": "Ustawienie partii",
@@ -1452,8 +1503,7 @@
     "placeholder": "Wybierz cennik dostaw…",
     "refresh": "Odśwież",
     "resetToBatchDefault": "Przywróć ustawienie partii",
-    "retry": "Ponów",
-    "tryAgain": "Spróbuj ponownie."
+    "retry": "Ponów"
   },
   "erliDispatchTimeField": {
     "fromDefault": "domyślne ustawienie połączenia",
@@ -1513,8 +1563,7 @@
     "label": "Producent",
     "loadErrorTitle": "Nie udało się wczytać producentów",
     "loading": "Wczytywanie producentów…",
-    "placeholder": "Wybierz producenta…",
-    "tryAgain": "Spróbuj ponownie."
+    "placeholder": "Wybierz producenta…"
   },
   "listingDetailPage": {
     "contextTitle": "Kontekst",
@@ -1832,7 +1881,7 @@
       "withId": "Oferta jest aktywna · ID zewnętrzne <id>{externalId}</id>.",
       "withoutId": "Oferta jest aktywna."
     },
-    "loadFailed": "Nie udało się wczytać statusu: {message}",
+    "loadFailed": "Nie udało się wczytać statusu.",
     "loading": "Wczytywanie statusu…",
     "processing": "Wciąż w trakcie - status zaktualizuje się automatycznie.",
     "reused": {
@@ -2180,7 +2229,7 @@
         "one": "błędy: {n}",
         "other": "błędy: {n}"
       },
-      "loadError": "Nie udało się wczytać partii: {message}",
+      "loadError": "Nie udało się wczytać partii.",
       "loading": "Wczytywanie partii…",
       "none": "Brak dostępnej partii.",
       "progress": "{done} / {total}",
@@ -2201,7 +2250,7 @@
     "single": {
       "failedBody": "Publikacja nie powiodła się. W sklepie nie utworzono produktu.",
       "failedTitle": "Publikacja nie powiodła się",
-      "loadError": "Nie udało się wczytać statusu: {message}",
+      "loadError": "Nie udało się wczytać statusu.",
       "loading": "Wczytywanie statusu…",
       "none": "Brak dostępnego statusu.",
       "product": "Produkt",

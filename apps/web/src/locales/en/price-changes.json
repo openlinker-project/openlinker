@@ -12,6 +12,10 @@
     "title": "Publish new price",
     "willPublish": "Will publish"
   },
+  "apiErrors": {
+    "PRICE_CHANGE_BLOCKED": "This price change is blocked and can't be published right now.",
+    "PRICE_CHANGE_STALE": "This price changed again while you were reviewing - refresh and take another look."
+  },
   "autoAppliedDialog": {
     "close": "Close",
     "description": "These connections publish without asking, so nothing here needs a decision from you.",
@@ -49,11 +53,7 @@
     "tryAgain": "Try again"
   },
   "describePriceChangeError": {
-    "blocked": "This price change is blocked and can't be published right now.",
-    "conflict": "This price changed again while you were reviewing - refresh and take another look.",
-    "currencyMismatch": "This price can't be published - the source and destination currencies don't match. Check the connection's currency settings.",
-    "fallback": "Something went wrong.",
-    "withServerMessage": "The server said: {message}"
+    "currencyMismatch": "This price can't be published - the source and destination currencies don't match. Check the connection's currency settings."
   },
   "editPriceChangeDialog": {
     "ambiguous": "This number is ambiguous - use a decimal point or comma with 2 decimal places (e.g. 399.50).",

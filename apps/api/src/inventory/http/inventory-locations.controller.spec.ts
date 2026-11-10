@@ -113,6 +113,17 @@ describe('InventoryLocationsController', () => {
 
       await expect(controller.get('missing')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('should send INVENTORY_LOCATION_NOT_FOUND with the location id (#3865)', async () => {
+      service.getLocation.mockResolvedValue(null);
+
+      const error = (await controller.get('missing').catch((e: unknown) => e)) as NotFoundException;
+
+      expect(error.getResponse()).toMatchObject({
+        code: 'INVENTORY_LOCATION_NOT_FOUND',
+        params: { locationId: 'missing' },
+      });
+    });
   });
 
   describe('create', () => {

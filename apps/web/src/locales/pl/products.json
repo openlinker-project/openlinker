@@ -156,7 +156,6 @@
     },
     "toasts": {
       "bulkCountsFromNext": "Liczy się do marży od następnego zamówienia.",
-      "bulkSaveFailed": "Nie udało się zapisać kosztów.",
       "bulkSaved": {
         "few": "Zapisano koszt dla {n} wariantów",
         "many": "Zapisano koszt dla {n} wariantów",
@@ -168,8 +167,7 @@
         "many": "{n} wariantów miało już koszt i pozostało bez zmian.",
         "one": "{n} wariant miał już koszt i pozostał bez zmian.",
         "other": "{n} wariantu miało już koszt i pozostało bez zmian."
-      },
-      "saveFailed": "Nie udało się zapisać kosztu."
+      }
     },
     "toolbar": {
       "allChannels": "Wszystkie kanały",
@@ -568,14 +566,12 @@
       "description": "Ile płacisz za jedną sztukę, bez VAT. Używane do marży zamówień złożonych od teraz; wcześniejsze zamówienia pozostają bez kosztu.",
       "label": "Cena zakupu netto za sztukę",
       "netSuffix": "netto",
-      "save": "Zapisz koszt",
-      "saveFailed": "Nie udało się zapisać kosztu."
+      "save": "Zapisz koszt"
     },
     "notRecorded": "Nie zapisano",
     "section": {
       "add": "Dodaj koszt",
       "clear": "Usuń koszt",
-      "clearFailed": "Nie udało się usunąć kosztu.",
       "clearHint": "Usunięcie kosztu dotyczy tylko zamówień złożonych od teraz.",
       "demoReadOnlyReason": "To demo tylko do odczytu, więc nie można zmieniać cen zakupu.",
       "edit": "Edytuj koszt",

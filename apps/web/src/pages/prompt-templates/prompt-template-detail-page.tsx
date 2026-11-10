@@ -49,6 +49,7 @@ import type {
   PromptTemplateState,
   PromptTemplateVariable,
 } from '../../features/prompt-templates/api/prompt-templates.types';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const STATE_TONE: Record<PromptTemplateState, StatusBadgeTone> = {
   draft: 'review',
@@ -217,11 +218,7 @@ export function PromptTemplateDetailPage(): ReactElement {
       <PageLayout eyebrow={messages.common.eyebrow} title={copy.title}>
         <ErrorState
           title={copy.errorTitle}
-          message={
-            detailQuery.error instanceof Error
-              ? detailQuery.error.message
-              : messages.common.unknownError
-          }
+          message={describeApiError(detailQuery.error, 'prompt-templates')}
           action={
             <Button tone="secondary" onClick={() => void detailQuery.refetch()}>
               {messages.common.retry}
@@ -284,19 +281,19 @@ export function PromptTemplateDetailPage(): ReactElement {
       {isMobile ? <DesktopOnlyBanner /> : null}
 
       {updateMutation.error ? (
-        <Alert tone="error">{(updateMutation.error as Error).message}</Alert>
+        <Alert tone="error">{describeApiError(updateMutation.error, 'prompt-templates')}</Alert>
       ) : null}
       {publishMutation.error ? (
-        <Alert tone="error">{(publishMutation.error as Error).message}</Alert>
+        <Alert tone="error">{describeApiError(publishMutation.error, 'prompt-templates')}</Alert>
       ) : null}
       {createMutation.error ? (
-        <Alert tone="error">{(createMutation.error as Error).message}</Alert>
+        <Alert tone="error">{describeApiError(createMutation.error, 'prompt-templates')}</Alert>
       ) : null}
       {revertMutation.error ? (
-        <Alert tone="error">{(revertMutation.error as Error).message}</Alert>
+        <Alert tone="error">{describeApiError(revertMutation.error, 'prompt-templates')}</Alert>
       ) : null}
       {deleteMutation.error ? (
-        <Alert tone="error">{(deleteMutation.error as Error).message}</Alert>
+        <Alert tone="error">{describeApiError(deleteMutation.error, 'prompt-templates')}</Alert>
       ) : null}
 
       <div className="prompt-detail-layout">
@@ -796,6 +793,7 @@ function parseSampleValues(
       ok: false,
       error:
         err instanceof Error
+          // eslint-disable-next-line no-restricted-syntax -- a local JSON.parse error, not an API error
           ? err.message
           : getMessages('prompt-templates').promptTemplateDetailPage.errors.invalidJson,
     };
@@ -831,6 +829,7 @@ function tryRender(
     if (err instanceof PromptTemplateRenderError) {
       return { error: interpolate(copy.missingRequired, { name: err.missingVariableName }) };
     }
+    // eslint-disable-next-line no-restricted-syntax -- a local template render error, not an API error
     return { error: err instanceof Error ? err.message : copy.renderFailed };
   }
 }

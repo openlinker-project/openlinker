@@ -50,4 +50,20 @@ describe('DeliveryLineSuggestionsController', () => {
   it('should report 404 when the country has no suggestion', () => {
     expect(() => controller.getSuggestion('DE')).toThrow(NotFoundException);
   });
+
+  it('should name the country in a coded 404 (#3865)', () => {
+    let caught: unknown;
+    try {
+      controller.getSuggestion('DE');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect((caught as NotFoundException).getResponse()).toEqual(
+      expect.objectContaining({
+        code: 'DELIVERY_LINE_SUGGESTION_NOT_FOUND',
+        params: { country: 'DE' },
+      })
+    );
+  });
 });

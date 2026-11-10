@@ -43,7 +43,6 @@
  * @module apps/api/src/returns/http
  */
 import {
-  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -99,6 +98,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import type {
   RestockBlockedResponseDto,
   ReturnLineCountersDto} from '../dto/return-custody.dto';
@@ -128,6 +128,7 @@ import {
   RecordReturnResponseDto,
 } from '../dto/return-write.dto';
 import { ReturnCorrectionProposalResponseDto } from '../dto/return-correction-proposal.dto';
+import { refundAmountPrecision } from '../../orders/http/orders-errors';
 
 interface BundleReadContext {
   record: NonNullable<Awaited<ReturnType<IReturnsService['getReturn']>>>;
@@ -554,7 +555,13 @@ export class ReturnWritesController {
       orderLines
     );
     if (!result.known) {
-      throw new BadRequestException('The order line is not one of this order\'s lines');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'VALIDATION_FAILED',
+        "The order line is not one of this order's lines",
+        undefined,
+        { fields: [{ path: 'orderLineId', code: 'isKnownOrderLine' }] }
+      );
     }
     return { claimed: result.claimed };
   }
@@ -651,7 +658,7 @@ export class ReturnWritesController {
         });
       }
       if (error instanceof RefundAmountPrecisionException) {
-        throw new BadRequestException(error.message);
+        throw refundAmountPrecision(error);
       }
       throw error;
     }

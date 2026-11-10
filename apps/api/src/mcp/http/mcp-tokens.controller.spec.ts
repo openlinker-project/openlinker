@@ -147,5 +147,13 @@ describe('McpTokensController', () => {
 
       await expect(controller.revoke('missing')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('should name the missing token by code and id (#3865)', async () => {
+      mcpTokens.revoke.mockResolvedValue(false);
+
+      await expect(controller.revoke('missing')).rejects.toMatchObject({
+        response: { code: 'MCP_TOKEN_NOT_FOUND', params: { tokenId: 'missing' } },
+      });
+    });
   });
 });

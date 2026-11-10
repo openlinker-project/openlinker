@@ -64,6 +64,7 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 // Re-exported so call sites (and the availability queries below) keep one
 // import path for the retry policy the stream loop owns.
@@ -458,7 +459,7 @@ export function BulkResolveStep({
   if (hasError) {
     const message =
       stream.errorMessage ??
-      (availabilityError instanceof Error ? availabilityError.message : copy.resolutionFailed);
+      describeApiError(availabilityError, 'listings');
     const resolvedSoFar = Object.keys(stream.results).length;
     return (
       // No `role="alert"` on the wrapper: `Alert` carries it, and nesting the

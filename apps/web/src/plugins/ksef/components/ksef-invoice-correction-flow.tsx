@@ -35,6 +35,7 @@ import {
   useWarningAcknowledgement,
 } from '../../../features/invoicing';
 import { useKsefMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LineRow {
   originalLineNumber: string;
@@ -175,7 +176,7 @@ export function KsefInvoiceCorrectionFlow({
             showToast({
               tone: 'error',
               title: copy.failed,
-              description: error.message,
+              description: describeApiError(error, 'ksef'),
             });
           },
         },

@@ -57,6 +57,7 @@ import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { findOmsConnections } from './oms-connection';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 export function SourcingRulesPage(): ReactElement {
   const copy = useMessages('oms-core').sourcingRulesPage;
@@ -189,7 +190,10 @@ export function SourcingRulesPage(): ReactElement {
           }
         />
         {bootstrap.error ? (
-          <ErrorState title={copy.createLocationErrorTitle} message={bootstrap.error.message} />
+          <ErrorState
+            title={copy.createLocationErrorTitle}
+            message={describeApiError(bootstrap.error, 'oms-core')}
+          />
         ) : null}
       </>
     );

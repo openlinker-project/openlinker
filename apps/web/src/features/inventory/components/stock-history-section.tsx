@@ -28,6 +28,7 @@ import { useInventoryMovementsQuery } from '../hooks/use-inventory-movements-que
 import { useConnectionNames } from '../hooks/use-connection-names';
 import { presentMovementStatus } from '../lib/stock-movement-presentation';
 import { StockMovementsTable } from './stock-movements-table';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface StockHistoryVariant {
   id: string;
@@ -183,7 +184,7 @@ export function StockHistorySection({
       ) : rows.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={rows.error.message}
+          message={describeApiError(rows.error, 'inventory')}
           action={
             <Button
               onClick={() => {

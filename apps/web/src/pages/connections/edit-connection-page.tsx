@@ -5,6 +5,7 @@ import { EditConnectionForm } from '../../features/connections/components/EditCo
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 export function EditConnectionPage(): ReactElement {
   const { connectionId = '' } = useParams();
@@ -31,7 +32,7 @@ export function EditConnectionPage(): ReactElement {
       {connectionQuery.error ? (
         <ErrorState
           title={copy.error.title}
-          message={connectionQuery.error.message}
+          message={describeApiError(connectionQuery.error, 'connections')}
           action={
             <button type="button" className="button button--secondary" onClick={() => void connectionQuery.refetch()}>
               {common.retry}

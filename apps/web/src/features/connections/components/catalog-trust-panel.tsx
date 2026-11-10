@@ -4,6 +4,7 @@ import { useCatalogTrustQuery } from '../hooks/use-catalog-trust-query';
 import type { MasterCatalogRung } from '../api/connections.types';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /**
  * Catalog trust panel (#2258) — the operator-facing half of ADR-048
@@ -51,7 +52,7 @@ export function CatalogTrustPanel({ connectionId }: CatalogTrustPanelProps): Rea
       {trustQuery.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={trustQuery.error.message}
+          message={describeApiError(trustQuery.error, 'connections')}
           action={
             <button type="button" className="button button--secondary" onClick={() => void trustQuery.refetch()}>
               {copy.retry}

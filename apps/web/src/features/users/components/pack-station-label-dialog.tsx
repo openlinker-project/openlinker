@@ -18,6 +18,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -122,7 +123,7 @@ export function PackStationLabelDialog({
 
         {mutation.error ? (
           <Alert tone="error" title={copy.saveFailed}>
-            {mutation.error.message}
+            {describeApiError(mutation.error, 'users')}
           </Alert>
         ) : null}
 

@@ -14,6 +14,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { ErliSetupForm } from './erli-setup-form';
+import { getMessages } from '../../../shared/i18n';
 
 const SHIPPING_DEFAULT = {
   name: 'Shipping',
@@ -158,7 +159,7 @@ describe('ErliSetupForm', () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const test = vi
       .fn()
-      .mockResolvedValue({ success: false, status: 401, message: 'Unauthorized', latencyMs: 10 });
+      .mockResolvedValue({ success: false, status: 401, message: 'Unauthorized', latencyMs: 10, outcome: 'unauthorized' });
     const apiClient = createMockApiClient({ connections: { create, test } });
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
@@ -170,7 +171,8 @@ describe('ErliSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Connection test failed')).toBeInTheDocument();
-    expect(screen.getByText(/Unauthorized/)).toBeInTheDocument();
+    expect(screen.getByText(/The platform refused the credentials/)).toBeInTheDocument();
+    expect(screen.getByText(/Technical details \(not translated\): Unauthorized/)).toBeInTheDocument();
   });
 
   it('surfaces the "Unable to test connection" alert when the test request rejects', async () => {
@@ -190,7 +192,7 @@ describe('ErliSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
-    expect(screen.getByText(/Network unreachable/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
     // The success/fail result alert must NOT appear on the rejected path.
     expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();

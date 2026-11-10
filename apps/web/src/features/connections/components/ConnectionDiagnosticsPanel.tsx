@@ -30,6 +30,7 @@ import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ConnectionDiagnosticsPanelProps {
   connectionId: string;
@@ -114,7 +115,7 @@ export function ConnectionDiagnosticsPanel({ connectionId }: ConnectionDiagnosti
       {diagnosticsQuery.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={diagnosticsQuery.error.message}
+          message={describeApiError(diagnosticsQuery.error, 'connections')}
           action={
             <button type="button" className="button button--secondary" onClick={() => void diagnosticsQuery.refetch()}>
               {copy.retry}

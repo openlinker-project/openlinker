@@ -17,11 +17,6 @@ import {
   Res,
   HttpCode,
   HttpStatus,
-  BadRequestException,
-  UnauthorizedException,
-  NotFoundException,
-  ServiceUnavailableException,
-  PayloadTooLargeException,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -30,6 +25,8 @@ import { Public } from '../../auth/decorators/public.decorator';
 import { WebhookService } from '../application/services/webhook.service';
 import { RequestWithRawBody } from './middleware/raw-body.middleware';
 import { readStringQuery } from './read-string-query';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { webhookPayloadTooLarge, webhookUnauthorized } from './webhook-errors';
 import { WebhookAuthenticationException } from '../application/errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../application/errors/webhook-replay.exception';
 import { WebhookDecodeException } from '../application/errors/webhook-decode.exception';
@@ -99,7 +96,11 @@ export class WebhookController {
 
     if (!rawBody) {
       this.logger.warn(`Raw body not available: provider=${provider}, connectionId=${connectionId}`);
-      throw new BadRequestException('Raw body not available for signature verification');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'WEBHOOK_RAW_BODY_MISSING',
+        'Raw body not available for signature verification',
+      );
     }
 
     // Validate request size
@@ -107,18 +108,27 @@ export class WebhookController {
       this.logger.warn(
         `Request body too large: provider=${provider}, connectionId=${connectionId}, size=${rawBody.length}`,
       );
-      throw new PayloadTooLargeException(
+      throw webhookPayloadTooLarge(
         `Request body exceeds maximum size of ${this.MAX_BODY_SIZE} bytes. Actual size: ${rawBody.length} bytes`,
+        { maxBytes: this.MAX_BODY_SIZE, actualBytes: rawBody.length },
       );
     }
 
     // Validate provider and connectionId format
     if (!provider || !/^[a-z]+$/.test(provider)) {
-      throw new BadRequestException('Invalid provider format. Must be lowercase letters only.');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'WEBHOOK_PROVIDER_INVALID',
+        'Invalid provider format. Must be lowercase letters only.',
+      );
     }
 
     if (!connectionId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(connectionId)) {
-      throw new BadRequestException('Invalid connectionId format. Must be a valid UUID.');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'WEBHOOK_CONNECTION_ID_INVALID',
+        'Invalid connectionId format. Must be a valid UUID.',
+      );
     }
 
     try {
@@ -145,7 +155,10 @@ export class WebhookController {
           `Webhook body decode failed: provider=${provider}, connectionId=${connectionId}`,
           error.message,
         );
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'WEBHOOK_BODY_UNREADABLE', error.message, {
+          provider,
+          connectionId,
+        });
       }
 
       if (error instanceof WebhookAuthenticationException) {
@@ -153,7 +166,10 @@ export class WebhookController {
           `Webhook authentication failed: provider=${provider}, connectionId=${connectionId}`,
           error.message,
         );
-        throw new UnauthorizedException(error.message);
+        throw webhookUnauthorized('WEBHOOK_AUTHENTICATION_FAILED', error.message, {
+          provider,
+          connectionId,
+        });
       }
 
       if (error instanceof WebhookReplayException) {
@@ -161,7 +177,10 @@ export class WebhookController {
           `Webhook replay detected: provider=${provider}, connectionId=${connectionId}`,
           error.message,
         );
-        throw new UnauthorizedException(error.message);
+        throw webhookUnauthorized('WEBHOOK_REPLAY_REJECTED', error.message, {
+          provider,
+          connectionId,
+        });
       }
 
       // Transient routing failure (#2280): 503, so the source retries. This
@@ -177,18 +196,32 @@ export class WebhookController {
           `Webhook routing unavailable (asking the source to retry): provider=${provider}, connectionId=${connectionId}`,
           cause instanceof Error ? (cause.stack ?? cause.message) : error.stack,
         );
-        throw new ServiceUnavailableException(error.message);
+        throw codedHttpError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'WEBHOOK_ROUTING_UNAVAILABLE',
+          error.message,
+          { provider, connectionId },
+        );
       }
 
       if (error instanceof Error) {
         if (error.message.includes('not found') || error.message.includes('disabled')) {
-          throw new NotFoundException(error.message);
+          throw codedHttpError(HttpStatus.NOT_FOUND, 'WEBHOOK_TARGET_UNAVAILABLE', error.message, {
+            provider,
+            connectionId,
+          });
         }
         if (error.message.includes('signature') || error.message.includes('authentication')) {
-          throw new UnauthorizedException(error.message);
+          throw webhookUnauthorized('WEBHOOK_AUTHENTICATION_FAILED', error.message, {
+            provider,
+            connectionId,
+          });
         }
         if (error.message.includes('replay') || error.message.includes('timestamp')) {
-          throw new UnauthorizedException(error.message);
+          throw webhookUnauthorized('WEBHOOK_REPLAY_REJECTED', error.message, {
+            provider,
+            connectionId,
+          });
         }
       }
 

@@ -57,6 +57,7 @@ import { OrderOpenReturnDto } from './order-open-return.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
+import { SalesDocumentBlockParamsDto } from './sales-document-block-params.dto';
 
 
 export class OrderBundleComponentDto {
@@ -259,6 +260,15 @@ export class OrderRecordResponseDto {
       'connections, none marked primary"), rendered to the operator verbatim.',
   })
   salesDocumentBlockDetail!: string | null;
+
+  @ApiPropertyOptional({
+    type: SalesDocumentBlockParamsDto,
+    nullable: true,
+    description:
+      'The values behind salesDocumentBlockDetail (#3866): ids, counts and codes the ' +
+      'frontend phrases in the operator\'s language. Null when the block has none.',
+  })
+  salesDocumentBlockParams!: SalesDocumentBlockParamsDto | null;
 
   @ApiProperty({
     type: [OrderOmsAttentionEntryDto],

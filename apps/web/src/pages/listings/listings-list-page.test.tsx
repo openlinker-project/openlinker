@@ -11,6 +11,7 @@ import type {
   OfferMappingCount,
   PaginatedOfferMappings,
 } from '../../features/listings/api/listings.types';
+import { getMessages } from '../../shared/i18n';
 
 const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
   Active: 0,
@@ -643,7 +644,7 @@ describe('ListingsListPage', () => {
     renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load listings')).toBeInTheDocument();
-    expect(screen.getByText('The server said: Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it("should show the Active tab's own empty state when a connection exists but nothing is synced", async () => {

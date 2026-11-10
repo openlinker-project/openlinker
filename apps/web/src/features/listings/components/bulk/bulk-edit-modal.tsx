@@ -76,9 +76,8 @@ import {
   FormField,
   Input,
   RichTextEditor,
-  StatusBadge,
 } from '../../../../shared/ui';
-import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
+import type { DescriptionFormat } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
 import {
   interpolate,
@@ -113,15 +112,16 @@ import { ShopAttributePicker } from './shop-attribute-picker';
 import { BulkImageLightbox } from './bulk-image-lightbox';
 import { BulkImageStrip } from './bulk-image-strip';
 import {
-  blockerLabel,
+  chipFor,
+  resolveBlockerChips,
+  type ChipDescriptor,
   categoryNotSetApplies,
   isCategoryBlocker,
   isVariantScopeFixable,
   describeBlocker,
   CATEGORY_EFFECT_CHIP,
-  NEUTRAL_BLOCKER_CHIPS,
-  FALLBACK_CHIP,
 } from './bulk-blockers';
+import { missingRequiredProductParameterNames } from '../../lib/missing-product-parameters';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import { useCategoryParameterSchemas } from '../../hooks/use-category-parameter-schemas';
@@ -173,10 +173,6 @@ import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-
 import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import { BundleComposition } from './bundle-composition';
 
-/** Chip tone for a blocker id (#2240) - neutral map first, generic fallback after. */
-function chipToneOf(blocker: string): StatusBadgeTone {
-  return (NEUTRAL_BLOCKER_CHIPS[blocker] ?? FALLBACK_CHIP).tone;
-}
 
 // Grouping-determining category parameters - shared across siblings, edited on
 // the base scope only (a per-variant Brand/Condition would split the Allegro
@@ -554,6 +550,23 @@ function withoutAutoFilledParams(
   return out;
 }
 
+/**
+ * Focus the parameter field labelled `name` inside `root` (#4003). Parameter
+ * controls carry their marketplace name as `aria-label` (a range control adds
+ * " from"), which is the only handle the blocker list has on them. Returns
+ * whether a field was found, so the caller can try another scope.
+ */
+function focusParameterField(root: ParentNode | null, name: string): boolean {
+  const selector = [name, `${name} from`]
+    .map((label) => `[aria-label="${label.replace(/"/g, '\\"')}"]`)
+    .join(', ');
+  const field = root?.querySelector<HTMLElement>(selector) ?? null;
+  if (!field) return false;
+  field.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  field.focus({ preventScroll: true });
+  return true;
+}
+
 /** Same URLs in the same order - the published list is ordered, so order matters. */
 function sameImageList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((url, i) => url === b[i]);
@@ -661,6 +674,13 @@ function BulkEditModalForm({
     [row, projectionSummaries, platformName, editorRulesCopy, plural],
   );
   const platformSection = platform?.bulkOfferRowSection;
+  // The same neutral + platform merge the Review step reads (#4003), so a
+  // blocker the row chip names is never nameless in here.
+  const platformBlockers = platform?.offerValidation?.blockers;
+  const blockerChips = useMemo(
+    () => resolveBlockerChips(platformBlockers ?? []),
+    [platformBlockers],
+  );
   const isMultiVariant = row.variants.length > 1;
   const masterImages = useMemo(
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
@@ -702,6 +722,18 @@ function BulkEditModalForm({
       cancelAnimationFrame(frame);
     };
   }, [focusField, scope]);
+
+  // A missing-parameter token whose field lives on the shared base (#4003)
+  // switches scope and asks for the field by name. An effect runs after the
+  // base scope has committed, so the field is in the DOM by then - no frame
+  // counting. Cleared on every run: a name the base does not render either
+  // must not focus something later, out of the blue.
+  const [pendingParameterFocus, setPendingParameterFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingParameterFocus === null) return;
+    focusParameterField(document.querySelector('[role="dialog"]'), pendingParameterFocus);
+    setPendingParameterFocus(null);
+  }, [pendingParameterFocus, scope]);
 
   // Per-variant edit model + inclusion (source of truth for override presence).
   const [variantEdits, setVariantEdits] = useState<Record<string, VariantEdit>>(() => {
@@ -1508,6 +1540,10 @@ function BulkEditModalForm({
                       onParamChange={(paramId, value) => setVariantParam(v.variantId, paramId, value)}
                       onIncludedChange={(next) => setIncluded((prev) => ({ ...prev, [v.variantId]: next }))}
                       onFixOnBase={() => setScope('base')}
+                      onJumpToBaseParameter={(name) => {
+                        setScope('base');
+                        setPendingParameterFocus(name);
+                      }}
                       // The product-tier fix (#2240): switch to the shared scope
                       // AND open the picker, so one click lands on the control
                       // instead of on a scope the operator then has to read.
@@ -1522,6 +1558,14 @@ function BulkEditModalForm({
                       // catalogue was consulted. Falls back to the platform label.
                       destinationName={connection.name || platformName}
                       batchCurrency={currency}
+                      blockerChips={blockerChips}
+                      categorySchemaState={
+                        categoryParametersQuery.isError
+                          ? 'failed'
+                          : categoryParametersQuery.isSuccess
+                            ? 'loaded'
+                            : 'pending'
+                      }
                     />
                   ) : null}
                 </Fragment>
@@ -2555,6 +2599,8 @@ interface VariantScopeFormProps {
   onParamChange: (paramId: string, value: FormParameterValue) => void;
   onIncludedChange: (next: boolean) => void;
   onFixOnBase: () => void;
+  /** Open the shared base and focus the parameter field with this name (#4003). */
+  onJumpToBaseParameter: (name: string) => void;
   /**
    * Set the PRODUCT-tier category, covering every sibling that has no override
    * of its own (#2240). The primary fix for a category blocker: the submit pins
@@ -2567,6 +2613,14 @@ interface VariantScopeFormProps {
   destinationName: string;
   /** Batch currency, for the currency-mismatch sentence (#2240). */
   batchCurrency: string;
+  /** Neutral + destination blocker chips (#4003) - see `resolveBlockerChips`. */
+  blockerChips: Record<string, ChipDescriptor>;
+  /**
+   * Where the shared base category's parameter schema stands (#4003). Decides
+   * whether the missing-parameter list can be stated at all: `pending` is not
+   * an empty list, and `failed` is said out loud rather than left blank.
+   */
+  categorySchemaState: 'pending' | 'loaded' | 'failed';
 }
 
 function VariantScopeForm({
@@ -2593,10 +2647,13 @@ function VariantScopeForm({
   onParamChange,
   onIncludedChange,
   onFixOnBase,
+  onJumpToBaseParameter,
   onSetProductCategory,
   variantCount,
   destinationName,
   batchCurrency,
+  blockerChips,
+  categorySchemaState,
   projection,
   cardLinked,
   marketplaceName,
@@ -2716,6 +2773,32 @@ function VariantScopeForm({
     [effectiveCategoryParameters, effectiveParamValues],
   );
   const requiredParams = visibleParams.filter((p) => p.required);
+
+  // Which required product parameters still have no value (#4003), in three
+  // states the blocker sentence keeps apart: not known yet, could not be
+  // loaded, or the actual (possibly empty) list. Read from the live form values,
+  // so the list shrinks as the operator types.
+  const ownSchema = ownCategoryParameters ?? ownCategoryParametersQuery.data;
+  const missingParameterNames: readonly string[] | null | undefined = hasOwnCategory
+    ? ownCategoryParametersFailed
+      ? null
+      : ownSchema
+        ? missingRequiredProductParameterNames(ownSchema, effectiveParamValues)
+        : undefined
+    : categorySchemaState === 'failed'
+      ? null
+      : categorySchemaState === 'loaded'
+        ? missingRequiredProductParameterNames(categoryParameters, effectiveParamValues)
+        : undefined;
+  const panelCopy = useMessages('listings').bulkBlockers.panel;
+
+  // A missing-parameter token takes the operator to the field (#4003). Product
+  // parameters usually live on the shared base, so when this variant's form
+  // does not render the field, switch to the base scope and focus it there.
+  const focusParameter = (name: string): void => {
+    if (focusParameterField(document.querySelector(`[data-form="${variant.variantId}"]`), name)) return;
+    onJumpToBaseParameter(name);
+  };
   const optionalParams = visibleParams.filter((p) => !p.required);
 
   // The attribute rule's answer for a parameter (#3995), unless the variant is
@@ -3003,98 +3086,99 @@ function VariantScopeForm({
         </div>
       ) : null}
 
-      {/* Cause + consequence, side by side (#2240). The Review table shows the
-          cause alone; here there is room for both, and the operator arrived
-          because something is wrong. `category not set` is derived, not a
-          blocker id: a cause other than `invalid-barcode` can only have been
-          emitted where the destination does NOT resolve the category at submit,
-          so the consequence is true by construction and never guessed. */}
+      {/* What blocks this variant (#2240, #4003): one list, one row per cause,
+          each naming the cause, explaining it, and carrying its own action.
+          `category not set` is derived, not a blocker id - see
+          `categoryNotSetApplies` - so it is a quiet consequence row, never a
+          cause of its own. Advisory rows (#2243) stay muted: they do not gate
+          the batch and must not read as if they did. */}
       {variant.blockers.length > 0 ? (
-        <div className="bulk-editor__blocker-chips">
-          {variant.blockers.map((blocker) => (
-            <StatusBadge key={blocker} tone={chipToneOf(blocker)} withDot>
-              {blockerLabel(blocker)}
-            </StatusBadge>
-          ))}
+        <ul className="blocker-list" aria-label={panelCopy.ariaLabel}>
+          {variant.blockers.map((blocker) => {
+            // #2240: name the cause and the offending value, then offer actions
+            // that change state. A category blocker's primary action is the
+            // PRODUCT-tier category - the submit pins it for every sibling and
+            // readiness reads it.
+            const blockerCopy = describeBlocker(blocker, {
+              ean: edit.ean.trim() === '' ? null : edit.ean.trim(),
+              destinationName,
+              variantCount,
+              batchCurrency,
+              chips: blockerChips,
+              missingParameterNames,
+            });
+            const chip = chipFor(blocker, blockerChips);
+            const advisory = chip.advisory === true;
+            const categoryBlocker = isCategoryBlocker(blocker);
+            const variantScope = isVariantScopeFixable(blocker);
+            // The category action belongs on a row that actually lacks a
+            // category; `invalid barcode` survives a set category, and there the
+            // fix is the barcode field below.
+            const needsCategory = categoryBlocker && !productCategorySet && !hasOwnCategory;
+            const items = blockerCopy.items ?? [];
+            // The per-variant category override is deliberately NOT offered here:
+            // the editor's save requires a category on the product, so a
+            // per-variant-only route would end in a refused Save (#2240).
+            const action = needsCategory ? (
+              <Button tone="primary" type="button" className="button--sm" onClick={onSetProductCategory}>
+                {canOverrideCategory
+                  ? plural(variantCount, copy.variant.setCategoryForAll)
+                  : copy.variant.setProductCategory}
+              </Button>
+            ) : variantScope || advisory || items.length > 0 ? null : (
+              <Button tone="secondary" type="button" className="button--sm" onClick={onFixOnBase}>
+                {copy.variant.openSharedBase}
+              </Button>
+            );
+            return (
+              <li
+                key={blocker}
+                className={`blocker-list__item blocker-list__item--${advisory ? 'advisory' : chip.tone}`}
+                data-blocker={blocker}
+              >
+                <span className="blocker-list__mark" aria-hidden="true" />
+                <div className="blocker-list__body">
+                  <div className="blocker-list__head">
+                    <span className="blocker-list__label">{chip.label}</span>
+                    {advisory ? (
+                      <span className="blocker-list__note">{panelCopy.advisoryNote}</span>
+                    ) : null}
+                  </div>
+                  <p className="blocker-list__title">{blockerCopy.title}</p>
+                  {items.length > 0 ? (
+                    <div className="blocker-list__tokens">
+                      {items.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className="blocker-list__token"
+                          onClick={() => focusParameter(name)}
+                          title={interpolate(panelCopy.jumpTo, { name })}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {blockerCopy.detail ? <p className="blocker-list__detail">{blockerCopy.detail}</p> : null}
+                  {action ? <div className="blocker-list__actions">{action}</div> : null}
+                </div>
+              </li>
+            );
+          })}
           {categoryNotSetApplies(variant.blockers, liveCategoryId) ? (
-            <StatusBadge tone={CATEGORY_EFFECT_CHIP.tone} withDot>
-              {CATEGORY_EFFECT_CHIP.label}
-            </StatusBadge>
+            <li className="blocker-list__item blocker-list__item--consequence">
+              <span className="blocker-list__mark" aria-hidden="true" />
+              <div className="blocker-list__body">
+                <div className="blocker-list__head">
+                  <span className="blocker-list__label">{CATEGORY_EFFECT_CHIP.label}</span>
+                  <span className="blocker-list__note">{panelCopy.consequence}</span>
+                </div>
+              </div>
+            </li>
           ) : null}
-        </div>
+        </ul>
       ) : null}
-
-      {variant.blockers.map((blocker) => {
-        // #2240: name the cause and the offending value, then offer actions that
-        // change state. A category blocker's primary action is the PRODUCT-tier
-        // category - the submit pins it for every sibling and readiness now reads
-        // it, which is exactly what the old "Fix on base" button did not do.
-        const blockerCopy = describeBlocker(blocker, {
-          ean: edit.ean.trim() === '' ? null : edit.ean.trim(),
-          destinationName,
-          variantCount,
-          batchCurrency,
-        });
-        const categoryBlocker = isCategoryBlocker(blocker);
-        const variantScope = isVariantScopeFixable(blocker);
-        // The category action belongs on a row that actually lacks a category.
-        // A blocker like `invalid barcode` is category-adjacent but survives a
-        // set category, and there the fix is the barcode field below - offering
-        // "set the category" would point at a control that is already filled in.
-        const needsCategory = categoryBlocker && !productCategorySet && !hasOwnCategory;
-        return (
-          <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
-            <b>{blockerCopy.title}</b> {blockerCopy.detail}
-            {/* The per-variant override is deliberately NOT offered here as an
-                alternative: the editor's own save requires a category on the
-                product (the base schema's `requireCategory` for a browsable
-                destination), so a per-variant-only route would end in a Save
-                refused on a scope the operator never chose. Once the product
-                carries one, the category field below offers the override as the
-                refinement it is. */}
-            {needsCategory && canOverrideCategory ? (
-              <div
-                className="bulk-editor__scope-toggles"
-                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-              >
-                <Button
-                  tone="primary"
-                  type="button"
-                  className="button--sm"
-                  onClick={onSetProductCategory}
-                >
-                  {plural(variantCount, copy.variant.setCategoryForAll)}
-                </Button>
-              </div>
-            ) : needsCategory ? (
-              // The destination forbids a per-variant category (its grouping is
-              // parent-child or explicit), so the product tier is the only tier.
-              <div
-                className="bulk-editor__scope-toggles"
-                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-              >
-                <Button
-                  tone="primary"
-                  type="button"
-                  className="button--sm"
-                  onClick={onSetProductCategory}
-                >
-                  {copy.variant.setProductCategory}
-                </Button>
-              </div>
-            ) : variantScope ? null : (
-              <div
-                className="bulk-editor__scope-toggles"
-                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-              >
-                <Button tone="ghost" type="button" className="button--sm" onClick={onFixOnBase}>
-                  {copy.variant.openSharedBase}
-                </Button>
-              </div>
-            )}
-          </div>
-        );
-      })}
 
       <div className="eyebrow" style={{ marginBottom: 'var(--space-3)' }}>
         {copy.variant.perVariant}

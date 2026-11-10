@@ -54,6 +54,7 @@ import { OrderIdentityCell } from '../../features/orders';
 import { InvoiceStatusValues } from '../../features/invoicing';
 import { FiscalRegistrationStatusValues } from '../../features/fiscalization';
 import { interpolate, useFormat, useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -364,7 +365,7 @@ export function SalesDocumentsListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.loadError}
-          message={query.error.message}
+          message={describeApiError(query.error, 'sales-documents')}
           action={<Button onClick={() => void query.refetch()}>{copy.retry}</Button>}
         />
       ) : items.length === 0 && cursorStack.length > 0 ? (

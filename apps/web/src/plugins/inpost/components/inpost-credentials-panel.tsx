@@ -22,6 +22,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useInpostMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export function InpostCredentialsPanel({ connection }: { connection: Connection }): ReactElement {
   const copy = useInpostMessages().inpostCredentialsPanel;
@@ -66,7 +67,7 @@ export function InpostCredentialsPanel({ connection }: { connection: Connection 
     >
       {showRotate ? (
         <div className="form-grid">
-          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+          {rotate.error ? <Alert tone="error">{describeApiError(rotate.error, 'inpost')}</Alert> : null}
           <Input
             type="password"
             autoComplete="off"

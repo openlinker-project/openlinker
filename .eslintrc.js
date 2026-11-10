@@ -7,6 +7,29 @@
 const HARDCODED_JSX_CHILD_MESSAGE =
   'Hardcoded user-facing text in a JSX child. Read it from the feature copy file (`*.copy.ts`, English and Polish) - see docs/frontend-architecture.md, Internationalization.';
 
+// #3867: an API error reaches the operator through describeApiError, which
+// picks the copy by the error's code in the active language (ADR-081). The
+// server's own `message` is English developer text and is never rendered.
+// Applied to source files outside shared/api (tests and the resolver itself
+// read `.message` legitimately).
+const API_ERROR_MESSAGE_RENDER =
+  'Render an API error with describeApiError(error, namespace) from shared/api/describe-api-error (ADR-081, #3867), never its English `.message`. Form field errors, copy objects and non-API errors are allowed; any other legitimate read needs an eslint-disable with its reason.';
+const API_ERROR_MESSAGE_SYNTAX = [
+  {
+    // query.error.message / mutation.error.message - but not a form field's
+    // fieldState.error.message or a copy object's `error.message` section.
+    selector:
+      "MemberExpression[property.name='message'][object.type='MemberExpression'][object.property.name='error']:not([object.object.name=/^fieldState$|[Cc]opy$|COPY$|^messages$/]):not([object.object.object.name=/[Cc]opy$|COPY$/])",
+    message: API_ERROR_MESSAGE_RENDER,
+  },
+  {
+    // error.message / err.message / saveError.message ... A form's
+    // fieldError / fieldErrors entries are validation copy, not API errors.
+    selector: "MemberExpression[property.name='message'][object.name=/^(err|error|cause)$|^(?!field)\\w+Error$/]",
+    message: API_ERROR_MESSAGE_RENDER,
+  },
+];
+
 const WEB_RESTRICTED_SYNTAX = [
   {
     selector: "Identifier[name='WebPlugin']",
@@ -890,6 +913,21 @@ module.exports = {
         ],
       },
     },
+    {
+      // #3867: see API_ERROR_MESSAGE_SYNTAX. Repeats WEB_RESTRICTED_SYNTAX
+      // because an override replaces the rule's whole option list.
+      files: [
+        'apps/web/src/features/**/*.{ts,tsx}',
+        'apps/web/src/pages/**/*.{ts,tsx}',
+        'apps/web/src/plugins/**/*.{ts,tsx}',
+        'apps/web/src/app/**/*.{ts,tsx}',
+        'apps/web/src/shared/ui/**/*.{ts,tsx}',
+      ],
+      excludedFiles: ['**/*.test.{ts,tsx}', '**/test/**'],
+      rules: {
+        'no-restricted-syntax': ['error', ...WEB_RESTRICTED_SYNTAX, ...API_ERROR_MESSAGE_SYNTAX],
+      },
+    },
 
     {
       // Port, capability, and port-local type files form the public contract
@@ -1033,6 +1071,7 @@ module.exports = {
         'no-restricted-syntax': [
           'error',
           ...WEB_RESTRICTED_SYNTAX,
+          ...API_ERROR_MESSAGE_SYNTAX,
           {
             selector: "JSXElement > JSXExpressionContainer > Literal[value=/[A-Za-z]{2}/]",
             message: HARDCODED_JSX_CHILD_MESSAGE,
