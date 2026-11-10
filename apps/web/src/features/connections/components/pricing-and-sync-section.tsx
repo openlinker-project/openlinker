@@ -92,6 +92,7 @@ import {
   describeOverrideAxis,
 } from '../../price-changes';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface PricingAndSyncSectionProps {
   connectionId: string;
@@ -466,7 +467,7 @@ export function PricingAndSyncSection({
     return (
       <ErrorState
         title={copy.loadErrorTitle}
-        message={query.error.message}
+        message={describeApiError(query.error, 'connections')}
       />
     );
   }
@@ -635,8 +636,7 @@ export function PricingAndSyncSection({
     } catch (error) {
       showToast({
         tone: 'error',
-        description:
-          error instanceof Error ? error.message : copy.saveFailed,
+        description: describeApiError(error, 'connections'),
       });
     }
   }

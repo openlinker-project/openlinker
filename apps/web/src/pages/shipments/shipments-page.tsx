@@ -62,6 +62,7 @@ import {
   parseProcessorFilter,
   toShipmentProcessorFilters,
 } from '../../features/shipments/lib/processor';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { ShipmentsFilterBar, type ShipmentSortKey } from './shipments-filter-bar';
 import { ShipmentPeek, type ShipmentPeekView } from './shipment-peek';
 
@@ -667,8 +668,16 @@ export function ShipmentsPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>{retryLabel}</Button>}
+          message={describeApiError(query.error, 'shipments')}
+          action={
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {retryLabel}
+            </Button>
+          }
         />
       ) : rows.length === 0 ? (
         <EmptyState

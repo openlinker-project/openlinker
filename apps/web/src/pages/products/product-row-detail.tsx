@@ -30,6 +30,7 @@ import { usePlatforms } from '../../shared/plugins';
 import { BundleComposition, ProductUsedInBundles } from '../../features/bundles';
 import { findPlatformDisplayName } from '../../features/mappings';
 import { interpolate, useFormat, useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 export interface ProductRowDetailProps {
   product: Product;
@@ -66,7 +67,7 @@ export function ProductRowDetail({
       <div className="products-row-detail">
         <ErrorState
           title={copy.variantsError.title}
-          message={productQuery.error?.message ?? copy.variantsError.notFound}
+          message={productQuery.error ? describeApiError(productQuery.error, 'products') : copy.variantsError.notFound}
         />
       </div>
     );
@@ -75,7 +76,7 @@ export function ProductRowDetail({
   if (inventoryQuery.error) {
     return (
       <div className="products-row-detail">
-        <ErrorState title={copy.stockError} message={inventoryQuery.error.message} />
+        <ErrorState title={copy.stockError} message={describeApiError(inventoryQuery.error, 'products')} />
       </div>
     );
   }

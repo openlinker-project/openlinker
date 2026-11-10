@@ -30,7 +30,12 @@ import {
   type ResolvedCopy,
 } from '../../../../shared/i18n';
 import type { StatusBadgeTone } from '../../../../shared/ui';
-import type { OfferBlockerField } from '../../../../shared/plugins';
+import type {
+  OfferBlockerCopy,
+  OfferBlockerDescribeContext,
+  OfferBlockerDescriptor,
+  OfferBlockerField,
+} from '../../../../shared/plugins';
 import type { BulkRowBlocker } from './bulk-wizard.types';
 
 export type ChipDescriptor = {
@@ -54,6 +59,8 @@ export type ChipDescriptor = {
    * it does not read as the editor affordance it is not.
    */
   link?: boolean;
+  /** Platform-owned sentence for the blocker (#4003) - see `OfferBlockerDescriptor.describe`. */
+  describe?: (context: OfferBlockerDescribeContext) => OfferBlockerCopy;
 };
 
 type BlockerCopyTree = ResolvedCopy<Messages['listings']>['bulkBlockers'];
@@ -145,11 +152,27 @@ export const FALLBACK_CHIP: ChipDescriptor = chip('needsAttention', {
 });
 
 /**
- * Friendly label for a blocker key, falling back to the generic "needs
- * attention" for platform-specific keys not in the neutral map.
+ * The neutral chips plus the destination platform's own descriptors (#4003).
+ * The ONE merge: the Review step, the wizard readiness and the edit modal all
+ * read it, so a chip cannot be named on one surface and nameless on another,
+ * and the descriptor's `field` and `describe` survive the merge (both were
+ * previously dropped, so a plugin chip opened the editor unfocused).
  */
-export function blockerLabel(blocker: string): string {
-  return (NEUTRAL_BLOCKER_CHIPS[blocker] ?? FALLBACK_CHIP).label;
+export function resolveBlockerChips(
+  platformBlockers: readonly OfferBlockerDescriptor[],
+): Record<string, ChipDescriptor> {
+  const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
+  for (const chip of platformBlockers) {
+    merged[chip.id] = {
+      tone: chip.tone as StatusBadgeTone,
+      label: chip.label,
+      fixable: true,
+      advisory: chip.advisory === true,
+      ...(chip.field !== undefined ? { field: chip.field } : {}),
+      ...(chip.describe !== undefined ? { describe: chip.describe } : {}),
+    };
+  }
+  return merged;
 }
 
 export interface BlockerCopyContext {
@@ -167,6 +190,17 @@ export interface BlockerCopyContext {
    * own refusal codes.
    */
   bundle?: { componentsWithProblem: readonly { name: string; codes: readonly string[] }[] };
+  /**
+   * The resolved chips (neutral + the destination's own, #4003). A platform
+   * blocker's sentence comes from its descriptor; without this the copy only
+   * knows the neutral ids.
+   */
+  chips?: Record<string, ChipDescriptor>;
+  /**
+   * Missing required product parameters for the variant, three-state - see
+   * `OfferBlockerDescribeContext.missingParameterNames`.
+   */
+  missingParameterNames?: readonly string[] | null;
 }
 
 export interface BlockerCopy {
@@ -174,6 +208,8 @@ export interface BlockerCopy {
   title: string;
   /** One sentence naming the consequence and/or the action. May be empty. */
   detail: string;
+  /** Values the title refers to, rendered as a list (#4003). */
+  items?: readonly string[];
 }
 
 /**
@@ -267,8 +303,10 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
       if (bundleKind !== null) {
         return describeBundleBlocker(bundleKind, ctx);
       }
+      const describe = ctx.chips?.[blocker]?.describe;
+      if (describe) return describe({ missingParameterNames: ctx.missingParameterNames });
       return {
-        title: interpolate(copy.fallback.title, { label: blockerLabel(blocker) }),
+        title: interpolate(copy.fallback.title, { label: blockerLabel(blocker, ctx.chips) }),
         detail: copy.fallback.detail,
       };
     }
@@ -324,10 +362,22 @@ function describeBundleBlocker(kind: BundleBlockerKind, ctx: BlockerCopyContext)
 }
 
 /**
- * Blockers that leave the row without a resolved category. Call sites use this
- * to route the fix CTA at the category (product tier first) and to decide
- * whether the `category not set` consequence applies.
+ * The chip for a blocker id. An id no descriptor knows (a plugin that is not
+ * loaded, an id from an older build) keeps the fallback tone but carries its
+ * raw id in the label, so the operator can still say WHICH check failed.
  */
+export function chipFor(blocker: string, chips: Record<string, ChipDescriptor>): ChipDescriptor {
+  return chips[blocker] ?? { ...FALLBACK_CHIP, label: `${FALLBACK_CHIP.label}: ${blocker}` };
+}
+
+/** Friendly label for a blocker key (see `chipFor` for an unknown id). */
+export function blockerLabel(
+  blocker: string,
+  chips: Record<string, ChipDescriptor> = NEUTRAL_BLOCKER_CHIPS,
+): string {
+  return chipFor(blocker, chips).label;
+}
+
 export function isCategoryBlocker(blocker: string): boolean {
   return (
     blocker === 'no-match' ||

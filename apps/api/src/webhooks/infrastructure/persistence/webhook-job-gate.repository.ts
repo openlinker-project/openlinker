@@ -64,9 +64,9 @@ export class WebhookJobGateRepository implements IWebhookJobGateService {
         `INSERT INTO webhook_deliveries
            ("eventId", "provider", "connectionId", "eventType", "objectType", "externalId",
             "receivedAt", "signatureValid", "dedupResult", "status",
-            "downstreamJobId", "downstreamJobType", "dlqReason", "payload",
+            "downstreamJobId", "downstreamJobType", "dlqReason", "dlqCode", "payload",
             "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now(), now())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now(), now())
          ON CONFLICT ("provider", "connectionId", "eventId") DO NOTHING
          RETURNING id`,
         [
@@ -83,6 +83,7 @@ export class WebhookJobGateRepository implements IWebhookJobGateService {
           jobId,
           job?.jobType ?? delivery.downstreamJobType ?? null,
           delivery.dlqReason ?? null,
+          delivery.dlqCode ?? null,
           delivery.payload ? JSON.stringify(delivery.payload) : null,
         ]
       );
@@ -131,6 +132,7 @@ export class WebhookJobGateRepository implements IWebhookJobGateService {
               "downstreamJobId" = $1,
               "downstreamJobType" = COALESCE($2, "downstreamJobType"),
               "dlqReason" = NULL,
+              "dlqCode" = NULL,
               "updatedAt" = now()
         WHERE "provider" = $3 AND "connectionId" = $4 AND "eventId" = $5
           AND "status" = 'deadlettered'

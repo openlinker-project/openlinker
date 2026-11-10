@@ -72,6 +72,7 @@
  * @module features/analytics/components
  */
 import { useMemo, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Chip } from '../../../shared/ui/chip';
 import { Button } from '../../../shared/ui/button';
@@ -316,7 +317,7 @@ export function ChannelSalesTable({
     return (
       <ErrorState
         title={copy.error.title}
-        message={query.error.message}
+        message={describeApiError(query.error, 'analytics')}
         action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
       />
     );

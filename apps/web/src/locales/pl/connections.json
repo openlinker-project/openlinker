@@ -21,8 +21,7 @@
         "bytes": "{n} B",
         "kilobytes": "{n} KB",
         "megabytes": "{n} MB"
-      },
-      "uploadFailed": "Przesyłanie nie powiodło się"
+      }
     },
     "description": "Allegro wymaga w każdej ofercie miejsca wysyłki i danych GPSR UE (rozporządzenie 2023/988, obowiązkowe od 13 grudnia 2024). Te ustawienia domyślne są wysyłane przy tworzeniu produktu w ofercie i używane awaryjnie, gdy nie uda się powiązać z istniejącą kartą produktu.",
     "eyebrow": "Domyślne ustawienia sprzedawcy Allegro",
@@ -213,51 +212,6 @@
     "supported": "Obsługiwane możliwości",
     "title": "Włączone role",
     "updatedTitle": "Zaktualizowano możliwości"
-  },
-  "connectionCategoryMappingsPage": {
-    "desktopOnly": {
-      "body": "Edytor mapowania kategorii zestawia obok siebie drzewo kategorii i wyszukiwarkę marketplace, więc potrzebuje szerszego ekranu. Otwórz tę stronę na komputerze lub tablecie w poziomie, aby przypisywać kategorie.",
-      "title": "Otwórz na komputerze, aby edytować kategorie"
-    },
-    "error": {
-      "title": "Nie udało się wczytać"
-    },
-    "eyebrow": "Połączenie",
-    "loading": {
-      "message": "Pobieranie kategorii i mapowań...",
-      "title": "Wczytywanie"
-    },
-    "mappedSummary": {
-      "few": "Zmapowano {mapped} z {n} kategorii",
-      "many": "Zmapowano {mapped} z {n} kategorii",
-      "one": "Zmapowano {mapped} z {n} kategorii",
-      "other": "Zmapowano {mapped} z {n} kategorii"
-    },
-    "marketplaceHeading": "Kategoria marketplace",
-    "marketplaceSelect": {
-      "label": "Połączenie z marketplace",
-      "option": "{name} ({platform})",
-      "placeholder": "Wybierz połączenie z marketplace…"
-    },
-    "noCategories": {
-      "message": "Nie znaleziono kategorii dla tego połączenia. Upewnij się, że sklep ma skonfigurowane kategorie.",
-      "title": "Brak kategorii sklepu"
-    },
-    "noMarketplace": {
-      "addConnection": "Dodaj połączenie",
-      "message": "Przed mapowaniem kategorii dodaj połączenie z marketplace.",
-      "title": "Brak skonfigurowanego połączenia z marketplace"
-    },
-    "pickCategory": {
-      "message": "Kliknij kategorię sklepu po lewej, aby przypisać kategorię marketplace.",
-      "title": "Wybierz kategorię"
-    },
-    "pickMarketplace": {
-      "message": "Wybierz powyżej połączenie z marketplace, aby przeglądać jego drzewo kategorii.",
-      "title": "Wybierz połączenie z marketplace"
-    },
-    "sourceHeading": "Kategorie sklepu",
-    "title": "Mapowania kategorii"
   },
   "connectionCell": {
     "copiedId": "Skopiowano ID połączenia",
@@ -894,7 +848,6 @@
     "save": "Zapisz zmiany",
     "saving": "Zapisywanie...",
     "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
-    "unexpectedError": "Wystąpił nieoczekiwany błąd.",
     "updatedDescription": "Ustawienia połączenia zostały zapisane.",
     "updatedTitle": "Połączenie zaktualizowane",
     "warningsTitle": "Zapisano, ale coś wymaga sprawdzenia"
@@ -1337,7 +1290,6 @@
       }
     },
     "save": "Zapisz zmiany",
-    "saveFailed": "Nie udało się zapisać ustawień cen i synchronizacji.",
     "savedDescription": "Zaktualizowano ustawienia cen i synchronizacji.",
     "savedTitle": "Zapisano",
     "saving": "Zapisywanie…",
@@ -1390,8 +1342,7 @@
     "restore": "Przywróć",
     "restoring": "Przywracanie...",
     "successDescription": "„{name}” wróciło jako wyłączone połączenie. Przed włączeniem podaj ponownie dane uwierzytelniające.",
-    "successTitle": "Połączenie przywrócone",
-    "tryAgain": "Spróbuj ponownie."
+    "successTitle": "Połączenie przywrócone"
   },
   "routerReadinessPanel": {
     "activeLocations": "Aktywne lokalizacje magazynowe",
@@ -1642,6 +1593,17 @@
     "timeoutMin": "Limit czasu zapytania musi wynosić co najmniej 1000 ms",
     "timeoutWhole": "Limit czasu zapytania musi być całkowitą liczbą milisekund",
     "tokenRequired": "Token mostka jest wymagany - mostek {product} odrzuca każde zapytanie bez niego."
+  },
+  "testOutcome": {
+    "failed": "Test się nie powiódł.",
+    "misconfigured": "Brakuje części ustawień lub danych logowania albo są nieprawidłowe.",
+    "not-found": "Pod tym adresem nic nie znaleziono. Sprawdź adres sklepu lub API.",
+    "ok": "Połączenie działa.",
+    "timeout": "Platforma nie odpowiedziała na czas.",
+    "unauthorized": "Platforma odrzuciła dane logowania. Sprawdź klucz lub hasło.",
+    "unexpected-status": "Platforma odpowiedziała w nieoczekiwany sposób.",
+    "unreachable": "Nie udało się połączyć z platformą. Sprawdź adres i czy platforma działa.",
+    "unsupported": "Tego rodzaju połączenia nie da się jeszcze przetestować."
   },
   "woocommerceSetupForm": {
     "beforeYouStart": {

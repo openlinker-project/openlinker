@@ -122,7 +122,6 @@
     "removeCondition": "Usuń warunek",
     "save": "Zapisz automatyzację",
     "saveFailed": "Automatyzacja nie została zapisana",
-    "saveFailedGeneric": "Podczas zapisywania automatyzacji coś poszło nie tak. Spróbuj ponownie.",
     "saving": "Zapisywanie…",
     "stopOnFirstFailure": "Kroki są wykonywane po kolei, a jeśli któryś się nie powiedzie, pozostałe są pomijane. Możesz dodać najwyżej {max}.",
     "subjectLabel": "Temat",

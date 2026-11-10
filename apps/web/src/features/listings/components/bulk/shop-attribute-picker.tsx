@@ -29,6 +29,7 @@ import { useShopAttributesQuery } from '../../hooks/use-shop-attributes-query';
 import { useShopAttributeTermsQuery } from '../../hooks/use-shop-attribute-terms-query';
 import type { OfferParameter } from '../../api/listings.types';
 import { useMessages } from '../../../../shared/i18n';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 type PickerMode = 'global' | 'custom';
 
@@ -129,7 +130,7 @@ function GlobalAttributePanel({
     return (
       <ErrorState
         title={copy.attributes.error.title}
-        message={attributesQuery.error.message}
+        message={describeApiError(attributesQuery.error, 'listings')}
         action={<Button onClick={() => void attributesQuery.refetch()}>{copy.retry}</Button>}
       />
     );
@@ -171,7 +172,7 @@ function GlobalAttributePanel({
         ) : termsQuery.error ? (
           <ErrorState
             title={copy.terms.error.title}
-            message={termsQuery.error.message}
+            message={describeApiError(termsQuery.error, 'listings')}
             action={<Button onClick={() => void termsQuery.refetch()}>{copy.retry}</Button>}
           />
         ) : terms.length === 0 ? (

@@ -13,6 +13,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement, ReactNode } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
@@ -73,7 +74,7 @@ export function CoverageDetailDialog<T>({
         ) : error ? (
           <ErrorState
             title={copy.error.title}
-            message={error.message}
+            message={describeApiError(error, 'analytics')}
             action={
               <Button type="button" onClick={onRetry}>
                 {copy.error.retry}

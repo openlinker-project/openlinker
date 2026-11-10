@@ -136,7 +136,7 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
-import { serverErrorText } from '../../features/orders/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 
@@ -241,7 +241,6 @@ export function OrdersListPage(): ReactElement {
   const format = useFormat();
   const plural = usePlural();
   const orders = useMessages('orders');
-  const serverSaid = orders.common.serverSaid;
   const copy = orders.listPage;
   const filterCopy = orders.listFilters;
   const bulkCopy = orders.bulkActions;
@@ -1160,7 +1159,11 @@ export function OrdersListPage(): ReactElement {
           });
         },
         onError: (error) => {
-          showToast({ tone: 'error', title: copy.retry.failedTitle, description: serverErrorText(serverSaid, error.message, '') });
+          showToast({
+            tone: 'error',
+            title: copy.retry.failedTitle,
+            description: describeApiError(error, 'orders'),
+          });
         },
       },
     );
@@ -1376,8 +1379,16 @@ export function OrdersListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.loadError}
-          message={serverErrorText(serverSaid, query.error.message, '')}
-          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry.action}</Button>}
+          message={describeApiError(query.error, 'orders')}
+          action={
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {copy.retry.action}
+            </Button>
+          }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         health === 'needs_attention' ? (

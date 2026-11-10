@@ -13,11 +13,16 @@
  * class this roster is now shaped to make impossible: there is nowhere left for
  * the two to disagree.
  *
- * Filters catch disjoint exception types, so registration order is irrelevant.
+ * The domain filters catch disjoint exception types, so their order among
+ * themselves is irrelevant. The catch-all `ApiErrorCodeFilter` (#3860) is the
+ * exception: Nest reverses this list and runs the FIRST filter whose `@Catch`
+ * matches, and its empty `@Catch()` matches everything, so it must stay first
+ * here (= checked last) or it would answer for every domain error.
  *
  * @module apps/api/src/common/filters
  */
 import type { ExceptionFilter } from '@nestjs/common';
+import { ApiErrorCodeFilter } from './api-error-code.filter';
 import { AutomationExceptionFilter } from './automation-exception.filter';
 import { AvailabilityUnknownFilter } from './availability-unknown.filter';
 import { CapabilityNotSupportedFilter } from './capability-not-supported.filter';
@@ -35,6 +40,8 @@ import { TaxonomySourceUnavailableFilter } from './taxonomy-source-unavailable.f
  */
 export function buildGlobalExceptionFilters(): ExceptionFilter[] {
   return [
+    // Must stay first - see the module docblock.
+    new ApiErrorCodeFilter(),
     new CapabilityNotSupportedFilter(),
     new ConnectionExceptionFilter(),
     new TaxonomySourceUnavailableFilter(),

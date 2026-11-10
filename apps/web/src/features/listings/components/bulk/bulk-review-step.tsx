@@ -43,10 +43,11 @@ import { BulkImageLightbox } from './bulk-image-lightbox';
 import { AlreadyListedChip } from '../already-listed-chip';
 import type { OfferBlockerField } from '../../../../shared/plugins';
 import {
-  FALLBACK_CHIP,
   NEUTRAL_BLOCKER_CHIPS,
+  chipFor,
   describeBlocker,
   gatingBlockers,
+  resolveBlockerChips,
   type BlockerCopyContext,
   type ChipDescriptor,
 } from './bulk-blockers';
@@ -194,6 +195,7 @@ function blockerCopyContext(
   variant: BulkVariantRow,
   destinationName: string,
   config: BulkWizardConfig,
+  chips: Record<string, ChipDescriptor>,
   bundle?: BundleOfferPreviewOk,
 ): BlockerCopyContext {
   return {
@@ -213,6 +215,7 @@ function blockerCopyContext(
     destinationName,
     variantCount: row.variants.length,
     batchCurrency: config.currency,
+    chips,
   };
 }
 
@@ -242,18 +245,10 @@ export function BulkReviewStep({
   const copy = useMessages('listings').bulkReviewStep;
   const plural = usePlural();
   const format = useFormat();
-  const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
-    const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
-    for (const chip of platformBlockerChips) {
-      merged[chip.id] = {
-        tone: chip.tone as StatusBadgeTone,
-        label: chip.label,
-        fixable: true,
-        advisory: chip.advisory === true,
-      };
-    }
-    return merged;
-  }, [platformBlockerChips]);
+  const blockerChips = useMemo<Record<string, ChipDescriptor>>(
+    () => resolveBlockerChips(platformBlockerChips),
+    [platformBlockerChips],
+  );
 
   const [filter, setFilter] = useState('');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
@@ -1036,6 +1031,7 @@ function ProductRow({
                 row.variants[0],
                 destinationName,
                 config,
+                chips,
                 bundle
               )}
               customFix={bundle ? bundleFix : undefined}
@@ -1240,7 +1236,7 @@ function VariantRow({
           alreadyListed={alreadyListed}
           destinationName={destinationName}
           projection={projection}
-          copyContext={blockerCopyContext(row, variant, destinationName, config)}
+          copyContext={blockerCopyContext(row, variant, destinationName, config, chips)}
         />
       </div>
       <div className="bulk-review__c-action">
@@ -1322,7 +1318,7 @@ function VariantChips({
         />
       ) : null}
       {visible.map((b) => {
-        const descriptor = chips[b] ?? FALLBACK_CHIP;
+        const descriptor = chipFor(b, chips);
         // The cause sentence rides on the chip (#2240). One chip per row keeps
         // the identity column at its documented two lines; the explanation is a
         // hover/focus away rather than a second constant chip.

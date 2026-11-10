@@ -71,6 +71,7 @@ describe('describeCustodyError', () => {
 
   it('should fall back for a non-ApiError', () => {
     expect(describeCustodyError(new Error(''))).toBe(errorCopy.generic);
-    expect(describeCustodyError(new Error('network down'))).toBe('network down');
+    // Never the raw English text of a thrown error (#3867).
+    expect(describeCustodyError(new Error('network down'))).toBe(errorCopy.generic);
   });
 });

@@ -90,7 +90,7 @@ const PHONE_QUERY = '(max-width: 640px)';
  * screen, the floating sidebar only once there is room to spare.
  */
 const WIDE_QUERY = '(min-width: 1920px)';
-const SIDE_SPRING = { type: 'tween', duration: 0.36, ease: [0.32, 0.72, 0, 1] } as const;
+const SIDE_TWEEN = { type: 'tween', duration: 0.36, ease: [0.32, 0.72, 0, 1] } as const;
 /** vaul's curve: fast out, long settle. */
 /**
  * Phone sheet motion: shorter than vaul's 480 ms and still decelerating, so
@@ -227,7 +227,7 @@ export function SidePanel({
                 initial={enter}
                 animate={rest}
                 exit={exit}
-                transition={phone ? SHEET_TWEEN : modal ? MODAL_SPRING : SIDE_SPRING}
+                transition={phone ? SHEET_TWEEN : modal ? MODAL_SPRING : SIDE_TWEEN}
                 drag={phone && !reduce ? 'y' : false}
                 dragControls={controls}
                 dragListener={false}

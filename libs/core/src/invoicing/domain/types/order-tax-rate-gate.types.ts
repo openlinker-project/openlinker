@@ -14,6 +14,7 @@
  * @module libs/core/src/invoicing/domain/types
  */
 import { splitShippingAcrossRates } from '@openlinker/core/sales-documents';
+import type { SalesDocumentBlockParams } from '@openlinker/core/sales-documents';
 
 /** The two fields the gate reads off an order line. */
 export interface TaxRateGateLine {
@@ -167,6 +168,20 @@ export function findOrderTaxRateGap(
  * PII-free block detail. Ids and counts only - it reaches an operator screen
  * verbatim and is logged beside a PII-safe envelope.
  */
+/**
+ * The finding as `SalesDocumentBlockParams` (#3866): the values
+ * {@link describeMissingTaxRate} states, for the frontend to phrase in the
+ * operator's language.
+ */
+export function missingTaxRateParams(finding: MissingTaxRateFinding): SalesDocumentBlockParams {
+  return {
+    taxRateScope: finding.scope ?? 'lines',
+    lineCount: finding.lineCount,
+    totalLines: finding.totalLines,
+    ...(finding.firstLineRef ? { firstLineRef: finding.firstLineRef } : {}),
+  };
+}
+
 export function describeMissingTaxRate(finding: MissingTaxRateFinding): string {
   if (finding.scope === 'shipping') {
     // No product to name: every product line has a rate. What is missing is a

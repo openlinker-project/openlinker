@@ -40,6 +40,7 @@ import { deriveSalesDocumentRows, isActiveRoutable } from '../lib/derive-sales-d
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 import type { ConcreteDocumentKind, SalesDocumentKind } from '../api/sales-documents.types';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface SalesDocumentCountryDefaultsProps {
   country: string;
@@ -105,7 +106,7 @@ export function SalesDocumentCountryDefaults({
     return (
       <ErrorState
         title={copy.loadError}
-        message={(connectionsQuery.error ?? defaultsQuery.error)?.message ?? copy.unknownError}
+        message={describeApiError(connectionsQuery.error ?? defaultsQuery.error, 'sales-documents')}
       />
     );
   }
@@ -265,13 +266,13 @@ export function SalesDocumentCountryDefaults({
           </p>
         )}
       </div>
-      {candidates.length === 0 ? (
-        <p className="muted-text">
-          {copy.noCandidates}
-        </p>
+      {candidates.length === 0 ? <p className="muted-text">{copy.noCandidates}</p> : null}
+      {upsert.isError ? (
+        <Alert tone="error">{describeApiError(upsert.error, 'sales-documents')}</Alert>
       ) : null}
-      {upsert.isError ? <Alert tone="error">{upsert.error.message}</Alert> : null}
-      {remove.isError ? <Alert tone="error">{remove.error.message}</Alert> : null}
+      {remove.isError ? (
+        <Alert tone="error">{describeApiError(remove.error, 'sales-documents')}</Alert>
+      ) : null}
     </div>
   );
 }

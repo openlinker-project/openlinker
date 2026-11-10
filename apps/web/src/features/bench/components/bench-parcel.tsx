@@ -127,6 +127,7 @@ import { BenchSourceChange } from './bench-source-change';
 import { useBenchSourceChangeTakenOutMutation } from '../hooks/use-bench-source-change-taken-out-mutation';
 import { BenchParcelLineRow } from './bench-parcel-line';
 import { BenchScanDock } from './bench-scan-dock';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface BenchParcelProps {
   readonly workId: string;
@@ -597,7 +598,7 @@ export function BenchParcelView({
     return (
       <ErrorState
         title={copy.errors.loadTitle}
-        message={query.error?.message ?? ''}
+        message={query.error ? describeApiError(query.error, 'bench') : ''}
         action={
           <Button
             tone="secondary"

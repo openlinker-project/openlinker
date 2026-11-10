@@ -315,11 +315,16 @@ export class OrderEditService implements IOrderEditService {
       input,
       async (record, assessment, _shipments, documentIssued) => {
         if (!Number.isInteger(input.quantity) || input.quantity < 1) {
-          throw new OrderEditInvalidError('The gift quantity must be a whole number, one or more.');
+          throw new OrderEditInvalidError(
+            'The gift quantity must be a whole number, one or more.',
+            'quantity-invalid'
+          );
         }
         const variant = await this.products.getVariant(input.variantId);
         if (variant === null) {
-          throw new OrderEditNotFoundError(`Gift product not found: ${input.variantId}`);
+          throw new OrderEditNotFoundError(`Gift product not found: ${input.variantId}`, {
+            orderId: input.internalOrderId,
+          });
         }
         const product = await this.products.getProduct(variant.productId);
         const now = new Date().toISOString();
@@ -508,17 +513,23 @@ export class OrderEditService implements IOrderEditService {
       const seen = new Set<string>();
       for (const line of input.lines) {
         if (seen.has(line.orderLineId)) {
-          throw new OrderEditInvalidError(`Order line ${line.orderLineId} appears more than once.`);
+          throw new OrderEditInvalidError(
+            `Order line ${line.orderLineId} appears more than once.`,
+            'line-repeated',
+            { orderLineId: line.orderLineId }
+          );
         }
         seen.add(line.orderLineId);
         if (!Number.isInteger(line.quantity) || line.quantity < 0) {
           throw new OrderEditInvalidError(
-            `The quantity of line ${line.orderLineId} must be a whole number, zero or more.`
+            `The quantity of line ${line.orderLineId} must be a whole number, zero or more.`,
+            'quantity-invalid',
+            { orderLineId: line.orderLineId }
           );
         }
       }
       if (input.lines.length === 0) {
-        throw new OrderEditInvalidError('Name at least one line to lower.');
+        throw new OrderEditInvalidError('Name at least one line to lower.', 'no-lines');
       }
       if (latestInvoiceBlocks) {
         throw new OrderEditRefusedError(
@@ -538,7 +549,10 @@ export class OrderEditService implements IOrderEditService {
       for (const line of input.lines) {
         const channelQuantity = channelItems.get(line.orderLineId);
         if (channelQuantity === undefined) {
-          throw new OrderEditNotFoundError(`Order line not found: ${line.orderLineId}`);
+          throw new OrderEditNotFoundError(`Order line not found: ${line.orderLineId}`, {
+            orderId: input.internalOrderId,
+            orderLineId: line.orderLineId,
+          });
         }
         const effective = effectiveLineQuantity(channelQuantity, currentEdits?.lines?.[line.orderLineId]);
         if (line.quantity > effective) {
@@ -619,7 +633,7 @@ export class OrderEditService implements IOrderEditService {
   editDeliveryMethod(input: EditOrderDeliveryMethodInput): Promise<OrderEditResult> {
     return this.run(input, async (record, assessment, shipments) => {
       if (input.methodId.trim() === '') {
-        throw new OrderEditInvalidError('A delivery method is required.');
+        throw new OrderEditInvalidError('A delivery method is required.', 'delivery-method-required');
       }
       this.assertLabelNotBought(shipments);
       await this.assertNotHandedOff(assessment);
@@ -767,7 +781,9 @@ export class OrderEditService implements IOrderEditService {
   ): Promise<OrderEditResult> {
     const record = await this.orderRecords.getOrderRecord(input.internalOrderId);
     if (!record) {
-      throw new OrderEditNotFoundError(`Order not found: ${input.internalOrderId}`);
+      throw new OrderEditNotFoundError(`Order not found: ${input.internalOrderId}`, {
+        orderId: input.internalOrderId,
+      });
     }
 
     const shipments = await this.shipmentQuery.getOutboundByOrderId(input.internalOrderId);
@@ -1281,7 +1297,10 @@ export class OrderEditService implements IOrderEditService {
     shipments: readonly Shipment[]
   ): Promise<PreparedEdit> {
     if ((input.amount === null) === (input.percent === null)) {
-      throw new OrderEditInvalidError('Give either an amount or a percent, not both and not neither.');
+      throw new OrderEditInvalidError(
+        'Give either an amount or a percent, not both and not neither.',
+        'discount-amount-or-percent'
+      );
     }
     const currency = this.readCurrency(record);
     const exponent = minorUnitExponentFor(currency);
@@ -1411,18 +1430,26 @@ export class OrderEditService implements IOrderEditService {
   ): number {
     if (input.amount !== null) {
       if (!isDecimalAmountText(input.amount)) {
-        throw new OrderEditInvalidError('The discount amount must be a plain decimal number such as 12.50.');
+        throw new OrderEditInvalidError(
+          'The discount amount must be a plain decimal number such as 12.50.',
+          'discount-amount-format'
+        );
       }
       if (decimalPlaces(input.amount) > exponent) {
         throw new OrderEditInvalidError(
-          `${currency} has ${String(exponent)} decimal place(s); the discount amount has more.`
+          `${currency} has ${String(exponent)} decimal place(s); the discount amount has more.`,
+          'discount-amount-precision',
+          { currency, decimalPlaces: exponent }
         );
       }
       return Number(Number(input.amount).toFixed(exponent));
     }
     const percent = input.percent as number;
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-      throw new OrderEditInvalidError('The discount percent must be between 0 and 100.');
+      throw new OrderEditInvalidError(
+        'The discount percent must be between 0 and 100.',
+        'discount-percent-range'
+      );
     }
     return Number(((goodsValue * percent) / 100).toFixed(exponent));
   }
@@ -1849,7 +1876,10 @@ export class OrderEditService implements IOrderEditService {
         : undefined;
     const currency = (typeof fromSnapshot === 'string' ? fromSnapshot : (record.currency ?? '')).trim();
     if (currency === '') {
-      throw new OrderEditInvalidError('This order has no currency, so a discount amount cannot be sized.');
+      throw new OrderEditInvalidError(
+        'This order has no currency, so a discount amount cannot be sized.',
+        'currency-missing'
+      );
     }
     return currency.toUpperCase();
   }

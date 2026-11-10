@@ -31,6 +31,7 @@
  * @module apps/web/src/features/returns/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { getMessages } from '../../../shared/i18n';
 
 /**
@@ -91,9 +92,7 @@ function hasRefundBlockReasonField(error: unknown): boolean {
 export function describeRefundError(error: unknown): string {
   const copy = getMessages('returns').money.refundError;
   if (!(error instanceof ApiError)) {
-    return error instanceof Error && error.message.length > 0
-      ? error.message
-      : copy.generic;
+    return describeApiError(error, 'returns');
   }
 
   if (error.status === 404) {
@@ -115,7 +114,7 @@ export function describeRefundError(error: unknown): string {
     return copy.forbidden;
   }
 
-  return error.message.length > 0 ? error.message : copy.generic;
+  return describeApiError(error, 'returns');
 }
 
 /** The figures a 409 `refund_ceiling_exceeded` body carries (#3289). */

@@ -694,6 +694,18 @@ describe('ProductsController', () => {
       await expect(controller.getProduct('nonexistent')).rejects.toThrow(NotFoundException);
     });
 
+    it('should name the missing product by code and id (#3865)', async () => {
+      productsService.getProduct.mockResolvedValue(null);
+
+      await expect(controller.getProduct('nonexistent')).rejects.toMatchObject({
+        response: {
+          statusCode: 404,
+          code: 'PRODUCT_NOT_FOUND',
+          params: { productId: 'nonexistent' },
+        },
+      });
+    });
+
     it('should expose each variant own images and its resolved default listing images', async () => {
       const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
       productsService.getProduct.mockResolvedValue(
@@ -878,7 +890,14 @@ describe('ProductsController', () => {
       await expect(controller.getVariantImage('v1', 'x', res as never)).rejects.toThrow(
         NotFoundException
       );
+      await expect(controller.getVariantImage('v1', 'x', res as never)).rejects.toMatchObject({
+        response: {
+          code: 'PRODUCT_VARIANT_IMAGE_NOT_FOUND',
+          params: { variantId: 'v1', index: 'x' },
+        },
+      });
     });
+
   });
 
   describe('listVariantsByProduct', () => {

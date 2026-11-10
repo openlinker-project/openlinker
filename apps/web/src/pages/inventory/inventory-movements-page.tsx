@@ -46,6 +46,7 @@ import {
   type MovementChip,
   type MovementUrlState,
 } from '../../features/inventory/lib/stock-movement-url-filters';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -268,7 +269,7 @@ function InventoryMovementsContent(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={query.error.message}
+          message={describeApiError(query.error, 'inventory')}
           action={
             <Button
               onClick={() => {

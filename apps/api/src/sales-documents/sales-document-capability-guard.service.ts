@@ -19,8 +19,8 @@
  *
  * @module apps/api/src/sales-documents
  */
-import { Inject, Injectable } from '@nestjs/common';
-import { BadRequestException } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { codedHttpError } from '../common/errors/coded-http.exception';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   isCoreSalesDocumentKind,
@@ -63,8 +63,11 @@ export class SalesDocumentCapabilityGuardService {
     // real order.
     const { connection } = await this.integrations.getAdapter(connectionId);
     if (!connection.enabledCapabilities.includes(requiredCapability)) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'SALES_DOCUMENT_CONNECTION_CAPABILITY_DISABLED',
         `Connection '${connectionId}' does not have ${requiredCapability} enabled, which is required to issue '${documentKind}'.`,
+        { connectionId, capability: requiredCapability, documentKind },
       );
     }
   }

@@ -28,6 +28,7 @@
  * @module apps/web/src/features/buyer-emails/hooks
  */
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { automationQueryKeys, type AutomationRule } from '../../automation';
 import { connectionsQueryKeys } from '../../connections';
 import { useApiClient } from '../../../app/api/api-client-provider';
@@ -81,7 +82,7 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
       } catch (error) {
         throw new BuyerEmailSaveError(
           interpolate(getMessages('buyer-emails').editor.saveSettingsFailed, {
-            reason: messageOf(error),
+            reason: describeApiError(error, 'buyer-emails'),
           }),
           'settings',
         );
@@ -100,7 +101,7 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
         } catch (error) {
           throw new BuyerEmailSaveError(
             interpolate(getMessages('buyer-emails').editor.saveWordingFailed, {
-              reason: messageOf(error),
+              reason: describeApiError(error, 'buyer-emails'),
             }),
             'wording',
           );
@@ -116,8 +117,4 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
       }
     },
   });
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

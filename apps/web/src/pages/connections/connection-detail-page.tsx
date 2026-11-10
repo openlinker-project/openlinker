@@ -36,6 +36,7 @@ import {
   type OverridingGift,
 } from '../../features/gift-documents';
 import { usePromotionsQuery } from '../../features/promotions';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -442,7 +443,7 @@ export function ConnectionDetailPage(): ReactElement {
       {connectionQuery.error ? (
         <ErrorState
           title={copy.error.title}
-          message={connectionQuery.error.message}
+          message={describeApiError(connectionQuery.error, 'connections')}
           action={
             <button type="button" className="button button--secondary" onClick={() => void connectionQuery.refetch()}>
               {common.retry}

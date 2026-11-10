@@ -122,7 +122,6 @@
     "removeCondition": "Remove condition",
     "save": "Save automation",
     "saveFailed": "The automation was not saved",
-    "saveFailedGeneric": "Something went wrong saving this automation. Try again.",
     "saving": "Saving…",
     "stopOnFirstFailure": "Steps run in order, and if one fails the rest are skipped. You can add up to {max}.",
     "subjectLabel": "Subject",

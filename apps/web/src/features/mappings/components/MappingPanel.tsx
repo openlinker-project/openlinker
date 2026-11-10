@@ -15,6 +15,7 @@ import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
 import { captureDemoEvent } from '../../demo';
 import { getMessages, interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface MappingRow {
   sourceValue: string;
@@ -295,7 +296,7 @@ export function MappingPanel({
     return (
       <ErrorState
         title={copy.dataErrorTitle}
-        message={dataError.message}
+        message={describeApiError(dataError, 'mappings')}
         action={
           onRetryData ? (
             <Button tone="secondary" onClick={onRetryData}>
@@ -318,7 +319,7 @@ export function MappingPanel({
   }
 
   if (optionsError) {
-    return <ErrorState title={copy.optionsErrorTitle} message={optionsError.message} />;
+    return <ErrorState title={copy.optionsErrorTitle} message={describeApiError(optionsError, 'mappings')} />;
   }
 
   const noSourcesLeft = availableSourceOptions.length === 0;
@@ -457,7 +458,7 @@ export function MappingPanel({
 
       {saveError && (
         <p className="error-message" role="alert" style={{ marginTop: '0.5rem' }}>
-          {saveError.message}
+          {describeApiError(saveError, 'mappings')}
         </p>
       )}
 

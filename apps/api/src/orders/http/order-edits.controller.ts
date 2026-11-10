@@ -12,7 +12,6 @@
  * @module apps/api/src/orders/http
  */
 import {
-  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -20,7 +19,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
 } from '@nestjs/common';
@@ -55,6 +53,7 @@ import {
   OrderEditResponseDto,
   OrderEditsViewDto,
 } from './dto/order-edit-response.dto';
+import { orderEditInvalid, orderEditNotFound, orderNotFound } from './orders-errors';
 
 const REFUSAL_CODES =
   'ORDER_ALREADY_CANCELLED | ORDER_ALREADY_SHIPPED | ORDER_AMENDMENT_IN_FLIGHT | ORDER_NOT_READY | ' +
@@ -87,7 +86,7 @@ export class OrderEditsController {
   async getEdits(@Param('internalOrderId') internalOrderId: string): Promise<OrderEditsViewDto | null> {
     const record = await this.orderRecords.getOrderRecord(internalOrderId);
     if (!record) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     return this.edits.getEditsView(record);
   }
@@ -320,10 +319,10 @@ export class OrderEditsController {
       });
     }
     if (error instanceof OrderEditNotFoundError) {
-      return new NotFoundException(error.message);
+      return orderEditNotFound(error);
     }
     if (error instanceof OrderEditInvalidError) {
-      return new BadRequestException(error.message);
+      return orderEditInvalid(error);
     }
     return error;
   }

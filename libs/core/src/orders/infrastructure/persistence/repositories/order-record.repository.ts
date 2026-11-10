@@ -112,6 +112,7 @@ import {
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
   isTaxRateEra,
+  readSalesDocumentBlockParams,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import { isPaymentMethod } from '../../../domain/types/payment-method.types';
@@ -3043,6 +3044,7 @@ export class OrderRecordRepository
       block?.reason ?? null,
       block?.unresolvedReason ?? null,
       block?.detail ?? null,
+      block?.params ? JSON.stringify(block.params) : null,
     ];
     let matchedRuleAssignment = '';
     let matchedRuleGuard = '';
@@ -3060,6 +3062,7 @@ export class OrderRecordRepository
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentBlockParams" = $4::jsonb,
               ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
@@ -3075,6 +3078,7 @@ export class OrderRecordRepository
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
             OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
+            OR "salesDocumentBlockParams" IS DISTINCT FROM $4::jsonb
             ${matchedRuleGuard})`,
       params
     );
@@ -4426,7 +4430,8 @@ export class OrderRecordRepository
       entity.recordStatus === 'ready' ? readLineExpansion(entity.lineExpansion) : null,
       // #3963 - coerced at the mapping boundary: an entry this build does not
       // recognise is absent, never present-and-unrenderable.
-      readPaymentWriteback(entity.paymentWriteback)
+      readPaymentWriteback(entity.paymentWriteback),
+      readSalesDocumentBlockParams(entity.salesDocumentBlockParams)
     );
   }
 

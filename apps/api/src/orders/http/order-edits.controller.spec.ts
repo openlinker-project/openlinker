@@ -115,8 +115,12 @@ describe('OrderEditsController (#3542)', () => {
   });
 
   it('should answer an unknown order or line as 404 and an unusable payload as 400', async () => {
-    edits.editLines.mockRejectedValueOnce(new OrderEditNotFoundError('no line'));
-    edits.editLines.mockRejectedValueOnce(new OrderEditInvalidError('twice'));
+    edits.editLines.mockRejectedValueOnce(
+      new OrderEditNotFoundError('no line', { orderId: 'ol_order_1', orderLineId: 'line-9' })
+    );
+    edits.editLines.mockRejectedValueOnce(
+      new OrderEditInvalidError('twice', 'line-repeated', { orderLineId: 'line-1' })
+    );
     const body = { lines: [{ orderLineId: 'l1', quantity: 0 }] };
 
     await expect(controller.editLines('o', body, user)).rejects.toBeInstanceOf(NotFoundException);

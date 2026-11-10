@@ -40,6 +40,7 @@ import {
   STOCK_STATUS_LABEL,
 } from '../../features/products';
 import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /**
  * What the product's headline stock figures say. Available to promise when the
@@ -158,7 +159,7 @@ export function ProductDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
           title={copy.loadError.title}
-          message={query.error?.message ?? copy.loadError.notFound}
+          message={query.error ? describeApiError(query.error, 'products') : copy.loadError.notFound}
           action={
             <Button
               onClick={() => {
@@ -296,7 +297,7 @@ export function ProductDetailPage(): ReactElement {
         ) : inventoryQuery.error ? (
           <ErrorState
             title={copy.variants.loadError}
-            message={inventoryQuery.error.message}
+            message={describeApiError(inventoryQuery.error, 'products')}
             action={
               <Button
                 onClick={() => {

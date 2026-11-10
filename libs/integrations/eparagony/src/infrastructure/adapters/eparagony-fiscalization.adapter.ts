@@ -297,10 +297,11 @@ export class EparagonyFiscalizationAdapter
    * registration of the sale, which is exactly what the neutral definition of
    * `rejected` requires.
    *
-   * Note the operational consequence, recorded honestly: because the vendor
-   * keeps the failed document under the token, a re-attempt after the operator
-   * fixes the device meets that same failed document. A genuine retry needs a
-   * fresh registration key, i.e. an operator action.
+   * The operational consequence: because the vendor keeps the failed document
+   * under the token, a re-attempt under the same registration key meets that
+   * same failed document. Core therefore treats a refusal as final under its
+   * key and asks again as a NEW attempt under a new key (#3960), which this
+   * adapter turns into a new token with no change of its own.
    */
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,

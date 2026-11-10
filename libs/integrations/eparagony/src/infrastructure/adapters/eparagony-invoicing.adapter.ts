@@ -578,10 +578,10 @@ export class EparagonyInvoicingAdapter
    * cannot issue a second invoice, which is what the neutral definition of
    * `rejected` requires.
    *
-   * The operational consequence, recorded honestly: because the vendor keeps
-   * the failed document under the token, a re-attempt under the same
-   * registration key meets this same failed document. A genuine retry needs a
-   * fresh key.
+   * The operational consequence: because the vendor keeps the failed document
+   * under the token, a re-attempt under the same registration key meets this
+   * same failed document. An operator retry is therefore a NEW attempt under a
+   * new key (#3960), which this adapter turns into a new token unchanged.
    */
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,
@@ -619,7 +619,7 @@ export class EparagonyInvoicingAdapter
       {
         failureMode: 'rejected',
         reason:
-          'The invoicing provider reported an error and did not issue the invoice. Fix the reported problem, then issue again under a new key.',
+          'The invoicing provider reported an error and did not issue the invoice. Fix the reported problem, then issue again.',
       },
     );
   }

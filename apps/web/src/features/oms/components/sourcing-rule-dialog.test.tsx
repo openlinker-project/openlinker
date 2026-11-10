@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import type { SourcingRule } from '../api/sourcing-rules.types';
 import { SourcingRuleDialog, type SourcingRuleLocationOption } from './sourcing-rule-dialog';
 
@@ -293,16 +294,21 @@ describe('SourcingRuleDialog (#3058)', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('surfaces a server refusal verbatim', async () => {
-    // The API's 400s name the actual problem; a generic sentence throws it away.
-    const create = vi
-      .fn()
-      .mockRejectedValue(new ApiError('an unknown location id was supplied', 400, {}));
+  it("surfaces a server refusal in its code's own words", async () => {
+    // The API's 400s name the actual problem through their code; a generic
+    // sentence would throw it away.
+    const create = vi.fn().mockRejectedValue(
+      new ApiError('an unknown location id was supplied', 400, {
+        code: 'SOURCING_RULE_LOCATION_NOT_FOUND',
+      })
+    );
     renderDialog({}, { create });
 
     await userEvent.click(screen.getByRole('button', { name: 'Save rule' }));
 
-    expect(await screen.findByText('an unknown location id was supplied')).toBeInTheDocument();
+    expect(
+      await screen.findByText(getMessages('errors').codes.SOURCING_RULE_LOCATION_NOT_FOUND)
+    ).toBeInTheDocument();
   });
 
   it('patches without a kind when editing', async () => {

@@ -1095,6 +1095,7 @@ describe('OrdersController', () => {
         })
       );
     });
+
     it('should pass the open-return id list to the repository and report the new counts (#4025)', async () => {
       listOpenReturnOrderIds.mockResolvedValue(['ol_order_a', 'ol_order_b']);
       repository.countByHealth.mockResolvedValue({
@@ -1806,6 +1807,7 @@ describe('OrdersController', () => {
         blockReason: null,
         unresolvedReason: null,
         blockDetail: null,
+        blockParams: null,
         otherRecords: [],
         matchedRule: null,
         afterIssueAttention: null,
@@ -1888,6 +1890,7 @@ describe('OrdersController', () => {
           documentKind: 'invoice',
           blockReason: 'missing-tax-rate',
           blockDetail: '2 lines carry no tax rate',
+          blockParams: null,
         })
       );
 
@@ -1906,6 +1909,7 @@ describe('OrdersController', () => {
           blockReason: 'unresolved-routing',
           unresolvedReason: 'ambiguous-connection-no-primary',
           blockDetail: '2 invoicing connections, none marked primary',
+          blockParams: null,
         })
       );
 
@@ -2413,7 +2417,9 @@ describe('OrdersController', () => {
     });
 
     it('should map a foreign or unknown change to 404', async () => {
-      orderCancellation.confirmChange.mockRejectedValue(new OrderCancellationNotFoundError('nope'));
+      orderCancellation.confirmChange.mockRejectedValue(
+        new OrderCancellationNotFoundError('nope', { orderId: 'ol_order_1' })
+      );
 
       await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toBeInstanceOf(
         NotFoundException

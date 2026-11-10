@@ -10,6 +10,13 @@
  * A refusal renders the server's own sentence verbatim; the closed `code` is
  * only used to pick the tone, never to rewrite what the operator reads.
  *
+ * The recipient is an explicit choice (#4066): a checkbox, on by default,
+ * names the buyer's order address that will be used. An empty text field used
+ * to stand for that default, which reads as a missing value rather than a
+ * choice. Checked, the request omits `recipient` so the server resolves the
+ * buyer address exactly as before; unchecked, the operator must type a valid
+ * address. An order with no buyer email offers no such choice at all.
+ *
  * The header reports the LAST attempt for this document from the same history
  * the Activity timeline reads. A failed read shows no status rather than "Not
  * sent yet", which would be a claim about a history we could not load.
@@ -17,11 +24,12 @@
  * @module apps/web/src/features/orders/components
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { FilterCheck } from '../../../shared/ui/filter-check';
 import { Input } from '../../../shared/ui/input';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -29,7 +37,7 @@ import { useSendInvoiceEmailMutation } from '../../invoicing';
 import { useSendReceiptEmailMutation } from '../../fiscalization';
 import { useOrderDocumentEmailsQuery } from '../hooks/use-order-document-emails-query';
 import type { OrderDocumentEmailEntry } from '../api/orders.types';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type EmailLocale = 'pl' | 'en';
 type SentVia = 'provider' | 'openlinker';
@@ -43,6 +51,12 @@ interface SendDocumentEmailProps {
    * confirmed it). Set, the card explains it and offers no send.
    */
   notReadyReason?: string | null;
+  /**
+   * The buyer's email on the order snapshot. `null` when the order carries
+   * none (PII storage off, or the source sent no address), in which case the
+   * operator has to type the recipient.
+   */
+  buyerEmail: string | null;
 }
 
 function MailIcon(): ReactElement {
@@ -82,9 +96,9 @@ export function SendDocumentEmail({
   documentId,
   internalOrderId,
   notReadyReason = null,
+  buyerEmail,
 }: SendDocumentEmailProps): ReactElement | null {
   const copy = useMessages('orders').sendDocumentEmail;
-  const serverSaid = useMessages('orders').common.serverSaid;
   const format = useFormat();
   const isAdmin = useIsAdmin();
   const { showToast } = useToast();
@@ -93,6 +107,19 @@ export function SendDocumentEmail({
   const receiptMutation = useSendReceiptEmailMutation();
   const historyQuery = useOrderDocumentEmailsQuery(isAdmin ? internalOrderId : '');
   const [recipient, setRecipient] = useState('');
+  const [recipientValid, setRecipientValid] = useState(false);
+  const [useBuyerAddress, setUseBuyerAddress] = useState(buyerEmail !== null);
+  const recipientRef = useRef<HTMLInputElement>(null);
+  // Focus only after an operator unchecks the box: the input is still disabled
+  // in the render that handles the click, so focusing there would be a no-op.
+  const focusRecipientRef = useRef(false);
+
+  useEffect(() => {
+    if (!useBuyerAddress && focusRecipientRef.current) {
+      focusRecipientRef.current = false;
+      recipientRef.current?.focus();
+    }
+  }, [useBuyerAddress]);
   const [locale, setLocale] = useState<EmailLocale>('pl');
   const [sentVia, setSentVia] = useState<SentVia | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -103,11 +130,14 @@ export function SendDocumentEmail({
   const last = historyQuery.data ? lastAttemptFor(historyQuery.data, documentId) : null;
   const titleId = `document-email-title-${documentId}`;
   const hintId = `document-email-hint-${documentId}`;
+  const sendsToBuyer = useBuyerAddress && buyerEmail !== null;
+  const canSend = sendsToBuyer || (recipient.trim().length > 0 && recipientValid);
 
   async function handleSend(): Promise<void> {
     setRefusal(null);
-    const trimmed = recipient.trim();
-    const input = { locale, ...(trimmed ? { recipient: trimmed } : {}) };
+    // Omitting `recipient` lets the server use the buyer's order address, the
+    // same payload the pre-#4066 empty field produced.
+    const input = { locale, ...(sendsToBuyer ? {} : { recipient: recipient.trim() }) };
     try {
       const result =
         kind === 'invoice'
@@ -121,9 +151,7 @@ export function SendDocumentEmail({
       });
     } catch (error) {
       setSentVia(null);
-      setRefusal(
-        serverErrorText(serverSaid, error instanceof Error ? error.message : undefined, copy.failed),
-      );
+      setRefusal(describeApiError(error, 'orders'));
     } finally {
       // Failed attempts are recorded too, so the header and timeline refresh either way.
       void queryClient.invalidateQueries({ queryKey: ['orders', 'document-emails'] });
@@ -200,21 +228,52 @@ export function SendDocumentEmail({
         </Alert>
       ) : null}
 
-      <label className="document-email__field">
+      <div className="document-email__field">
         <span className="document-email__label">{copy.recipient}</span>
+        <FilterCheck
+          checked={sendsToBuyer}
+          disabled={pending || buyerEmail === null}
+          label={
+            buyerEmail === null
+              ? copy.useBuyerAddressNone
+              : interpolate(copy.useBuyerAddress, { email: buyerEmail })
+          }
+          onChange={(e) => {
+            const checked = e.target.checked;
+            if (!checked) {
+              focusRecipientRef.current = true;
+              setRecipient('');
+              setRecipientValid(false);
+            }
+            setUseBuyerAddress(checked);
+          }}
+          data-testid="send-document-email-use-buyer"
+        />
+        {buyerEmail === null ? (
+          <p className="document-email__hint" data-testid="send-document-email-no-buyer">
+            {copy.noBuyerEmail}
+          </p>
+        ) : null}
         <Input
+          ref={recipientRef}
           type="email"
-          value={recipient}
-          disabled={pending}
-          placeholder={copy.recipientPlaceholder}
-          aria-describedby={hintId}
-          onChange={(e) => setRecipient(e.target.value)}
+          aria-label={copy.recipient}
+          value={sendsToBuyer ? buyerEmail : recipient}
+          disabled={pending || sendsToBuyer}
+          required={!sendsToBuyer}
+          aria-describedby={sendsToBuyer ? undefined : hintId}
+          onChange={(e) => {
+            setRecipient(e.target.value);
+            setRecipientValid(e.target.validity.valid);
+          }}
           data-testid="send-document-email-recipient"
         />
-      </label>
-      <p id={hintId} className="document-email__hint">
-        {copy.recipientHint}
-      </p>
+      </div>
+      {sendsToBuyer ? null : (
+        <p id={hintId} className="document-email__hint" data-testid="send-document-email-other-hint">
+          {copy.otherAddressHint}
+        </p>
+      )}
 
       <div className="document-email__actions">
         <SegmentedControl<EmailLocale>
@@ -231,7 +290,7 @@ export function SendDocumentEmail({
         <Button
           tone="primary"
           className="button--sm"
-          disabled={pending}
+          disabled={pending || !canSend}
           onClick={() => void handleSend()}
           data-testid="send-document-email-button"
         >

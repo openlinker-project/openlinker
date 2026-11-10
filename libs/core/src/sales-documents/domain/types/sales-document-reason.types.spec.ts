@@ -16,6 +16,7 @@ import {
   SalesDocumentUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
+  readSalesDocumentBlockParams,
 } from './sales-document-reason.types';
 
 describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
@@ -107,5 +108,42 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
     expect(isSalesDocumentGateBlockReason(null)).toBe(false);
     expect(isSalesDocumentGateBlockReason(undefined)).toBe(false);
     expect(isSalesDocumentGateBlockReason(42)).toBe(false);
+  });
+});
+
+describe('readSalesDocumentBlockParams', () => {
+  it('should keep known fields with the right type', () => {
+    expect(
+      readSalesDocumentBlockParams({
+        connectionId: 'conn-1',
+        connectionState: 'missing-capability',
+        missingCapabilities: ['Fiscalization'],
+        lineCount: 2,
+      }),
+    ).toEqual({
+      connectionId: 'conn-1',
+      connectionState: 'missing-capability',
+      missingCapabilities: ['Fiscalization'],
+      lineCount: 2,
+    });
+  });
+
+  it('should drop unknown fields, unknown codes and wrongly typed values', () => {
+    expect(
+      readSalesDocumentBlockParams({
+        connectionState: 'on-fire',
+        poolKind: 'invoice',
+        eligibleCount: '2',
+        primaryCount: -1,
+        extra: 'x',
+      }),
+    ).toEqual({ poolKind: 'invoice' });
+  });
+
+  it('should return null when nothing usable is left', () => {
+    expect(readSalesDocumentBlockParams({ extra: 'x' })).toBeNull();
+    expect(readSalesDocumentBlockParams(null)).toBeNull();
+    expect(readSalesDocumentBlockParams([1, 2])).toBeNull();
+    expect(readSalesDocumentBlockParams('text')).toBeNull();
   });
 });

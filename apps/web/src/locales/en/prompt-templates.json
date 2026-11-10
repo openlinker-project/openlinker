@@ -34,7 +34,6 @@
       "draft": "draft",
       "published": "published"
     },
-    "unknownError": "Unknown error",
     "versionTag": "v{version}"
   },
   "newPromptTemplateDialog": {

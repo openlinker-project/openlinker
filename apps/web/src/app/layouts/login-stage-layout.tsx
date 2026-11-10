@@ -21,6 +21,7 @@
 import { MotionConfig, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import {
   buildDemoLoginCopy,
   buildProductionLoginCopy,
@@ -40,7 +41,6 @@ import { BENCH_PATH, resolveSessionSurface } from '../../shared/auth/session-sur
 import { useSession } from '../../shared/auth/use-session';
 import { useLocale, useMessages } from '../../shared/i18n';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
-import { resetEntrance } from '../../shared/lib/entrance';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { useToast } from '../../shared/ui/toast-provider';
 import { LoginBackdrop } from './login-backdrop';
@@ -167,8 +167,6 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
       signingIn.current = true;
       try {
         await login.mutateAsync(values);
-        // A fresh sign-in plays the content entrance again, even in this tab.
-        resetEntrance();
         return { ok: true };
       } catch (error) {
         signingIn.current = false;
@@ -176,9 +174,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
         const message =
           error instanceof ApiError && (error.isUnauthorized() || error.isForbidden())
             ? copy.failed
-            : error instanceof Error
-              ? error.message
-              : copy.failed;
+            : describeApiError(error, 'login');
         return { ok: false, message };
       }
     },
@@ -198,7 +194,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
         return { ok: true };
       } catch (error) {
         if (error instanceof ApiError && error.isConflict()) return { ok: false, taken: true };
-        return { ok: false, message: error instanceof Error ? error.message : undefined };
+        return { ok: false, message: describeApiError(error, 'login') };
       }
     },
     [register, demoMode]
@@ -279,7 +275,7 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
         onConsentAccept={onConsentAccept}
         onConsentDecline={onConsentDecline}
         consentPending={consent.isPending}
-        consentError={consent.error?.message ?? null}
+        consentError={consent.error ? describeApiError(consent.error, 'login') : null}
       />
     </MotionConfig>
   );

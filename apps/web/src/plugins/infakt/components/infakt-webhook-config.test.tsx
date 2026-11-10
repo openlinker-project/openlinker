@@ -11,6 +11,7 @@ import {
 } from '../../../test/test-utils';
 import type { WebhookStatus } from '../../../features/connections';
 import { InfaktWebhookConfig } from './infakt-webhook-config';
+import { getMessages } from '../../../shared/i18n';
 
 const infaktConnection = { ...sampleConnection, id: 'conn-if-1', platformType: 'infakt' };
 
@@ -165,7 +166,7 @@ describe('InfaktWebhookConfig', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save secret' }));
 
-    expect(await screen.findByText('inFakt rejected the secret')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
     expect(screen.queryByText('Could not save the signing secret', { selector: '.toast__title' })).not.toBeInTheDocument();
   });
 });

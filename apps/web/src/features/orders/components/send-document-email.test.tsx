@@ -8,6 +8,8 @@ import {
 } from '../../../test/test-utils';
 import type { OrderDocumentEmailEntry } from '../api/orders.types';
 import { SendDocumentEmail } from './send-document-email';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 
 function attempt(overrides: Partial<OrderDocumentEmailEntry>): OrderDocumentEmailEntry {
   return {
@@ -26,21 +28,106 @@ function attempt(overrides: Partial<OrderDocumentEmailEntry>): OrderDocumentEmai
 describe('SendDocumentEmail', () => {
   it('should send an invoice and name the sender when the operator is admin', async () => {
     const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: 'a@b.pl', sentVia: 'openlinker' });
-    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" />, {
+    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({ invoicing: { sendEmail } }),
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
-    await userEvent.type(await screen.findByTestId('send-document-email-recipient'), 'a@b.pl');
+    await userEvent.click(await screen.findByTestId('send-document-email-use-buyer'));
+    await userEvent.type(screen.getByTestId('send-document-email-recipient'), 'a@b.pl');
     await userEvent.click(await screen.findByTestId('send-document-email-button'));
 
     expect(sendEmail).toHaveBeenCalledWith('inv_1', { locale: 'pl', recipient: 'a@b.pl' });
     expect(await screen.findByTestId('send-document-email-sent-via')).toHaveTextContent('OpenLinker');
   });
 
+  it('should default to the buyer address on the order and send no recipient', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: null, sentVia: 'provider' });
+    renderWithProviders(
+      <SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />,
+      {
+        apiClient: createMockApiClient({ invoicing: { sendEmail } }),
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
+    );
+
+    const checkbox = await screen.findByTestId('send-document-email-use-buyer');
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toBeEnabled();
+    expect(screen.getByText("Send to the buyer's address on the order (jan@example.com)")).toBeInTheDocument();
+    const input = screen.getByTestId('send-document-email-recipient');
+    expect(input).toBeDisabled();
+    expect(input).toHaveValue('jan@example.com');
+    expect(screen.queryByTestId('send-document-email-other-hint')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Leave empty/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('send-document-email-button'));
+
+    expect(sendEmail).toHaveBeenCalledWith('inv_1', { locale: 'pl' });
+  });
+
+  it('should require a valid typed address once the buyer address is unchecked', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: 'x@y.pl', sentVia: 'openlinker' });
+    renderWithProviders(
+      <SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />,
+      {
+        apiClient: createMockApiClient({ invoicing: { sendEmail } }),
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
+    );
+
+    await userEvent.click(await screen.findByTestId('send-document-email-use-buyer'));
+
+    const input = screen.getByTestId('send-document-email-recipient');
+    const button = screen.getByTestId('send-document-email-button');
+    expect(input).toBeEnabled();
+    expect(input).toHaveValue('');
+    expect(input).toHaveFocus();
+    expect(button).toBeDisabled();
+    expect(screen.getByTestId('send-document-email-other-hint')).toHaveTextContent(
+      'A different address is sent by OpenLinker rather than the invoicing provider.',
+    );
+
+    await userEvent.type(input, 'not-an-email');
+    expect(button).toBeDisabled();
+
+    await userEvent.clear(input);
+    await userEvent.type(input, 'x@y.pl');
+    expect(button).toBeEnabled();
+
+    await userEvent.click(button);
+
+    expect(sendEmail).toHaveBeenCalledWith('inv_1', { locale: 'pl', recipient: 'x@y.pl' });
+  });
+
+  it('should require a typed address when the order has no buyer email', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: 'x@y.pl', sentVia: 'openlinker' });
+    renderWithProviders(
+      <SendDocumentEmail kind="fiscal-receipt" documentId="fr_1" internalOrderId="ord_1" buyerEmail={null} />,
+      {
+        apiClient: createMockApiClient({ fiscalization: { sendEmail } }),
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
+    );
+
+    const checkbox = await screen.findByTestId('send-document-email-use-buyer');
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).toBeDisabled();
+    expect(screen.getByTestId('send-document-email-no-buyer')).toHaveTextContent('This order has no buyer email.');
+    const input = screen.getByTestId('send-document-email-recipient');
+    expect(input).toBeEnabled();
+    expect(input).toBeRequired();
+    expect(screen.getByTestId('send-document-email-button')).toBeDisabled();
+
+    await userEvent.type(input, 'x@y.pl');
+    await userEvent.click(screen.getByTestId('send-document-email-button'));
+
+    expect(sendEmail).toHaveBeenCalledWith('fr_1', { locale: 'pl', recipient: 'x@y.pl' });
+  });
+
   it('should send in the language picked on the toggle', async () => {
     const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: null, sentVia: 'provider' });
-    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" />, {
+    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({ invoicing: { sendEmail } }),
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
@@ -53,7 +140,7 @@ describe('SendDocumentEmail', () => {
 
   it('should send a receipt through the fiscalization route', async () => {
     const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: null, sentVia: 'openlinker' });
-    renderWithProviders(<SendDocumentEmail kind="fiscal-receipt" documentId="fr_1" internalOrderId="ord_1" />, {
+    renderWithProviders(<SendDocumentEmail kind="fiscal-receipt" documentId="fr_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({ fiscalization: { sendEmail } }),
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
@@ -63,25 +150,28 @@ describe('SendDocumentEmail', () => {
     expect(sendEmail).toHaveBeenCalledWith('fr_1', { locale: 'pl' });
   });
 
-  it('should render the server refusal verbatim', async () => {
-    const sendEmail = vi.fn().mockRejectedValue(new Error('This invoice has no document to attach yet.'));
-    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" />, {
+  it('should render the copy for the refusal code, not the server sentence', async () => {
+    const message = 'This invoice has no document to attach yet.';
+    const sendEmail = vi
+      .fn()
+      .mockRejectedValue(new ApiError(message, 422, { code: 'no-document', message }));
+    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({ invoicing: { sendEmail } }),
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
     await userEvent.click(await screen.findByTestId('send-document-email-button'));
 
-    expect(await screen.findByTestId('send-document-email-error')).toHaveTextContent(
-      'This invoice has no document to attach yet.',
-    );
+    const error = await screen.findByTestId('send-document-email-error');
+    expect(error).toHaveTextContent(getMessages('errors').codes['no-document']);
+    expect(error).not.toHaveTextContent(message);
   });
 
   it('should show the last successful send for this document when there is one', async () => {
     const listDocumentEmails = vi
       .fn()
       .mockResolvedValue([attempt({}), attempt({ id: 'e2', documentId: 'other', outcome: 'failed', createdAt: '2026-10-30T00:00:00.000Z' })]);
-    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" />, {
+    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({ orders: { listDocumentEmails } }),
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
@@ -93,7 +183,7 @@ describe('SendDocumentEmail', () => {
 
   it('should report a failed last attempt', async () => {
     const listDocumentEmails = vi.fn().mockResolvedValue([attempt({ outcome: 'failed', sentVia: null })]);
-    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" />, {
+    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({ orders: { listDocumentEmails } }),
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
@@ -109,6 +199,7 @@ describe('SendDocumentEmail', () => {
         kind="invoice"
         documentId="inv_1"
         internalOrderId="ord_1"
+        buyerEmail="jan@example.com"
         notReadyReason="Available once the tax authority confirms the invoice."
       />,
       {
@@ -125,7 +216,7 @@ describe('SendDocumentEmail', () => {
   });
 
   it('should render nothing for a non-admin', async () => {
-    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" />, {
+    renderWithProviders(<SendDocumentEmail kind="invoice" documentId="inv_1" internalOrderId="ord_1" buyerEmail="jan@example.com" />, {
       apiClient: createMockApiClient({}),
       sessionAdapter: createAuthenticatedSessionAdapter({
         id: 'u2',

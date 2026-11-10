@@ -8,13 +8,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { describeSourcingRuleError, readSourcingRuleConflict } from './sourcing-rule-conflict';
 
 describe('readSourcingRuleConflict', () => {
   it('reads the reorder mismatch ids the server emitted as fields', () => {
     const conflict = readSourcingRuleConflict(
       new ApiError('list did not name the active rules', 409, {
-        message: 'list did not name the active rules',
+        code: 'SOURCING_RULE_REORDER_MISMATCH',
         missingRuleIds: ['rule_2'],
         unknownRuleIds: ['rule_9'],
       })
@@ -22,7 +23,7 @@ describe('readSourcingRuleConflict', () => {
 
     expect(conflict?.missingRuleIds).toEqual(['rule_2']);
     expect(conflict?.unknownRuleIds).toEqual(['rule_9']);
-    expect(conflict?.message).toBe('list did not name the active rules');
+    expect(conflict?.message).toBe(getMessages('errors').codes.SOURCING_RULE_REORDER_MISMATCH);
   });
 
   it('reports null ids for a 409 that carries none', () => {
@@ -56,13 +57,15 @@ describe('readSourcingRuleConflict', () => {
 });
 
 describe('describeSourcingRuleError', () => {
-  it('uses the server sentence for a 400, which names the actual problem', () => {
+  it("reads the code's copy for a 400, which names the actual problem", () => {
     expect(
       describeSourcingRuleError(
-        new ApiError('priorityLocationIds is only valid on a priority rule', 400, {}),
+        new ApiError('priorityLocationIds is only valid on a priority rule', 400, {
+          code: 'SOURCING_RULE_PRIORITY_LOCATIONS_UNUSED',
+        }),
         'fallback'
       )
-    ).toBe('priorityLocationIds is only valid on a priority rule');
+    ).toBe(getMessages('errors').codes.SOURCING_RULE_PRIORITY_LOCATIONS_UNUSED);
   });
 
   it('falls back only when the error says nothing usable', () => {

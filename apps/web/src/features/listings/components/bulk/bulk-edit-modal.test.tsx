@@ -1018,6 +1018,42 @@ describe('BulkEditModal', () => {
       expect(screen.getByText('No catalog match')).toBeInTheDocument();
     });
 
+    // #4003: a plugin blocker used to fall to the nameless "needs attention".
+    it('should name a plugin blocker in the variant panel when the row carries one', () => {
+      const row = makeMultiRow();
+      const blockedRow: BulkWizardRow = {
+        ...row,
+        variants: row.variants.map((v) =>
+          v.variantId === 'var_m'
+            ? { ...v, blockers: ['allegro:needs-product-parameters', 'acme:unknown-check'] }
+            : v,
+        ),
+      };
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={blockedRow}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={() => undefined}
+        />,
+      );
+
+      expect(screen.getByText('add product params')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Allegro needs product parameters to create a product card for this variant.',
+        ),
+      ).toBeInTheDocument();
+      // An id no descriptor knows still says which check it is.
+      expect(screen.getByText('Needs attention: acme:unknown-check')).toBeInTheDocument();
+      expect(screen.queryByText('Needs attention')).not.toBeInTheDocument();
+    });
+
     it('shows the variant category without expanding the disclosure (#2240)', () => {
       renderWithProviders(
         <BulkEditModal

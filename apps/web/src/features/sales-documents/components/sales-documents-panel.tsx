@@ -40,6 +40,7 @@ import {
   type SalesDocumentRow,
 } from '../api/sales-documents.types';
 import { interpolate, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // Mirrors `apps/web/src/pages/connections/connections-list-page.tsx`'s own
 // `toStatusTone` — kept as a small duplicate rather than a shared export,
@@ -116,7 +117,7 @@ export function SalesDocumentsPanel(): ReactElement {
     return (
       <ErrorState
         title={copy.loadError}
-        message={connectionsQuery.error.message}
+        message={describeApiError(connectionsQuery.error, 'sales-documents')}
         action={<Button onClick={() => void connectionsQuery.refetch()}>{copy.retry}</Button>}
       />
     );

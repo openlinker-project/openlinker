@@ -29,21 +29,18 @@
  * @module apps/api/src/fiscalization/http
  */
 import {
-  BadGatewayException,
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   ServiceUnavailableException,
+  type HttpException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -59,6 +56,7 @@ import {
   fiscalRegistrationIdempotencyKey,
   OrderAlreadyHasInvoiceException,
   OrderAlreadyRegisteredException,
+  FiscalRegistrationNotRestartableException,
   UnsupportedFiscalPriceTreatmentError,
   toRegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
@@ -101,6 +99,7 @@ import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-respons
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { toDocumentEmailException } from '../../common/http/document-email-refusal';
@@ -280,7 +279,9 @@ export class FiscalizationController {
   ): Promise<AcceptedFiscalRegistrationResponseDto> {
     const record = await this.orders.getOrderRecord(dto.orderId);
     if (!record) {
-      throw new NotFoundException(`Order not found: ${dto.orderId}`);
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_NOT_FOUND', `Order not found: ${dto.orderId}`, {
+        orderId: dto.orderId,
+      });
     }
 
     const order = this.rehydrateOrder(record.internalOrderId, record);
@@ -375,7 +376,7 @@ export class FiscalizationController {
     @Query('orderId') orderId: string,
   ): Promise<FiscalRegistrationResponseDto[]> {
     if (typeof orderId !== 'string' || orderId.trim().length === 0) {
-      throw new BadRequestException('orderId is required');
+      throw orderIdRequired();
     }
     const records = await this.fiscalRegistrations.getByOrderId(orderId.trim());
     const now = new Date();
@@ -427,7 +428,7 @@ export class FiscalizationController {
   ): Promise<FiscalRegistrationProgressResponseDto> {
     const trimmed = typeof orderId === 'string' ? orderId.trim() : '';
     if (trimmed.length === 0) {
-      throw new BadRequestException('orderId is required');
+      throw orderIdRequired();
     }
     const view = await this.fiscalRegistrations.getRegistrationProgress(trimmed, connectionId);
     return {
@@ -537,8 +538,11 @@ export class FiscalizationController {
       return orderFromReadySnapshot(record, { requireBuyer: false });
     } catch (error) {
       if (error instanceof OrderSnapshotUnavailableError) {
-        throw new UnprocessableEntityException(
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'FISCAL_ORDER_DETAILS_UNAVAILABLE',
           `Order ${orderId} details are unavailable for fiscal registration`,
+          { orderId },
         );
       }
       throw error;
@@ -547,7 +551,7 @@ export class FiscalizationController {
 
   private toHttpException(error: unknown): Error {
     if (error instanceof MissingIdempotencyKeyException) {
-      return new BadRequestException(error.message);
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'FISCAL_IDEMPOTENCY_KEY_MISSING', error.message);
     }
     if (error instanceof BundleSplitUnknownError) {
       return new UnprocessableEntityException({
@@ -558,32 +562,67 @@ export class FiscalizationController {
         lineId: error.lineId,
       });
     }
-    if (
-      error instanceof InvalidFiscalLineError ||
-      error instanceof UnsupportedFiscalPriceTreatmentError
-    ) {
-      return new UnprocessableEntityException(error.message);
+    if (error instanceof InvalidFiscalLineError) {
+      return codedHttpError(HttpStatus.UNPROCESSABLE_ENTITY, 'FISCAL_LINE_INVALID', error.message);
+    }
+    if (error instanceof UnsupportedFiscalPriceTreatmentError) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'FISCAL_PRICE_TREATMENT_UNSUPPORTED',
+        error.message,
+      );
     }
     if (error instanceof FiscalRegistrationRecordNotFoundException) {
-      return new NotFoundException(error.message);
+      return codedHttpError(HttpStatus.NOT_FOUND, 'FISCAL_REGISTRATION_NOT_FOUND', error.message);
     }
     // #2522: the provider could not be ASKED. Upstream, not us, and retryable -
     // so 502 rather than a 500 an operator can only read as "OpenLinker broke",
     // and deliberately NOT one of the four reconcile outcomes.
     if (error instanceof FiscalReconcileCheckFailedException) {
-      return new BadGatewayException(error.message);
+      return codedHttpError(HttpStatus.BAD_GATEWAY, 'FISCAL_RECONCILE_CHECK_FAILED', error.message, {
+        recordId: error.recordId,
+        connectionId: error.connectionId,
+      });
     }
-    if (
-      error instanceof FiscalRegistrationNotInDoubtException ||
-      error instanceof OrderAlreadyRegisteredException ||
-      // #2157, ADR-041 §3a/3b: the order already has an INVOICE — a different
-      // sales-document kind — on an invoicing connection; also a 409.
-      error instanceof OrderAlreadyHasInvoiceException ||
-      // #2157: a concurrent registration/issuance holds the per-order lock and
-      // has persisted nothing yet — retryable, same 409 treatment.
-      error instanceof FiscalRegistrationContendedException
-    ) {
-      return new ConflictException(error.message);
+    if (error instanceof FiscalRegistrationNotInDoubtException) {
+      return codedHttpError(HttpStatus.CONFLICT, 'FISCAL_REGISTRATION_NOT_IN_DOUBT', error.message);
+    }
+    if (error instanceof OrderAlreadyRegisteredException) {
+      return codedHttpError(
+        HttpStatus.CONFLICT,
+        'ORDER_ALREADY_HAS_FISCAL_RECEIPT',
+        error.message,
+        undefined,
+        {
+          registeringConnectionId: error.registeringConnectionId,
+          blockingRecordId: error.blockingRecordId,
+          blockingStatus: error.blockingStatus,
+        },
+      );
+    }
+    // #2157, ADR-041 §3a/3b: the order already has an INVOICE — a different
+    // sales-document kind — on an invoicing connection; also a 409.
+    if (error instanceof OrderAlreadyHasInvoiceException) {
+      return codedHttpError(HttpStatus.CONFLICT, 'ORDER_ALREADY_INVOICED', error.message, undefined, {
+        issuingConnectionId: error.invoicingConnectionId,
+        blockingInvoiceId: error.blockingInvoiceId,
+        blockingStatus: error.blockingStatus,
+      });
+    }
+    // #2157: a concurrent registration/issuance holds the per-order lock and
+    // has persisted nothing yet — retryable, same 409 treatment.
+    if (error instanceof FiscalRegistrationContendedException) {
+      return codedHttpError(HttpStatus.CONFLICT, 'FISCAL_REGISTRATION_CONTENDED', error.message, {
+        orderId: error.orderId,
+      });
+    }
+    // #3960: the request would change nothing, so it is refused rather than
+    // answered with a 202 an operator reads as success.
+    if (error instanceof FiscalRegistrationNotRestartableException) {
+      return codedHttpError(HttpStatus.CONFLICT, 'FISCAL_REGISTRATION_NOT_RESTARTABLE', error.message, {
+        orderId: error.orderId,
+        recordId: error.recordId,
+      });
     }
     // Capability resolution / enablement faults are a connection CONFIGURATION
     // problem, not a registration rejection. Propagate them uncaught so the
@@ -618,6 +657,8 @@ export class FiscalizationController {
       orderId: record.orderId,
       providerType: record.providerType,
       idempotencyKey: record.idempotencyKey,
+      attempt: record.attempt,
+      previousAttemptId: record.previousAttemptId,
       status: record.status,
       providerReference: record.providerReference,
       documentReference: record.documentReference,
@@ -645,4 +686,10 @@ export class FiscalizationController {
       updatedAt: record.updatedAt.toISOString(),
     };
   }
+}
+
+function orderIdRequired(): HttpException {
+  return codedHttpError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', 'orderId is required', undefined, {
+    fields: [{ path: 'orderId', code: 'isNotEmpty' }],
+  });
 }

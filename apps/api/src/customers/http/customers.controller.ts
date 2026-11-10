@@ -16,16 +16,7 @@
  * `apps/api/src/auth/packer-exclusion.spec.ts` — a comment here would be
  * discharged the moment somebody adds a route.
  */
-import {
-  Controller,
-  Get,
-  Query,
-  Param,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-  Inject,
-} from '@nestjs/common';
+import { Controller, Get, Query, Param, HttpCode, HttpStatus, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import {
   CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
@@ -40,6 +31,7 @@ import { CountCustomersQueryDto } from './dto/count-customers-query.dto';
 import type { CustomerProjectionFilters } from '@openlinker/core/customers';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 /**
  * The one DTO-to-filters mapping this list has (#2957 review round 4, I2).
@@ -143,7 +135,14 @@ export class CustomersController {
   async getCustomer(@Param('id') id: string): Promise<CustomerProjectionResponseDto> {
     const customer = await this.customerRepository.findById(id);
     if (!customer) {
-      throw new NotFoundException(`Customer not found: ${id}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'CUSTOMER_NOT_FOUND',
+        `Customer not found: ${id}`,
+        {
+          customerId: id,
+        }
+      );
     }
 
     const addresses = await this.customerRepository.findAddressesByCustomerId(id);

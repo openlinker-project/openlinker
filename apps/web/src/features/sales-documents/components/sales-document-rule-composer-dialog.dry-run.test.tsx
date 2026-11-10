@@ -14,6 +14,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 import { SalesDocumentRuleComposerDialog } from './sales-document-rule-composer-dialog';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 
 function renderComposer(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const apiClient = createMockApiClient({
@@ -179,7 +181,9 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
 
   it('should render the mutation error rather than swallowing it', async () => {
     const user = userEvent.setup();
-    const dryRunRule = vi.fn().mockRejectedValue(new Error('boom'));
+    const dryRunRule = vi
+      .fn()
+      .mockRejectedValue(new ApiError('boom', 400, { code: 'SALES_DOCUMENT_CONDITION_INVALID' }));
     renderComposer({ salesDocumentRules: { dryRunRule } });
     const root = await dialog();
 
@@ -190,6 +194,8 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
     await user.type(within(panel).getByLabelText('Sample order currency'), 'EUR');
     await user.click(within(panel).getByTestId('rule-run-sample-order-test'));
 
-    expect(await within(root).findByTestId('rule-test-sample-order-error')).toHaveTextContent('boom');
+    expect(await within(root).findByTestId('rule-test-sample-order-error')).toHaveTextContent(
+      getMessages('errors').codes.SALES_DOCUMENT_CONDITION_INVALID
+    );
   });
 });

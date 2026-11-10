@@ -644,6 +644,9 @@ describe('ShipmentController', () => {
 
       expect(err).toBeInstanceOf(BadGatewayException);
       expect((err as BadGatewayException).getResponse()).toEqual({
+        statusCode: 502,
+        code: 'SHIPPING_PROVIDER_REJECTED',
+        params: { provider: 'inpost', providerCode: 'target_point' },
         message: 'validation errors',
         providerCode: 'target_point',
         details: { fieldErrors: { custom_attributes: [{ target_point: ['does_not_exist'] }] } },
@@ -1000,6 +1003,9 @@ describe('ShipmentController', () => {
         .catch((e: unknown) => e);
 
       expect((err as BadGatewayException).getResponse()).toEqual({
+        statusCode: 502,
+        code: 'SHIPPING_PROVIDER_REJECTED',
+        params: { provider: 'dpd', providerCode: 'sender_postcode' },
         message: 'postcode 22-213 invalid',
         providerCode: 'sender_postcode',
         details: { fieldErrors: { sender: ['postcode 22-213 invalid'] } },
@@ -1024,6 +1030,9 @@ describe('ShipmentController', () => {
         .catch((e: unknown) => e);
 
       expect((err as BadGatewayException).getResponse()).toEqual({
+        statusCode: 502,
+        code: 'SHIPPING_PROVIDER_REJECTED',
+        params: { provider: 'dpd', providerCode: 'sender_postcode' },
         message: REDACTED_ERROR_MESSAGE,
         providerCode: 'sender_postcode',
         details: undefined,
