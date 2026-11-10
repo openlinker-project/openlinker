@@ -54,3 +54,5 @@ export type { ShopAttribute, ShopAttributeTerm } from './api/listings.types';
 // plugin consumes for `WoocommercePublishWizard`) would create a module-init
 // cycle (registry → woo plugin → listings barrel → launcher → registry). The
 // listings page imports the launcher via its direct component path instead.
+export { useListingsQuery } from './hooks/use-listings-query';
+export type { OfferLifecycle } from './api/listings.types';

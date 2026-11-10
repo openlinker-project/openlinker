@@ -922,13 +922,21 @@ function ProductRow({
           )}
           <div className="t">
             <b>{row.product?.name ?? copy.row.loading}</b>
+            {bundle ? (
+              <span className="cx-tag" data-testid="bundle-row-tag">
+                <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                </svg>
+                {plural(bundle.components.length, bundleCopy.marker)}
+              </span>
+            ) : null}
             <small>
               {row.primaryVariant?.sku ?? ''}
               {row.primaryVariant?.sku ? ' · ' : ''}
               {noVariants
                 ? copy.row.noVariants
                 : bundle
-                  ? plural(bundle.components.length, bundleCopy.marker)
+                  ? bundleCopy.noOwnEan
                   : plural(row.variants.length, copy.row.variantCount)}
             </small>
           </div>

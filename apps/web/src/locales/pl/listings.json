@@ -1336,6 +1336,7 @@
       "ownOffer": "własna oferta",
       "ownOfferWithId": "własna oferta {id}"
     },
+    "noOwnEan": "bez własnego EAN",
     "publishComponent": "Opublikuj składnik",
     "quantity": "×{n}",
     "useFirstComponentCategory": "Użyj kategorii pierwszego składnika"

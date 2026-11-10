@@ -17,8 +17,7 @@ import { useMessages, formatPlural, interpolate, useFormat, useLocale } from '..
 import { ComposerSection } from '../../../shared/ui/composer-section';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { useConnectionsQuery } from '../../connections';
-import { useListingsQuery } from '../../listings/hooks/use-listings-query';
-import type { OfferLifecycle } from '../../listings/api/listings.types';
+import { useListingsQuery, type OfferLifecycle } from '../../listings';
 import { computeBundleAvailability } from '../lib/bundle-availability';
 import { splitBundlePrice } from '../lib/bundle-price-split';
 import { BundleComponentList } from './bundle-component-list';
