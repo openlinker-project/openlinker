@@ -7,7 +7,17 @@
  *
  * @module apps/api/src/inventory/http
  */
-import { Controller, Get, HttpCode, HttpStatus, Inject, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   INVENTORY_MOVEMENT_SERVICE_TOKEN,
@@ -28,6 +38,10 @@ import {
   ListInventoryMovementsQueryDto,
   MovementFiltersQueryDto,
 } from './dto/list-inventory-movements-query.dto';
+import {
+  ChannelQuantityPushesResponseDto,
+  toChannelQuantityPushResponseDto,
+} from './dto/channel-quantity-push-response.dto';
 
 function toFilters(query: MovementFiltersQueryDto): InventoryMovementFilters {
   return {
@@ -100,5 +114,27 @@ export class InventoryMovementsController {
     @Query() query: MovementFiltersQueryDto
   ): Promise<PaginatedTotalResponseDto> {
     return { total: await this.movements.countMovements(toFilters(query)) };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get(':movementId/pushes')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'What OpenLinker sent each channel for one stock movement (#4062)',
+    description:
+      'The quantity writes that expressed this movement, oldest first. An empty list means ' +
+      'nothing was sent: the change was refused, the variant is listed nowhere, or the movement ' +
+      'is a reservation.',
+  })
+  @ApiResponse({ status: 200, type: ChannelQuantityPushesResponseDto })
+  @ApiResponse({ status: 404, description: 'No movement with this id' })
+  async listChannelPushes(
+    @Param('movementId', new ParseUUIDPipe()) movementId: string
+  ): Promise<ChannelQuantityPushesResponseDto> {
+    const pushes = await this.movements.listChannelPushes(movementId);
+    if (pushes === null) {
+      throw new NotFoundException(`Stock movement ${movementId} not found`);
+    }
+    return { items: pushes.map(toChannelQuantityPushResponseDto) };
   }
 }

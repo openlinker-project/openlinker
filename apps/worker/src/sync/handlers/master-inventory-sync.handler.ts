@@ -52,7 +52,9 @@ export class MasterInventorySyncHandler implements SyncJobHandler {
     try {
       const result = await this.masterInventorySync.syncFromMasterByExternalId(
         job.connectionId,
-        payload.externalId
+        payload.externalId,
+        // One product, one run: the job itself names the run its movements share.
+        { syncRunId: job.id }
       );
 
       // The staleness prune was withheld because a second InventoryMaster

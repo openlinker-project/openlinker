@@ -89,6 +89,8 @@ const harness = createIntegrationTestHarness({
     // #3565 — the stock movement ledger. No foreign key (an audit record
     // outlives what it names), so the CASCADE walk cannot reach it.
     'inventory_movements',
+    // #4062 — what OpenLinker sent each channel. No foreign key either.
+    'channel_quantity_pushes',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the

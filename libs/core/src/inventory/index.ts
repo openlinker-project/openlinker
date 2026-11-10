@@ -86,6 +86,7 @@ export {
   MasterInventorySyncResult,
   MasterInventoryBatchSyncFailure,
   MasterInventoryBatchSyncResult,
+  MasterInventorySyncOptions,
 } from './application/services/master-inventory-sync.service.interface';
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 export { IInventoryQueryService } from './application/services/inventory-query.service.interface';
@@ -350,6 +351,15 @@ export {
   isInventoryMovementAttachment,
   INVENTORY_MOVEMENT_RETENTION_DAYS_DEFAULT,
 } from './domain/types/inventory-movement.types';
+
+// What OpenLinker sent each channel (#4062)
+export {
+  ChannelQuantityPushOutcomeValues,
+  ChannelQuantityPushOutcome,
+  ChannelQuantityPush,
+  AppendChannelQuantityPushInput,
+  LastChannelQuantityPush,
+} from './domain/types/channel-quantity-push.types';
 
 // Offer quantity write-order guard (#2617)
 export {
