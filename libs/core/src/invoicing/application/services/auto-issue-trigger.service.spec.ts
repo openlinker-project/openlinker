@@ -416,6 +416,7 @@ describe('AutoIssueTriggerService', () => {
         undefined,
         null,
         null,
+        undefined,
         { batchRun: { connectionId: 'conn-inv-1', documentKinds: ['invoice'] } },
       );
       expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
@@ -444,6 +445,7 @@ describe('AutoIssueTriggerService', () => {
         undefined,
         null,
         null,
+        undefined,
         { batchRun },
       );
       expect(syncJobs.schedule).not.toHaveBeenCalled();
