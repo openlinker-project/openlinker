@@ -38,6 +38,40 @@
       "message": "This page changes how hard OpenLinker works your shop - it requires an admin session.",
       "title": "Admin role required"
     },
+    "boundReasons": {
+      "catalogueSweepBudget": {
+        "absolute": "A guard against a mistyped number, not a limit your shop sets. Everything one run picks up is held in memory at once.",
+        "recommended": "At 2000 products, one run takes about 3 minutes of the 20 minutes between runs. Above that, raising this number mostly makes work wait in a queue instead of finishing sooner."
+      },
+      "deletionAuditBudget": {
+        "absolute": "The same guard against a mistyped number as the product sweep.",
+        "recommended": "At the default of 100, a shop with 100 000 products takes about 42 days to check every product for deletion, and a deleted product keeps selling until it is reached."
+      },
+      "inventoryMovementRetentionDays": {
+        "absolute": "Five years is the longest stock history worth keeping here; a longer window is almost always a mistyped number.",
+        "recommended": "How long a stock movement is kept for the history view. A busy catalogue writes one row per stock change, so beyond about two years the table is mostly storage cost."
+      },
+      "inventorySweepBudget": {
+        "absolute": "The same guard against a mistyped number as the product sweep.",
+        "recommended": "At the default of 100, a shop with 100 000 products takes about 10 days to re-check every stock level. 2000 brings that down to hours, and matches what the product sweep is allowed."
+      },
+      "stockStaleSyncThresholdHours": {
+        "absolute": "One week - past that the flag would never fire on a sync that stopped last weekend.",
+        "recommended": "How long a stock figure may go without a fresh read from the source system before the stock view flags it as stale. Beyond two days the flag stops catching a sync that has quietly stopped."
+      },
+      "sweepPageSize": {
+        "absolute": "Every product asked for in one request makes that request's web address longer. Around 500 the address is about 4 KB, which web servers accept; several times that is refused.",
+        "recommended": "100 is the page size a PrestaShop shop serves best, and the size this was measured against. Asking for more saves few requests and makes one failed request cost more work."
+      },
+      "syncJobDeadRetentionDays": {
+        "absolute": "No value above 365 days is allowed.",
+        "recommended": "How long a permanently failed sync job is kept as evidence that work was lost. It is kept longer than a completed job by default, because it is the only record of that work. Allowed range: 30-365 days."
+      },
+      "syncJobRetentionDays": {
+        "absolute": "No value above 365 days is allowed.",
+        "recommended": "How long a completed sync job is kept for troubleshooting and to protect against a repeated retry. Allowed range: 30-365 days."
+      }
+    },
     "catalogue": {
       "assumedCadence": "every 20 min (assumed)",
       "budget": {
@@ -79,6 +113,15 @@
       "title": "Unable to load sync pacing"
     },
     "eyebrow": "Settings",
+    "fieldErrors": {
+      "absolute": "The most allowed here is {limit}.",
+      "cadenceFormat": "Enter a cron expression with 5 or 6 fields.",
+      "cadenceInvalid": "This is not a valid cron expression.",
+      "cadenceTooRare": "The deletion check must run at least once every 7 days.",
+      "min": "Enter a whole number of at least {limit}.",
+      "notANumber": "Enter a number.",
+      "recommended": "This is above the recommended {limit}. Confirm it to save."
+    },
     "footer": {
       "retentionChanged": "Job retention changed",
       "retentionSave": "Save retention",

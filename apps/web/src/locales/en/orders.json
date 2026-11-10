@@ -2537,6 +2537,34 @@
     "withdrawal": "Buyer changed their mind",
     "wrongItem": "Wrong item was sent"
   },
+  "salesDocumentBlockDetail": {
+    "candidates": "Connections that could issue it: {n}.",
+    "capabilities": {
+      "Fiscalization": "receipts",
+      "Invoicing": "invoices",
+      "or": "{a} or {b}"
+    },
+    "connectionState": {
+      "archived": "It is archived.",
+      "changed": "It changed while this order was being checked.",
+      "disabled": "It is disabled.",
+      "error": "It is in an error state.",
+      "missing-capability": "It is not set up to issue {documents}.",
+      "needs-reauth": "It needs to be signed in again.",
+      "not-found": "It no longer exists.",
+      "unreadable": "It could not be read."
+    },
+    "firstLine": "First product: {ref}.",
+    "invoiceUnsupported": "Connection {connectionId} cannot issue invoices.",
+    "kindUnsupported": "Connection {connectionId} is set to a document kind OpenLinker cannot issue ({documentKind}).",
+    "linesWithoutRate": "Lines without a tax rate: {lineCount} of {totalLines}.",
+    "noKindDeclared": "Connections that can issue documents: {n}. None says which kind it issues.",
+    "nonePrimary": "Connections that could issue it: {n}. None is marked primary.",
+    "routed": "Routing sends this order to connection {connectionId}.",
+    "routedByRule": "Rule {ruleId} sends this order to connection {connectionId}.",
+    "severalPrimary": "Connections that could issue it: {n}. More than one is marked primary.",
+    "shippingWithoutRate": "The shipping charge cannot be given a tax rate."
+  },
   "salesDocumentCell": {
     "action": {
       "fiscalReceipt": "Register receipt",

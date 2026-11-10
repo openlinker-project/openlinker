@@ -396,6 +396,41 @@ describe('Order health summary (integration)', () => {
       expect(third!.updatedAt.getTime()).toBeGreaterThanOrEqual(firstTouched);
     });
 
+    it('updateSalesDocumentBlock persists the block params, and the same params are a no-op (#3866)', async () => {
+      const ds = harness.getDataSource();
+      const seeded = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        syncStatus: [],
+      });
+      const block = {
+        reason: 'unresolved-routing' as const,
+        unresolvedReason: 'ambiguous-connection-no-primary' as const,
+        detail: '2 invoicing connections, none marked primary',
+        params: { eligibleCount: 2, primaryCount: 0, poolKind: 'invoice' as const },
+      };
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, block, {
+        action: 'set',
+        matchedRuleId: null,
+      });
+      const first = await repository.findById(seeded.internalOrderId);
+      expect(first?.salesDocumentBlockParams).toEqual(block.params);
+
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, block, {
+        action: 'set',
+        matchedRuleId: null,
+      });
+      const second = await repository.findById(seeded.internalOrderId);
+      expect(second!.updatedAt.getTime()).toBe(first!.updatedAt.getTime());
+
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
+      const cleared = await repository.findById(seeded.internalOrderId);
+      expect(cleared?.salesDocumentBlockParams).toBeNull();
+    });
+
     it('updateSalesDocumentBlock sets and clears without touching other columns', async () => {
       const ds = harness.getDataSource();
       const seeded = await createTestOrderRecord(ds, {

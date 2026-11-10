@@ -1559,6 +1559,17 @@
     "timeoutWhole": "Request timeout must be a whole number of milliseconds",
     "tokenRequired": "Bridge token is required - {product}'s bridge rejects every request without it."
   },
+  "testOutcome": {
+    "failed": "The test failed.",
+    "misconfigured": "Some settings or credentials are missing or invalid.",
+    "not-found": "Nothing was found at this address. Check the shop or API address.",
+    "ok": "The connection works.",
+    "timeout": "The platform did not answer in time.",
+    "unauthorized": "The platform refused the credentials. Check the key or password.",
+    "unexpected-status": "The platform answered in an unexpected way.",
+    "unreachable": "The platform could not be reached. Check the address and that it is online.",
+    "unsupported": "This kind of connection cannot be tested yet."
+  },
   "woocommerceSetupForm": {
     "beforeYouStart": {
       "body": "In your {platform} admin, go to <strong>{platform} → Settings → Advanced → REST API</strong> and generate a key with <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret below - they are only shown once.",

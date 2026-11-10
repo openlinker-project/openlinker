@@ -9,8 +9,10 @@
  * A validation refusal names each invalid field by its path into the request
  * body (#3861), and the domain refusal (`OPERATIONAL_SETTING_INVALID`) names
  * its field in `params.field`, so routing a message to its control is a match
- * on a name rather than a guess. The sentence itself comes from the shared
- * error copy in the operator's language. Anything that names no known field is
+ * on a name rather than a guess. When the domain refusal also names the rule
+ * the value broke and its limit (#3866), the sentence says that, with the
+ * setting's own reason; otherwise it comes from the shared error copy, in the
+ * operator's language either way. Anything that names no known field is
  * returned as a form-level message instead of being dropped: an unattributed
  * error is still an error, and swallowing it is worse than showing it once at
  * the top.
@@ -20,7 +22,44 @@
 import { ApiError } from '../../../shared/api/api-error';
 import { describeFieldError } from '../../../shared/api/apply-field-errors';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { OperationalSettingField } from '../api/operational-settings.types';
+
+/** The rules the API names on `OPERATIONAL_SETTING_INVALID`, to their copy key. */
+const RULE_COPY_KEY = {
+  'not-a-number': 'notANumber',
+  min: 'min',
+  absolute: 'absolute',
+  recommended: 'recommended',
+  'cadence-format': 'cadenceFormat',
+  'cadence-invalid': 'cadenceInvalid',
+  'cadence-too-rare': 'cadenceTooRare',
+} as const;
+
+function isKnownRule(rule: unknown): rule is keyof typeof RULE_COPY_KEY {
+  return typeof rule === 'string' && Object.prototype.hasOwnProperty.call(RULE_COPY_KEY, rule);
+}
+
+/**
+ * The refusal phrased from its rule and limit, with the setting's reason after
+ * an absolute or recommended ceiling. `null` when the error carries no rule
+ * this build knows, so the caller falls back to the shared copy.
+ */
+function describeRuleBreach(error: ApiError, field: OperationalSettingField): string | null {
+  if (error.code !== 'OPERATIONAL_SETTING_INVALID') return null;
+  const { rule, limit } = error.params;
+  if (!isKnownRule(rule)) return null;
+  const page = getMessages('settings').operationalSettingsPage;
+  const template = page.fieldErrors[RULE_COPY_KEY[rule]];
+  const needsLimit = rule === 'min' || rule === 'absolute' || rule === 'recommended';
+  if (needsLimit && typeof limit !== 'number') return null;
+  const sentence = interpolate(template, { limit: typeof limit === 'number' ? limit : '' });
+  const reasons: Partial<Record<string, { recommended: string; absolute: string }>> =
+    page.boundReasons;
+  const reason =
+    rule === 'absolute' || rule === 'recommended' ? reasons[field]?.[rule] : undefined;
+  return reason ? `${sentence} ${reason}` : sentence;
+}
 
 const FIELDS: readonly OperationalSettingField[] = [
   'catalogueSweepBudget',
@@ -73,9 +112,11 @@ export function mapOperationalSettingsErrors(error: unknown): OperationalSetting
     return { fieldErrors, formErrors };
   }
 
-  const sentence = describeApiError(error, 'settings');
   const named = error instanceof ApiError ? error.params.field : undefined;
   const target = typeof named === 'string' ? fieldFor(named) : undefined;
+  const sentence =
+    (error instanceof ApiError && target !== undefined ? describeRuleBreach(error, target) : null) ??
+    describeApiError(error, 'settings');
   if (target === undefined) {
     formErrors.push(sentence);
   } else {

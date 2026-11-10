@@ -123,6 +123,7 @@ export class WebhookDeliveryController {
       downstreamJobId: d.downstreamJobId,
       downstreamJobType: d.downstreamJobType,
       dlqReason: d.dlqReason,
+      dlqCode: d.dlqCode,
       createdAt: d.createdAt.toISOString(),
       updatedAt: d.updatedAt.toISOString(),
     };

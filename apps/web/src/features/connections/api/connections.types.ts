@@ -198,11 +198,32 @@ export interface RecentJobSummary {
   lastError: string | null;
 }
 
+/**
+ * Mirror of core's `ConnectionTestOutcomeValues` (#3866; apps/web cannot import
+ * core, #591), held identical by `scripts/check-stored-reason-code-mirror.mjs`.
+ */
+export const ConnectionTestOutcomeValues = [
+  'ok',
+  'unauthorized',
+  'unreachable',
+  'timeout',
+  'not-found',
+  'misconfigured',
+  'unexpected-status',
+  'unsupported',
+  'failed',
+] as const;
+
+export type ConnectionTestOutcome = (typeof ConnectionTestOutcomeValues)[number];
+
 export interface ConnectionTestResult {
   success: boolean;
   status?: number;
+  /** The tester's own English detail; shown only under the not-translated label. */
   message: string;
   latencyMs: number;
+  /** What the test found (#3866). Optional for an API that predates it. */
+  outcome?: ConnectionTestOutcome;
 }
 
 /**

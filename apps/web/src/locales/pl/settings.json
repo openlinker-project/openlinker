@@ -42,6 +42,40 @@
       "message": "Ta strona zmienia, jak mocno OpenLinker obciąża sklep - wymaga sesji administratora.",
       "title": "Wymagana rola administratora"
     },
+    "boundReasons": {
+      "catalogueSweepBudget": {
+        "absolute": "To zabezpieczenie przed pomyłką przy wpisywaniu, a nie limit Twojego sklepu. Wszystko, co pobiera jedno przejście, jest trzymane w pamięci naraz.",
+        "recommended": "Przy 2000 produktów jedno przejście trwa około 3 minut z 20 minut między przejściami. Powyżej tej wartości większa liczba głównie wydłuża kolejkę, zamiast przyspieszać pracę."
+      },
+      "deletionAuditBudget": {
+        "absolute": "To samo zabezpieczenie przed pomyłką przy wpisywaniu co przy synchronizacji produktów.",
+        "recommended": "Przy domyślnych 100 sklep ze 100 000 produktów sprawdza wszystkie produkty pod kątem usunięcia w około 42 dni, a usunięty produkt sprzedaje się dalej, dopóki nie zostanie sprawdzony."
+      },
+      "inventoryMovementRetentionDays": {
+        "absolute": "Pięć lat to najdłuższa historia stanów warta przechowywania; dłuższy okres to niemal zawsze pomyłka przy wpisywaniu.",
+        "recommended": "Jak długo ruch magazynowy jest przechowywany w historii. Duży katalog zapisuje jeden wiersz na każdą zmianę stanu, więc powyżej około dwóch lat tabela to głównie koszt miejsca."
+      },
+      "inventorySweepBudget": {
+        "absolute": "To samo zabezpieczenie przed pomyłką przy wpisywaniu co przy synchronizacji produktów.",
+        "recommended": "Przy domyślnych 100 sklep ze 100 000 produktów sprawdza wszystkie stany magazynowe w około 10 dni. 2000 skraca to do kilku godzin i odpowiada limitowi synchronizacji produktów."
+      },
+      "stockStaleSyncThresholdHours": {
+        "absolute": "Tydzień - powyżej tej wartości oznaczenie nie zadziałałoby dla synchronizacji, która zatrzymała się w poprzedni weekend.",
+        "recommended": "Jak długo stan magazynowy może pozostać bez świeżego odczytu z systemu źródłowego, zanim widok stanów oznaczy go jako nieaktualny. Powyżej dwóch dni oznaczenie przestaje wykrywać synchronizację, która po cichu się zatrzymała."
+      },
+      "sweepPageSize": {
+        "absolute": "Każdy produkt w jednym zapytaniu wydłuża jego adres. Przy około 500 adres ma około 4 KB, co serwery akceptują; kilka razy więcej jest odrzucane.",
+        "recommended": "100 to rozmiar strony, który sklep PrestaShop obsługuje najlepiej i dla którego wykonano pomiary. Większa wartość oszczędza niewiele zapytań, a jedno nieudane zapytanie kosztuje więcej pracy."
+      },
+      "syncJobDeadRetentionDays": {
+        "absolute": "Wartość powyżej 365 dni jest niedozwolona.",
+        "recommended": "Jak długo trwale nieudane zadanie synchronizacji jest przechowywane jako ślad utraconej pracy. Domyślnie dłużej niż zakończone zadanie, bo to jedyny zapis tej pracy. Dozwolony zakres: 30-365 dni."
+      },
+      "syncJobRetentionDays": {
+        "absolute": "Wartość powyżej 365 dni jest niedozwolona.",
+        "recommended": "Jak długo zakończone zadanie synchronizacji jest przechowywane na potrzeby diagnozy i ochrony przed powtórzonym ponowieniem. Dozwolony zakres: 30-365 dni."
+      }
+    },
     "catalogue": {
       "assumedCadence": "co 20 min (założenie)",
       "budget": {
@@ -83,6 +117,15 @@
       "title": "Nie udało się wczytać tempa synchronizacji"
     },
     "eyebrow": "Ustawienia",
+    "fieldErrors": {
+      "absolute": "Maksymalna dozwolona wartość to {limit}.",
+      "cadenceFormat": "Wpisz wyrażenie cron z 5 lub 6 polami.",
+      "cadenceInvalid": "To nie jest poprawne wyrażenie cron.",
+      "cadenceTooRare": "Sprawdzanie usunięć musi działać co najmniej raz na 7 dni.",
+      "min": "Wpisz liczbę całkowitą nie mniejszą niż {limit}.",
+      "notANumber": "Wpisz liczbę.",
+      "recommended": "Ta wartość przekracza zalecane {limit}. Potwierdź ją, aby zapisać."
+    },
     "footer": {
       "retentionChanged": "Zmieniono czas przechowywania zadań w tle",
       "retentionSave": "Zapisz czas przechowywania",

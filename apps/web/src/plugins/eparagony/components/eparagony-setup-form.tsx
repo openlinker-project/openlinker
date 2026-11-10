@@ -38,6 +38,7 @@ import {
   useCreateConnectionMutation,
   useTestConnectionMutation,
   type ConnectionTestResult,
+  describeConnectionTestFailure,
 } from '../../../features/connections';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../../shared/api/api-error';
@@ -62,7 +63,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { interpolate, renderRich } from '../../../shared/i18n';
 import { useEparagonyMessages } from '../messages';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 
@@ -120,7 +121,6 @@ export function EparagonySetupForm({
   onDocumentCapabilitiesChange,
 }: EparagonySetupFormProps = {}): ReactElement {
   const copy = useEparagonyMessages().eparagonySetupForm;
-  const uiCopy = useMessages('ui');
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const navigate = useNavigate();
@@ -252,7 +252,7 @@ export function EparagonySetupForm({
             tone={testResult.success ? 'success' : 'error'}
             title={testResult.success ? copy.test.passed : copy.test.failed}
           >
-            {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
+            {testResult.success ? null : describeConnectionTestFailure(testResult)}
             {typeof testResult.latencyMs === 'number'
               ? interpolate(copy.test.latency, { ms: testResult.latencyMs })
               : null}

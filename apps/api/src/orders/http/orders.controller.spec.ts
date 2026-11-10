@@ -1600,6 +1600,7 @@ describe('OrdersController', () => {
         blockReason: null,
         unresolvedReason: null,
         blockDetail: null,
+        blockParams: null,
         otherRecords: [],
         matchedRule: null,
         afterIssueAttention: null,
@@ -1682,6 +1683,7 @@ describe('OrdersController', () => {
           documentKind: 'invoice',
           blockReason: 'missing-tax-rate',
           blockDetail: '2 lines carry no tax rate',
+          blockParams: null,
         })
       );
 
@@ -1700,6 +1702,7 @@ describe('OrdersController', () => {
           blockReason: 'unresolved-routing',
           unresolvedReason: 'ambiguous-connection-no-primary',
           blockDetail: '2 invoicing connections, none marked primary',
+          blockParams: null,
         })
       );
 

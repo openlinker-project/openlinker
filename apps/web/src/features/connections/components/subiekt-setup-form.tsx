@@ -53,6 +53,7 @@ import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
 // The product family name, the same in every language.
 const SUBIEKT_FAMILY_NAME = 'Subiekt';
@@ -71,7 +72,6 @@ export function SubiektSetupForm({
 }): ReactElement {
   const copy = useMessages('connections').subiektSetupForm;
   const setupCopy = useMessages('connections').setup;
-  const uiCopy = useMessages('ui');
   const format = useFormat();
   const product = identity.productName;
   const createConnection = useCreateConnectionMutation();
@@ -246,7 +246,7 @@ export function SubiektSetupForm({
               tone={testResult.success ? 'success' : 'error'}
               title={testResult.success ? copy.testPassed : copy.testFailed}
             >
-              {testResult.success ? null : interpolate(uiCopy.apiError.technicalDetailsWith, { details: testResult.message })}
+              {testResult.success ? null : describeConnectionTestFailure(testResult)}
               {typeof testResult.latencyMs === 'number'
                 ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
                 : null}

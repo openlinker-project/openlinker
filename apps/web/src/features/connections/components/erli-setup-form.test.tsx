@@ -159,7 +159,7 @@ describe('ErliSetupForm', () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const test = vi
       .fn()
-      .mockResolvedValue({ success: false, status: 401, message: 'Unauthorized', latencyMs: 10 });
+      .mockResolvedValue({ success: false, status: 401, message: 'Unauthorized', latencyMs: 10, outcome: 'unauthorized' });
     const apiClient = createMockApiClient({ connections: { create, test } });
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
@@ -171,7 +171,8 @@ describe('ErliSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Connection test failed')).toBeInTheDocument();
-    expect(screen.getByText(/Unauthorized/)).toBeInTheDocument();
+    expect(screen.getByText(/The platform refused the credentials/)).toBeInTheDocument();
+    expect(screen.getByText(/Technical details \(not translated\): Unauthorized/)).toBeInTheDocument();
   });
 
   it('surfaces the "Unable to test connection" alert when the test request rejects', async () => {

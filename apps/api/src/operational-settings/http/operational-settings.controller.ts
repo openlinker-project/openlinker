@@ -115,6 +115,8 @@ export class OperationalSettingsController {
       if (error instanceof InvalidOperationalSettingError) {
         throw codedHttpError(HttpStatus.BAD_REQUEST, 'OPERATIONAL_SETTING_INVALID', error.message, {
           field: error.field,
+          ...(error.rule !== undefined ? { rule: error.rule } : {}),
+          ...(error.limit !== undefined ? { limit: error.limit } : {}),
         });
       }
       throw error;

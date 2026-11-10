@@ -1593,6 +1593,17 @@
     "timeoutWhole": "Limit czasu zapytania musi być całkowitą liczbą milisekund",
     "tokenRequired": "Token mostka jest wymagany - mostek {product} odrzuca każde zapytanie bez niego."
   },
+  "testOutcome": {
+    "failed": "Test się nie powiódł.",
+    "misconfigured": "Brakuje części ustawień lub danych logowania albo są nieprawidłowe.",
+    "not-found": "Pod tym adresem nic nie znaleziono. Sprawdź adres sklepu lub API.",
+    "ok": "Połączenie działa.",
+    "timeout": "Platforma nie odpowiedziała na czas.",
+    "unauthorized": "Platforma odrzuciła dane logowania. Sprawdź klucz lub hasło.",
+    "unexpected-status": "Platforma odpowiedziała w nieoczekiwany sposób.",
+    "unreachable": "Nie udało się połączyć z platformą. Sprawdź adres i czy platforma działa.",
+    "unsupported": "Tego rodzaju połączenia nie da się jeszcze przetestować."
+  },
   "woocommerceSetupForm": {
     "beforeYouStart": {
       "body": "W panelu administracyjnym {platform} przejdź do <strong>{platform} → Ustawienia → Zaawansowane → REST API</strong> i wygeneruj klucz z uprawnieniami <strong>Odczyt/Zapis</strong>. Skopiuj poniżej consumer key i consumer secret - są wyświetlane tylko raz.",
