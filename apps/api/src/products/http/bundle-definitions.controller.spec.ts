@@ -9,6 +9,7 @@ describe('BundleDefinitionsController (#3607)', () => {
     delete: jest.fn(),
     get: jest.fn(),
     list: jest.fn(),
+    findCurrentByVariantIds: jest.fn(),
     history: jest.fn(),
     findCurrentContainingComponents: jest.fn(),
     confirmMultipack: jest.fn(),
@@ -53,6 +54,14 @@ describe('BundleDefinitionsController (#3607)', () => {
     await expect(
       controller.create({ variantId: 'v1', components: [{ variantId: 'v2', quantity: 1 }] })
     ).rejects.toMatchObject({ response: { code: 'BUNDLE_NESTING_REFUSED' } });
+  });
+
+  it('should answer an empty list, not a 404, when none of the asked variants is a bundle', async () => {
+    bundles.findCurrentByVariantIds.mockResolvedValue([]);
+
+    await expect(controller.list('v-plain')).resolves.toEqual([]);
+    expect(bundles.findCurrentByVariantIds).toHaveBeenCalledWith(['v-plain']);
+    expect(bundles.list).not.toHaveBeenCalled();
   });
 
   it('should 404 an unknown bundle', async () => {

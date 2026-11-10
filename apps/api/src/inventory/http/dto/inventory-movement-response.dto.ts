@@ -20,6 +20,20 @@ import {
   type InventoryMovementSourceKind,
 } from '@openlinker/core/inventory';
 
+export class InventoryMovementGiftResponseDto {
+  @ApiProperty({ enum: ['channel', 'cart-rule', 'ol-rule', 'operator', 'bundle-slot'] })
+  source!: 'channel' | 'cart-rule' | 'ol-rule' | 'operator' | 'bundle-slot';
+
+  @ApiProperty({ nullable: true, type: String, description: 'For `bundle-slot`: the name of the bundle whose gift slot this is' })
+  bundleName!: string | null;
+
+  @ApiProperty({ nullable: true, type: String, description: 'The OpenLinker promotion that gave the gift, when one did' })
+  promotionId!: string | null;
+
+  @ApiProperty({ nullable: true, type: String, description: 'The promotion\'s current name' })
+  promotionName!: string | null;
+}
+
 export class InventoryMovementResponseDto {
   @ApiProperty({ enum: InventoryHistoryKindValues })
   kind!: InventoryHistoryKind;
@@ -113,6 +127,15 @@ export class InventoryMovementResponseDto {
 
   @ApiProperty({
     nullable: true,
+    type: () => InventoryMovementGiftResponseDto,
+    description:
+      'Where a gift movement came from (#3935): who decided the line is a gift and, when a promotion did, ' +
+      'its id and name. Null for any non-gift row or when the order line could not be read.',
+  })
+  gift!: InventoryMovementGiftResponseDto | null;
+
+  @ApiProperty({
+    nullable: true,
     type: String,
     description:
       'The sync run that wrote this row: a sweep cycle id or a single-product job id. Rows sharing it came from one run. Null outside a sync and on reservation rows',
@@ -138,7 +161,8 @@ export class PaginatedInventoryMovementsResponseDto {
 
 export function toInventoryMovementResponseDto(
   row: InventoryHistoryRow,
-  actorNames: ReadonlyMap<string, string> = new Map()
+  actorNames: ReadonlyMap<string, string> = new Map(),
+  gifts: ReadonlyMap<string, InventoryMovementGiftResponseDto> = new Map()
 ): InventoryMovementResponseDto {
   return {
     kind: row.kind,
@@ -164,6 +188,7 @@ export function toInventoryMovementResponseDto(
     refusalDetail: row.refusalDetail,
     occurredAt: row.occurredAt.toISOString(),
     sourceLabel: row.sourceLabel,
+    gift: gifts.get(row.id) ?? null,
     syncRunId: row.syncRunId,
   };
 }

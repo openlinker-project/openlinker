@@ -100,6 +100,37 @@ export interface OrderIdentityCellProps {
    * belong in the Status group.
    */
   tags?: readonly Pick<OrderTag, 'id' | 'name' | 'color'>[];
+  /**
+   * The order carries a gift line (#3940): a small gift mark beside the product
+   * name, so the filter's result is recognisable without opening the order.
+   */
+  hasGift?: boolean;
+  /** The order carries a bundle (#3935): a box mark beside the gift mark. */
+  hasBundle?: boolean;
+}
+
+function MarkChip({
+  kind,
+  text,
+  label,
+  testId,
+}: {
+  kind: 'gift' | 'bundle';
+  text: string;
+  label: string;
+  testId: string;
+}): ReactElement {
+  return (
+    <span
+      className={`orders-mark orders-mark--${kind}`}
+      role="img"
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+    >
+      {text}
+    </span>
+  );
 }
 
 export function OrderIdentityCell({
@@ -111,7 +142,11 @@ export function OrderIdentityCell({
   onNavigate,
   className = '',
   tags,
+  hasGift = false,
+  hasBundle = false,
 }: OrderIdentityCellProps): ReactElement {
+  const giftCopy = useMessages('gifts');
+  const bundleCopy = useMessages('bundles');
   const copy = useMessages('orders').identityCell;
   const plural = usePlural();
   const tagsCopy = useMessages('orders').orderTags;
@@ -158,22 +193,30 @@ export function OrderIdentityCell({
           deliberately, PrestaShop and Erli never set it. */}
       <ProductThumbnail name={itemName ?? displayName} src={firstItemImageUrl} size="sm" />
       <span className="order-cell__body">
-        <EntityLabel
-          id={orderId}
-          name={displayName}
-          showId={false}
-          copyLabel={copyLabel}
-          copiedLabel={copiedLabel}
-          // `formatOrderRef` may have shortened line 1; without this the tooltip
-          // would show the shortened form and the full number would be
-          // unreachable to a sighted user (#2089). On the id-fallback branch
-          // (every Erli-sourced order) the same argument applies to the id:
-          // `shortenId` elides its middle, so `?? orderId` keeps the full value
-          // hoverable instead of clipboard-only (#2091).
-          nameTitle={trimmedNumber ?? orderId}
-          to={`/orders/${orderId}`}
-          onNavigate={onNavigate}
-        />
+        <span className="order-cell__headline">
+          <EntityLabel
+            id={orderId}
+            name={displayName}
+            showId={false}
+            copyLabel={copyLabel}
+            copiedLabel={copiedLabel}
+            // `formatOrderRef` may have shortened line 1; without this the tooltip
+            // would show the shortened form and the full number would be
+            // unreachable to a sighted user (#2089). On the id-fallback branch
+            // (every Erli-sourced order) the same argument applies to the id:
+            // `shortenId` elides its middle, so `?? orderId` keeps the full value
+            // hoverable instead of clipboard-only (#2091).
+            nameTitle={trimmedNumber ?? orderId}
+            to={`/orders/${orderId}`}
+            onNavigate={onNavigate}
+          />
+        </span>
+        {hasBundle || hasGift ? (
+          <span className="orders-marks-line">
+            {hasBundle ? <MarkChip kind="bundle" text={bundleCopy.order.bundleMark} label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
+            {hasGift ? <MarkChip kind="gift" text={bundleCopy.order.giftMark} label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
+          </span>
+        ) : null}
         {itemName ? (
           <span className="orders-items-line">
             <span className="text-muted orders-cell-sub orders-items-preview" title={itemName}>

@@ -24,6 +24,8 @@ import {
   AUTOMATION_NON_FIRING_REASON_VALUES,
   AUTOMATION_STEP_STATUS_VALUES,
   AUTOMATION_TRIGGER_VALUES,
+  GIFT_AUTOMATION_ACTION,
+  GIFT_AUTOMATION_TRIGGER,
   type AutomationDryRunResult,
   type AutomationStepResult,
   type AutomationRule,
@@ -65,6 +67,31 @@ const vocabularySchema = z.object({
 });
 
 /**
+ * The vocabulary without the gift trigger and step (#3940). Done on the raw
+ * value, before the strict parse, because the trigger enum is the generic
+ * surface's own and a ninth value would fail the whole read rather than be
+ * hidden from the composer.
+ */
+function withoutGiftEntries(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const record = raw as Record<string, unknown>;
+  const triggers = Array.isArray(record.triggers)
+    ? record.triggers
+        .filter((t) => (t as { value?: unknown } | null)?.value !== GIFT_AUTOMATION_TRIGGER)
+        .map((t) => {
+          const legal = (t as { legalActions?: unknown } | null)?.legalActions;
+          return Array.isArray(legal)
+            ? { ...(t as object), legalActions: legal.filter((a) => a !== GIFT_AUTOMATION_ACTION) }
+            : t;
+        })
+    : record.triggers;
+  const actions = Array.isArray(record.actions)
+    ? record.actions.filter((a) => (a as { action?: unknown } | null)?.action !== GIFT_AUTOMATION_ACTION)
+    : record.actions;
+  return { ...record, triggers, actions };
+}
+
+/**
  * The vocabulary is parsed ALL-OR-NOTHING and throws on failure.
  *
  * Deliberately unlike the row-level degradation elsewhere in this file. It is
@@ -75,7 +102,7 @@ const vocabularySchema = z.object({
  * says the truth: we could not read it.
  */
 export function parseAutomationVocabulary(raw: unknown): AutomationVocabulary {
-  const parsed = vocabularySchema.parse(raw);
+  const parsed = vocabularySchema.parse(withoutGiftEntries(raw));
   return {
     ...parsed,
     triggers: parsed.triggers.map((trigger) => ({
@@ -114,6 +141,8 @@ export function parseAutomationSummary(raw: unknown): ParsedAutomationSummary {
   const items: AutomationTriggerSummary[] = [];
   let droppedCount = 0;
   for (const entry of envelope.data) {
+    // Gift promotions have their own page; they are not a dropped row.
+    if ((entry as { trigger?: unknown } | null)?.trigger === GIFT_AUTOMATION_TRIGGER) continue;
     const parsed = summarySchema.safeParse(entry);
     if (parsed.success) items.push(parsed.data);
     else droppedCount += 1;
@@ -203,6 +232,7 @@ const stepSchema = z.object({
   detail: z.string().nullish(),
   syncJobId: z.string().nullish(),
   unavailableReason: z.string().nullish(),
+  reasonCode: z.string().nullish(),
   report: z
     .object({ attributedTo: z.string(), message: z.string() })
     .nullish(),
@@ -226,6 +256,7 @@ function parseSteps(raw: unknown): { steps: AutomationStepResult[]; unreadable: 
       report: parsed.data.report ?? null,
       syncJobId: parsed.data.syncJobId ?? null,
       unavailableReason: parsed.data.unavailableReason ?? null,
+      reasonCode: parsed.data.reasonCode ?? null,
     });
   }
   return { steps, unreadable };

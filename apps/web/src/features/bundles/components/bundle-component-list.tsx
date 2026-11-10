@@ -37,7 +37,10 @@ export function BundleComponentList({
 }: BundleComponentListProps): ReactElement {
   const copy = useMessages('bundles').view;
   return (
-    <ul className={`cx-comp${compact ? ' cx-comp--compact' : ''}`} data-testid="bundle-view-components">
+    <ul
+      className={`cx-comp${compact ? ' cx-comp--compact' : ''}`}
+      data-testid="bundle-view-components"
+    >
       {components.map((component) => {
         const name = component.summary.name ?? component.summary.sku ?? component.variantId;
         const stock = component.availableToPromise;
@@ -48,7 +51,10 @@ export function BundleComponentList({
         ) : (
           <span>{name}</span>
         );
-        const gift = component.giftSlot === true ? <span className="cx-tag cx-tag--gift">{copy.gift}</span> : null;
+        const gift =
+          component.giftSlot === true ? (
+            <span className="cx-tag cx-tag--gift">{copy.gift}</span>
+          ) : null;
         return (
           <li
             key={component.variantId}
@@ -102,7 +108,15 @@ export function BundleComponentList({
                             width: `${String(
                               sets === 0
                                 ? 0
-                                : Math.max(6, limiting ? 100 : Math.min(100, Math.floor((100 * (bundlesAvailable ?? 0)) / sets))),
+                                : Math.max(
+                                    6,
+                                    limiting
+                                      ? 100
+                                      : Math.min(
+                                          100,
+                                          Math.floor((100 * (bundlesAvailable ?? 0)) / sets)
+                                        )
+                                  )
                             )}%`,
                           }}
                         />

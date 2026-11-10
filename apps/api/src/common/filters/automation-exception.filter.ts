@@ -1,10 +1,10 @@
 /**
  * Automation Exception Filter (#2363)
  *
- * Maps the `automation` context's eight domain refusals onto distinct HTTP
+ * Maps the `automation` context's domain refusals onto distinct HTTP
  * statuses, and — decisively — onto distinct STRUCTURED BODIES.
  *
- * They are eight separate exception types rather than one with a reason string
+ * They are separate exception types rather than one with a reason string
  * precisely so a caller can tell them apart, and the issue's second acceptance
  * criterion requires exactly that: *"an illegal trigger→action pair is rejected
  * at the API with a 400 naming the pair"*. Each error already carries the facts

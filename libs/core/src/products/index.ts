@@ -40,6 +40,7 @@ export type {
   ComponentLineRef,
   PhysicalLine,
   LineExpansion,
+  BundleGiftDocumentForm,
 } from './domain/types/bundle.types';
 export {
   COMPONENT_LINE_ID_SEPARATOR,
@@ -50,6 +51,9 @@ export {
   componentRefsFor,
   expandBundleLines,
   readLineExpansion,
+  BundleGiftDocumentFormValues,
+  BundleGiftSlotFormValues,
+  isBundleGiftDocumentForm,
 } from './domain/types/bundle.types';
 export type { BundleDefinitionRepositoryPort } from './domain/ports/bundle-definition-repository.port';
 export type {
@@ -220,3 +224,20 @@ export type { ITaxRateJournalService } from './application/services/tax-rate-jou
 
 
 
+
+// Bundle product creation at a master (#3935).
+export type {
+  IBundleProductCreationService,
+  BundleCreationTarget,
+  CreateBundleProductInput,
+  CreatedBundleProduct,
+} from './application/services/bundle-product-creation.service.interface';
+export type {
+  ProductCreator,
+  ProductCreationMode,
+} from './domain/ports/capabilities/product-creator.capability';
+export {
+  isProductCreator,
+  ProductCreationModeValues,
+} from './domain/ports/capabilities/product-creator.capability';
+export { BundleProductCreationRefusedError } from './domain/exceptions/bundle-definition.errors';

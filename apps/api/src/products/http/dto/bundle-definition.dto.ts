@@ -5,11 +5,13 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { BundleGiftSlotFormValues, type BundleGiftDocumentForm } from '@openlinker/core/products';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -35,6 +37,14 @@ export class BundleComponentRequestDto {
   @IsOptional()
   @IsBoolean()
   giftSlot?: boolean;
+
+  @ApiPropertyOptional({
+    enum: BundleGiftSlotFormValues,
+    description: 'How a sales document shows the gift slot. Only with `giftSlot`; absent means "as in settings".',
+  })
+  @IsOptional()
+  @IsIn(BundleGiftSlotFormValues as readonly string[])
+  documentForm?: BundleGiftDocumentForm;
 }
 
 export class CreateBundleDefinitionRequestDto {
@@ -67,6 +77,7 @@ export class BundleComponentResponseDto {
   @ApiProperty() productId!: string;
   @ApiProperty() quantity!: number;
   @ApiPropertyOptional() giftSlot?: boolean;
+  @ApiPropertyOptional({ enum: BundleGiftSlotFormValues }) documentForm?: BundleGiftDocumentForm;
 }
 
 export class BundleDefinitionResponseDto {

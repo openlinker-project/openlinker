@@ -44,6 +44,7 @@ import type {
   OrderGiftSlotCost,
   OrderLineCost,
 } from '../api/orders.types';
+import { GiftLineTag } from '../../gifts';
 import { useOrderLineCosts, type OrderLineCostsState } from '../hooks/use-order-line-costs';
 
 type LineItemsCopy = ResolvedCopy<Messages['orders']>['orderLineItems'];
@@ -73,6 +74,8 @@ interface OrderLineItemsPanelProps {
    * renders exactly as before.
    */
   bundleLines?: readonly OrderBundleLine[];
+  /** The connection issuing the order's sales document, once there is one (#3940): the gift tag names where a gift's form came from. */
+  documentConnectionId?: string | null;
 }
 
 type DisplayRow =
@@ -88,6 +91,7 @@ export function OrderLineItemsPanel({
   internalOrderId,
   channelQuantities,
   bundleLines,
+  documentConnectionId = null,
 }: OrderLineItemsPanelProps): ReactElement {
   const bundleCopy = useMessages('bundles');
   const currency = totals?.currency;
@@ -140,9 +144,33 @@ export function OrderLineItemsPanel({
           imageSrc={item.imageUrl}
           placeholderName={item.name ?? item.sku ?? item.productId ?? item.id}
           extra={
-            bundleByLine.has(item.id) ? (
-              <BundleLineNotes bundle={bundleByLine.get(item.id) as OrderBundleLine} />
-            ) : undefined
+            <>
+              {bundleByLine.has(item.id) ? (
+                <BundleLineNotes bundle={bundleByLine.get(item.id) as OrderBundleLine} />
+              ) : null}
+              {item.gift ? (
+                <GiftLineTag
+                  lineKey={item.sku ?? item.id}
+                  gift={item.gift}
+                  currency={currency}
+                  costState={
+                    !costs.enabled
+                      ? 'unavailable'
+                      : costs.status === 'loaded'
+                        ? 'ready'
+                        : costs.status === 'error'
+                          ? 'failed'
+                          : 'loading'
+                  }
+                  costNet={
+                    costs.enabled && costs.status === 'loaded'
+                      ? (costForItem(items, costs, item)?.costOfGoods ?? null)
+                      : undefined
+                  }
+                  documentConnectionId={documentConnectionId}
+                />
+              ) : null}
+            </>
           }
         />
       ),
@@ -276,6 +304,9 @@ export function OrderLineItemsPanel({
             }
             if (row.bundle !== undefined) {
               return { 'data-testid': `order-bundle-line-${row.item.sku ?? row.item.id}` };
+            }
+            if (row.item.gift) {
+              return { 'data-testid': `order-gift-line-${row.item.sku ?? row.item.id}` };
             }
             return costs.enabled && costForItem(items, costs, row.item)?.gapReason === 'no-cost'
               ? { 'data-testid': 'order-line-no-cost' }

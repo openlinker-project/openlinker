@@ -279,6 +279,11 @@
       "require": "./dist/catalog-trust/index.js",
       "default": "./dist/catalog-trust/index.js"
     },
+    "./promotions": {
+      "types": "./dist/promotions/index.d.ts",
+      "require": "./dist/promotions/index.js",
+      "default": "./dist/promotions/index.js"
+    },
     "./automation": {
       "types": "./dist/automation/index.d.ts",
       "require": "./dist/automation/index.js",

@@ -50,6 +50,8 @@ import {
   restateTotalsForDiscount,
   type OrderDiscountEdit,
 } from './order-discount.types';
+import type { TaxRateSource } from '@openlinker/core/products';
+import { readLineGift, type LineGift } from './incoming-order.types';
 import type {
   Address,
   Order,
@@ -83,6 +85,49 @@ export interface OrderDeliveryMethodEdit extends OrderEditStamp {
   readonly pickupPoint: OrderPickupPoint | null;
 }
 
+/**
+ * Key prefixes of an added line (#3938). The key is the line's own `OrderItem.id`
+ * too, so a gift added by a rule (`ol-gift:{ruleId}:{lineId}`) and one added by an
+ * operator (`op-gift:{changeId}`, #3940) are the same shape and are told apart by
+ * the key alone, never by a flag a writer could forget.
+ */
+export const OL_GIFT_LINE_KEY_PREFIX = 'ol-gift:';
+export const OPERATOR_GIFT_LINE_KEY_PREFIX = 'op-gift:';
+
+export function olGiftLineKey(ruleId: string, lineId: string): string {
+  return `${OL_GIFT_LINE_KEY_PREFIX}${ruleId}:${lineId}`;
+}
+
+/**
+ * A line the overlay ADDS to the order (#3938). Gifts only today, so the price is
+ * pinned to 0 by the type: an added line that moved the total would need the
+ * totals restatement the quantity edits do, and nothing here owns that.
+ */
+export interface OrderAddedLineEdit extends OrderEditStamp {
+  readonly productId: string;
+  readonly variantId?: string;
+  readonly quantity: number;
+  readonly sku?: string;
+  readonly name?: string;
+  readonly gift: LineGift;
+  /**
+   * The shop catalogue's rate for the gift, stamped when it is granted (#3939) so
+   * every reader of the overlay (destination mirror, documents) carries it. Absent
+   * on entries written before this existed, or when the catalogue had no answer.
+   */
+  readonly taxRate?: string;
+  readonly taxRateCountry?: string;
+  readonly taxSource?: TaxRateSource;
+  readonly taxRateReadAt?: string;
+  /**
+   * The gift's purchase cost frozen at grant time (#3939, ADR-080): a decimal
+   * string, net of VAT, with its currency. Absent means "not recorded" (never 0),
+   * which includes a cost entered after the order was placed.
+   */
+  readonly unitCostNet?: string;
+  readonly unitCostCurrency?: string;
+}
+
 export interface OrderEdits {
   readonly v: 1;
   /** Bumped by every write; the writer's optimistic-concurrency token. */
@@ -93,6 +138,13 @@ export interface OrderEdits {
   readonly deliveryMethod?: OrderDeliveryMethodEdit;
   /** The current order-level discount (#3543). A zero amount means "removed". */
   readonly discount?: OrderDiscountEdit;
+  /**
+   * Lines added on top of the channel's (#3938), keyed `ol-gift:{ruleId}:{lineId}`
+   * or `op-gift:{changeId}`. Written once per key and never rewritten: a
+   * re-ingestion that finds its key converges on it, which is what makes a gift
+   * rule idempotent.
+   */
+  readonly addedLines?: Readonly<Record<string, OrderAddedLineEdit>>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -172,7 +224,20 @@ export function readOrderEdits(value: unknown): OrderEdits | null {
     }
   }
   const discount = readOrderDiscountEdit(value.discount);
-  if (address === undefined && lines === undefined && deliveryMethod === undefined && discount === undefined) {
+  let addedLines: Record<string, OrderAddedLineEdit> | undefined;
+  if (isRecord(value.addedLines)) {
+    for (const [key, raw] of Object.entries(value.addedLines)) {
+      const entry = readAddedLine(key, raw);
+      if (entry !== null) addedLines = { ...(addedLines ?? {}), [key]: entry };
+    }
+  }
+  if (
+    address === undefined &&
+    lines === undefined &&
+    deliveryMethod === undefined &&
+    discount === undefined &&
+    addedLines === undefined
+  ) {
     return null;
   }
   return {
@@ -182,6 +247,70 @@ export function readOrderEdits(value: unknown): OrderEdits | null {
     ...(lines !== undefined && { lines }),
     ...(deliveryMethod !== undefined && { deliveryMethod }),
     ...(discount !== undefined && { discount }),
+    ...(addedLines !== undefined && { addedLines }),
+  };
+}
+
+function readAddedLine(key: string, raw: unknown): OrderAddedLineEdit | null {
+  if (
+    !key.startsWith(OL_GIFT_LINE_KEY_PREFIX) &&
+    !key.startsWith(OPERATOR_GIFT_LINE_KEY_PREFIX)
+  ) {
+    return null;
+  }
+  if (!isRecord(raw)) return null;
+  const stamp = readStamp(raw);
+  const gift = readLineGift(raw.gift);
+  if (
+    stamp === null ||
+    gift === undefined ||
+    typeof raw.productId !== 'string' ||
+    typeof raw.quantity !== 'number' ||
+    !Number.isInteger(raw.quantity) ||
+    raw.quantity <= 0
+  ) {
+    return null;
+  }
+  return {
+    ...stamp,
+    productId: raw.productId,
+    ...(typeof raw.variantId === 'string' && { variantId: raw.variantId }),
+    quantity: raw.quantity,
+    ...(typeof raw.sku === 'string' && { sku: raw.sku }),
+    ...(typeof raw.name === 'string' && { name: raw.name }),
+    gift,
+    ...(typeof raw.taxRate === 'string' && raw.taxRate !== '' && { taxRate: raw.taxRate }),
+    ...(typeof raw.taxRateCountry === 'string' && { taxRateCountry: raw.taxRateCountry }),
+    ...(raw.taxSource === 'shop' || raw.taxSource === 'channel' || raw.taxSource === 'backfill'
+      ? { taxSource: raw.taxSource }
+      : {}),
+    ...(typeof raw.taxRateReadAt === 'string' && { taxRateReadAt: raw.taxRateReadAt }),
+    ...(typeof raw.unitCostNet === 'string' &&
+      typeof raw.unitCostCurrency === 'string' && {
+        unitCostNet: raw.unitCostNet,
+        unitCostCurrency: raw.unitCostCurrency,
+      }),
+  };
+}
+
+/** The order line an added overlay entry becomes. Price 0: a gift. */
+export function addedLineToOrderItem(key: string, edit: OrderAddedLineEdit): OrderItem {
+  return {
+    id: key,
+    productId: edit.productId,
+    ...(edit.variantId !== undefined && { variantId: edit.variantId }),
+    quantity: edit.quantity,
+    price: 0,
+    // 0 net is 0 gross: stating it is a fact, and a net-priced order refuses
+    // documents unless every line carries a gross.
+    unitPriceGross: 0,
+    ...(edit.sku !== undefined && { sku: edit.sku }),
+    ...(edit.name !== undefined && { name: edit.name }),
+    gift: edit.gift,
+    ...(edit.taxRate !== undefined && { taxRate: edit.taxRate }),
+    ...(edit.taxRateCountry !== undefined && { taxRateCountry: edit.taxRateCountry }),
+    ...(edit.taxSource !== undefined && { taxSource: edit.taxSource }),
+    ...(edit.taxRateReadAt !== undefined && { taxRateReadAt: edit.taxRateReadAt }),
   };
 }
 
@@ -435,6 +564,14 @@ export function applyOrderEditsToSnapshot(
       }
     }
   }
+  if (edits.addedLines !== undefined && Array.isArray(merged.items)) {
+    // After the quantity edits and the discount split, so a zero-priced gift
+    // neither takes a share of the discount nor moves a total (#3938).
+    merged.items = [
+      ...(merged.items as unknown[]),
+      ...Object.entries(edits.addedLines).map(([key, edit]) => addedLineToOrderItem(key, edit)),
+    ];
+  }
   return merged;
 }
 
@@ -490,6 +627,12 @@ export function applyOrderEditsToOrder(order: Order, edits: OrderEdits | null): 
         merged.codToCollect = restated;
       }
     }
+  }
+  if (edits.addedLines !== undefined) {
+    merged.items = [
+      ...merged.items,
+      ...Object.entries(edits.addedLines).map(([key, edit]) => addedLineToOrderItem(key, edit)),
+    ];
   }
   return merged;
 }
@@ -548,11 +691,21 @@ export function describeEditedTotals(
  */
 export interface ApplyOrderEditInput {
   readonly internalOrderId: string;
-  /** The overlay's `rev` the caller read; a mismatch writes nothing. */
-  readonly expectedRev: number;
+  /**
+   * The overlay's `rev` the caller read; a mismatch writes nothing. `null` writes
+   * against whatever is committed - only for a writer that ADDS keys which a
+   * concurrent operator edit cannot contradict (#3938's gift lines).
+   */
+  readonly expectedRev: number | null;
   readonly address?: OrderAddressEdit;
   readonly lines?: Readonly<Record<string, OrderLineEdit>>;
   readonly deliveryMethod?: OrderDeliveryMethodEdit;
   /** Replaces the current discount wholesale (#3543). */
   readonly discount?: OrderDiscountEdit;
+  /**
+   * Lines to add (#3938). INSERT-IF-ABSENT per key: a key already in the overlay
+   * keeps its committed entry, so a re-ingestion or a retry converges instead of
+   * rewriting (and re-stamping) a gift that was already given.
+   */
+  readonly addedLines?: Readonly<Record<string, OrderAddedLineEdit>>;
 }

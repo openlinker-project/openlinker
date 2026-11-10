@@ -117,6 +117,7 @@ import type {
 } from '../../features/orders/api/orders.types';
 import { ORDER_LIST_COLUMN_IDS } from '../../features/orders/api/orders.types';
 import { useOrderListFilters } from '../../features/orders/hooks/use-order-list-filters';
+import { GiftsGuide } from '../../features/gifts';
 import { OrderListFilterBar } from '../../features/orders/components/order-list-filter-bar';
 import { OrderStatusTabs } from '../../features/orders/components/order-status-tabs';
 import { OrderAttentionSummary } from '../../features/orders/components/order-attention-summary';
@@ -504,6 +505,8 @@ export function OrdersListPage(): ReactElement {
           itemCount={parsed.items.length}
           onNavigate={() => captureDemoEvent('demo_order_opened', {})}
           tags={tags}
+          hasGift={parsed.items.some((item) => item.gift != null)}
+          hasBundle={order.hasBundle === true}
         />
       );
     },
@@ -1287,6 +1290,25 @@ export function OrdersListPage(): ReactElement {
           order={order}
           thumbLabel={(sourceShort ?? sourceLabel ?? '').slice(0, 1)}
           onOpenProduct={setProductPeekId}
+          glance={{
+            channel: sourceLabel ? (
+              <ConnectionChip
+                connectionId={order.sourceConnectionId}
+                name={connectionNames.get(order.sourceConnectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                channel={sourceChipChannel(order.sourceConnectionId, sourceLabel)}
+              />
+            ) : null,
+            document: (
+              <SalesDocumentCell
+                internalOrderId={order.internalOrderId}
+                view={order.salesDocument}
+                layout="row"
+                hasIssuingCapability={hasIssuingCapability}
+                connectionNames={connectionNames}
+              />
+            ),
+          }}
         />
       ),
     };
@@ -1298,6 +1320,7 @@ export function OrdersListPage(): ReactElement {
       title={copy.title}
       actions={
         <div className="button-group">
+          <GiftsGuide variant="list" />
           {exportAccess.canWrite || exportAccess.demoReadOnly ? (
             <ReadOnlyLock active={exportAccess.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button

@@ -249,6 +249,12 @@ const harness = createIntegrationTestHarness({
     // wrong behaviour between test cases.
     'automation_runs',
     'automation_trigger_firings',
+    // promotions (#3935): the gift ledger and application log (no FKs, so explicit).
+    'promotions',
+    'promotion_state',
+    'promotion_grants',
+    'promotion_applications',
+    'return_gift_decisions',
     'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
@@ -264,6 +270,10 @@ const harness = createIntegrationTestHarness({
     // FK, so it never cascades; a row written by one case would otherwise
     // change what every later case resolves as the reporting currency.
     'reporting_currency_setting',
+    // sales_document_settings (#3941) - the singleton OpenLinker-wide gift form on
+    // documents. No FK, so it never cascades; a saved row would change every later
+    // case's resolved default.
+    'sales_document_settings',
     // operational_settings (#2651) — the singleton sweep-budget / deletion-audit
     // row. No FK, so it never cascades; a row written by one case would
     // otherwise change every later case's resolved budgets.

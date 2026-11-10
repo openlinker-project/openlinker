@@ -3,7 +3,7 @@
  *
  * @module libs/core/src/fiscalization/application/mappers
  */
-import type { Order } from '@openlinker/core/orders';
+import { addedLineToOrderItem, type Order } from '@openlinker/core/orders';
 import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 
 import { toRegisterTransactionCommand } from './order-to-register-transaction-command.mapper';
@@ -687,7 +687,12 @@ describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
     lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
 
   it('should omit a gift by default and equal what was paid', () => {
-    const cmd = toRegisterTransactionCommand({ order: giftOrder(), connectionId: 'c', idempotencyKey: 'k' });
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'omit',
+    });
     expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
     expect(total(cmd.lines)).toBe(4920);
   });
@@ -697,7 +702,7 @@ describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
       order: giftOrder(),
       connectionId: 'c',
       idempotencyKey: 'k',
-      giftForm: 'show',
+      giftConnectionForm: 'show-zero',
       acceptsZeroValueLine: false,
     });
     expect(cmd.lines).toHaveLength(3);
@@ -710,7 +715,7 @@ describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
       order: giftOrder(),
       connectionId: 'c',
       idempotencyKey: 'k',
-      giftForm: 'show',
+      giftConnectionForm: 'show-zero',
       acceptsZeroValueLine: true,
     });
     expect(cmd.lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
@@ -748,6 +753,7 @@ describe('toRegisterTransactionCommand - bundle components (#3934)', () => {
       connectionId: 'c',
       idempotencyKey: 'k',
       bundleDocument: mixedDocument,
+      giftConnectionForm: 'omit',
     });
     expect(cmd.lines.map((l) => [l.name, l.taxRate])).toEqual([
       ['Soap', '23'],
@@ -802,5 +808,33 @@ describe('toRegisterTransactionCommand - bundle components (#3934)', () => {
         },
       }),
     ).toThrow('no known tax rate');
+  });
+});
+
+describe('toRegisterTransactionCommand - net-priced order with an OpenLinker rule gift', () => {
+  it('should compose without refusal and sum to what was paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        items: [
+          { id: 'i1', productId: 'p1', quantity: 1, price: 100, unitPriceGross: 123, name: 'Widget', taxRate: '23' },
+          addedLineToOrderItem('ol-gift:rule-1:1', {
+            changeId: 'rule-1',
+            editedAt: '2026-11-02T10:00:00.000Z',
+            editedBy: null,
+            productId: 'p2',
+            quantity: 1,
+            name: 'Spoon',
+            taxRate: '23',
+            gift: { source: 'ol-rule', ruleRef: 'rule-1' },
+          }),
+        ],
+        totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+      } as Partial<Order>),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'omit',
+    });
+    const sum = cmd.lines.reduce((acc, l) => acc + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+    expect(sum).toBe(12300);
   });
 });

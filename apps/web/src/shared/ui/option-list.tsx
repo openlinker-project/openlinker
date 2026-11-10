@@ -62,6 +62,8 @@ export interface OptionListProps<T extends string> {
   entrance?: boolean;
   id?: string;
   className?: string;
+  /** Draws a check mark on the chosen row (for a form control, where the accent box alone is easy to miss). */
+  showCheck?: boolean;
 }
 
 function OptionListInner<T extends string>(
@@ -74,6 +76,7 @@ function OptionListInner<T extends string>(
     entrance = true,
     id,
     className,
+    showCheck = false,
     ...aria
   }: OptionListProps<T>,
   ref: ForwardedRef<HTMLUListElement>
@@ -169,6 +172,11 @@ function OptionListInner<T extends string>(
               {option.meta ? <small>{option.meta}</small> : null}
             </span>
             {option.badge ?? null}
+            {showCheck && selected ? (
+              <svg className="option-list__check" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.5 8.5l3 3 6-7" />
+              </svg>
+            ) : null}
             {option.extra ?? null}
           </motion.li>
         );

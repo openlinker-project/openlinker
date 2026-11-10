@@ -9,6 +9,37 @@
  * @module libs/core/src/products/domain/types
  */
 
+/**
+ * The gift forms on a document: the ONE vocabulary orders, promotions and
+ * bundles share (restated here because `products` cannot import `orders`, which
+ * imports it). `gift-document-form-parity.spec.ts` keeps the lists equal.
+ */
+export const BundleGiftDocumentFormValues = [
+  'technical-cent',
+  'custom-price',
+  'priced-in',
+  'show-zero',
+  'omit',
+] as const;
+
+/**
+ * What a bundle's gift slot may be set to. `custom-price` is a valid form but
+ * needs an amount, and a slot carries none (the definition freezes only the
+ * form), so it is not offered or accepted here; setting it would only fall back
+ * to the technical cent on the document.
+ */
+export const BundleGiftSlotFormValues = [
+  'technical-cent',
+  'priced-in',
+  'show-zero',
+  'omit',
+] as const;
+export type BundleGiftDocumentForm = (typeof BundleGiftSlotFormValues)[number];
+
+export function isBundleGiftDocumentForm(value: unknown): value is BundleGiftDocumentForm {
+  return typeof value === 'string' && (BundleGiftSlotFormValues as readonly string[]).includes(value);
+}
+
 /** One component of a bundle: units of a master variant per ONE bundle unit. */
 export interface BundleComponent {
   variantId: string;
@@ -17,6 +48,11 @@ export interface BundleComponent {
   quantity: number;
   /** This component is the free gift of the set (#3934 owns its presentation). */
   giftSlot?: boolean;
+  /**
+   * How a document shows this gift slot. Meaningful only with `giftSlot`;
+   * absent means "as in settings" (#3940).
+   */
+  documentForm?: BundleGiftDocumentForm;
 }
 
 /** The composition of a bundle variant, one immutable row per version. */
@@ -70,6 +106,8 @@ export interface ExpandableLine {
 export type PhysicalLine<T extends ExpandableLine> = T & {
   parentLineId?: string;
   giftSlot?: boolean;
+  /** The gift slot's own document form, carried from the frozen definition (#3940). */
+  giftDocumentForm?: BundleGiftDocumentForm;
 };
 
 /**
@@ -115,6 +153,9 @@ export function expandBundleLines<T extends ExpandableLine>(
               ...existing,
               quantity: existing.quantity + component.quantity,
               giftSlot: existing.giftSlot === true && component.giftSlot === true ? true : undefined,
+              // Two slots that disagree on the form fall back to "as in settings".
+              documentForm:
+                existing.documentForm === component.documentForm ? existing.documentForm : undefined,
             }
       );
     }
@@ -129,6 +170,9 @@ export function expandBundleLines<T extends ExpandableLine>(
       };
       if (component.giftSlot === true) {
         line.giftSlot = true;
+        if (isBundleGiftDocumentForm(component.documentForm)) {
+          line.giftDocumentForm = component.documentForm;
+        }
       }
       physical.push(line);
     }

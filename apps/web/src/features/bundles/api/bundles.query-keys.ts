@@ -1,5 +1,7 @@
 export const bundlesQueryKeys = {
   all: ['bundles'] as const,
+  creationTargets: ['bundles', 'creation-targets'] as const,
+  probe: (variantIds: readonly string[]) => ['bundles', 'probe', [...variantIds].sort().join(',')] as const,
   detail: (variantId: string) => ['bundles', 'detail', variantId] as const,
   history: (variantId: string) => ['bundles', 'history', variantId] as const,
   usedIn: (variantId: string) => ['bundles', 'used-in', variantId] as const,

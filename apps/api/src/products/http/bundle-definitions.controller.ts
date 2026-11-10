@@ -80,6 +80,7 @@ function toDto(definition: BundleDefinition): BundleDefinitionResponseDto {
       productId: c.productId,
       quantity: c.quantity,
       ...(c.giftSlot === true && { giftSlot: true }),
+      ...(c.giftSlot === true && c.documentForm !== undefined && { documentForm: c.documentForm }),
     })),
   };
 }
@@ -161,10 +162,29 @@ export class BundleDefinitionsController {
 
   @Roles('admin', 'operator', 'viewer')
   @Get()
-  @ApiOperation({ summary: 'List the current bundle definitions' })
+  @ApiOperation({
+    summary: 'List the current bundle definitions',
+    description:
+      'With `variantIds` (comma separated, at most 200) only the definitions of those variants are returned, ' +
+      'and an empty list means none of them is a bundle: an answer, where `GET :variantId` would be a 404.',
+  })
   @ApiResponse({ status: 200, type: [BundleDefinitionResponseDto] })
-  async list(): Promise<BundleDefinitionResponseDto[]> {
-    return (await this.bundles.list()).map(toDto);
+  async list(@Query('variantIds') variantIds?: string): Promise<BundleDefinitionResponseDto[]> {
+    if (variantIds === undefined) {
+      return (await this.bundles.list()).map(toDto);
+    }
+    const ids = [
+      ...new Set(
+        variantIds
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+      ),
+    ].slice(0, 200);
+    if (ids.length === 0) {
+      return [];
+    }
+    return (await this.bundles.findCurrentByVariantIds(ids)).map(toDto);
   }
 
   @Roles('admin', 'operator')
@@ -368,6 +388,7 @@ export class BundleDefinitionsController {
         productId: c.productId,
         quantity: c.quantity,
         ...(c.giftSlot === true && { giftSlot: true }),
+        ...(c.giftSlot === true && c.documentForm !== undefined && { documentForm: c.documentForm }),
         summary: summaries.get(c.variantId) ?? emptySummary,
         availableToPromise: atp,
         bundlesSupported: atp === null ? null : Math.floor(atp / c.quantity),

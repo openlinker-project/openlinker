@@ -129,7 +129,7 @@ function paginatedListings(items: OfferMapping[]): PaginatedOfferMappings {
 async function findAvailableKpiCard(): Promise<HTMLElement> {
   const labels = await screen.findAllByText('Available');
   const kpiCard = labels
-    .map((label) => label.closest('.kpi-card'))
+    .map((label) => label.closest('.pm-kpi'))
     .find((card): card is HTMLElement => card !== null);
   if (!kpiCard) {
     throw new Error('Available KpiCard not found');
@@ -306,7 +306,7 @@ describe('ProductDetailPage', () => {
   it('should offer Make a bundle from this, linking with the product as component', async () => {
     const mockApi = createMockApiClient({
       products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
-      bundles: { get: vi.fn().mockRejectedValue(new Error('not a bundle')) },
+      bundles: { findMany: vi.fn().mockResolvedValue([]), get: vi.fn() },
     });
     renderDetailPage(mockApi, true);
     const action = await screen.findByTestId('product-detail-make-bundle');
@@ -314,17 +314,20 @@ describe('ProductDetailPage', () => {
       'href',
       '/products/bundles/new?componentProduct=ol_product_abc123',
     );
+    // A plain product is asked through the lookup that answers an empty list; the 404 probe is never fired.
+    expect(mockApi.bundles.findMany).toHaveBeenCalled();
+    expect(mockApi.bundles.get).not.toHaveBeenCalled();
   });
 
   it('should not offer Make a bundle when the product is itself a bundle', async () => {
     const mockApi = createMockApiClient({
       products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
-      bundles: { get: vi.fn().mockResolvedValue({ variantId: 'v', version: 1, components: [], componentAvailability: [] }) },
+      bundles: { findMany: vi.fn().mockResolvedValue([{ variantId: 'v', version: 1, components: [] }]), get: vi.fn() },
     });
     renderDetailPage(mockApi, true);
     await screen.findAllByText('Test Product');
     await waitFor(() => {
-      expect(mockApi.bundles.get).toHaveBeenCalled();
+      expect(mockApi.bundles.findMany).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(screen.queryByTestId('product-detail-make-bundle')).toBeNull();
@@ -347,7 +350,7 @@ describe('ProductDetailPage', () => {
     renderDetailPage(mockApi);
 
     const attributesSection = (await screen.findByRole('heading', { name: 'Attributes' })).closest(
-      '.detail-section',
+      '.rule-composer-section',
     ) as HTMLElement;
     expect(within(attributesSection).getByText('Brand')).toBeInTheDocument();
     expect(within(attributesSection).getByText('Acme')).toBeInTheDocument();
@@ -410,7 +413,7 @@ describe('ProductDetailPage', () => {
     renderDetailPage(mockApi, true);
 
     const kpiCard = await findAvailableKpiCard();
-    await waitFor(() => expect(kpiCard).toHaveClass('kpi-card--error'));
+    await waitFor(() => expect(kpiCard).toHaveAttribute('data-tone', 'error'));
     expect(within(kpiCard).getByText('0')).toBeInTheDocument();
   });
 
@@ -429,7 +432,7 @@ describe('ProductDetailPage', () => {
     const kpiCard = await findAvailableKpiCard();
     expect(within(kpiCard).getByTestId('stock-summary-atp')).toHaveTextContent('—');
     expect(within(kpiCard).getByText('not known right now')).toBeInTheDocument();
-    expect(kpiCard).not.toHaveClass('kpi-card--success');
+    expect(kpiCard).not.toHaveAttribute('data-tone', 'success');
     expect(within(kpiCard).queryByText('40')).not.toBeInTheDocument();
   });
 
@@ -603,7 +606,7 @@ describe('ProductDetailPage', () => {
     renderDetailPage(mockApi, true);
 
     const kpiCard = await findAvailableKpiCard();
-    await waitFor(() => expect(kpiCard).toHaveClass('kpi-card--warning'));
+    await waitFor(() => expect(kpiCard).toHaveAttribute('data-tone', 'warning'));
     expect(within(kpiCard).getByTestId('stock-summary-atp')).toHaveTextContent('8');
     expect(within(kpiCard).getByText(/1 short/)).toBeInTheDocument();
     expect(within(kpiCard).queryByText(/oversold/i)).not.toBeInTheDocument();
@@ -804,8 +807,7 @@ describe('ProductDetailPage', () => {
 
     renderDetailPage(mockApi);
 
-    const summary = await screen.findByRole('region', { name: 'Product summary' });
-    expect(within(summary).getByText('Dom i kuchnia › Ceramika')).toBeInTheDocument();
+    expect(await screen.findByText('Dom i kuchnia › Ceramika')).toBeInTheDocument();
   });
 
   it('should render the variants table for a multi-variant product', async () => {

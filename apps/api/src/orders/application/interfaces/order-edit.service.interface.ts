@@ -6,6 +6,7 @@
 import type { OrderRecord } from '@openlinker/core/orders';
 
 import type {
+  EditOrderAddGiftInput,
   EditOrderAddressInput,
   EditOrderDeliveryMethodInput,
   EditOrderDiscountInput,
@@ -45,6 +46,15 @@ export interface IOrderEditService {
    * unacknowledged excess and `OrderEditRefusedError` for everything else.
    */
   editDiscount(input: EditOrderDiscountInput): Promise<OrderEditResult>;
+
+  /**
+   * Add a gift by hand (#3940, gifts spec 5): a 0.00 line keyed `op-gift:{changeId}`
+   * in the overlay, held in the stock ledger like any line. Allowed until the parcel
+   * is closed (the same refusals as every other edit: shipped, packed, cancelled);
+   * a sales document that already exists is NOT a refusal, it is reported as
+   * `gift.salesDocumentExists` so the operator sees one warning.
+   */
+  addGift(input: EditOrderAddGiftInput): Promise<OrderEditResult>;
 
   /**
    * The order beside the channel's own record of it, or `null` when nobody has

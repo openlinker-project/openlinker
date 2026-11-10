@@ -5,6 +5,7 @@
     "selectReason": "Wybierz powód…"
   },
   "actions": {
+    "add-gift": "Dodaj prezent",
     "dispatch-shipment": "Kup etykietę nadawczą",
     "issue-sales-document": "Wystaw fakturę lub paragon",
     "place-hold": "Wstrzymaj zamówienie",
@@ -410,6 +411,10 @@
     "order.hold.released": {
       "description": "To, co blokowało zamówienie, zostało usunięte.",
       "label": "Wstrzymanie zamówienia zostaje zdjęte"
+    },
+    "order.ingested": {
+      "description": "Promocje z prezentem są sprawdzane, gdy OpenLinker przyjmuje zamówienie.",
+      "label": "Zamówienie wpływa (promocje z prezentem)"
     },
     "order.on_hold_for": {
       "description": "Sprawdzane według zegara, a nie w chwili zatrzymania zamówienia.",

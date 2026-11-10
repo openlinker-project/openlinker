@@ -12,7 +12,7 @@
 export const CorrectionModeValues = ['set', 'delta'] as const;
 export type CorrectionMode = (typeof CorrectionModeValues)[number];
 
-export const CorrectionReasonValues = ['count_correction', 'found', 'damaged', 'other'] as const;
+export const CorrectionReasonValues = ['count_correction', 'found', 'damaged', 'gift', 'other'] as const;
 export type CorrectionReason = (typeof CorrectionReasonValues)[number];
 
 export const CorrectionTargetRefusalReasonValues = [

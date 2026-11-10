@@ -30,7 +30,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -56,6 +55,7 @@ import {
   StartSalesDocumentBatchRunResponseDto,
 } from './dto/sales-document-batch.dto';
 import type { SalesDocumentBatchRunDto } from './dto/sales-document-batch.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 /**
  * Stable 409 codes for a refused "Run now". A missing connection is a 404 and
@@ -120,7 +120,9 @@ export class SalesDocumentBatchController {
   ): Promise<SalesDocumentBatchOverviewDto> {
     const overview = await this.batches.getOverview(connectionId, new Date());
     if (overview === null) {
-      throw new NotFoundException('Connection not found');
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'CONNECTION_NOT_FOUND', 'Connection not found', {
+        connectionId,
+      });
     }
     return {
       connectionId,
@@ -198,7 +200,12 @@ export class SalesDocumentBatchController {
     const detail = await this.batches.getRun(runId);
     // A run of another connection answers 404, never its contents.
     if (detail === null || detail.run.connectionId !== connectionId) {
-      throw new NotFoundException('Batch run not found');
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'SALES_DOCUMENT_BATCH_RUN_NOT_FOUND',
+        'Batch run not found',
+        { runId }
+      );
     }
     return {
       run: toRunDto(detail.run),
@@ -236,7 +243,9 @@ export class SalesDocumentBatchController {
       return { jobId: result.jobId };
     }
     if (result.reason === 'connection-not-found') {
-      throw new NotFoundException('Connection not found');
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'CONNECTION_NOT_FOUND', 'Connection not found', {
+        connectionId,
+      });
     }
     throw new ConflictException(RUN_REFUSAL_RESPONSE[result.reason]);
   }

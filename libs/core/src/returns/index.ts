@@ -379,3 +379,8 @@ export type {
   ReturnSegment,
   ReturnSegmentCounts,
 } from './domain/types/return-segment.types';
+
+// Gift decisions on a return (#3943, gifts spec section 9).
+export * from './domain/types/return-gift-decision.types';
+export type { IReturnGiftDecisionService } from './application/services/return-gift-decision.service.interface';
+export { ReturnGiftDecisionInvalidError } from './domain/exceptions/return-gift-decision-invalid.error';

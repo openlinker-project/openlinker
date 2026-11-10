@@ -1031,6 +1031,14 @@
           "desc": "Przeczytaj ją przed pakowaniem.",
           "label": "Kupujący zostawił notatkę"
         },
+        "giftNotAdded": {
+          "desc": "Promocja miała dodać gratis, ale się nie udało. Zamówienie idzie dalej bez niego.",
+          "label": "Gratis nie dodany"
+        },
+        "giftShopRejected": {
+          "desc": "Sklep nie przyjął zamówienia z pozycją gratisu.",
+          "label": "Sklep odrzucił gratis"
+        },
         "omsStopped": {
           "desc": "OpenLinker nie mógł czegoś rozstrzygnąć i potrzebuje Ciebie.",
           "label": "Zatrzymane przez OpenLinker"
@@ -1745,6 +1753,7 @@
       "deliveryMethodChange": "Zmieniono metodę dostawy",
       "discountChange": "Zmieniono rabat",
       "fallback": "Zamówienie zmienione",
+      "giftAdded": "Dodano prezent",
       "lineQuantityChange": "Zmniejszono ilości pozycji"
     },
     "refusals": {
@@ -2760,6 +2769,12 @@
     "details": "Szczegóły",
     "detailsAria": "Otwórz szczegóły zamówienia {ref}",
     "generateLabel": "Wygeneruj etykietę",
+    "glance": {
+      "channel": "Kanał",
+      "customer": "Klient",
+      "document": "Dokument",
+      "shipTo": "Wyślij do"
+    },
     "invoice": "Faktura",
     "itemPrice": "{quantity} × {price}",
     "itemUnmapped": "Jeszcze niepowiązany z produktem z katalogu",

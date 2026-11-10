@@ -502,7 +502,7 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     // stays an unattributed `master_sync`: it records what the master says, not
     // what this decrement did.
     await this.writeMirror(position, owner, resultingQuantity, position.reservedQuantity, line, {
-      reason: 'sale',
+      reason: line.movementReason ?? 'sale',
       sourceKind: 'order',
       sourceRef: orderId,
     });

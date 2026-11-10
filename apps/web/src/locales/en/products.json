@@ -231,6 +231,31 @@
       "message": "Fetching product details…",
       "title": "Loading product"
     },
+    "overview": {
+      "bundlesTitle": "Bundles",
+      "costRangeSub": "net cost {min} to {max}",
+      "costSub": "net cost {amount}",
+      "defaultVariant": "Default",
+      "detailsHeading": "Stock details",
+      "editContent": "Edit content",
+      "eyebrow": "Product",
+      "listedOnCol": "Listed on",
+      "missingOn": "missing: {list}",
+      "moreSummary": "stock correction, cost, history",
+      "moreTitle": "More about stock and variants",
+      "noSource": "No source",
+      "photoCount": {
+        "one": "{n} photo",
+        "other": "{n} photos"
+      },
+      "photos": "Photos",
+      "productId": "Product ID",
+      "reservedCol": "Reserved",
+      "stockCol": "Stock",
+      "updated": "Updated",
+      "variantCol": "Variant",
+      "vat": "VAT rate"
+    },
     "retry": "Retry",
     "source": "Source",
     "tabs": {

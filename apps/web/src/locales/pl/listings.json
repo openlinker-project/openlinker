@@ -637,6 +637,7 @@
       "sandbox": "Sandbox"
     },
     "hideSettings": "Ukryj ustawienia",
+    "label": "Kanał docelowy",
     "settingsChanged": {
       "few": "Zmieniono {n} ustawienia",
       "many": "Zmieniono {n} ustawień",
@@ -1139,6 +1140,16 @@
       },
       "zoomImage": "Powiększ zdjęcie {name}"
     },
+    "sticky": {
+      "missingLabel": "Do poprawy",
+      "needAttention": {
+        "few": "{count} warianty wymagają uwagi",
+        "many": "{count} wariantów wymaga uwagi",
+        "one": "{count} wariant wymaga uwagi",
+        "other": "{count} wariantu wymaga uwagi"
+      },
+      "ready": "Gotowe: {count} do utworzenia"
+    },
     "summary": {
       "excluded": "wykluczone",
       "needAttention": "wymaga uwagi",
@@ -1374,7 +1385,9 @@
     "categoryMismatch": "Kategoria różni się od karty produktu pierwszego składnika, a sklep wymaga, żeby były takie same.",
     "collapse": "Ukryj skład zestawu {name}",
     "compositionHeading": "Skład na {destination}",
+    "compositionHint": "{n} produktów · tryb pokazuje, jak składnik trafia do oferty",
     "eanNotNeeded": "Zestaw nie potrzebuje własnego EAN. Kody mają jego produkty.",
+    "editingFooter": "Edycja oferty zestawu. Zmiany dotyczą tylko tej partii.",
     "expand": "Pokaż skład zestawu {name}",
     "gift": "gratis",
     "insertComponentList": "Wstaw listę składników",
@@ -1393,7 +1406,7 @@
       "ownOfferWithId": "własna oferta {id}"
     },
     "noOwnEan": "bez własnego EAN",
-    "publishComponent": "Opublikuj składnik",
+    "publishComponent": "Wystaw składnik",
     "quantity": "×{n}",
     "useFirstComponentCategory": "Użyj kategorii pierwszego składnika"
   },

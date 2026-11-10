@@ -1,40 +1,40 @@
 /**
- * Gift lines on a sales document (#3930)
+ * Gift lines on a sales document (#3930, redecided by #3941)
  *
  * `presentGiftLines` turns order lines into document lines so the document
- * total always equals what the buyer paid, whatever form the operator chose for
- * a gift. Pure and import-free beyond the minor-unit helper: it moves amounts
- * between figures the source reported and computes no tax (ADR-063).
+ * total always equals what the buyer paid, whatever form was chosen for a gift.
+ * Pure and import-free beyond the minor-unit helper: it moves amounts between
+ * figures the source reported and computes no tax (ADR-063).
  *
- * Forms (rules D1-D4, C3 of the bundles-and-gifts spike):
- * - `omit` (default): the gift is not on the document.
- * - `show`: the gift is a 0,00 line. A provider that refuses zero (a fiscal
- *   register rejects a zero-value line) gets one minor unit taken from a paid
- *   line of the SAME rate; with no such line the gift is handled like a gift of
- *   a different rate (see below).
- * - `priced-in`: part of the payment moves to the gift, in proportion to
- *   reference prices, each line keeping its own rate.
- * - `internal-record`: off the customer document, returned separately so the
- *   caller can record a free transfer.
+ * ONE choice, the gift form on documents (gifts spec section 8.2):
+ * - `technical-cent` (default): the gift at 0.01 per unit, the cent taken from
+ *   the most expensive paid line whatever its rate;
+ * - `priced-in`: a share of the payment proportional to the gift's reference
+ *   price, each line keeping its own rate;
+ * - `custom-price`: the gift at an operator-chosen gross unit price (per unit),
+ *   the same total taken from the most expensive paid line; `technical-cent`
+ *   is its fixed 0.01 case. Where no paid line can absorb it the gift is priced
+ *   in instead and the note `custom-price-no-donor` names why. The amount comes
+ *   with the level that names the form (gift, connection, default);
+ * - `show-zero`: the gift at 0.00, only where the provider declares it accepts
+ *   a zero-value line; otherwise it degrades to `technical-cent` (noted);
+ * - `omit`: the gift is not on the document;
+ * - `internal-record` (not offered in the UI): off the customer document,
+ *   returned separately so the caller can record a free transfer.
  *
- * A gift whose rate matches no paid line is never silently dropped (product
- * decision B, ADR-083). Research basis, not legal advice: a gift tied to a
- * purchase is part of the paid sale, so leaving it off lets the whole payment
- * be taxed at the paid lines' rates, and shifting value away from a
- * higher-rate item is the direction the tax authority warns about. The
- * operator chooses how it is carried (`config.giftOnDocuments.differentRateGift`):
- * - `priced-in` (default): the gift at its own rate with a share of the
- *   payment proportional to its standalone price (cost when not sold alone);
- * - `technical-cent`: the gift at 0.01 per unit, the cent taken from the
- *   largest paid line (common marketplace-tool practice).
- * There is deliberately NO "hold every document with a gift" option (rule C3).
+ * Three levels, most specific wins (section 8.3): the gift's own form, the
+ * connection's override, the OpenLinker-wide default. `resolveGiftDocumentForm`
+ * is the one place that decides, and reports where the answer came from.
+ * Research basis, not legal advice.
  *
- * Whenever the provider does not accept a zero-value line, no presented line is
- * left at 0.00: one minor unit per unit is taken from the largest paid line of
- * the same rate, or the line is reported as `zero-line-unfloorable`.
+ * A provider that does not accept a zero-value line never receives one: one
+ * minor unit per unit is taken from the largest paid line of the same rate, or
+ * the line is reported as `zero-line-unfloorable`.
  *
- * Settings live on the ORDER-SOURCE connection (`config.giftOnDocuments`), the
- * ADR-082 shape; the default form is `omit`.
+ * Connection override: `config.giftOnDocuments.form` (absent = inherit). A
+ * stored `differentRateGift` from the earlier model is ignored: `technical-cent`
+ * always takes the cent from the most expensive paid line, so a gift whose rate
+ * matches no paid line needs no extra setting.
  *
  * @module libs/core/src/sales-documents/domain/types
  */
@@ -43,93 +43,204 @@ import { minorUnitExponentFor } from './shipping-tax-split.types';
 /** Config key on the order-source `Connection.config`. */
 export const GIFT_ON_DOCUMENTS_CONFIG_KEY = 'giftOnDocuments';
 
-export const GiftLineFormValues = ['omit', 'show', 'priced-in', 'internal-record'] as const;
+/** The four forms an operator picks (gifts spec section 8.2). */
+export const GiftDocumentFormChoiceValues = [
+  'technical-cent',
+  'custom-price',
+  'priced-in',
+  'show-zero',
+  'omit',
+] as const;
+export type GiftDocumentFormChoice = (typeof GiftDocumentFormChoiceValues)[number];
+
+/** The four choices plus the off-document record, which the UI does not offer. */
+export const GiftLineFormValues = [...GiftDocumentFormChoiceValues, 'internal-record'] as const;
 export type GiftLineForm = (typeof GiftLineFormValues)[number];
 
-export const DEFAULT_GIFT_LINE_FORM: GiftLineForm = 'omit';
+/** The OpenLinker-wide default when nothing is saved. */
+export const DEFAULT_GIFT_LINE_FORM: GiftLineForm = 'technical-cent';
+
+export function isGiftLineForm(value: unknown): value is GiftLineForm {
+  return typeof value === 'string' && (GiftLineFormValues as readonly string[]).includes(value);
+}
+
+/** Where a gift's resolved form came from. */
+export const GiftFormSourceValues = ['rule', 'connection', 'default'] as const;
+export type GiftFormSource = (typeof GiftFormSourceValues)[number];
 
 /**
- * Read `config.giftOnDocuments.form`. Never throws; anything unrecognised is the
- * default, because a typo must not change what a fiscal document says.
+ * A `custom-price` gift carries the gross unit price it shows at, a decimal
+ * string in the order's currency, per gift unit: positive, at most two decimals.
  */
-export function readGiftLineForm(config: unknown): GiftLineForm {
-  if (typeof config !== 'object' || config === null) return DEFAULT_GIFT_LINE_FORM;
+export function isGiftUnitPriceAmount(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+(\.\d{1,2})?$/.test(value) && Number(value) > 0;
+}
+
+export interface ResolvedGiftForm {
+  form: GiftLineForm;
+  source: GiftFormSource;
+  /** Set only for `custom-price`: the amount that came with the winning level. */
+  unitPrice?: string;
+}
+
+/** The amount each level carries for `custom-price`; ignored for any other form. */
+export interface GiftFormAmounts {
+  line?: unknown;
+  connection?: unknown;
+  global?: unknown;
+}
+
+/**
+ * Most specific wins: the gift's own form, then the connection's override, then
+ * the OpenLinker-wide default. An unrecognised value at a level reads as absent.
+ */
+export function resolveGiftDocumentForm(
+  lineForm: unknown,
+  connectionForm: unknown,
+  globalForm: unknown,
+  amounts: GiftFormAmounts = {},
+): ResolvedGiftForm {
+  // A level naming `custom-price` without a usable amount reads as absent: the
+  // amount comes with its level, never from a less specific one.
+  const usable = (form: unknown, amount: unknown): form is GiftLineForm =>
+    isGiftLineForm(form) && (form !== 'custom-price' || isGiftUnitPriceAmount(amount));
+  const withAmount = (
+    form: GiftLineForm,
+    source: GiftFormSource,
+    amount: unknown,
+  ): ResolvedGiftForm =>
+    form === 'custom-price' && isGiftUnitPriceAmount(amount)
+      ? { form, source, unitPrice: amount }
+      : { form, source };
+  if (usable(lineForm, amounts.line)) return withAmount(lineForm, 'rule', amounts.line);
+  if (usable(connectionForm, amounts.connection)) {
+    return withAmount(connectionForm, 'connection', amounts.connection);
+  }
+  return usable(globalForm, amounts.global)
+    ? withAmount(globalForm, 'default', amounts.global)
+    : { form: DEFAULT_GIFT_LINE_FORM, source: 'default' };
+}
+
+/**
+ * Read the connection override `config.giftOnDocuments.form`. `undefined` means
+ * "inherit". Never throws. The earlier model's `show` reads as `show-zero`.
+ */
+export function readGiftConnectionForm(config: unknown): GiftLineForm | undefined {
+  if (typeof config !== 'object' || config === null) return undefined;
   const raw = (config as Record<string, unknown>)[GIFT_ON_DOCUMENTS_CONFIG_KEY];
-  if (typeof raw !== 'object' || raw === null) return DEFAULT_GIFT_LINE_FORM;
+  if (typeof raw !== 'object' || raw === null) return undefined;
   const form = (raw as Record<string, unknown>).form;
-  return typeof form === 'string' && (GiftLineFormValues as readonly string[]).includes(form)
-    ? (form as GiftLineForm)
-    : DEFAULT_GIFT_LINE_FORM;
+  if (form === 'show') return 'show-zero';
+  return isGiftLineForm(form) ? form : undefined;
 }
 
-export const DifferentRateGiftValues = ['priced-in', 'technical-cent'] as const;
-export type DifferentRateGift = (typeof DifferentRateGiftValues)[number];
-
-export const DEFAULT_DIFFERENT_RATE_GIFT: DifferentRateGift = 'priced-in';
-
-/** Read `config.giftOnDocuments.differentRateGift`; anything unrecognised is the default. */
-export function readDifferentRateGift(config: unknown): DifferentRateGift {
-  if (typeof config !== 'object' || config === null) return DEFAULT_DIFFERENT_RATE_GIFT;
+/**
+ * Read the connection's `custom-price` amount, `config.giftOnDocuments.unitPrice`.
+ * `undefined` when absent or not a valid amount. Never throws.
+ */
+export function readGiftConnectionUnitPrice(config: unknown): string | undefined {
+  if (typeof config !== 'object' || config === null) return undefined;
   const raw = (config as Record<string, unknown>)[GIFT_ON_DOCUMENTS_CONFIG_KEY];
-  if (typeof raw !== 'object' || raw === null) return DEFAULT_DIFFERENT_RATE_GIFT;
-  const value = (raw as Record<string, unknown>).differentRateGift;
-  return typeof value === 'string' && (DifferentRateGiftValues as readonly string[]).includes(value)
-    ? (value as DifferentRateGift)
-    : DEFAULT_DIFFERENT_RATE_GIFT;
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const amount = (raw as Record<string, unknown>).unitPrice;
+  return isGiftUnitPriceAmount(amount) ? amount : undefined;
 }
 
-/** Both gift settings of a connection, named like the mapper inputs they feed. */
-export interface GiftDocumentSettings {
-  giftForm: GiftLineForm;
-  differentRateGift: DifferentRateGift;
-}
-
-export function readGiftDocumentSettings(config: unknown): GiftDocumentSettings {
+/**
+ * The two fields a mapper stamps on a gift line: the resolved form and, for
+ * `custom-price`, the amount as a number in the order's currency.
+ */
+export function resolveGiftPresentationFields(
+  lineForm: unknown,
+  lineUnitPrice: unknown,
+  settings: {
+    giftConnectionForm?: unknown;
+    giftConnectionUnitPrice?: unknown;
+    giftGlobalForm?: unknown;
+    giftGlobalUnitPrice?: unknown;
+  },
+): { giftForm: GiftLineForm; giftUnitPriceGross?: number } {
+  const resolved = resolveGiftDocumentForm(
+    lineForm,
+    settings.giftConnectionForm,
+    settings.giftGlobalForm,
+    {
+      line: lineUnitPrice,
+      connection: settings.giftConnectionUnitPrice,
+      global: settings.giftGlobalUnitPrice,
+    },
+  );
   return {
-    giftForm: readGiftLineForm(config),
-    differentRateGift: readDifferentRateGift(config),
+    giftForm: resolved.form,
+    ...(resolved.unitPrice !== undefined && { giftUnitPriceGross: Number(resolved.unitPrice) }),
+  };
+}
+
+/** What a mapper needs from the settings: the connection override and the global default. */
+export interface GiftDocumentSettings {
+  giftConnectionForm?: GiftLineForm;
+  giftConnectionUnitPrice?: string;
+  giftGlobalForm: GiftLineForm;
+  giftGlobalUnitPrice?: string;
+}
+
+export function readGiftDocumentSettings(
+  config: unknown,
+  globalForm: GiftLineForm = DEFAULT_GIFT_LINE_FORM,
+  globalUnitPrice?: string | null,
+): GiftDocumentSettings {
+  const connection = readGiftConnectionForm(config);
+  const connectionUnitPrice = readGiftConnectionUnitPrice(config);
+  return {
+    ...(connection !== undefined && { giftConnectionForm: connection }),
+    ...(connectionUnitPrice !== undefined && { giftConnectionUnitPrice: connectionUnitPrice }),
+    giftGlobalForm: globalForm,
+    ...(isGiftUnitPriceAmount(globalUnitPrice) && { giftGlobalUnitPrice: globalUnitPrice }),
   };
 }
 
 /**
  * Strict write-side check for `config.giftOnDocuments`. The READ side forgives
  * anything (a stored value must never break an issuance); strictness belongs
- * here, where there is an operator to tell. Returns one message per problem,
- * all of them at once.
+ * here, where there is an operator to tell. `form` is optional (absent = inherit
+ * from OpenLinker); a legacy `differentRateGift` is accepted and ignored so an
+ * existing config still saves.
  */
 export function validateGiftOnDocumentsShape(value: unknown): { path: string; message: string }[] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return [{ path: GIFT_ON_DOCUMENTS_CONFIG_KEY, message: 'must be an object' }];
   }
-  const errors: { path: string; message: string }[] = [];
-  const record = value as Record<string, unknown>;
-  const form = record.form;
-  if (typeof form !== 'string' || !(GiftLineFormValues as readonly string[]).includes(form)) {
-    errors.push({
+  const form = (value as Record<string, unknown>).form;
+  const unitPrice = (value as Record<string, unknown>).unitPrice;
+  const issues: { path: string; message: string }[] = [];
+  if (form !== undefined && form !== null && form !== 'show' && !isGiftLineForm(form)) {
+    issues.push({
       path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.form`,
       message: `must be one of ${GiftLineFormValues.join(', ')}`,
     });
   }
-  const different = record.differentRateGift;
-  if (
-    different !== undefined &&
-    (typeof different !== 'string' || !(DifferentRateGiftValues as readonly string[]).includes(different))
-  ) {
-    errors.push({
-      path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.differentRateGift`,
-      message: `must be one of ${DifferentRateGiftValues.join(', ')}`,
+  if (unitPrice !== undefined && unitPrice !== null && !isGiftUnitPriceAmount(unitPrice)) {
+    issues.push({
+      path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.unitPrice`,
+      message: 'must be a positive decimal string with at most 2 decimals',
     });
   }
-  return errors;
+  if (form === 'custom-price' && !isGiftUnitPriceAmount(unitPrice)) {
+    issues.push({
+      path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.unitPrice`,
+      message: 'is required when form is custom-price',
+    });
+  }
+  return issues;
 }
 
-/** The forms an operator may pick for a provider; `show` needs a declaration. */
+/** The forms an operator may pick for a provider; `show-zero` needs a declaration. */
 export function offeredGiftLineForms(
   acceptsZeroValueLine: boolean | undefined,
-): readonly GiftLineForm[] {
-  return acceptsZeroValueLine === undefined
-    ? GiftLineFormValues.filter((form) => form !== 'show')
-    : GiftLineFormValues;
+): readonly GiftDocumentFormChoice[] {
+  return acceptsZeroValueLine === true
+    ? GiftDocumentFormChoiceValues
+    : GiftDocumentFormChoiceValues.filter((form) => form !== 'show-zero');
 }
 
 /** The slice of a document line the helper reads and rewrites. */
@@ -140,6 +251,17 @@ export interface GiftPresentationLine {
   /** Set by the caller from the order line's `gift` marker. */
   isGift?: boolean;
   /**
+   * The form resolved for THIS gift by the caller (`resolveGiftDocumentForm`).
+   * Different gifts on one order may differ; absent uses the `form` argument.
+   */
+  giftForm?: GiftLineForm;
+  /**
+   * The gross unit price a `custom-price` gift shows at, per gift unit, resolved
+   * by the caller alongside `giftForm`. Absent or non-positive: the form cannot
+   * be applied and is noted `custom-price-invalid`.
+   */
+  giftUnitPriceGross?: number;
+  /**
    * What one unit would cost on its own, gross. Only `priced-in` reads it, as
    * the weight the payment is shared by; without it a gift carries no value to
    * price in and falls back to `omit`.
@@ -149,10 +271,10 @@ export interface GiftPresentationLine {
 
 export type GiftPresentationNote =
   | 'show-not-offered'
-  | 'rate-not-on-document'
-  | 'no-same-rate-paid-line'
   | 'no-reference-price'
   | 'technical-cent-no-donor'
+  | 'custom-price-no-donor'
+  | 'custom-price-invalid'
   | 'zero-line-unfloorable';
 
 export interface GiftPresentationResult<T extends GiftPresentationLine> {
@@ -179,20 +301,20 @@ function rateKey(rate: string): string {
 }
 
 /**
- * Present the gift lines of an order as the chosen form.
+ * Present the gift lines of an order, each in its own resolved form.
  *
  * Only a line marked `isGift` AND priced 0 is a gift: a marked line the source
  * priced above zero carries real money and stays an ordinary line, so no amount
- * is ever dropped. `acceptsZeroValueLine` is the provider's declaration; absent
- * (`undefined`) means `show` is not offered and resolves to `omit`.
+ * is ever dropped. `form` is the fallback for a gift carrying no `giftForm`.
+ * `acceptsZeroValueLine` is the provider's declaration; `show-zero` degrades to
+ * `technical-cent` unless it is `true`.
  */
 export function presentGiftLines<T extends GiftPresentationLine>(
   lines: readonly T[],
   form: GiftLineForm,
   acceptsZeroValueLine: boolean | undefined,
-  options: { currency?: string | null; differentRateGift?: DifferentRateGift } = {},
+  options: { currency?: string | null } = {},
 ): GiftPresentationResult<T> {
-  const differentRateGift = options.differentRateGift ?? DEFAULT_DIFFERENT_RATE_GIFT;
   const factor = 10 ** minorUnitExponentFor(options.currency);
   const toMinor = (value: number): number => Math.round(value * factor);
   const fromMinor = (minor: number): number => minor / factor;
@@ -214,16 +336,9 @@ export function presentGiftLines<T extends GiftPresentationLine>(
     };
   }
 
-  let effective: GiftLineForm = form;
-  if (form === 'show' && acceptsZeroValueLine === undefined) {
-    effective = 'omit';
-    notes.push('show-not-offered');
-  }
-
   const paid = entries.filter((entry) => !entry.gift);
   const entryTotal = (entry: Entry<T>): number =>
     entry.lines.reduce((sum, line) => sum + line.quantity * toMinor(line.unitPriceGross), 0);
-  const paidRates = new Set(paid.map((entry) => rateKey(entry.source.taxRate)));
 
   const setEntryTotal = (entry: Entry<T>, totalMinor: number): void => {
     entry.lines = reexpressTotal(entry.source, totalMinor, fromMinor);
@@ -275,53 +390,60 @@ export function presentGiftLines<T extends GiftPresentationLine>(
   const giftEntries = entries.filter((entry) => entry.gift);
   const toPriceIn: Entry<T>[] = [];
   const toDrop: Entry<T>[] = [];
-
-  // A gift whose rate no paid line carries (decision B): the operator's choice,
-  // never a silent drop. `technical-cent` falls back to `priced-in` when no
-  // paid line can spare the cent.
-  const handleDifferentRate = (entry: Entry<T>): void => {
-    if (differentRateGift === 'technical-cent') {
-      const need = Number.isInteger(entry.source.quantity) && entry.source.quantity >= 1 ? entry.source.quantity : 0;
-      const donor = need > 0 ? largest(paid.filter((p) => entryTotal(p) > need)) : undefined;
-      if (donor !== undefined) {
-        setEntryTotal(donor, entryTotal(donor) - need);
-        entry.lines = [{ ...entry.source, unitPriceGross: fromMinor(1) }];
-        return;
-      }
-      notes.push('technical-cent-no-donor');
-    }
-    toPriceIn.push(entry);
-  };
+  const applied: GiftLineForm[] = [];
 
   for (const entry of giftEntries) {
-    const sameRate = paid.filter((p) => rateKey(p.source.taxRate) === rateKey(entry.source.taxRate));
-    const rateMismatch = paid.length > 0 && !paidRates.has(rateKey(entry.source.taxRate));
-    const zeroKept = effective === 'show' && acceptsZeroValueLine === true;
+    // An unrecognised per-gift value must not reach the final branch below, which
+    // prices a gift in: it falls back to the connection/global form instead.
+    let effective: GiftLineForm = isGiftLineForm(entry.source.giftForm)
+      ? entry.source.giftForm
+      : form;
+    if (effective === 'show-zero' && acceptsZeroValueLine !== true) {
+      effective = 'technical-cent';
+      notes.push('show-not-offered');
+    }
     if (effective === 'internal-record') {
       internalRecordLines.push(entry.source);
       toDrop.push(entry);
-    } else if (rateMismatch && !zeroKept) {
-      notes.push('rate-not-on-document');
-      handleDifferentRate(entry);
-    } else if (effective === 'priced-in') {
-      toPriceIn.push(entry);
     } else if (effective === 'omit') {
       toDrop.push(entry);
-    } else if (zeroKept) {
-      // show, provider accepts zero: the line stays at 0,00 untouched.
-    } else {
-      // show, provider refuses zero: one minor unit per gift unit from the
-      // largest same-rate paid line that can spare it.
-      const need = Number.isInteger(entry.source.quantity) ? entry.source.quantity : 1;
-      const donor = largest(sameRate.filter((p) => entryTotal(p) > need));
-      if (donor === undefined) {
-        notes.push('no-same-rate-paid-line');
-        toPriceIn.push(entry);
-      } else {
-        setEntryTotal(donor, entryTotal(donor) - need);
-        entry.lines = [{ ...entry.source, unitPriceGross: fromMinor(1) }];
+    } else if (effective === 'show-zero') {
+      // the line stays at 0,00 untouched.
+    } else if (effective === 'technical-cent' || effective === 'custom-price') {
+      // The gift's price per unit (one minor unit for technical-cent, the chosen
+      // amount for custom-price) is taken from the most expensive paid line,
+      // whatever its rate; with none able to spare it the gift is priced in
+      // instead and the note names why.
+      const customUnit = toMinor(entry.source.giftUnitPriceGross ?? 0);
+      if (effective === 'custom-price' && customUnit < 1) {
+        notes.push('custom-price-invalid');
+        effective = 'technical-cent';
       }
+      const unitMinor = effective === 'custom-price' ? customUnit : 1;
+      const need =
+        Number.isInteger(entry.source.quantity) && entry.source.quantity >= 1
+          ? entry.source.quantity * unitMinor
+          : 0;
+      // A donor must keep at least one minor unit per unit after giving, or its
+      // own line would become a 0.00 row.
+      const donor =
+        need > 0
+          ? largest(paid.filter((p) => entryTotal(p) - need >= p.source.quantity))
+          : undefined;
+      if (donor !== undefined) {
+        setEntryTotal(donor, entryTotal(donor) - need);
+        entry.lines = [{ ...entry.source, unitPriceGross: fromMinor(unitMinor) }];
+      } else {
+        notes.push(
+          effective === 'custom-price' ? 'custom-price-no-donor' : 'technical-cent-no-donor',
+        );
+        effective = 'priced-in';
+        toPriceIn.push(entry);
+      }
+    } else {
+      toPriceIn.push(entry);
     }
+    applied.push(effective);
   }
 
   if (toPriceIn.length > 0) {
@@ -336,10 +458,7 @@ export function presentGiftLines<T extends GiftPresentationLine>(
     fromMinor,
     notes,
   );
-  const priced = toPriceIn.length > 0 && !toPriceIn.every((entry) => dropped.has(entry));
-  const appliedForm: GiftLineForm =
-    effective === 'omit' && priced ? 'priced-in' : effective;
-  return { lines: resultLines, internalRecordLines, appliedForm, notes };
+  return { lines: resultLines, internalRecordLines, appliedForm: applied[0] ?? form, notes };
 }
 
 /**
@@ -369,7 +488,7 @@ function reexpressTotal<T extends GiftPresentationLine>(
 /**
  * A provider that does not accept a zero-value line must never receive one.
  * Each zero line gets one minor unit per unit, taken from the largest paid line
- * of the SAME rate that can spare it; with none, the line stays and the note
+ * of the SAME rate that can spare it while keeping a minor unit per unit; with none, the line stays and the note
  * `zero-line-unfloorable` names it, so the caller can refuse or log it.
  */
 function floorZeroValueLines<T extends GiftPresentationLine>(
@@ -390,7 +509,7 @@ function floorZeroValueLines<T extends GiftPresentationLine>(
     result.forEach((candidate, candidateIndex) => {
       if (candidate.isGift === true || rateKey(candidate.taxRate) !== rateKey(line.taxRate)) return;
       const total = candidate.quantity * toMinor(candidate.unitPriceGross);
-      if (total > need && total > donorTotal) {
+      if (total - need >= candidate.quantity && total > donorTotal) {
         donorTotal = total;
         donorIndex = candidateIndex;
       }

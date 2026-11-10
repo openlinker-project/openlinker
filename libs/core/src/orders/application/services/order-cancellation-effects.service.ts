@@ -38,6 +38,7 @@ import type {
 } from '../../domain/ports/order-label-voider.port';
 import {
   ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_GIFT_SERVICE_TOKEN,
   ORDER_HOLD_SERVICE_TOKEN,
   ORDER_LABEL_VOIDER_TOKEN,
 } from '../../orders.tokens';
@@ -48,6 +49,7 @@ import type {
 } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderHoldService } from '../interfaces/order-hold.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
+import { IOrderGiftService } from './order-gift.service.interface';
 
 /** Proposal kinds a discount opens; the cancel credit supersedes both. */
 const DISCOUNT_PROPOSAL_KINDS: ReadonlySet<string> = new Set([
@@ -69,6 +71,8 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
     private readonly changes: IOrderChangeService,
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoices: IInvoiceService,
+    @Inject(ORDER_GIFT_SERVICE_TOKEN)
+    private readonly gifts: IOrderGiftService,
     private readonly moduleRef: ModuleRef
   ) {}
 
@@ -79,6 +83,10 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
     const releasedHoldIds = await this.releaseHolds(input);
     const labelVoids = input.voidLabels === false ? [] : await this.voidLabels(input);
     await this.abandonDiscountProposals(input.internalOrderId);
+    // A cancelled order is not a given gift: its units return to the rule's cap and
+    // the customer's limit, which is what the gift report (it skips cancelled
+    // orders) already counts. Never throws.
+    await this.gifts.releaseGrantsForCancelledOrder(input.internalOrderId);
 
     let correctionProposal: OrderCancelCorrectionProposal | null = null;
     let correctionUnavailableReason: OrderCancelCorrectionUnavailableReason | null = null;

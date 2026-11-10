@@ -62,9 +62,11 @@ export function AutomationsPage(): ReactElement {
   );
 
   const header = (
-    <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
-      {pageCopy.runLogAction}
-    </Button>
+    <>
+      <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
+        {pageCopy.runLogAction}
+      </Button>
+    </>
   );
 
   if (vocabularyQuery.isLoading || summaryQuery.isLoading) {

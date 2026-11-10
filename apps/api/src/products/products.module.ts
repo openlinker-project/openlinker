@@ -19,6 +19,7 @@ import { PRODUCT_COST_READS_SERVICE_TOKEN } from './application/services/product
 import { ProductImageProxyService } from './application/services/product-image-proxy.service';
 import { ProductCostController } from './http/product-cost.controller';
 import { ProductsController, VariantsController } from './http/products.controller';
+import { BundleProductCreationController } from './http/bundle-product-creation.controller';
 import { BundleDefinitionsController } from './http/bundle-definitions.controller';
 
 @Module({
@@ -45,6 +46,7 @@ import { BundleDefinitionsController } from './http/bundle-definitions.controlle
     ProductsController,
     VariantsController,
     BundleDefinitionsController,
+    BundleProductCreationController,
   ],
   // #3340 follow-up — serves a product's picture from the shop, because the
   // url the catalogue sync stored is one only the backend can reach. See the

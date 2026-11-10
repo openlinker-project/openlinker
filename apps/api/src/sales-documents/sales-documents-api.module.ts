@@ -19,6 +19,7 @@ import { SalesDocumentRulesController } from './http/sales-document-rules.contro
 import { SalesDocumentTemplatesController } from './http/sales-document-templates.controller';
 import { SalesDocumentMarketsController } from './http/sales-document-markets.controller';
 import { DeliveryLineSuggestionsController } from './http/delivery-line-suggestions.controller';
+import { SalesDocumentSettingsController } from './http/sales-document-settings.controller';
 import { DeliveryCountryFactsController } from './http/delivery-country-facts.controller';
 // #3907: the facts controller verifies the connection through the API-layer
 // connection service, which that module exports.
@@ -45,6 +46,7 @@ import { SalesDocumentBatchController } from './http/sales-document-batch.contro
     SalesDocumentMarketsController,
     DeliveryLineSuggestionsController,
     DeliveryCountryFactsController,
+    SalesDocumentSettingsController,
     SalesDocumentBatchController,
   ],
   providers: [SalesDocumentCapabilityGuardService],

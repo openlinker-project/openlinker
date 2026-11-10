@@ -140,14 +140,26 @@ const lazyRoutes = collectLazyRoutes([
  * #3624 adds the bundle form twice (`products/bundles/new` and
  * `products/bundles/:variantId`, one page), from 78 to 80.
  *
+ * #3940 adds the gift promotions list (`automations/gifts`) and its composer
+ * (`automations/gifts/:ruleId`, `new` included), from 80 to 82.
+ *
+ * #3943 adds the gift cost report (`analytics/gifts`), from 82 to 83.
+ *
+ * #3935 moves gift rules to Promotions: `automations/gifts` and its composer
+ * become redirects (two lazy routes fewer) and `promotions`, `promotions/new`
+ * and `promotions/:promotionId` take their place, from 83 to 84.
+ *
  * #4029: `/register` joins `/login` under one eager layout route (so a tab
  * switch does not remount the card), which removes one lazy guest route, and
  * `/settings/login-page` adds one authenticated lazy route - net 0, still 78.
  *
  * #3584 adds the batch issuing screen (`settings/sales-documents/batches/:connectionId`), one
  * lazy route, from 78 to 79.
+ *
+ * The gifts branch (#3935) and the batch screen (#3584) were counted on separate
+ * branches; where they meet the registered tree holds 85 lazy routes.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 80;
+const EXPECTED_LAZY_ROUTE_COUNT = 85;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

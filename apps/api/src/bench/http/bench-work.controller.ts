@@ -208,6 +208,7 @@ export class BenchWorkController {
           quantity: item.quantity,
           imageUrl: item.imageUrl,
         })),
+        giftUnits: work.giftUnits,
         unitsToVerify: work.unitsToVerify,
         state: work.state,
         holdReason: work.holdReason,

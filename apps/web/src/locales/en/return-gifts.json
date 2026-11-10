@@ -1,0 +1,24 @@
+{
+  "body": "OpenLinker never deducts a gift by itself. Decide what to do with each gift.",
+  "choice": {
+    "ask_back": "Ask for it back",
+    "deduct": "Deduct its value",
+    "keep": "Keep with the customer"
+  },
+  "decision": "What to do with the gift",
+  "deductUnknown": "The gift has no price in the catalogue, so there is nothing to deduct.",
+  "failed": "The decision could not be saved.",
+  "gift": "Gift",
+  "loadFailed": "The gifts of this order could not be loaded.",
+  "note": {
+    "ask_back": "You expect the gift back. Receive it into stock like any returned item.",
+    "deduct": "You will deduct {amount}, the price of the gift. Do it only when the offer terms say so.",
+    "keep": "The customer keeps the gift. The most common choice for a cheap gift."
+  },
+  "qty": "Qty",
+  "refundHint": "Gifts to deduct from the refund: {amount}. This is a suggestion; nothing is filled in until you change the refund yourself.",
+  "saved": "Decision saved.",
+  "title": "Gifts on this order",
+  "undecided": "Not decided yet",
+  "worth": "Price alone"
+}

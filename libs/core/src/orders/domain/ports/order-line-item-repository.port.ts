@@ -60,6 +60,17 @@ export interface OrderLineItemRepositoryPort {
   findByOrderIds(orderRecordIds: string[]): Promise<Map<string, OrderLineItem[]>>;
 
   /**
+   * Units sold per variant as an ordinary line (#3943), over the same scope as
+   * {@link getUnitsSoldByConnection} (ready, not cancelled, `placedAt` in range).
+   * The bundle report reads it as the "alone" half of a component's demand. A
+   * variant with no rows is absent from the Map, never `0`.
+   */
+  getUnitsSoldByVariants(
+    variantIds: readonly string[],
+    range: { from: Date; to: Date; sourceConnectionId?: string }
+  ): Promise<Map<string, number>>;
+
+  /**
    * Units sold per source connection for the sales & channel analytics read
    * (#1987) — `SUM(quantity)` grouped by `sourceConnectionId`, joined back to
    * the parent `order_records` row to apply the same `recordStatus = 'ready'

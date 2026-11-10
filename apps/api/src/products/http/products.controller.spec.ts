@@ -177,6 +177,10 @@ function createMockIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
 }
 
 describe('ProductsController', () => {
+  const mockBundleDefinitions = {
+    findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
+    findCurrentContainingComponents: jest.fn().mockResolvedValue([]),
+  };
   let controller: ProductsController;
   let productsService: jest.Mocked<IProductsService>;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
@@ -207,7 +211,7 @@ describe('ProductsController', () => {
         { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: mockTaxRateJournal },
         {
           provide: BUNDLE_DEFINITION_SERVICE_TOKEN,
-          useValue: { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) },
+          useValue: mockBundleDefinitions,
         },
         // Stubbed rather than omitted: the controller takes it by CLASS, so an
         // absent provider fails the whole module and with it every test in this
@@ -426,6 +430,39 @@ describe('ProductsController', () => {
       expect(item.externalIds).toEqual([
         { externalId: '42', platformType: 'prestashop', connectionId: 'conn-src' },
       ]);
+    });
+
+    describe('in-bundles count (#3935)', () => {
+      it('should count the distinct live bundles that use each product, from one reverse read', async () => {
+        productsService.listProducts.mockResolvedValue({
+          items: [makeProduct(), makeProduct({ id: 'ol_product_2' })],
+          total: 2,
+        });
+        productsService.getVariantsByProductIds.mockResolvedValue([
+          makeVariant({ id: 'v1', productId: 'ol_product_1' }),
+          makeVariant({ id: 'v2', productId: 'ol_product_2' }),
+        ]);
+        mockBundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+          { variantId: 'b1', version: 1, components: [{ variantId: 'v1', productId: 'ol_product_1', quantity: 1 }] },
+          { variantId: 'b2', version: 1, components: [{ variantId: 'v1', productId: 'ol_product_1', quantity: 1 }] },
+        ]);
+
+        const result = await controller.listProducts({});
+
+        expect(mockBundleDefinitions.findCurrentContainingComponents).toHaveBeenCalledTimes(1);
+        expect(result.items.map((i) => i.usedInBundlesCount)).toEqual([2, 0]);
+        mockBundleDefinitions.findCurrentContainingComponents.mockResolvedValue([]);
+      });
+
+      it('should omit the count rather than state zero when the read fails', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        productsService.getVariantsByProductIds.mockResolvedValue([makeVariant({ id: 'v1', productId: 'ol_product_1' })]);
+        mockBundleDefinitions.findCurrentContainingComponents.mockRejectedValueOnce(new Error('db down'));
+
+        const result = await controller.listProducts({});
+
+        expect(result.items[0].usedInBundlesCount).toBeUndefined();
+      });
     });
 
     describe('available-to-promise column (#3621)', () => {

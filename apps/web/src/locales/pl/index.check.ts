@@ -38,6 +38,9 @@ import fiscalization from './fiscalization.json';
 import format from './format.json';
 import fulfillment from './fulfillment.json';
 import fulfillmentAuthority from './fulfillment-authority.json';
+import giftDocuments from './gift-documents.json';
+import giftReport from './gift-report.json';
+import gifts from './gifts.json';
 import inventory from './inventory.json';
 import invoicing from './invoicing.json';
 import listings from './listings.json';
@@ -52,7 +55,9 @@ import orders from './orders.json';
 import posthogSettings from './posthog-settings.json';
 import priceChanges from './price-changes.json';
 import products from './products.json';
+import promotions from './promotions.json';
 import promptTemplates from './prompt-templates.json';
+import returnGifts from './return-gifts.json';
 import returns from './returns.json';
 import salesDocuments from './sales-documents.json';
 import settings from './settings.json';
@@ -87,6 +92,10 @@ const polish: PolishCopy<Messages> = {
   format,
   fulfillment,
   'fulfillment-authority': fulfillmentAuthority,
+  'gift-documents': giftDocuments,
+  'gift-report': giftReport,
+  gifts,
+  promotions,
   inventory,
   invoicing,
   listings,
@@ -102,6 +111,7 @@ const polish: PolishCopy<Messages> = {
   'price-changes': priceChanges,
   products,
   'prompt-templates': promptTemplates,
+  'return-gifts': returnGifts,
   returns,
   'sales-documents': salesDocuments,
   settings,

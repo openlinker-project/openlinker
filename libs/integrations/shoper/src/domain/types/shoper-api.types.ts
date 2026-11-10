@@ -567,6 +567,15 @@ export interface ShoperOrderLineRow {
    */
   readonly type?: string | number | null;
   /**
+   * The line's chosen variant options as one display string, `Name: value`
+   * pairs (live-verified 5 Nov 2026: `"Produkt gratisowy: tak"`). The gift app
+   * "Produkt gratisowy w koszyku" (Maxsote) adds its gift as the checkbox option
+   * `Produkt gratisowy` on the product, so this is the only place it shows on
+   * an order; it prices the line at 0.01 (or 0.00 when the shop allows free
+   * products) but writes no flag of its own.
+   */
+  readonly option?: string | null;
+  /**
    * A bundle's component lines, NESTED in the parent row (live-verified 4 Nov
    * 2026). The `order-products` list never returns them as top-level rows, so a
    * flat read already sees the parent alone. Each child is priced `0.00`: the

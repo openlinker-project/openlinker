@@ -46,6 +46,7 @@ import {
   EditOrderDeliveryMethodRequestDto,
   EditOrderDiscountRequestDto,
   EditOrderLinesRequestDto,
+  AddOrderGiftRequestDto,
 } from './dto/edit-order-request.dto';
 import {
   OrderDiscountResponseDto,
@@ -157,6 +158,45 @@ export class OrderEditsController {
           dryRun: dto.dryRun === true,
           lines: dto.lines.map((line) => ({ orderLineId: line.orderLineId, quantity: line.quantity })),
           acknowledgeAcceptedWork: dto.acknowledgeAcceptedWork === true,
+        })
+      );
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post('gift')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Add a gift by hand (saved in OpenLinker only)',
+    description:
+      'A 0.00 line `op-gift:{changeId}` on the order, held in the stock ledger like any line. Allowed until ' +
+      'the parcel is closed: refused once the order is shipped, packed or cancelled. A sales document that ' +
+      'already exists is not a refusal; `gift.salesDocumentExists` tells the operator it does not show the ' +
+      'gift. With `dryRun` nothing is saved.',
+  })
+  @ApiResponse({ status: 200, type: OrderEditResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid gift' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order or gift product not found' })
+  @ApiResponse({ status: 409, description: REFUSAL_CODES })
+  async addGift(
+    @Param('internalOrderId') internalOrderId: string,
+    @Body() dto: AddOrderGiftRequestDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderEditResponseDto> {
+    try {
+      return OrderEditResponseDto.from(
+        await this.edits.addGift({
+          internalOrderId,
+          actorUserId: user.id,
+          dryRun: dto.dryRun === true,
+          variantId: dto.variantId,
+          quantity: dto.quantity,
+          ...(dto.documentForm !== undefined && { documentForm: dto.documentForm }),
+          ...(dto.documentForm === 'custom-price' &&
+            dto.documentUnitPrice !== undefined && { documentUnitPrice: dto.documentUnitPrice }),
         })
       );
     } catch (error) {

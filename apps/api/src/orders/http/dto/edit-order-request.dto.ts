@@ -14,6 +14,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -24,8 +25,11 @@ import {
   Max,
   Min,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
+
+import { GiftDocumentFormValues, type GiftDocumentForm } from '@openlinker/core/orders';
 
 class DryRunDto {
   @ApiPropertyOptional({
@@ -136,4 +140,37 @@ export class EditOrderDiscountRequestDto extends DryRunDto {
   @IsOptional()
   @IsBoolean()
   acknowledgeAboveCeiling?: boolean;
+}
+
+export class AddOrderGiftRequestDto extends DryRunDto {
+  @ApiProperty({ description: 'Internal variant id of the gift.' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  variantId!: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  quantity!: number;
+
+  @ApiPropertyOptional({
+    enum: GiftDocumentFormValues,
+    description: 'How a sales document shows this gift. Absent means "as in settings".',
+  })
+  @IsOptional()
+  @IsIn(GiftDocumentFormValues as readonly string[])
+  documentForm?: GiftDocumentForm;
+
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Gross unit price per gift unit for custom-price: a positive decimal string with at most 2 decimals. Required with custom-price, ignored otherwise.',
+  })
+  @ValidateIf((o: { documentForm?: string }) => o.documentForm === 'custom-price')
+  @Matches(/^(?!0+(\.0+)?$)\d+(\.\d{1,2})?$/, {
+    message: 'documentUnitPrice must be a decimal with at most 2 decimals',
+  })
+  documentUnitPrice?: string;
 }

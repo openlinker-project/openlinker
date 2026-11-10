@@ -62,6 +62,10 @@
  *    on net revenue; the product/variant tables are enriched with catalogue
  *    names by `MarginAnalyticsApiService`.
  *
+ * 11. **`/analytics/gifts*`** (`GiftReportController`, #3943) - the gift cost report,
+ *    the bundle view and the per-customer CSV; composes `orders`, `promotions`
+ *    (promotion names), `inventory` and `customers` in `GiftReportApiService`.
+ *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
  * module, that is the point to split this into a dedicated module (e.g.
@@ -76,7 +80,9 @@
  */
 import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
+import { PromotionsModule } from '@openlinker/core/promotions';
 import { CurrencyModule } from '@openlinker/core/currency';
+import { CustomersModule } from '@openlinker/core/customers';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { OrdersModule } from '@openlinker/core/orders';
@@ -92,6 +98,7 @@ import { NeedsAttentionController } from './http/needs-attention.controller';
 import { SalesAnalyticsController } from './http/sales-analytics.controller';
 import { TopProductsController } from './http/top-products.controller';
 import { MarginAnalyticsController } from './http/margin-analytics.controller';
+import { GiftReportController } from './http/gift-report.controller';
 import { AnalyticsSettingsController } from './http/analytics-settings.controller';
 import { AnalyticsCoverageController } from './http/analytics-coverage.controller';
 import { AnalyticsRemediationController } from './http/analytics-remediation.controller';
@@ -103,11 +110,15 @@ import { TopProductsService } from './application/services/top-products.service'
 import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.service.interface';
 import { MarginAnalyticsApiService } from './application/services/margin-analytics-api.service';
 import { MARGIN_ANALYTICS_API_SERVICE_TOKEN } from './application/services/margin-analytics-api.service.interface';
+import { GiftReportApiService } from './application/services/gift-report-api.service';
+import { GIFT_REPORT_API_SERVICE_TOKEN } from './application/services/gift-report-api.service.interface';
 
 @Module({
   imports: [
     CoreAnalyticsModule,
+    PromotionsModule,
     CurrencyModule,
+    CustomersModule,
     InventoryModule,
     ListingsModule,
     OrdersModule,
@@ -122,6 +133,7 @@ import { MARGIN_ANALYTICS_API_SERVICE_TOKEN } from './application/services/margi
     SalesAnalyticsController,
     TopProductsController,
     MarginAnalyticsController,
+    GiftReportController,
     AnalyticsSettingsController,
     AnalyticsCoverageController,
     AnalyticsRemediationController,
@@ -139,6 +151,8 @@ import { MARGIN_ANALYTICS_API_SERVICE_TOKEN } from './application/services/margi
       provide: TOP_PRODUCTS_SERVICE_TOKEN,
       useExisting: TopProductsService,
     },
+    GiftReportApiService,
+    { provide: GIFT_REPORT_API_SERVICE_TOKEN, useExisting: GiftReportApiService },
     MarginAnalyticsApiService,
     {
       provide: MARGIN_ANALYTICS_API_SERVICE_TOKEN,

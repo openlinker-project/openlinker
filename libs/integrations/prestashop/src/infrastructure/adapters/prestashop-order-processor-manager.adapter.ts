@@ -886,6 +886,21 @@ export class PrestashopOrderProcessorManagerAdapter
     const weightsMinor = order.items.map((item) => Math.round(item.price * item.quantity * 100));
     const lineGrossMinor = allocateByLargestRemainder(subtotalMinor, weightsMinor);
 
+    // PrestaShop prices a cart by (product, combination), so two order lines
+    // sharing that key (a free gift of a product the buyer also paid for) are
+    // ONE cart row and can carry only ONE pin. They are merged here into one
+    // group whose unit price is the quantity-weighted mean: group gross / group
+    // quantity. When that does not divide exactly in minor units, the six-decimal
+    // net unit price carries the remainder (error under qty * 5e-7), which PS
+    // rounds away when it re-grosses unit * quantity at the currency precision.
+    interface PinGroup {
+      productId: string | number;
+      variantId: number;
+      quantity: number;
+      grossMinor: number;
+      sku?: string;
+    }
+    const groups = new Map<string, PinGroup>();
     for (let index = 0; index < order.items.length; index++) {
       const item = order.items[index];
       if (item.quantity <= 0) {
@@ -900,11 +915,29 @@ export class PrestashopOrderProcessorManagerAdapter
       // marker (`product:<n>`), which PS 400-rejects as a non-numeric
       // `id_product_attribute` — collapse it (and any unmapped variant) to 0,
       // matching the order/cart mapper (#923).
-      const externalVariantId = toPrestashopProductAttributeId(
-        item.variantId ? externalVariantIds.get(item.variantId) : undefined
+      const externalVariantId = Number(
+        toPrestashopProductAttributeId(item.variantId ? externalVariantIds.get(item.variantId) : undefined)
       );
+      const key = `${String(externalProductId)}:${externalVariantId}`;
+      const existing = groups.get(key);
+      if (existing === undefined) {
+        groups.set(key, {
+          productId: externalProductId,
+          variantId: externalVariantId,
+          quantity: item.quantity,
+          grossMinor: lineGrossMinor[index],
+          ...(item.sku !== undefined ? { sku: item.sku } : {}),
+        });
+      } else {
+        existing.quantity += item.quantity;
+        existing.grossMinor += lineGrossMinor[index];
+      }
+    }
 
-      const grossUnit = lineGrossMinor[index] / 100 / item.quantity;
+    for (const group of groups.values()) {
+      const externalProductId = group.productId;
+      const externalVariantId = group.variantId;
+      const grossUnit = group.grossMinor / 100 / group.quantity;
       let rate = 0;
       if (convertGrossToNet) {
         const resolution = await this.taxRateResolver.resolveProductTaxRate(
@@ -923,7 +956,7 @@ export class PrestashopOrderProcessorManagerAdapter
             order.totals.currency,
             grossUnit,
             externalProductId,
-            item.sku
+            group.sku
           );
         }
         rate = resolution.rate;
@@ -983,7 +1016,11 @@ export class PrestashopOrderProcessorManagerAdapter
             reduction: '0',
             reduction_type: 'amount',
             reduction_tax: '0',
-            from: '0000-00-00 00:00:00',
+            // Not the zero date: a strict MySQL stores it as NULL, and
+            // PrestaShop's lookup (`from = zero OR now >= from`) then never
+            // matches the row, so the pin is silently ignored and the line is
+            // priced from the catalogue. Same value as the module's PIN_FROM.
+            from: '2000-01-01 00:00:01',
             to: toExpiry,
           }
         );

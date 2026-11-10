@@ -78,6 +78,11 @@ const WS_RESOURCES = [
   // rows (#168 / #541). Carrier-mapping smoke spec doesn't touch this
   // resource, so adding it here is purely additive.
   'configurations',
+  // #3937: the order source reads the order's lines and the cart rules applied
+  // to it (to split a free-gift cart rule out of its product line).
+  'order_details',
+  'order_cart_rules',
+  'cart_rules',
 ] as const;
 
 /**

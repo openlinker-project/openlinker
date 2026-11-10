@@ -65,6 +65,10 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'taxRate',
         'untagged',
         'waiting',
+        'withGift',
+        'withBundle',
+        'giftNotAdded',
+        'giftShopRejected',
       ].sort(),
     );
   });
@@ -98,6 +102,10 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
       hasBuyerNote: 'hasBuyerNote=true',
+      withGift: 'withGift=true',
+      withBundle: 'withBundle=true',
+      giftNotAdded: 'giftNotAdded=true',
+      giftShopRejected: 'giftShopRejected=true',
       tag: 'tag=tag-vip',
       untagged: 'untagged=true',
       paymentNotSent: 'paymentNotSent=true',
@@ -140,7 +148,7 @@ describe('toOrderQueryFilters', () => {
   });
 
   it('should send present-only toggles as true or omit them when off', () => {
-    const on = toOrderQueryFilters(parse('invoicing=blocked&routing=blocked&waiting=true&packBench=true&taxRate=conflict&attention=true&openReturn=true&hasBuyerNote=true'), {
+    const on = toOrderQueryFilters(parse('invoicing=blocked&routing=blocked&waiting=true&packBench=true&taxRate=conflict&attention=true&openReturn=true&hasBuyerNote=true&withGift=true'), {
       dueBefore: undefined,
       search: '',
     });
@@ -153,6 +161,7 @@ describe('toOrderQueryFilters', () => {
       attention: true,
       openReturn: true,
       hasBuyerNote: true,
+      withGift: true,
     });
     const off = toOrderQueryFilters(parse(''), { dueBefore: undefined, search: '' });
     expect(off.salesDocumentBlocked).toBeUndefined();

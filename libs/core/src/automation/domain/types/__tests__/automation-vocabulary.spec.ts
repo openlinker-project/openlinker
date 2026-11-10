@@ -34,7 +34,7 @@ import {
 const MALFORMED: unknown[] = [null, undefined, 0, '', 'x', [], [1], true, { field: 'nope' }];
 
 describe('automation trigger vocabulary', () => {
-  it('should declare exactly the eleven triggers when read (#3554 added T9-T11)', () => {
+  it('should declare exactly the eleven triggers when read', () => {
     expect(AutomationTriggerValues).toHaveLength(11);
   });
 
@@ -91,7 +91,7 @@ describe('automation trigger config narrowing', () => {
 });
 
 describe('automation condition narrowing', () => {
-  it('should declare exactly the four v1 condition fields when read', () => {
+  it('should declare exactly the four condition fields when read', () => {
     expect(AutomationConditionFieldValues).toHaveLength(4);
   });
 
@@ -167,7 +167,7 @@ describe('automation condition narrowing', () => {
 });
 
 describe('automation action vocabulary', () => {
-  it('should declare exactly the six v1 actions when read', () => {
+  it('should declare exactly the six actions when read', () => {
     expect(AutomationActionValues).toHaveLength(6);
   });
 

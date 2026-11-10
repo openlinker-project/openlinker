@@ -170,7 +170,7 @@ const KNOWN_CONFIG_KNOBS = new Map([
   ],
   [
     'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
-    { helper: 'readGiftLineForm', key: 'config.giftOnDocuments' },
+    { helper: 'readGiftConnectionForm', key: 'config.giftOnDocuments' },
   ],
   [
     'libs/core/src/sales-documents/domain/types/batch-schedule.types.ts',
@@ -446,6 +446,10 @@ const NON_KNOBS = new Map([
 // threshold is raised to 17: one more for each knob, on the same grounds as
 // their predecessors (a pure-rules file in a leaf, no persistence, consolidation
 // still owned by #2169). The next knob asks again.
+//
+// #3941 narrows the gift-line knob rather than adding one: the key stays, but it
+// is now an optional per-connection OVERRIDE of the OpenLinker-wide default held
+// in the `sales_document_settings` singleton (absent = inherit).
 const KNOB_THRESHOLD = 17;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
@@ -470,6 +474,7 @@ const NON_RUNGS = new Set([
   'bulk-product-reader.capability.ts',
   // Reads a bundle's composition; says nothing about master freshness (#3932).
   'bundle-reader.capability.ts',
+  'product-creator.capability.ts',
 ]);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */

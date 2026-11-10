@@ -34,7 +34,13 @@ function variant(id: string, sku: string, price: number): ProductVariant {
   };
 }
 
-function product(id: string, name: string, sku: string, price: number, over: Partial<Product> = {}): Product {
+function product(
+  id: string,
+  name: string,
+  sku: string,
+  price: number,
+  over: Partial<Product> = {}
+): Product {
   return {
     id: `p-${id}`,
     name,
@@ -65,7 +71,9 @@ function api(over: { bundles?: Record<string, unknown>; products?: Record<string
   return createMockApiClient({
     products: {
       listRows: vi.fn().mockImplementation(async (filters: { search?: string }) => ({
-        items: ALL.filter((p) => p.name.toLowerCase().includes((filters.search ?? '').toLowerCase())),
+        items: ALL.filter((p) =>
+          p.name.toLowerCase().includes((filters.search ?? '').toLowerCase())
+        ),
         limit: 8,
         offset: 0,
       })),
@@ -73,8 +81,14 @@ function api(over: { bundles?: Record<string, unknown>; products?: Record<string
       getVariant: vi.fn(),
       ...over.products,
     },
+    inventory: {
+      availability: vi.fn().mockResolvedValue({ items: [] }),
+    },
     bundles: {
-      create: vi.fn().mockResolvedValue({ variantId: 'set', version: 1, components: [], releasedOrders: 0 }),
+      creationTargets: vi.fn().mockResolvedValue([]),
+      create: vi
+        .fn()
+        .mockResolvedValue({ variantId: 'set', version: 1, components: [], releasedOrders: 0 }),
       update: vi.fn().mockResolvedValue({ variantId: 'set', version: 2, components: [] }),
       ...over.bundles,
     },
@@ -101,26 +115,58 @@ async function ready(): Promise<void> {
   });
 }
 
-async function pick(user: ReturnType<typeof userEvent.setup>, testId: string, text: string, sku: string): Promise<void> {
+async function pick(
+  user: ReturnType<typeof userEvent.setup>,
+  testId: string,
+  text: string,
+  sku: string
+): Promise<void> {
   await user.type(screen.getByTestId(testId), text);
   await user.click(await screen.findByTestId(`${testId}-result-${sku}`, undefined, { timeout: 5000 }));
+}
+
+/** Leaves the components step and opens the product step. */
+async function toProductStep(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByTestId('bundle-form-next'));
+  await screen.findByTestId('bundle-form-step-product');
+}
+
+/** From the product step to the last one, where Save lives. */
+async function toReview(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByTestId('bundle-form-next'));
+  await screen.findByTestId('bundle-form-step-gifts');
+  await user.click(screen.getByTestId('bundle-form-next'));
+  await screen.findByTestId('bundle-form-step-review');
+}
+
+async function pickProduct(
+  user: ReturnType<typeof userEvent.setup>,
+  text: string,
+  sku: string
+): Promise<void> {
+  await user.type(screen.getByTestId('bundle-form-product-search'), text);
+  await user.click(await screen.findByTestId(`bundle-form-product-search-result-${sku}`));
 }
 
 describe('BundleForm (#3624)', () => {
   it('should save a new bundle with the gift mark on the component it was set on', async () => {
     const apiClient = api();
     const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await ready();
-
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
-    expect(screen.getByTestId('bundle-form-sku')).toHaveTextContent('ZES-PORANNY');
 
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await pick(user, 'bundle-form-component-search', 'Lyz', 'LYZ-KAW');
     await user.click(await screen.findByTestId('bundle-form-component-toggle-gift-LYZ-KAW'));
     expect(screen.getByTestId('bundle-form-component-gift-LYZ-KAW')).toBeInTheDocument();
 
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    expect(screen.getByTestId('bundle-form-sku')).toHaveTextContent('ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
 
     await waitFor(() => {
@@ -132,23 +178,28 @@ describe('BundleForm (#3624)', () => {
     expect(await screen.findByTestId('bundle-form-saved-alert')).toBeInTheDocument();
     expect(screen.getByTestId('bundle-form-list-offer')).toHaveAttribute(
       'href',
-      expect.stringContaining('variantIds=set'),
+      expect.stringContaining('variantIds=set')
     );
   });
 
   it('should say which component limits the bundle in one line', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, { apiClient: api(), sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<BundleForm />, {
+      apiClient: api(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await ready();
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await pick(user, 'bundle-form-component-search', 'Lyz', 'LYZ-KAW');
     expect(screen.getByTestId('bundle-form-availability')).toHaveTextContent(
-      'Available: 1 pcs, limited by Lyzeczka',
+      'Lyzeczka runs out first'
     );
   });
 
   it('should read an unknown component as unknown availability, never zero', async () => {
-    const unknownMug = product('mug', 'Kubek ceramiczny', 'KUB-350-BI', 40, { availableToPromise: null });
+    const unknownMug = product('mug', 'Kubek ceramiczny', 'KUB-350-BI', 40, {
+      availableToPromise: null,
+    });
     const apiClient = api({
       products: {
         listRows: vi.fn().mockResolvedValue({ items: [unknownMug], limit: 8, offset: 0 }),
@@ -156,7 +207,10 @@ describe('BundleForm (#3624)', () => {
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await ready();
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     const line = screen.getByTestId('bundle-form-availability');
@@ -166,7 +220,10 @@ describe('BundleForm (#3624)', () => {
 
   it('should refuse a bundle as a component inline and not add it', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, { apiClient: api(), sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<BundleForm />, {
+      apiClient: api(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await ready();
     await pick(user, 'bundle-form-component-search', 'Zestaw do', 'ZES-PARZENIE');
     expect(await screen.findByTestId('bundle-form-nested-error')).toHaveTextContent('is a bundle');
@@ -181,11 +238,13 @@ describe('BundleForm (#3624)', () => {
         <BundleForm />
         <LocationProbe />
       </>,
-      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
     );
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
     await waitFor(() => {
       expect(screen.getByTestId('location-probe')).toHaveTextContent('/products/bundles/set');
@@ -200,13 +259,20 @@ describe('BundleForm (#3624)', () => {
     [0, 'could not be saved'],
   ])('should say so when the save fails with status %s', async (status, text) => {
     const apiClient = api({
-      bundles: { create: vi.fn().mockRejectedValue(new ApiError('nope', status, { code: 'OTHER' })) },
+      bundles: {
+        create: vi.fn().mockRejectedValue(new ApiError('nope', status, { code: 'OTHER' })),
+      },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
     expect(await screen.findByTestId('bundle-form-save-error')).toHaveTextContent(text);
   });
@@ -229,7 +295,9 @@ describe('BundleForm (#3624)', () => {
   });
 
   it('should not say Saving... while the bundle is loading', () => {
-    const apiClient = api({ bundles: { get: vi.fn().mockReturnValue(new Promise(() => undefined)) } });
+    const apiClient = api({
+      bundles: { get: vi.fn().mockReturnValue(new Promise(() => undefined)) },
+    });
     renderWithProviders(<BundleForm bundleVariantId="set" />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(),
@@ -244,17 +312,27 @@ describe('BundleForm (#3624)', () => {
         create: vi
           .fn()
           .mockRejectedValue(
-            new ApiError('refused', 409, { code: 'BUNDLE_NESTING_REFUSED', reason: 'variant-is-component' }),
+            new ApiError('refused', 409, {
+              code: 'BUNDLE_NESTING_REFUSED',
+              reason: 'variant-is-component',
+            })
           ),
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
-    expect(await screen.findByTestId('bundle-form-nested-error')).toHaveTextContent('already a component');
+    expect(await screen.findByTestId('bundle-form-nested-error')).toHaveTextContent(
+      'already a component'
+    );
   });
 
   it('should show the price split only on demand, and say when a price is missing', async () => {
@@ -265,33 +343,60 @@ describe('BundleForm (#3624)', () => {
     const apiClient = api({
       products: {
         listRows: vi.fn().mockImplementation(async (f: { search?: string }) => ({
-          items: [SET, COFFEE, noPrice].filter((p) => p.name.toLowerCase().includes((f.search ?? '').toLowerCase())),
+          items: [SET, COFFEE, noPrice].filter((p) =>
+            p.name.toLowerCase().includes((f.search ?? '').toLowerCase())
+          ),
           limit: 8,
           offset: 0,
         })),
-        getById: vi.fn().mockImplementation(async (id: string) => [SET, COFFEE, noPrice].find((p) => p.id === id)),
+        getById: vi
+          .fn()
+          .mockImplementation(async (id: string) =>
+            [SET, COFFEE, noPrice].find((p) => p.id === id)
+          ),
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await ready();
-    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
     await pick(user, 'bundle-form-component-search', 'Kawa', 'KAW-250-ETI');
+    await toProductStep(user);
+    await pickProduct(user, 'Zestaw poranny', 'ZES-PORANNY');
+    await toReview(user);
     expect(screen.queryByTestId('bundle-form-price-split')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Show price split/ }));
     const split = screen.getByTestId('bundle-form-price-split');
-    expect(within(split).getByTestId('bundle-form-price-split-line-KAW-250-ETI')).toHaveTextContent('65');
+    expect(within(split).getByTestId('bundle-form-price-split-line-KAW-250-ETI')).toHaveTextContent(
+      '65'
+    );
 
+    // Back to the components step to add the one with no price.
+    await user.click(screen.getByTestId('bundle-form-stepper-button-1'));
+    await screen.findByTestId('bundle-form-step-components');
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
-    expect(await screen.findByTestId('bundle-form-price-share-alert')).toHaveTextContent('has no price');
+    await toProductStep(user);
+    await toReview(user);
+    await user.click(screen.getByRole('button', { name: /Show price split|Hide price split/ }));
+    expect(await screen.findByTestId('bundle-form-price-share-alert')).toHaveTextContent(
+      'has no price'
+    );
   });
 
   it('should write the next version when editing, and say how many open orders keep the old one', async () => {
     const detail: BundleDetail = {
       variantId: 'set',
       version: 2,
-      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN', imageUrl: null },
+      bundle: {
+        name: 'Zestaw poranny',
+        sku: 'ZES-PORANNY',
+        price: 65,
+        currency: 'PLN',
+        imageUrl: null,
+      },
       openOrdersOnOlderComposition: 3,
       bundlesAvailable: 1,
       composedByMaster: null,
@@ -302,7 +407,13 @@ describe('BundleForm (#3624)', () => {
           variantId: 'mug',
           productId: 'p-mug',
           quantity: 1,
-          summary: { name: 'Kubek ceramiczny', sku: 'KUB-350-BI', price: 40, currency: 'PLN', imageUrl: null },
+          summary: {
+            name: 'Kubek ceramiczny',
+            sku: 'KUB-350-BI',
+            price: 40,
+            currency: 'PLN',
+            imageUrl: null,
+          },
           availableToPromise: 78,
           bundlesSupported: 78,
         },
@@ -316,16 +427,20 @@ describe('BundleForm (#3624)', () => {
     });
 
     expect(await screen.findByTestId('bundle-form-component-row-KUB-350-BI')).toBeInTheDocument();
-    expect(screen.getByTestId('bundle-form-open-orders-note')).toHaveTextContent('3 open orders keep the old composition');
+    expect(screen.getByTestId('bundle-form-open-orders-note')).toHaveTextContent(
+      '3 open orders keep the old composition'
+    );
     await user.click(screen.getByTestId('bundle-form-save'));
     await waitFor(() => {
-      expect(apiClient.bundles.update).toHaveBeenCalledWith('set', [{ variantId: 'mug', quantity: 1 }]);
+      expect(apiClient.bundles.update).toHaveBeenCalledWith('set', [
+        { variantId: 'mug', quantity: 1 },
+      ]);
     });
     expect(apiClient.bundles.create).not.toHaveBeenCalled();
     // The list-offer link has the product id of the bundle, read from the detail.
     expect(await screen.findByTestId('bundle-form-list-offer')).toHaveAttribute(
       'href',
-      expect.stringContaining('productIds=p-set'),
+      expect.stringContaining('productIds=p-set')
     );
   });
 
@@ -333,7 +448,13 @@ describe('BundleForm (#3624)', () => {
     const baseDetail: BundleDetail = {
       variantId: 'set',
       version: 2,
-      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN', imageUrl: null },
+      bundle: {
+        name: 'Zestaw poranny',
+        sku: 'ZES-PORANNY',
+        price: 65,
+        currency: 'PLN',
+        imageUrl: null,
+      },
       openOrdersOnOlderComposition: 0,
       bundlesAvailable: 1,
       composedByMaster: null,
@@ -357,7 +478,9 @@ describe('BundleForm (#3624)', () => {
         ...baseDetail,
         composedByMaster: { connectionId: 'c1', connectionName: 'PrestaShop' },
       };
-      const syncFromMaster = vi.fn().mockResolvedValue({ variantId: 'set', version: 3, components: [] });
+      const syncFromMaster = vi
+        .fn()
+        .mockResolvedValue({ variantId: 'set', version: 3, components: [] });
       const apiClient = api({
         bundles: { get: vi.fn().mockResolvedValue(detail), syncFromMaster },
       });
@@ -380,7 +503,13 @@ describe('BundleForm (#3624)', () => {
     const detail: BundleDetail = {
       variantId: 'set',
       version: 2,
-      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN', imageUrl: null },
+      bundle: {
+        name: 'Zestaw poranny',
+        sku: 'ZES-PORANNY',
+        price: 65,
+        currency: 'PLN',
+        imageUrl: null,
+      },
       openOrdersOnOlderComposition: 0,
       bundlesAvailable: 1,
       composedByMaster: null,
@@ -399,7 +528,9 @@ describe('BundleForm (#3624)', () => {
             createdAt: '2026-11-02T10:00:00Z',
             openOrders: 0,
             components: [{ variantId: 'mug', productId: 'p-mug', quantity: 1 }],
-            componentSummaries: [{ name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN', imageUrl: null }],
+            componentSummaries: [
+              { name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN', imageUrl: null },
+            ],
           },
           {
             variantId: 'set',
@@ -408,7 +539,9 @@ describe('BundleForm (#3624)', () => {
             createdAt: '2026-10-02T10:00:00Z',
             openOrders: 3,
             components: [{ variantId: 'mug', productId: 'p-mug', quantity: 1 }],
-            componentSummaries: [{ name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN', imageUrl: null }],
+            componentSummaries: [
+              { name: 'Kubek', sku: 'KUB', price: 1, currency: 'PLN', imageUrl: null },
+            ],
           },
         ]),
       },
@@ -425,11 +558,101 @@ describe('BundleForm (#3624)', () => {
   it('should let a viewer see the form with every write disabled and the reason on screen', async () => {
     renderWithProviders(<BundleForm />, {
       apiClient: api(),
-      sessionAdapter: createAuthenticatedSessionAdapter({ ...VIEWER, permissions: [...VIEWER.permissions] }),
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        ...VIEWER,
+        permissions: [...VIEWER.permissions],
+      }),
     });
-    expect(await screen.findByTestId('bundle-form-readonly-notice')).toHaveTextContent('admin or operator role');
+    expect(await screen.findByTestId('bundle-form-readonly-notice')).toHaveTextContent(
+      'admin or operator role'
+    );
     expect(screen.getByTestId('bundle-form-save')).toBeDisabled();
     expect(screen.getByTestId('bundle-form-save')).toHaveAttribute('title', expect.stringContaining('admin or operator'));
     expect(screen.getByTestId('bundle-form-component-search')).toBeDisabled();
+  });
+
+  it('should not leave the components step until there is a component with a valid quantity', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient: api(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await user.click(screen.getByTestId('bundle-form-next'));
+    expect(screen.getByTestId('bundle-form-step-components')).toBeInTheDocument();
+    expect(screen.queryByTestId('bundle-form-step-product')).not.toBeInTheDocument();
+  });
+
+  it('should create the product at the master first, then write the composition on it', async () => {
+    const createProduct = vi.fn().mockResolvedValue({
+      productId: 'p-new',
+      variantId: 'new-variant',
+      name: 'Zestaw nowy',
+      sku: 'KUB-350-BI-SET',
+      adopted: false,
+    });
+    const apiClient = api({
+      bundles: {
+        creationTargets: vi.fn().mockResolvedValue([
+          {
+            connectionId: 'master-1',
+            connectionName: 'PrestaShop',
+            platformType: 'prestashop',
+            creationMode: 'simple-product',
+          },
+        ]),
+        createProduct,
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await user.click(await screen.findByTestId('bundle-form-mode-create'));
+    await user.type(await screen.findByTestId('bundle-form-new-name'), 'Zestaw nowy');
+    // The price starts as the sum of the paid components and says what the customer saves.
+    expect(screen.getByTestId('bundle-form-new-price')).toHaveValue('40.00');
+    await toReview(user);
+    await user.click(screen.getByTestId('bundle-form-save'));
+
+    await waitFor(() => {
+      expect(createProduct).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'master-1',
+          name: 'Zestaw nowy',
+          sku: 'KUB-350-BI-SET',
+          price: 40,
+          rateSourceVariantId: 'mug',
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(apiClient.bundles.create).toHaveBeenCalledWith('new-variant', [
+        { variantId: 'mug', quantity: 1 },
+      ]);
+    });
+  });
+
+  it('should say before the form is filled in that no shop can create the product', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient: api({
+        bundles: {
+          creationTargets: vi.fn().mockResolvedValue([
+            { connectionId: 'm', connectionName: 'Shoper', platformType: 'shoper', creationMode: null },
+          ]),
+        },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    expect(await screen.findByTestId('bundle-form-no-creators')).toBeInTheDocument();
+    expect(screen.getByTestId('bundle-form-mode-create')).toBeDisabled();
   });
 });

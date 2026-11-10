@@ -43,6 +43,13 @@ import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { describeConnectionStatus, OMS_PLATFORM_TYPE } from '../oms/oms-connection';
+import { GuideButton, PageGuide } from '../../shared/ui/guide-drawer';
+import {
+  GiftsOnDocumentsPanel,
+  useGiftDocumentsGuide,
+  type OverridingGift,
+} from '../../features/gift-documents';
+import { usePromotionsQuery } from '../../features/promotions';
 import { describeApiError } from '../../shared/api/describe-api-error';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
@@ -205,7 +212,7 @@ function ArchivedBanner({ connection }: { connection: Connection }): ReactElemen
   );
 }
 
-const TAB_VALUES = ['overview', 'health', 'actions', 'config'] as const;
+const TAB_VALUES = ['overview', 'health', 'actions', 'config', 'gifts'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(value: string | null): value is TabValue {
@@ -295,9 +302,39 @@ function ConnectionStatusBadge({ connection }: { connection: Connection }): Reac
 /** The OMS connection is configured by the packing setup, never by the generic edit form. */
 const PACKING_SETTINGS_PATH = '/settings/packing';
 
+/**
+ * The promotions that set their own gift form for this channel, i.e. the ones
+ * above the connection in the order of settings. A promotion with no channel
+ * condition applies to every channel.
+ */
+function overridingGiftsFor(
+  promotions: ReturnType<typeof usePromotionsQuery>['data'],
+  connectionId: string,
+): OverridingGift[] {
+  return (promotions ?? []).flatMap((rule) => {
+    const form = rule.benefit.documentForm;
+    if (!rule.isActive || form === undefined) return [];
+    const channels = rule.conditions.flatMap((c) =>
+      c.field === 'sourceConnection' ? [[c.value]] : c.field === 'sourceConnectionIn' ? [c.values] : [],
+    );
+    if (channels.length > 0 && !channels.every((ids) => ids.includes(connectionId))) return [];
+    const unitPrice = rule.benefit.documentUnitPrice;
+    return [
+      {
+        id: rule.id,
+        name: rule.name,
+        form,
+        ...(unitPrice === undefined ? {} : { unitPrice }),
+      },
+    ];
+  });
+}
+
 export function ConnectionDetailPage(): ReactElement {
   const shippingCopy = useMessages('connections').shipping;
   const { connectionId = '' } = useParams();
+  const guideCopy = useGiftDocumentsGuide();
+  const promotions = usePromotionsQuery();
   const connectionQuery = useConnectionQuery(connectionId);
   // The plugin registry is what turns a `platformType` slug into the product
   // name an operator recognises. Rendering the raw slug was tolerable while
@@ -335,6 +372,8 @@ export function ConnectionDetailPage(): ReactElement {
   // The OMS connection is a by-product of the packing setup: no credentials, no
   // adapter choice, no config to edit. It is managed from /settings/packing.
   const isOms = connection?.platformType === OMS_PLATFORM_TYPE;
+  const giftTabCopy = useMessages('gift-documents').settings;
+  const supportsGifts = connection?.enabledCapabilities.includes('OrderSource') === true;
   const isCarrier = connection?.enabledCapabilities.includes(CARRIER_CAPABILITY) ?? false;
   const isOrderSource = connection?.enabledCapabilities.includes(ORDER_SOURCE_CAPABILITY) ?? false;
   // Set by a carrier wizard on the page it lands on (#3958). Compared with a
@@ -365,13 +404,13 @@ export function ConnectionDetailPage(): ReactElement {
       actions={
         connection ? (
           connection.platformType === OMS_PLATFORM_TYPE ? (
-            <div className="button-group">
+            <div className="button-group connection-actions">
               <Link className="button button--primary" to={PACKING_SETTINGS_PATH}>
                 {copy.packingSettings}
               </Link>
             </div>
           ) : (
-          <div className="button-group">
+          <div className="button-group connection-actions">
             <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
               {copy.actions.edit}
             </Link>
@@ -460,11 +499,12 @@ export function ConnectionDetailPage(): ReactElement {
       ) : null}
       {connection ? (
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList>
+          <TabsList className="tabs__list--scroll">
             <TabsTrigger value="overview">{copy.tabs.overview}</TabsTrigger>
             <TabsTrigger value="health">{copy.tabs.health}</TabsTrigger>
             {isOms ? null : <TabsTrigger value="actions">{copy.tabs.actions}</TabsTrigger>}
             {isOms ? null : <TabsTrigger value="config">{copy.tabs.config}</TabsTrigger>}
+            {supportsGifts ? <TabsTrigger value="gifts">{copy.tabs.gifts}</TabsTrigger> : null}
           </TabsList>
 
           <TabsContent value="overview">
@@ -556,6 +596,25 @@ export function ConnectionDetailPage(): ReactElement {
           <TabsContent value="config">
             <ConnectionConfigPanel config={connection.config} />
           </TabsContent>
+
+          {supportsGifts ? (
+            <TabsContent value="gifts">
+              <PageGuide
+                title={guideCopy.title}
+                lede={guideCopy.lede}
+                sections={guideCopy.sections}
+                defaultOpen={guideCopy.defaultOpen}
+              >
+                <div className="gift-tab-actions">
+                  <GuideButton label={giftTabCopy.guideButton} />
+                </div>
+                <GiftsOnDocumentsPanel
+                  connectionId={connection.id}
+                  overridingGifts={overridingGiftsFor(promotions.data, connection.id)}
+                />
+              </PageGuide>
+            </TabsContent>
+          ) : null}
         </Tabs>
       ) : null}
     </PageLayout>

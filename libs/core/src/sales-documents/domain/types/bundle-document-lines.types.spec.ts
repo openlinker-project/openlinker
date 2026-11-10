@@ -61,8 +61,8 @@ const present = (lines: TestLine[], components: DocumentBundleComponent[]) =>
   });
 
 describe('validateGiftOnDocumentsShape', () => {
-  it('should collect every problem at once and validate differentRateGift', () => {
-    expect(validateGiftOnDocumentsShape({ form: 'nope', differentRateGift: 'x' })).toHaveLength(2);
+  it('should refuse an unknown form and ignore the legacy differentRateGift', () => {
+    expect(validateGiftOnDocumentsShape({ form: 'nope', differentRateGift: 'x' })).toHaveLength(1);
     expect(validateGiftOnDocumentsShape({ form: 'omit', differentRateGift: 'technical-cent' })).toEqual([]);
     expect(validateGiftOnDocumentsShape({ form: 'omit' })).toEqual([]);
   });

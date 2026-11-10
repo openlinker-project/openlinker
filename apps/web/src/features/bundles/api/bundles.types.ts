@@ -7,6 +7,7 @@
  *
  * @module apps/web/src/features/bundles/api
  */
+import type { GiftDocumentFormChoice } from '../../gift-documents';
 
 export interface BundleProductSummary {
   name: string | null;
@@ -23,6 +24,8 @@ export interface BundleComponent {
   productId: string;
   quantity: number;
   giftSlot?: boolean;
+  /** How a document shows the gift slot; absent means as in settings (#3940). */
+  documentForm?: GiftDocumentFormChoice;
 }
 
 export interface BundleDefinition {
@@ -83,6 +86,7 @@ export interface BundleComponentInput {
   variantId: string;
   quantity: number;
   giftSlot?: boolean;
+  documentForm?: GiftDocumentFormChoice;
 }
 
 /** The machine codes the API sends when a definition is refused (409 / 400). */
@@ -95,4 +99,34 @@ export type BundleNestingReason = (typeof BundleNestingReasonValues)[number];
 
 export function isBundleNestingReason(value: unknown): value is BundleNestingReason {
   return BundleNestingReasonValues.some((reason) => reason === value);
+}
+
+/** A product master and whether OpenLinker can create a product in it (#3935). */
+export interface BundleCreationTarget {
+  connectionId: string;
+  connectionName: string;
+  platformType: string;
+  /** `null`: this master cannot create products from OpenLinker. */
+  creationMode: 'simple-product' | null;
+}
+
+export interface CreateBundleProductInput {
+  connectionId: string;
+  name: string;
+  sku: string;
+  /** Gross price of the whole set. */
+  price: number;
+  currency?: string;
+  ean?: string;
+  description?: string;
+  /** A component variant whose tax rate the price includes. */
+  rateSourceVariantId?: string;
+}
+
+export interface CreatedBundleProduct {
+  productId: string;
+  variantId: string;
+  name: string;
+  sku: string;
+  adopted: boolean;
 }

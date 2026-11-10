@@ -1,53 +1,46 @@
 /**
- * HelpHint / GuideTrigger
+ * HelpHint (#3935)
  *
- * `HelpHint` is the small round `?` that sits beside a label and opens the
- * guide at the section that explains it. `GuideTrigger` is the header button
- * ("How bundles work ?") that opens the guide at its first section. Neither
- * knows what the guide says: the caller owns the open state.
+ * The small round `?` beside a label. It opens the guide drawer at the entry the
+ * label is about, so the answer is one click away without leaving the form: by
+ * `guide` id through the surrounding `GuideProvider`, or through an explicit
+ * `onClick` for a caller that drives the guide itself. With neither it renders
+ * nothing: a hint that cannot open an answer is noise.
  *
- * @module apps/web/src/shared/ui
+ * @module shared/ui
  */
 import type { ReactElement } from 'react';
+import { useGuide } from './guide-drawer';
 
 export interface HelpHintProps {
-  /** Accessible name, e.g. "Help: availability". */
+  /** The guide entry id to open through the surrounding `GuideProvider`. */
+  guide?: string;
+  /** Opens the guide some other way; wins over `guide`. */
+  onClick?: () => void;
+  /** Accessible name, e.g. "About: stacking with other promotions". */
   label: string;
-  onClick: () => void;
+  className?: string;
 }
 
-export function HelpHint({ label, onClick }: HelpHintProps): ReactElement {
-  return (
-    <button type="button" className="pm-qmark" aria-label={label} onClick={onClick}>
-      ?
-    </button>
-  );
-}
-
-export interface GuideTriggerProps {
-  label: string;
-  onClick: () => void;
-  /** Shows the `?` key cap; only when the page binds the shortcut. */
-  showShortcut?: boolean;
-}
-
-export function GuideTrigger({ label, onClick, showShortcut = true }: GuideTriggerProps): ReactElement {
+export function HelpHint({ guide, onClick, label, className }: HelpHintProps): ReactElement | null {
+  const openGuide = useGuide();
+  const open: (() => void) | null =
+    onClick ??
+    (guide !== undefined && openGuide !== null
+      ? (): void => {
+          openGuide(guide);
+        }
+      : null);
+  if (open === null) return null;
   return (
     <button
       type="button"
-      className="button button--secondary button--sm pm-helpbtn"
-      onClick={onClick}
-      data-testid="guide-trigger"
+      className={['pm-qmark', className].filter(Boolean).join(' ')}
+      aria-label={label}
+      title={label}
+      onClick={open}
     >
-      <span className="pm-qmark" aria-hidden="true">
-        ?
-      </span>
-      {label}
-      {showShortcut ? (
-        <span className="button__shortcut" aria-hidden="true">
-          ?
-        </span>
-      ) : null}
+      ?
     </button>
   );
 }

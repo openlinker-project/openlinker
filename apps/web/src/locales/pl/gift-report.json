@@ -1,0 +1,168 @@
+{
+  "bundles": {
+    "alone": "Osobno",
+    "available": "Dostępne",
+    "bundle": "Zestaw",
+    "component": "Składnik",
+    "componentCost": "Koszt składników",
+    "componentCostMissing": "brak kosztu składnika",
+    "componentCount": {
+      "few": "{n} składniki",
+      "many": "{n} składników",
+      "one": "{n} składnik",
+      "other": "{n} składnika"
+    },
+    "costUnknown": "Koszt nieznany",
+    "demandNote": "Składniki zestawów schodzą z magazynu jak zwykła sprzedaż.",
+    "demandTitle": "Zapotrzebowanie na składniki",
+    "empty": "W tym okresie nie sprzedano żadnego zestawu.",
+    "giftInComposition": "Gratis w składzie",
+    "giftPart": "w tym gratis",
+    "inBundles": "W zestawach",
+    "margin": "Marża",
+    "marginUnknown": "nieznana",
+    "note": "Koszt zestawu to suma cen zakupu jego składników. Gratis w składzie liczy się jako koszt.",
+    "perPiece": "{price} za szt.",
+    "pieces": "{n} szt.",
+    "revenue": "Przychód netto",
+    "salesTitle": "Sprzedaż zestawów",
+    "showComponents": "Pokaż składniki: {name}",
+    "sold": "Sprzedano",
+    "unknown": "nieznane"
+  },
+  "chart": {
+    "aria": "Koszt gratisów w czasie",
+    "hintDay": "zł netto",
+    "hintWeek": "zł netto · ostatni słupek: tydzień w toku",
+    "inProgress": "tydzień w toku",
+    "plotAria": "Wykres kosztu gratisów: razem {total}",
+    "titleDay": "Koszt gratisów dzień po dniu",
+    "titleWeek": "Koszt gratisów tydzień po tygodniu",
+    "weekFrom": "tydz. od {date}"
+  },
+  "description": "Ile gratisów wydałeś, ile Cię kosztowały i jak sprzedają się zestawy. Jeden raport, filtry u góry.",
+  "empty": {
+    "body": "Żadne zamówienie z tego zakresu nie miało gratisu. Zmień okres albo filtry.",
+    "clear": "Wyczyść filtry",
+    "title": "Brak gratisów w tym okresie"
+  },
+  "error": "Nie udało się wczytać raportu gratisów.",
+  "export": {
+    "body": "Każdy wiersz: data, klient, gratis, netto koszt zakupu, dokument. Klient to ten sam kupujący we wszystkich zamówieniach, nawet gdy Allegro podaje za każdym razem inny e-mail.",
+    "button": "Eksport per klient (CSV)",
+    "close": "Zamknij",
+    "download": "Pobierz CSV",
+    "downloaded": "Pobrano",
+    "eyebrow": "Eksport",
+    "preparing": "Przygotowuję CSV…",
+    "thresholds": "Roczne progi (20 zł i 100 zł) ocenia księgowa, OpenLinker ich nie pilnuje.",
+    "title": "Roczny eksport gratisów dla księgowej"
+  },
+  "eyebrow": "Analityka",
+  "filters": {
+    "allChannels": "Wszystkie kanały",
+    "allSources": "Wszystkie",
+    "channel": "Kanał",
+    "days": {
+      "30d": "30 dni",
+      "7d": "7 dni",
+      "90d": "90 dni"
+    },
+    "manual": "Dodane ręcznie",
+    "period": "Okres",
+    "rule": "Z promocji",
+    "source": "Źródło gratisu"
+  },
+  "guide": {
+    "bundles": {
+      "item": "Gratis w zestawie",
+      "summary": "gratis w składzie",
+      "text": "Koszt zestawu to suma cen zakupu jego składników. Gratis w składzie liczy się jako koszt zestawu i jest pokazany osobno.",
+      "title": "Zestawy"
+    },
+    "cost": {
+      "costText": "Koszt to cena zakupu produktu netto, razy liczba wydanych sztuk. Cenę zakupu ustawiasz na karcie produktu.",
+      "itemCost": "Koszt gratisu",
+      "itemUnknown": "Gratisy bez ceny zakupu",
+      "summary": "cena zakupu netto",
+      "title": "Skąd bierze się koszt",
+      "unknownText": "Sztuki bez ceny zakupu nie wchodzą do kosztu. Raport mówi, ile ich jest, i przelicza się sam po uzupełnieniu ceny."
+    },
+    "csv": {
+      "item": "Roczne progi",
+      "summary": "CSV per klient",
+      "text": "Plik zawiera datę, klienta, gratis, koszt zakupu netto i dokument. Progi roczne (20 zł i 100 zł) ocenia księgowa, OpenLinker ich nie pilnuje.",
+      "title": "Eksport dla księgowej"
+    },
+    "lede": "Raport pokazuje, ile kosztowały Cię gratisy. Klienci za nie nie płacą, więc to Twój koszt zakupu.",
+    "source": {
+      "item": "Z promocji i dodane ręcznie",
+      "summary": "promocja albo ręcznie",
+      "text": "Filtr źródła rozdziela gratisy dodane przez promocję od tych, które dodałeś do zamówienia sam. Promocja, którą usunięto, zostaje w raporcie jako „Usunięta promocja”.",
+      "title": "Źródło gratisu"
+    },
+    "title": "Jak liczymy koszt gratisów"
+  },
+  "guideButton": "Jak liczymy koszt",
+  "kpis": {
+    "cost": "Koszt",
+    "costNote": "netto, według ceny zakupu",
+    "costNoteUnknown": "netto, bez {n} szt. bez ceny zakupu",
+    "orders": "Zamówienia",
+    "ordersNote": "z co najmniej jednym gratisem",
+    "perOrder": "Koszt na zamówienie",
+    "perOrderNote": "średnio",
+    "units": "Gratisy wydane",
+    "unitsNote": "sztuk"
+  },
+  "movements": {
+    "body": "Ruchy magazynowe z powodem Gratis dla tego okresu są w historii magazynu. Składniki zestawów schodzą z magazynu jako zwykła sprzedaż i nie są wymienione osobno.",
+    "footAfter": ". Składniki zestawów schodzą z magazynu jak zwykła sprzedaż i nie są wymienione osobno.",
+    "footBefore": "Ruchy magazynowe z powodem „Gratis” są w ",
+    "footLink": "historii magazynu",
+    "open": "Pokaż ruchy gratisów"
+  },
+  "range": {
+    "from": "Od",
+    "to": "Do"
+  },
+  "summary": {
+    "cost": "Kosztuje Cię",
+    "paid": "Klienci zapłacili",
+    "sentence": "Klienci zapłacili {paid} za {units} gratisów. Kosztowały Cię {cost} netto, według ceny zakupu produktu. Za nie płacisz Ty.",
+    "units": "Sztuk",
+    "unknownInSentence": "{n} szt. bez ceny zakupu nie ma w tej kwocie."
+  },
+  "table": {
+    "bundleLabel": "Gratis w zestawie",
+    "byProduct": "Według produktu",
+    "byPromotion": "Według promocji",
+    "channelLabel": "Wysłane przez kanał",
+    "channels": "Kanały",
+    "cost": "Kosztuje Cię",
+    "costUnknown": "Koszt nieznany",
+    "deletedRule": "Usunięta promocja",
+    "gift": "Gratis",
+    "groupingAria": "Grupowanie",
+    "manualLabel": "Dodane ręcznie",
+    "orders": "Zamówień",
+    "pieces": "Sztuk",
+    "promotion": "Promocja",
+    "title": "Koszt gratisów według promocji",
+    "titleByProduct": "Koszt gratisów według produktu",
+    "total": "Razem",
+    "withoutPieces": "bez {n} szt."
+  },
+  "title": "Koszt gratisów",
+  "unknown": {
+    "body": "Nie ma ich w koszcie powyżej. Uzupełnij cenę zakupu produktu, a raport przeliczy się sam.",
+    "link": "Uzupełnij cenę zakupu",
+    "title": "{n} szt. gratisów bez ceny zakupu"
+  },
+  "views": {
+    "bundles": "Zestawy",
+    "gifts": "Gratisy",
+    "movements": "Ruchy magazynowe"
+  },
+  "viewsAria": "Widok raportu"
+}

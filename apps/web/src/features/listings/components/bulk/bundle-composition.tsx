@@ -26,7 +26,7 @@ import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview'
 const MODE_TONE: Record<BundleComponentMode, StatusBadgeTone> = {
   'own-offer': 'success',
   'catalog-card': 'info',
-  'new-product': 'neutral',
+  'new-product': 'review',
   missing: 'error',
 };
 
@@ -44,6 +44,8 @@ interface BundleCompositionProps {
   onUseSuggestedCategory?: () => void;
   /** Heading above the list; omitted where the surrounding section already has one. */
   heading?: string;
+  /** The "no EAN of its own" note; omitted where the surrounding section says it already. */
+  showEanNote?: boolean;
 }
 
 export function BundleComposition({
@@ -52,6 +54,7 @@ export function BundleComposition({
   chosenCategoryId,
   onUseSuggestedCategory,
   heading,
+  showEanNote = false,
 }: BundleCompositionProps): ReactElement {
   const copy = useMessages('listings').bundleOffer;
   const mismatch =
@@ -61,8 +64,15 @@ export function BundleComposition({
 
   return (
     <div className="bundle-comp" data-testid="bundle-composition">
-      {heading ? <h4 className="bundle-comp__heading">{heading}</h4> : null}
-      <ul className="bundle-comp__list">
+      {heading ? (
+        <div className="cx-h">
+          <h3>{heading}</h3>
+          <span className="pm-hint">
+            {interpolate(copy.compositionHint, { n: preview.components.length })}
+          </span>
+        </div>
+      ) : null}
+      <ul className="cx-comp cx-wcomp bundle-comp__list">
         {preview.components.map((component) => {
           const modeLabel =
             component.mode === 'own-offer' && component.externalOfferId
@@ -77,38 +87,52 @@ export function BundleComposition({
                         : 'missing'
                 ];
           return (
-            <li key={component.variantId} className="bundle-comp__item" data-component={component.variantId}>
+            <li
+              key={component.variantId}
+              className={`bundle-comp__item${component.mode === 'missing' ? ' is-bad' : ''}`}
+              data-component={component.variantId}
+            >
               <VariantThumbnail src={component.imageUrl} name={component.name} size="sm" />
-              <div className="bundle-comp__text">
-                <b className="bundle-comp__name">{component.name}</b>
-                <small className="bundle-comp__meta">
-                  {component.sku ? `${component.sku} · ` : ''}
-                  {interpolate(copy.quantity, { n: component.quantity })}
-                </small>
+              <span className="cx-comp__n">
+                <span className="cx-comp__t">
+                  <b className="bundle-comp__name">{component.name}</b>
+                  <span className="mono tabular cx-comp__x">
+                    {interpolate(copy.quantity, { n: component.quantity })}
+                  </span>
+                  {component.giftSlot ? (
+                    <span className="cx-tag cx-tag--gift">{copy.gift}</span>
+                  ) : null}
+                </span>
+                <span className="cx-sub mono bundle-comp__meta">{component.sku ?? ''}</span>
                 {component.problems.map((problem) => (
                   <span key={problem.code} className="bundle-comp__problem">
                     {problem.message}
                   </span>
                 ))}
-              </div>
-              <div className="bundle-comp__chips">
-                {component.giftSlot ? <StatusBadge tone="review" compact>{copy.gift}</StatusBadge> : null}
-                <StatusBadge tone={MODE_TONE[component.mode]} compact data-testid="bundle-mode">
+              </span>
+              <span className="cx-wm">
+                <StatusBadge
+                  tone={MODE_TONE[component.mode]}
+                  compact
+                  withDot
+                  data-testid="bundle-mode"
+                >
                   {modeLabel}
                 </StatusBadge>
                 {component.mode === 'missing' ? (
                   <Link
-                    className="bundle-comp__link"
+                    className="button button--secondary button--sm"
                     to={publishComponentUrl(component.productId, connectionId)}
                   >
                     {copy.publishComponent}
                   </Link>
                 ) : null}
-              </div>
+              </span>
             </li>
           );
         })}
       </ul>
+      {showEanNote ? <p className="cx-sub bundle-comp__ean">{copy.eanNotNeeded}</p> : null}
       {mismatch && onUseSuggestedCategory ? (
         <div className="bundle-comp__category" data-testid="bundle-category-mismatch">
           <span>{copy.categoryMismatch}</span>

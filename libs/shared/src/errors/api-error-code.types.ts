@@ -28,6 +28,10 @@ export const ApiErrorCodeValues = [
   // ── Connections (#3864) ──
   /** No connection has this id. params: `connectionId`. */
   'CONNECTION_NOT_FOUND',
+  /** No stock movement has this id. params: `movementId`. */
+  'STOCK_MOVEMENT_NOT_FOUND',
+  /** The connection has no batch run with this id. params: `runId`. */
+  'SALES_DOCUMENT_BATCH_RUN_NOT_FOUND',
   /**
    * A `config` value is refused. params: `field` (dotted path), `rule` (what the
    * value must be: `object`, `boolean`, `string`, `email`, `one-of`, `min`,
@@ -836,6 +840,16 @@ export const ApiErrorCodeValues = [
   'OAUTH_ACCOUNT_MISMATCH',
   /** The authorization state is invalid or expired. */
   'OAUTH_STATE_INVALID',
+  /** No gift run with this id exists on the order. params: `runId`, `orderId`. */
+  'GIFT_RUN_NOT_FOUND',
+  /** The order carries no such gift line. params: `returnId`, `giftLineId`. */
+  'GIFT_LINE_NOT_FOUND',
+  /** The gift document setting could not be read; retry shortly. */
+  'GIFT_DOCUMENT_SETTING_UNAVAILABLE',
+  /** The gift document form is refused. */
+  'GIFT_DOCUMENT_FORM_INVALID',
+  /** The report range is refused. params: `rule`. */
+  'GIFT_REPORT_RANGE_INVALID',
   /** The refund is above what the order can still refund. */
   'refund_ceiling_exceeded',
   /** The refund ceiling could not be read; nothing was refunded. */

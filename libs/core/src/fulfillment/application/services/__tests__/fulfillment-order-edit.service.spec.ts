@@ -40,6 +40,7 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       FulfillmentWorkRepositoryPort,
       | 'findByOrderId'
       | 'recordLineProgress'
+      | 'addLine'
       | 'countParcelVerifications'
       | 'listActiveHoldsForWorks'
       | 'placeHold'
@@ -57,6 +58,7 @@ describe('FulfillmentOrderEditService (#3542)', () => {
     works = {
       findByOrderId: jest.fn(),
       recordLineProgress: jest.fn().mockResolvedValue(true),
+      addLine: jest.fn().mockResolvedValue(true),
       countParcelVerifications: jest.fn().mockResolvedValue([]),
       listActiveHoldsForWorks: jest.fn().mockResolvedValue(new Map()),
       placeHold: jest.fn().mockResolvedValue({}),
@@ -71,6 +73,67 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       works as unknown as FulfillmentWorkRepositoryPort,
       progress as unknown as IFulfillmentProgressService
     );
+  });
+
+  describe('addLineToOpenWork (#3940)', () => {
+    const input = {
+      orderId: 'o1',
+      orderLineId: 'op-gift:c1',
+      productVariantId: 'v-gift',
+      quantity: 2,
+      acceptsHolder: jest.fn().mockResolvedValue(true),
+    };
+
+    beforeEach(() => input.acceptsHolder.mockResolvedValue(true));
+
+    it('should add the gift as a new line of the open work an accepted holder packs', async () => {
+      works.findByOrderId.mockResolvedValue([work('w1', [{ orderLineId: 'l1', total: 1 }])] as never);
+
+      const result = await service.addLineToOpenWork(input);
+
+      expect(works.addLine).toHaveBeenCalledWith('w1', {
+        orderLineId: 'op-gift:c1',
+        productVariantId: 'v-gift',
+        totalQuantity: 2,
+      });
+      expect(result).toEqual({ outcome: 'added', workId: 'w1' });
+    });
+
+    it('should leave a work held by an outside executor alone', async () => {
+      input.acceptsHolder.mockResolvedValue(false);
+      works.findByOrderId.mockResolvedValue([work('w1', [{ orderLineId: 'l1', total: 1 }])] as never);
+
+      const result = await service.addLineToOpenWork(input);
+
+      expect(works.addLine).not.toHaveBeenCalled();
+      expect(result.outcome).toBe('no-eligible-work');
+    });
+
+    it('should skip a work whose parcel is closed or that is already finished', async () => {
+      works.findByOrderId.mockResolvedValue([
+        work('w1', [], { parcelClosedAt: new Date() }),
+        work('w2', [], { status: 'closed' }),
+      ] as never);
+
+      expect((await service.addLineToOpenWork(input)).outcome).toBe('no-eligible-work');
+      expect(works.addLine).not.toHaveBeenCalled();
+    });
+
+    it('should report an unrouted order and a repeat without writing', async () => {
+      works.findByOrderId.mockResolvedValue([] as never);
+      expect((await service.addLineToOpenWork(input)).outcome).toBe('unrouted');
+
+      works.findByOrderId.mockResolvedValue([work('w1', [{ orderLineId: 'op-gift:c1', total: 2 }])] as never);
+      expect((await service.addLineToOpenWork(input)).outcome).toBe('unchanged');
+      expect(works.addLine).not.toHaveBeenCalled();
+    });
+
+    it('should fall through to the next work when the first refuses the insert', async () => {
+      works.addLine.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      works.findByOrderId.mockResolvedValue([work('w1', []), work('w2', [])] as never);
+
+      expect(await service.addLineToOpenWork(input)).toEqual({ outcome: 'added', workId: 'w2' });
+    });
   });
 
   describe('lowerLineQuantity', () => {

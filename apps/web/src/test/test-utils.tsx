@@ -917,7 +917,24 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.posthogSettings,
     } as ApiClient['posthogSettings'],
+    gifts: {
+      addGiftToOrder: vi.fn(),
+      ...overrides.gifts,
+    } as ApiClient['gifts'],
+    promotions: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn(),
+      create: vi.fn(),
+      replace: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+      reorder: vi.fn().mockResolvedValue([]),
+      resume: vi.fn(),
+      evaluate: vi.fn(),
+      history: vi.fn().mockResolvedValue({ items: [] }),
+      ...overrides.promotions,
+    } as ApiClient['promotions'],
     bundles: {
+      findMany: vi.fn().mockResolvedValue([]),
       get: vi.fn(),
       history: vi.fn().mockResolvedValue([]),
       usedIn: vi.fn().mockResolvedValue([]),
@@ -1214,6 +1231,20 @@ export function createMockApiClient(
       getCountryFacts: vi.fn().mockResolvedValue({ windowDays: 30, countries: [] }),
       ...overrides.deliveryOnDocuments,
     } as ApiClient['deliveryOnDocuments'],
+    giftDocuments: {
+      getSettings: vi.fn().mockResolvedValue({
+        giftDocumentForm: 'technical-cent',
+        giftDocumentFormSource: 'default',
+        updatedAt: null,
+      }),
+      saveSettings: vi.fn().mockResolvedValue({
+        giftDocumentForm: 'technical-cent',
+        giftDocumentFormSource: 'setting',
+        updatedAt: null,
+      }),
+      getProviders: vi.fn().mockResolvedValue({ providers: [] }),
+      ...overrides.giftDocuments,
+    } as ApiClient['giftDocuments'],
     // #3056. The default is a connection with no sourcing rules — the honest
     // empty ruleset, so a test that renders the table without opting in gets
     // the "no rules yet" branch rather than rows it never declared.
@@ -1235,6 +1266,16 @@ export function createMockApiClient(
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the
     // configuration claim, which no test should assert by accident.
+    giftReport: {
+      getGiftReport: vi.fn().mockResolvedValue({ groups: [], totals: [] }),
+      getGiftBundleReport: vi.fn().mockResolvedValue({ bundles: [], demand: [] }),
+      ...overrides.giftReport,
+    } as ApiClient['giftReport'],
+    returnGifts: {
+      getReturnGifts: vi.fn().mockResolvedValue({ gifts: [], currency: null, refundDeductionGross: 0 }),
+      decideReturnGift: vi.fn(),
+      ...overrides.returnGifts,
+    } as ApiClient['returnGifts'],
     returns: {
       // A plain (non-bundle) line: the preview answers, and nothing blocks the restock.
       getBundleReturnPreview: vi.fn().mockResolvedValue({

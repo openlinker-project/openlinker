@@ -55,6 +55,8 @@ export class OrderBundleDocumentService implements IOrderBundleDocumentService {
           sku: detail?.sku ?? null,
           quantity: component.quantity,
           ...(component.giftSlot === true && { giftSlot: true }),
+          ...(component.giftSlot === true &&
+            component.giftDocumentForm !== undefined && { giftDocumentForm: component.giftDocumentForm }),
           ...(detail?.price !== undefined && { unitPriceGross: detail.price }),
           ...(cost !== null && { unitCostNet: cost }),
           ...(detail?.taxRate != null && { taxRate: detail.taxRate }),

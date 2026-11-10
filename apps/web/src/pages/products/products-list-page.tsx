@@ -36,8 +36,7 @@ import {
   type ReactNode,
 } from 'react';
 import { BundleGuide } from '../../features/bundles/components/bundle-guide';
-import { GuideTrigger } from '../../shared/ui/help-hint';
-import { useGuideShortcut } from '../../shared/ui/guide-drawer';
+import { GuideButton } from '../../shared/ui/guide-drawer';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -147,6 +146,14 @@ const DEFAULT_DIR: Record<ProductListSortField, ProductListSortDir> = {
 
 
 export function ProductsListPage(): ReactElement {
+  return (
+    <BundleGuide>
+      <ProductsListPageBody />
+    </BundleGuide>
+  );
+}
+
+function ProductsListPageBody(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const platforms = usePlatforms();
@@ -194,8 +201,6 @@ export function ProductsListPage(): ReactElement {
         ? 'exclude'
         : undefined;
   const bundleCopy = useMessages('bundles');
-  const [guideOpen, setGuideOpen] = useState(false);
-  useGuideShortcut(() => { setGuideOpen(true); });
   const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
   const rawSort = searchParams.get('sort');
   const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;
@@ -667,7 +672,16 @@ export function ProductsListPage(): ReactElement {
           const origin = product.externalIds?.[0];
           return (
             <span className="product-row">
-              <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              {product.bundle && !product.images?.[0] ? (
+                <span className="cx-mosaic" aria-hidden="true">
+                  <i className="t-a" />
+                  <i className="t-d" />
+                  <i className="t-b" />
+                  <i className="t-c" />
+                </span>
+              ) : (
+                <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              )}
               <span className="products-cell-stack">
                 <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
                   <Link
@@ -678,9 +692,17 @@ export function ProductsListPage(): ReactElement {
                     {product.name}
                   </Link>
                   {product.bundle ? (
-                    <StatusBadge tone="info" compact>
+                    <span className="cx-tag">
+                      <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                      </svg>
                       {bundleCopy.list.bundleMark}
-                    </StatusBadge>
+                    </span>
+                  ) : null}
+                  {(product.usedInBundlesCount ?? 0) > 0 ? (
+                    <span className="cx-tag cx-tag--quiet" data-testid={`product-used-in-bundles-${product.sku ?? product.id}`}>
+                      {plural(product.usedInBundlesCount ?? 0, bundleCopy.list.usedInBundles)}
+                    </span>
                   ) : null}
                   {(product.variantCount ?? 0) > 1 ? (
                     <StatusBadge tone="neutral" compact>
@@ -920,7 +942,7 @@ export function ProductsListPage(): ReactElement {
       description={interpolate(copy.description, { max: format.number(BULK_SELECTION_CAP) })}
       actions={
         <span className="page-header__actions--row">
-          <GuideTrigger label={bundleCopy.guide.trigger} onClick={() => { setGuideOpen(true); }} />
+          <GuideButton label={bundleCopy.guide.trigger} />
           {bundleWrite.canWrite ? (
             <Link
               className="button button--primary"
@@ -951,7 +973,6 @@ export function ProductsListPage(): ReactElement {
         </span>
       }
     >
-      <BundleGuide open={guideOpen} onOpenChange={setGuideOpen} />
       {!bundleWrite.canWrite ? (
         <Alert tone="info" title={bundleCopy.list.readonlyTitle} data-testid="bundle-list-readonly-notice">
           {bundleCopy.list.readonlyNotice}

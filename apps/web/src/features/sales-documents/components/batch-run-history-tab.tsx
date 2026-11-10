@@ -28,6 +28,7 @@ import {
   joinSentences,
   summarizeRunItems,
 } from '../lib/describe-batch-run';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface BatchRunHistoryTabProps {
   connectionId: string;
@@ -131,7 +132,7 @@ function BatchRunDetails({
     return (
       <ErrorState
         title={copy.errorTitle}
-        message={detail.error?.message ?? copy.errorFallback}
+        message={detail.error ? describeApiError(detail.error, 'sales-documents') : copy.errorFallback}
         action={<Button onClick={() => void detail.refetch()}>{retry}</Button>}
       />
     );

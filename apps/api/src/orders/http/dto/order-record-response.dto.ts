@@ -23,8 +23,9 @@ import {
   type FulfillmentRoutingSkipReason,
   type PaymentMethod,
 } from '@openlinker/core/orders';
-import { DestinationRoutingBlockReasonValues } from '@openlinker/core/orders';
+import { DestinationRoutingBlockReasonValues, GiftDocumentFormValues } from '@openlinker/core/orders';
 import type { DestinationRoutingBlockReason } from '@openlinker/core/orders';
+import { GiftDocumentForm } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
   HoldReasonValues,
@@ -69,6 +70,11 @@ export class OrderBundleComponentDto {
   @ApiProperty({ description: 'Units for the whole line' }) quantity!: number;
   @ApiProperty({ description: 'Units in ONE bundle unit' }) perUnit!: number;
   @ApiPropertyOptional() giftSlot?: boolean;
+  @ApiPropertyOptional({
+    description: 'The gift slot\'s own document form (#3940); absent means as in settings',
+    enum: GiftDocumentFormValues,
+  })
+  giftDocumentForm?: GiftDocumentForm;
 }
 
 export class OrderBundleLineDto {
@@ -400,6 +406,13 @@ export class OrderRecordResponseDto {
       '`buyerNote` tells them apart where the text is stored.',
   })
   hasBuyerNote!: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether the order froze at least one bundle definition at ingestion (#3935). On the SHARED ' +
+      'projection so the list can mark bundle orders without the detail-only bundle lines.',
+  })
+  hasBundle!: boolean;
 
   @ApiProperty({
     enum: ['present', 'none', 'unknown'],

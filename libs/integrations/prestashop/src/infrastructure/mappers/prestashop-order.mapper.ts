@@ -25,6 +25,7 @@ import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/pres
 import { PrestashopParseException } from '../../domain/exceptions/prestashop-parse.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { toPrestashopProductAttributeId } from './prestashop-variant-id';
+import { splitGiftLines, type PrestashopGiftCartRule } from './prestashop-gift-split';
 
 /**
  * Default values for PrestaShop cart creation. Kept at module scope as the
@@ -50,12 +51,14 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
   private readonly logger = new Logger(PrestashopOrderMapper.name);
   mapOrder(
     prestashopOrder: PrestashopOrder,
-    orderRows: PrestashopOrderRow[]
+    orderRows: PrestashopOrderRow[],
+    giftCartRules: readonly PrestashopGiftCartRule[] = [],
+    minorUnitExponent = 2
   ): MappedPrestashopOrder {
-    // Strictly 1:1 and order-preserving: `PrestashopOrderSourceAdapter` re-correlates
-    // `mapped.items[i]` back to `orderRows[i]` positionally to build each product ref.
-    // Filtering or reordering rows here would silently mis-pair every later line.
-    const items: OrderItem[] = orderRows.map((row, index) => {
+    // One item per row, in row order, until the gift split below: the adapter
+    // re-correlates each item to its row by `sourceRowIdOfLineId(item.id)`, so a
+    // split line must keep its source row's id as the prefix of its own.
+    const rowItems: OrderItem[] = orderRows.map((row, index) => {
       // PrestaShop uses "0" or 0 to indicate no variant, treat as undefined
       const variantId =
         row.product_attribute_id &&
@@ -86,6 +89,15 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           : {}),
       };
     });
+
+    // A gift cart rule arrives merged into its product's line at full price;
+    // split out, the discount drops by the same amount so the total is unchanged.
+    const { items, giftValueTaxIncl } = splitGiftLines(
+      rowItems,
+      orderRows,
+      giftCartRules,
+      minorUnitExponent
+    );
 
     // Map totals. No `currency` (#2277): the order's denomination lives behind a
     // `GET /currencies/{id}` read keyed on `id_currency`, and this mapper does no
@@ -140,7 +152,16 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       ...(((): { discountTotal?: number } => {
         const discount = this.parseNumber(prestashopOrder.total_discounts_tax_incl);
         return discount !== undefined && Number.isFinite(discount)
-          ? { discountTotal: discount }
+          ? {
+              discountTotal:
+                giftValueTaxIncl === 0
+                  ? discount
+                  : Math.max(
+                      0,
+                      Math.round((discount - giftValueTaxIncl) * 10 ** minorUnitExponent) /
+                        10 ** minorUnitExponent
+                    ),
+            }
           : {};
       })()),
     };
@@ -284,7 +305,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     externalCarrierId?: number
   ): Record<string, unknown> {
     // Map cart rows (products)
-    const cartRows = orderCreate.items.map((item, index) => {
+    const rawCartRows = orderCreate.items.map((item) => {
       const externalProductId = externalProductIds.get(item.productId);
       if (!externalProductId) {
         // Log warning before throwing to help debug mapping issues
@@ -307,12 +328,24 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       );
 
       return {
-        id: index + 1,
         id_product: externalProductId,
         id_product_attribute: externalVariantId,
         quantity: item.quantity,
       };
     });
+    // One cart row per (product, combination): a gift of a product the buyer
+    // also paid for shares the key, and the cart cannot hold the pair twice.
+    const mergedRows = new Map<string, (typeof rawCartRows)[number]>();
+    for (const row of rawCartRows) {
+      const key = `${String(row.id_product)}:${String(row.id_product_attribute)}`;
+      const existing = mergedRows.get(key);
+      if (existing === undefined) {
+        mergedRows.set(key, { ...row });
+      } else {
+        existing.quantity += row.quantity;
+      }
+    }
+    const cartRows = [...mergedRows.values()].map((row, index) => ({ id: index + 1, ...row }));
 
     // The cart's `id_currency` is the live write the #2139 refusal protects:
     // `importorder` builds the PrestaShop context from `$cart->id_currency`,

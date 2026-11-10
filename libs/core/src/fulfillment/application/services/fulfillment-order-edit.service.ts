@@ -33,6 +33,8 @@ import {
 } from '../../domain/types/fulfillment-verification.types';
 import { SOURCE_CHANGE_HOLD_ACTOR } from '../../domain/types/fulfillment-hold.types';
 import type {
+  AddLineToWorkInput,
+  AddLineToWorkResult,
   ClosedParcelReport,
   HoldForSourceChangeInput,
   HoldForSourceChangeResult,
@@ -140,6 +142,25 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
       requiredByLine,
       verifiedByLine,
     };
+  }
+
+  async addLineToOpenWork(input: AddLineToWorkInput): Promise<AddLineToWorkResult> {
+    const works = await this.works.findByOrderId(input.orderId);
+    if (works.length === 0) return { outcome: 'unrouted', workId: null };
+    if (works.some((work) => work.lines.some((line) => line.orderLineId === input.orderLineId))) {
+      return { outcome: 'unchanged', workId: null };
+    }
+    for (const work of works) {
+      if (isTerminalFulfillmentWorkStatus(work.status) || work.parcelClosedAt !== null) continue;
+      if (!(await input.acceptsHolder(work.assignedConnectionId))) continue;
+      const added = await this.works.addLine(work.id, {
+        orderLineId: input.orderLineId,
+        productVariantId: input.productVariantId,
+        totalQuantity: input.quantity,
+      });
+      if (added) return { outcome: 'added', workId: work.id };
+    }
+    return { outcome: 'no-eligible-work', workId: null };
   }
 
   async holdForSourceChange(input: HoldForSourceChangeInput): Promise<HoldForSourceChangeResult> {

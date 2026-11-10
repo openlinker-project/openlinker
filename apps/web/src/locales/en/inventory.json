@@ -226,6 +226,23 @@
   "inventoryMovementsPage": {
     "allConnections": "All connections",
     "allTypes": "All types",
+    "attention": {
+      "bannerBody": "Totals may not include these changes yet. Open them and check the master system.",
+      "body": "{parts}. The totals may not reflect these changes yet.",
+      "inDoubt": "{n} unconfirmed",
+      "onThisPage": "{parts} on this page. The totals may not reflect these changes yet.",
+      "refused": "{n} refused by the master",
+      "title": {
+        "one": "{n} movement needs a look",
+        "other": "{n} movements need a look"
+      }
+    },
+    "caption": "Stock movements",
+    "chips": {
+      "all": "All",
+      "attention": "Needs attention",
+      "promised": "Reserved only"
+    },
     "count": {
       "one": "{n} result",
       "other": "{n} results"
@@ -252,13 +269,39 @@
     "eyebrow": "Products",
     "filterMaster": "Filter by master connection",
     "filterType": "Filter by type",
+    "filters": "Type",
     "from": "From",
+    "master": "Master connection",
+    "peek": {
+      "change": "Change",
+      "description": "Stock movement details",
+      "giftBody": "The customer pays 0.00 for it and its stock is reserved like an ordinary line.",
+      "giftFrom": {
+        "bundle-slot": "It is the free gift of a bundle.",
+        "cart-rule": "A shop cart rule added it.",
+        "channel": "The sales channel flagged it.",
+        "ol-rule": "A promotion in OpenLinker added it.",
+        "operator": "An operator added it by hand."
+      },
+      "giftTitle": "Where the gift comes from.",
+      "kicker": "Stock movement",
+      "master": "Master connection",
+      "openOrder": "Open order",
+      "order": "Order",
+      "seePromotion": "See promotion",
+      "status": "Status",
+      "system": "system",
+      "time": "Time",
+      "type": "Type",
+      "who": "By"
+    },
     "retry": "Retry",
     "scopeProduct": "Showing one product only.",
     "scopeVariant": "Showing one variant only.",
     "search": "Search SKU or variant name",
     "showAllProducts": "Show all products",
     "showAllVariants": "Show all variants",
+    "tabsAria": "Movements scope",
     "title": "Stock movement history",
     "to": "To"
   },
@@ -483,6 +526,7 @@
       "countCorrection": "Counted (physical stock check)",
       "damaged": "Damaged or lost",
       "found": "Found or received",
+      "gift": "Gift packed outside OpenLinker",
       "other": "Other"
     },
     "refused": {
@@ -838,6 +882,7 @@
       "countCorrection": "Count correction",
       "damaged": "Damaged",
       "found": "Found",
+      "gift": "Gift",
       "other": "Other"
     },
     "sourceKinds": {
@@ -859,6 +904,7 @@
     "theShop": "the shop",
     "typeFilters": {
       "cancellationRestore": "Cancellation restore",
+      "gift": "Gift",
       "manualCorrection": "Manual correction",
       "masterSync": "Sync change detected",
       "reservation": "Reservation",
@@ -867,6 +913,7 @@
     },
     "types": {
       "cancellationRestore": "Cancellation restore",
+      "gift": "Gift",
       "manualCorrection": "Manual correction",
       "masterSync": "Sync change detected",
       "reservation": "Reservation",
@@ -884,6 +931,13 @@
       "status": "Status",
       "time": "Time",
       "type": "Type"
+    },
+    "giftSource": {
+      "bundleSlot": "Gift in a bundle: {name}",
+      "cartRule": "Shop cart rule",
+      "channel": "Gift from the sales channel",
+      "operator": "Added by hand",
+      "promotion": "Promotion: {name}"
     },
     "new": "new",
     "notApplied": "Not applied",

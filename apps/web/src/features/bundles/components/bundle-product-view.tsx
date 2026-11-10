@@ -11,11 +11,12 @@
  *
  * @module apps/web/src/features/bundles/components
  */
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useMessages, formatPlural, interpolate, useFormat, useLocale } from '../../../shared/i18n';
 import { ComposerSection } from '../../../shared/ui/composer-section';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { useTopProductVariantSalesQuery } from '../../analytics';
 import { useConnectionsQuery } from '../../connections';
 import { useListingsQuery, type OfferLifecycle } from '../../listings';
 import { computeBundleAvailability } from '../lib/bundle-availability';
@@ -36,7 +37,10 @@ export interface BundleProductViewProps {
   productId: string;
 }
 
-export function BundleProductView({ bundleVariantId, productId }: BundleProductViewProps): ReactElement {
+export function BundleProductView({
+  bundleVariantId,
+  productId,
+}: BundleProductViewProps): ReactElement {
   const copy = useMessages('bundles').view;
   const { locale } = useLocale();
   const format = useFormat();
@@ -45,6 +49,13 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
   const listings = useListingsQuery({ internalId: bundleVariantId }, { limit: 50, offset: 0 });
   const connections = useConnectionsQuery();
   const [showSplit, setShowSplit] = useState(false);
+  const soldRange = useMemo(() => {
+    const day = 24 * 60 * 60 * 1000;
+    const iso = (d: Date): string => d.toISOString().slice(0, 10);
+    const now = Date.now();
+    return { from: iso(new Date(now - 29 * day)), to: iso(new Date(now)) };
+  }, []);
+  const sold = useTopProductVariantSalesQuery(productId, soldRange, { enabled: true });
 
   if (detail.isLoading) return <p className="text-muted">{copy.loading}</p>;
   if (detail.isError || !detail.data) return <p role="alert">{copy.loadFailed}</p>;
@@ -57,7 +68,7 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
       name: row.summary.name ?? row.summary.sku ?? row.variantId,
       quantity: row.quantity,
       availableToPromise: row.availableToPromise,
-    })),
+    }))
   );
   const giftCount = rows.filter((row) => row.giftSlot === true).length;
   const split = splitBundlePrice(
@@ -67,7 +78,7 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
       quantity: row.quantity,
       standalonePrice: row.summary.price,
       giftSlot: row.giftSlot === true,
-    })),
+    }))
   );
 
   const offerConnections = (connections.data ?? [])
@@ -104,10 +115,16 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
           }`}
           riseIndex={2}
         >
-          <div className={`cx-avail ${availabilityTone}`} data-testid="bundle-view-availability-line">
+          <div
+            className={`cx-avail ${availabilityTone}`}
+            data-testid="bundle-view-availability-line"
+          >
             {availabilityLine}
           </div>
-          <BundleComponentList components={rows} bundlesAvailable={availability.kind === 'known' ? availability.bundles : null} />
+          <BundleComponentList
+            components={rows}
+            bundlesAvailable={availability.kind === 'known' ? availability.bundles : null}
+          />
           <div className="pm-disc">
             <button
               type="button"
@@ -129,7 +146,10 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
                       {split.lines.map((line) => {
                         const row = rows.find((r) => r.variantId === line.variantId);
                         return (
-                          <span key={line.variantId} className={`pm-doc__l${row?.giftSlot ? ' is-gift' : ''}`}>
+                          <span
+                            key={line.variantId}
+                            className={`pm-doc__l${row?.giftSlot ? ' is-gift' : ''}`}
+                          >
                             <span>{row?.summary.name ?? line.variantId}</span>
                             <b className="mono tabular">{format.money(line.amount, currency)}</b>
                           </span>
@@ -155,7 +175,11 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
                 {listing ? (
                   <>
                     <span>
-                      <StatusBadge compact withDot tone={LIFECYCLE_TONE[listing.channelStatus?.lifecycle ?? 'Unsynced']}>
+                      <StatusBadge
+                        compact
+                        withDot
+                        tone={LIFECYCLE_TONE[listing.channelStatus?.lifecycle ?? 'Unsynced']}
+                      >
                         {copy.status[listing.channelStatus?.lifecycle ?? 'Unsynced']}
                       </StatusBadge>
                     </span>
@@ -167,7 +191,10 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
                         ? ` · ${format.money(Number(listing.commercial.price), listing.commercial.currency ?? currency)}`
                         : ''}
                     </span>
-                    <Link className="button button--ghost button--sm" to={`/listings?search=${encodeURIComponent(listing.externalId)}`}>
+                    <Link
+                      className="button button--ghost button--sm"
+                      to={`/listings?search=${encodeURIComponent(listing.externalId)}`}
+                    >
                       {copy.open}
                     </Link>
                   </>
@@ -175,7 +202,10 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
                   <>
                     <span className="cx-sub">{copy.notListed}</span>
                     <span />
-                    <Link className="button button--secondary button--sm" to={wizardTo(connection.id)}>
+                    <Link
+                      className="button button--secondary button--sm"
+                      to={wizardTo(connection.id)}
+                    >
                       {copy.listHere}
                     </Link>
                   </>
@@ -188,14 +218,20 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
 
         <ComposerSection
           title={copy.historyTitle}
-          aside={history.data ? formatPlural(history.data.length, copy.versionsCount, locale) : undefined}
+          aside={
+            history.data ? formatPlural(history.data.length, copy.versionsCount, locale) : undefined
+          }
           riseIndex={4}
         >
           <ul className="pm-log" data-testid="bundle-view-history">
             {(history.data ?? []).map((entry) => (
               <li key={entry.version}>
                 <span>
-                  <b>{entry.current ? copy.currentVersion : interpolate(copy.version, { n: entry.version })}</b>
+                  <b>
+                    {entry.current
+                      ? copy.currentVersion
+                      : interpolate(copy.version, { n: entry.version })}
+                  </b>
                   <span className="text-muted">
                     {interpolate(copy.since, { date: format.date(entry.createdAt) })} ·{' '}
                     {entry.components
@@ -211,7 +247,9 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
                     {copy.active}
                   </StatusBadge>
                 ) : entry.openOrders > 0 ? (
-                  <span className="cx-tag cx-tag--quiet">{formatPlural(entry.openOrders, copy.openOrders, locale)}</span>
+                  <span className="cx-tag cx-tag--quiet">
+                    {formatPlural(entry.openOrders, copy.openOrders, locale)}
+                  </span>
                 ) : null}
               </li>
             ))}
@@ -239,7 +277,10 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
                 <span style={{ paddingBottom: 2 }}>
                   {availability.limitedBy === null
                     ? interpolate(copy.canAssembleOk, { n: availability.bundles })
-                    : interpolate(copy.canAssemble, { n: availability.bundles, name: availability.limitedBy })}
+                    : interpolate(copy.canAssemble, {
+                        n: availability.bundles,
+                        name: availability.limitedBy,
+                      })}
                 </span>
               </>
             ) : (
@@ -249,7 +290,7 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
           <p className="pm-help">{copy.channelsGetNumber}</p>
         </ComposerSection>
         <ComposerSection title={copy.glanceTitle} riseIndex={4}>
-          <div className="pm-kpis" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
+          <div className="pm-kpis" style={{ gridTemplateColumns: 'repeat(2,minmax(0,1fr))' }}>
             <div className="pm-kpi">
               <span className="pm-kpi__l">{copy.priceGross}</span>
               <span className="pm-kpi__n mono tabular">
@@ -257,6 +298,19 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
               </span>
               <span className="pm-kpi__s">{copy.asInShop}</span>
             </div>
+            {sold.data ? (
+              <div className="pm-kpi" data-testid="bundle-view-sold">
+                <span className="pm-kpi__l">{copy.sold}</span>
+                <span className="pm-kpi__n mono tabular">
+                  {format.number(
+                    sold.data.variants
+                      .filter((v) => v.variantId === bundleVariantId)
+                      .reduce((sum, v) => sum + v.units, 0)
+                  )}
+                </span>
+                <span className="pm-kpi__s">{copy.soldHint}</span>
+              </div>
+            ) : null}
           </div>
         </ComposerSection>
         <ComposerSection title={copy.whoTitle} riseIndex={5}>

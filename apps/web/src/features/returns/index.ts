@@ -29,6 +29,7 @@ export { useReturnsQuery } from './hooks/use-returns-query';
 export { useReturnIngestionAvailabilityQuery } from './hooks/use-return-ingestion-availability-query';
 export { ReturnCustodyPanel } from './components/return-custody-panel';
 export { ReturnMoneyPanel } from './components/return-money-panel';
+export { ReturnGiftsPanel } from './components/return-gifts-panel';
 export { CorrectionProposalPanel } from './components/correction-proposal-panel';
 export { useReturnProposalQuery } from './hooks/use-return-proposal-query';
 export { ReturnIdentityCell, returnIdentitySummary } from './components/return-identity-cell';

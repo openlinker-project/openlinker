@@ -153,6 +153,9 @@ import {
 } from '@openlinker/core/integrations';
 import {
   ISalesDocumentRulesService,
+  ISalesDocumentSettingsService,
+  SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+  DEFAULT_GIFT_LINE_FORM,
   REQUIRED_CAPABILITY_BY_CORE_KIND,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
   chooseSalesDocumentDecision,
@@ -393,6 +396,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // one-way edge above.
     @Inject(SALES_DOCUMENT_RULES_SERVICE_TOKEN)
     private readonly salesDocumentRules: ISalesDocumentRulesService,
+    // #3941: the OpenLinker-wide gift form, the lowest of the three levels.
+    @Inject(SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN)
+    private readonly salesDocumentSettings: ISalesDocumentSettingsService,
     // Resolved lazily via `resolveFiscalRegistrationService` (review finding
     // 6) — never a constructor-typed `IFiscalRegistrationService`, which
     // would require `FiscalizationModule` and close the
@@ -1208,7 +1214,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         buyerTaxId,
         deliveryLine,
-        readGiftDocumentSettings(sourceConnection?.config),
+        await this.resolveGiftDocumentSettings(sourceConnection?.config),
         acceptsZeroValueLine,
         bundleDocument,
       );
@@ -1378,7 +1384,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         buyerTaxId,
         deliveryLine,
-        readGiftDocumentSettings(sourceConnection?.config),
+        await this.resolveGiftDocumentSettings(sourceConnection?.config),
         await this.readFiscalZeroValueLineSupport(connection.id),
         bundleDocument,
       );
@@ -1877,6 +1883,24 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           `per-source numbering axis and delivery settings not applied: ${message}`,
       );
       return null;
+    }
+  }
+
+  /**
+   * The connection override plus the OpenLinker-wide default (#3941). A failed
+   * read of the default falls back to the code default: it must never break an
+   * issuance.
+   */
+  private async resolveGiftDocumentSettings(config: unknown): Promise<GiftDocumentSettings> {
+    try {
+      const { form, unitPrice } = await this.salesDocumentSettings.getGiftDocumentForm();
+      return readGiftDocumentSettings(config, form, unitPrice);
+    } catch (error) {
+      this.logger.warn(
+        `Gift default lookup failed; the code default form applies, which may differ from the ` +
+          `operator's saved setting: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return readGiftDocumentSettings(config, DEFAULT_GIFT_LINE_FORM);
     }
   }
 

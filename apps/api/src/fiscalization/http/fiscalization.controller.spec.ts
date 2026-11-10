@@ -12,6 +12,7 @@
  *
  * @module apps/api/src/fiscalization/http
  */
+import { SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { Test } from '@nestjs/testing';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
@@ -20,6 +21,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -171,6 +173,10 @@ describe('FiscalizationController', () => {
           useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
         },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrations },
+        {
+          provide: SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+          useValue: { getGiftDocumentForm: jest.fn().mockResolvedValue({ form: 'technical-cent', source: 'default' }) },
+        },
       ],
     }).compile();
 
@@ -355,7 +361,7 @@ describe('FiscalizationController', () => {
       ]);
       orders.getOrderRecord.mockResolvedValue(giftRecord);
       const connectionPort = controller['connectionPort'] as unknown as { get: jest.Mock };
-      connectionPort.get.mockResolvedValue({ config: { giftOnDocuments: { form: 'show' } } });
+      connectionPort.get.mockResolvedValue({ config: { giftOnDocuments: { form: 'show-zero' } } });
       integrations.getCapabilityAdapter.mockResolvedValue({ acceptsZeroValueLine: () => false });
 
       await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
@@ -366,6 +372,17 @@ describe('FiscalizationController', () => {
       expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
       const total = cmd.lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
       expect(total).toBe(10000);
+    });
+
+    it('should refuse retryably, registering nothing, when the saved gift form cannot be read', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      const settings = controller['salesDocumentSettings'] as unknown as { getGiftDocumentForm: jest.Mock };
+      settings.getGiftDocumentForm.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(service.requestRegistration).not.toHaveBeenCalled();
     });
 
     it('should still register when the adapter cannot be resolved (#3930)', async () => {

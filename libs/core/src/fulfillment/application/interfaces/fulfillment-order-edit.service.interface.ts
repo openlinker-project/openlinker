@@ -103,6 +103,27 @@ export interface LowerLineQuantityResult {
   readonly closedParcels: readonly ClosedParcelReport[];
 }
 
+export type AddLineToWorkOutcome = 'added' | 'unrouted' | 'no-eligible-work' | 'unchanged';
+
+export interface AddLineToWorkInput {
+  readonly orderId: string;
+  /** The added line's own id on the order (e.g. `op-gift:{changeId}`). */
+  readonly orderLineId: string;
+  readonly productVariantId: string;
+  readonly quantity: number;
+  /**
+   * Whether a holder is one whose pick list reads OpenLinker's own work lines.
+   * Supplied by the caller because that is an integration fact this context may
+   * not resolve (ADR-053); an outside holder was sent its lines and cannot be told.
+   */
+  readonly acceptsHolder: (connectionId: string | null) => Promise<boolean>;
+}
+
+export interface AddLineToWorkResult {
+  readonly outcome: AddLineToWorkOutcome;
+  readonly workId: string | null;
+}
+
 export interface IFulfillmentOrderEditService {
   /**
    * Read-only; never writes. `components` maps bundle lines to their component
@@ -128,6 +149,14 @@ export interface IFulfillmentOrderEditService {
    * @throws {RangeError} `newQuantity` would fall below what is already fulfilled.
    */
   lowerLineQuantity(input: LowerLineQuantityInput): Promise<LowerLineQuantityResult>;
+
+  /**
+   * Add one line to the order's open work held by an accepted holder (#3940).
+   * Never creates work and never re-routes: an order with no work is
+   * `unrouted`, one whose every work is closed, terminal or held elsewhere is
+   * `no-eligible-work`, and a repeat is `unchanged`.
+   */
+  addLineToOpenWork(input: AddLineToWorkInput): Promise<AddLineToWorkResult>;
 
   /**
    * Hold every non-terminal work of the order because the order source changed

@@ -466,6 +466,38 @@ describe('PrestashopOrderMapper', () => {
       },
     };
 
+    it('should send one cart row for a gift of a product the buyer also paid for', () => {
+      const order: OrderCreate = {
+        ...mockOrderCreate,
+        items: [
+          { id: 'a', productId: 'ol_product_1', quantity: 2, price: 19.99, sku: 'P' },
+          {
+            id: 'b',
+            productId: 'ol_product_1',
+            quantity: 1,
+            price: 0,
+            sku: 'P',
+            gift: { source: 'cart-rule', ruleRef: '1' },
+          },
+        ],
+      };
+
+      const result = mapper.mapCartCreate(
+        order,
+        '100',
+        new Map<string, string | number>([['ol_product_1', '10']]),
+        new Map<string, string | number>(),
+        '200',
+        '201',
+        '1',
+        '1'
+      ) as { associations: { cart_rows: { cart_row: Array<Record<string, unknown>> } } };
+
+      expect(result.associations.cart_rows.cart_row).toEqual([
+        { id: 1, id_product: '10', id_product_attribute: 0, quantity: 3 },
+      ]);
+    });
+
     it('should map cart with all required fields', () => {
       const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
       const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);

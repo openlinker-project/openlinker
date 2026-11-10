@@ -31,6 +31,15 @@ interface OrderPricingPanelProps {
   channelName?: string | null;
   /** The bundle lines with their frozen components (#3624). */
   bundleLines?: readonly OrderBundleLine[];
+  /** The connection issuing the sales document, once there is one (#3940). */
+  documentConnectionId?: string | null;
+}
+
+/** The API reports the epoch when no operator edit stamped the overlay (a system-added gift only); that is "never edited", not 1 Jan 1970. */
+function hasEditInstant(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const time = Date.parse(iso);
+  return Number.isFinite(time) && time > 0;
 }
 
 export function OrderPricingPanel({
@@ -40,6 +49,7 @@ export function OrderPricingPanel({
   edits,
   channelName,
   bundleLines,
+  documentConnectionId,
 }: OrderPricingPanelProps): ReactElement {
   const copy = useMessages('orders').orderPricing;
   const format = useFormat();
@@ -61,6 +71,7 @@ export function OrderPricingPanel({
           internalOrderId={internalOrderId}
           channelQuantities={channelQuantities}
           bundleLines={bundleLines}
+          documentConnectionId={documentConnectionId}
         />
       ) : null}
 
@@ -77,9 +88,12 @@ export function OrderPricingPanel({
 
       {edits && editedTotals ? (
         <p className="order-pricing__note" data-testid="order-edit-pricing-note">
-          {renderRich(copy.editedOn, {
-            time: () => <TimeDisplay iso={edits.editedAt} format="datetime" />,
-          })}{' '}
+          {hasEditInstant(edits.editedAt)
+            ? renderRich(copy.editedOn, {
+                time: () => <TimeDisplay iso={edits.editedAt} format="datetime" />,
+              })
+            : null}
+          {hasEditInstant(edits.editedAt) ? ' ' : null}
           {renderRich(
             channelName ? copy.buyerPaidOnChannel : copy.buyerPaidOnSalesChannel,
             { b: bold },

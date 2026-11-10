@@ -7,12 +7,15 @@ import type {
   BundleDefinition,
   BundleDefinitionVersion,
   MultipackConfirmation,
+  BundleGiftDocumentForm,
 } from '../../domain/types/bundle.types';
 
 export interface BundleComponentInput {
   variantId: string;
   quantity: number;
   giftSlot?: boolean;
+  /** How a document shows the gift slot; ignored unless `giftSlot` (#3940). */
+  documentForm?: BundleGiftDocumentForm;
 }
 
 export interface IBundleDefinitionService {

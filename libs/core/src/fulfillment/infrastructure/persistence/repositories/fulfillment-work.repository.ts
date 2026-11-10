@@ -85,6 +85,7 @@ import type {
   UndoFulfillmentCompletionInput,
   ClaimParcelCloseInput,
   CreateFulfillmentWorkInput,
+  CreateFulfillmentWorkLineInput,
   FulfillmentWorkRepositoryPort,
   FulfillmentWorkTransaction,
   LatestActiveParcelVerification,
@@ -1097,6 +1098,39 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return byOrder;
     } catch (error) {
       throw new FulfillmentPersistenceError('listWorkIdsByOrderIds', error);
+    }
+  }
+
+  async addLine(workId: string, line: CreateFulfillmentWorkLineInput): Promise<boolean> {
+    if (!Number.isInteger(line.totalQuantity) || line.totalQuantity < 1) {
+      throw new RangeError(`totalQuantity must be a positive integer, got ${String(line.totalQuantity)}`);
+    }
+    const terminal = [...TERMINAL_FULFILLMENT_WORK_STATUSES];
+    try {
+      // One statement, and the parent row is LOCKED (FOR SHARE): a plain
+      // INSERT ... SELECT reads its snapshot at statement start and takes no row
+      // lock, so a claimParcelClose that commits while this runs would not be
+      // seen and the line would land on a closed parcel. With the lock the
+      // statement waits for an in-flight close and re-checks parcelClosedAt
+      // against the committed row; a close that starts later waits for this
+      // insert. SHARE (not UPDATE) so two lines added at once do not serialise.
+      // ON CONFLICT on the line identity makes a retry a no-op.
+      const rows: unknown = await this.lines.query(
+        `INSERT INTO "fulfillment_work_lines"
+           ("fulfillmentWorkId", "orderLineId", "productVariantId", "totalQuantity")
+         SELECT w."id", $2, $3, $4
+           FROM "fulfillment_works" w
+          WHERE w."id" = $1
+            AND w."parcelClosedAt" IS NULL
+            AND w."status" NOT IN (${terminal.map((_, i) => `$${i + 5}`).join(', ')})
+            FOR SHARE OF w
+         ON CONFLICT ("fulfillmentWorkId", "orderLineId") DO NOTHING
+         RETURNING "id"`,
+        [workId, line.orderLineId, line.productVariantId, line.totalQuantity, ...terminal]
+      );
+      return Array.isArray(rows) && rows.length > 0;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('addLine', error);
     }
   }
 

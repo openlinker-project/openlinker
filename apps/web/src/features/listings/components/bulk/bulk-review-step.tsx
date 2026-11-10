@@ -15,11 +15,12 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { StickyActionBar } from '../../../../shared/ui/sticky-action-bar';
 import { Link } from 'react-router-dom';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
-import type { StatusBadgeTone } from '../../../../shared/ui';
+import { StatusBadge, type StatusBadgeTone } from '../../../../shared/ui';
 import type { OfferBatchIssue, OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
@@ -281,7 +282,10 @@ export function BulkReviewStep({
   const [jumpIndex, setJumpIndex] = useState(-1);
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
-  const counts = useMemo(() => countBatch(rows, blockerChips), [rows, blockerChips]);
+  const counts = useMemo(
+    () => countBatch(rows, blockerChips, alreadyListedVariantIds),
+    [rows, blockerChips, alreadyListedVariantIds],
+  );
 
   // Per-variant reading of the rule preview (#3995), checked against the
   // category each variant submits under NOW - an answer for a category the
@@ -462,15 +466,29 @@ export function BulkReviewStep({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <div className="bulk-review__summary bulk-review__summary--chips" role="status">
+        <StatusBadge tone="success" withDot data-testid="bulk-summary-ready">
+          {copy.summary.ready}: <span className="n">{counts.includedReady}</span>
+        </StatusBadge>
+        <StatusBadge tone="warning" withDot data-testid="bulk-summary-attn">
+          {copy.summary.needAttention}: <span className="n">{counts.includedNeedsAttention}</span>
+        </StatusBadge>
+        <StatusBadge tone="neutral" withDot data-testid="bulk-summary-excluded">
+          {copy.summary.excluded}: <span className="n">{counts.excluded}</span>
+        </StatusBadge>
+        <label className="ol-toggle" style={{ marginLeft: 'auto' }}>
+          <input
+            type="checkbox"
+            checked={onlyFlagged}
+            onChange={(e) => {
+              setOnlyFlagged(e.target.checked);
+            }}
+          />
+          <span>{copy.onlyFlagged}</span>
+        </label>
+      </div>
+
       <header className="bulk-review__header">
-        <div className="bulk-review__intro">
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>
-            {plural(rows.length, copy.title)}
-          </h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
-            {copy.intro}
-          </p>
-        </div>
         <div className="bulk-review__toolbar">
           <Input
             type="search"
@@ -482,54 +500,8 @@ export function BulkReviewStep({
             className="bulk-review__filter"
             aria-label={copy.filter.ariaLabel}
           />
-          <Button
-            tone="primary"
-            className="bulk-review__cta bulk-review__cta--top"
-            disabled={!canApprove}
-            onClick={onApproveAll}
-          >
-            {interpolate(copy.createOffers, { count: format.number(counts.includedReady) })}
-          </Button>
         </div>
       </header>
-
-      <div className="bulk-review__summary" role="status">
-        <div className="ready">
-          <span className="n">{counts.includedReady}</span> <span className="lbl">{copy.summary.ready}</span>
-        </div>
-        <div className="attn">
-          <span className="n">{counts.includedNeedsAttention}</span>{' '}
-          <span className="lbl">{copy.summary.needAttention}</span>
-        </div>
-        <div className="off">
-          <span className="n">{counts.excluded}</span> <span className="lbl">{copy.summary.excluded}</span>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--space-2)' }}>
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12,
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={onlyFlagged}
-              onChange={(e) => {
-                setOnlyFlagged(e.target.checked);
-              }}
-            />
-            {copy.onlyFlagged}
-          </label>
-          {counts.includedNeedsAttention > 0 ? (
-            <Button tone="ghost" className="button--xs" onClick={jumpToNextFlagged}>
-              {copy.jumpToNextFlagged}
-            </Button>
-          ) : null}
-        </div>
-      </div>
 
       {/* Batch-level platform preconditions (#2240). One banner for the whole
           batch, above the readiness line: the fact belongs to the connection,
@@ -569,11 +541,24 @@ export function BulkReviewStep({
           counts.includedNeedsAttention === 0 &&
           duplicateEanIds.size === 0 &&
           batchIssues.length === 0
-            ? 'bulk-review__banner bulk-review__banner--ok'
-            : 'bulk-review__banner'
+            ? 'cx-note cx-note--ok bulk-review__banner'
+            : 'cx-note cx-note--warn bulk-review__banner'
         }
         role="status"
       >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          {counts.includedNeedsAttention === 0 &&
+          duplicateEanIds.size === 0 &&
+          batchIssues.length === 0 ? (
+            <path d="M5 12l5 5 9-10" />
+          ) : (
+            <>
+              <path d="M12 4l9 16H3L12 4z" />
+              <path d="M12 10v4M12 17v.5" />
+            </>
+          )}
+        </svg>
+        <p>
         {overExpansionCeiling ? (
           <>
             <b>
@@ -611,8 +596,21 @@ export function BulkReviewStep({
           <>
             <b>{plural(counts.includedNeedsAttention, copy.banner.needsAttention.title)}</b>{' '}
             {copy.banner.needsAttention.detail}
+
           </>
         )}
+        </p>
+        {counts.includedNeedsAttention > 0 &&
+        duplicateEanIds.size === 0 &&
+        batchIssues.length === 0 &&
+        !overExpansionCeiling &&
+        !overExclusionCap ? (
+          <span className="cx-note__a">
+            <Button tone="secondary" className="button--sm" onClick={jumpToNextFlagged}>
+              {copy.jumpToNextFlagged}
+            </Button>
+          </span>
+        ) : null}
       </div>
 
       <div className="bulk-review__table bulk-review__table--with-category">
@@ -621,10 +619,10 @@ export function BulkReviewStep({
         <div className="bulk-review__grid bulk-review__head">
           <span className="bulk-review__c-lead" />
           <span>{copy.columns.product}</span>
-          <span className="bulk-review__c-status">{copy.columns.status}</span>
           <span className="bulk-review__c-cat">{copy.columns.category}</span>
-          <span className="bulk-review__c-stock">{copy.columns.stock}</span>
           <span className="bulk-review__c-price">{copy.columns.priceGross}</span>
+          <span className="bulk-review__c-stock">{copy.columns.stock}</span>
+          <span className="bulk-review__c-status">{copy.columns.status}</span>
           <span className="bulk-review__c-action" />
         </div>
 
@@ -696,20 +694,27 @@ export function BulkReviewStep({
         </div>
       ) : null}
 
-      <Button
-        tone="primary"
-        className="bulk-review__cta bulk-review__cta--mobile"
-        disabled={!canApprove}
-        onClick={onApproveAll}
+      <StickyActionBar
+        missingLabel={copy.sticky.missingLabel}
+        missing={
+          counts.includedNeedsAttention > 0
+            ? plural(counts.includedNeedsAttention, copy.sticky.needAttention, { count: format.number(counts.includedNeedsAttention) })
+            : ''
+        }
+        readyText={interpolate(copy.sticky.ready, { count: format.number(counts.includedReady) })}
       >
-        {interpolate(copy.createOffers, { count: format.number(counts.includedReady) })}
-      </Button>
-
-      <footer className="bulk-wizard__footer bulk-wizard__footer--start">
-        <Button tone="ghost" className="bulk-review__back" onClick={onBack}>
+        <Button tone="secondary" className="button--sm bulk-review__back" onClick={onBack}>
           {copy.backToConfig}
         </Button>
-      </footer>
+        <Button
+          tone="primary"
+          className="button--sm bulk-review__cta"
+          disabled={!canApprove}
+          onClick={onApproveAll}
+        >
+          {interpolate(copy.createOffers, { count: format.number(counts.includedReady) })}
+        </Button>
+      </StickyActionBar>
 
       {editingRow && connection ? (
         <BulkEditModal
@@ -834,15 +839,44 @@ function ProductRow({
     let off = 0;
     for (const v of row.variants) {
       const r = variantReadiness(v, chips);
-      if (!r.included) off += 1;
+      if (!r.included || alreadyListedVariantIds.has(v.variantId)) off += 1;
       else if (r.ready) ready += 1;
       else attn += 1;
     }
     return { ready, attn, off };
-  }, [row.variants, chips]);
+  }, [row.variants, chips, alreadyListedVariantIds]);
 
   const productPrice =
     row.variants[0]?.masterPrice ?? row.masterPrice ?? null;
+
+  // Two bundle blockers are fixed where they are shown (#3935). A component the
+  // destination cannot list opens the wizard for the missing components in a new
+  // tab - the batch is fixed by its URL, so adding them here would drop the
+  // operator's edits. The category blocker applies the first component's category.
+  const bundleFix = (blocker: string): (() => void) | undefined => {
+    if (!bundle) return undefined;
+    if (blocker.endsWith(':bundle-component-missing')) {
+      const missing = bundle.components.filter((component) => component.mode === 'missing');
+      if (missing.length === 0) return undefined;
+      return () => {
+        window.open(
+          `/listings/bulk-create/wizard?${new URLSearchParams({
+            productIds: missing.map((component) => component.productId).join(','),
+            connectionId: config.connectionId,
+          }).toString()}`,
+          '_blank',
+          'noopener'
+        );
+      };
+    }
+    if (blocker.endsWith(':bundle-category-mismatch') && bundle.suggestedCategoryId && onUseBundleCategory) {
+      const suggested = bundle.suggestedCategoryId;
+      return () => {
+        onUseBundleCategory(row.productId, suggested);
+      };
+    }
+    return undefined;
+  };
 
   const mainClass = [
     'bulk-review__grid',
@@ -864,15 +898,6 @@ function ProductRow({
           button on the caret (#1741 review #9). */}
       <div className={mainClass}>
         <span className="bulk-review__c-lead bulk-review__lead">
-          {noVariants ? null : (
-            <CheckboxCell
-              state={parentState}
-              ariaLabel={interpolate(copy.row.includeAllVariants, { name: productName })}
-              onToggle={() => {
-                onSetProductIncluded(row.productId, parentState !== 'all');
-              }}
-            />
-          )}
           {isMulti || bundle ? (
             <button
               type="button"
@@ -889,10 +914,28 @@ function ProductRow({
             >
               <span className="bulk-review__caret" aria-hidden="true">&#9656;</span>
             </button>
-          ) : null}
+          ) : (
+            <span className="bulk-review__toggle-spacer" aria-hidden="true" />
+          )}
+          {noVariants ? null : (
+            <IncludeToggle
+              state={parentState}
+              ariaLabel={interpolate(copy.row.includeAllVariants, { name: productName })}
+              onToggle={() => {
+                onSetProductIncluded(row.productId, parentState !== 'all');
+              }}
+            />
+          )}
         </span>
         <div className="bulk-review__name">
-          {row.product?.images?.[0] ? (
+          {bundle ? (
+            <span className="cx-mosaic" aria-hidden="true">
+              <i className="t-a" />
+              <i className="t-d" />
+              <i className="t-b" />
+              <i className="t-c" />
+            </span>
+          ) : row.product?.images?.[0] ? (
             <button
               type="button"
               className="bulk-review__thumb-btn"
@@ -936,31 +979,6 @@ function ProductRow({
             </small>
           </div>
         </div>
-        <div className="bulk-review__c-status bulk-review__chips">
-          {noVariants ? (
-            <Chip descriptor={NEUTRAL_BLOCKER_CHIPS['no-variant']} />
-          ) : isSimple ? (
-            <VariantChips
-              variant={row.variants[0]}
-              chips={chips}
-              label={distinguishingLabel(row.variants[0], 0)}
-              alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
-              destinationName={destinationName}
-              projection={projectionSummaries.get(row.variants[0].variantId) ?? null}
-              copyContext={blockerCopyContext(row, row.variants[0], destinationName, config, chips, bundle)}
-              onFix={(focusField) => {
-                onEdit(row.variants[0].variantId, focusField);
-              }}
-            />
-          ) : (
-            <>
-              <AggregateChips ready={agg.ready} attn={agg.attn} off={agg.off} />
-              {anyAlreadyListed ? (
-                <AlreadyListedChip destinationName={destinationName} title={interpolate(copy.alreadyOn, { destination: destinationName })} />
-              ) : null}
-            </>
-          )}
-        </div>
         {noVariants ? (
           <div className="bulk-review__c-cat" />
         ) : (
@@ -979,6 +997,9 @@ function ProductRow({
             }
           />
         )}
+        <div className="bulk-review__c-price tabular">
+          {productPrice !== null ? format.money(productPrice, config.currency) : '-'}
+        </div>
         <div
           className={[
             'bulk-review__c-stock tabular',
@@ -997,16 +1018,49 @@ function ProductRow({
             '-'
           )}
         </div>
-        <div className="bulk-review__c-price tabular">
-          {productPrice !== null ? format.money(productPrice, config.currency) : '-'}
+        <div className="bulk-review__c-status bulk-review__chips">
+          {noVariants ? (
+            <Chip descriptor={NEUTRAL_BLOCKER_CHIPS['no-variant']} />
+          ) : isSimple ? (
+            <VariantChips
+              variant={row.variants[0]}
+              chips={chips}
+              label={distinguishingLabel(row.variants[0], 0)}
+              alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
+              destinationName={destinationName}
+              projection={projectionSummaries.get(row.variants[0].variantId) ?? null}
+              copyContext={blockerCopyContext(
+                row,
+                row.variants[0],
+                destinationName,
+                config,
+                chips,
+                bundle
+              )}
+              customFix={bundle ? bundleFix : undefined}
+              onFix={(focusField) => {
+                onEdit(row.variants[0].variantId, focusField);
+              }}
+            />
+          ) : (
+            <>
+              <AggregateChips ready={agg.ready} attn={agg.attn} off={agg.off} />
+              {anyAlreadyListed ? (
+                <AlreadyListedChip
+                  destinationName={destinationName}
+                  title={interpolate(copy.alreadyOn, { destination: destinationName })}
+                />
+              ) : null}
+            </>
+          )}
         </div>
         <div className="bulk-review__c-action">
           {noVariants ? (
             <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{copy.row.noVariant}</span>
           ) : (
             <Button
-              tone="ghost"
-              className="button--xs bulk-review__edit"
+              tone="secondary"
+              className="button--sm bulk-review__edit"
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit(isSimple ? row.variants[0].variantId : undefined);
@@ -1023,6 +1077,8 @@ function ProductRow({
           <BundleComposition
             preview={bundle}
             connectionId={config.connectionId}
+            heading={interpolate(bundleCopy.compositionHeading, { destination: destinationName })}
+            showEanNote
             chosenCategoryId={submitCategoryIdOf(row, row.variants[0])}
             onUseSuggestedCategory={
               bundle.suggestedCategoryId && onUseBundleCategory
@@ -1058,6 +1114,26 @@ function ProductRow({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** The include switch of a product row; the tri-state box only where some variants are off. */
+function IncludeToggle({
+  state,
+  ariaLabel,
+  onToggle,
+}: {
+  state: 'all' | 'some' | 'none';
+  ariaLabel: string;
+  onToggle: () => void;
+}): ReactElement {
+  if (state === 'some') {
+    return <CheckboxCell state={state} ariaLabel={ariaLabel} onToggle={onToggle} />;
+  }
+  return (
+    <label className="ol-toggle">
+      <input type="checkbox" checked={state === 'all'} aria-label={ariaLabel} onChange={onToggle} />
+    </label>
   );
 }
 
@@ -1129,20 +1205,31 @@ function VariantRow({
     >
       <span className="bulk-review__c-lead" />
       <div className="bulk-review__name">
-        <input
-          type="checkbox"
-          className="bulk-review__chk"
-          checked={variant.included}
-          onChange={(e) => {
-            onSetVariantIncluded(row.productId, variant.variantId, e.target.checked);
-          }}
-          aria-label={interpolate(copy.row.includeVariant, { label })}
-        />
+        <label className="ol-toggle bulk-review__chk">
+          <input
+            type="checkbox"
+            checked={variant.included}
+            onChange={(e) => {
+              onSetVariantIncluded(row.productId, variant.variantId, e.target.checked);
+            }}
+            aria-label={interpolate(copy.row.includeVariant, { label })}
+          />
+        </label>
         <div className="t">
           <b>{label}</b>
           <small className={catBlocked ? 'bad' : undefined}>{variant.ean ?? copy.row.noEan}</small>
         </div>
       </div>
+      <ReviewCategoryCell
+        connectionId={category.connectionId}
+        resolvesAtSubmit={category.resolvesAtSubmit}
+        {...describeVariantCategory(row, variant)}
+        conflict={cardConflict(row, variant, category)}
+      />
+      <div className="bulk-review__c-price tabular">
+        {price.value !== null ? format.money(price.value, config.currency) : '-'}
+      </div>
+      <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
       <div className="bulk-review__c-status bulk-review__chips">
         <VariantChips
           variant={variant}
@@ -1155,20 +1242,10 @@ function VariantRow({
           copyContext={blockerCopyContext(row, variant, destinationName, config, chips)}
         />
       </div>
-      <ReviewCategoryCell
-        connectionId={category.connectionId}
-        resolvesAtSubmit={category.resolvesAtSubmit}
-        {...describeVariantCategory(row, variant)}
-        conflict={cardConflict(row, variant, category)}
-      />
-      <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
-      <div className="bulk-review__c-price tabular">
-        {price.value !== null ? format.money(price.value, config.currency) : '-'}
-      </div>
       <div className="bulk-review__c-action">
         <Button
-          tone="ghost"
-          className="button--xs bulk-review__edit"
+          tone="secondary"
+          className="button--sm bulk-review__edit"
           onClick={() => {
             // No field: the plain Edit button is not about one, and passing the
             // click event as a field would route the modal nowhere.
@@ -1191,7 +1268,10 @@ function VariantChips({
   destinationName,
   projection,
   copyContext,
+  customFix,
 }: {
+  /** In-place fix for a blocker that needs no editor; `undefined` falls back to opening the editor. */
+  customFix?: (blocker: string) => (() => void) | undefined;
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
   onFix: (focusField?: OfferBlockerField) => void;
@@ -1212,7 +1292,7 @@ function VariantChips({
   if (!variant.included) {
     return (
       <>
-        <Chip descriptor={{ tone: 'neutral', label: copy.chips.excluded, fixable: false }} />
+        <Chip descriptor={{ tone: 'neutral', label: copy.chips.excluded, fixable: false }} head />
         {dupChip}
       </>
     );
@@ -1223,16 +1303,32 @@ function VariantChips({
   // the same thing twice, in the column furthest from the category.
   const visible = variant.blockers.filter((b) => !CATEGORY_CELL_BLOCKERS.has(b));
   if (visible.length === 0) {
+    // Already listed there: skipped at intake, so never "ready" (the chip below names the destination).
+    if (alreadyListed) {
+      return (
+        <>
+          <Chip descriptor={chipFor('already-listed', chips)} head />
+          {dupChip}
+        </>
+      );
+    }
     return (
       <>
-        <Chip descriptor={{ tone: 'success', label: copy.chips.ready, fixable: false }} />
+        <Chip descriptor={{ tone: 'success', label: copy.chips.ready, fixable: false }} head />
         {rulesChips}
         {dupChip}
       </>
     );
   }
+  const gating = visible.filter((b) => !(chips[b]?.advisory === true));
   return (
     <>
+      {gating.length > 0 ? (
+        <Chip
+          descriptor={{ tone: 'warning', label: copy.summary.needAttention, fixable: false }}
+          head
+        />
+      ) : null}
       {visible.map((b) => {
         const descriptor = chipFor(b, chips);
         // The cause sentence rides on the chip (#2240). One chip per row keeps
@@ -1243,7 +1339,11 @@ function VariantChips({
           <Chip
             key={b}
             descriptor={descriptor}
-            onFix={descriptor.fixable ? () => onFix(descriptor.field) : undefined}
+            onFix={
+              descriptor.fixable
+                ? (customFix?.(b) ?? (() => onFix(descriptor.field)))
+                : undefined
+            }
             fixLabel={interpolate(copy.chips.fixLabel, {
               chip: descriptor.label,
               variant: label,
@@ -1370,14 +1470,17 @@ function Chip({
   onFix,
   fixLabel,
   title,
+  head = false,
 }: {
+  /** The row's status badge itself, not one of its cause buttons. */
+  head?: boolean;
   descriptor: ChipDescriptor;
   onFix?: (focusField?: OfferBlockerField) => void;
   fixLabel?: string;
   /** Cause sentence, shown on hover; also folded into the accessible name. */
   title?: string;
 }): ReactElement {
-  const cls = `bulk-chip ${chipToneClass(descriptor.tone)}`;
+  const cls = `bulk-chip ${chipToneClass(descriptor.tone)}${head ? ' bulk-chip--head' : ''}`;
   if (onFix) {
     return (
       <button
@@ -1412,13 +1515,16 @@ interface BatchCounts {
 function countBatch(
   rows: BulkWizardRow[],
   chips: Record<string, ChipDescriptor> = {},
+  alreadyListed: ReadonlySet<string> = new Set(),
 ): BatchCounts {
   let includedReady = 0;
   let includedNeedsAttention = 0;
   let excluded = 0;
   for (const row of rows) {
     for (const v of row.variants) {
-      if (!v.included) {
+      // An already-listed variant is skipped at intake (`filterAlreadyListed`), so
+      // it is neither ready nor in need of attention: it counts with the excluded.
+      if (!v.included || alreadyListed.has(v.variantId)) {
         excluded += 1;
         continue;
       }

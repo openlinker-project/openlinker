@@ -20,6 +20,7 @@ import { describeCursor } from '../lib/cursor-catalogue';
 import type { SyncProgressCopy } from '../lib/sync-progress-copy';
 import type { CursorRowView } from './cursor-row';
 import { RewindPanel } from './rewind-panel';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface CursorDetailConnection {
   id: string;
@@ -71,7 +72,7 @@ export function CursorDetailPanel({
           showToast({ tone: 'success', description: S.runQueued });
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: S.runFailed(error.message) });
+          showToast({ tone: 'error', description: S.runFailed(describeApiError(error, 'cursors')) });
         },
       }
     );

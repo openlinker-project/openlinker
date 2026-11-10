@@ -286,6 +286,42 @@ function lineRef(line: ShoperOrderLineRow): IncomingOrderItemRef {
 }
 
 /**
+ * The checkbox option the "Produkt gratisowy w koszyku" app (Maxsote) puts on
+ * every gift line. It is the app's own option name, not a price or a guess: a
+ * line is a gift only when this option is chosen on it, so a cheap ordinary
+ * line is never marked. Folded so a differently cased or accented spelling still
+ * matches.
+ */
+const GIFT_OPTION_NAME = 'produkt gratisowy';
+/** The value the app stores when the checkbox is ticked. */
+const GIFT_OPTION_CHOSEN = 'tak';
+
+/**
+ * Whether the line's `option` string has the gift checkbox ticked.
+ *
+ * The string is `Name: value, Name: value`, and a value may itself contain commas,
+ * so it is not split on every comma: a pair starts only at a `Name:` boundary and
+ * its value runs up to the next such boundary. Both the name AND the value are
+ * folded and compared whole, so "Produkt gratisowy: nie" (the app's own unticked
+ * state) is not a gift, and neither is a value that merely contains "tak".
+ */
+function isGiftAppLine(line: ShoperOrderLineRow): boolean {
+  if (typeof line.option !== 'string') {
+    return false;
+  }
+  const pair = /(?:^|,\s*)([^:,]+):\s*([\s\S]*?)(?=,\s*[^:,]+:|$)/g;
+  for (const match of line.option.matchAll(pair)) {
+    if (
+      foldLabel(match[1].trim()) === GIFT_OPTION_NAME &&
+      foldLabel(match[2].trim()) === GIFT_OPTION_CHOSEN
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * One bundle (zestaw) is ONE line for core: the parent row, priced for the whole
  * set. Its `children` (components, priced 0.00) are deliberately not mapped:
  * OpenLinker expands a bundle from its own definition (ADR-083), so also sending
@@ -307,6 +343,7 @@ function mapLine(line: ShoperOrderLineRow): IncomingOrderItem {
     ...(sku === undefined ? {} : { sku }),
     ...(name === undefined ? {} : { name }),
     ...(taxRate === null ? {} : { taxRate }),
+    ...(isGiftAppLine(line) ? { gift: { source: 'channel' as const } } : {}),
   };
 }
 

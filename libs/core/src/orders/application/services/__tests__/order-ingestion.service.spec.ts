@@ -73,6 +73,7 @@ describe('OrderIngestionService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderSyncService: jest.Mocked<IOrderSyncService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
+  let orderGifts: { applyGiftRules: jest.Mock };
   let orderSource: jest.Mocked<OrderSourcePort>;
   let orderItemRefResolver: jest.Mocked<IOrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
@@ -253,6 +254,13 @@ describe('OrderIngestionService', () => {
       findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
       findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
     };
+    orderGifts = {
+      applyGiftRules: jest
+        .fn()
+        .mockImplementation(({ order }: { order: unknown }) =>
+          Promise.resolve({ order, outcomes: [] })
+        ),
+    };
     sourceAmendmentEffects = {
       reconcile: jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null }),
       accept: jest.fn(),
@@ -283,7 +291,9 @@ describe('OrderIngestionService', () => {
       bundleDefinitions as unknown as IBundleDefinitionService,
       { resolveForDocuments: jest.fn().mockResolvedValue(undefined) } as never,
       sourceAmendmentEffects as unknown as IOrderSourceAmendmentEffectsService,
-      paymentWriteback as unknown as IPaymentWritebackService
+      paymentWriteback as unknown as IPaymentWritebackService,
+      // #3938: no gift rules in these tests unless one overrides the mock.
+      orderGifts as never
     );
   });
 
@@ -326,6 +336,109 @@ describe('OrderIngestionService', () => {
         internalProductId: 'ol_product_1',
         internalVariantId: 'ol_variant_1',
       });
+    });
+
+    it('should add the gift lines BEFORE the reservation and reserve them like any line (#3938)', async () => {
+      orderGifts.applyGiftRules.mockImplementation(({ order }: { order: { items: unknown[] } }) =>
+        Promise.resolve({
+          order: {
+            ...order,
+            items: [
+              ...order.items,
+              {
+                id: 'ol-gift:r1:1',
+                productId: 'ol_product_gift',
+                variantId: 'ol_variant_gift',
+                quantity: 1,
+                price: 0,
+                gift: { source: 'ol-rule', ruleRef: 'r1' },
+              },
+            ],
+          },
+          outcomes: [],
+        })
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderGifts.applyGiftRules.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(orderGifts.applyGiftRules).toHaveBeenCalledWith(
+        expect.objectContaining({ isFirstIngestion: true, sourceConnectionId: connectionId })
+      );
+      const input = reservationService.reserveForOrder.mock.calls[0][0];
+      expect(input.lines.map((l: { orderLineId: string }) => l.orderLineId)).toEqual([
+        'line-1',
+        'ol-gift:r1:1',
+      ]);
+    });
+
+    it('should allow new gift grants only before the order is frozen, routed or mirrored', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: true })
+      );
+
+      // A re-ingestion of an order whose lines were frozen (routing follows the freeze).
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        syncStatus: [],
+        lineExpansion: { v: 1, definitions: [] },
+      } as unknown as OrderRecord);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: false })
+      );
+
+      // ... or one already mirrored to a destination.
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        syncStatus: [{ destinationConnectionId: 'dest', status: 'synced' }],
+        lineExpansion: null,
+      } as unknown as OrderRecord);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: false })
+      );
+    });
+
+    it('should stamp the catalogue tax rate on a gift line so a destination that needs one does not refuse the order (#3939)', async () => {
+      productsService.getEffectiveTaxRate.mockImplementation((productId: string) =>
+        Promise.resolve(
+          productId === 'ol_product_gift'
+            ? { code: '23', countryIso2: 'PL', readAt: new Date('2026-01-01T00:00:00Z') }
+            : { code: null, countryIso2: null, readAt: null }
+        )
+      );
+      orderGifts.applyGiftRules.mockImplementation(({ order }: { order: { items: unknown[] } }) =>
+        Promise.resolve({
+          order: {
+            ...order,
+            items: [
+              ...order.items,
+              {
+                id: 'ol-gift:r1:1',
+                productId: 'ol_product_gift',
+                variantId: 'ol_variant_gift',
+                quantity: 1,
+                price: 0,
+                gift: { source: 'ol-rule', ruleRef: 'r1' },
+              },
+            ],
+          },
+          outcomes: [],
+        })
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const sent = orderSyncService.syncOrder.mock.calls[0][0].order.items.find(
+        (item: { id: string }) => item.id === 'ol-gift:r1:1'
+      );
+      expect(sent).toMatchObject({ taxRate: '23', taxSource: 'shop', price: 0 });
     });
 
     it('should reserve the order lines after persistOrder and before destination dispatch', async () => {

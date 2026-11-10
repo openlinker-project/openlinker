@@ -735,6 +735,7 @@ describe('BenchParcelService (#2418)', () => {
           'binCode',
           'bundle',
           'ean',
+          'gift',
           'gtin',
           'heightMm',
           'imageUrl',

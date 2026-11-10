@@ -51,6 +51,14 @@ function LineItemCell({ line }: { line: ReturnLine }): ReactElement {
     <span className="returns-line-item">
       <span>{line.name ?? copy.unnamedItem}</span>
       {line.sku !== null ? <span className="mono-text text-muted">{line.sku}</span> : null}
+      <span className="text-muted returns-line-item__reason">
+        {copy.orderLineLabel}: <OrderLineCell line={line} />
+      </span>
+      {line.reason !== '' ? (
+        <span className="text-muted returns-line-item__reason">
+          {copy.reasonLabel}: {line.reason}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -81,58 +89,34 @@ export function ReturnLinesTable({
         header: copy.itemLabel,
         cell: (line) => <LineItemCell line={line} />,
       },
-      // Advised alone, now that `Received` has a column of its own (#2380). The
-      // derived "3 of 5 received" wording said both at once, which read as a
-      // contradiction sitting beside the counter it was derived from.
+      // Advised alone (#2380): "received" lives in the goods cell beside the state.
       {
         id: 'quantity',
         header: copy.quantityLabel,
         cell: (line) => <span className="tabular">{line.quantityAdvised}</span>,
       },
-      // The three counters the custody flow moves. Present at 768 px — this is
-      // the tablet the receiving work is done on, and an operator typing a
-      // received quantity has to see what is already recorded against the line.
-      {
-        id: 'received',
-        header: copy.receivedLabel,
-        cell: (line) => <span className="tabular">{line.quantityReceived}</span>,
-      },
-      {
-        id: 'restocked',
-        header: copy.restockedLabel,
-        cell: (line) => <span className="tabular">{line.quantityRestocked}</span>,
-        hideBelow: 768,
-      },
-      {
-        id: 'scrapped',
-        header: copy.scrappedLabel,
-        cell: (line) => <span className="tabular">{line.quantityScrapped}</span>,
-        hideBelow: 768,
-      },
-      {
-        id: 'reason',
-        header: copy.reasonLabel,
-        cell: (line) => <span>{line.reason}</span>,
-        // Dropped first at tablet width: the reason is context, whereas the
-        // counters above are what the operator is acting on.
-        hideBelow: 1024,
-      },
+      // The custody rail and what the counters say about it, in one cell, the way
+      // the mockup reads: a chip, and under it only the numbers that exist.
       {
         id: 'custody',
         header: copy.custodyLabel,
-        cell: (line) => <ReturnLineStateChip axis="custody" value={line.custodyState} />,
-        hideBelow: 1024,
+        cell: (line) => (
+          <span className="returns-line-goods">
+            <ReturnLineStateChip axis="custody" value={line.custodyState} />
+            {line.quantityReceived > 0 ? (
+              <span className="text-muted tabular returns-line-goods__counts">
+                {copy.receivedLabel} {line.quantityReceived}
+                {line.quantityRestocked > 0 ? ` · ${copy.restockedLabel} ${line.quantityRestocked}` : ''}
+                {line.quantityScrapped > 0 ? ` · ${copy.scrappedLabel} ${line.quantityScrapped}` : ''}
+              </span>
+            ) : null}
+          </span>
+        ),
       },
       {
         id: 'money',
         header: copy.moneyLabel,
         cell: (line) => <ReturnLineStateChip axis="money" value={line.moneyState} sourceName={sourceName} />,
-        hideBelow: 1024,
-      },
-      {
-        id: 'orderLine',
-        header: copy.orderLineLabel,
-        cell: (line) => <OrderLineCell line={line} />,
       },
     ],
     [copy, sourceName, renderCustody],

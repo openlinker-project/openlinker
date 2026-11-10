@@ -97,6 +97,7 @@ export function BulkDestinationBar({
       data-testid="bulk-destination-bar"
     >
       <div className="bulk-destbar__main">
+        <span className="pm-hint bulk-destbar__label">{copy.label}</span>
         <span className="bulk-destbar__id">
           {/* Larger than the 14 px default: here the disc is the identity
               anchor for the whole batch, not a marker beside other text.
@@ -147,24 +148,30 @@ export function BulkDestinationBar({
           )}
         </span>
 
-        {config !== null && (
+        <span className="bulk-destbar__actions">
+          {config !== null && (
+            <button
+              type="button"
+              className="button button--ghost button--sm bulk-destbar__toggle"
+              aria-expanded={settingsOpen}
+              aria-controls={panelId}
+              onClick={onToggleSettings}
+            >
+              {settingsOpen ? copy.hideSettings : copy.showSettings}
+            </button>
+          )}
           <button
             type="button"
-            className="bulk-destbar__toggle"
-            aria-expanded={settingsOpen}
-            aria-controls={panelId}
-            onClick={onToggleSettings}
+            className="button button--secondary button--sm bulk-destbar__change"
+            onClick={onChangeDestination}
           >
-            {settingsOpen ? copy.hideSettings : copy.showSettings}
+            {copy.changeDestination}
           </button>
-        )}
+        </span>
       </div>
 
       <div className="bulk-destbar__panel" id={panelId} hidden={!settingsOpen || config === null}>
         <KeyValueList items={rows} />
-        <button type="button" className="bulk-destbar__change" onClick={onChangeDestination}>
-          {copy.changeDestination}
-        </button>
       </div>
     </div>
   );

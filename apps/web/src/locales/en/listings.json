@@ -593,6 +593,7 @@
       "sandbox": "Sandbox"
     },
     "hideSettings": "Hide settings",
+    "label": "Target channel",
     "settingsChanged": {
       "one": "{n} setting changed",
       "other": "{n} settings changed"
@@ -1051,6 +1052,14 @@
       },
       "zoomImage": "Zoom image of {name}"
     },
+    "sticky": {
+      "missingLabel": "To fix",
+      "needAttention": {
+        "one": "{count} variant needs attention",
+        "other": "{count} variants need attention"
+      },
+      "ready": "Ready: {count} to create"
+    },
     "summary": {
       "excluded": "excluded",
       "needAttention": "need attention",
@@ -1250,7 +1259,9 @@
     "categoryMismatch": "The category differs from the first component's product card, and the marketplace requires the two to match.",
     "collapse": "Hide set contents of {name}",
     "compositionHeading": "Set contents on {destination}",
+    "compositionHint": "{n} products · the mode shows how a component enters the offer",
     "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
+    "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
     "expand": "Show set contents of {name}",
     "gift": "gift",
     "insertComponentList": "Insert component list",
@@ -1267,7 +1278,7 @@
       "ownOfferWithId": "own offer {id}"
     },
     "noOwnEan": "no own EAN",
-    "publishComponent": "Publish component",
+    "publishComponent": "List component",
     "quantity": "×{n}",
     "useFirstComponentCategory": "Use first component's category"
   },

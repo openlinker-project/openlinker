@@ -117,6 +117,8 @@ export interface BenchWorkView {
    * like a product.
    */
   readonly items: readonly BenchWorkItemView[];
+  /** Units of this parcel that are gifts (#3935). A count only. */
+  readonly giftUnits: number;
   readonly state: BenchWorkState;
   /** Why the parcel is held, when it is. `null` on every other state. */
   readonly holdReason: HoldReason | null;

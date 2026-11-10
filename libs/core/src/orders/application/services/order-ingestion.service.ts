@@ -45,6 +45,7 @@ import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_GIFT_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
@@ -53,6 +54,7 @@ import {
   PAYMENT_WRITEBACK_SERVICE_TOKEN,
 } from '../../orders.tokens';
 import { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
+import { IOrderGiftService } from './order-gift.service.interface';
 import { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderSourceAmendmentEffectsService } from '../interfaces/order-source-amendment-effects.service.interface';
@@ -60,6 +62,7 @@ import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
+import { resolveLineExpansionDefinitions } from './order-line-expansion';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
 import type { IncomingOrder, IncomingOrderItem } from '../../domain/types/incoming-order.types';
 import {
@@ -68,7 +71,6 @@ import {
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
   BUNDLE_DEFINITION_SERVICE_TOKEN,
   expandBundleLines,
-  buildPackLineDefinitions,
   taxRateState,
   type IBundleDefinitionService,
   type LineExpansion,
@@ -308,7 +310,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // #3963: mirrors a payment that arrived after a shop got the order. Same
     // module, no cycle. Appended last.
     @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
-    private readonly paymentWriteback: IPaymentWritebackService
+    private readonly paymentWriteback: IPaymentWritebackService,
+    // #3938: the gift rules applied at ingestion. Same module, no cycle.
+    @Inject(ORDER_GIFT_SERVICE_TOKEN)
+    private readonly orderGifts: IOrderGiftService
   ) {}
 
   async ingestOrders(
@@ -720,7 +725,34 @@ export class OrderIngestionService implements IOrderIngestionService {
     // original quantity and re-route by the original delivery method. The
     // overlay comes from the upsert's own RETURNING, so it is the one that
     // applied to this very write rather than a read taken a moment earlier.
-    const order = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
+    const overlaidOrder = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
+
+    // #3938: OpenLinker gift rules, evaluated INLINE here - after the overlay and
+    // before the line expansion, the reservation and routing - because the gift
+    // must be a line of the order when stock is reserved. Fail-open and idempotent
+    // inside the service; a cancelled order is never given a gift.
+    const gifted = await this.orderGifts.applyGiftRules({
+      order: overlaidOrder,
+      channelOrder,
+      edits: persisted?.orderEdits ?? null,
+      customerId: internalCustomerId ?? null,
+      sourceConnectionId: connectionId,
+      occurredAt: overlaidOrder.placedAt ?? existing?.createdAt ?? new Date(),
+      isFirstIngestion: !existing,
+      // A gift line added after the order was frozen, routed or mirrored would
+      // never be picked, decremented or mirrored (and its hold would leak): new
+      // grants are only for the window before any of that exists.
+      allowNewGrants:
+        !existing || (existing.lineExpansion == null && (existing.syncStatus ?? []).length === 0),
+      cancelled: cancelledFromEarlySignal || incoming.status === 'cancelled',
+      ...(existing?.lineExpansion != null && {
+        frozenDefinitions: existing.lineExpansion.definitions,
+      }),
+    });
+    // #3939: a gift line is added after the channel's lines were tax-resolved, so it
+    // would reach a destination that needs a rate (WooCommerce, Shoper) with none
+    // and fail the whole order. Resolved here from the shop catalogue like any line.
+    const order = await this.withGiftLineTaxRates(gifted.order);
 
     // #3607 (ADR-083): the physical line list, frozen ONCE before anything
     // reserves, routes or decrements. Every stock site below reads it; the
@@ -1245,24 +1277,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     if (existing?.lineExpansion != null) {
       return expandBundleLines(order.items, existing.lineExpansion.definitions);
     }
-    const variantIds = [
-      ...new Set(order.items.map((i) => i.variantId).filter((id): id is string => Boolean(id))),
-    ];
-    const definitions = await this.bundleDefinitions.findCurrentByVariantIds(variantIds);
-    // #3624: a multipack line (pack quantity N) expands to N units of its
-    // variant when confirmed, or to N x the bundle's components. Frozen with the
-    // rest, so confirming or changing something later never moves an open order.
-    const packPairs = order.items
-      .filter((i) => i.variantId !== undefined && (i.packQuantity ?? 1) > 1)
-      .map((i) => ({ variantId: i.variantId as string, packQuantity: i.packQuantity as number }));
-    const confirmed =
-      packPairs.length === 0
-        ? []
-        : await this.bundleDefinitions.findConfirmedMultipacks(packPairs);
-    const lineDefinitions = buildPackLineDefinitions(order.items, definitions, confirmed);
+    // #3624: multipacks are frozen with the rest, so confirming or changing
+    // something later never moves an open order.
+    const definitions = await resolveLineExpansionDefinitions(order.items, this.bundleDefinitions);
     const frozen: LineExpansion = await this.orderRecordService.freezeLineExpansion(order.id, {
       v: 1,
-      definitions: [...definitions, ...lineDefinitions],
+      definitions,
     });
     return expandBundleLines(order.items, frozen.definitions);
   }
@@ -2279,6 +2299,26 @@ export class OrderIngestionService implements IOrderIngestionService {
    * child is what reports it.
    */
   /**
+   * Stamps the catalogue tax rate on every gift line that carries none (#3939).
+   * Best-effort and conservative: a line with a rate is untouched, and a catalogue
+   * that answers nothing leaves the line as it was, so the destination reports its
+   * own refusal instead of this guessing a rate.
+   */
+  private async withGiftLineTaxRates(order: Order): Promise<Order> {
+    if (!order.items.some((item) => item.gift !== undefined && item.taxRate === undefined)) {
+      return order;
+    }
+    const items = await Promise.all(
+      order.items.map(async (item) => {
+        if (item.gift === undefined || item.taxRate !== undefined) return item;
+        const tax = await this.resolveLineTaxRate(item.productId, item.variantId, {});
+        return { ...item, ...tax };
+      })
+    );
+    return { ...order, items };
+  }
+
+  /**
    * ONE de-duplicated variant lookup per order (#3588, D27). A variant is a
    * candidate only when it has a cost AND that cost existed when the order was
    * placed (G11-G: `costUpdatedAt <= placedAt`, falling back to the order's
@@ -2321,7 +2361,7 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async resolveLineTaxRate(
     productId: string,
     variantId: string | undefined,
-    item: IncomingOrderItem
+    item: Pick<IncomingOrderItem, 'taxRate' | 'taxRateCountry'>
   ): Promise<{
     taxRate?: string;
     taxRateCountry?: string;

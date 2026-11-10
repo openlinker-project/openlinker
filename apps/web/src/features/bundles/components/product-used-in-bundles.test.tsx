@@ -19,8 +19,9 @@ describe('ProductUsedInBundles (#3624)', () => {
     });
     renderWithProviders(<ProductUsedInBundles variantIds={['mug']} />, { apiClient });
     const row = await screen.findByTestId('bundle-list-used-in-ZES-PORANNY');
-    expect(row).toHaveTextContent('2 x in bundle Zestaw poranny');
-    expect(row).toHaveTextContent('as a gift');
+    expect(row).toHaveTextContent('Zestaw poranny');
+    expect(row).toHaveTextContent('×2');
+    expect(row).toHaveTextContent(/gift/i);
   });
 
   it('should ask once for every variant and not clash on two variants in one bundle', async () => {

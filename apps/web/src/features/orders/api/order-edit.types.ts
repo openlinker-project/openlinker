@@ -80,6 +80,7 @@ export const OrderEditHistoryKindValues = [
   'order.line_quantity_change',
   'order.delivery_method_change',
   'order.discount_change',
+  'order.gift_added',
 ] as const;
 export type OrderEditHistoryKind = (typeof OrderEditHistoryKindValues)[number];
 

@@ -158,8 +158,6 @@ function ResolvedCategory({
   const copy = useMessages('listings').bulkReviewCategoryCell;
   const pathQuery = useCategoryPathQuery(connectionId, categoryId);
   const path = pathQuery.data ?? [];
-  const leaf = path.length > 0 ? path[path.length - 1].name : null;
-  const trail = compactTrail(path.slice(0, -1).map((n) => n.name));
   const full = path.map((n) => n.name).join(' › ');
   const fallbackName = interpolate(copy.categoryFallback, { id: categoryId });
 
@@ -171,20 +169,20 @@ function ResolvedCategory({
             {copy.loading}
           </span>
         ) : (
-          <span className="review-cat__leaf">{leaf ?? fallbackName}</span>
-        )}
-        {source ? (
-          <span
-            className={`review-cat__source review-cat__source--${source}`}
-            title={copy.sourceHint[SOURCE_COPY_KEY[source]]}
-          >
-            {copy.sourceLabel[SOURCE_COPY_KEY[source]]}
+          <span className="review-cat__leaf cx-cat">
+            {path.length > 0 ? full : fallbackName}
           </span>
-        ) : null}
+        )}
       </div>
-      {trail ? (
-        <span className="review-cat__trail">{trail}</span>
-      ) : !pathQuery.isPending && leaf === null ? (
+      {source ? (
+        <span
+          className={`review-cat__source review-cat__source--${source} cx-sub`}
+          title={copy.sourceHint[SOURCE_COPY_KEY[source]]}
+        >
+          {copy.sourceLabel[SOURCE_COPY_KEY[source]]}
+        </span>
+      ) : null}
+      {path.length === 0 && !pathQuery.isPending ? (
         <span className="review-cat__trail">{copy.pathNotSynced}</span>
       ) : null}
       {conflict ? (

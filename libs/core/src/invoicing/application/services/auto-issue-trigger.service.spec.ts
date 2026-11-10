@@ -26,7 +26,11 @@ import type { Order } from '@openlinker/core/orders';
 import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoiceStatus, InvoiceFailureMode } from '../../domain/types/invoicing.types';
-import type { ISalesDocumentRulesService, SalesDocumentDecision } from '@openlinker/core/sales-documents';
+import type {
+  ISalesDocumentRulesService,
+  ISalesDocumentSettingsService,
+  SalesDocumentDecision,
+} from '@openlinker/core/sales-documents';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -195,6 +199,9 @@ describe('AutoIssueTriggerService', () => {
       integrations as unknown as IIntegrationsService,
       invoices as unknown as IInvoiceService,
       salesDocumentRules as unknown as ISalesDocumentRulesService,
+      {
+        getGiftDocumentForm: jest.fn().mockResolvedValue({ form: 'technical-cent', source: 'default' }),
+      } as unknown as ISalesDocumentSettingsService,
       moduleRef as unknown as ModuleRef,
     );
     // Silence + capture the PII-safe envelope log.
@@ -236,8 +243,21 @@ describe('AutoIssueTriggerService', () => {
     const scheduledLines = (): { unitPriceGross: number; quantity: number }[] =>
       syncJobs.schedule.mock.calls[0][0].payload.lines as { unitPriceGross: number; quantity: number }[];
 
-    it('should omit the gift by default', async () => {
+    it('should carry the gift as a technical cent by default', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      const lines = scheduledLines();
+      expect(lines).toHaveLength(3);
+      expect(lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+      const total = lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(2000);
+    });
+
+    it('should omit the gift when the connection chose omit', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', { id: 'src-1', config: { giftOnDocuments: { form: 'omit' } } }),
+      );
       await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
       expect(scheduledLines()).toHaveLength(1);
     });

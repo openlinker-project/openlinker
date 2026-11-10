@@ -5,7 +5,7 @@
  * (today: `features/listings` for the category picker, `plugins/prestashop`
  * for the fallback carrier picker) import from here.
  */
-export type { MappingOption, AllegroCategory, CategoryPathNode } from './api/mappings.types';
+export type { MappingOption, MappingOptions, AllegroCategory, CategoryPathNode } from './api/mappings.types';
 export type {
   RoutingRule,
   FulfillmentProcessorKind,

@@ -303,6 +303,7 @@ const ORDER_EDIT_HISTORY_KEYS = {
   'order.line_quantity_change': 'lineQuantityChange',
   'order.delivery_method_change': 'deliveryMethodChange',
   'order.discount_change': 'discountChange',
+  'order.gift_added': 'giftAdded',
 } as const;
 
 export function orderEditHistoryTitle(entry: OrderEditHistoryEntry): string {

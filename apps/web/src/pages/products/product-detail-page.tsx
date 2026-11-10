@@ -1,18 +1,14 @@
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
-import { RichTextView } from '../../shared/ui';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
-import { EntityLabel } from '../../shared/ui/entity-label';
-import { KpiCard, type KpiCardTone } from '../../shared/ui/kpi-card';
+import type { KpiCardTone } from '../../shared/ui/kpi-card';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { ContentEditor } from '../../features/content/components/content-editor';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
-import { ProductGallery } from '../../features/products/components/product-gallery';
-import { ProductSourceSection } from '../../features/products/components/product-source-section';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import {
   buildStockRows,
@@ -30,11 +26,11 @@ import { ApiError } from '../../shared/api/api-error';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
 import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import { useBundleQuery } from '../../features/bundles/hooks/use-bundle-queries';
-import { BundleGuide } from '../../features/bundles/components/bundle-guide';
+import { useBundleProbeQuery } from '../../features/bundles/hooks/use-bundle-queries';
+import { BundleGuide, BundleGuideButton } from '../../features/bundles/components/bundle-guide';
+import { useBundleUsedInManyQuery } from '../../features/bundles/hooks/use-bundle-queries';
 import { BundleProductView } from '../../features/bundles/components/bundle-product-view';
-import { GuideTrigger } from '../../shared/ui/help-hint';
-import { useGuideShortcut } from '../../shared/ui/guide-drawer';
+import { ProductOverview, ConnectionChips } from './product-overview';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
 import {
@@ -83,6 +79,7 @@ export function ProductDetailPage(): ReactElement {
   const stockViewQuery = useStockViewQuery(id, { enabled: canReadStockView });
   const connectionNames = useConnectionNames();
   const [historyVariantId, setHistoryVariantId] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const activeView = searchParams.get(VIEW_PARAM) === VIEW_CONTENT ? VIEW_CONTENT : VIEW_OVERVIEW;
   const setActiveView = useCallback(
@@ -95,12 +92,14 @@ export function ProductDetailPage(): ReactElement {
       }
       setSearchParams(next, { replace: true });
     },
-    [searchParams, setSearchParams],
+    [searchParams, setSearchParams]
   );
 
-  const [listingsCounts, setListingsCounts] = useState<Record<string, number>>({});
+  const [, setListingsCounts] = useState<Record<string, number>>({});
   const handleListingsCount = useCallback((variantId: string, count: number) => {
-    setListingsCounts((prev) => (prev[variantId] === count ? prev : { ...prev, [variantId]: count }));
+    setListingsCounts((prev) =>
+      prev[variantId] === count ? prev : { ...prev, [variantId]: count }
+    );
   }, []);
 
   // Create-offer launch (mirrors products-list-page #1096): target connections
@@ -113,13 +112,15 @@ export function ProductDetailPage(): ReactElement {
   const canAdjustStock = usePermission('inventory:write');
   const bundleCopy = useMessages('bundles');
   const bundleWrite = useWriteAccess('bundles:write', demoMode);
-  // A 404 here means "not a bundle" (an answer, not a failure). Only the first
-  // variant is asked, so a multi-variant product whose later variant is the
-  // bundle still offers the action.
-  const bundleProbe = useBundleQuery(query.data?.variants?.[0]?.id);
-  const isBundle = bundleProbe.isSuccess;
-  const [guideOpen, setGuideOpen] = useState(false);
-  useGuideShortcut(() => { setGuideOpen(true); }, isBundle);
+  // A lookup that answers an empty list for a plain product, so an ordinary
+  // product page never prints a 404. Only the first variant is asked, so a
+  // multi-variant product whose later variant is the bundle still offers the action.
+  const firstVariantId = query.data?.variants?.[0]?.id;
+  const bundleProbe = useBundleProbeQuery(firstVariantId ? [firstVariantId] : []);
+  const isBundle = (bundleProbe.data?.length ?? 0) > 0;
+  const usedInVariantIds = (query.data?.variants ?? []).map((variant) => variant.id);
+  const usedIn = useBundleUsedInManyQuery(isBundle ? [] : usedInVariantIds);
+  const bundleCount = new Set((usedIn.data ?? []).map((entry) => entry.bundleVariantId)).size;
   const [adjustTarget, setAdjustTarget] = useState<StockAdjustTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const offerCreatorConnections = useMemo<Connection[]>(
@@ -128,7 +129,7 @@ export function ProductDetailPage(): ReactElement {
         .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [connectionsQuery.data],
+    [connectionsQuery.data]
   );
   const goToWizard = useCallback(
     (connectionId?: string): void => {
@@ -136,7 +137,7 @@ export function ProductDetailPage(): ReactElement {
       if (connectionId) params.set('connectionId', connectionId);
       void navigate(`/listings/bulk-create/wizard?${params.toString()}`);
     },
-    [id, navigate],
+    [id, navigate]
   );
   const handleCreateOffers = useCallback((): void => {
     if (offerCreatorConnections.length === 1) {
@@ -161,7 +162,13 @@ export function ProductDetailPage(): ReactElement {
           title={copy.loadError.title}
           message={query.error ? describeApiError(query.error, 'products') : copy.loadError.notFound}
           action={
-            <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {copy.retry}
+            </Button>
           }
         />
       </PageLayout>
@@ -173,22 +180,25 @@ export function ProductDetailPage(): ReactElement {
   const inventoryItems = inventoryQuery.data?.items ?? [];
 
   const totalAvailable = inventoryItems.reduce((sum, item) => sum + item.availableQuantity, 0);
-  const stockForbidden = stockViewQuery.error instanceof ApiError && stockViewQuery.error.isForbidden();
+  const stockForbidden =
+    stockViewQuery.error instanceof ApiError && stockViewQuery.error.isForbidden();
   // To sell is an inventory:read figure. A session without it (or one the server
   // refuses mid-session) sees the shop's own count and a plain notice - not
   // "not known, try again", which a retry never fixes.
   const stockRestricted = !canReadStockView || stockForbidden;
   const stockPending = !stockRestricted && stockViewQuery.isPending && !stockViewQuery.isError;
-  const stockView = stockRestricted ? null : (stockViewQuery.data ?? null);
+  const stockView = stockRestricted ? null : stockViewQuery.data ?? null;
   const masterConnectionId = product.externalIds?.[0]?.connectionId ?? null;
   const stockRows = buildStockRows({
     variants,
     inventoryItems,
-    stockByVariant: stockView ? new Map(stockView.variants.map((v) => [v.productVariantId, v])) : null,
+    stockByVariant: stockView
+      ? new Map(stockView.variants.map((v) => [v.productVariantId, v]))
+      : null,
     pending: stockPending,
     restricted: stockRestricted,
     canAdjust: canAdjustStock,
-    fallbackMasterName: masterConnectionId ? (connectionNames.get(masterConnectionId) ?? null) : null,
+    fallbackMasterName: masterConnectionId ? connectionNames.get(masterConnectionId) ?? null : null,
   });
   const stockModel: ProductStockModel = {
     rows: stockRows,
@@ -197,15 +207,22 @@ export function ProductDetailPage(): ReactElement {
     onAdjust: setAdjustTarget,
     onShowHistory: (variantId) => {
       setHistoryVariantId(variantId);
-      const section = document.getElementById('stock-history');
-      if (section && typeof section.scrollIntoView === 'function') {
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      setMoreOpen(true);
+      // The history lives inside "More"; let it open before scrolling to it.
+      window.setTimeout(() => {
+        const section = document.getElementById('stock-history');
+        if (section && typeof section.scrollIntoView === 'function') {
+          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 60);
     },
   };
-  const shortCount = [...stockRows.values()].filter((row) => deriveRowStatus(row).kind === 'short').length;
-  const productMasterName = [...stockRows.values()].find((row) => row.sourceNames.length > 0)?.masterName
-    ?? (masterConnectionId ? (connectionNames.get(masterConnectionId) ?? null) : null);
+  const shortCount = [...stockRows.values()].filter(
+    (row) => deriveRowStatus(row).kind === 'short'
+  ).length;
+  const productMasterName =
+    [...stockRows.values()].find((row) => row.sourceNames.length > 0)?.masterName ??
+    (masterConnectionId ? connectionNames.get(masterConnectionId) ?? null : null);
   const stockSummary = stockView ? summarizeStock(stockView.variants) : null;
   const staleSync = stockView?.variants.some((v) => v.isStaleSync) ?? false;
   let headline: HeadlineStock;
@@ -219,7 +236,8 @@ export function ProductDetailPage(): ReactElement {
   ) {
     headline = { kind: 'atp', quantity: stockSummary.availableToPromise };
   } else headline = { kind: 'unknown' };
-  const headlineQuantity = headline.kind === 'atp' || headline.kind === 'master' ? headline.quantity : null;
+  const headlineQuantity =
+    headline.kind === 'atp' || headline.kind === 'master' ? headline.quantity : null;
   const availableTone: KpiCardTone =
     headlineQuantity === null ? 'neutral' : deriveAvailableTone(headlineQuantity, shortCount);
   const stockStatus = headlineQuantity === null ? null : deriveStockStatus(headlineQuantity);
@@ -230,7 +248,7 @@ export function ProductDetailPage(): ReactElement {
     new Set(
       inventoryItems
         .map((item) => item.locationId)
-        .filter((locationId): locationId is string => locationId !== null),
+        .filter((locationId): locationId is string => locationId !== null)
     ).size || 1;
   const availableDescription = plural(distinctLocationCount, copy.kpis.acrossLocations, {
     n: format.number(distinctLocationCount),
@@ -241,15 +259,118 @@ export function ProductDetailPage(): ReactElement {
   const sourceName =
     (connectionsQuery.data ?? []).find((c) => c.id === sourceConnectionId)?.name ?? null;
 
-  const totalListings = variants.reduce(
-    (sum, variant) => sum + (listingsCounts[variant.id] ?? 0),
-    0,
+  const makeBundleButton = bundleWrite.canWrite ? (
+    <Link
+      className="button button--secondary button--sm"
+      to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
+    >
+      {bundleCopy.list.makeBundle}
+    </Link>
+  ) : null;
+
+  const moreBody = (
+    <>
+      <section className="detail-section" data-testid="variant-detail-section">
+        <div className="detail-section__title-row">
+          <h3 className="detail-section__title">{copy.overview.detailsHeading}</h3>
+          {stockSummary?.lastSyncedAt ? (
+            <span
+              className="sync-freshness"
+              data-testid="stock-summary-synced"
+              style={staleSync ? { color: 'var(--status-warning-fg)' } : undefined}
+            >
+              <span
+                className="sync-freshness__dot"
+                aria-hidden="true"
+                style={staleSync ? { background: 'var(--status-warning-strong)' } : undefined}
+              ></span>
+              {copy.variants.stockSynced}{' '}
+              <TimeDisplay iso={stockSummary.lastSyncedAt} format="time" />
+            </span>
+          ) : null}
+        </div>
+        {inventoryQuery.isLoading ? (
+          <LoadingState
+            liveRegion="off"
+            title={copy.variants.loading.title}
+            message={copy.variants.loading.message}
+          />
+        ) : inventoryQuery.error ? (
+          <ErrorState
+            title={copy.variants.loadError}
+            message={describeApiError(inventoryQuery.error, 'products')}
+            action={
+              <Button
+                onClick={() => {
+                  void inventoryQuery.refetch();
+                }}
+              >
+                {copy.retry}
+              </Button>
+            }
+          />
+        ) : variants.length === 0 ? null : (
+          <>
+            <StockAlerts
+              rows={stockRows}
+              view={stockView}
+              restricted={stockRestricted}
+              pending={stockPending}
+              canAdjust={canAdjustStock}
+              onRetry={() => {
+                void stockViewQuery.refetch();
+              }}
+              masterConnectionId={masterConnectionId}
+            />
+            {isSingleVariant ? (
+              <VariantDetailPanel
+                variant={variants[0]!}
+                productTaxRate={product.taxRate ?? null}
+                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
+                connections={offerCreatorConnections}
+                onListingsCount={handleListingsCount}
+                stock={stockModel}
+                sourceName={sourceName}
+                currency={product.currency}
+              />
+            ) : (
+              <VariantStockTable
+                variants={variants}
+                currency={product.currency}
+                productTaxRate={product.taxRate ?? null}
+                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
+                connections={offerCreatorConnections}
+                canCreateOffers={write.visible}
+                onCreateOffers={handleCreateOffers}
+                onListingsCount={handleListingsCount}
+                stock={stockModel}
+                sourceName={sourceName}
+              />
+            )}
+          </>
+        )}
+      </section>
+      {canAdjustStock ? (
+        <StockCorrectionDialog target={adjustTarget} onClose={() => setAdjustTarget(null)} />
+      ) : null}
+      <StockHistorySection
+        productId={product.id}
+        productName={product.name}
+        variants={variants}
+        selectedVariantId={historyVariantId}
+        onSelectedVariantChange={setHistoryVariantId}
+      />
+    </>
   );
 
-  return (
+  const page = (
     <PageLayout
-      backTo={{ to: '/products', label: isBundle ? bundleCopy.view.back : copy.backToProducts, 'data-testid': 'stock-back-to-products' }}
-      eyebrow={isBundle ? bundleCopy.view.eyebrow : copy.eyebrow}
+      backTo={{
+        to: '/products',
+        label: isBundle ? bundleCopy.view.back : copy.backToProducts,
+        'data-testid': 'stock-back-to-products',
+      }}
+      eyebrow={isBundle ? bundleCopy.view.eyebrow : copy.overview.eyebrow}
       title={
         isBundle ? (
           <span className="pm-title">
@@ -262,7 +383,23 @@ export function ProductDetailPage(): ReactElement {
             <span className="cx-tag">{bundleCopy.view.bundleTag}</span>
           </span>
         ) : (
-          <EntityLabel id={product.id} name={product.name} />
+          <span className="pm-title">
+            {product.name}
+            {stockStatus !== null ? (
+              <StatusBadge
+                compact
+                withDot
+                tone={STOCK_STATUS_BADGE_TONE[stockStatus]}
+                data-testid="product-stock-badge"
+              >
+                {STOCK_STATUS_LABEL[stockStatus]}
+              </StatusBadge>
+            ) : (
+              <StatusBadge compact withDot tone="neutral" data-testid="product-stock-badge-unknown">
+                {headline.kind === 'loading' ? copy.hero.checkingStock : copy.hero.stockNotKnown}
+              </StatusBadge>
+            )}
+          </span>
         )
       }
       description={
@@ -274,39 +411,75 @@ export function ProductDetailPage(): ReactElement {
               <span className="mono">{product.sku ?? '—'}</span>
             </span>
           </>
-        ) : undefined
+        ) : (
+          <span className="pm-meta">
+            <span className="pm-hint">{bundleCopy.view.sku}</span>
+            <span className="mono">{product.sku ?? '—'}</span>
+            {sourceConnectionId ? (
+              <>
+                <span className="pm-hint" style={{ marginLeft: 8 }}>
+                  {copy.source}
+                </span>
+                <ConnectionChips connectionIds={[sourceConnectionId]} />
+              </>
+            ) : null}
+          </span>
+        )
       }
       actions={
         isBundle ? (
           <span className="page-header__actions--row">
-            <GuideTrigger label={bundleCopy.guide.trigger} onClick={() => { setGuideOpen(true); }} />
-            <Link className="button button--secondary button--sm" to={`/listings/bulk-create/wizard?${new URLSearchParams({ productIds: product.id, variantIds: variants[0]?.id ?? '' }).toString()}`} data-testid="bundle-view-list-offer">
+            <BundleGuideButton />
+            <Link
+              className="button button--secondary button--sm"
+              to={`/listings/bulk-create/wizard?${new URLSearchParams({ productIds: product.id, variantIds: variants[0]?.id ?? '' }).toString()}`}
+              data-testid="bundle-view-list-offer"
+            >
               {bundleCopy.view.listOffer}
             </Link>
             {bundleWrite.canWrite ? (
-              <Link className="button button--sm" to={`/products/bundles/${encodeURIComponent(variants[0]?.id ?? '')}`} data-testid="bundle-view-edit">
+              <Link
+                className="button button--sm"
+                to={`/products/bundles/${encodeURIComponent(variants[0]?.id ?? '')}`}
+                data-testid="bundle-view-edit"
+              >
                 {bundleCopy.view.editComposition}
               </Link>
             ) : null}
           </span>
-        ) : bundleWrite.canWrite ? (
-          <Link
-            className="button button--secondary"
-            to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
-            data-testid="product-detail-make-bundle"
-          >
-            {bundleCopy.list.makeBundle}
-          </Link>
         ) : (
-          <span
-            className="button button--secondary"
-            role="button"
-            aria-disabled="true"
-            tabIndex={0}
-            title={bundleCopy.form.viewOnlyReason}
-            data-testid="product-detail-make-bundle"
-          >
-            {bundleCopy.list.makeBundle}
+          <span className="page-header__actions--row">
+            <BundleGuideButton />
+            <button
+              type="button"
+              className="button button--secondary button--sm"
+              onClick={() => {
+                setActiveView(VIEW_CONTENT);
+              }}
+              data-testid="product-detail-edit-content"
+            >
+              {copy.overview.editContent}
+            </button>
+            {bundleWrite.canWrite ? (
+              <Link
+                className="button button--primary button--sm"
+                to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
+                data-testid="product-detail-make-bundle"
+              >
+                {bundleCopy.list.makeBundle}
+              </Link>
+            ) : (
+              <span
+                className="button button--primary button--sm"
+                role="button"
+                aria-disabled="true"
+                tabIndex={0}
+                title={bundleCopy.form.viewOnlyReason}
+                data-testid="product-detail-make-bundle"
+              >
+                {bundleCopy.list.makeBundle}
+              </span>
+            )}
           </span>
         )
       }
@@ -321,264 +494,59 @@ export function ProductDetailPage(): ReactElement {
           {isBundle && variants[0] ? (
             <BundleProductView bundleVariantId={variants[0].id} productId={product.id} />
           ) : (
-          <>
-          <section className="product-detail-hero" aria-label={copy.hero.label}>
-            <ProductGallery images={product.images ?? []} name={product.name} productId={product.id} />
-            <div className="product-detail-hero__body">
-              <div className="product-detail-hero__badges">
-                {stockStatus !== null ? (
-                  <StatusBadge
-                    compact
-                    withDot
-                    tone={STOCK_STATUS_BADGE_TONE[stockStatus]}
-                    data-testid="product-stock-badge"
-                  >
-                    {STOCK_STATUS_LABEL[stockStatus]}
-                  </StatusBadge>
+            <ProductOverview
+              product={product}
+              variants={variants}
+              stockRows={stockRows}
+              availableQuantity={headlineQuantity}
+              availableTone={availableTone}
+              availableSub={
+                headline.kind === 'atp' && stockSummary ? (
+                  <>
+                    {copy.kpis.toSell}
+                    {' · '}
+                    <span data-testid="stock-summary-master">
+                      {interpolate(copy.kpis.inMaster, {
+                        n: format.number(stockSummary.masterStock),
+                        source: productMasterName ?? copy.kpis.theMaster,
+                      })}
+                    </span>
+                    {stockSummary.heldCounted !== null && stockSummary.heldCounted > 0 ? (
+                      <>
+                        {' · '}
+                        <span data-testid="stock-summary-held">
+                          {interpolate(copy.kpis.reserved, {
+                            n: format.number(stockSummary.heldCounted),
+                          })}
+                        </span>
+                      </>
+                    ) : null}
+                    {shortCount > 0 ? (
+                      <>
+                        {' · '}
+                        {interpolate(copy.kpis.short, { n: format.number(shortCount) })}
+                      </>
+                    ) : null}
+                  </>
+                ) : headline.kind === 'unknown' ? (
+                  copy.kpis.notKnown
+                ) : headline.kind === 'loading' ? (
+                  copy.kpis.workingOut
                 ) : (
-                  <StatusBadge compact withDot tone="neutral" data-testid="product-stock-badge-unknown">
-                    {headline.kind === 'loading' ? copy.hero.checkingStock : copy.hero.stockNotKnown}
-                  </StatusBadge>
-                )}
-                <StatusBadge compact tone="neutral">
-                  {plural(variants.length, copy.hero.variantCount, { n: format.number(variants.length) })}
-                </StatusBadge>
-                <StatusBadge compact tone="info">
-                  {plural(totalListings, copy.hero.listingCount, { n: format.number(totalListings) })}
-                </StatusBadge>
-              </div>
-              <h3 className="product-detail-hero__title">{product.name}</h3>
-              <code className="product-detail-hero__id mono-text" title={product.id}>
-                {product.id}
-              </code>
-              <div className="product-detail-hero__facts">
-                <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">{copy.hero.sku}</span>
-                  {product.sku ? (
-                    <span className="mono-text">{product.sku}</span>
-                  ) : (
-                    <span className="text-muted">—</span>
-                  )}
-                </span>
-                <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">{copy.hero.category}</span>
-                  {product.categoryBreadcrumb && product.categoryBreadcrumb.length > 0 ? (
-                    <span>{product.categoryBreadcrumb.map((node) => node.name).join(' › ')}</span>
-                  ) : (
-                    <span className="text-muted">—</span>
-                  )}
-                </span>
-                <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">{copy.hero.created}</span>
-                  <TimeDisplay className="mono-text tabular" iso={product.createdAt} />
-                </span>
-                <span className="product-detail-hero__fact">
-                  <span className="product-detail-hero__fact-label">{copy.hero.catalogueUpdated}</span>
-                  <TimeDisplay className="mono-text tabular" iso={product.updatedAt} />
-                </span>
-              </div>
-            </div>
-          </section>
-
-          <section className="detail-section" aria-label={copy.kpis.title}>
-            <h3 className="detail-section__title">{copy.kpis.title}</h3>
-            <div className="product-detail__kpi-row product-detail__kpi-row--cols-4">
-              <KpiCard
-                label={copy.kpis.price}
-                value={
-                  product.price !== null
-                    ? format.number(product.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : '—'
-                }
-                description={product.currency ?? undefined}
-              />
-              <KpiCard
-                label={copy.kpis.available}
-                tone={availableTone}
-                value={
-                  <span data-testid="stock-summary-atp">
-                    {headlineQuantity ?? (headline.kind === 'loading' ? '…' : '—')}
-                  </span>
-                }
-                description={
-                  headline.kind === 'atp' && stockSummary ? (
-                    <>
-                      {copy.kpis.toSell}
-                      {' · '}
-                      <span data-testid="stock-summary-master">
-                        {interpolate(copy.kpis.inMaster, {
-                          n: format.number(stockSummary.masterStock),
-                          source: productMasterName ?? copy.kpis.theMaster,
-                        })}
-                      </span>
-                      {stockSummary.heldCounted !== null && stockSummary.heldCounted > 0 ? (
-                        <>
-                          {' · '}
-                          <span data-testid="stock-summary-held">
-                            {interpolate(copy.kpis.reserved, { n: format.number(stockSummary.heldCounted) })}
-                          </span>
-                        </>
-                      ) : null}
-                      {shortCount > 0 ? (
-                        <>
-                          {' · '}
-                          {interpolate(copy.kpis.short, { n: format.number(shortCount) })}
-                        </>
-                      ) : null}
-                    </>
-                  ) : headline.kind === 'unknown' ? (
-                    copy.kpis.notKnown
-                  ) : headline.kind === 'loading' ? (
-                    copy.kpis.workingOut
-                  ) : (
-                    availableDescription
-                  )
-                }
-              />
-              <KpiCard label={copy.kpis.variants} value={format.number(variants.length)} />
-              <KpiCard label={copy.kpis.listings} value={format.number(totalListings)} />
-            </div>
-          </section>
-
-          <div className="product-detail__primary-grid--split">
-            <div className="product-detail__stack">
-              <section className="detail-section">
-                <div className="detail-section__title-row">
-                  <h3 className="detail-section__title">
-                    {copy.description.title}{' '}
-                    <StatusBadge tone="neutral" compact>
-                      {copy.description.readOnlyBadge}
-                    </StatusBadge>
-                  </h3>
-                  <Link className="detail-section__edit-link" to="?view=content">
-                    {copy.description.editInContent}
-                  </Link>
-                </div>
-                {/* ADR-046: rendered, not printed. This block interpolated the
-                    value into a <p>, so React escaped it and a shop description
-                    read as a wall of angle brackets. */}
-                <RichTextView
-                  html={product.description}
-                  className="description-block"
-                  emptyLabel={copy.description.empty}
-                />
-              </section>
-            </div>
-
-            <div className="product-detail__stack">
-              {product.features && product.features.length > 0 ? (
-                <section className="detail-section" aria-label={copy.attributes}>
-                  <h3 className="detail-section__title">{copy.attributes}</h3>
-                  <div className="attr-chips">
-                    {product.features.map((feature) => (
-                      <span className="attr-chip" key={`${feature.name}:${feature.value}`}>
-                        <b>{feature.name}</b>
-                        {feature.value}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              <section className="detail-section">
-                <h3 className="detail-section__title">{copy.source}</h3>
-                <ProductSourceSection
-                  mappings={product.externalIds ?? []}
-                  connections={connectionsQuery.data ?? []}
-                />
-              </section>
-            </div>
-          </div>
-
-          <section className="detail-section" data-testid="variant-table-section">
-            <div className="detail-section__title-row">
-              <h3 className="detail-section__title">
-                {!isSingleVariant && variants.length > 0
-                  ? interpolate(copy.variants.headingWithCount, { n: format.number(variants.length) })
-                  : copy.variants.heading}
-              </h3>
-              {stockSummary?.lastSyncedAt ? (
-                <span
-                  className="sync-freshness"
-                  data-testid="stock-summary-synced"
-                  style={staleSync ? { color: 'var(--status-warning-fg)' } : undefined}
-                >
-                  <span
-                    className="sync-freshness__dot"
-                    aria-hidden="true"
-                    style={staleSync ? { background: 'var(--status-warning-strong)' } : undefined}
-                  ></span>
-                  {copy.variants.stockSynced} <TimeDisplay iso={stockSummary.lastSyncedAt} format="time" />
-                </span>
-              ) : null}
-            </div>
-            {inventoryQuery.isLoading ? (
-              <LoadingState
-                liveRegion="off"
-                title={copy.variants.loading.title}
-                message={copy.variants.loading.message}
-              />
-            ) : inventoryQuery.error ? (
-              <ErrorState
-                title={copy.variants.loadError}
-                message={describeApiError(inventoryQuery.error, 'products')}
-                action={
-                  <Button onClick={() => { void inventoryQuery.refetch(); }}>{copy.retry}</Button>
-                }
-              />
-            ) : variants.length === 0 ? (
-              <p className="text-muted">{copy.variants.empty}</p>
-            ) : (
-              <>
-                <StockAlerts
-                  rows={stockRows}
-                  view={stockView}
-                  restricted={stockRestricted}
-                  pending={stockPending}
-                  canAdjust={canAdjustStock}
-                  onRetry={() => {
-                    void stockViewQuery.refetch();
-                  }}
-                  masterConnectionId={masterConnectionId}
-                />
-                {isSingleVariant ? (
-                  <VariantDetailPanel
-                    variant={variants[0]!}
-                    productTaxRate={product.taxRate ?? null}
-                    productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
-                    connections={offerCreatorConnections}
-                    onListingsCount={handleListingsCount}
-                    stock={stockModel}
-                    sourceName={sourceName}
-                    currency={product.currency}
-                  />
-                ) : (
-                  <VariantStockTable
-                    variants={variants}
-                    currency={product.currency}
-                    productTaxRate={product.taxRate ?? null}
-                    productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
-                    connections={offerCreatorConnections}
-                    canCreateOffers={write.visible}
-                    onCreateOffers={handleCreateOffers}
-                    onListingsCount={handleListingsCount}
-                    stock={stockModel}
-                    sourceName={sourceName}
-                  />
-                )}
-              </>
-            )}
-          </section>
-          {canAdjustStock ? (
-            <StockCorrectionDialog target={adjustTarget} onClose={() => setAdjustTarget(null)} />
-          ) : null}
-          <StockHistorySection
-            productId={product.id}
-            productName={product.name}
-            variants={variants}
-            selectedVariantId={historyVariantId}
-            onSelectedVariantChange={setHistoryVariantId}
-          />
-          </>
+                  availableDescription
+                )
+              }
+              stockSyncedAt={stockSummary?.lastSyncedAt ?? null}
+              offerConnections={offerCreatorConnections}
+              canCreateOffers={write.visible}
+              onCreateOffer={goToWizard}
+              usedInVariantIds={usedInVariantIds}
+              bundleCount={bundleCount}
+              makeBundleAction={makeBundleButton}
+              more={moreBody}
+              moreOpen={moreOpen}
+              onMoreOpenChange={setMoreOpen}
+            />
           )}
         </TabsContent>
 
@@ -602,7 +570,7 @@ export function ProductDetailPage(): ReactElement {
           goToWizard(connectionId);
         }}
       />
-      {isBundle ? <BundleGuide open={guideOpen} onOpenChange={setGuideOpen} /> : null}
     </PageLayout>
   );
+  return <BundleGuide>{page}</BundleGuide>;
 }

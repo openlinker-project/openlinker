@@ -218,6 +218,9 @@ export {
   LineGift,
   GiftSource,
   GiftSourceValues,
+  GiftDocumentForm,
+  GiftDocumentFormValues,
+  isGiftDocumentForm,
 } from './domain/types/incoming-order.types';
 export {
   OrderFeedEventTypeValues,
@@ -575,6 +578,35 @@ export type {
   IOrderBundleDocumentService,
   GiftSlotCostLine,
 } from './application/services/order-bundle-document.service.interface';
+export type { IGiftReportService } from './application/services/gift-report.service.interface';
+export {
+  summarizeGiftReport,
+  bucketGiftCosts,
+  GiftReportSourceFilterValues,
+} from './domain/types/gift-report.types';
+export type {
+  BundleComponentDemandRow,
+  BundleReport,
+  BundleReportComponent,
+  BundleReportRow,
+  GiftCostBasis,
+  GiftCostGranularity,
+  GiftCostPoint,
+  GiftCostSeries,
+  GiftReportEntry,
+  GiftReportFilters,
+  GiftReportGroup,
+  GiftReportSourceFilter,
+  GiftReportSummary,
+  GiftReportTotals,
+} from './domain/types/gift-report.types';
+export type {
+  IOrderGiftService,
+  ApplyGiftRulesInput,
+  ApplyGiftRulesResult,
+  GiftPreviewInput,
+  GiftPreviewResult,
+} from './application/services/order-gift.service.interface';
 export type { IOrderLineCostService } from './application/services/order-line-cost.service.interface';
 export type {
   OrderLineCostView,
@@ -749,11 +781,14 @@ export {
   addressEditTargetRef,
   lineQuantityEditTargetRef,
   deliveryMethodEditTargetRef,
+  giftEditTargetRef,
   discountEditTargetRef,
   discountRefundTargetRef,
   discountCorrectionTargetRef,
 } from './domain/types/order-change.types';
 // #3542 — the operator-edit overlay and its pure merge.
+export { freezeGiftUnitCost } from './application/services/gift-unit-cost';
+export type { FrozenGiftCost } from './application/services/gift-unit-cost';
 export {
   readOrderEdits,
   applyOrderEditsToSnapshot,
@@ -764,11 +799,16 @@ export {
   resolveTotalUnitPrice,
   readLineEditTreatments,
   findUnmatchedLineEdits,
+  olGiftLineKey,
+  addedLineToOrderItem,
+  OL_GIFT_LINE_KEY_PREFIX,
+  OPERATOR_GIFT_LINE_KEY_PREFIX,
 } from './domain/types/order-edits.types';
 export type {
   OrderEdits,
   OrderAddressEdit,
   OrderLineEdit,
+  OrderAddedLineEdit,
   OrderDeliveryMethodEdit,
   OrderEditedTotals,
   ApplyOrderEditInput,

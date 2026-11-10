@@ -109,7 +109,7 @@ import {
     AUTOMATION_RUN_RECORDER_TOKEN,
     AUTOMATION_RUNS_READ_SERVICE_TOKEN,
     AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
-    AutomationActionExecutorRegistry,
+      AutomationActionExecutorRegistry,
   ],
 })
 export class AutomationModule {}

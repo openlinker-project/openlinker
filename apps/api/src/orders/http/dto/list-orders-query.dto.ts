@@ -302,6 +302,51 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   attention?: boolean;
 
   @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"With a gift" filter (#3940): true keeps only orders that carry a gift line (from the ' +
+      'channel, a cart rule, an OpenLinker gift rule or an operator), false only the rest, ' +
+      'omitted does not filter. ANDed with `health`, not a health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  withGift?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"With a bundle" filter (#3935): true keeps only orders that carry a bundle line, false only the ' +
+      'rest, omitted does not filter. ANDed with `health`, not a health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  withBundle?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Gift not added" filter (#3935): true keeps only orders where a promotion could not give its gift ' +
+      'and nobody has handled it, false only the rest, omitted does not filter. ANDed with `health`.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  giftNotAdded?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Shop rejected the gift" filter (#3935): true keeps only orders with a gift line whose destination ' +
+      'sync failed, false only the rest, omitted does not filter. ANDed with `health`.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  giftShopRejected?: boolean;
+
+  @ApiPropertyOptional({
     enum: AuthorityAttentionReasonValues,
     name: 'attentionReason',
     description:

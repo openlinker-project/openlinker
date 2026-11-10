@@ -29,6 +29,7 @@ import type {
   OrderRecordRepositoryPort,
   HeldOrdersFilter,
 } from '../../../domain/ports/order-record-repository.port';
+import type { OrderGiftReportReaderPort } from '../../../domain/ports/order-gift-report-reader.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
@@ -184,7 +185,9 @@ function orderRecordColumnProperties(): readonly string[] {
 const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
 
 @Injectable()
-export class OrderRecordRepository implements OrderRecordRepositoryPort {
+export class OrderRecordRepository
+  implements OrderRecordRepositoryPort, OrderGiftReportReaderPort
+{
   /**
    * The "currency mismatch" predicate (#2464/#2713/#2468 review) — a row
    * that either never got an FX stamp (`reportingCurrency IS NULL`) or was
@@ -237,6 +240,37 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       where: { internalOrderId: In(internalOrderIds) },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  async findForGiftReport(
+    filters: { from: Date; to: Date; sourceConnectionId?: string; scope: 'gifts' | 'bundles' },
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."placedAt" >= :giftFrom', { giftFrom: filters.from })
+      .andWhere('rec."placedAt" < :giftTo', { giftTo: filters.to });
+    if (filters.scope === 'gifts') {
+      qb.andWhere(
+        `(jsonb_path_exists(rec."orderSnapshot", '$.items[*].gift')
+          OR rec."orderEdits" -> 'addedLines' IS NOT NULL
+          OR jsonb_path_exists(rec."lineExpansion", '$.** ? (@.giftSlot == true)'))`
+      );
+    } else {
+      qb.andWhere('rec."lineExpansion" IS NOT NULL');
+    }
+    if (filters.sourceConnectionId !== undefined) {
+      qb.andWhere('rec."sourceConnectionId" = :giftConnection', {
+        giftConnection: filters.sourceConnectionId,
+      });
+    }
+    if (page.afterId !== null) {
+      qb.andWhere('rec."internalOrderId" > :giftAfter', { giftAfter: page.afterId });
+    }
+    const entities = await qb.orderBy('rec."internalOrderId"', 'ASC').limit(page.limit).getMany();
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   /**
@@ -603,6 +637,47 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.withGift !== undefined) {
+      // #3940 - its own axis, ANDed like `taxRateConflict`: a gifted order is
+      // usually also synced, so folding it into `health` would hide one or the other.
+      qb.andWhere(
+        filters.withGift
+          ? OrderRecordRepository.HAS_GIFT
+          : `NOT (${OrderRecordRepository.HAS_GIFT})`
+      );
+    }
+
+    if (filters.withBundle !== undefined) {
+      // #3935 - its own axis like `withGift`: a bundle order is usually also synced.
+      qb.andWhere(
+        filters.withBundle
+          ? OrderRecordRepository.HAS_BUNDLE
+          : `NOT (${OrderRecordRepository.HAS_BUNDLE})`
+      );
+    }
+
+    if (filters.giftNotAdded !== undefined) {
+      const ids = filters.giftNotAddedOrderIds ?? [];
+      if (ids.length > 0) {
+        qb.andWhere(
+          filters.giftNotAdded
+            ? 'rec."internalOrderId" IN (:...giftNotAddedOrderIds)'
+            : 'rec."internalOrderId" NOT IN (:...giftNotAddedOrderIds)',
+          { giftNotAddedOrderIds: ids }
+        );
+      } else if (filters.giftNotAdded) {
+        qb.andWhere('1 = 0');
+      }
+    }
+
+    if (filters.giftShopRejected !== undefined) {
+      qb.andWhere(
+        filters.giftShopRejected
+          ? OrderRecordRepository.GIFT_SHOP_REJECTED
+          : `NOT (${OrderRecordRepository.GIFT_SHOP_REJECTED})`
+      );
+    }
+
     if (filters.omsAttention !== undefined) {
       // #2353 - the OMS inert-state axis, ANDed with `health` exactly like
       // `salesDocumentBlocked` and `taxRateConflict`. It is NOT the
@@ -903,6 +978,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const openReturnIds = filters.openReturnOrderIds ?? [];
     const hasOpenReturn =
       openReturnIds.length > 0 ? `rec."internalOrderId" IN (:...summaryOpenReturnIds)` : 'FALSE';
+    const giftNotAddedIds = filters.giftNotAddedOrderIds ?? [];
+    const giftNotAdded =
+      giftNotAddedIds.length > 0 ? `rec."internalOrderId" IN (:...summaryGiftNotAddedIds)` : 'FALSE';
     const notShipped = OrderRecordRepository.NOT_SHIPPED;
     // SLA overdue OR at risk == not shipped with a deadline at or before the
     // at-risk cutoff - the union of `applySlaFilter`'s two arms.
@@ -928,6 +1006,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .join(' OR ');
     qb.addSelect(`COUNT(*) FILTER (WHERE ${hasOpenReturn})`, 'open_return')
       .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`, 'has_buyer_note')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_GIFT})`, 'with_gift')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_BUNDLE})`, 'with_bundle')
+      .addSelect(`COUNT(*) FILTER (WHERE ${giftNotAdded})`, 'gift_not_added')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.GIFT_SHOP_REJECTED})`, 'gift_shop_rejected')
       .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
       .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
       .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
@@ -936,6 +1018,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         summaryDueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
         summarySlaCutoff: new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS),
         ...(openReturnIds.length > 0 ? { summaryOpenReturnIds: openReturnIds } : {}),
+        ...(giftNotAddedIds.length > 0 ? { summaryGiftNotAddedIds: giftNotAddedIds } : {}),
       });
 
     OrderRecordRepository.applySummaryScope(qb, filters);
@@ -970,6 +1053,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         sales_document_issued_on_request: string;
         open_return: string;
         has_buyer_note: string;
+        with_gift: string;
+        with_bundle: string;
+        gift_not_added: string;
+        gift_shop_rejected: string;
         due_within_24h: string;
         attention_late_to_ship: string;
         attention_stuck: string;
@@ -1001,6 +1088,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
       openReturn: Number(raw?.open_return ?? 0),
       hasBuyerNote: Number(raw?.has_buyer_note ?? 0),
+      withGift: Number(raw?.with_gift ?? 0),
+      withBundle: Number(raw?.with_bundle ?? 0),
+      giftNotAdded: Number(raw?.gift_not_added ?? 0),
+      giftShopRejected: Number(raw?.gift_shop_rejected ?? 0),
       dueWithin24h: Number(raw?.due_within_24h ?? 0),
       bySource,
       attention: {
@@ -2066,6 +2157,26 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * suppresses itself whenever an invoice exists (epic F1).
    */
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
+
+  /**
+   * "Carries a gift" (#3940): a channel/shop line flagged `gift` in the persisted
+   * snapshot, or any overlay-added line (gifts are the only added lines).
+   */
+  private static readonly HAS_GIFT =
+    `(COALESCE(jsonb_path_exists(rec."orderSnapshot", '$.items[*] ? (@.gift != null)'), false) OR ` +
+    // `orderEdits` is NULL on an order nobody edited; a NULL here would make the
+    // negated filter drop that order instead of keeping it.
+    `COALESCE(jsonb_path_exists(rec."orderEdits", '$.addedLines.*'), false))`;
+
+  /**
+   * "Carries a bundle" (#3935): the order froze at least one bundle definition
+   * into `lineExpansion` at ingestion. Same signal the gift report's bundle scope reads.
+   */
+  private static readonly HAS_BUNDLE = `rec."lineExpansion" IS NOT NULL`;
+
+  /** "Shop rejected the gift" (#3935): a gift order whose destination sync failed. */
+  private static readonly GIFT_SHOP_REJECTED =
+    `(${OrderRecordRepository.HAS_GIFT} AND rec."syncStatus" @> '[{"status":"failed"}]'::jsonb)`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED =
     OrderRecordRepository.buildSalesDocumentBlockedPredicate();
@@ -3412,14 +3523,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
              || jsonb_build_object('rev', COALESCE(("orderEdits"->>'rev')::int, 0) + 1)
              || CASE WHEN $2::jsonb IS NULL THEN '{}'::jsonb
                      ELSE jsonb_build_object(
-                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END,
+                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END
+             || CASE WHEN $9::jsonb IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object(
+                       'addedLines', $9::jsonb || COALESCE("orderEdits"->'addedLines', '{}'::jsonb)) END,
            "shippingAddressHash" = COALESCE($3::text, "shippingAddressHash"),
            "searchText" = COALESCE($4::text, "searchText"),
            "shippingCountry" = CASE WHEN $7::boolean THEN $8::text ELSE "shippingCountry" END,
            "updatedAt" = now()
        WHERE "internalOrderId" = $5
          AND "recordStatus" = 'ready'
-         AND COALESCE(("orderEdits"->>'rev')::int, 0) = $6
+         AND ($6::int IS NULL OR COALESCE(("orderEdits"->>'rev')::int, 0) = $6)
        RETURNING "internalOrderId"`,
       [
         JSON.stringify(sections),
@@ -3433,6 +3547,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         // country is a real answer: the new address names none).
         input.address !== undefined,
         input.address === undefined ? null : normaliseCountryColumn(input.address.shipping.country),
+        input.addedLines === undefined ? null : JSON.stringify(input.addedLines),
       ]
     )) as unknown;
 

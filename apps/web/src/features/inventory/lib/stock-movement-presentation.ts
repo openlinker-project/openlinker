@@ -21,6 +21,7 @@ import type {
 
 export type MovementTypeToken =
   | 'sale'
+  | 'gift'
   | 'cancel_restore'
   | 'return_restock'
   | 'manual'
@@ -43,6 +44,7 @@ const REASON_PRESENTATION: Record<
   { token: MovementTypeToken; labelKey: keyof ReturnType<typeof movementCopy>['types']; chipClass: string }
 > = {
   sale: { token: 'sale', labelKey: 'sale', chipClass: '' },
+  gift: { token: 'gift', labelKey: 'gift', chipClass: 'chip--review' },
   cancellation_restore: { token: 'cancel_restore', labelKey: 'cancellationRestore', chipClass: 'chip--info' },
   return_restock: { token: 'return_restock', labelKey: 'returnRestock', chipClass: 'chip--success' },
   manual_correction: { token: 'manual', labelKey: 'manualCorrection', chipClass: 'chip--warning' },
@@ -95,6 +97,7 @@ const OPERATOR_REASON_KEY: Record<string, keyof ReturnType<typeof movementCopy>[
   count_correction: 'countCorrection',
   found: 'found',
   damaged: 'damaged',
+  gift: 'gift',
   other: 'other',
 };
 
@@ -119,6 +122,7 @@ export function movementNeedsAttention(row: InventoryMovementRow): boolean {
 /** Type filter options on the global page; `reservation` maps to the promised kind. */
 export const MOVEMENT_TYPE_FILTER_VALUES = [
   'sale',
+  'gift',
   'cancellation_restore',
   'return_restock',
   'manual_correction',
@@ -129,6 +133,7 @@ export type MovementTypeFilterValue = (typeof MOVEMENT_TYPE_FILTER_VALUES)[numbe
 
 const TYPE_FILTER_KEY: Record<MovementTypeFilterValue, keyof ReturnType<typeof movementCopy>['typeFilters']> = {
   sale: 'sale',
+  gift: 'gift',
   cancellation_restore: 'cancellationRestore',
   return_restock: 'returnRestock',
   manual_correction: 'manualCorrection',

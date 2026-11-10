@@ -44,6 +44,7 @@ export const benchWorkSchema = z.object({
     )
     .nullish()
     .transform((value) => value ?? []),
+  giftUnits: z.number().optional(),
   unitsToVerify: z.number(),
   // See the types module: never `z.enum`.
   state: z.string(),

@@ -8,7 +8,9 @@ import { renderWithProviders } from '../../../test/test-utils';
 import { BundleComponentList } from './bundle-component-list';
 import type { BundleComponentAvailability } from '../api/bundles.types';
 
-function component(over: Partial<BundleComponentAvailability> & { variantId: string }): BundleComponentAvailability {
+function component(
+  over: Partial<BundleComponentAvailability> & { variantId: string }
+): BundleComponentAvailability {
   return {
     productId: `p-${over.variantId}`,
     quantity: 1,
@@ -24,8 +26,11 @@ describe('BundleComponentList', () => {
     renderWithProviders(
       <BundleComponentList
         bundlesAvailable={3}
-        components={[component({ variantId: 'a', availableToPromise: 30 }), component({ variantId: 'b', availableToPromise: 3 })]}
-      />,
+        components={[
+          component({ variantId: 'a', availableToPromise: 30 }),
+          component({ variantId: 'b', availableToPromise: 3 }),
+        ]}
+      />
     );
     const rows = screen.getAllByRole('listitem');
     expect(rows[1]).toHaveClass('is-lim');
@@ -34,7 +39,10 @@ describe('BundleComponentList', () => {
 
   it('should say when a stock is unknown', () => {
     renderWithProviders(
-      <BundleComponentList bundlesAvailable={null} components={[component({ variantId: 'a', availableToPromise: null })]} />,
+      <BundleComponentList
+        bundlesAvailable={null}
+        components={[component({ variantId: 'a', availableToPromise: null })]}
+      />
     );
     expect(screen.getByText(/stock unknown/i)).toBeInTheDocument();
   });

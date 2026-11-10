@@ -12,6 +12,9 @@
 
 export const InventoryMovementReasonValues = [
   'sale',
+  // A sale line that was a free gift (#3939): same decrement, told apart so the
+  // history and the cost of gifts can be read.
+  'gift',
   'cancellation_restore',
   'return_restock',
   'manual_correction',
@@ -40,6 +43,7 @@ export const InventoryMovementOperatorReasonValues = [
   'count_correction',
   'found',
   'damaged',
+  'gift',
   'other',
 ] as const;
 export type InventoryMovementOperatorReason = (typeof InventoryMovementOperatorReasonValues)[number];

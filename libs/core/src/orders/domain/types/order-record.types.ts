@@ -211,6 +211,14 @@ export interface OrderHealthSummary {
   openReturn: number;
   /** #4025 - orders with a buyer note an operator can act on (the `hasBuyerNote` filter's predicate). */
   hasBuyerNote: number;
+  /** #3935 - orders carrying a gift line (the `withGift` filter's predicate). Orthogonal to the health partition. */
+  withGift: number;
+  /** #3935 - orders carrying a bundle (the `withBundle` filter's predicate). Orthogonal to the health partition. */
+  withBundle: number;
+  /** #3935 - orders whose promotion gift was not added (ids resolved by the caller). 0 when no list was supplied. */
+  giftNotAdded: number;
+  /** #3935 - orders with a gift line that the shop refused (a failed destination sync). */
+  giftShopRejected: number;
   /**
    * #4025 - orders with a ship-by deadline inside the next 24 hours or already
    * past (the `dueBefore` list filter's predicate, evaluated at now + 24 h).
@@ -292,6 +300,12 @@ export interface OrderHealthSummaryFilters {
    * returns rather than narrowing anything.
    */
   openReturnOrderIds?: string[];
+  /**
+   * #3935 - internal ids of orders whose gift was not added and nobody handled
+   * it, resolved by the caller from the promotions context. Feeds only the
+   * `giftNotAdded` count; omitted means the count is unknown and is left out.
+   */
+  giftNotAddedOrderIds?: string[];
 }
 
 /**
@@ -469,6 +483,21 @@ export interface OrderRecordFilters {
    * rather than "the column is not empty" (spec §4.4 S2-5).
    */
   omsAttention?: boolean;
+  /**
+   * "With a gift" filter (#3940). `true` keeps orders that carry at least one gift
+   * line: one the channel or the shop sent (`gift` on a channel line) or one an
+   * OpenLinker rule or an operator added (`orderEdits.addedLines`, gifts only).
+   * `false` keeps the rest, absent does not filter. A plain jsonb test over the
+   * two columns, ANDed with every other axis; not a health bucket.
+   */
+  withGift?: boolean;
+  /** "With a bundle" filter (#3935): orders that froze a bundle definition at ingestion. */
+  withBundle?: boolean;
+  /** "Gift not added" filter (#3935): ids of such orders resolved by the caller; `true` keeps only them. */
+  giftNotAdded?: boolean;
+  giftNotAddedOrderIds?: string[];
+  /** "Shop rejected the gift" filter (#3935): an order with a gift line whose destination sync failed. */
+  giftShopRejected?: boolean;
   /**
    * Restrict to orders carrying an attention entry with exactly this reason
    * (#3961 - the "Changed by the shop" filter). Composes with `omsAttention`;

@@ -5,6 +5,7 @@
     "selectReason": "Select a reason…"
   },
   "actions": {
+    "add-gift": "Add a gift",
     "dispatch-shipment": "Buy the shipping label",
     "issue-sales-document": "Issue the invoice or receipt",
     "place-hold": "Put the order on hold",
@@ -402,6 +403,10 @@
     "order.hold.released": {
       "description": "Whatever was blocking the order has been cleared.",
       "label": "An order comes off hold"
+    },
+    "order.ingested": {
+      "description": "Gift promotions are checked when OpenLinker takes an order in.",
+      "label": "An order arrives (gift promotions)"
     },
     "order.on_hold_for": {
       "description": "Checked on a timer, not the moment the order stops.",

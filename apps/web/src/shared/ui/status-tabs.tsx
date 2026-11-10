@@ -40,6 +40,11 @@ export interface StatusTabsProps<K extends string> {
   value: K | null;
   onChange: (next: K | null) => void;
   'aria-label': string;
+  /**
+   * Plain section tabs with no count chips. For a page that switches views or
+   * jumps between sections, where a count would be a number nobody asked for.
+   */
+  hideCounts?: boolean;
 }
 
 export function StatusTabs<K extends string>({
@@ -47,6 +52,7 @@ export function StatusTabs<K extends string>({
   value,
   onChange,
   'aria-label': ariaLabel,
+  hideCounts = false,
 }: StatusTabsProps<K>): ReactElement {
   const copy = useMessages('ui').statusTabs;
   const listRef = useRef<HTMLDivElement>(null);
@@ -166,7 +172,9 @@ export function StatusTabs<K extends string>({
                   <span className={`status-tab__dot status-tab__dot--${tab.tone}`} aria-hidden="true" />
                 ) : null}
                 {tab.label}
-                <span className={countClass}>{count === undefined ? copy.unknownCount : count}</span>
+                {hideCounts ? null : (
+                  <span className={countClass}>{count === undefined ? copy.unknownCount : count}</span>
+                )}
               </button>
             );
           })}

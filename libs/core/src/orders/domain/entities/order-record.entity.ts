@@ -980,6 +980,9 @@ export class OrderRecord {
           };
           if (line.giftSlot === true) {
             component.giftSlot = true;
+            if (line.giftDocumentForm !== undefined) {
+              component.giftDocumentForm = line.giftDocumentForm;
+            }
           }
           return component;
         });

@@ -95,12 +95,18 @@ import {
   type InvoiceRecord,
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
+import { PRODUCTS_SERVICE_TOKEN, taxRateState, type IProductsService } from '@openlinker/core/products';
 import {
   addressEditTargetRef,
   applyOrderEditsToSnapshot,
   decideRefundCeiling,
   decimalPlaces,
   deliveryMethodEditTargetRef,
+  freezeGiftUnitCost,
+  giftEditTargetRef,
+  OPERATOR_GIFT_LINE_KEY_PREFIX,
+  type OrderAddedLineEdit,
+  type LineGift,
   discountCorrectionTargetRef,
   discountedUnitPriceGross,
   discountEditTargetRef,
@@ -157,12 +163,14 @@ import type {
   DiscountCorrectionUnavailableReason,
   DiscountPaymentBranch,
   DiscountRefundIntent,
+  EditOrderAddGiftInput,
   EditOrderAddressInput,
   EditOrderDeliveryMethodInput,
   EditOrderDiscountInput,
   EditOrderLinesInput,
   OrderDiscountOutcome,
   OrderEditLineStock,
+  OrderGiftAddedOutcome,
   OrderEditWorkNarrowingFailure,
   OrderEditResult,
   OrderEditsView,
@@ -216,6 +224,14 @@ interface PreparedEdit {
    * is still open, so only the idempotent follow-ups and the confirm are left.
    */
   readonly recoverChangeId?: string;
+  /** Add-gift only (#3940): what to hold once the overlay line is written. */
+  readonly gift?: {
+    readonly productId: string;
+    readonly variantId: string;
+    readonly quantity: number;
+    readonly salesDocumentExists: boolean;
+    readonly routed: boolean;
+  };
 }
 
 /** A document line the discount would correct, before the change row exists. */
@@ -243,6 +259,20 @@ interface DiscountPlan {
 interface RawOrderLine extends DiscountableLine {
   readonly productId: string | null;
   readonly name: string | null;
+}
+
+/** Two gift-add payloads describe the same request (variant, quantity, form). */
+function sameGiftPayload(
+  existing: Record<string, unknown> | null,
+  requested: Record<string, unknown>
+): boolean {
+  return (
+    existing !== null &&
+    existing['variantId'] === requested['variantId'] &&
+    existing['quantity'] === requested['quantity'] &&
+    existing['documentForm'] === requested['documentForm'] &&
+    existing['documentUnitPrice'] === requested['documentUnitPrice']
+  );
 }
 
 @Injectable()
@@ -275,8 +305,166 @@ export class OrderEditService implements IOrderEditService {
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
     private readonly refunds: IOrderRefundService,
     @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
-    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService
   ) {}
+
+  addGift(input: EditOrderAddGiftInput): Promise<OrderEditResult> {
+    return this.run(
+      input,
+      async (record, assessment, _shipments, documentIssued) => {
+        if (!Number.isInteger(input.quantity) || input.quantity < 1) {
+          throw new OrderEditInvalidError(
+            'The gift quantity must be a whole number, one or more.',
+            'quantity-invalid'
+          );
+        }
+        const variant = await this.products.getVariant(input.variantId);
+        if (variant === null) {
+          throw new OrderEditNotFoundError(`Gift product not found: ${input.variantId}`, {
+            orderId: input.internalOrderId,
+          });
+        }
+        const product = await this.products.getProduct(variant.productId);
+        const now = new Date().toISOString();
+        const gift: LineGift = {
+          source: 'operator',
+          ...(input.documentForm !== undefined && { documentForm: input.documentForm }),
+          ...(input.documentForm === 'custom-price' &&
+            input.documentUnitPrice !== undefined && { documentUnitPrice: input.documentUnitPrice }),
+        };
+        const entry: OrderAddedLineEdit = {
+          changeId: '',
+          editedAt: now,
+          editedBy: input.actorUserId,
+          productId: variant.productId,
+          variantId: variant.id,
+          quantity: input.quantity,
+          ...(variant.sku !== null && { sku: variant.sku }),
+          ...(product?.name !== undefined && { name: product.name }),
+          gift,
+          ...(await this.catalogueTaxRate(variant.productId, variant.id)),
+          // Frozen like a rule gift's: the same helper, so the two writers agree.
+          ...(await freezeGiftUnitCost(
+            this.products,
+            variant.id,
+            record.placedAt ?? record.createdAt,
+            this.logger
+          )),
+        };
+        return {
+          kind: 'order.gift_added',
+          targetRef: giftEditTargetRef(record.internalOrderId),
+          payload: {
+            variantId: variant.id,
+            quantity: input.quantity,
+            ...(input.documentForm !== undefined && { documentForm: input.documentForm }),
+            ...(input.documentForm === 'custom-price' &&
+              input.documentUnitPrice !== undefined && {
+                documentUnitPrice: input.documentUnitPrice,
+              }),
+          },
+          // The key carries the change id, which does not exist yet: `stampChange` mints it.
+          patch: { addedLines: { [OPERATOR_GIFT_LINE_KEY_PREFIX]: entry } },
+          loweredLines: [],
+          gift: {
+            productId: variant.productId,
+            variantId: variant.id,
+            quantity: input.quantity,
+            salesDocumentExists: documentIssued,
+            routed: !assessment.unrouted,
+          },
+        };
+      },
+      true
+    );
+  }
+
+  /** The shop catalogue's rate for a gift, stamped on the overlay line; best-effort, never guessed. */
+  private async catalogueTaxRate(
+    productId: string,
+    variantId: string
+  ): Promise<Pick<OrderAddedLineEdit, 'taxRate' | 'taxRateCountry' | 'taxSource' | 'taxRateReadAt'>> {
+    try {
+      const rate = await this.products.getEffectiveTaxRate(productId, variantId);
+      if (rate && taxRateState(rate) === 'known' && rate.code) {
+        return {
+          taxRate: rate.code,
+          ...(rate.countryIso2 ? { taxRateCountry: rate.countryIso2 } : {}),
+          taxSource: 'shop',
+          ...(rate.readAt ? { taxRateReadAt: rate.readAt.toISOString() } : {}),
+        };
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Tax rate for gift product ${productId} could not be read: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    return {};
+  }
+
+  /**
+   * Hold the gift's stock like any other line. Best-effort: the overlay is already
+   * written and the order IS edited; a failed hold is reported, never thrown, and
+   * the next ingestion re-reserves from the edited order.
+   */
+  private async followUpGift(
+    written: OrderRecord,
+    gift: NonNullable<PreparedEdit['gift']>,
+    changeId: string
+  ): Promise<OrderGiftAddedOutcome> {
+    const lineKey = `${OPERATOR_GIFT_LINE_KEY_PREFIX}${changeId}`;
+    let reserved = false;
+    let onPickList = !gift.routed;
+    if (gift.routed) {
+      try {
+        // Only OpenLinker's own pack bench reads these lines; a work held by an
+        // outside executor was already sent its list and cannot be told.
+        const added = await this.fulfillmentEdit.addLineToOpenWork({
+          orderId: written.internalOrderId,
+          orderLineId: lineKey,
+          productVariantId: gift.variantId,
+          quantity: gift.quantity,
+          acceptsHolder: async (connectionId) =>
+            connectionId !== null && (await this.isOpenLinkerExecutor(connectionId)),
+        });
+        onPickList = added.outcome === 'added' || added.outcome === 'unchanged';
+      } catch (error) {
+        this.logger.error(
+          `Could not add the gift ${lineKey} to the packing work of order ${written.internalOrderId}: ` +
+            (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+    try {
+      const result = await this.reservations.reserveForOrder({
+        orderRecordId: written.internalOrderId,
+        // A routed order is picked by OpenLinker, so the hold must reduce what channels are told.
+        atpEffect: gift.routed ? 'published' : 'diagnostic',
+        lines: [
+          {
+            orderLineId: lineKey,
+            productId: gift.productId,
+            productVariantId: gift.variantId,
+            quantity: gift.quantity,
+          },
+        ],
+      });
+      reserved = result.granted.length > 0;
+    } catch (error) {
+      this.logger.error(
+        `Could not hold the gift ${lineKey} of order ${written.internalOrderId}: ` +
+          (error instanceof Error ? error.message : String(error))
+      );
+    }
+    return {
+      lineKey,
+      salesDocumentExists: gift.salesDocumentExists,
+      reserved,
+      onPickList,
+    };
+  }
 
   editAddress(input: EditOrderAddressInput): Promise<OrderEditResult> {
     return this.run(input, async (record, assessment, shipments) => {
@@ -619,6 +807,14 @@ export class OrderEditService implements IOrderEditService {
         view: await this.viewAfter(record, hypothetical),
         stock: [],
         workNarrowingFailures: [],
+        ...(prepared.gift !== undefined && {
+          gift: {
+            lineKey: null,
+            salesDocumentExists: prepared.gift.salesDocumentExists,
+            reserved: false,
+            onPickList: !prepared.gift.routed,
+          },
+        }),
         ...(prepared.discountPlan !== undefined && {
           discount: this.discountOutcome(record, hypothetical, prepared.discountPlan, {
             discountChangeId: null,
@@ -648,14 +844,25 @@ export class OrderEditService implements IOrderEditService {
       };
     }
 
-    const { change } = await this.changes.openOrReuse({
+    const openRequest = {
       internalOrderId: input.internalOrderId,
       kind: prepared.kind,
       targetRef: prepared.targetRef,
       payload: prepared.payload,
       requestedBy: input.actorUserId,
       requestedAt: new Date(),
-    });
+    };
+    const { change, opened } = await this.changes.openOrReuse(openRequest);
+    if (!opened && prepared.gift !== undefined && !sameGiftPayload(change.payload, prepared.payload)) {
+      // The gift's line key carries the change id and the overlay keeps the FIRST
+      // entry written under a key: reusing an open change for a DIFFERENT gift
+      // would drop it from the overlay while the follow-up reserved and reported
+      // it. An identical request is a retry of the interrupted one and finishes it.
+      throw new OrderEditRefusedError(
+        'ORDER_EDIT_CONTENDED',
+        'Another gift is still being added to this order. Wait a moment, reload the order and try again.'
+      );
+    }
 
     const stamped = this.stampChange(prepared.patch, change.id);
     const written = await this.orderRecords.applyOrderEdit({
@@ -681,6 +888,8 @@ export class OrderEditService implements IOrderEditService {
     }
 
     const { stock, workNarrowingFailures } = await this.followUpLines(written, prepared, change.id);
+    const giftOutcome =
+      prepared.gift === undefined ? undefined : await this.followUpGift(written, prepared.gift, change.id);
     const discount =
       prepared.discountPlan === undefined
         ? undefined
@@ -718,6 +927,7 @@ export class OrderEditService implements IOrderEditService {
       stock,
       workNarrowingFailures,
       ...(discount !== undefined && { discount }),
+      ...(giftOutcome !== undefined && { gift: giftOutcome }),
     };
   }
 
@@ -1032,6 +1242,14 @@ export class OrderEditService implements IOrderEditService {
           Object.entries(patch.lines).map(([lineId, line]) => [lineId, { ...line, changeId }])
         ),
       }),
+      ...(patch.addedLines !== undefined && {
+        addedLines: Object.fromEntries(
+          Object.values(patch.addedLines).map((line) => [
+            `${OPERATOR_GIFT_LINE_KEY_PREFIX}${changeId}`,
+            { ...line, changeId },
+          ])
+        ),
+      }),
     };
   }
 
@@ -1052,6 +1270,9 @@ export class OrderEditService implements IOrderEditService {
       }),
       ...(stamped.address !== undefined && { address: stamped.address }),
       ...(stamped.deliveryMethod !== undefined && { deliveryMethod: stamped.deliveryMethod }),
+      ...((current?.addedLines !== undefined || stamped.addedLines !== undefined) && {
+        addedLines: { ...(current?.addedLines ?? {}), ...(stamped.addedLines ?? {}) },
+      }),
     };
   }
 

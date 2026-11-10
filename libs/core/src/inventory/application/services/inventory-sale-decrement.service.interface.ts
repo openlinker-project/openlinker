@@ -27,6 +27,12 @@ export interface SaleDecrementLineInput {
   readonly productVariantId: string | null;
   /** Units sold — always positive; the service negates it for the write. */
   readonly quantity: number;
+  /**
+   * Ledger reason the decrement is recorded under (#3939). Absent means `sale`;
+   * the worker sets `gift` for a line that is a gift, so stock history tells a
+   * free unit from a sold one. The decrement itself is identical.
+   */
+  readonly movementReason?: 'sale' | 'gift';
 }
 
 export interface DecrementForWorkInput {

@@ -55,6 +55,7 @@ import type { Connection, IdentifierMappingPort } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { FULFILLMENT_STATUS } from '@openlinker/core/orders';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 import type {
   DestinationOptionsReader,
   FulfillmentStatusReader,
@@ -468,6 +469,7 @@ export class ShoperOrderProcessorAdapter
   private async buildLines(order: OrderCreate): Promise<Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>>> {
     const taxes = await this.taxTable.get();
     const lines: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>> = [];
+    const giftIndexes: number[] = [];
     for (const item of order.items) {
       const price = resolveGrossUnitPrice(item, order.totals.taxTreatment);
       if (price === null) {
@@ -475,6 +477,10 @@ export class ShoperOrderProcessorAdapter
           `line "${item.sku ?? item.id}" is net-priced and the source reported no gross price; ` +
             'Shoper line prices are gross and OpenLinker does not compute tax',
         );
+      }
+      const isFreeGift = item.gift !== undefined && price === 0;
+      if (price <= 0 && !isFreeGift) {
+        throw this.unbuildable(`line "${item.sku ?? item.id}" has a price of ${price}`);
       }
       if (item.taxRate === undefined) {
         throw this.unbuildable(`line "${item.sku ?? item.id}" has no tax rate`);
@@ -497,8 +503,74 @@ export class ShoperOrderProcessorAdapter
         tax: tax.name,
         tax_value: Number(tax.value),
       });
+      if (isFreeGift) giftIndexes.push(lines.length - 1);
     }
-    return lines;
+    return this.absorbGiftCents(lines, giftIndexes, minorUnitExponentFor(order.totals.currency));
+  }
+
+  /**
+   * Shoper refuses a line priced 0 (HTTP 400 "'0' is less than '0'", live, #3939),
+   * so a free gift goes in at one minor unit per unit and those units are taken
+   * from a paid line (the BaseLinker practice), so the order total still equals
+   * what the buyer paid. The donor is chosen exactly like core's gift
+   * presentation: the highest LINE total first, falling to the next candidate
+   * when it cannot spare the units and still keep one minor unit each. When the
+   * units do not divide over the donor's quantity it is split in two, so the sum
+   * stays exact. The minor unit follows the order's currency.
+   */
+  private absorbGiftCents(
+    lines: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>>,
+    giftIndexes: readonly number[],
+    minorUnitExponent: number,
+  ): Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>> {
+    if (giftIndexes.length === 0) return lines;
+    const factor = 10 ** minorUnitExponent;
+    const gifts = new Set(giftIndexes);
+    const cents = giftIndexes.reduce((sum, index) => sum + lines[index].quantity, 0);
+    const lineTotalMinor = (line: (typeof lines)[number]): number =>
+      Math.round(line.price * factor) * line.quantity;
+    const candidates = lines
+      .map((line, index) => ({ index, total: lineTotalMinor(line) }))
+      .filter((candidate) => !gifts.has(candidate.index))
+      .sort((a, b) => b.total - a.total || a.index - b.index);
+    if (candidates.length === 0) {
+      throw this.unbuildable('the order has only free lines; Shoper does not accept a 0,00 line');
+    }
+    let donor = -1;
+    let base = 0;
+    let remainder = 0;
+    for (const candidate of candidates) {
+      const source = lines[candidate.index];
+      const unitMinor = Math.round(source.price * factor);
+      const candidateBase = Math.floor(cents / source.quantity);
+      const candidateRemainder = cents % source.quantity;
+      if (unitMinor - candidateBase - (candidateRemainder > 0 ? 1 : 0) >= 1) {
+        donor = candidate.index;
+        base = candidateBase;
+        remainder = candidateRemainder;
+        break;
+      }
+    }
+    if (donor === -1) {
+      throw this.unbuildable(
+        `no paid line can give ${cents} minor unit(s) to the free gift line(s) and still keep one per unit`,
+      );
+    }
+    const unitMinor = Math.round(lines[donor].price * factor);
+    const reduced: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>> = [];
+    lines.forEach((line, index) => {
+      if (gifts.has(index)) {
+        reduced.push({ ...line, price: 1 / factor });
+      } else if (index !== donor) {
+        reduced.push(line);
+      } else if (remainder === 0) {
+        reduced.push({ ...line, price: (unitMinor - base) / factor });
+      } else {
+        reduced.push({ ...line, quantity: remainder, price: (unitMinor - base - 1) / factor });
+        reduced.push({ ...line, quantity: line.quantity - remainder, price: (unitMinor - base) / factor });
+      }
+    });
+    return reduced;
   }
 
   private async externalVariantId(item: OrderItem): Promise<string> {

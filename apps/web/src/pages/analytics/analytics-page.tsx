@@ -194,6 +194,7 @@ export function AnalyticsPage(): ReactElement {
   const [marginCoverageReveal, setMarginCoverageReveal] = useState(0);
   const marginVisible = useMarginPanelVisible();
   const copy = useMessages('analytics').analyticsPage;
+  const giftReportCopy = useMessages('gift-report');
 
   return (
     <PageLayout
@@ -205,9 +206,18 @@ export function AnalyticsPage(): ReactElement {
       }
       description={copy.description}
       actions={
-        <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
-          {copy.settings}
-        </Button>
+        <>
+          <Link
+            className="button button--secondary"
+            to={`/analytics/gifts?from=${from}&to=${to}`}
+            data-testid="analytics-gift-report-link"
+          >
+            {giftReportCopy.title}
+          </Link>
+          <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
+            {copy.settings}
+          </Button>
+        </>
       }
     >
       <AnalyticsDateRangeToolbar

@@ -23,3 +23,7 @@ export const RETURN_AUTHORIZE_SERVICE_TOKEN = Symbol('IReturnAuthorizeService');
 export const RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN = Symbol(
   'IReturnCorrectionProposalService'
 );
+
+// The operator's decision about a gift on a return (#3943): keep, ask back, deduct.
+export const RETURN_GIFT_DECISION_REPOSITORY_TOKEN = Symbol('ReturnGiftDecisionRepositoryPort');
+export const RETURN_GIFT_DECISION_SERVICE_TOKEN = Symbol('IReturnGiftDecisionService');

@@ -840,7 +840,8 @@
       "primary": "Primary",
       "provider": "Provider",
       "status": "Status",
-      "trigger": "Trigger"
+      "trigger": "Trigger",
+      "zeroLine": "0.00 line"
     },
     "title": "Connected providers",
     "triggerHint": "Trigger is greyed out for a non-primary row since the timing choice does not matter until a connection is actually the one issuing. A connection that issues both kinds has a separate trigger for invoices and for receipts, so invoices can wait for a batch while receipts go out at once.",
@@ -852,7 +853,12 @@
       "fiscal-receipt": "When {name} issues receipts",
       "invoice": "When {name} issues invoices"
     },
-    "triggerLabel": "When {name} issues"
+    "triggerLabel": "When {name} issues",
+    "zeroLine": {
+      "accepts": "Accepts",
+      "refuses": "Does not accept",
+      "unknown": "No declaration"
+    }
   },
   "salesDocumentsTile": {
     "adminOnly": "Admin only",

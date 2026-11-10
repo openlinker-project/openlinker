@@ -106,6 +106,11 @@ export * from './domain/types/gross-price-eligibility.types';
 // same reason the shipping split is.
 export * from './domain/types/delivery-line.types';
 export * from './domain/types/gift-lines.types';
+export * from './domain/exceptions/invalid-gift-document-form.error';
+export type {
+  GiftDocumentFormSetting,
+  ISalesDocumentSettingsService,
+} from './application/interfaces/sales-document-settings.service.interface';
 export * from './domain/types/bundle-document-lines.types';
 export * from './domain/ports/capabilities/zero-value-line.capability';
 

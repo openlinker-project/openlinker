@@ -17,8 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
-import { GuideTrigger } from '../../../../shared/ui/help-hint';
-import { useGuideShortcut } from '../../../../shared/ui/guide-drawer';
+import { GuideButton } from '../../../../shared/ui/guide-drawer';
 import { BundleGuide } from '../../../bundles/components/bundle-guide';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
@@ -335,9 +334,7 @@ export function BulkWizard({
   }, [rows, step, isShop]);
   const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
   const bundleGuideCopy = useMessages('bundles');
-  const [guideOpen, setGuideOpen] = useState(false);
   const hasBundles = bundlePreview.bundles.size > 0;
-  useGuideShortcut(() => { setGuideOpen(true); }, hasBundles);
 
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
@@ -943,13 +940,13 @@ export function BulkWizard({
   const productCount = plural(rows.length, copy.description.productCount);
   const variantCount = plural(counts.totalVariants, copy.description.variantCount);
 
-  return (
+  const page = (
     <PageLayout
       eyebrow={copy.eyebrow}
       title={pageTitle}
       actions={
         hasBundles ? (
-          <GuideTrigger label={bundleGuideCopy.guide.trigger} onClick={() => { setGuideOpen(true); }} />
+          <GuideButton label={bundleGuideCopy.guide.trigger} />
         ) : undefined
       }
       description={
@@ -964,6 +961,14 @@ export function BulkWizard({
           active={hasEdits && shopBatchId === null}
           released={leaveGuardReleasedRef}
         />
+        <div className="bulk-wizard__stepper">
+          <SetupStepper
+            steps={wizardSteps.map((s) => copy.steps[s.id])}
+            currentStep={stepperCurrent}
+            completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
+          />
+        </div>
+
         {/* #2227: every step but Config, which IS the destination form. Also
             not once a shop batch has submitted - `step` still reads 'review'
             there while the body is the publish tracker, and offering
@@ -979,14 +984,6 @@ export function BulkWizard({
             onChangeDestination={() => setChangeDestOpen(true)}
           />
         ) : null}
-
-        <div className="bulk-wizard__stepper">
-          <SetupStepper
-            steps={wizardSteps.map((s) => copy.steps[s.id])}
-            currentStep={stepperCurrent}
-            completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
-          />
-        </div>
 
         {resumedFromBatchId !== undefined && resumedFromBatchId !== '' ? (
           <Alert tone="info">
@@ -1019,7 +1016,15 @@ export function BulkWizard({
             </div>
           </div>
         ) : (
-          <div className={step === 'resolve' ? '' : 'bulk-wizard__body'}>
+          <div
+            className={
+              step === 'resolve'
+                ? ''
+                : step === 'review' && !isShop
+                  ? 'bulk-wizard__body bulk-wizard__body--flat'
+                  : 'bulk-wizard__body'
+            }
+          >
             {step === 'config' && (
               <BulkConfigStep
                 initial={config ?? {}}
@@ -1145,9 +1150,9 @@ export function BulkWizard({
           />
         ) : null}
       </div>
-      {hasBundles ? <BundleGuide open={guideOpen} onOpenChange={setGuideOpen} sectionId="offer" /> : null}
     </PageLayout>
   );
+  return hasBundles ? <BundleGuide defaultOpen="offer">{page}</BundleGuide> : page;
 }
 
 /** Order-sensitive blocker-list equality. */

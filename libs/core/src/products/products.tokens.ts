@@ -25,3 +25,4 @@ export const PRICE_CHANGE_OBSERVER_TOKEN = Symbol('PriceChangeObserverPort');
 export const BUNDLE_DEFINITION_REPOSITORY_TOKEN = Symbol('BundleDefinitionRepositoryPort');
 export const BUNDLE_DEFINITION_SERVICE_TOKEN = Symbol('IBundleDefinitionService');
 export const BUNDLE_MASTER_SYNC_SERVICE_TOKEN = Symbol('IBundleMasterSyncService');
+export const BUNDLE_PRODUCT_CREATION_SERVICE_TOKEN = Symbol('IBundleProductCreationService');

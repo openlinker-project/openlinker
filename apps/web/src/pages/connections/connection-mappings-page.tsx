@@ -28,6 +28,7 @@ import { MappingPanel, type MappingRow } from '../../features/mappings/component
 import { FulfillmentRoutingSection } from '../../features/mappings/components/fulfillment-routing-section';
 import { AttributeRulesPanel } from '../../features/mappings/components/attribute-rules-panel';
 import { DeliveryOnDocumentsPanel } from '../../features/delivery-on-documents';
+import { GiftsOnDocumentsPanel } from '../../features/gift-documents';
 import { publishDestinationKind } from '../../features/listings';
 import {
   MappingPairingBar,
@@ -74,7 +75,8 @@ type TabId =
   | 'payments'
   | 'order-states'
   | 'attribute-rules'
-  | 'delivery-on-documents';
+  | 'delivery-on-documents'
+  | 'gifts-on-documents';
 
 const ALL_TABS: TabId[] = [
   'fulfillment',
@@ -84,6 +86,7 @@ const ALL_TABS: TabId[] = [
   'order-states',
   'attribute-rules',
   'delivery-on-documents',
+  'gifts-on-documents',
 ];
 
 function isTabId(value: string): value is TabId {
@@ -107,6 +110,7 @@ const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   'order-states': ['prestashopOrderStatuses'],
   'attribute-rules': [],
   'delivery-on-documents': [],
+  'gifts-on-documents': [],
 };
 
 
@@ -194,6 +198,7 @@ export function ConnectionMappingsPage(): ReactElement {
   const copy = useMessages('connections').connectionMappingsPage;
   const locale = useActiveLocale();
   const format = useFormat();
+  const giftCopy = useMessages('gift-documents');
 
   // Fix-it deep link (#1794): the order-detail "Add mapping" rider links here
   // with `?tab=carriers&method=<id>&methodName=<name>` so we open the Delivery
@@ -235,6 +240,7 @@ export function ConnectionMappingsPage(): ReactElement {
     isTabId(requestedTab) &&
     (requestedTab !== 'fulfillment' || supportsOrderSource) &&
     (requestedTab !== 'delivery-on-documents' || supportsOrderSource) &&
+    (requestedTab !== 'gifts-on-documents' || supportsOrderSource) &&
     (requestedTab !== 'order-states' || supportsOrderProcessor);
   const defaultTab: TabId = requestedTabAvailable ? requestedTab : fallbackTab;
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<TabId>>(new Set());
@@ -314,6 +320,7 @@ export function ConnectionMappingsPage(): ReactElement {
       'order-states': make('order-states'),
       'attribute-rules': make('attribute-rules'),
       'delivery-on-documents': make('delivery-on-documents'),
+      'gifts-on-documents': make('gifts-on-documents'),
     } satisfies Record<TabId, (dirty: boolean) => void>;
   }, []);
 
@@ -469,7 +476,10 @@ export function ConnectionMappingsPage(): ReactElement {
       ? [{ id: 'attribute-rules' as const, label: copy.tabs.attributeRules }]
       : []),
     ...(supportsOrderSource
-      ? [{ id: 'delivery-on-documents' as const, label: copy.tabs.deliveryOnDocuments }]
+      ? [
+          { id: 'delivery-on-documents' as const, label: copy.tabs.deliveryOnDocuments },
+          { id: 'gifts-on-documents' as const, label: giftCopy.connection.tab },
+        ]
       : []),
   ];
 
@@ -716,6 +726,15 @@ export function ConnectionMappingsPage(): ReactElement {
         {supportsAttributeRules && (
           <TabsContent value="attribute-rules">
             <AttributeRulesPanel connectionId={connectionId} />
+          </TabsContent>
+        )}
+
+        {supportsOrderSource && (
+          <TabsContent value="gifts-on-documents">
+            <GiftsOnDocumentsPanel
+              connectionId={sourceConnectionId}
+              onDirtyChange={dirtyHandlers['gifts-on-documents']}
+            />
           </TabsContent>
         )}
 

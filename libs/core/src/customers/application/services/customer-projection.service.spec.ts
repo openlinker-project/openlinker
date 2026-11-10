@@ -30,6 +30,7 @@ describe('CustomerProjectionService', () => {
       upsertAddress: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
       findById: jest.fn(),
+      findByIds: jest.fn(),
       findByEmailHash: jest.fn(),
       findDestinationAddressMapping: jest.fn(),
     } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
@@ -271,6 +272,31 @@ describe('CustomerProjectionService', () => {
       expect(result).toBe(mapping);
       expect(repository.upsertDestinationAddressMapping).toHaveBeenCalledWith(mapping);
       // Destination address mapping doesn't contain PII, so no filtering should occur
+    });
+  });
+
+  describe('getProjectionsByIds', () => {
+    it('should read ids in chunks with one query each and key the result by id', async () => {
+      const ids = Array.from({ length: 1001 }, (_, n) => `c${n}`);
+      repository.findByIds.mockImplementation((chunk) =>
+        Promise.resolve(
+          chunk
+            .filter((id) => id === 'c0' || id === 'c1000')
+            .map((id) => ({ internalCustomerId: id }) as unknown as CustomerProjection)
+        )
+      );
+
+      const result = await service.getProjectionsByIds([...ids, 'c0']);
+
+      expect(repository.findByIds).toHaveBeenCalledTimes(3);
+      expect([...result.keys()].sort()).toEqual(['c0', 'c1000']);
+    });
+
+    it('should not query when no ids are given', async () => {
+      const result = await service.getProjectionsByIds([]);
+
+      expect(repository.findByIds).not.toHaveBeenCalled();
+      expect(result.size).toBe(0);
     });
   });
 });

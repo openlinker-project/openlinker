@@ -166,6 +166,31 @@ export class OrderHealthSummaryResponseDto {
 
   @ApiProperty({
     description:
+      'Orders carrying a gift line (#3935) - the ?withGift=true predicate. Orthogonal to the health partition.',
+  })
+  withGift!: number;
+
+  @ApiProperty({
+    description:
+      'Orders carrying a bundle (#3935) - the ?withBundle=true predicate. Orthogonal to the health partition.',
+  })
+  withBundle!: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Orders where a promotion could not give its gift and nobody handled it (#3935) - the ?giftNotAdded=true ' +
+      'predicate. Absent when the promotion log could not be read: the count is unknown, never 0.',
+  })
+  giftNotAdded?: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a gift line the shop refused (#3935) - the ?giftShopRejected=true predicate.',
+  })
+  giftShopRejected!: number;
+
+  @ApiProperty({
+    description:
       'Orders with a ship-by deadline within the next 24 hours or already past (#4025) - the ' +
       '?dueBefore=<now + 24h> predicate. Orthogonal to the health partition.',
   })

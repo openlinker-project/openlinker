@@ -1301,12 +1301,75 @@ describe('PrestashopProductMasterAdapter', () => {
     });
   });
 
-  describe('write operations (not supported)', () => {
-    it('should throw PrestashopNotSupportedException for createProduct', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- test mock: explicit any narrows the dynamic spy / fixture shape
-      await expect(adapter.createProduct({ name: 'New Product' } as any)).rejects.toThrow(
-        PrestashopNotSupportedException
-      );
+  describe('write operations', () => {
+    it('should declare that it can create products', () => {
+      expect(adapter.productCreationMode).toBe('simple-product');
+    });
+
+    describe('createProduct (#3935)', () => {
+      const country = { countryId: 14, iso2: 'PL', taxesEnabled: true };
+      const input = { name: 'Zestaw', sku: 'SET-1', price: 123, taxRate: '23', ean: '5901234000161' };
+
+      function creator(
+        found: number | null,
+        taxesEnabled = true
+      ): PrestashopProductMasterAdapter {
+        return createGrossAdapter(
+          { resolve: jest.fn().mockResolvedValue({ ...country, taxesEnabled }) },
+          { findTaxRulesGroupForRate: jest.fn().mockResolvedValue(found) } as never
+        );
+      }
+
+      it('should write the net price with the tax group and the SKU as reference', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+        mockHttpClient.createResource = jest.fn().mockResolvedValue({ id: '77' });
+        const built = creator(1);
+        jest.spyOn(built, 'getProduct').mockResolvedValue({ id: 'ol_product_x' } as never);
+
+        await built.createProduct(input);
+
+        const calls = (mockHttpClient.createResource as jest.Mock).mock.calls as unknown[][];
+        const body = calls[0][1] as Record<string, unknown>;
+        expect(body).toMatchObject({
+          reference: 'SET-1',
+          price: '100.000000',
+          id_tax_rules_group: '1',
+          ean13: '5901234000161',
+        });
+        expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+          'Product',
+          '77',
+          connection.id
+        );
+      });
+
+      it('should adopt the product that already carries the SKU instead of creating a second', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([{ id: 5, reference: 'SET-1' }]);
+        mockHttpClient.createResource = jest.fn();
+        const built = creator(1);
+        jest.spyOn(built, 'getProduct').mockResolvedValue({ id: 'ol_product_x' } as never);
+
+        await built.createProduct(input);
+
+        expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+        expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+          'Product',
+          '5',
+          connection.id
+        );
+      });
+
+      it('should refuse, naming the rate, when the shop has no tax group for it', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+        await expect(creator(null).createProduct(input)).rejects.toThrow(/charges 23%/);
+      });
+
+      it('should refuse when no tax rate is known for the components', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+        await expect(
+          creator(1).createProduct({ name: 'Zestaw', sku: 'SET-2', price: 10 })
+        ).rejects.toThrow(/No tax rate is known/);
+      });
     });
 
     it('should throw PrestashopNotSupportedException for updateProduct', async () => {

@@ -74,7 +74,7 @@ export type { PaymentMethod } from './domain/types/payment-method.types';
 // Type-only (#3929): the bundles/gifts work in a sibling context names a gift line
 // without reaching the main barrel, which re-exports `OrdersModule`. The value list
 // stays on the main barrel until a consumer needs it here.
-export type { LineGift, GiftSource } from './domain/types/incoming-order.types';
+export type { LineGift, GiftSource, GiftDocumentForm } from './domain/types/incoming-order.types';
 export type { Order } from './domain/types/order.types';
 export { OrderStatusValues } from './domain/types/order.types';
 export type { OrderStatus } from './domain/types/order.types';

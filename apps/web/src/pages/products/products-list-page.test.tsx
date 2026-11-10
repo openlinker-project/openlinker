@@ -1571,6 +1571,7 @@ describe('ProductsListPage', () => {
           availableToPromise: 128,
           atpProvenance: 'computed',
           bundle: null,
+          usedInBundlesCount: 2,
         },
       ],
       total: 3,
@@ -1593,6 +1594,12 @@ describe('ProductsListPage', () => {
       });
       return mockApi;
     }
+
+    it('should say how many bundles a component product is part of', async () => {
+      mountBundles();
+      expect(await screen.findByTestId('product-used-in-bundles-KAW-250-ETI')).toBeInTheDocument();
+      expect(screen.queryByTestId('product-used-in-bundles-ZES-PORANNY')).not.toBeInTheDocument();
+    });
 
     it('should mark a bundle, show its availability and name the component that limits it', async () => {
       mountBundles();
