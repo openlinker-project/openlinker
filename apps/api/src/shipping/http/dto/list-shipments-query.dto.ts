@@ -65,6 +65,17 @@ export class ListShipmentsQueryDto {
 
   @ApiPropertyOptional({
     description:
+      'true → only shipments a carrier issued (a provider shipment id exists); false → only rows without one. Backs the Processor = carrier filter (#839, #4043); before #4043 the web app sent it and this API refused it as an unknown parameter.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
+  @IsBoolean()
+  hasProviderShipmentId?: boolean;
+
+  @ApiPropertyOptional({
+    description:
       'true → only shipments whose waybill relay has failed at least OL_WAYBILL_RELAY_FAILURE_ALERT_THRESHOLD times in a row (#2073) — the needs-attention bucket for a relay the marketplace never received. false is accepted and, like omitting the parameter, applies no filter: there is no meaningful "not stuck" cohort to select, since a shipment with no failures and one with two are equally not-escalated.',
   })
   @IsOptional()

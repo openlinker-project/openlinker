@@ -193,6 +193,8 @@ export interface ProductFilters {
   hideFullyStale?: boolean;
   /** Bundle filter (#3624): only bundles, or everything except bundles. Absent = both. */
   bundles?: 'only' | 'exclude';
+  /** Exactly this product: how a deep link opens a peek for a product off the current page. */
+  productId?: string;
 }
 
 /**

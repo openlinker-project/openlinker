@@ -100,6 +100,7 @@ import { DispatchResultResponseDto } from './dto/dispatch-result-response.dto';
 import { GenerateLabelDto } from './dto/generate-label.dto';
 import { GenerateProtocolDto } from './dto/generate-protocol.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
+import { ShipmentSummaryQueryDto, ShipmentSummaryResponseDto } from './dto/shipment-summary.dto';
 import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
 import { CancelShipmentResponseDto } from './dto/cancel-shipment-response.dto';
@@ -144,22 +145,7 @@ export class ShipmentController {
     // every row's `stuck` flag, so the rows returned and the badges rendered on
     // them cannot be computed from two different thresholds.
     const waybillRelayAlertThreshold = resolveWaybillRelayThresholdFromEnv();
-    const filters: ShipmentFilters = {
-      orderId: query.orderId,
-      status: query.status,
-      direction: query.direction,
-      connectionId: query.connectionId,
-      shippingMethod: query.shippingMethod,
-      hasTracking: query.hasTracking,
-      // The boolean is translated to the numeric floor HERE, at the HTTP
-      // boundary — which is also where `createdFrom`/`createdTo` are coerced
-      // from strings. `false` deliberately applies no filter rather than
-      // selecting the complement: see the query DTO's description.
-      waybillRelayFailureCountAtLeast:
-        query.waybillRelayStuck === true ? waybillRelayAlertThreshold : undefined,
-      createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
-      createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
-    };
+    const filters = this.toFilters(query, waybillRelayAlertThreshold);
 
     const canWrite = this.hasShipmentsWrite(user);
     const page = await this.query.list(filters, { limit, offset });
@@ -179,6 +165,30 @@ export class ShipmentController {
       limit,
       offset,
     };
+  }
+
+  // Declared BEFORE `:id` — Express matches in order, so `:id` would otherwise
+  // capture the literal segment `summary`.
+  // Not `@AnyRole()`: the pack bench never shows these counts, so a packer
+  // has no reason to reach them (#2413).
+  @Roles('admin', 'operator', 'viewer')
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Counts for the shipments list: per status, processor, method and connection, plus what needs a look (#4043)',
+  })
+  @ApiResponse({ status: 200, type: ShipmentSummaryResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async summary(
+    @Query() query: ShipmentSummaryQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ShipmentSummaryResponseDto> {
+    // Resolved once, as in `list`, so the stuck count and the list's stuck
+    // filter can never use two different thresholds.
+    const waybillRelayAlertThreshold = resolveWaybillRelayThresholdFromEnv();
+    const summary = await this.query.summarize(this.toFilters(query, waybillRelayAlertThreshold), {
+      waybillRelayStuckFloor: waybillRelayAlertThreshold,
+    });
+    return ShipmentSummaryResponseDto.fromDomain(summary, this.hasShipmentsWrite(user));
   }
 
   // Declared BEFORE `:id` — Express matches in order, so `:id` would otherwise
@@ -472,6 +482,27 @@ export class ShipmentController {
    * read via `IOrderRecordService` (host-layer composition — orders is reached
    * through its `I*Service`, not its repository).
    */
+  /** The list's filters from its query, shared by `list` and `summary` so their counts agree. */
+  private toFilters(query: ShipmentSummaryQueryDto, waybillRelayAlertThreshold: number): ShipmentFilters {
+    return {
+      orderId: query.orderId,
+      status: query.status,
+      direction: query.direction,
+      connectionId: query.connectionId,
+      shippingMethod: query.shippingMethod,
+      hasTracking: query.hasTracking,
+      hasProviderShipmentId: query.hasProviderShipmentId,
+      // The boolean is translated to the numeric floor HERE, at the HTTP
+      // boundary — which is also where `createdFrom`/`createdTo` are coerced
+      // from strings. `false` deliberately applies no filter rather than
+      // selecting the complement: see the query DTO's description.
+      waybillRelayFailureCountAtLeast:
+        query.waybillRelayStuck === true ? waybillRelayAlertThreshold : undefined,
+      createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
+      createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
+    };
+  }
+
   private async resolveCustomerId(orderId: string): Promise<string | null> {
     // The customer column is a secondary enrichment — a failed order lookup must
     // NOT take down the primary shipments read. Degrade to null on error

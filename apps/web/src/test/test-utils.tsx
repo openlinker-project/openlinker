@@ -185,7 +185,9 @@ export function createMockApiClient(
 ): ApiClient {
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
-    requestBlob: overrides.requestBlob ?? vi.fn(),
+    // Rejects by default: a surface asking for a proxied picture falls back to
+    // its placeholder, as it would when the API has no image.
+    requestBlob: overrides.requestBlob ?? vi.fn().mockRejectedValue(new Error('No image in this test')),
     requestFile: overrides.requestFile ?? vi.fn(),
     requestStream: overrides.requestStream ?? vi.fn(),
     adapters: {
@@ -1252,6 +1254,16 @@ export function createMockApiClient(
         total: 0,
         limit: 20,
         offset: 0,
+      }),
+      summary: vi.fn().mockResolvedValue({
+        total: 0,
+        byStatus: { draft: 0, generated: 0, dispatched: 0, 'in-transit': 0, delivered: 0, failed: 0, cancelled: 0 },
+        byProcessor: { omp: 0, carrier: 0 },
+        byMethod: { paczkomat: 0, pickup: 0, kurier: 0, omp: 0 },
+        byConnection: {},
+        waybillRelayStuck: 0,
+        toSend: 0,
+        failedCauseGroups: [],
       }),
       generateLabel: vi.fn().mockResolvedValue({ kind: 'omp_fulfilled' }),
       cancel: vi.fn().mockResolvedValue({

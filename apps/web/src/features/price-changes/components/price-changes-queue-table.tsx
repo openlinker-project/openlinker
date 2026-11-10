@@ -53,7 +53,8 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
-import { Chip } from '../../../shared/ui/chip';
+import { ActiveFilterChips, type ActiveFilterChip } from '../../../shared/ui/active-filter-chips';
+import { FilterDropdown, FilterGroup } from '../../../shared/ui/filter-dropdown';
 import { ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { DataTableSkeleton } from '../../../shared/ui/data-table-skeleton';
@@ -275,15 +276,6 @@ export function PriceChangesQueueTable(): ReactElement {
   // connection genuinely absent from the response has no open episodes.
   const chipCountsUnavailable = countsQuery.isError;
   const chipCountsKnown = !chipCountsUnavailable && countsQuery.data !== undefined;
-  const renderChipCount = (value: number) => {
-    if (chipCountsUnavailable) {
-      return <span className="chip__count">—</span>;
-    }
-    if (!chipCountsKnown) {
-      return null;
-    }
-    return <span className="chip__count">{value}</span>;
-  };
 
   const connectionCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -554,7 +546,40 @@ export function PriceChangesQueueTable(): ReactElement {
   }
 
   const allSelected = selectedIds.length > 0 && selectedIds.length === selectableIds.length;
-  const hasQueueFilters = connectionFilter !== 'all' || directionFilter !== 'all' || magnitudeOnly;
+  const queueChips: ActiveFilterChip[] = [];
+  if (connectionFilter !== 'all') {
+    const text = destinationConnections.find((c) => c.id === connectionFilter)?.name ?? connectionFilter;
+    queueChips.push({
+      key: 'connection',
+      label: copy.filters.pillConnection,
+      value: text,
+      valueText: text,
+      onRemove: () => {
+        setConnectionFilter('all');
+      },
+    });
+  }
+  if (directionFilter !== 'all') {
+    const text = directionFilter === 'up' ? copy.filters.increases : copy.filters.decreases;
+    queueChips.push({
+      key: 'direction',
+      label: copy.filters.pillDirection,
+      value: text,
+      valueText: text,
+      onRemove: () => {
+        setDirectionFilter('all');
+      },
+    });
+  }
+  if (magnitudeOnly) {
+    queueChips.push({
+      key: 'size',
+      label: copy.filters.pillSize,
+      value: copy.filters.bigChangesShort,
+      valueText: copy.filters.bigChangesShort,
+      onRemove: toggleMagnitudeOnly,
+    });
+  }
 
   /**
    * The classes the queue's rows hung on their own hand-rolled `<tr>` before
@@ -777,11 +802,6 @@ export function PriceChangesQueueTable(): ReactElement {
         >
           {copy.toolbar.pricingRules}
         </Button>
-        {hasQueueFilters ? (
-          <Button tone="ghost" className="button--sm" onClick={clearQueueFilters}>
-            {copy.toolbar.clearFilters}
-          </Button>
-        ) : null}
       </div>
 
       <PricingRulesPickerDialog
@@ -792,35 +812,48 @@ export function PriceChangesQueueTable(): ReactElement {
 
       <AutoAppliedNote destinationConnections={destinationConnections} />
 
-      <div className="filter-bar" role="group" aria-label={copy.filters.connectionGroup}>
-        <span className="filter-bar__label">{copy.filters.connectionLabel}</span>
-        <Chip active={connectionFilter === 'all'} onClick={() => setConnectionFilter('all')}>
-          {copy.filters.all} {renderChipCount(countsQuery.data?.total ?? 0)}
-        </Chip>
-        {destinationConnections.map((connection) => (
-          <Chip
-            key={connection.id}
-            active={connectionFilter === connection.id}
-            onClick={() => setConnectionFilter(connection.id)}
-          >
-            {connection.name} {renderChipCount(connectionCounts.get(connection.id) ?? 0)}
-          </Chip>
-        ))}
-      </div>
-      <div className="filter-bar" role="group" aria-label={copy.filters.directionGroup}>
-        <span className="filter-bar__label">{copy.filters.directionLabel}</span>
-        <Chip active={directionFilter === 'all'} onClick={() => setDirectionFilter('all')}>
-          {copy.filters.all}
-        </Chip>
-        <Chip active={directionFilter === 'up'} onClick={() => setDirectionFilter('up')}>
-          {copy.filters.increases}
-        </Chip>
-        <Chip active={directionFilter === 'down'} onClick={() => setDirectionFilter('down')}>
-          {copy.filters.decreases}
-        </Chip>
-        <Chip active={magnitudeOnly} onClick={toggleMagnitudeOnly}>
-          {copy.filters.bigChanges}
-        </Chip>
+      {/* One joined group with pills (#4046), the list filter system the
+          orders, products, shipments and listings pages share. */}
+      <div className="list-filters">
+        <div className="list-toolbar">
+          <FilterGroup aria-label={copy.filters.filterGroupAria}>
+            <FilterDropdown
+              label={copy.filters.connectionLabel}
+              anyLabel={copy.filters.anyConnection}
+              value={connectionFilter === 'all' ? null : connectionFilter}
+              options={destinationConnections.map((connection) => ({
+                value: connection.id,
+                label: connection.name,
+                count: chipCountsKnown && !chipCountsUnavailable ? (connectionCounts.get(connection.id) ?? 0) : undefined,
+              }))}
+              onChange={(next) => {
+                setConnectionFilter(next ?? 'all');
+              }}
+            />
+            <FilterDropdown<'up' | 'down'>
+              label={copy.filters.directionLabel}
+              anyLabel={copy.filters.anyDirection}
+              value={directionFilter === 'all' ? null : directionFilter}
+              options={[
+                { value: 'up', label: copy.filters.increases },
+                { value: 'down', label: copy.filters.decreases },
+              ]}
+              onChange={(next) => {
+                setDirectionFilter(next ?? 'all');
+              }}
+            />
+            <FilterDropdown<'big'>
+              label={copy.filters.sizeLabel}
+              anyLabel={copy.filters.anySize}
+              value={magnitudeOnly ? 'big' : null}
+              options={[{ value: 'big', label: copy.filters.bigChanges }]}
+              onChange={(next) => {
+                if ((next === 'big') !== magnitudeOnly) toggleMagnitudeOnly();
+              }}
+            />
+          </FilterGroup>
+        </div>
+        <ActiveFilterChips chips={queueChips} onClearAll={clearQueueFilters} clearAllLabel={copy.toolbar.clearAll} />
       </div>
 
       {query.data && query.data.hiddenStaleCount > 0 ? (

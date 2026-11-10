@@ -1,10 +1,6 @@
 {
   "costCoverageBanner": {
-    "addCostPrices": "Dodaj ceny zakupu",
-    "bodyAddCosts": "Dodaj koszty, a zamówienia złożone od teraz będą wliczane do marży.",
     "bodyNetSales": "Ich sprzedaż netto wyniosła {amount} i nie jest wliczona do marży.",
-    "bodyNothingElse": "Nic innego się nie zmienia: zamówienia, oferty i faktury działają tak samo z kosztem i bez niego.",
-    "dismiss": "Ukryj do końca sesji",
     "title": {
       "few": "{n} warianty sprzedane w ostatnich {days} dniach nie mają ceny zakupu",
       "many": "{n} wariantów sprzedanych w ostatnich {days} dniach nie ma ceny zakupu",
@@ -314,10 +310,16 @@
     "viewerTitle": "Podgląd zdjęć: {name}"
   },
   "productRowDetail": {
+    "columns": {
+      "listedOn": "Wystawiony w",
+      "stock": "Stan",
+      "variant": "Wariant"
+    },
     "createOffer": "+ Utwórz ofertę",
     "deletedAtSource": "Usunięty w źródle",
     "ean": "EAN {ean}",
-    "liveMarketplaceStatus": "Bieżący status w marketplace",
+    "identifiersHeading": "Identyfikatory",
+    "liveMarketplaceStatus": "Oferty w marketplace",
     "loading": {
       "message": "Pobieranie stanów wariantów…",
       "title": "Wczytywanie wariantów"
@@ -329,8 +331,7 @@
       "notFound": "Nie znaleziono produktu",
       "title": "Nie udało się wczytać wariantów"
     },
-    "variantsHeading": "Warianty i stany",
-    "variantsHeadingWithCount": "Warianty i stany ({n})"
+    "variantsHeading": "Warianty i stany"
   },
   "productSourceSection": {
     "alsoMappedOn": "Zmapowany także w",
@@ -391,20 +392,7 @@
     },
     "eyebrow": "Operacje",
     "filters": {
-      "all": "Wszystkie {total}",
       "clear": "Wyczyść filtry",
-      "hideDeleted": "Ukryj usunięte w źródle",
-      "noCostPrice": "Bez ceny zakupu",
-      "panel": {
-        "asc": "Rosnąco",
-        "deletedAtSource": "Usunięte w źródle",
-        "desc": "Malejąco",
-        "listings": "Oferty",
-        "sort": "Sortowanie",
-        "sortBy": "Sortuj według",
-        "source": "Źródło",
-        "stock": "Stan"
-      },
       "results": {
         "few": "{total} wyniki",
         "many": "{total} wyników",
@@ -413,38 +401,134 @@
       },
       "searchLabel": "Szukaj produktów po nazwie lub SKU",
       "searchPlaceholder": "Szukaj po nazwie lub SKU…",
-      "sourceAll": "Źródło: wszystkie połączenia",
       "sourceLabel": "Filtruj po połączeniu źródłowym",
       "stockChips": {
         "low": "Niski stan",
         "out": "Brak w magazynie",
         "oversold": "Ponad stan"
       },
-      "toggle": "Filtry",
       "unlistedOn": "Niewystawione w {name}"
     },
-    "kpi": {
-      "listingGaps": "Braki w ofertach",
-      "lowStock": "Niski stan",
-      "noTaxRate": "Brak stawki VAT",
-      "outOfStock": "Brak w magazynie",
-      "products": "Produkty"
+    "listFilters": {
+      "allConnections": "Wszystkie połączenia",
+      "allFiltersTitle": "Wszystkie filtry",
+      "allProducts": "Wszystkie produkty",
+      "anyListing": "Dowolny stan ofert",
+      "anyStock": "Dowolny stan magazynowy",
+      "anyTax": "Dowolna",
+      "attention": {
+        "cost": {
+          "label": "Cena zakupu",
+          "setCostPrices": "Uzupełnij ceny zakupu",
+          "short": "bez ceny zakupu"
+        },
+        "gaps": {
+          "any": {
+            "desc": "Co najmniej jeden wariant nie jest wystawiony na marketplace, na którym sprzedajesz.",
+            "title": "Na dowolnym marketplace"
+          },
+          "label": "Braki w ofertach",
+          "on": {
+            "desc": "Ma wariant bez oferty na {platform}.",
+            "title": "Niewystawione na {name}"
+          },
+          "short": "braki w ofertach"
+        },
+        "tax": {
+          "label": "Stawka VAT",
+          "missing": {
+            "desc": "Sklep nie ma dla niego stawki VAT. Faktury dla tych produktów czekają.",
+            "title": "Brak"
+          },
+          "notChecked": {
+            "desc": "Stawki przychodzą ze zwykłą synchronizacją produktów. Uruchom ją, żeby sprawdzić.",
+            "title": "Niesprawdzone"
+          },
+          "short": "bez stawki VAT"
+        }
+      },
+      "clearAll": "Wyczyść wszystko",
+      "closeFilters": "Zamknij filtry",
+      "filterGroupAria": "Filtry",
+      "filters": "Filtry",
+      "filtersTitle": "Wszystkie filtry (F)",
+      "groups": {
+        "deleted": "Usunięte w źródle",
+        "listings": "Oferty",
+        "source": "Źródło",
+        "stock": "Stan magazynowy",
+        "taxRate": "Stawka VAT"
+      },
+      "hideDeleted": "Ukryj produkty usunięte w źródle",
+      "needsLook": "Do sprawdzenia",
+      "panelHint": "Wszystkie filtry listy produktów. Zmiany działają od razu.",
+      "pills": {
+        "anyMarketplace": "dowolny marketplace",
+        "deleted": "Usunięte w źródle",
+        "hidden": "Ukryte",
+        "search": "Szukaj",
+        "source": "Źródło",
+        "taxRate": "Stawka VAT",
+        "unlistedOn": "Niewystawione na"
+      },
+      "sectionAny": "Dowolne",
+      "sectionShown": "Widoczne",
+      "showProducts": {
+        "few": "Pokaż {n} produkty",
+        "many": "Pokaż {n} produktów",
+        "one": "Pokaż {n} produkt",
+        "other": "Pokaż {n} produktu"
+      },
+      "showProductsAtLeast": {
+        "few": "Pokaż {n}+ produkty",
+        "many": "Pokaż {n}+ produktów",
+        "one": "Pokaż {n}+ produkt",
+        "other": "Pokaż {n}+ produktu"
+      },
+      "showProductsUnknown": "Pokaż produkty",
+      "sortMenu": {
+        "createdAt": "Najnowsze",
+        "name": "Nazwa, A-Z",
+        "price": "Najwyższa cena",
+        "sku": "SKU",
+        "stock": "Najniższy stan",
+        "updatedAt": "Ostatnio zmienione"
+      },
+      "sortMenuAria": "Sortuj produkty",
+      "statusTabsAria": "Produkty według stanu magazynowego",
+      "tax": {
+        "missing": "Brak",
+        "notChecked": "Niesprawdzone"
+      },
+      "unlistedAnyMarketplace": "Niewystawione na dowolnym marketplace",
+      "unlistedAnywhere": "Z brakami w ofertach"
     },
     "loading": "Wczytywanie produktów…",
+    "peek": {
+      "description": "Stan magazynowy, oferty i warianty tego produktu. Strzałki w górę i w dół przechodzą między produktami.",
+      "details": "Szczegóły",
+      "detailsAria": "Otwórz szczegóły produktu {name}",
+      "editContent": "Edytuj treść",
+      "kicker": "Produkt",
+      "listings": "Oferty",
+      "loadError": "Nie udało się wczytać produktu",
+      "loadingMessage": "Pobieranie stanów i ofert…",
+      "loadingTitle": "Wczytywanie produktu",
+      "notFound": "Tego produktu nie ma już w katalogu.",
+      "notFoundTitle": "Nie znaleziono produktu",
+      "openProduct": "Otwórz produkt",
+      "retry": "Spróbuj ponownie",
+      "stateAria": "Stan produktu",
+      "stock": "Stan magazynowy",
+      "taxRate": "Stawka VAT",
+      "taxSet": "Ustawiona"
+    },
     "price": {
       "currencyUnknown": "Nieznana waluta"
     },
     "row": {
       "capReached": "Osiągnięto maksimum {max} produktów na partię",
       "capTooltip": "Maks. {max} na partię",
-      "cardVariants": {
-        "few": "{n} warianty",
-        "many": "{n} wariantów",
-        "one": "{n} wariant",
-        "other": "{n} wariantu"
-      },
-      "collapse": "Zwiń stany wariantów dla {name}",
-      "expand": "Rozwiń stany wariantów dla {name}",
       "publish": "+ Opublikuj",
       "select": "Zaznacz {name}",
       "sku": "SKU: <value>{sku}</value>",
@@ -474,16 +558,6 @@
       "toSellWithStatus": "{n} do sprzedaży · {status}"
     },
     "tableCaption": "Produkty",
-    "taxRateSuggestion": {
-      "body": "Stawki przychodzą razem ze zwykłą synchronizacją produktów. Uruchom ją, aby sprawdzić, które pozycje mają stawkę, a którym jej brakuje.",
-      "dismiss": "Ukryj do końca sesji",
-      "title": {
-        "few": "{n} produkty nie były jeszcze sprawdzone pod kątem stawki VAT",
-        "many": "{n} produktów nie było jeszcze sprawdzonych pod kątem stawki VAT",
-        "one": "{n} produkt nie był jeszcze sprawdzony pod kątem stawki VAT",
-        "other": "{n} produktu nie było jeszcze sprawdzone pod kątem stawki VAT"
-      }
-    },
     "title": "Produkty"
   },
   "variantCost": {

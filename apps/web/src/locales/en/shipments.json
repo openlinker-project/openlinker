@@ -137,6 +137,37 @@
     "thisConnection": "this connection"
   },
   "shipmentsPage": {
+    "attention": {
+      "fix": {
+        "groupCount": {
+          "one": "{n} on {connection}",
+          "other": "{n} on {connection}"
+        },
+        "itemDesc": "The carrier rejected the label. The row says why.",
+        "itemTitle": "Failed shipments",
+        "label": "Failed - needs fixing",
+        "sameProblem": "Same problem on one connection",
+        "settings": "Settings",
+        "short": "to fix",
+        "show": "Show",
+        "unknownConnection": "this connection"
+      },
+      "label": "Needs a look",
+      "relay": {
+        "itemDesc": "The tracking number has not reached the sales channel. The buyer has not been notified.",
+        "itemTitle": "Tracking not sent to channel",
+        "label": "Tracking not sent",
+        "short": "tracking not sent"
+      },
+      "send": {
+        "draftDesc": "No label yet. Generate one to ship.",
+        "draftTitle": "Drafts",
+        "label": "Waiting for you",
+        "readyDesc": "Label printed, parcel not marked as sent.",
+        "readyTitle": "Label ready",
+        "short": "to send"
+      }
+    },
     "columns": {
       "action": "Action",
       "connection": "Connection",
@@ -144,10 +175,8 @@
       "customer": "Customer",
       "method": "Method",
       "order": "Order",
-      "paczkomat": "Paczkomat",
       "processor": "Processor",
-      "status": "Status",
-      "tracking": "Tracking"
+      "status": "Status"
     },
     "description": "Cross-order rollup of every shipment - filter by status, method, connection, or date.",
     "empty": {
@@ -164,20 +193,59 @@
       "allConnections": "All connections",
       "allMethods": "All methods",
       "allProcessors": "All processors",
-      "allStatuses": "All statuses",
-      "anyRelayState": "Any relay state",
       "anyTracking": "Any tracking",
-      "byConnection": "Filter by connection",
-      "byMethod": "Filter by shipping method",
-      "byProcessor": "Filter by processor",
-      "byRelay": "Filter by tracking relay",
-      "byStatus": "Filter by status",
-      "byTracking": "Filter by tracking",
       "createdFrom": "Created from",
       "createdTo": "Created to",
       "relayStuck": "Tracking not sent to channel",
       "withTracking": "With tracking",
       "withoutTracking": "Without tracking"
+    },
+    "listFilters": {
+      "allFiltersTitle": "All filters",
+      "clearAll": "Clear all",
+      "closeFilters": "Close filters",
+      "connection": "Connection",
+      "filterGroupAria": "Filters",
+      "filters": "Filters",
+      "filtersTitle": "All filters (F)",
+      "from": "From",
+      "groups": {
+        "created": "Created",
+        "tracking": "Tracking"
+      },
+      "method": "Method",
+      "methodLocked": "A processor already picks the method. Clear Processor to choose one.",
+      "panelHint": "Tracking and creation date. Status, processor, method and connection sit above the list.",
+      "pills": {
+        "connection": "Connection",
+        "created": "Created",
+        "createdFrom": "from {date}",
+        "createdTo": "until {date}",
+        "method": "Method",
+        "processor": "Processor",
+        "relay": "Tracking relay",
+        "relayValue": "Not sent to channel",
+        "tracking": "Tracking"
+      },
+      "processor": "Processor",
+      "results": {
+        "one": "{total} result",
+        "other": "{total} results"
+      },
+      "sectionAny": "Any",
+      "showShipments": {
+        "one": "Show {n} shipment",
+        "other": "Show {n} shipments"
+      },
+      "showShipmentsUnknown": "Show shipments",
+      "sortMenu": {
+        "createdAt": "Newest first",
+        "createdAtAsc": "Oldest first",
+        "shippingMethod": "Method",
+        "status": "Status"
+      },
+      "sortMenuAria": "Sort shipments",
+      "to": "To"
     },
     "loading": "Loading shipments…",
     "pagination": {
@@ -185,12 +253,34 @@
       "previous": "Previous",
       "showing": "Showing {from}-{to} of {total}"
     },
+    "peek": {
+      "created": "Created",
+      "description": "Shipment details. Use the arrow keys or j and k to move between shipments.",
+      "details": "Details",
+      "detailsAria": "Open details for shipment {id}",
+      "kicker": "Shipment",
+      "openOrder": "Open order",
+      "processor": "Processor",
+      "shipmentId": "Shipment ID",
+      "stateAria": "Shipment state",
+      "status": "Status",
+      "tracking": "Tracking"
+    },
+    "statusTabs": {
+      "all": "All shipments",
+      "aria": "Shipments by status",
+      "labels": {
+        "cancelled": "Cancelled",
+        "delivered": "Delivered",
+        "dispatched": "Dispatched",
+        "draft": "Draft",
+        "failed": "Failed",
+        "generated": "Generated",
+        "in-transit": "In transit"
+      }
+    },
     "tableCaption": "Shipments",
     "title": "Shipments",
-    "toggle": {
-      "collapse": "Collapse details for shipment {id}",
-      "expand": "Expand details for shipment {id}"
-    },
     "triageOverflow": {
       "one": "+{n} more group with a shared carrier message.",
       "other": "+{n} more groups with a shared carrier message."

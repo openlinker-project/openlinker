@@ -10,6 +10,13 @@
     "requestFailed": "Request failed",
     "timedOut": "The request timed out."
   },
+  "attentionSummary": {
+    "filtersOn": {
+      "one": "{n} filter on",
+      "other": "{n} filters on"
+    },
+    "unknownCount": "-"
+  },
   "bulkActionBar": {
     "selected": {
       "one": "selected",
@@ -19,6 +26,10 @@
       "one": "{n} item selected",
       "other": "{n} items selected"
     }
+  },
+  "cappedBadges": {
+    "more": "+{n} more",
+    "moreTitle": "Show everything in the side panel"
   },
   "categorySearch": {
     "errorTitle": "Unable to search categories",
@@ -198,6 +209,12 @@
     "showing": "Showing {start}–{end} of <total></total>",
     "totalFailed": "The full count could not be loaded. At least this many match."
   },
+  "peekPanel": {
+    "close": "Close details",
+    "next": "Next ↓",
+    "position": "{index} of {count}",
+    "previous": "↑ Previous"
+  },
   "rangeNumber": {
     "clampOnBlur": "Leaving the field sets it to {value}.",
     "outOfRange": "Enter a whole number from {min} to {max}."
@@ -248,6 +265,19 @@
   "setupStepper": {
     "label": "Setup progress",
     "step": "Step {current} of {total}"
+  },
+  "sidePanel": {
+    "close": "Close"
+  },
+  "sortMenu": {
+    "button": "Sort: {label}",
+    "buttonReversed": "Sort: {label} (reversed)",
+    "defaultMark": "default"
+  },
+  "statusTabs": {
+    "scrollLeft": "Show earlier tabs",
+    "scrollRight": "Show more tabs",
+    "unknownCount": "-"
   },
   "structuredErrors": {
     "copied": "copied",

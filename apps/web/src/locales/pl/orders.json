@@ -1011,17 +1011,86 @@
     "status": "Status"
   },
   "listFilters": {
+    "allFiltersTitle": "Wszystkie filtry",
     "allSources": "Wszystkie źródła",
     "anyFulfilment": "Dowolna realizacja",
     "anyHold": "Dowolny powód wstrzymania",
     "anyPacking": "Dowolne pakowanie",
     "anyPhase": "Dowolny etap",
     "anySla": "Dowolny",
+    "anyStatus": "Wszystkie zamówienia",
     "atRisk": {
       "few": "{n} zagrożone",
       "many": "{n} zagrożonych",
       "one": "{n} zagrożone",
       "other": "{n} zagrożonego"
+    },
+    "attention": {
+      "activeCount": {
+        "few": "{n} filtry włączone",
+        "many": "{n} filtrów włączonych",
+        "one": "{n} filtr włączony",
+        "other": "{n} filtra włączone"
+      },
+      "items": {
+        "atRisk": {
+          "desc": "Termin wysyłki jest blisko.",
+          "label": "Zagrożone"
+        },
+        "breaching": {
+          "desc": "Jeszcze nie wysłane, a termin mija w ciągu doby lub już minął.",
+          "label": "Wysyłka w ciągu 24 godz."
+        },
+        "buyerNote": {
+          "desc": "Przeczytaj ją przed pakowaniem.",
+          "label": "Kupujący zostawił notatkę"
+        },
+        "omsStopped": {
+          "desc": "OpenLinker nie mógł czegoś rozstrzygnąć i potrzebuje Ciebie.",
+          "label": "Zatrzymane przez OpenLinker"
+        },
+        "openReturn": {
+          "desc": "Kupujący rozpoczął zwrot.",
+          "label": "Otwarty zwrot"
+        },
+        "overdue": {
+          "desc": "Termin wysyłki minął.",
+          "label": "Po terminie"
+        },
+        "packBench": {
+          "desc": "Czeka na spakowanie albo jest pakowane.",
+          "label": "Na stanowisku pakowania"
+        },
+        "rateConflict": {
+          "desc": "Sklep i kanał podają różne stawki VAT.",
+          "label": "Konflikt stawki VAT"
+        },
+        "routing": {
+          "desc": "Nie udało się wybrać kanału docelowego dla tego zamówienia.",
+          "label": "Kierowanie zablokowane"
+        },
+        "salesDocs": {
+          "desc": "Nie udało się wystawić faktury ani paragonu.",
+          "label": "Dokument sprzedaży zablokowany"
+        },
+        "waiting": {
+          "desc": "Wstrzymane w OpenLinker, zanim trafi do sklepu.",
+          "label": "Czeka w OpenLinker"
+        }
+      },
+      "late": {
+        "label": "Spóźnione z wysyłką",
+        "short": "spóźnione z wysyłką"
+      },
+      "riskHint": "według terminu",
+      "stuck": {
+        "label": "Zablokowane",
+        "short": "zablokowane"
+      },
+      "toHandle": {
+        "label": "Do obsłużenia",
+        "short": "do obsłużenia"
+      }
     },
     "checks": {
       "buyerNote": "Z notatką kupującego",
@@ -1072,6 +1141,7 @@
       "waitingValue": "Czeka"
     },
     "clearAll": "Wyczyść wszystko",
+    "closeFilters": "Zamknij filtry",
     "dispatchRiskOverview": "Ryzyko nadania",
     "fields": {
       "created": "Utworzono",
@@ -1085,6 +1155,7 @@
       "shipBy": "Termin wysyłki",
       "source": "Źródło"
     },
+    "filterGroupAria": "Filtry",
     "fulfilmentOptions": {
       "delivered": "Doręczone",
       "dispatched": "Nadane",
@@ -1105,7 +1176,8 @@
       "source_deleted": "Usunięte w źródle",
       "synced": "Zsynchr."
     },
-    "hideFilters": "Ukryj filtry",
+    "moreFilters": "Filtry",
+    "moreFiltersTitle": "Wszystkie filtry (F)",
     "noFilterResults": {
       "clearFilters": "Wyczyść filtry",
       "message": "Żadne zamówienie nie pasuje do: {summary}. Wyczyść filtry, aby zobaczyć wszystko.",
@@ -1169,7 +1241,6 @@
     },
     "sectionAny": "Dowolne",
     "sectionNone": "Brak",
-    "sheetTitle": "Filtry",
     "showOrders": {
       "few": "Pokaż {n} zamówienia",
       "many": "Pokaż {n} zamówień",
@@ -1188,17 +1259,27 @@
       "on_track": "W terminie",
       "overdue": "Po terminie"
     },
+    "sortMenuAria": "Sortuj zamówienia",
+    "sortOptions": {
+      "createdAt": "Ostatnio zsynchronizowane",
+      "customer": "Klient, A do Z",
+      "dispatchBy": "Termin wysyłki, najbliższy",
+      "fulfillment": "Stan przesyłki",
+      "payment": "Stan płatności",
+      "placedAt": "Najnowsze",
+      "status": "Status",
+      "total": "Najwyższa kwota"
+    },
+    "statusTabsAria": "Zamówienia według stanu synchronizacji",
     "tags": {
       "any": "Dowolny tag",
       "find": "Znajdź tag",
       "groupAria": "Tag",
       "none": "Bez tagów",
       "noneYet": "Nie ma jeszcze tagów."
-    },
-    "toggleTitle": "Pokaż lub ukryj filtry (F)"
+    }
   },
   "listPage": {
-    "allOrders": "Wszystkie zamówienia",
     "bulk": {
       "clear": "Wyczyść",
       "dispatch": "Nadaj ({count})",
@@ -1235,6 +1316,7 @@
       "customer": "Klient",
       "order": "Zamówienie",
       "payment": "Płatność",
+      "placed": "Złożone",
       "shipBy": "Wyślij do",
       "shipment": "Przesyłka",
       "status": "Status",
@@ -1298,8 +1380,6 @@
       "retrying": "Ponawianie…"
     },
     "row": {
-      "collapseDetails": "Zwiń szczegóły zamówienia {id}",
-      "expandDetails": "Rozwiń szczegóły zamówienia {id}",
       "select": "Zaznacz {id}",
       "selectAll": "Zaznacz wszystkie widoczne zamówienia",
       "unselect": "Odznacz {id}",
@@ -2691,6 +2771,37 @@
       "unknown": "Nieznany stan"
     },
     "shopsLabel": "Płatność w każdym sklepie"
+  },
+  "peek": {
+    "billing": "Rozliczenie",
+    "columns": {
+      "open": "Otwórz produkt",
+      "price": "Cena",
+      "product": "Produkt",
+      "quantity": "Ilość",
+      "total": "Razem"
+    },
+    "copyReference": "Kopiuj numer zamówienia",
+    "customer": "Klient",
+    "description": "Podsumowanie zamówienia. Strzałki albo J i K przechodzą między zamówieniami.",
+    "details": "Szczegóły",
+    "detailsAria": "Otwórz szczegóły zamówienia {ref}",
+    "generateLabel": "Wygeneruj etykietę",
+    "invoice": "Faktura",
+    "itemPrice": "{quantity} × {price}",
+    "itemUnmapped": "Jeszcze niepowiązany z produktem z katalogu",
+    "items": "Pozycje",
+    "kicker": "Zamówienie",
+    "money": "Płatność",
+    "openOrder": "Otwórz zamówienie",
+    "openProduct": "Otwórz produkt {name}",
+    "reference": "Numer zamówienia",
+    "shipBy": "Termin wysyłki",
+    "shipment": "Przesyłka",
+    "stateAria": "Stan zamówienia",
+    "status": "Status",
+    "synced": "Zsynchronizowano z OpenLinker",
+    "viewOn": "Zobacz w {channel}"
   },
   "refundConfirmation": {
     "amountHint": "Kwota, którą faktycznie zwrócono. OpenLinker jej nie oblicza.",

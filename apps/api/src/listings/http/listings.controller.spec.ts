@@ -157,6 +157,9 @@ describe('ListingsController', () => {
       countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
+      countAttention: jest
+        .fn()
+        .mockResolvedValue({ sellingDeletedProduct: 0, shopBlocked: 0, shopBlockedByConnection: [] }),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
       findDeadFailedCreationOfferIds: jest.fn().mockResolvedValue([]),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
@@ -364,6 +367,57 @@ describe('ListingsController', () => {
           Ended: 0,
           Unsynced: 90,
         });
+      });
+
+      it('should carry the needs-a-look counts beside the buckets (#4045)', async () => {
+        repository.findManyRows.mockResolvedValue([]);
+        repository.countAttention.mockResolvedValue({
+          sellingDeletedProduct: 2,
+          shopBlocked: 3,
+          shopBlockedByConnection: [
+            { connectionId: 'conn-1', count: 3, problems: [{ code: 'shopKyc', message: 'Verify the shop.' }] },
+          ],
+        });
+
+        const result = await controller.listOfferMappings({
+          includeLifecycleCounts: true,
+          lifecycle: 'Active',
+          shopBlocked: true,
+        });
+
+        expect(result.attentionCounts).toEqual({
+          sellingDeletedProduct: 2,
+          shopBlocked: 3,
+          shopBlockedByConnection: [
+            { connectionId: 'conn-1', count: 3, problems: [{ code: 'shopKyc', message: 'Verify the shop.' }] },
+          ],
+        });
+        // Counted like the tabs: membership filters yes, the selected tab no.
+        expect(repository.countAttention).toHaveBeenCalledWith(
+          expect.not.objectContaining({ lifecycle: expect.anything() }),
+        );
+        expect(repository.countAttention).toHaveBeenCalledWith(expect.objectContaining({ shopBlocked: true }));
+      });
+
+      it('should answer the needs-a-look counts from the count route too (#4045)', async () => {
+        const result = await controller.countOfferMappings({ includeLifecycleCounts: true });
+
+        expect(result.attentionCounts).toEqual({
+          sellingDeletedProduct: 0,
+          shopBlocked: 0,
+          shopBlockedByConnection: [],
+        });
+      });
+
+      it('should forward the two attention filters to the page (#4045)', async () => {
+        repository.findManyRows.mockResolvedValue([]);
+
+        await controller.listOfferMappings({ staleSignal: 'selling', shopBlocked: true, withTotal: false });
+
+        expect(repository.findManyRows).toHaveBeenCalledWith(
+          expect.objectContaining({ staleSignal: 'selling', shopBlocked: true }),
+          { limit: 20, offset: 0 },
+        );
       });
 
       it('should not compute lifecycleCounts, or ask findMany to skip its own total, when not requested', async () => {
@@ -2197,6 +2251,8 @@ describe('ListingsController', () => {
         internalId: 'ol_variant_1',
         search: 'terra',
         lifecycle: 'Draft' as const,
+        staleSignal: 'selling' as const,
+        shopBlocked: true,
       };
 
       await controller.listOfferMappings({ ...query, withTotal: false, limit: 20, offset: 0 });
@@ -2221,6 +2277,8 @@ describe('ListingsController', () => {
         internalId: 'ol_variant_1',
         search: 'terra',
         lifecycle: 'Draft',
+        staleSignal: 'selling',
+        shopBlocked: true,
       });
     });
 

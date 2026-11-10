@@ -1570,6 +1570,44 @@
     }
   },
   "listingsListPage": {
+    "attention": {
+      "label": "Do przejrzenia",
+      "priceChanges": {
+        "body": {
+          "few": "{n} ceny zmieniły się w sklepie i czekają na Twój przegląd, zanim trafią do kanału.",
+          "many": "{n} cen zmieniło się w sklepie i czeka na Twój przegląd, zanim trafią do kanału.",
+          "one": "{n} cena zmieniła się w sklepie i czeka na Twój przegląd, zanim trafi do kanału.",
+          "other": "{n} ceny zmieniło się w sklepie i czeka na Twój przegląd, zanim trafią do kanału."
+        },
+        "bodyUnknown": "Ceny zmienione w sklepie czekają tu na Twój przegląd, zanim trafią do kanału.",
+        "label": "Zmiany cen",
+        "review": "Przejrzyj zmiany cen",
+        "short": "zmian cen"
+      },
+      "sellingDeleted": {
+        "itemDesc": "Produkt usunięto w sklepie, ale kanał nadal go sprzedaje. Wstrzymaj albo zakończ ofertę.",
+        "itemTitle": "Aktywne oferty usuniętego produktu",
+        "label": "Sprzedaż usuniętego produktu",
+        "short": "sprzedaje usunięte"
+      },
+      "shopBlocked": {
+        "affected": {
+          "few": "Dotyczy {n} ofert.",
+          "many": "Dotyczy {n} ofert.",
+          "one": "Dotyczy {n} oferty.",
+          "other": "Dotyczy {n} oferty."
+        },
+        "clear": "Przestań pokazywać tylko zablokowane",
+        "label": "Blokada sklepu",
+        "none": "Żadne połączenie nie zgłasza blokady sklepu dla tych ofert.",
+        "openConnection": "Otwórz połączenie",
+        "scope": "Zgłoszone dla każdej oferty na tym połączeniu, nie dla jednej z nich.",
+        "short": "zablokowane przez sklep",
+        "show": "Pokaż te oferty",
+        "title": "{connection} zgłasza blokadę na poziomie sklepu.",
+        "unknownConnection": "Połączenie"
+      }
+    },
     "card": {
       "channel": "Kanał",
       "channelProblems": "Problemy w kanale",
@@ -1604,16 +1642,6 @@
       "quantity": "Ilość",
       "statusRead": "odczyt statusu",
       "updated": "Zmieniono"
-    },
-    "connectionNotice": {
-      "affectedShown": {
-        "few": "Dotyczy to {n} z widocznych tu ofert.",
-        "many": "Dotyczy to {n} z widocznych tu ofert.",
-        "one": "Dotyczy to {n} z widocznych tu ofert.",
-        "other": "Dotyczy to {n} z widocznych tu ofert."
-      },
-      "summary": "{problems} - jest to zgłaszane dla każdej oferty w połączeniu, a nie dla którejś z nich.",
-      "title": "{connection} zgłasza blokadę na poziomie sklepu"
     },
     "description": "Wszystko, co sprzedajesz w połączonych kanałach, i w jakim stanie jest teraz.",
     "empty": {
@@ -1670,6 +1698,34 @@
       "unnamedProduct": "Produkt bez nazwy"
     },
     "loading": "Wczytywanie ofert…",
+    "peek": {
+      "channel": "Kanał",
+      "checkStatus": "Sprawdź status",
+      "checkingStatus": "Sprawdzanie…",
+      "description": "Szczegóły oferty. Strzałki albo j i k przechodzą między ofertami.",
+      "details": "Szczegóły",
+      "detailsAria": "Otwórz szczegóły: {name}",
+      "ean": "EAN",
+      "editOffer": "Edytuj ofertę",
+      "externalId": "ID zewnętrzne",
+      "kicker": "Oferta",
+      "lifecycle": "Cykl życia",
+      "onChannel": "w kanale",
+      "onChannelRow": "W kanale",
+      "openListing": "Otwórz ofertę",
+      "openProduct": "Otwórz produkt",
+      "sku": "SKU",
+      "stateAria": "Stan oferty",
+      "statusRead": "Odczyt statusu",
+      "whyNotSelling": "Dlaczego się nie sprzedaje"
+    },
+    "pills": {
+      "channel": "Kanał",
+      "needsALook": "Do przejrzenia",
+      "search": "Szukaj",
+      "sellingDeleted": "Sprzedaje usunięte",
+      "shopBlocked": "Zablokowane przez sklep"
+    },
     "publishProducts": "Opublikuj produkty",
     "retry": "Ponów",
     "status": {
@@ -1681,14 +1737,22 @@
     "title": "Oferty",
     "toolbar": {
       "allChannels": "Wszystkie kanały",
-      "channelAriaLabel": "Filtruj po kanale",
-      "clear": "Wyczyść",
+      "channel": "Kanał",
+      "clearAll": "Wyczyść wszystko",
+      "filterGroupAria": "Filtry",
+      "results": {
+        "few": "{total} wyniki",
+        "many": "{total} wyników",
+        "one": "{total} wynik",
+        "other": "{total} wyniku"
+      },
       "searchAriaLabel": "Szukaj ofert po nazwie produktu, SKU, EAN lub ID zewnętrznym",
       "searchPlaceholder": "Nazwa produktu, SKU, EAN lub ID zewnętrzne"
     },
     "views": {
       "all": "Wszystkie oferty",
       "ariaLabel": "Widoki ofert",
+      "countUnavailable": "Liczba niedostępna",
       "priceChanges": "Zmiany cen"
     }
   },
@@ -1878,7 +1942,14 @@
     "notSyncedYet": "Niezsynchronizowana"
   },
   "offerPublicationStatusPanel": {
+    "caption": "Oferty tego produktu w marketplace",
     "checkStatus": "Sprawdź status",
+    "columns": {
+      "action": "Akcja",
+      "offer": "Oferta",
+      "status": "Status",
+      "synced": "Ostatnio sprawdzono"
+    },
     "emptyMessage": "Ten produkt nie jest jeszcze wystawiony w żadnym połączeniu z marketplace.",
     "emptyTitle": "Brak ofert w marketplace",
     "errorTitle": "Nie udało się wczytać statusu publikacji",
@@ -1887,8 +1958,7 @@
     "neverSynced": "Nigdy nie zsynchronizowano",
     "refresh": "Odśwież",
     "refreshing": "Odświeżanie…",
-    "retry": "Ponów",
-    "synced": "Zsynchronizowano <time></time>"
+    "retry": "Ponów"
   },
   "parameterRestrictions": {
     "aboveMax": "{name} może wynosić maks. {max}, a ta wartość to {value}.",

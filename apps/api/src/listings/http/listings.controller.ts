@@ -86,6 +86,7 @@ import type {
   OfferCreationRecord,
   OfferLifecycle,
   OfferLifecycleCounts,
+  OfferAttentionCounts,
   OfferManagerPort,
   OfferMappingListItem,
   OfferPublicationStatusView,
@@ -101,7 +102,10 @@ import { JobEnqueuePort } from '@openlinker/core/sync';
 import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { MarketplaceOfferResponseDto } from './dto/marketplace-offer-response.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
-import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
+import {
+  PaginatedOfferMappingsResponseDto,
+  type OfferAttentionCountsResponseDto,
+} from './dto/paginated-offer-mappings-response.dto';
 import { CountOfferMappingsQueryDto } from './dto/count-offer-mappings-query.dto';
 import type {
   OfferMappingCountFilters,
@@ -189,6 +193,21 @@ function toOfferMappingBucketFilters(
     connectionId: query.connectionId,
     internalId: query.internalId,
     search: query.search,
+    staleSignal: query.staleSignal,
+    shopBlocked: query.shopBlocked,
+  };
+}
+
+/** Readonly domain arrays onto the mutable DTO shape the response declares. */
+function toAttentionCountsDto(counts: OfferAttentionCounts): OfferAttentionCountsResponseDto {
+  return {
+    sellingDeletedProduct: counts.sellingDeletedProduct,
+    shopBlocked: counts.shopBlocked,
+    shopBlockedByConnection: counts.shopBlockedByConnection.map((c) => ({
+      connectionId: c.connectionId,
+      count: c.count,
+      problems: c.problems.map((p) => ({ ...p })),
+    })),
   };
 }
 
@@ -322,8 +341,9 @@ export class ListingsController {
     // filtered set (see `OfferLifecycleValues`'s docblock), so their sum is
     // provably the same number a second `COUNT(DISTINCT)` over the identical
     // join would return. `findManyRows` therefore fetches the page alone.
-    const [lifecycleCounts, items] = await Promise.all([
+    const [lifecycleCounts, attentionCounts, items] = await Promise.all([
       this.offerMappingRepository.countByLifecycle(toOfferMappingBucketFilters(query)),
+      this.offerMappingRepository.countAttention(toOfferMappingBucketFilters(query)),
       this.offerMappingRepository.findManyRows(filters, { limit, offset }),
     ]);
 
@@ -331,6 +351,7 @@ export class ListingsController {
       items: items.map((m) => this.toListDto(m)),
       total: this.deriveTotal(lifecycleCounts, lifecycle),
       lifecycleCounts,
+      attentionCounts: toAttentionCountsDto(attentionCounts),
       limit,
       offset,
     };
@@ -372,10 +393,15 @@ export class ListingsController {
       return { total };
     }
 
-    const lifecycleCounts = await this.offerMappingRepository.countByLifecycle(
-      toOfferMappingBucketFilters(query)
-    );
-    return { total: this.deriveTotal(lifecycleCounts, lifecycle), lifecycleCounts };
+    const [lifecycleCounts, attentionCounts] = await Promise.all([
+      this.offerMappingRepository.countByLifecycle(toOfferMappingBucketFilters(query)),
+      this.offerMappingRepository.countAttention(toOfferMappingBucketFilters(query)),
+    ]);
+    return {
+      total: this.deriveTotal(lifecycleCounts, lifecycle),
+      lifecycleCounts,
+      attentionCounts: toAttentionCountsDto(attentionCounts),
+    };
   }
 
   @AnyRole()
