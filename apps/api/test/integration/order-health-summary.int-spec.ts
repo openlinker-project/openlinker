@@ -8,6 +8,11 @@
  * needs_attention and awaiting_mapping over a failed sync), the partition
  * invariant (buckets sum to total), and the source-scope filter.
  *
+ * #4025 adds the orders-list filter counts: each new count equals the row
+ * total of its matching LIST filter, the three `attention` totals are unions
+ * (an order matching two members counts once), `bySource` ignores the source
+ * scope itself, and `sort=placedAt` puts NULL placement dates last both ways.
+ *
  * @module apps/api/test/integration
  */
 import type { IntegrationTestHarness } from './setup';
@@ -521,6 +526,127 @@ describe('Order health summary (integration)', () => {
 
       const after = await repository.findById(seeded.internalOrderId);
       expect(after?.salesDocumentBlockReason).toBe('trigger-model-manual');
+    });
+  });
+
+  describe('#4025 filter counts and placed-date sort', () => {
+    const HOUR = 60 * 60 * 1000;
+    const PAGE = { limit: 100, offset: 0 };
+
+    /** Overlapping fixtures: several orders match more than one filter in a group. */
+    async function seed(): Promise<{ openReturnIds: string[] }> {
+      const ds = harness.getDataSource();
+      const now = Date.now();
+      // Overdue AND waiting in OpenLinker AND an actionable buyer note: one order
+      // in all three groups, each counted once per group.
+      await createTestOrderRecord(ds, {
+        internalOrderId: 'ol_order_4025_a',
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        dispatchByAt: new Date(now - 2 * HOUR),
+        fulfillmentBlockReason: 'routing-failed',
+        hasBuyerNote: true,
+      });
+      // At risk AND due within 24 h: both late-to-ship members, counted once.
+      await createTestOrderRecord(ds, {
+        internalOrderId: 'ol_order_4025_b',
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        dispatchByAt: new Date(now + 3 * HOUR),
+      });
+      // Buyer note on an order that is NOT ready: excluded by the filter's own
+      // `recordStatus = 'ready'` rule, so excluded from the count too.
+      await createTestOrderRecord(ds, {
+        internalOrderId: 'ol_order_4025_c',
+        sourceConnectionId: SOURCE_B,
+        recordStatus: 'awaiting_mapping',
+        hasBuyerNote: true,
+      });
+      // Open return, nothing else.
+      await createTestOrderRecord(ds, {
+        internalOrderId: 'ol_order_4025_d',
+        sourceConnectionId: SOURCE_B,
+        recordStatus: 'ready',
+      });
+      // Healthy order far from its deadline: in no group.
+      await createTestOrderRecord(ds, {
+        internalOrderId: 'ol_order_4025_e',
+        sourceConnectionId: SOURCE_B,
+        recordStatus: 'ready',
+        dispatchByAt: new Date(now + 72 * HOUR),
+      });
+      return { openReturnIds: ['ol_order_4025_d', 'ol_order_4025_a'] };
+    }
+
+    it('should report each new count equal to the list total for the matching filter', async () => {
+      const { openReturnIds } = await seed();
+      const summary = await repository.countByHealth({ openReturnOrderIds: openReturnIds });
+
+      const dueBefore = new Date(Date.now() + 24 * HOUR);
+      expect(summary.dueWithin24h).toBe(await repository.countMany({ dueBefore }));
+      expect(summary.hasBuyerNote).toBe(await repository.countMany({ hasBuyerNote: true }));
+      expect(summary.openReturn).toBe(
+        await repository.countMany({ hasOpenReturn: true, openReturnOrderIds: openReturnIds })
+      );
+      expect(summary.dueWithin24h).toBe(2);
+      expect(summary.hasBuyerNote).toBe(1);
+      expect(summary.openReturn).toBe(2);
+    });
+
+    it('should count each order once per attention group when it matches several members', async () => {
+      const { openReturnIds } = await seed();
+      const summary = await repository.countByHealth({ openReturnOrderIds: openReturnIds });
+
+      // a (overdue + due) and b (at risk + due) -> 2, not 4.
+      expect(summary.attention.lateToShip).toBe(2);
+      // a (waiting) -> 1.
+      expect(summary.attention.stuck).toBe(1);
+      // a (buyer note + open return) and d (open return) -> 2, not 3.
+      expect(summary.attention.toHandle).toBe(2);
+    });
+
+    it('should report zero open returns when no id list is supplied, without narrowing other counts', async () => {
+      await seed();
+      const summary = await repository.countByHealth({});
+
+      expect(summary.openReturn).toBe(0);
+      expect(summary.attention.toHandle).toBe(1);
+      expect(summary.total).toBe(5);
+    });
+
+    it('should count by source with the source scope itself removed', async () => {
+      await seed();
+      const scoped = await repository.countByHealth({ sourceConnectionId: SOURCE_A });
+
+      expect(scoped.total).toBe(2);
+      expect(scoped.bySource).toEqual({ [SOURCE_A]: 2, [SOURCE_B]: 3 });
+    });
+
+    it('should sort by placed date with NULL dates last in both directions', async () => {
+      const ds = harness.getDataSource();
+      await createTestOrderRecord(ds, { internalOrderId: 'ol_order_4025_p_null', placedAt: null });
+      await createTestOrderRecord(ds, {
+        internalOrderId: 'ol_order_4025_p_old',
+        placedAt: new Date('2026-10-01T10:00:00Z'),
+      });
+      await createTestOrderRecord(ds, {
+        internalOrderId: 'ol_order_4025_p_new',
+        placedAt: new Date('2026-11-01T10:00:00Z'),
+      });
+
+      const desc = await repository.findManyRows({ sort: 'placedAt', dir: 'desc' }, PAGE);
+      const asc = await repository.findManyRows({ sort: 'placedAt', dir: 'asc' }, PAGE);
+
+      expect(desc.map((r) => r.internalOrderId)).toEqual([
+        'ol_order_4025_p_new',
+        'ol_order_4025_p_old',
+        'ol_order_4025_p_null',
+      ]);
+      expect(asc.map((r) => r.internalOrderId)).toEqual([
+        'ol_order_4025_p_old',
+        'ol_order_4025_p_new',
+        'ol_order_4025_p_null',
+      ]);
     });
   });
 });

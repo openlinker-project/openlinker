@@ -56,6 +56,7 @@ export const DEFAULT_ORDER_SORT: OrderSortValue = 'dispatchBy';
 export const DEFAULT_ORDER_SORT_DIR: Record<OrderSortValue, OrderSortDirection> = {
   dispatchBy: 'asc',
   createdAt: 'desc',
+  placedAt: 'desc',
   customer: 'asc',
   items: 'desc',
   status: 'asc',
