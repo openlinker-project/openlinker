@@ -10,35 +10,28 @@
  * @module apps/api/test/integration/prestashop
  */
 import { randomUUID } from 'crypto';
-import type { RowDataPacket } from 'mysql2/promise';
-import { createConnection } from 'mysql2/promise';
+import { createConnection, RowDataPacket } from 'mysql2/promise';
 
-import type {
-  IIdentifierMappingService} from '@openlinker/core/identifier-mapping';
 import {
-  IDENTIFIER_MAPPING_SERVICE_TOKEN
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  IIdentifierMappingService,
 } from '@openlinker/core/identifier-mapping';
-import type { IOrderIngestionService } from '@openlinker/core/orders';
-import { ORDER_INGESTION_SERVICE_TOKEN } from '@openlinker/core/orders';
+import { ORDER_INGESTION_SERVICE_TOKEN, IOrderIngestionService } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 
 import { describeUnsuccessfulSync, destinationOrderIdFromRef } from '../helpers/order-ref.helper';
-import type { IntegrationTestHarness} from '../setup';
-import { getTestHarness, resetTestHarness } from '../setup';
-import type {
-  PrestashopTestContainer} from '../helpers/prestashop-container.helper';
+import { getTestHarness, IntegrationTestHarness, resetTestHarness } from '../setup';
 import {
+  PrestashopTestContainer,
   startSharedPrestashopContainer,
 } from '../helpers/prestashop-container.helper';
-import type {
-  DefaultPrestashopCarriers} from '../helpers/prestashop-fixture.helper';
 import {
+  DefaultPrestashopCarriers,
   getDefaultPsCarriers,
   seedPrestashopProductForOrders,
 } from '../helpers/prestashop-fixture.helper';
-import type {
-  AllegroTestSourceStub} from '../helpers/allegro-test-source-stub.helper';
 import {
+  AllegroTestSourceStub,
   installAllegroTestSourceStub,
 } from '../helpers/allegro-test-source-stub.helper';
 import {

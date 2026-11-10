@@ -26,8 +26,7 @@ import { randomBytes } from 'crypto';
 import { closeSync, openSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Connection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
-import { createConnection } from 'mysql2/promise';
+import { createConnection, Connection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 
 export interface PrestashopFixtureSeed {
   /** Generated WS API key — pass this to the connection's credentials store. */
