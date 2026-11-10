@@ -30,6 +30,7 @@
  * @module apps/web/src/features/currency-settings/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -149,7 +150,7 @@ export function CurrencySettingsDialog({
 
         {mutation.error ? (
           <Alert tone="error" title={copy.saveError}>
-            {mutation.error.message}
+            {describeApiError(mutation.error, 'currency-settings')}
           </Alert>
         ) : null}
 

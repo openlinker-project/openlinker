@@ -27,6 +27,7 @@ import { AccessGate } from '../../../shared/ui/access-gate';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
@@ -187,7 +188,7 @@ export function ConnectionCapabilitiesPanel({
 
       {updateMutation.error ? (
         <Alert tone="error" title={copy.errorTitle}>
-          {updateMutation.error.message}
+          {describeApiError(updateMutation.error, 'connections')}
         </Alert>
       ) : null}
 

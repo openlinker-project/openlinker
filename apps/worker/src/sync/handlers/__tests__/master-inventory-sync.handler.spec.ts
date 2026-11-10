@@ -62,6 +62,16 @@ describe('MasterInventorySyncHandler', () => {
     await expect(handler.execute(createJob())).resolves.toEqual({ outcome: 'ok' });
   });
 
+  it('should name the job as the sync run its stock movements share', async () => {
+    masterInventorySync.syncFromMasterByExternalId.mockResolvedValueOnce(result(false));
+
+    await handler.execute(createJob());
+
+    expect(masterInventorySync.syncFromMasterByExternalId).toHaveBeenCalledWith('conn-1', 'ext-9', {
+      syncRunId: 'job-1',
+    });
+  });
+
   it('returns outcome=business_failure when the product was deleted at the master', async () => {
     masterInventorySync.syncFromMasterByExternalId.mockResolvedValueOnce(result(true));
 

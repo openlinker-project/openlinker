@@ -34,6 +34,7 @@
  * @module apps/web/src/shared/ui
  */
 import { forwardRef, useState, type ReactElement } from 'react';
+import { describeApiError } from '../api/describe-api-error';
 import { Button } from './button';
 import { LoadingState, ErrorState, EmptyState } from './feedback-state';
 import { useMessages } from '../i18n/use-messages';
@@ -230,7 +231,7 @@ export const CategoryTreeBrowser = forwardRef<HTMLDivElement, CategoryTreeBrowse
           {error && (
             <ErrorState
               title={copy.errorTitle}
-              message={error.message}
+              message={describeApiError(error, 'ui')}
               action={onRetry ? <Button onClick={onRetry}>{common.retry}</Button> : undefined}
             />
           )}

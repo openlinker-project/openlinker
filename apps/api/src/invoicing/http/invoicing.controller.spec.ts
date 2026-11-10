@@ -682,6 +682,9 @@ describe('InvoicingController', () => {
       expect(body).toEqual({
         message: 'The buyer tax identifier was rejected as invalid.',
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'buyer-tax-id-invalid' },
         failureCode: 'buyer-tax-id-invalid',
       });
       // A marker-classified code keeps its FIXED sentence: the provider's
@@ -706,6 +709,9 @@ describe('InvoicingController', () => {
       expect((error as UnprocessableEntityException).getResponse()).toEqual({
         message: reason,
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'connection-setup-incomplete' },
         failureCode: 'connection-setup-incomplete',
         failureReason: reason,
       });
@@ -727,6 +733,9 @@ describe('InvoicingController', () => {
       expect((error as UnprocessableEntityException).getResponse()).toEqual({
         message: reason,
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'connection-setting-rejected' },
         failureCode: 'connection-setting-rejected',
         failureReason: reason,
       });
@@ -746,6 +755,9 @@ describe('InvoicingController', () => {
       expect((error as UnprocessableEntityException).getResponse()).toEqual({
         message: 'The provider rejected the document (code 57).',
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'provider-rejected' },
         failureCode: 'provider-rejected',
       });
     });
@@ -1633,6 +1645,19 @@ describe('InvoicingController', () => {
 
       await expect(controller.getInvoice('nope')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('should name the code and the invoice id on a 404 (#3864)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+
+      const error = await controller.getInvoice('nope').catch((caught: unknown) => caught);
+
+      expect((error as NotFoundException).getResponse()).toEqual({
+        statusCode: 404,
+        code: 'INVOICE_NOT_FOUND',
+        message: 'Invoice not found: nope',
+        params: { invoiceId: 'nope' },
+      });
+    });
   });
 
   describe('getContent', () => {
@@ -1722,6 +1747,30 @@ describe('InvoicingController', () => {
       await expect(
         controller.downloadDocument('rec-inv-1', mockResponse(), 'source'),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should say why the document is unavailable (#3864)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithSource(null));
+
+      const error = await controller
+        .downloadDocument('rec-inv-1', mockResponse(), 'source')
+        .catch((caught: unknown) => caught);
+
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'INVOICE_DOCUMENT_UNAVAILABLE',
+        params: { invoiceId: 'rec-inv-1', reason: 'no-source', kind: 'source' },
+      });
+    });
+
+    it('should name the unknown kind and the supported ones (#3864)', async () => {
+      const error = await controller
+        .downloadDocument('rec-inv-1', mockResponse(), 'bogus')
+        .catch((caught: unknown) => caught);
+
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: 'DOCUMENT_KIND_UNKNOWN',
+        params: { kind: 'bogus', supported: 'confirmation, source, rendered' },
+      });
     });
 
     it('should 400 on an unknown kind', async () => {

@@ -111,7 +111,7 @@ export function PlaceOrderHoldDialog({
 
         {mutation.isError ? (
           <Alert tone="error">
-            {describeHoldWriteError(mutation.error, copy.errorFallback)}
+            {describeHoldWriteError(mutation.error)}
           </Alert>
         ) : null}
 

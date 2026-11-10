@@ -43,6 +43,7 @@ import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { describeConnectionStatus, OMS_PLATFORM_TYPE } from '../oms/oms-connection';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -428,7 +429,7 @@ export function ConnectionDetailPage(): ReactElement {
       {connectionQuery.error ? (
         <ErrorState
           title={copy.error.title}
-          message={connectionQuery.error.message}
+          message={describeApiError(connectionQuery.error, 'connections')}
           action={
             <button type="button" className="button button--secondary" onClick={() => void connectionQuery.refetch()}>
               {common.retry}

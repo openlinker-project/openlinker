@@ -59,7 +59,7 @@ import {
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
-import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
+import { DUE_WITHIN_WINDOW_MS, SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
   grossRevenueLineAmountSql,
@@ -109,6 +109,7 @@ import {
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
   isTaxRateEra,
+  readSalesDocumentBlockParams,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import { isPaymentMethod } from '../../../domain/types/payment-method.types';
@@ -479,9 +480,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     if (filters.dueBefore) {
       // SLA "breaching / overdue" filter (#927) — only records with a known
       // ship-by deadline at or before the cutoff. NULL deadlines are excluded.
-      qb.andWhere('rec.dispatchByAt IS NOT NULL AND rec.dispatchByAt <= :dueBefore', {
-        dueBefore: filters.dueBefore,
-      });
+      // #4025 - `DUE_BEFORE` is shared with `countByHealth.dueWithin24h`.
+      qb.andWhere(OrderRecordRepository.DUE_BEFORE, { dueBefore: filters.dueBefore });
     }
 
     if (filters.health) {
@@ -660,9 +660,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // an order that went back to `awaiting_mapping` keeps the flag but is not
       // one an operator can work on. `false` is deliberately unchanged.
       qb.andWhere(
-        filters.hasBuyerNote
-          ? `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
-          : 'rec."hasBuyerNote" = false'
+        filters.hasBuyerNote ? OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE : 'rec."hasBuyerNote" = false'
       );
     }
 
@@ -856,26 +854,92 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'sales_document_issued_on_request'
       );
 
+    // #4025 - counts for the redesigned orders filters. Every one reads the
+    // SAME predicate its list filter arm uses, and the three `attention_*`
+    // totals are UNIONS (an order matching two members counts once), which is
+    // why they are computed here rather than summed in the browser.
+    const now = new Date();
+    const openReturnIds = filters.openReturnOrderIds ?? [];
+    const hasOpenReturn =
+      openReturnIds.length > 0 ? `rec."internalOrderId" IN (:...summaryOpenReturnIds)` : 'FALSE';
+    const notShipped = OrderRecordRepository.NOT_SHIPPED;
+    // SLA overdue OR at risk == not shipped with a deadline at or before the
+    // at-risk cutoff - the union of `applySlaFilter`'s two arms.
+    const slaLate = `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :summarySlaCutoff`;
+    // Bound under its own name so a list-filter `:dueBefore` on a shared scope
+    // can never replace the summary's window.
+    const dueSoon = OrderRecordRepository.DUE_BEFORE.replace(':dueBefore', ':summaryDueBefore');
+    const stuck = [
+      OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED,
+      OrderRecordRepository.HAS_OMS_ATTENTION,
+      OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED,
+      OrderRecordRepository.IS_WAITING_IN_OPENLINKER,
+      OrderRecordRepository.HAS_TAX_RATE_CONFLICT,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    const toHandle = [
+      OrderRecordRepository.IS_ON_PACK_BENCH,
+      OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE,
+      hasOpenReturn,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    qb.addSelect(`COUNT(*) FILTER (WHERE ${hasOpenReturn})`, 'open_return')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`, 'has_buyer_note')
+      .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
+      .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
+      .addSelect(`COUNT(*) FILTER (WHERE ${toHandle})`, 'attention_to_handle')
+      .setParameters({
+        summaryDueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
+        summarySlaCutoff: new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS),
+        ...(openReturnIds.length > 0 ? { summaryOpenReturnIds: openReturnIds } : {}),
+      });
+
     OrderRecordRepository.applySummaryScope(qb, filters);
 
-    const raw = await qb.getRawOne<{
-      total: string;
-      source_deleted: string;
-      awaiting_mapping: string;
-      needs_attention: string;
-      synced: string;
-      awaiting_dispatch: string;
-      sales_document_blocked: string;
-      tax_rate_conflict: string;
-      oms_attention: string;
-      payment_not_sent: string;
-      destination_routing_blocked: string;
-      waiting_in_openlinker: string;
-      waiting_in_openlinker_oldest_at: Date | null;
-      on_pack_bench: string;
-      sales_document_blocked_oldest_at: Date | null;
-      sales_document_issued_on_request: string;
-    }>();
+    // #4025 - per-source counts with the source axis itself removed, so the
+    // Source filter keeps a number beside every option while one is selected.
+    // Independent of the main aggregate, so the two scans run concurrently.
+    const bySourceQb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."sourceConnectionId"', 'source_connection_id')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('rec."sourceConnectionId"');
+    OrderRecordRepository.applySummaryScope(bySourceQb, { ...filters, sourceConnectionId: undefined });
+
+    const [raw, bySourceRows] = await Promise.all([
+      qb.getRawOne<{
+        total: string;
+        source_deleted: string;
+        awaiting_mapping: string;
+        needs_attention: string;
+        synced: string;
+        awaiting_dispatch: string;
+        sales_document_blocked: string;
+        tax_rate_conflict: string;
+        oms_attention: string;
+        payment_not_sent: string;
+        destination_routing_blocked: string;
+        waiting_in_openlinker: string;
+        waiting_in_openlinker_oldest_at: Date | null;
+        on_pack_bench: string;
+        sales_document_blocked_oldest_at: Date | null;
+        sales_document_issued_on_request: string;
+        open_return: string;
+        has_buyer_note: string;
+        due_within_24h: string;
+        attention_late_to_ship: string;
+        attention_stuck: string;
+        attention_to_handle: string;
+      }>(),
+      bySourceQb.getRawMany<{ source_connection_id: string; count: string }>(),
+    ]);
+    const bySource: Record<string, number> = {};
+    for (const row of bySourceRows) {
+      bySource[row.source_connection_id] = Number(row.count);
+    }
 
     return {
       total: Number(raw?.total ?? 0),
@@ -894,6 +958,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       onPackBench: Number(raw?.on_pack_bench ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
+      openReturn: Number(raw?.open_return ?? 0),
+      hasBuyerNote: Number(raw?.has_buyer_note ?? 0),
+      dueWithin24h: Number(raw?.due_within_24h ?? 0),
+      bySource,
+      attention: {
+        lateToShip: Number(raw?.attention_late_to_ship ?? 0),
+        stuck: Number(raw?.attention_stuck ?? 0),
+        toHandle: Number(raw?.attention_to_handle ?? 0),
+      },
     };
   }
 
@@ -1811,6 +1884,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #4025 - the `hasBuyerNote: true` list filter and `countByHealth.hasBuyerNote`
+   * read this ONE predicate (`recordStatus = 'ready'` per #3538 N-20), so the
+   * count and the rows it reveals cannot disagree.
+   */
+  private static readonly HAS_ACTIONABLE_BUYER_NOTE = `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`;
+  /**
+   * #4025 - the `dueBefore` list filter (#927) and `countByHealth.dueWithin24h`
+   * read this ONE predicate; the caller binds `:dueBefore`.
+   */
+  private static readonly DUE_BEFORE = `rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :dueBefore`;
+
+  /**
    * Constant SQL fragments shared by `applyHealthFilter` and `countByHealth`
    * (no user input). `HAS_*` use `@>` containment — matches when `syncStatus[]`
    * contains an entry with the given status; `IS_SOURCE_DELETED` keys the
@@ -2137,6 +2222,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const d = (fallback: 'ASC' | 'DESC'): 'ASC' | 'DESC' =>
       dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : fallback;
     switch (sort) {
+      case 'placedAt':
+        // #4025 - NULLS LAST in BOTH directions: a source that reports no
+        // placement time must never put its orders on top of "newest first".
+        // `IDX_order_records_placedAt_desc` matches the DESC form exactly.
+        qb.orderBy('rec.placedAt', d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
+        return;
       case 'dispatchBy':
         qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST')
           .addOrderBy('rec.createdAt', 'DESC')
@@ -2799,6 +2892,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       block?.reason ?? null,
       block?.unresolvedReason ?? null,
       block?.detail ?? null,
+      block?.params ? JSON.stringify(block.params) : null,
     ];
     let matchedRuleAssignment = '';
     let matchedRuleGuard = '';
@@ -2816,6 +2910,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentBlockParams" = $4::jsonb,
               ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
@@ -2831,6 +2926,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
             OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
+            OR "salesDocumentBlockParams" IS DISTINCT FROM $4::jsonb
             ${matchedRuleGuard})`,
       params
     );
@@ -4126,7 +4222,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       orderEdits,
       // #3963 - coerced at the mapping boundary: an entry this build does not
       // recognise is absent, never present-and-unrenderable.
-      readPaymentWriteback(entity.paymentWriteback)
+      readPaymentWriteback(entity.paymentWriteback),
+      readSalesDocumentBlockParams(entity.salesDocumentBlockParams)
     );
   }
 

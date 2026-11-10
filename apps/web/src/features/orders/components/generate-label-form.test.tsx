@@ -15,6 +15,7 @@ import {
   findToastTitle,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { GenerateLabelForm } from './generate-label-form';
 import type { OrderRecord } from '../api/orders.types';
 
@@ -1142,6 +1143,8 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
       shipments: {
         generateLabel: vi.fn().mockRejectedValue(
           new ApiError('There are some validation errors. Check details object for more info.', 502, {
+            code: 'SHIPPING_PROVIDER_REJECTED',
+            params: { provider: 'InPost' },
             providerCode: 'validation_failed',
             details: {
               fieldErrors: {
@@ -1160,10 +1163,14 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     );
     fillParcelAndSubmit();
 
-    // Generic message still renders (never replaced, only augmented).
+    // The coded sentence renders, and the carrier's own words stay visible
+    // beside it (never replaced, only augmented).
     expect(
-      await screen.findByText(/There are some validation errors\. Check details object/i),
+      await screen.findByText(
+        interpolate(getMessages('errors').codes.SHIPPING_PROVIDER_REJECTED, { provider: 'InPost' }),
+      ),
     ).toBeInTheDocument();
+    expect(screen.getByText(/There are some validation errors\. Check details object/i)).toBeInTheDocument();
 
     // Each rejected field renders as its own row.
     expect(
@@ -1192,7 +1199,9 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('The server said: Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
+    // An uncoded failure carries no carrier words to show.
+    expect(screen.queryByText(/Carrier is unreachable/)).toBeNull();
     // No structured list renders — no empty/broken Alert artefact.
     expect(document.querySelector('.structured-error-list')).toBeNull();
   });
@@ -1217,6 +1226,8 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
           // controller wraps it as `{ message, providerCode, details }`, so on
           // the FE it lands at ApiError.details.details.traceId.
           new ApiError('DPD could not process the shipment.', 502, {
+            code: 'SHIPPING_PROVIDER_REJECTED',
+            params: { provider: 'DPD' },
             providerCode: 'NOT_PROCESSED',
             details: { errorCode: null, info: 'rejected', traceId: 'trace-xyz-789' },
           }),
@@ -1230,7 +1241,12 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText(/DPD could not process the shipment/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        interpolate(getMessages('errors').codes.SHIPPING_PROVIDER_REJECTED, { provider: 'DPD' }),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/DPD could not process the shipment/i)).toBeInTheDocument();
     expect(screen.getByText(/Reference for carrier support/i)).toBeInTheDocument();
     // The trace id is rendered via the shared CopyableId primitive (aria-label
     // `Copy <id>`), which also displays the id verbatim.
@@ -1251,7 +1267,7 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('The server said: Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     expect(screen.queryByText(/Reference for carrier support/i)).toBeNull();
   });
 });

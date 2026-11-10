@@ -572,6 +572,7 @@ export function createMockApiClient(
       // #3568. An install with no movements; the count is only requested for a full page.
       listMovements: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
       countMovements: vi.fn().mockResolvedValue({ total: 0 }),
+      listMovementPushes: vi.fn().mockResolvedValue({ items: [] }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       // #3569 - the honest default is a stock view that names no variants, so a
@@ -1231,6 +1232,16 @@ export function createMockApiClient(
         total: 0,
         limit: 20,
         offset: 0,
+      }),
+      summary: vi.fn().mockResolvedValue({
+        total: 0,
+        byStatus: { draft: 0, generated: 0, dispatched: 0, 'in-transit': 0, delivered: 0, failed: 0, cancelled: 0 },
+        byProcessor: { omp: 0, carrier: 0 },
+        byMethod: { paczkomat: 0, pickup: 0, kurier: 0, omp: 0 },
+        byConnection: {},
+        waybillRelayStuck: 0,
+        toSend: 0,
+        failedCauseGroups: [],
       }),
       generateLabel: vi.fn().mockResolvedValue({ kind: 'omp_fulfilled' }),
       cancel: vi.fn().mockResolvedValue({

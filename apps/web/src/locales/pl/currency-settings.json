@@ -57,7 +57,7 @@
     "adminOnly": "Tylko administrator",
     "body": "Wszystkie kwoty w analityce są raportowane w tej walucie. Nie dotyczy to faktur - wyliczają własny kurs.",
     "eyebrow": "Platforma",
-    "loadError": "Nie udało się wczytać ustawień waluty: {message}",
+    "loadError": "Nie udało się wczytać ustawień waluty.",
     "loading": "Wczytywanie ustawień waluty…",
     "notConfigured": "Nie skonfigurowano",
     "rateDateRule": "Reguła daty kursu",

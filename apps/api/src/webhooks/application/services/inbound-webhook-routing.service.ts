@@ -81,7 +81,7 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
         resolveError instanceof ConnectionNotFoundException ||
         resolveError instanceof ConnectionDisabledException
       ) {
-        return { kind: 'unroutable', reason: `connection-unavailable: ${resolveError.message}` };
+        return { kind: 'unroutable', code: 'connection-unavailable', reason: `connection-unavailable: ${resolveError.message}` };
       }
       throw new WebhookRoutingUnavailableException(
         event.provider,
@@ -95,7 +95,7 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
     // decode webhooks (poll-only).
     const translator = this.translatorRegistry.get(metadata.adapterKey);
     if (!translator) {
-      return { kind: 'unroutable', reason: `no-translator: ${metadata.adapterKey}` };
+      return { kind: 'unroutable', code: 'no-translator', reason: `no-translator: ${metadata.adapterKey}` };
     }
 
     // A translator THROWING is a deterministic fault about this payload, not a
@@ -109,6 +109,7 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
     } catch (translateError) {
       return {
         kind: 'unroutable',
+        code: 'translator-threw',
         reason: `translator-threw: ${metadata.adapterKey}: ${
           translateError instanceof Error ? translateError.message : String(translateError)
         }`,
@@ -118,6 +119,7 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
     if (canonicals.length === 0) {
       return {
         kind: 'unroutable',
+        code: 'undecodable',
         reason: `undecodable: objectType=${event.objectType}, eventType=${event.eventType}`,
       };
     }
@@ -177,7 +179,7 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
 
     const [primary, ...rest] = jobs;
     if (primary === undefined) {
-      return { kind: 'unroutable', reason: `ungated: ${ungated.join('; ')}` };
+      return { kind: 'unroutable', code: 'ungated', reason: `ungated: ${ungated.join('; ')}` };
     }
     if (ungated.length > 0) {
       // Partial routing is still routing: the resolvable changes go ahead and

@@ -16,14 +16,24 @@ import type {
   InventoryMovementFilters,
   InventoryMovementPagination,
 } from '../../domain/types/inventory-movement.types';
-import { INVENTORY_MOVEMENT_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import {
+  CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN,
+  INVENTORY_MOVEMENT_REPOSITORY_TOKEN,
+} from '../../inventory.tokens';
+import { ChannelQuantityPushRepositoryPort } from '../../domain/ports/channel-quantity-push-repository.port';
+import type {
+  ChannelQuantityPush,
+  LastChannelQuantityPush,
+} from '../../domain/types/channel-quantity-push.types';
 import type { IInventoryMovementService } from './inventory-movement.service.interface';
 
 @Injectable()
 export class InventoryMovementService implements IInventoryMovementService {
   constructor(
     @Inject(INVENTORY_MOVEMENT_REPOSITORY_TOKEN)
-    private readonly movements: InventoryMovementRepositoryPort
+    private readonly movements: InventoryMovementRepositoryPort,
+    @Inject(CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN)
+    private readonly pushes: ChannelQuantityPushRepositoryPort
   ) {}
 
   listMovements(
@@ -37,7 +47,23 @@ export class InventoryMovementService implements IInventoryMovementService {
     return this.movements.countHistory(filters);
   }
 
-  pruneOlderThan(cutoff: Date, batchSize: number): Promise<number> {
-    return this.movements.pruneOlderThan(cutoff, batchSize);
+  async pruneOlderThan(cutoff: Date, batchSize: number): Promise<number> {
+    const movements = await this.movements.pruneOlderThan(cutoff, batchSize);
+    const pushes = await this.pushes.pruneOlderThan(cutoff, batchSize);
+    return movements + pushes;
+  }
+
+  async listChannelPushes(movementId: string): Promise<ChannelQuantityPush[] | null> {
+    const movement = await this.movements.findById(movementId);
+    if (movement === null) return null;
+    // A push names the stock observation it expressed: the inventory row's
+    // `updatedAt`, which is exactly the movement's `occurredAt`. Without a
+    // variant there is nothing to match on.
+    if (movement.productVariantId === null) return [];
+    return this.pushes.findForObservation(movement.productVariantId, movement.occurredAt);
+  }
+
+  getLastChannelPushes(productVariantIds: readonly string[]): Promise<LastChannelQuantityPush[]> {
+    return this.pushes.findLatestByVariantIds(productVariantIds);
   }
 }

@@ -36,7 +36,7 @@
       "hint": "Włącz, aby wybierać kategorie i uzupełniać wymagane parametry z listy, tak jak w Allegro. Gdy jest wyłączone, ID kategorii wpisuje się ręcznie.",
       "label": "Przeglądaj kategorie Allegro podczas tworzenia ofert Erli"
     },
-    "configSaveFailed": "Nie udało się zapisać ustawienia przeglądania kategorii: {message}. Kliknij Zapisz ponownie, aby spróbować jeszcze raz.",
+    "configSaveFailed": "Nie udało się zapisać ustawienia przeglądania kategorii. Kliknij Zapisz ponownie, aby spróbować jeszcze raz.",
     "manual": {
       "clientIdHint": "Z aplikacji Allegro zarejestrowanej w apps.developer.allegro.pl. Służy tylko do odczytu publicznego katalogu kategorii - nigdy do logowania jako sprzedawca ani wystawiania ofert.",
       "clientIdPlaceholder": "Allegro Client ID",

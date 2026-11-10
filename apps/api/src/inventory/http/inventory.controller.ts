@@ -8,15 +8,7 @@
  *
  * @module apps/api/src/inventory/http
  */
-import {
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  NotFoundException,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import type { InventoryItemView } from '@openlinker/core/inventory';
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
@@ -37,6 +29,7 @@ import {
 } from '../application/services/stock-view.service';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('inventory')
@@ -157,7 +150,9 @@ export class InventoryController {
       view = await this.stockView.getProductStockView(query.productId);
     } catch (error) {
       if (error instanceof StockViewProductNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'PRODUCT_NOT_FOUND', error.message, {
+          productId: query.productId,
+        });
       }
       throw error;
     }
@@ -212,6 +207,13 @@ export class InventoryController {
             quantity: c.channelShows.quantity,
             observedAt: c.channelShows.observedAt?.toISOString() ?? null,
           },
+          lastSent: c.lastSent
+            ? {
+                quantity: c.lastSent.quantity,
+                outcome: c.lastSent.outcome,
+                pushedAt: c.lastSent.pushedAt.toISOString(),
+              }
+            : null,
         })),
       })),
       generatedAt: new Date().toISOString(),

@@ -21,6 +21,7 @@ import type {
   RoutingRule,
 } from '../api/mappings.types';
 import type { Connection } from '../../connections';
+import { getMessages } from '../../../shared/i18n';
 
 const DELIVERY_METHODS: MappingOption[] = [
   { value: 'm1', label: 'InPost Paczkomat' },
@@ -93,7 +94,7 @@ describe('RoutingRulesPanel', () => {
     expect(
       await screen.findByText('Unable to load routing configuration'),
     ).toBeInTheDocument();
-    expect(screen.getByText('boom')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('shows the empty state when the source reports no delivery methods', async () => {

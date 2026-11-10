@@ -63,6 +63,7 @@ import {
   type ResolvedCopy,
   type SupportedLocale,
 } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type PageCopy = ResolvedCopy<Messages['connections']>['connectionMappingsPage'];
 
@@ -370,7 +371,7 @@ export function ConnectionMappingsPage(): ReactElement {
   if (pairing.status === 'error') {
     return (
       <PageLayout backTo={backTo} eyebrow={copy.eyebrow} title={copy.title} description={copy.error.description}>
-        <ErrorState title={copy.error.title} message={pairing.error.message} />
+        <ErrorState title={copy.error.title} message={describeApiError(pairing.error, 'connections')} />
       </PageLayout>
     );
   }

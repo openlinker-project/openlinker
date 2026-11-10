@@ -21,8 +21,7 @@
         "bytes": "{n} B",
         "kilobytes": "{n} KB",
         "megabytes": "{n} MB"
-      },
-      "uploadFailed": "Upload failed"
+      }
     },
     "description": "Allegro requires a ship-from location and EU GPSR data (Reg. 2023/988, mandatory since 13 Dec 2024) on every offer. These defaults are sent on the inline-product path and used as a fallback when smart-linking to an existing product card misses.",
     "eyebrow": "Allegro seller defaults",
@@ -213,49 +212,6 @@
     "supported": "Supported capabilities",
     "title": "Enabled roles",
     "updatedTitle": "Capabilities updated"
-  },
-  "connectionCategoryMappingsPage": {
-    "desktopOnly": {
-      "body": "The category mapping editor pairs a category tree with a marketplace search side by side and needs a wider viewport. Open this page on a desktop or tablet in landscape mode to assign categories.",
-      "title": "Open on a desktop screen to edit categories"
-    },
-    "error": {
-      "title": "Unable to load"
-    },
-    "eyebrow": "Connection",
-    "loading": {
-      "message": "Fetching categories and mappings...",
-      "title": "Loading"
-    },
-    "mappedSummary": {
-      "one": "{mapped} of {n} category mapped",
-      "other": "{mapped} of {n} categories mapped"
-    },
-    "marketplaceHeading": "Marketplace category",
-    "marketplaceSelect": {
-      "label": "Marketplace connection",
-      "option": "{name} ({platform})",
-      "placeholder": "Select a marketplace connection…"
-    },
-    "noCategories": {
-      "message": "No categories were found for this connection. Make sure the shop has categories configured.",
-      "title": "No shop categories"
-    },
-    "noMarketplace": {
-      "addConnection": "Add connection",
-      "message": "Add a marketplace connection before mapping categories.",
-      "title": "No marketplace connection configured"
-    },
-    "pickCategory": {
-      "message": "Click a shop category on the left to assign a marketplace category.",
-      "title": "Select a category"
-    },
-    "pickMarketplace": {
-      "message": "Pick a marketplace connection above to browse its category tree.",
-      "title": "Select a marketplace connection"
-    },
-    "sourceHeading": "Shop categories",
-    "title": "Category mappings"
   },
   "connectionCell": {
     "copiedId": "Copied connection ID",
@@ -865,7 +821,6 @@
     "save": "Save changes",
     "saving": "Saving...",
     "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
-    "unexpectedError": "An unexpected error occurred.",
     "updatedDescription": "Connection settings have been saved.",
     "updatedTitle": "Connection updated",
     "warningsTitle": "Saved, with something to check"
@@ -1304,7 +1259,6 @@
       }
     },
     "save": "Save changes",
-    "saveFailed": "Failed to save pricing & sync settings.",
     "savedDescription": "Pricing & sync settings updated.",
     "savedTitle": "Saved",
     "saving": "Saving…",
@@ -1357,8 +1311,7 @@
     "restore": "Restore",
     "restoring": "Restoring...",
     "successDescription": "\"{name}\" is back as a disabled connection. Enter its credentials again before enabling it.",
-    "successTitle": "Connection restored",
-    "tryAgain": "Please try again."
+    "successTitle": "Connection restored"
   },
   "routerReadinessPanel": {
     "activeLocations": "Active inventory locations",
@@ -1639,6 +1592,17 @@
     "timeoutMin": "Request timeout must be at least 1000 ms",
     "timeoutWhole": "Request timeout must be a whole number of milliseconds",
     "tokenRequired": "Bridge token is required - {product}'s bridge rejects every request without it."
+  },
+  "testOutcome": {
+    "failed": "The test failed.",
+    "misconfigured": "Some settings or credentials are missing or invalid.",
+    "not-found": "Nothing was found at this address. Check the shop or API address.",
+    "ok": "The connection works.",
+    "timeout": "The platform did not answer in time.",
+    "unauthorized": "The platform refused the credentials. Check the key or password.",
+    "unexpected-status": "The platform answered in an unexpected way.",
+    "unreachable": "The platform could not be reached. Check the address and that it is online.",
+    "unsupported": "This kind of connection cannot be tested yet."
   },
   "woocommerceSetupForm": {
     "beforeYouStart": {

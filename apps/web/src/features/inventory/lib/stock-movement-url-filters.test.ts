@@ -66,6 +66,12 @@ describe('stock movement URL filters', () => {
     expect(toMovementFilters(readMovementUrlState(new URLSearchParams('chip=promised'))).kind).toBe('promised');
   });
 
+  it('should map the stock view to movements only when chip is stock', () => {
+    const state = readMovementUrlState(new URLSearchParams('chip=stock'));
+    expect(state.chip).toBe('stock');
+    expect(toMovementFilters(state).kind).toBe('movements');
+  });
+
   it('should set needsAttention for the attention chip and ignore junk params', () => {
     const state = readMovementUrlState(new URLSearchParams('chip=attention&type=bogus&from=yesterday&offset=-4'));
     expect(toMovementFilters(state).needsAttention).toBe(true);

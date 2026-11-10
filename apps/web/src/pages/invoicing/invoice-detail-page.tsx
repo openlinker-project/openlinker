@@ -50,6 +50,7 @@ import { InvoicePdfLink } from '../../features/invoicing/components/invoice-pdf-
 import { InvoiceTimeline } from '../../features/invoicing/components/invoice-timeline';
 import { DOCUMENT_TYPE_LABEL_FALLBACK } from '../../features/invoicing/components/document-type-select';
 import { resolveIssueErrorMessage } from '../../features/invoicing/lib/issue-error-message';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type InvoiceCopy = ReturnType<typeof useMessages<'invoicing'>>['invoice'];
 
@@ -208,12 +209,8 @@ export function InvoiceDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.detail.eyebrow} title={copy.detail.error}>
         <ErrorState
           title={copy.detail.error}
-          message={err.message}
-          action={
-            <Button onClick={() => void invoiceQuery.refetch()}>
-              {copy.detail.retry}
-            </Button>
-          }
+          message={describeApiError(err, 'invoicing')}
+          action={<Button onClick={() => void invoiceQuery.refetch()}>{copy.detail.retry}</Button>}
         />
       </PageLayout>
     );

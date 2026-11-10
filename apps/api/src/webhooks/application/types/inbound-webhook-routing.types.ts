@@ -8,6 +8,7 @@
  * @module apps/api/src/webhooks/application/types
  */
 import type { SyncJobRequest } from '@openlinker/core/sync';
+import type { WebhookDlqCode } from '@openlinker/core/webhooks';
 
 /**
  * The jobs one delivery became - never empty, so a consumer can read `[0]`
@@ -28,8 +29,10 @@ export type InboundWebhookRoutingOutcome =
    * connection-unavailable) — recorded as a `deadlettered` delivery row.
    * Retrying cannot change these, so no error is thrown; transient failures
    * (DB blip during adapter resolve) DO throw and reach the source's retry.
+   * `code` is what the operator reads (#3866); `reason` keeps the English
+   * detail, starting with the same code.
    */
-  | { kind: 'unroutable'; reason: string };
+  | { kind: 'unroutable'; code: WebhookDlqCode; reason: string };
 
 /** Result of the transactional gate write (#2280). */
 export interface WebhookJobGateResult {

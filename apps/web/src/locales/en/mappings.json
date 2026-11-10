@@ -1,13 +1,4 @@
 {
-  "allegroCategorySearch": {
-    "cancel": "Cancel",
-    "clear": "Clear mapping",
-    "save": "Save mapping",
-    "saving": "Saving…",
-    "searchLabel": "Search all categories",
-    "searchPlaceholder": "Search all categories...",
-    "selected": "Selected:"
-  },
   "attributeRulesPanel": {
     "description": "Deterministic, operator-authored rules that fill destination attributes across products. Rules apply in priority order (lower first); a later rule wins for the same attribute and rules override the base attribute mapping.",
     "empty": "No rules configured yet. Add one below to auto-fill destination attributes.",
@@ -88,13 +79,74 @@
     },
     "title": "Attribute Mapping Rules"
   },
-  "categoryMappingRow": {
-    "notMapped": "Not mapped"
-  },
-  "categoryMappingTree": {
+  "categoryMappings": {
+    "addConnection": "Add connection",
+    "backLabel": "Connection",
+    "cancel": "Cancel",
+    "change": "Change",
+    "changeFor": "Change the category for {name}",
+    "changeTo": "Change to",
+    "chooseCategory": "Choose a category",
+    "chooseFor": "Choose a category for {name}",
+    "clearMapping": "Clear mapping",
+    "closeEditor": "Close",
     "collapse": "Collapse {name}",
+    "contextFor": "for",
+    "contextFrom": "Categories from",
+    "editorHint": "Pick where it goes on {marketplace}. Search the whole tree or browse it.",
+    "errorTitle": "Unable to load",
     "expand": "Expand {name}",
-    "treeLabel": "Shop categories"
+    "filterPlaceholder": "Filter categories",
+    "goesTo": "Goes to",
+    "intro": "Choose where each {platform} category goes on a marketplace.",
+    "introFor": "Offers you list on {marketplace} are placed in the category you pick for their {platform} category.",
+    "legacyAction": "Use them for {marketplace}",
+    "legacyAlreadyMapped": "Already mapped here",
+    "legacyBody": "They were saved before each mapping belonged to one marketplace, and more than one of your marketplaces could be the one they were meant for.",
+    "legacyConfirmAction": "Use for {marketplace}",
+    "legacyConfirmBody": "Each mapping below is moved to {marketplace}. A category that already has a mapping there keeps it.",
+    "legacyConfirmTitle": "Use these mappings for {marketplace}?",
+    "legacyFailedTitle": "The mappings were not moved",
+    "legacyKept": "These categories kept the mapping they already had: {categories}.",
+    "legacyMovedBody": "They are used the next time you list offers.",
+    "legacyMovedTitle": {
+      "one": "{n} mapping moved to {marketplace}",
+      "other": "{n} mappings moved to {marketplace}"
+    },
+    "legacyTitle": {
+      "one": "{n} mapping is not used when you list offers",
+      "other": "{n} mappings are not used when you list offers"
+    },
+    "loadingMessage": "Fetching categories and mappings...",
+    "loadingTitle": "Loading",
+    "mapForLabel": "Map for",
+    "mapForPlaceholder": "Select a marketplace...",
+    "mapFrom": "Map from {connection}",
+    "mapTo": "Map to",
+    "noCategoriesMessage": "{connection} returned no categories. Add categories in {platform}, then come back here.",
+    "noCategoriesTitle": "No categories found",
+    "noMarketplaceMessage": "Category mappings tell a marketplace where your products belong. Add a marketplace connection, for example Allegro, then come back here.",
+    "noMarketplaceTitle": "No marketplace to map to",
+    "notCatalogueMessage": "{connection} receives your products, so it has no categories of its own to map. Open the connection that holds your catalogue and choose {connection} there.",
+    "notCatalogueTitle": "Map categories from your catalogue",
+    "pairLabel": "Catalogue and marketplace",
+    "progressLabel": "{mapped} of {total} mapped",
+    "saveMapping": "Save mapping",
+    "saving": "Saving...",
+    "searchPlaceholder": "Search all categories...",
+    "selectMarketplaceMessage": "Pick a marketplace above to start mapping.",
+    "selectMarketplaceTitle": "Select a marketplace",
+    "sharedMapping": "Shared by every catalogue",
+    "sharedMappingHint": "Used for every catalogue without its own mapping. Pick a category below to set one just for this catalogue.",
+    "sourceColumn": "{platform} categories",
+    "targetColumn": "{marketplace} category",
+    "thisConnection": "This connection",
+    "title": "Category mappings",
+    "treeAllMapped": "Every category is mapped.",
+    "treeNoMatch": "No category matches \"{query}\".",
+    "viewAll": "All",
+    "viewLabel": "Show categories",
+    "viewUnmapped": "Not mapped"
   },
   "mappingPairingBar": {
     "candidate": "{name} ({platform})",

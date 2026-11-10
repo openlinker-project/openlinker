@@ -16,6 +16,7 @@ import { Between, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 import { WebhookDeliveryOrmEntity } from '../entities/webhook-delivery.orm-entity';
 import { WebhookDelivery } from '../../../domain/entities/webhook-delivery.entity';
 import { WebhookDeliveryUpsertFailedError } from '../../../domain/exceptions/webhook-delivery-upsert-failed.error';
+import { isWebhookDlqCode, readWebhookDlqCode } from '../../../domain/types/webhook-dlq-code.types';
 import type {
   WebhookDeliveryInsertResult,
   WebhookDeliveryRepositoryPort,
@@ -98,6 +99,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
     if (input.downstreamJobId !== undefined) overlay.downstreamJobId = input.downstreamJobId;
     if (input.downstreamJobType !== undefined) overlay.downstreamJobType = input.downstreamJobType;
     if (input.dlqReason !== undefined) overlay.dlqReason = input.dlqReason;
+    if (input.dlqCode !== undefined) overlay.dlqCode = input.dlqCode;
     if (input.payload !== undefined) overlay.payload = input.payload;
     if (input.status !== undefined) overlay.status = input.status;
 
@@ -168,6 +170,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
       downstreamJobId: input.downstreamJobId ?? null,
       downstreamJobType: input.downstreamJobType ?? null,
       dlqReason: input.dlqReason ?? null,
+      dlqCode: input.dlqCode ?? null,
       payload: input.payload ?? null,
     };
 
@@ -267,6 +270,7 @@ export class WebhookDeliveryRepository implements WebhookDeliveryRepositoryPort 
       entity.downstreamJobId,
       entity.downstreamJobType,
       entity.dlqReason,
+      isWebhookDlqCode(entity.dlqCode) ? entity.dlqCode : readWebhookDlqCode(entity.dlqReason),
       entity.payload,
       entity.createdAt,
       entity.updatedAt

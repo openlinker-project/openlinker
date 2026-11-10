@@ -2,6 +2,8 @@ import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { ApiError } from '../../shared/api/api-error';
+import { getMessages } from '../../shared/i18n';
 import { SyncJobsPage } from './sync-jobs-page';
 import type {
   PaginatedSyncJobs,
@@ -112,14 +114,14 @@ describe('SyncJobsPage', () => {
 
   it('should show error state when fetch fails', async () => {
     const mockApi = createMockApiClient({
-      syncJobs: { list: vi.fn().mockRejectedValue(new Error('Service unavailable')) },
+      syncJobs: { list: vi.fn().mockRejectedValue(new ApiError('Service unavailable', 503, null)) },
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load sync jobs')).toBeInTheDocument();
-    expect(screen.getByText('Service unavailable')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
   });
 
   it('should show empty state without an action when no jobs exist and no filter is active', async () => {

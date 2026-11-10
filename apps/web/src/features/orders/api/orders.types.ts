@@ -294,6 +294,40 @@ export interface SalesDocumentMatchedRuleView {
 }
 
 /** Everything a surface needs about one order's sales document (ADR-065). */
+/**
+ * Mirror of core's `RoutedConnectionStateValues` (#3866; apps/web cannot import
+ * core, #591), held identical by `scripts/check-stored-reason-code-mirror.mjs`.
+ */
+export const RoutedConnectionStateValues = [
+  'not-found',
+  'unreadable',
+  'disabled',
+  'error',
+  'needs-reauth',
+  'archived',
+  'missing-capability',
+  'changed',
+] as const;
+
+export type RoutedConnectionState = (typeof RoutedConnectionStateValues)[number];
+
+/** Values behind a sales-document block's detail (#3866); ids, counts and codes only. */
+export interface SalesDocumentBlockParams {
+  readonly candidateCount?: number;
+  readonly eligibleCount?: number;
+  readonly primaryCount?: number;
+  readonly poolKind?: 'invoice' | 'fiscal-receipt' | 'mixed';
+  readonly connectionId?: string;
+  readonly ruleId?: string;
+  readonly documentKind?: string;
+  readonly connectionState?: RoutedConnectionState;
+  readonly missingCapabilities?: readonly string[];
+  readonly taxRateScope?: 'lines' | 'shipping';
+  readonly lineCount?: number;
+  readonly totalLines?: number;
+  readonly firstLineRef?: string;
+}
+
 export interface SalesDocumentView {
   readonly orderId: string;
   /**
@@ -310,6 +344,8 @@ export interface SalesDocumentView {
   readonly unresolvedReason: SalesDocumentUnresolvedReasonValue | null;
   /** Free-text elaboration the gate stored; never parsed, only displayed. */
   readonly blockDetail: string | null;
+  /** The values behind `blockDetail` (#3866); the operator reads these, phrased by the frontend. */
+  readonly blockParams?: SalesDocumentBlockParams | null;
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
   /**
    * The rule that decided this order's document kind (#3186); `null` when none
@@ -583,6 +619,8 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /** The values behind `salesDocumentBlockDetail` (#3866), phrased by the frontend. */
+  salesDocumentBlockParams?: SalesDocumentBlockParams | null;
   /**
    * How a fulfilment routing decision narrowed this order's destination fan-out
    * (#2703/#2704), or `null` when it narrowed nothing — which is every order
@@ -928,6 +966,9 @@ export interface ReleaseOrderHoldResult {
 // sortable table columns (server-side).
 export const OrderSortValues = [
   'createdAt',
+  // #4025 - when the buyer placed the order (NULLs last both ways). Mirrors
+  // `OrderRecordSortValues` in core.
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',
@@ -1028,6 +1069,27 @@ export interface OrderHealthSummary {
    * partition. Optional for an older API.
    */
   paymentNotSent?: number;
+  /**
+   * #4025 - counts for the redesigned orders filters. All optional for graceful
+   * degradation against an older API; an absent count is "unknown", never `0`.
+   * `openReturn` / `hasBuyerNote` / `dueWithin24h` use the same predicates as
+   * the `openReturn` / `hasBuyerNote` / `dueBefore` filters.
+   */
+  openReturn?: number;
+  hasBuyerNote?: number;
+  dueWithin24h?: number;
+  /** Order count per source connection id, with the source scope itself removed. Absent id = no orders. */
+  bySource?: Record<string, number>;
+  /** "Needs a look" group totals - each a UNION, never the sum of its members' counts. */
+  attention?: OrderAttentionSummary;
+}
+
+/** #4025 - mirrors core `OrderAttentionSummary`. */
+export interface OrderAttentionSummary {
+  lateToShip: number;
+  stuck: number;
+  /** Absent when the open returns could not be read (unknown, never 0). */
+  toHandle?: number;
 }
 
 export interface OrderFilters {

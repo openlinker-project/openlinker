@@ -38,7 +38,6 @@ import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
-import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
 import { useToast } from '../../shared/ui/toast-provider';
 import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
 import {
@@ -107,18 +106,21 @@ import {
 import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
 import { useOrderExportBackgroundToast } from '../../features/orders/hooks/use-order-export';
 import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
-import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
+import { OrderPeekDetail } from '../../features/orders/components/order-peek-detail';
+import { isSafeHttpUrl } from '../../shared/lib/is-safe-http-url';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
   OrderRecord,
-  OrderHealthValue,
-  OrderHealthSummary,
   OrderSortValue,
   OrderTag,
 } from '../../features/orders/api/orders.types';
 import { ORDER_LIST_COLUMN_IDS } from '../../features/orders/api/orders.types';
 import { useOrderListFilters } from '../../features/orders/hooks/use-order-list-filters';
 import { OrderListFilterBar } from '../../features/orders/components/order-list-filter-bar';
+import { OrderStatusTabs } from '../../features/orders/components/order-status-tabs';
+import { OrderAttentionSummary } from '../../features/orders/components/order-attention-summary';
+import { OrderPeek, type OrderPeekView } from '../../features/orders/components/order-peek';
+import { CappedBadges, PeekArrow } from '../../shared/ui/capped-badges';
 import {
   describeOrderFilterScope,
   type OrderFilterChipContext,
@@ -132,29 +134,9 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
-import { serverErrorText } from '../../features/orders/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
-
-/**
- * Status segments — partition the order set (#929). The "All" card carries the
- * total; the four health cards map 1:1 to the `health` URL filter and their
- * counts sum to that total. Tone communicates operational alarm at a glance.
- */
-interface HealthSegment {
-  key: OrderHealthValue;
-  tone: MetricCardTone;
-  countKey: keyof Omit<OrderHealthSummary, 'total'>;
-}
-
-/** The label is `orders.listFilters.healthLabels[key]`, shared with the `health` chip. */
-const HEALTH_SEGMENTS: readonly HealthSegment[] = [
-  { key: 'source_deleted', tone: 'error', countKey: 'sourceDeleted' },
-  { key: 'needs_attention', tone: 'error', countKey: 'needsAttention' },
-  { key: 'awaiting_mapping', tone: 'warning', countKey: 'awaitingMapping' },
-  { key: 'awaiting_dispatch', tone: 'info', countKey: 'awaitingDispatch' },
-  { key: 'synced', tone: 'success', countKey: 'synced' },
-];
 
 /**
  * Whether the row's delivery rider is one OpenLinker could take over (#1776) —
@@ -211,12 +193,52 @@ function hasTaxRateConflict(parsed: ReturnType<typeof parseOrderSnapshot>): bool
   return parsed.items.some((item) => Boolean(item.taxRateChannel));
 }
 
+/**
+ * The Status cell's badges (#4026), shared by the table (capped) and the order
+ * peek (all of them). Every badge sits BESIDE health, never instead of it:
+ * `OrderHealthValues` is a partition whose values sum to the status tabs.
+ */
+function renderStatusBadges(order: OrderRecord): ReactElement {
+  const h = deriveOrderHealth(order);
+  return (
+    <>
+      <StatusBadge tone={h.tone} withDot compact>
+        {h.label}
+      </StatusBadge>
+      {/* #2310 — the phase says what stage it is at (ADR-059). */}
+      <OrderPhaseOrWaitingBadge order={order} compact />
+      {/* #2350 — a stock shortfall is an exception, so a Status badge. */}
+      <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
+      {/* #2998 — neutral: a return is routine, not a failure. */}
+      <OrderOpenReturnBadge openReturn={order.openReturn} />
+      {/* #2342 — a hold is an exception (style guide § order-row signals). */}
+      <OrderHoldBadge reason={order.activeHoldReason} compact />
+      {/* #2703 / #2704 - why routing narrowed the destination fan-out. */}
+      <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
+      {/* #3544 - edited here; the channel keeps the original. */}
+      <OrderEditedBadge
+        edited={order.editedInOpenLinker}
+        needsAttention={order.editsNeedAttention}
+        compact
+      />
+      {/* #2356 — an inert OMS state is an exception too. */}
+      <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
+      {/* #3963 - only on a row whose payment did not reach a shop. */}
+      <OrderPaymentMarker entries={order.paymentWriteback} />
+      {h.reason ? (
+        <span className="orders-status-reason" title={h.reason}>
+          {h.reason}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 export function OrdersListPage(): ReactElement {
   const locale = useActiveLocale();
   const format = useFormat();
   const plural = usePlural();
   const orders = useMessages('orders');
-  const serverSaid = orders.common.serverSaid;
   const copy = orders.listPage;
   const filterCopy = orders.listFilters;
   const bulkCopy = orders.bulkActions;
@@ -615,12 +637,183 @@ export function OrdersListPage(): ReactElement {
         >
           {label}
           <span className="orders-sortbtn__ind" aria-hidden="true">
-            {active ? (dir === 'asc' ? '▲' : '▼') : '↕'}
+            {active ? (dir === 'asc' ? '↑' : '↓') : '↕'}
           </span>
         </button>
       );
     },
     [sort, dir, applySort, copy],
+  );
+
+  // ── Cell renderers shared by the table and the order peek (#4026) ──────────
+  // The table wraps the badge part in `CappedBadges`; the peek shows them all.
+
+  /** Snapshot-only carrier (#1617/#1776): method name → method id → pickup name. */
+  const carrierFor = useCallback(
+    (order: OrderRecord): string | null => {
+      const parsed = parsedFor(order);
+      return (
+        parsed.shipping?.methodName ?? parsed.shipping?.methodId ?? parsed.pickupPoint?.name ?? null
+      );
+    },
+    [parsedFor],
+  );
+
+  /**
+   * "Generate label" is offered ONLY when OpenLinker has a live own-carrier
+   * route (#1799): fulfillment EXPLICITLY not-shipped, the order isn't
+   * cancelled (#1713), it is not on the pack bench (D46, #3482 — the bench
+   * prints its own label), and routing resolved to an available OL carrier.
+   */
+  const labelHrefFor = useCallback(
+    (order: OrderRecord): string | undefined => {
+      const parsed = parsedFor(order);
+      const can =
+        order.fulfillmentState === 'not-shipped' &&
+        parsed.status !== 'cancelled' &&
+        !isHandledInOpenLinker(order) &&
+        hasLiveOlCarrierRoute(order.deliveryResolution);
+      return can ? `/orders/${order.internalOrderId}#shipment` : undefined;
+    },
+    [parsedFor],
+  );
+
+  const renderShipmentBadges = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const parsed = parsedFor(order);
+      const f = fulfillmentBadge(order.fulfillmentState, orders);
+      // BE-owned SLA bucket drives the badge (#1108); the live countdown stays
+      // client-side, falling back to the client-derived urgency for older
+      // payloads without slaState.
+      const sla = slaBadge(order.slaState, orders);
+      const due = order.dispatchByAt ?? null;
+      const view = formatShipBy(due);
+      // Estimated ship-by qualifier (#1776): "est." when the deadline is an
+      // OL-side estimate (Erli), absent for marketplace commitments (Allegro).
+      const estMark = order.dispatchByEstimated ? (
+        <span
+          className="text-muted"
+          aria-label={copy.estimated.aria}
+          title={copy.estimated.title}
+        >
+          {copy.estimated.mark}{' '}
+        </span>
+      ) : null;
+      // Mapping-aware delivery chip (#1793): outcome + rider stacked.
+      const deliveryOutcome = deriveDeliveryOutcome({
+        processorKind: order.deliveryResolution?.processorKind,
+        hasMethod: Boolean(order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName),
+        // Snapshot-only divergence (documented, not silent): the list uses the
+        // rollup `fulfillmentState`; the detail uses booked-shipment presence.
+        isFulfilled:
+          order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
+        processorAvailable: order.deliveryResolution?.processorAvailable,
+        cancelled: parsed.status === 'cancelled',
+      });
+      const canGenerateLabel = labelHrefFor(order) !== undefined;
+      return (
+        <>
+          {/* Packed sits FIRST: the shipment cell reads as time (packed →
+              shipped → due → carrier). */}
+          {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+            <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
+          )}
+          {/* #3482 - where an order OpenLinker handles itself has got in packing. */}
+          {showsPackingStage(order) ? (
+            <OrderPackingStage
+              handled={order.handledInOpenLinker}
+              who={derivePackerLabel(order.handledInOpenLinker, packerNameById, orders)}
+            />
+          ) : null}
+          {/* With "Generate label" on offer the passive fulfillment badge
+              steps aside: the CTA resolves the state it would describe. */}
+          {canGenerateLabel ? null : (
+            <StatusBadge tone={f.tone} withDot compact>
+              {f.label}
+            </StatusBadge>
+          )}
+          {sla ? (
+            <span className="orders-shipby-row">
+              <StatusBadge tone={sla.tone} withDot compact>
+                {sla.label}
+              </StatusBadge>
+              {view ? (
+                <span className="text-muted orders-cell-sub mono tabular">
+                  {estMark}
+                  {view.remaining}
+                </span>
+              ) : null}
+            </span>
+          ) : due && view ? (
+            <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
+              {estMark}
+              {view.remaining}
+            </StatusBadge>
+          ) : null}
+          {/* The owner badge says who ships; a quiet accent edge + caret marks
+              the rows OpenLinker could take over (#1776). */}
+          <DeliveryOutcomeChip
+            outcome={deliveryOutcome}
+            owner={resolveDeliveryOwner(
+              order.deliveryResolution,
+              order.deliveryRider,
+              connectionInfoById,
+            )}
+            switchable={deliveryOutcome === 'shop-fulfilled' && isTakeoverRider(order.deliveryRider)}
+          />
+        </>
+      );
+    },
+    [parsedFor, labelHrefFor, fulfilmentOwnedIds, packerNameById, connectionInfoById],
+  );
+
+  const renderMoneyBadges = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const parsed = parsedFor(order);
+      const pay = paymentBadge(parsed.paymentStatus, orders);
+      return (
+        <>
+          {pay ? (
+            <StatusBadge tone={pay.tone} withDot compact>
+              {pay.label}
+            </StatusBadge>
+          ) : null}
+          {/* The routed sales document (#2552, ADR-065), shared verbatim with
+              the mobile card so the two cannot drift. */}
+          <SalesDocumentCell
+            internalOrderId={order.internalOrderId}
+            view={order.salesDocument}
+            layout="stack"
+            hasIssuingCapability={hasIssuingCapability}
+            connectionNames={connectionNames}
+          />
+          {/* #2254 — its own line: a conflict does not stop the invoice. */}
+          {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
+          <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
+          <WarehouseReleaseBadge invoice={parsed.invoice} />
+        </>
+      );
+    },
+    [parsedFor, hasIssuingCapability, connectionNames],
+  );
+
+  // ── Order peek (#4026): replaces the inline expanded row ───────────────────
+  const [peekId, setPeekId] = useState<string | null>(null);
+  const openPeek = useCallback((internalOrderId: string): void => {
+    captureDemoEvent('demo_order_opened', {});
+    setPeekId(internalOrderId);
+  }, []);
+  const peekIndex = peekId === null ? -1 : items.findIndex((o) => o.internalOrderId === peekId);
+  // A page, sort or filter change that drops the order closes the peek.
+  useEffect(() => {
+    if (peekId !== null && query.data && peekIndex === -1) setPeekId(null);
+  }, [peekId, peekIndex, query.data]);
+  const navigatePeek = useCallback(
+    (step: -1 | 1): void => {
+      const next = items[peekIndex + step];
+      if (next) setPeekId(next.internalOrderId);
+    },
+    [items, peekIndex],
   );
 
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
@@ -639,9 +832,11 @@ export function OrdersListPage(): ReactElement {
         ),
         cell: (order) => renderSelectCheckbox(order),
         align: 'left',
+        width: '2.5rem',
       },
       {
         id: 'order',
+        width: '20%',
         // #2538 - OrderIdentityCell stacks a thumbnail, the order number and a meta line.
         lines: 2,
         header: copy.columns.order,
@@ -711,6 +906,7 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'customer',
+        width: '13%',
         // Non-sortable in react-table's model (#1713) — the header renders the
         // same per-label sort control as the merged columns, routed through
         // `applySort`, so every sortable header shares one affordance.
@@ -737,6 +933,7 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'channel',
+        width: '13%',
         header: copy.columns.channel,
         // Folds under the order name below 1024px (#1713) — the order cell then
         // renders the channel pill inline instead.
@@ -767,66 +964,20 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'status',
+        width: '15%',
         // Non-sortable in react-table's model (#1713) — header uses the shared
         // per-label sort control (see the customer column).
         header: <span className="orders-sortstack">{sortLabel(copy.columns.status, 'status')}</span>,
-        cell: (order) => {
-          const h = deriveOrderHealth(order, orders);
-          return (
-            <span className="orders-cell-stack">
-              <StatusBadge tone={h.tone} withDot compact>
-                {h.label}
-              </StatusBadge>
-              {/* #2310 — BESIDE the health badge, never instead of it: health
-                  says "is something wrong", the phase says "what stage is it
-                  at" (ADR-059). */}
-              <OrderPhaseOrWaitingBadge order={order} compact />
-              {/* #2350 — an exception, so a badge, and it belongs in the STATUS
-                  group beside failure reasons (style guide § order-row signal
-                  placement). BESIDE health for the same reason the phase is:
-                  `OrderHealthValues` is a partition whose values sum to the KPI
-                  cards, so a shortfall value there would double-count or hide a
-                  sync failure behind a stock one. Shared verbatim with the
-                  mobile card. */}
-              <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
-              {/* #2998 — the same STATUS group, beside health. Neutral tone: a
-                  return is routine, not a failure. */}
-              <OrderOpenReturnBadge openReturn={order.openReturn} />
-              {/* #2342 — the STATUS group: an exception is a badge and belongs
-                  beside the failure reasons (style guide § Order-row signal
-                  placement rule 2), never in Shipment or Money. */}
-              <OrderHoldBadge reason={order.activeHoldReason} compact />
-              {/* #2703 / #2704 - why routing left the destination fan-out
-                  narrowed. Without it a row reads "No destinations" whatever the
-                  cause. Status group, beside health, for the placement reason
-                  above; shared verbatim with the mobile card. */}
-              <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
-              {/* #3544 - an operator edited this order here; the channel keeps the original. */}
-              <OrderEditedBadge
-                edited={order.editedInOpenLinker}
-                needsAttention={order.editsNeedAttention}
-                compact
-              />
-              {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
-                  guide's order-row signal placement puts exceptions in the
-                  Status group beside failure reasons. It is another badge
-                  vocabulary in that group; the ordinal it originally carried was
-                  dropped on the Wave-2 merge, where #2350's badge claimed the
-                  same one. The guide's composition note is the authority. */}
-              <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
-              {/* #3963 - only on a row whose payment did not reach a shop. */}
-              <OrderPaymentMarker entries={order.paymentWriteback} />
-              {h.reason ? (
-                <span className="orders-status-reason" title={h.reason}>
-                  {h.reason}
-                </span>
-              ) : null}
-            </span>
-          );
-        },
+        // Over three badges show two + "+N more" (#4026); the peek lists all.
+        cell: (order) => (
+          <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+            {renderStatusBadges(order)}
+          </CappedBadges>
+        ),
       },
       {
         id: 'shipment',
+        width: '17%',
         // Merged dispatch column (#1713): fulfillment status + ship-by SLA (with
         // the live countdown) + carrier, one per-label sort control each in the
         // header. Not `sortable` — the header renders its own sort buttons.
@@ -837,126 +988,15 @@ export function OrdersListPage(): ReactElement {
           </span>
         ),
         cell: (order) => {
-          const parsed = parsedFor(order);
-          const f = fulfillmentBadge(order.fulfillmentState, orders);
-          // BE-owned SLA bucket drives the badge (#1108); the live countdown
-          // stays client-side, falling back to the client-derived urgency for
-          // older payloads without slaState.
-          const sla = slaBadge(order.slaState, orders);
-          const due = order.dispatchByAt ?? null;
-          const view = formatShipBy(due);
-          // Estimated ship-by qualifier (#1776): a muted "est." label when the
-          // deadline is an OL-side estimate (Erli), absent for authoritative
-          // marketplace commitments (Allegro). Labelled for screen readers +
-          // hover so the convention isn't sight-only, and rendered as the same
-          // "est." text on every surface (order-detail, row-detail, list).
-          const estMark = order.dispatchByEstimated ? (
-            <span className="text-muted" aria-label={copy.estimated.aria} title={copy.estimated.title}>
-              {copy.estimated.mark}{' '}
-            </span>
-          ) : null;
-          // Carrier at row level (#1617): the list can't fetch per-order
-          // shipments, so `shipping.methodName` (the source's stated delivery
-          // method) is the best signal, then the raw method id (#1776), then
-          // the pickup-point name. Snapshot-only is the correct ceiling here.
-          const carrier =
-            parsed.shipping?.methodName ??
-            parsed.shipping?.methodId ??
-            parsed.pickupPoint?.name ??
-            null;
-          // Mapping-aware delivery chip (#1793): outcome + rider stacked. The
-          // rider comes straight off the order response (BE-gated to `default`
-          // resolutions).
-          const deliveryOutcome = deriveDeliveryOutcome({
-            processorKind: order.deliveryResolution?.processorKind,
-            // Use the typed #1792 source-method fields (not the snapshot carrier
-            // proxy) so the list agrees with the detail for methodId-only orders.
-            hasMethod: Boolean(order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName),
-            // Snapshot-only divergence (documented, not silent): the list uses
-            // the rollup `fulfillmentState` because it can't fetch per-row
-            // shipments, whereas the detail uses booked-shipment presence.
-            isFulfilled:
-              order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
-            processorAvailable: order.deliveryResolution?.processorAvailable,
-            cancelled: parsed.status === 'cancelled',
-          });
-          // "Generate label" is offered ONLY when OpenLinker has a live own-carrier
-          // route (#1799): fulfillment EXPLICITLY not-shipped, the order isn't
-          // cancelled (#1713), and routing resolved to an available OL carrier.
-          // Shop-fulfilled / no-method / unmapped / not-connected / disabled-carrier
-          // orders have no OL label to generate — the passive fulfillment badge (and
-          // the delivery rider) show instead, never a dead-end action.
-          const canGenerateLabel =
-            order.fulfillmentState === 'not-shipped' &&
-            parsed.status !== 'cancelled' &&
-            // Work on the pack bench prints its label THERE (D46), so the list
-            // offers no "Generate label" for it (#3482).
-            !isHandledInOpenLinker(order) &&
-            hasLiveOlCarrierRoute(order.deliveryResolution);
+          const generateLabelHref = labelHrefFor(order);
+          const carrier = carrierFor(order);
           return (
             <span className="orders-cell-stack">
-              {/* Packed sits FIRST: the shipment cell reads as time (packed →
-                  shipped → due → carrier), and packing precedes everything else
-                  in it. It is also the one slot that never depends on a sibling —
-                  the fulfillment badge below is conditional. */}
-              {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
-                <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
-              )}
-              {/* #3482 - where an order OpenLinker handles itself has got in packing.
-                  Absent when no live work was found, so every other row is unchanged;
-                  and absent for a packed order with `packedAt`, whose tick above
-                  already says "Packed" and when. */}
-              {showsPackingStage(order) ? (
-                <OrderPackingStage
-                  handled={order.handledInOpenLinker}
-                  who={derivePackerLabel(order.handledInOpenLinker, packerNameById, orders)}
-                />
-              ) : null}
-              {/* When the row offers "Generate label" the CTA is deferred to sit
-                  directly under the Awaiting-label delivery chip (the state it
-                  resolves), so the top slot only carries the passive fulfillment
-                  badge for non-actionable rows. */}
-              {canGenerateLabel ? null : (
-                <StatusBadge tone={f.tone} withDot compact>
-                  {f.label}
-                </StatusBadge>
-              )}
-              {sla ? (
-                <span className="orders-shipby-row">
-                  <StatusBadge tone={sla.tone} withDot compact>
-                    {sla.label}
-                  </StatusBadge>
-                  {view ? (
-                    <span className="text-muted orders-cell-sub mono tabular">
-                      {estMark}
-                      {view.remaining}
-                    </span>
-                  ) : null}
-                </span>
-              ) : due && view ? (
-                <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
-                  {estMark}
-                  {view.remaining}
-                </StatusBadge>
-              ) : null}
-              {/* The list carries no rider chip and no button: the owner badge
-                  says who ships, and a quiet accent edge + caret marks the rows
-                  OpenLinker could take over. The actionable banner + fix-it
-                  button live on the order-detail Delivery panel. */}
-              <DeliveryOutcomeChip
-                outcome={deliveryOutcome}
-                owner={resolveDeliveryOwner(
-                  order.deliveryResolution,
-                  order.deliveryRider,
-                  connectionInfoById,
-                )}
-                switchable={deliveryOutcome === 'shop-fulfilled' && isTakeoverRider(order.deliveryRider)}
-              />
-              {canGenerateLabel ? (
-                <Link
-                  className="orders-row-cta"
-                  to={`/orders/${order.internalOrderId}#shipment`}
-                >
+              <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+                {renderShipmentBadges(order)}
+              </CappedBadges>
+              {generateLabelHref ? (
+                <Link className="orders-row-cta" to={generateLabelHref}>
                   <span className="orders-row-cta__plus" aria-hidden="true">
                     +
                   </span>{' '}
@@ -974,25 +1014,24 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'money',
+        width: '15%',
         // #2538/#2555 - Total, payment badge, the sales-document line, an
-        // optional tax-rate-conflict badge, and the created date - five
-        // stacked facts at the tallest (a conflicting-rate order), so the
-        // skeleton reserves that height rather than the pre-#2552 count of 4.
+        // optional tax-rate-conflict badge, the placed and created dates.
         lines: 5,
         align: 'right',
-        // Merged money column (#1713): total + payment pill + created, each an
-        // independent per-label sort control in the header. Not `sortable` — the
-        // header renders its own sort buttons.
+        // Merged money column (#1713): total + payment pill + placed + created,
+        // each an independent per-label sort control in the header (#4026 adds
+        // Placed). Not `sortable` — the header renders its own sort buttons.
         header: (
           <span className="orders-sortstack orders-sortstack--right">
             {sortLabel(copy.columns.total, 'total')}
             {sortLabel(copy.columns.payment, 'payment')}
+            {sortLabel(copy.columns.placed, 'placedAt')}
             {sortLabel(copy.columns.created, 'createdAt')}
           </span>
         ),
         cell: (order) => {
           const parsed = parsedFor(order);
-          const pay = paymentBadge(parsed.paymentStatus, orders);
           return (
             <span className="orders-cell-stack orders-cell-stack--end">
               {parsed.totals ? (
@@ -1002,39 +1041,32 @@ export function OrdersListPage(): ReactElement {
               ) : (
                 <span className="text-muted">—</span>
               )}
-              {pay ? (
-                <StatusBadge tone={pay.tone} withDot compact>
-                  {pay.label}
-                </StatusBadge>
+              <CappedBadges align="end" onMore={() => { openPeek(order.internalOrderId); }}>
+                {renderMoneyBadges(order)}
+              </CappedBadges>
+              {parsed.placedAt ? (
+                <span className="text-muted orders-cell-sub mono tabular">
+                  <TimeDisplay iso={parsed.placedAt} format="datetime" />
+                </span>
               ) : null}
-              {/* The routed sales document (#2552, ADR-065) — kind-aware
-                  (invoice or fiscal receipt), reading the batched
-                  `SalesDocumentView` rather than the invoice-only projection
-                  `OrderInvoicingCell` rendered. Shared verbatim with the
-                  mobile card so the two cannot drift. */}
-              <SalesDocumentCell
-                internalOrderId={order.internalOrderId}
-                view={order.salesDocument}
-                layout="stack"
-                hasIssuingCapability={hasIssuingCapability}
-                connectionNames={connectionNames}
-              />
-              {/* #2254 — its own independent line, never folded into the
-                  document cell above: a conflict does not stop the invoice,
-                  so it can be true alongside any document state. */}
-              {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
-              {/* Same independent-line rule as the conflict badge above, and
-                  for a sharper reason: the document was ISSUED, so anything
-                  keyed on "a document exists" would hide it on every order it
-                  is about. */}
-              <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
-              <WarehouseReleaseBadge invoice={parsed.invoice} />
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
             </span>
           );
         },
+      },
+      {
+        id: 'peek',
+        width: '3rem',
+        // #4026 — the arrow says the row opens a panel from the right.
+        header: <span className="sr-only">{orders.peek.details}</span>,
+        cell: (order) => (
+          <PeekArrow
+            label={interpolate(orders.peek.detailsAria, { ref: order.internalOrderId })}
+            onOpen={() => { openPeek(order.internalOrderId); }}
+          />
+        ),
       },
     ],
     // Deps: columns rebuild when locale, the channel lookup, or the retry
@@ -1077,6 +1109,12 @@ export function OrdersListPage(): ReactElement {
       // The shared Order cell renderer (#2091) — a `useCallback` over
       // `parsedFor`, so this rebuilds exactly when the parse cache does.
       renderOrderIdentity,
+      // #4026 — the shared cell renderers and the peek opener.
+      renderShipmentBadges,
+      renderMoneyBadges,
+      labelHrefFor,
+      carrierFor,
+      openPeek,
     ],
   );
 
@@ -1094,7 +1132,9 @@ export function OrdersListPage(): ReactElement {
     const optional = visibleColumnIds
       .map((id) => byId.get(id))
       .filter((c): c is DataTableColumn<OrderRecord> => c !== undefined);
-    return [...structural, ...optional];
+    // The peek arrow always closes the row, whatever the column arrangement.
+    const trailing = byId.get('peek');
+    return [...structural, ...optional, ...(trailing ? [trailing] : [])];
   }, [columns, visibleColumnIds, selectionEnabled]);
 
   function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
@@ -1109,7 +1149,11 @@ export function OrdersListPage(): ReactElement {
           });
         },
         onError: (error) => {
-          showToast({ tone: 'error', title: copy.retry.failedTitle, description: serverErrorText(serverSaid, error.message, '') });
+          showToast({
+            tone: 'error',
+            title: copy.retry.failedTitle,
+            description: describeApiError(error, 'orders'),
+          });
         },
       },
     );
@@ -1176,10 +1220,64 @@ export function OrdersListPage(): ReactElement {
     ),
   });
 
-  const segmentCount = (segment: HealthSegment): string => {
-    const value = summary?.[segment.countKey];
-    return typeof value === 'number' ? format.number(value) : '—';
-  };
+  const peekOrder = peekIndex >= 0 ? items[peekIndex] : undefined;
+  const peekView: OrderPeekView | null = peekOrder ? buildPeekView(peekOrder) : null;
+
+  function buildPeekView(order: OrderRecord): OrderPeekView {
+    const parsed = parsedFor(order);
+    const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
+    const sourceLabel = channelLabel(sourcePlatform);
+    const sourceShort = sourcePlatform
+      ? resolvePlatformShortLabel(platforms, sourcePlatform)
+      : undefined;
+    const destPlatform = order.syncStatus[0]
+      ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+      : undefined;
+    const destination = isHandledInOpenLinker(order)
+      ? orders.handledInOpenLinker.channelDestination
+      : channelLabel(destPlatform);
+    const pay = paymentBadge(parsed.paymentStatus, orders);
+    const carrier = carrierFor(order);
+    return {
+      internalOrderId: order.internalOrderId,
+      reference: parsed.orderNumber ?? order.internalOrderId,
+      source: sourceLabel ? (
+        <ConnectionChip
+          connectionId={order.sourceConnectionId}
+          name={connectionNames.get(order.sourceConnectionId) ?? null}
+          loading={connectionsQuery.isLoading}
+          channel={sourceChipChannel(order.sourceConnectionId, sourceLabel)}
+        />
+      ) : null,
+      destination,
+      placed: parsed.placedAt ? (
+        <TimeDisplay iso={parsed.placedAt} format="datetime" />
+      ) : undefined,
+      total: parsed.totals
+        ? format.money(parsed.totals.total, parsed.totals.currency)
+        : undefined,
+      payment: pay ? (
+        <StatusBadge tone={pay.tone} withDot compact>
+          {pay.label}
+        </StatusBadge>
+      ) : null,
+      status: renderStatusBadges(order),
+      shipment: (
+        <>
+          {renderShipmentBadges(order)}
+          {carrier ? <span className="text-muted orders-cell-sub">{carrier}</span> : null}
+        </>
+      ),
+      money: renderMoneyBadges(order),
+      generateLabelHref: labelHrefFor(order),
+      channelUrl:
+        parsed.sourceExternalUrl && isSafeHttpUrl(parsed.sourceExternalUrl)
+          ? parsed.sourceExternalUrl
+          : undefined,
+      channelName: sourceLabel,
+      detail: <OrderPeekDetail order={order} thumbLabel={(sourceShort ?? sourceLabel ?? '').slice(0, 1)} />,
+    };
+  }
 
   return (
     <PageLayout
@@ -1214,39 +1312,17 @@ export function OrdersListPage(): ReactElement {
         </div>
       }
     >
-      {/* Status segments — partition the set; click to filter by `health`. */}
-      <div className="ds-grid orders-segments orders-segments--6">
-        <button
-          type="button"
-          className={['card-button-reset', 'orders-segment', health === undefined ? 'orders-segment--active' : '']
-            .filter(Boolean)
-            .join(' ')}
-          aria-pressed={health === undefined}
-          onClick={() => {
-            filtersApi.setHealth(null);
+      {/* Status bar (#4026): the health partition as tabs, and "Needs a look"
+          as one line beside them. */}
+      <div className="list-statusbar">
+        <OrderStatusTabs
+          value={health}
+          summary={summary}
+          onChange={(next) => {
+            filtersApi.setHealth(next);
           }}
-        >
-          <MetricCard label={copy.allOrders} value={summary ? format.number(summary.total) : '—'} />
-        </button>
-        {HEALTH_SEGMENTS.map((segment) => (
-          <button
-            key={segment.key}
-            type="button"
-            className={['card-button-reset', 'orders-segment', health === segment.key ? 'orders-segment--active' : '']
-              .filter(Boolean)
-              .join(' ')}
-            aria-pressed={health === segment.key}
-            onClick={() => {
-              filtersApi.setHealth(segment.key);
-            }}
-          >
-            <MetricCard
-              label={filterCopy.healthLabels[segment.key]}
-              tone={segment.tone}
-              value={segmentCount(segment)}
-            />
-          </button>
-        ))}
+        />
+        <OrderAttentionSummary filtersApi={filtersApi} summary={summary} slaSummary={slaSummary} />
       </div>
 
       <OrderListFilterBar
@@ -1267,8 +1343,16 @@ export function OrdersListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.loadError}
-          message={serverErrorText(serverSaid, query.error.message, '')}
-          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry.action}</Button>}
+          message={describeApiError(query.error, 'orders')}
+          action={
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {copy.retry.action}
+            </Button>
+          }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         health === 'needs_attention' ? (
@@ -1429,8 +1513,11 @@ export function OrdersListPage(): ReactElement {
             // height here comes from the money column's four-item stack, so a
             // middle-aligned Order cell sat below the top-aligned expander and
             // beside a centred checkbox — three anchors in one row.
-            className="orders-table"
+            className="orders-table list-table--fixed list-table--peek"
             stickyLeftColumns={selectionEnabled ? 2 : 1}
+            // #4026 — the peek arrow stays pinned right, like the identity
+            // columns on the left; only the middle columns scroll.
+            stickyRightColumns={1}
             footer={
               selectionEnabled && selectedOrders.length > 0 ? (
               <BulkActionBar
@@ -1524,22 +1611,14 @@ export function OrdersListPage(): ReactElement {
               />
               ) : undefined
             }
-            expandable={{
-              // Non-essential fields (order ref, items, exact ship-by, carrier,
-              // created, payment, addresses) live in the accordion (#1620); the
-              // row keeps the scannable essentials + status badges.
-              renderDetail: (order) => (
-                <OrderRowDetail
-                  order={order}
-                  channelLabel={channelLabel}
-                  platformByConnection={platformByConnection}
-                />
-              ),
-              toggleLabel: (order, expanded) =>
-                interpolate(expanded ? copy.row.collapseDetails : copy.row.expandDetails, {
-                  id: order.internalOrderId,
-                }),
+            // Row click or "Details" opens the order peek (#4026), which
+            // replaced the inline expanded row; ↑ ↓ / J K walk the rows.
+            onRowClick={(order) => {
+              openPeek(order.internalOrderId);
             }}
+            rowClassName={(order) =>
+              order.internalOrderId === peekId ? 'list-row--peek' : undefined
+            }
             // Server-side ordering (#944/#1713): every sortable header (customer,
             // status, and the merged shipment/money columns) renders its own
             // per-label sort control that calls `applySort` directly, so no
@@ -1585,17 +1664,6 @@ export function OrdersListPage(): ReactElement {
                   </span>
                 );
               },
-              // Full field set behind a "View full details" disclosure (#1713) —
-              // the mobile counterpart of the desktop accordion. Collapsed by
-              // default so the card leads with the summary, not a wall of fields.
-              collapsibleDetail: true,
-              detail: (order) => (
-                <OrderRowDetail
-                  order={order}
-                  channelLabel={channelLabel}
-                  platformByConnection={platformByConnection}
-                />
-              ),
               // Scannable essentials shown before expanding (#1713): a tight
               // facts grid (total / payment / invoice / customer / shipment).
               // The items line that used to head this block moved out with
@@ -1882,6 +1950,16 @@ export function OrdersListPage(): ReactElement {
           />
         </>
       )}
+
+      <OrderPeek
+        view={peekView}
+        position={peekIndex + 1}
+        count={items.length}
+        onNavigate={navigatePeek}
+        onOpenChange={(open) => {
+          if (!open) setPeekId(null);
+        }}
+      />
 
       <BulkDispatchDialog
         open={bulkOpen}

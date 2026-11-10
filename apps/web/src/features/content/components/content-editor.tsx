@@ -20,7 +20,6 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../shared/ui/tabs';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
-import { ApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
 import { extractPlatformErrors } from '../lib/extract-platform-errors';
 import { usePlatforms } from '../../../shared/plugins';
@@ -39,6 +38,7 @@ import type {
 } from '../api/content.types';
 import { ContentPanel } from './content-panel';
 import { SuggestionDialog } from './suggestion-dialog';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ContentEditorProps {
   productId: string;
@@ -56,13 +56,6 @@ function fromTabValue(value: string, channels: ContentChannelState[]): ActiveTar
   if (value === 'master') return { kind: 'master' };
   const found = channels.find((c) => c.connectionId === value);
   return found ? { kind: 'channel', connectionId: found.connectionId } : { kind: 'master' };
-}
-
-function formatMutationError(err: unknown, unknownError: string): string | null {
-  if (err === null || err === undefined) return null;
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error) return err.message;
-  return unknownError;
 }
 
 export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
@@ -180,7 +173,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
     return (
       <ErrorState
         title={copy.loadError.title}
-        message={query.error.message}
+        message={describeApiError(query.error, 'content')}
         action={<Button onClick={() => { void query.refetch(); }}>{copy.loadError.retry}</Button>}
       />
     );
@@ -192,10 +185,8 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
 
   const master: ContentMasterState = query.data.master;
   const busy = saveMutation.isPending || discardMutation.isPending || publishMutation.isPending;
-  const mutationError =
-    formatMutationError(saveMutation.error, copy.unknownError) ||
-    formatMutationError(discardMutation.error, copy.unknownError) ||
-    formatMutationError(publishMutation.error, copy.unknownError);
+  const failedMutation = saveMutation.error ?? discardMutation.error ?? publishMutation.error;
+  const mutationError = failedMutation ? describeApiError(failedMutation, 'content') : null;
   // #486 / #613: when the publish failure is a structured platform error
   // (today: Allegro's `CHANNEL_PUBLISH_FAILED` 422), surface the per-field
   // errors instead of the bare "API error (422):" string. The dispatcher

@@ -57,6 +57,7 @@ import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
 import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
 import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // A technical example, not prose: the same in every language.
 const ADAPTER_KEY_EXAMPLE = 'prestashop.webservice.v1';
@@ -852,7 +853,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // prose the backend is free to reword, and a reworded message would
       // have silently reverted this to the generic banner (review finding).
       if (error instanceof ApiError && isStockLocationOverrideValidationError(error)) {
-        form.setError('stockLocationOverride', { message: error.message });
+        form.setError('stockLocationOverride', { message: describeApiError(error, 'connections') });
         updateConnection.reset();
         // The field and the summary already carry the message; the toast
         // points at them rather than repeating it a third time.
@@ -862,9 +863,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // Covers the PATCH rejecting (also shown in the top-of-form `Alert`) and
       // anything thrown before it - the pre-submit refetch or the input
       // mapping - which `updateConnection.error` never sees.
-      showSaveFailedToast(
-        error instanceof Error && error.message ? error.message : copy.unexpectedError,
-      );
+      showSaveFailedToast(describeApiError(error, 'connections'));
     }
   }, (errors) => {
     showSaveFailedToast(
@@ -887,7 +886,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       ) : null}
       {updateConnection.error ? (
         <Alert tone="error" title={copy.errorTitle}>
-          {updateConnection.error.message}
+          {describeApiError(updateConnection.error, 'connections')}
         </Alert>
       ) : null}
       {saveWarnings.length > 0 ? (
@@ -1136,7 +1135,7 @@ function MarketplaceCatalogPicker({
             </Button>
           }
         >
-          {loadError.message}
+          {describeApiError(loadError, 'connections')}
         </Alert>
       ) : null}
 

@@ -23,6 +23,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface RestoreConnectionButtonProps {
   connection: Connection;
@@ -51,7 +52,7 @@ export function RestoreConnectionButton({
       showToast({
         tone: 'error',
         title: copy.errorTitle,
-        description: error instanceof Error ? error.message : copy.tryAgain,
+        description: describeApiError(error, 'connections'),
       });
     }
   }

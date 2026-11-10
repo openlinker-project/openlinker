@@ -2,6 +2,7 @@ import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages } from '../../shared/i18n';
 import { AllegroConnectCallbackPage } from './allegro-connect-callback-page';
 
 const CALLBACK_ROUTE = '/integrations/allegro/connect/callback';
@@ -68,7 +69,9 @@ describe('AllegroConnectCallbackPage', () => {
   it('shows error state on mutation failure with generic error', async () => {
     const apiClient = createMockApiClient({
       allegro: {
-        handleCallback: vi.fn().mockRejectedValue(new Error('Token exchange failed')),
+        handleCallback: vi.fn().mockRejectedValue(
+          new ApiError('Token exchange failed', 502, { code: 'NOT_A_REAL_CODE' }),
+        ),
       },
     });
     renderWithProviders(<AllegroConnectCallbackPage />, {
@@ -77,7 +80,7 @@ describe('AllegroConnectCallbackPage', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'Authorisation failed' })).toBeInTheDocument();
-    expect(screen.getByText('Token exchange failed')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /try again/i })).toHaveAttribute(
       'href',
       '/connections/new/allegro',

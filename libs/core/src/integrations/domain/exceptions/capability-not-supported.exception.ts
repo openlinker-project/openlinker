@@ -8,7 +8,10 @@
  * @module libs/core/src/integrations/domain/exceptions
  */
 export class CapabilityNotSupportedException extends Error {
-  constructor(adapterKey: string, capability: string) {
+  constructor(
+    public readonly adapterKey: string,
+    public readonly capability: string
+  ) {
     super(`Adapter ${adapterKey} does not support capability: ${capability}`);
     this.name = 'CapabilityNotSupportedException';
     Error.captureStackTrace(this, this.constructor);

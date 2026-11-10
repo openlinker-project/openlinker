@@ -60,6 +60,8 @@ export type { FilterCheckProps, FilterCheckTone } from './filter-check';
 export { ActiveFilterChips } from './active-filter-chips';
 export type { ActiveFilterChip, ActiveFilterChipsProps } from './active-filter-chips';
 export { FilterSheet, FilterSection } from './filter-sheet';
+export { SidePanel } from './side-panel';
+export type { SidePanelProps } from './side-panel';
 export type { FilterSheetProps, FilterSectionProps } from './filter-sheet';
 export { QuickFilters, QuickFiltersLabel, QuickFiltersSeparator } from './quick-filters';
 export type { QuickFiltersProps } from './quick-filters';

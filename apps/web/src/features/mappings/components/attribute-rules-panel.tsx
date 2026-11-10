@@ -28,6 +28,7 @@ import {
   useDeleteAttributeRule,
 } from '../hooks/use-attribute-rules';
 import { interpolate, usePlural, useMessages, type Messages, type PluralFn } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type AttributeRulesCopy = Messages['mappings']['attributeRulesPanel'];
 
@@ -146,7 +147,7 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
     );
   }
   if (rulesQuery.error) {
-    return <ErrorState title={copy.errorTitle} message={rulesQuery.error.message} />;
+    return <ErrorState title={copy.errorTitle} message={describeApiError(rulesQuery.error, 'mappings')} />;
   }
 
   const rules = rulesQuery.data ?? [];
@@ -355,12 +356,12 @@ export function AttributeRulesPanel({ connectionId }: AttributeRulesPanelProps):
       )}
       {upsert.error && (
         <p className="error-message" role="alert" style={{ marginTop: '0.5rem' }}>
-          {upsert.error.message}
+          {describeApiError(upsert.error, 'mappings')}
         </p>
       )}
       {del.error && (
         <p className="error-message" role="alert" style={{ marginTop: '0.5rem' }}>
-          {del.error.message}
+          {describeApiError(del.error, 'mappings')}
         </p>
       )}
     </div>
