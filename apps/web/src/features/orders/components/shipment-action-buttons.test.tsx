@@ -184,3 +184,62 @@ describe('ShipmentActionButtons download-label failure mapping (#2671)', () => {
     expect(screen.queryByText(/Could not download the label\. Try again\./i)).not.toBeInTheDocument();
   });
 });
+
+// A carrier that refuses the cancellation used to leave the dialog open with
+// no message at all. Each failure class names itself; the server `message`
+// (which can echo carrier text) is never shown.
+const SECRET_SERVER_TEXT = 'ShipX invalid_action for ul. Prosta 1';
+const CANCEL_FAILURES: Array<[string, number, RegExp, boolean]> = [
+  ['502 - carrier refused', 502, /the carrier did not cancel this shipment/i, true],
+  ['409 - no longer active', 409, /can no longer be cancelled/i, false],
+  ['422 - not supported', 422, /does not support cancelling/i, false],
+  ['500 - unknown outcome', 500, /could not cancel the shipment/i, true],
+];
+
+describe('ShipmentActionButtons cancel failure', () => {
+  function renderCancel(status: number): void {
+    const apiClient = createMockApiClient({
+      shipments: {
+        cancel: vi
+          .fn()
+          .mockRejectedValue(
+            new ApiError(SECRET_SERVER_TEXT, status, {
+              message: SECRET_SERVER_TEXT,
+              providerCode: 'shipx.invalid_action',
+            }),
+          ),
+      },
+    });
+    renderWithProviders(
+      <ShipmentActionButtons shipment={makeDownloadableShipment()} canWrite onGenerateLabelClick={vi.fn()} />,
+      { apiClient },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^cancel shipment$/i }));
+  }
+
+  it.each(CANCEL_FAILURES)(
+    'should keep the dialog open and explain a %s',
+    async (_label, status, expectedTitle, retryable) => {
+      renderCancel(status);
+
+      expect(await screen.findByText(expectedTitle)).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByText(new RegExp(SECRET_SERVER_TEXT))).not.toBeInTheDocument();
+      const confirm = screen.getByRole('button', { name: /^cancel shipment$/i });
+      if (retryable) expect(confirm).toBeEnabled();
+      else expect(confirm).toBeDisabled();
+    },
+  );
+
+  it('should clear the error when the dialog is closed and reopened', async () => {
+    renderCancel(502);
+    expect(await screen.findByText(/the carrier did not cancel this shipment/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^keep$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText(/the carrier did not cancel this shipment/i)).not.toBeInTheDocument();
+  });
+});

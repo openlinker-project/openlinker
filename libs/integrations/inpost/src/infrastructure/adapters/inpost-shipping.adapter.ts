@@ -132,7 +132,8 @@ export class InpostShippingAdapter
   async cancelShipment(input: { providerShipmentId: string }): Promise<void> {
     // ShipX only permits cancellation pre-confirmation; once confirmed it
     // returns `invalid_action`, which the HTTP client maps to
-    // InpostValidationException for the caller to handle (best-effort cancel).
+    // ShippingProviderRejectionException (a 502 at the API, shown to the
+    // operator as "the carrier refused").
     await this.http.request<void>({
       method: 'DELETE',
       path: `/v1/shipments/${input.providerShipmentId}`,
