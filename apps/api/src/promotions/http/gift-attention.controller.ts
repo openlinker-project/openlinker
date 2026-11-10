@@ -14,7 +14,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -30,6 +29,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { GiftAttentionItemDto, GiftAttentionResponseDto } from './dto/gift-attention.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 const LOG_WINDOW = 200;
 
@@ -101,11 +101,21 @@ export class GiftAttentionController {
   ): Promise<GiftAttentionItemDto> {
     const record = await this.log.findById(runId);
     if (record === null || record.internalOrderId !== internalOrderId) {
-      throw new NotFoundException(`No gift run "${runId}" on order "${internalOrderId}".`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'GIFT_RUN_NOT_FOUND',
+        `No gift run "${runId}" on order "${internalOrderId}".`,
+        { runId, orderId: internalOrderId }
+      );
     }
     const dismissed = await this.log.dismiss(runId, user.id, new Date());
     if (dismissed === null) {
-      throw new NotFoundException(`No gift run "${runId}" on order "${internalOrderId}".`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'GIFT_RUN_NOT_FOUND',
+        `No gift run "${runId}" on order "${internalOrderId}".`,
+        { runId, orderId: internalOrderId }
+      );
     }
     return toItem(dismissed);
   }

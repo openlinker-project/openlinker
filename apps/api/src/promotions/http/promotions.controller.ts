@@ -17,7 +17,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -52,6 +51,7 @@ import {
   ResumePromotionDto,
   WritePromotionDto,
 } from './dto/promotion.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 const HISTORY_LIMIT = 20;
 
@@ -119,11 +119,25 @@ export class PromotionsController {
   @ApiResponse({ status: 404, description: 'Order or customer not found' })
   async evaluate(@Body() dto: EvaluatePromotionsDto): Promise<PromotionDryRunResponseDto> {
     const record = await this.orders.getOrderRecord(dto.orderId);
-    if (record === null) throw new NotFoundException(`Order "${dto.orderId}" not found.`);
+    if (record === null)
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_NOT_FOUND',
+        `Order "${dto.orderId}" not found.`,
+        {
+          orderId: dto.orderId,
+        }
+      );
 
     if (dto.customerId !== undefined) {
       const customer = await this.customers.getProjection(dto.customerId);
-      if (customer === null) throw new NotFoundException(`Customer "${dto.customerId}" not found.`);
+      if (customer === null)
+        throw codedHttpError(
+          HttpStatus.NOT_FOUND,
+          'CUSTOMER_NOT_FOUND',
+          `Customer "${dto.customerId}" not found.`,
+          { customerId: dto.customerId }
+        );
     }
 
     let draft: Promotion | undefined;
@@ -164,7 +178,9 @@ export class PromotionsController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, type: PromotionHistoryResponseDto })
   @ApiResponse({ status: 404, description: 'Promotion not found' })
-  async history(@Param('id', new ParseUUIDPipe()) id: string): Promise<PromotionHistoryResponseDto> {
+  async history(
+    @Param('id', new ParseUUIDPipe()) id: string
+  ): Promise<PromotionHistoryResponseDto> {
     await this.promotions.get(id);
     const records = await this.applications.findByPromotion(id, HISTORY_LIMIT);
     const newestFirst = [...records].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -182,7 +198,10 @@ export class PromotionsController {
   @ApiOperation({ summary: 'Create a promotion' })
   @ApiResponse({ status: 201, type: PromotionResponseDto })
   @ApiResponse({ status: 400, description: 'Malformed condition or benefit' })
-  @ApiResponse({ status: 409, description: 'An identical promotion already covers an overlapping window' })
+  @ApiResponse({
+    status: 409,
+    description: 'An identical promotion already covers an overlapping window',
+  })
   async create(@Body() dto: WritePromotionDto): Promise<PromotionResponseDto> {
     return PromotionResponseDto.fromView(await this.promotions.create(dto.toInput()));
   }
@@ -221,13 +240,18 @@ export class PromotionsController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: ResumePromotionDto
   ): Promise<PromotionResponseDto> {
-    return PromotionResponseDto.fromView(await this.promotions.resumeAfterCap(id, dto.additionalUnits));
+    return PromotionResponseDto.fromView(
+      await this.promotions.resumeAfterCap(id, dto.additionalUnits)
+    );
   }
 
   @Delete(':id')
   @Roles('admin', 'operator')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a promotion', description: 'Gifts already added stay; the ledger keeps its history.' })
+  @ApiOperation({
+    summary: 'Delete a promotion',
+    description: 'Gifts already added stay; the ledger keeps its history.',
+  })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 404, description: 'Promotion not found' })

@@ -51,6 +51,7 @@ import {
   type PromotionTab,
 } from '../../features/promotions/lib/promotion-view';
 import type { Promotion } from '../../features/promotions/api/promotions.types';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 function readEnum<T extends string>(values: readonly T[], raw: string | null): T | null {
   return raw !== null && (values as readonly string[]).includes(raw) ? (raw as T) : null;
@@ -95,10 +96,10 @@ function PromotionsListContent(): ReactElement {
           else next.set(key, value);
           return next;
         },
-        { replace: true },
+        { replace: true }
       );
     },
-    [setParams],
+    [setParams]
   );
 
   // The order shown: the server's, unless a move is waiting for its answer.
@@ -106,7 +107,9 @@ function PromotionsListContent(): ReactElement {
     const rows = promotions.data ?? [];
     if (localOrder === null) return rows;
     const byId = new Map(rows.map((p) => [p.id, p]));
-    const known = localOrder.map((id) => byId.get(id)).filter((p): p is Promotion => p !== undefined);
+    const known = localOrder
+      .map((id) => byId.get(id))
+      .filter((p): p is Promotion => p !== undefined);
     return known.length === rows.length ? known : rows;
   }, [promotions.data, localOrder]);
 
@@ -117,10 +120,12 @@ function PromotionsListContent(): ReactElement {
   const shown = useMemo(
     () => filterPromotions(ordered, { tab, attention, channelId, query }, searchText),
     // `searchText` only reads `summaries`, which is in the list.
-    [ordered, tab, attention, channelId, query, summaries],
+    [ordered, tab, attention, channelId, query, summaries]
   );
 
-  const channels = (connections.data ?? []).filter((c) => c.enabledCapabilities.includes('OrderSource'));
+  const channels = (connections.data ?? []).filter((c) =>
+    c.enabledCapabilities.includes('OrderSource')
+  );
   const channelOptions = channels.map((channel) => ({
     id: channel.id,
     name: channel.name,
@@ -129,7 +134,12 @@ function PromotionsListContent(): ReactElement {
       return ids.length === 0 || ids.includes(channel.id);
     }).length,
   }));
-  const filtered = tab !== null || attention !== null || channelId !== null || benefit !== null || query.trim() !== '';
+  const filtered =
+    tab !== null ||
+    attention !== null ||
+    channelId !== null ||
+    benefit !== null ||
+    query.trim() !== '';
   const canReorder = !filtered;
   const peek = ordered.find((p) => p.id === peekId) ?? null;
 
@@ -158,7 +168,7 @@ function PromotionsListContent(): ReactElement {
         onSuccess: () => {
           showToast({ tone: 'success', title: copy.detail.savedToast, description: '' });
         },
-      },
+      }
     );
   };
 
@@ -169,16 +179,16 @@ function PromotionsListContent(): ReactElement {
         for (const key of ['attention', 'channel', 'benefit', 'q']) next.delete(key);
         return next;
       },
-      { replace: true },
+      { replace: true }
     );
   };
 
   const writeError = reorder.isError
     ? copy.page.reorderFailed
     : save.isError
-      ? `${copy.page.writeFailed} ${save.error.message}`
+      ? `${copy.page.writeFailed} ${describeApiError(save.error, 'promotions')}`
       : remove.isError
-        ? `${copy.page.deleteFailed} ${remove.error.message}`
+        ? `${copy.page.deleteFailed} ${describeApiError(remove.error, 'promotions')}`
         : null;
 
   const create = (
@@ -216,7 +226,10 @@ function PromotionsListContent(): ReactElement {
       {promotions.isLoading ? (
         <DataTableSkeleton columns={[]} label={copy.page.loading} />
       ) : promotions.isError ? (
-        <ErrorState title={copy.page.loadFailed} message={promotions.error.message} />
+        <ErrorState
+          title={copy.page.loadFailed}
+          message={describeApiError(promotions.error, 'promotions')}
+        />
       ) : (
         <>
           <div className="list-statusbar">

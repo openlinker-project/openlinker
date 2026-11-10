@@ -44,6 +44,7 @@ import {
 } from '../lib/gift-lines';
 import { useGiftFormLabels } from '../lib/use-gift-form-labels';
 import { GiftDocumentFormCards, type GiftDocumentCardValue } from './gift-document-form-cards';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /** A promotion that sets its own form for gifts of this channel. */
 export interface OverridingGift {
@@ -85,7 +86,7 @@ export function GiftsOnDocumentsPanel({
   const config = connectionQuery.data?.config;
   const savedValue: GiftDocumentCardValue = useMemo(
     () => readGiftConnectionOverride(config) ?? 'inherit',
-    [config],
+    [config]
   );
   const savedAmount = useMemo(() => readGiftConnectionUnitPrice(config), [config]);
   const [draft, setDraft] = useState<GiftDocumentCardValue | null>(null);
@@ -97,13 +98,14 @@ export function GiftsOnDocumentsPanel({
     () => () => {
       if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
     },
-    [],
+    []
   );
 
   const two = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
   const value = draft ?? savedValue;
   const amount =
-    draftAmount ?? (savedAmount === null ? format.number(2.5, two) : format.number(Number(savedAmount), two));
+    draftAmount ??
+    (savedAmount === null ? format.number(2.5, two) : format.number(Number(savedAmount), two));
   const parsed = parseGiftUnitPrice(amount);
   const amountInvalid = value === 'custom-price' && parsed === null;
   const amountChanged =
@@ -133,7 +135,11 @@ export function GiftsOnDocumentsPanel({
       <div className="gift-conn">
         <ErrorState
           title={copy.connection.loadFailed}
-          message={connectionQuery.error?.message ?? copy.connection.loadFailedMessage}
+          message={
+            connectionQuery.error
+              ? describeApiError(connectionQuery.error, 'gift-documents')
+              : copy.connection.loadFailedMessage
+          }
         />
       </div>
     );
@@ -148,10 +154,11 @@ export function GiftsOnDocumentsPanel({
   const providers = providersQuery.data?.providers ?? [];
   const effective: GiftDocumentFormChoice = value === 'inherit' ? inheritedForm : value;
   const effectiveText =
-    effective === 'custom-price' && (value === 'inherit' ? inheritedAmount !== null : parsed !== null)
+    effective === 'custom-price' &&
+    (value === 'inherit' ? inheritedAmount !== null : parsed !== null)
       ? `${labels.short(effective)} ${format.money(
           value === 'inherit' ? Number(inheritedAmount) : (parsed as number),
-          'PLN',
+          'PLN'
         )}`
       : labels.short(effective);
 
@@ -171,8 +178,10 @@ export function GiftsOnDocumentsPanel({
           ? null
           : {
               form: value,
-              ...(value === 'custom-price' && parsed !== null ? { unitPrice: parsed.toFixed(2) } : {}),
-            },
+              ...(value === 'custom-price' && parsed !== null
+                ? { unitPrice: parsed.toFixed(2) }
+                : {}),
+            }
       );
       setSaveState('saved');
       setLive(tab.savedLive);
@@ -184,7 +193,7 @@ export function GiftsOnDocumentsPanel({
       showToast({
         tone: 'error',
         title: copy.default.saveFailed,
-        description: error instanceof Error ? error.message : '',
+        description: error instanceof Error ? describeApiError(error, 'gift-documents') : '',
       });
     }
   }
@@ -198,7 +207,9 @@ export function GiftsOnDocumentsPanel({
             <h3 id="gift-conn-one" data-testid="doc-gift-set-title">
               {tab.sectionOneTitle}
             </h3>
-            <span className="gift-conn__tag">{value === 'inherit' ? tab.tagInherit : tab.tagOwn}</span>
+            <span className="gift-conn__tag">
+              {value === 'inherit' ? tab.tagInherit : tab.tagOwn}
+            </span>
           </div>
           {!write.canWrite ? (
             <Alert tone="info" data-testid="doc-gift-set-readonly-notice">
@@ -247,7 +258,9 @@ export function GiftsOnDocumentsPanel({
                 <div className="gift-prov__row" key={provider.connectionId}>
                   <span className="gift-prov__name">
                     {provider.name}
-                    <small>{provider.kind === 'fiscal-receipt' ? tab.receipts : tab.invoices}</small>
+                    <small>
+                      {provider.kind === 'fiscal-receipt' ? tab.receipts : tab.invoices}
+                    </small>
                   </span>
                   <span className="gift-prov__text">
                     {provider.acceptsZeroValueLine === true
@@ -287,7 +300,7 @@ export function GiftsOnDocumentsPanel({
                         {tab.providersFooterLink}
                       </Link>,
                       part,
-                    ],
+                    ]
               )}
           </p>
         </section>

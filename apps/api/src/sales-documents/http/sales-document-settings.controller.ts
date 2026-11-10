@@ -9,16 +9,7 @@
  *
  * @module apps/api/src/sales-documents/http
  */
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  Put,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
@@ -38,6 +29,7 @@ import {
   SalesDocumentSettingsResponseDto,
   SetSalesDocumentSettingsDto,
 } from './dto/sales-document-settings.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('sales-documents')
@@ -47,7 +39,7 @@ export class SalesDocumentSettingsController {
     @Inject(SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN)
     private readonly settings: ISalesDocumentSettingsService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService,
+    private readonly integrations: IIntegrationsService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -70,7 +62,9 @@ export class SalesDocumentSettingsController {
   @ApiResponse({ status: 200, type: SalesDocumentProvidersResponseDto })
   async documentProviders(): Promise<SalesDocumentProvidersResponseDto> {
     const [invoicing, fiscal] = await Promise.all([
-      this.integrations.listCapabilityAdapters<unknown>({ capability: 'Invoicing' }).catch(() => []),
+      this.integrations
+        .listCapabilityAdapters<unknown>({ capability: 'Invoicing' })
+        .catch(() => []),
       this.integrations
         .listCapabilityAdapters<unknown>({ capability: 'Fiscalization', lazy: true })
         .catch(() => []),
@@ -104,19 +98,19 @@ export class SalesDocumentSettingsController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async set(
     @Body() dto: SetSalesDocumentSettingsDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<SalesDocumentSettingsResponseDto> {
     try {
       return SalesDocumentSettingsResponseDto.fromSetting(
         await this.settings.setGiftDocumentForm(
           dto.giftDocumentForm,
           user?.id ?? null,
-          dto.giftDocumentUnitPrice ?? null,
-        ),
+          dto.giftDocumentUnitPrice ?? null
+        )
       );
     } catch (error) {
       if (error instanceof InvalidGiftDocumentFormError) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'GIFT_DOCUMENT_FORM_INVALID', error.message);
       }
       throw error;
     }

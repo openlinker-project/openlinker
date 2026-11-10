@@ -35,6 +35,7 @@ import {
   promotionToForm,
   type PromotionFormValues,
 } from '../../features/promotions/lib/promotion-form';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const isNotFoundError = (error: Error): boolean => error instanceof ApiError && error.isNotFound();
 
@@ -66,7 +67,9 @@ function PromotionPageContent(): ReactElement {
   const promotion = usePromotionQuery(sourceId);
   const names = useVariantNames([
     promotion.data?.benefit.variantId ?? '',
-    ...(promotion.data?.conditions.flatMap((c) => (c.field === 'containsProduct' ? [c.value] : [])) ?? []),
+    ...(promotion.data?.conditions.flatMap((c) =>
+      c.field === 'containsProduct' ? [c.value] : []
+    ) ?? []),
   ]);
 
   const initial = useMemo<PromotionFormValues | null>(() => {
@@ -74,8 +77,14 @@ function PromotionPageContent(): ReactElement {
     const values = promotionToForm(promotion.data, names);
     if (!isNew) return values;
     const fresh = emptyPromotionForm(values.kind);
-    return { ...values, name: `${values.name} ${copy.detail.copySuffix}`, from: fresh.from, to: '', combineIds: [],
-      combineMode: values.combineMode === 'selected' ? 'all' : values.combineMode };
+    return {
+      ...values,
+      name: `${values.name} ${copy.detail.copySuffix}`,
+      from: fresh.from,
+      to: '',
+      combineIds: [],
+      combineMode: values.combineMode === 'selected' ? 'all' : values.combineMode,
+    };
   }, [promotion.data, names, isNew, copy.detail.copySuffix]);
 
   const onSaved = (): void => {
@@ -89,9 +98,10 @@ function PromotionPageContent(): ReactElement {
       {
         onSuccess: (result) => {
           onSaved();
-          if (isNew) void navigate(`/promotions/${encodeURIComponent(result.id)}`, { replace: true });
+          if (isNew)
+            void navigate(`/promotions/${encodeURIComponent(result.id)}`, { replace: true });
         },
-      },
+      }
     );
   };
 
@@ -117,7 +127,7 @@ function PromotionPageContent(): ReactElement {
         canWrite={write.canWrite}
         saving={save.isPending}
         savedCount={savedCount}
-        saveError={save.isError ? save.error.message : null}
+        saveError={save.isError ? describeApiError(save.error, 'promotions') : null}
         onSave={onSave}
       />
     );
@@ -129,7 +139,11 @@ function PromotionPageContent(): ReactElement {
         <PageLayout {...header} title={copy.detail.eyebrow}>
           <ErrorState
             title={copy.detail.loadFailed}
-            message={isNotFoundError(promotion.error) ? copy.detail.notFound : promotion.error.message}
+            message={
+              isNotFoundError(promotion.error)
+                ? copy.detail.notFound
+                : describeApiError(promotion.error, 'promotions')
+            }
           />
         </PageLayout>
       );
@@ -151,11 +165,11 @@ function PromotionPageContent(): ReactElement {
       savedCount={savedCount}
       saveError={
         save.isError
-          ? save.error.message
+          ? describeApiError(save.error, 'promotions')
           : resume.isError
-            ? resume.error.message
+            ? describeApiError(resume.error, 'promotions')
             : remove.isError
-              ? `${copy.page.deleteFailed} ${remove.error.message}`
+              ? `${copy.page.deleteFailed} ${describeApiError(remove.error, 'promotions')}`
               : null
       }
       onSave={(values, isActive, extend) => {

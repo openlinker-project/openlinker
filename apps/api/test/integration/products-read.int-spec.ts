@@ -18,19 +18,21 @@
  *
  * @module apps/api/test/integration
  */
-import { DataSource } from 'typeorm';
-import {
+import type { DataSource } from 'typeorm';
+import type {
   Product,
-  ProductRepositoryPort,
+  ProductRepositoryPort} from '@openlinker/core/products';
+import {
   PRODUCT_REPOSITORY_TOKEN,
 } from '@openlinker/core/products';
 import {
   ProductOrmEntity,
   ProductVariantOrmEntity,
 } from '@openlinker/core/products/orm-entities';
+import type {
+  IntegrationTestHarness} from './setup';
 import {
   getTestHarness,
-  IntegrationTestHarness,
   resetTestHarness,
   teardownTestHarness,
 } from './setup';

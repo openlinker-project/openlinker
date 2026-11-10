@@ -21,9 +21,10 @@
  *
  * @module apps/api/test/integration
  */
+import type {
+  IntegrationTestHarness} from './setup';
 import {
   getTestHarness,
-  IntegrationTestHarness,
   resetTestHarness,
   teardownTestHarness,
 } from './setup';
@@ -46,7 +47,7 @@ describe('Return Custody Writes Integration', () => {
   });
 
   const query = async <T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> =>
-    (await harness.getDataSource().query(sql, params)) as T[];
+    (await harness.getDataSource().query(sql, params));
 
   const seedLine = async (advised = 5): Promise<void> => {
     await query(
@@ -232,7 +233,7 @@ describe('Return Custody Writes Integration', () => {
           const rows = (await manager.query(
             `SELECT "quantityReceived" FROM "return_lines" WHERE "id" = $1 FOR UPDATE`,
             [LINE_ID]
-          )) as Array<{ quantityReceived: number }>;
+          ));
           const next = Number(rows[0].quantityReceived) + quantity;
           await manager.query(`UPDATE "return_lines" SET "quantityReceived" = $1 WHERE "id" = $2`, [
             next,

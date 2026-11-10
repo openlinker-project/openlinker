@@ -10,6 +10,7 @@
  * @module apps/web/src/features/gifts/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const PARCEL_CLOSED_CODES = [
   'ORDER_PACKED',
@@ -21,7 +22,9 @@ const NOT_READY_CODES = ['ORDER_NOT_READY'] as const;
 
 export type AddGiftRefusal = 'parcel-closed' | 'not-ready' | 'other';
 
-export function readAddGiftRefusal(error: unknown): { kind: AddGiftRefusal; message: string } | null {
+export function readAddGiftRefusal(
+  error: unknown
+): { kind: AddGiftRefusal; message: string } | null {
   if (!(error instanceof ApiError)) return null;
   const details = error.details;
   const code =
@@ -29,10 +32,10 @@ export function readAddGiftRefusal(error: unknown): { kind: AddGiftRefusal; mess
       ? String((details as { error: unknown }).error)
       : '';
   if ((PARCEL_CLOSED_CODES as readonly string[]).includes(code)) {
-    return { kind: 'parcel-closed', message: error.message };
+    return { kind: 'parcel-closed', message: describeApiError(error, 'gifts') };
   }
   if ((NOT_READY_CODES as readonly string[]).includes(code)) {
-    return { kind: 'not-ready', message: error.message };
+    return { kind: 'not-ready', message: describeApiError(error, 'gifts') };
   }
-  return { kind: 'other', message: error.message };
+  return { kind: 'other', message: describeApiError(error, 'gifts') };
 }

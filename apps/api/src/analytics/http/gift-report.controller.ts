@@ -8,7 +8,14 @@
  *
  * @module apps/api/src/analytics/http
  */
-import { BadRequestException, Controller, Get, Inject, Query, type StreamableFile } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpStatus,
+  Inject,
+  Query,
+  type StreamableFile,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
@@ -28,6 +35,7 @@ import {
 import { loadConnectionLabels } from './connection-labels';
 import { assertExportRange, csvDownload } from './export-range';
 import { buildGiftCustomerCsv } from './gift-report-csv';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 /** Same bound as the margin reads: the report scans the orders in the range. */
 const MAX_GIFT_REPORT_RANGE_DAYS = 400;
@@ -44,7 +52,8 @@ export class GiftReportController {
   @Roles('admin', 'operator', 'viewer')
   @Get()
   @ApiOperation({
-    summary: 'Gift cost: units, purchase cost and what the customer paid, per promotion and manual add',
+    summary:
+      'Gift cost: units, purchase cost and what the customer paid, per promotion and manual add',
     description:
       'Cancelled orders are excluded. Cost is net, in the order currency; a gift with no cost on file ' +
       'is counted in `unknownCostUnits` and is not in `costNet`. Totals are per currency.',
@@ -90,7 +99,12 @@ export class GiftReportController {
     const fromDay = from.toISOString().slice(0, 10);
     const toDay = new Date(to.getTime() - 1).toISOString().slice(0, 10);
     return csvDownload(
-      buildGiftCustomerCsv({ rows, labels: await loadConnectionLabels(this.connections), from, to }),
+      buildGiftCustomerCsv({
+        rows,
+        labels: await loadConnectionLabels(this.connections),
+        from,
+        to,
+      }),
       `openlinker_gifts-per-customer_${fromDay}_${toDay}.csv`
     );
   }
@@ -100,12 +114,22 @@ function parseRange(query: GiftReportRangeQueryDto): { from: Date; to: Date } {
   const from = new Date(query.from);
   const to = new Date(query.to);
   if (to.getTime() <= from.getTime()) {
-    throw new BadRequestException('to must be after from');
+    throw codedHttpError(
+      HttpStatus.BAD_REQUEST,
+      'GIFT_REPORT_RANGE_INVALID',
+      'to must be after from',
+      {
+        rule: 'to-after-from',
+      }
+    );
   }
   const days = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
   if (days > MAX_GIFT_REPORT_RANGE_DAYS) {
-    throw new BadRequestException(
-      `Range too wide: ${Math.ceil(days)} days exceeds the ${MAX_GIFT_REPORT_RANGE_DAYS}-day limit`
+    throw codedHttpError(
+      HttpStatus.BAD_REQUEST,
+      'GIFT_REPORT_RANGE_INVALID',
+      `Range too wide: ${Math.ceil(days)} days exceeds the ${MAX_GIFT_REPORT_RANGE_DAYS}-day limit`,
+      { rule: 'too-wide' }
     );
   }
   return { from, to };

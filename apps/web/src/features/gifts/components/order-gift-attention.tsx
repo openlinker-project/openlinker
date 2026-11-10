@@ -26,6 +26,7 @@ import {
   readGiftAttention,
   type GiftAttentionItem,
 } from '../lib/gift-attention';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface OrderGiftAttentionProps {
   internalOrderId: string;
@@ -54,9 +55,14 @@ export function OrderGiftAttention({
 
   const skip = (runId: string): void => {
     dismiss.mutate(runId, {
-      onSuccess: () => showToast({ tone: 'success', title: copy.attention.decisionSaved, description: '' }),
+      onSuccess: () =>
+        showToast({ tone: 'success', title: copy.attention.decisionSaved, description: '' }),
       onError: (error) =>
-        showToast({ tone: 'error', title: copy.attention.skipFailed, description: error.message }),
+        showToast({
+          tone: 'error',
+          title: copy.attention.skipFailed,
+          description: describeApiError(error, 'gifts'),
+        }),
     });
   };
 
@@ -90,7 +96,10 @@ export function OrderGiftAttention({
                 {copy.attention.addAnother}
               </Button>
             ) : null}
-            <Link to={`/promotions/${encodeURIComponent(item.ruleId)}`} data-testid="order-gift-open-rule">
+            <Link
+              to={`/promotions/${encodeURIComponent(item.ruleId)}`}
+              data-testid="order-gift-open-rule"
+            >
               {item.kind === 'out-of-stock' ? copy.attention.seePromotion : copy.attention.openRule}
             </Link>
           </>

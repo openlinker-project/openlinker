@@ -34,6 +34,7 @@ import {
 } from '../lib/gift-lines';
 import { GiftDocumentFormCards, type GiftDocumentCardValue } from './gift-document-form-cards';
 import { GiftPrecedence } from './gift-precedence';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const SAVED_HOLD_MS = 1600;
 
@@ -95,7 +96,7 @@ export function GiftDocumentsDefaultPanel(): ReactElement {
     () => () => {
       if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
     },
-    [],
+    []
   );
 
   if (settingsQuery.isLoading) {
@@ -108,7 +109,12 @@ export function GiftDocumentsDefaultPanel(): ReactElement {
   if (settingsQuery.error || !settingsQuery.data) {
     return (
       <div className="gift-settings__card">
-        <ErrorState title={copy.default.loadFailed} message={settingsQuery.error?.message ?? ''} />
+        <ErrorState
+          title={copy.default.loadFailed}
+          message={
+            settingsQuery.error ? describeApiError(settingsQuery.error, 'gift-documents') : ''
+          }
+        />
       </div>
     );
   }
@@ -152,7 +158,7 @@ export function GiftDocumentsDefaultPanel(): ReactElement {
       showToast({
         tone: 'error',
         title: copy.default.saveFailed,
-        description: error instanceof Error ? error.message : '',
+        description: error instanceof Error ? describeApiError(error, 'gift-documents') : '',
       });
     }
   }

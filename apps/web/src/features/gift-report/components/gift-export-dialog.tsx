@@ -21,6 +21,7 @@ import { SaveButton, type SaveButtonState } from '../../../shared/ui/save-button
 import { useAnalyticsCsvExport } from '../../analytics';
 import type { GiftReportFilters } from '../api/gift-report.types';
 import { useEffect, useRef, useState } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface GiftExportDialogProps {
   open: boolean;
@@ -28,7 +29,11 @@ interface GiftExportDialogProps {
   filters: GiftReportFilters;
 }
 
-export function GiftExportDialog({ open, onOpenChange, filters }: GiftExportDialogProps): ReactElement {
+export function GiftExportDialog({
+  open,
+  onOpenChange,
+  filters,
+}: GiftExportDialogProps): ReactElement {
   const copy = useMessages('gift-report').export;
   const exportCsv = useAnalyticsCsvExport();
   const [state, setState] = useState<SaveButtonState>('idle');
@@ -37,7 +42,7 @@ export function GiftExportDialog({ open, onOpenChange, filters }: GiftExportDial
     () => () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
     },
-    [],
+    []
   );
 
   function download(): void {
@@ -50,7 +55,7 @@ export function GiftExportDialog({ open, onOpenChange, filters }: GiftExportDial
           timer.current = window.setTimeout(() => setState('idle'), 2600);
         },
         onError: () => setState('idle'),
-      },
+      }
     );
   }
 
@@ -63,7 +68,7 @@ export function GiftExportDialog({ open, onOpenChange, filters }: GiftExportDial
         <p className="gift-dlg__p">{copy.thresholds}</p>
         {exportCsv.isError ? (
           <p role="alert" className="text-error">
-            {exportCsv.error.message}
+            {describeApiError(exportCsv.error, 'gift-report')}
           </p>
         ) : null}
         <div className="gift-dlg__f">

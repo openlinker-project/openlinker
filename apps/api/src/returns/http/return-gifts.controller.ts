@@ -15,8 +15,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Put,
 } from '@nestjs/common';
@@ -35,6 +35,7 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { DecideReturnGiftDto, ReturnGiftDto, ReturnGiftsResponseDto } from '../dto/return-gift.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
@@ -44,7 +45,8 @@ const round2 = (value: number): number => Math.round(value * 100) / 100;
 export class ReturnGiftsController {
   constructor(
     @Inject(RETURNS_SERVICE_TOKEN) private readonly returns: IReturnsService,
-    @Inject(RETURN_GIFT_DECISION_SERVICE_TOKEN) private readonly decisions: IReturnGiftDecisionService,
+    @Inject(RETURN_GIFT_DECISION_SERVICE_TOKEN)
+    private readonly decisions: IReturnGiftDecisionService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN) private readonly orderRecords: IOrderRecordService,
     @Inject(PRODUCTS_SERVICE_TOKEN) private readonly products: IProductsService
   ) {}
@@ -52,7 +54,7 @@ export class ReturnGiftsController {
   @Get(':returnId/gifts')
   @Roles('admin', 'operator', 'viewer')
   @ApiOperation({
-    summary: 'The gifts on the return\'s order and what the operator decided about each',
+    summary: "The gifts on the return's order and what the operator decided about each",
     description:
       'A read. An order with no gifts, or a return not yet attributed to an order, answers an empty list.',
   })
@@ -63,7 +65,10 @@ export class ReturnGiftsController {
       gifts,
       currency,
       refundDeductionGross: round2(
-        gifts.reduce((sum, gift) => sum + (gift.decision === 'deduct' ? (gift.deductionGross ?? 0) : 0), 0)
+        gifts.reduce(
+          (sum, gift) => sum + (gift.decision === 'deduct' ? gift.deductionGross ?? 0 : 0),
+          0
+        )
       ),
     };
   }
@@ -74,7 +79,7 @@ export class ReturnGiftsController {
     summary: 'Record keep, ask back or deduct for one gift on a return',
     description:
       'Replaces an earlier decision for the same gift. `deduct` takes the amount in the body, or the ' +
-      'gift\'s standalone price when it is omitted. The refund itself is not changed.',
+      "gift's standalone price when it is omitted. The refund itself is not changed.",
   })
   @ApiResponse({ status: 200, type: ReturnGiftDto })
   async decide(
@@ -86,7 +91,12 @@ export class ReturnGiftsController {
     const { gifts, validGiftLineIds } = await this.loadGifts(returnId);
     const gift = gifts.find((candidate) => candidate.giftLineId === giftLineId);
     if (gift === undefined) {
-      throw new NotFoundException(`Order of return ${returnId} carries no gift line ${giftLineId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'GIFT_LINE_NOT_FOUND',
+        `Order of return ${returnId} carries no gift line ${giftLineId}`,
+        { returnId, giftLineId }
+      );
     }
     try {
       await this.decisions.decide({
@@ -94,7 +104,7 @@ export class ReturnGiftsController {
         giftLineId,
         decision: dto.decision,
         deductionGross:
-          dto.decision === 'deduct' ? (dto.deductionGross ?? gift.standalonePriceGross) : null,
+          dto.decision === 'deduct' ? dto.deductionGross ?? gift.standalonePriceGross : null,
         note: dto.note ?? null,
         actorUserId: user.id,
         validGiftLineIds,
@@ -114,7 +124,14 @@ export class ReturnGiftsController {
   ): Promise<{ gifts: ReturnGiftDto[]; currency: string | null; validGiftLineIds: string[] }> {
     const record = await this.returns.getReturn(returnId);
     if (record === null) {
-      throw new NotFoundException(`Return not found: ${returnId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'RETURN_NOT_FOUND',
+        `Return not found: ${returnId}`,
+        {
+          returnId,
+        }
+      );
     }
     if (record.internalOrderId === null) {
       return { gifts: [], currency: null, validGiftLineIds: [] };
@@ -133,15 +150,19 @@ export class ReturnGiftsController {
     const decided = new Map<string, ReturnGiftDecision>(
       (await this.decisions.list(returnId)).map((d) => [d.giftLineId, d])
     );
-    const variantIds = giftItems.flatMap((item) => (item.variantId === undefined ? [] : [item.variantId]));
+    const variantIds = giftItems.flatMap((item) =>
+      item.variantId === undefined ? [] : [item.variantId]
+    );
     const variants = variantIds.length > 0 ? await this.products.getVariantsByIds(variantIds) : [];
     const productIds = [...new Set(variants.map((v) => v.productId))];
-    const productList = productIds.length > 0 ? await this.products.getProductsByIds(productIds) : [];
+    const productList =
+      productIds.length > 0 ? await this.products.getProductsByIds(productIds) : [];
     const productPrice = new Map(productList.map((p) => [p.id, p.price]));
     const variantById = new Map(variants.map((v) => [v.id, v]));
     const gifts = giftItems.map((item): ReturnGiftDto => {
       const variant = item.variantId === undefined ? undefined : variantById.get(item.variantId);
-      const unit = variant?.price ?? (variant === undefined ? undefined : productPrice.get(variant.productId));
+      const unit =
+        variant?.price ?? (variant === undefined ? undefined : productPrice.get(variant.productId));
       const decision = decided.get(item.id);
       return {
         giftLineId: item.id,

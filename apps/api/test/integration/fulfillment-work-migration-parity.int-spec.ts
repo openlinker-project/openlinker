@@ -46,7 +46,8 @@
 import { DataSource } from 'typeorm';
 
 import { ensureMigrationPrerequisites } from '../../src/database/ensure-migration-prerequisites';
-import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
+import type { IntegrationTestHarness} from './setup';
+import { getTestHarness, teardownTestHarness } from './setup';
 
 // Every fulfillment table joins this one spec rather than getting a sibling:
 // the file already runs the FULL migration chain once per integration run — the
@@ -178,8 +179,8 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
   });
 
   const bothSides = async (sql: string): Promise<[unknown[], unknown[]]> => [
-    (await harness.getDataSource().query(sql, [[...TABLES]])) as unknown[],
-    (await migrated.query(sql, [[...TABLES]])) as unknown[],
+    (await harness.getDataSource().query(sql, [[...TABLES]])),
+    (await migrated.query(sql, [[...TABLES]])),
   ];
 
   it('should build every declared table from the migration alone', async () => {
@@ -187,7 +188,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1) ORDER BY table_name`,
       [[...TABLES]]
-    )) as { table_name: string }[];
+    ));
 
     // Non-vacuity for every comparison below: if the migration built nothing,
     // two empty result sets would compare equal and this file would assert
@@ -226,8 +227,8 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
         AND table_name = 'order_records'
         AND column_name = 'shippingAddressHash'`;
 
-    const fromMigration = (await migrated.query(sql)) as unknown[];
-    const synchronized = (await harness.getDataSource().query(sql)) as unknown[];
+    const fromMigration = (await migrated.query(sql));
+    const synchronized = (await harness.getDataSource().query(sql));
 
     // Non-vacuity: two empty result sets would compare equal and assert nothing.
     expect(fromMigration).toHaveLength(1);
@@ -256,8 +257,8 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
         AND column_name IN ('fulfillmentBlockReason', 'fulfillmentBlockDetail')
       ORDER BY column_name`;
 
-    const fromMigration = (await migrated.query(sql)) as unknown[];
-    const synchronized = (await harness.getDataSource().query(sql)) as unknown[];
+    const fromMigration = (await migrated.query(sql));
+    const synchronized = (await harness.getDataSource().query(sql));
 
     // Non-vacuity: two empty result sets would compare equal and assert nothing.
     expect(fromMigration).toHaveLength(2);
@@ -278,8 +279,8 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
         AND table_name = 'order_records'
         AND column_name = 'fulfillmentRoutingSkipReason'`;
 
-    const fromMigration = (await migrated.query(sql)) as unknown[];
-    const synchronized = (await harness.getDataSource().query(sql)) as unknown[];
+    const fromMigration = (await migrated.query(sql));
+    const synchronized = (await harness.getDataSource().query(sql));
 
     // Non-vacuity: two empty result sets would compare equal and assert nothing.
     expect(fromMigration).toHaveLength(1);
@@ -652,7 +653,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
            (SELECT count(*) FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = 'w-parity') +
            (SELECT count(*) FROM "fulfillment_progress_claims" WHERE "workId" = 'w-parity')
          )::int AS total`
-      )) as { total: number }[];
+      ));
       return total;
     };
 
