@@ -422,6 +422,48 @@ export {
   type OrderDocumentEmailLocale,
   type OrderDocumentEmailRefusal,
 } from './domain/types/order-document-email.types';
+// Batch issuing (#3583).
+export type {
+  ISalesDocumentBatchService,
+  ExecuteSalesDocumentBatchRunInput,
+  ExecuteSalesDocumentBatchRunResult,
+  SalesDocumentBatchRunDetail,
+  SalesDocumentBatchRunItemView,
+  RequeueUntargetedBatchedResult,
+  SalesDocumentBatchOverview,
+  SalesDocumentBatchKindOverview,
+  RequestSalesDocumentBatchRunResult,
+} from './application/interfaces/sales-document-batch.service.interface';
+export { batchedDocumentKinds, documentKindsIssuedBy } from './domain/batched-document-kinds';
+export {
+  SalesDocumentBatchRun,
+  SalesDocumentBatchRunItem,
+} from './domain/entities/sales-document-batch-run.entity';
+export {
+  SalesDocumentBatchRunTriggerValues,
+  SalesDocumentBatchRunStatusValues,
+  SalesDocumentBatchRunFailureReasonValues,
+  SalesDocumentBatchRunRefusalValues,
+  SalesDocumentBatchRunItemResultValues,
+  SalesDocumentBatchItemOutcomeValues,
+  deriveBatchItemOutcome,
+  isBatchQueueB2b,
+  buildScheduledBatchRunKey,
+  buildManualBatchRunKey,
+} from './domain/types/sales-document-batch-run.types';
+export type {
+  SalesDocumentBatchRunTrigger,
+  SalesDocumentBatchRunStatus,
+  SalesDocumentBatchRunFailureReason,
+  SalesDocumentBatchRunRefusal,
+  SalesDocumentBatchRunItemResult,
+  SalesDocumentBatchItemOutcome,
+  SalesDocumentBatchQueueEntry,
+  SalesDocumentBatchQueueFilter,
+  CreateSalesDocumentBatchRunInput,
+  FinishSalesDocumentBatchRunInput,
+  AppendSalesDocumentBatchRunItemInput,
+} from './domain/types/sales-document-batch-run.types';
 export type {
   SalesDocumentListAmount,
   SalesDocumentListCursor,

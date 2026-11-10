@@ -110,6 +110,14 @@ export class InventoryMovementResponseDto {
       "The order's number (order, sale and reservation rows) or the return's external id; null when there is none",
   })
   sourceLabel!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The sync run that wrote this row: a sweep cycle id or a single-product job id. Rows sharing it came from one run. Null outside a sync and on reservation rows',
+  })
+  syncRunId!: string | null;
 }
 
 export class PaginatedInventoryMovementsResponseDto {
@@ -156,5 +164,6 @@ export function toInventoryMovementResponseDto(
     refusalDetail: row.refusalDetail,
     occurredAt: row.occurredAt.toISOString(),
     sourceLabel: row.sourceLabel,
+    syncRunId: row.syncRunId,
   };
 }

@@ -15,6 +15,12 @@ import { OrderItemRefResolverService } from './application/services/order-item-r
 import { OrderRecordService } from './application/services/order-record.service';
 import { SalesDocumentViewService } from './application/services/sales-document-view.service';
 import { OrderDocumentEmailService } from './application/services/order-document-email.service';
+import { SalesDocumentBatchService } from './application/services/sales-document-batch.service';
+import { SalesDocumentBatchRunRepository } from './infrastructure/persistence/repositories/sales-document-batch-run.repository';
+import {
+  SalesDocumentBatchRunItemOrmEntity,
+  SalesDocumentBatchRunOrmEntity,
+} from './infrastructure/persistence/entities/sales-document-batch-run.orm-entity';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
 import { OrderFxRestatementService } from './application/services/order-fx-restatement.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
@@ -96,6 +102,8 @@ import {
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
   BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
+  SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN,
+  SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
@@ -158,6 +166,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       OrderTagAssignmentOrmEntity,
       OrderExportRunOrmEntity,
       InvoiceMarketplaceUploadOrmEntity,
+      SalesDocumentBatchRunOrmEntity,
+      SalesDocumentBatchRunItemOrmEntity,
     ]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
@@ -209,6 +219,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRecordService,
     SalesDocumentViewService,
     OrderDocumentEmailService,
+    SalesDocumentBatchService,
+    SalesDocumentBatchRunRepository,
     OrderFxStampService,
     OrderFxRestatementService,
     OrderDestinationRetryService,
@@ -376,6 +388,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: SalesDocumentViewService,
     },
     {
+      provide: SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN,
+      useExisting: SalesDocumentBatchRunRepository,
+    },
+    {
+      provide: SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
+      useExisting: SalesDocumentBatchService,
+    },
+    {
       provide: TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
       useExisting: TaxCoverageDetectionService,
     },
@@ -481,6 +501,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
     // Read by the automation send-email executor and the order timeline (#3554).
     BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
+    // Batch issuing (#3583): the worker's run handler and the API's batch
+    // controller both drive a connection's queue through this seam.
+    SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
     // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,

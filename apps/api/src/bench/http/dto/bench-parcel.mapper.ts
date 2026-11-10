@@ -10,8 +10,11 @@
  *
  * @module apps/api/src/bench/http/dto
  */
-import type { BenchParcelView } from '../../application/types/bench-parcel.types';
-import type { BenchParcelResponseDto } from './bench-parcel-response.dto';
+import type {
+  BenchParcelRouteView,
+  BenchParcelView,
+} from '../../application/types/bench-parcel.types';
+import type { BenchParcelResponseDto, BenchParcelRouteResponseDto } from './bench-parcel-response.dto';
 
 export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseDto {
   return {
@@ -22,6 +25,7 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
     totalAmount: view.totalAmount,
     currency: view.currency,
     carrierName: view.carrierName,
+    route: toRouteResponseDto(view.route),
     assignedToUserId: view.assignedToUserId,
     dispatchByAt: view.dispatchByAt,
     parcelIndex: view.parcelIndex,
@@ -71,5 +75,24 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
       authorUsername: note.authorUsername,
       createdAt: note.createdAt,
     })),
+  };
+}
+
+/**
+ * Field by field, like the rest of the parcel. The falsy test rather than
+ * `=== null` is deliberate: a view built before #3958 (a partial fixture, a
+ * cached shape) carries no `route` key at all, and that must serialise as
+ * "not resolved" instead of throwing on a property read.
+ */
+function toRouteResponseDto(
+  route: BenchParcelRouteView | null | undefined
+): BenchParcelRouteResponseDto | null {
+  if (!route) return null;
+  return {
+    processorKind: route.processorKind,
+    processorName: route.processorName,
+    fromRule: route.fromRule,
+    processorAvailable: route.processorAvailable,
+    methodLabel: route.methodLabel,
   };
 }

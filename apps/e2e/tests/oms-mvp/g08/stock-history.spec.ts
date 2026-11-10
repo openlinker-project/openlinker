@@ -66,6 +66,12 @@ async function rowText(page: Page, index: number, testId: string): Promise<strin
   ).trim();
 }
 
+/** Opens every collapsed group, so each change is its own row. */
+async function expandAllGroups(page: Page): Promise<void> {
+  const closed = page.locator('[data-testid="stock-movement-group"] > button[aria-expanded="false"]');
+  while ((await closed.count()) > 0) await closed.first().click();
+}
+
 test.describe('G08 stock history', () => {
   let fixture: StockFixture | null = null;
 
@@ -115,9 +121,11 @@ test.describe('G08 stock history', () => {
         await expect(page.getByTestId('stock-movements-table')).toBeVisible();
         await expect(rows.first()).toBeVisible();
 
-        // Type filter: only manual corrections remain.
+        // Type filter (in the Filters panel): only manual corrections remain.
+        await page.getByTestId('stock-movements-filters-button').click();
         await page.getByTestId('stock-movements-filter-type').selectOption('manual_correction');
         await expect(page).toHaveURL(/[?&]type=manual_correction/);
+        await page.keyboard.press('Escape');
         await expect(rows.first()).toBeVisible();
         await expect
           .poll(async () =>
@@ -127,7 +135,7 @@ test.describe('G08 stock history', () => {
           )
           .toBe(true);
 
-        // Chips replace the type filter and are linkable.
+        // Views replace the type filter and are linkable.
         await page.getByTestId('stock-movements-chip-attention').click();
         await expect(page).toHaveURL(/[?&]chip=attention/);
         await expect(page).not.toHaveURL(/[?&]type=/);
@@ -145,6 +153,9 @@ test.describe('G08 stock history', () => {
     test.skip(reservations.items.length === 0, 'No reservation exists on this stack.');
 
     await page.goto('/inventory/movements?chip=promised');
+    // Holds for one order on several products share one line; open them all.
+    await expect(page.getByTestId('stock-movements-table')).toBeVisible();
+    await expandAllGroups(page);
     const rows = page.getByTestId('stock-movement-row');
     await expect(rows.first()).toBeVisible();
     await expect
@@ -154,10 +165,10 @@ test.describe('G08 stock history', () => {
         ),
       )
       .toBe(true);
-    await expect(rows.first().getByTestId('stock-movement-promised')).toHaveText('Reserved');
+    await expect(rows.first()).toHaveAttribute('data-movement-kind', 'reservation');
   });
 
-  test('a refused movement reads Not applied, struck from the count', async ({ page, api }) => {
+  test('a refused movement reads not applied, struck from the count', async ({ page, api }) => {
     const all = await api.inventory.movements({ kind: 'movements', limit: 100 });
     const refused = all.items.find((m) => m.status === 'refused');
     test.skip(!refused, 'No refused movement exists on this stack.');
@@ -165,10 +176,10 @@ test.describe('G08 stock history', () => {
     await page.goto('/inventory/movements?chip=attention');
     const row = page.locator('[data-testid="stock-movement-row"][data-movement-status="refused"]');
     await expect(row.first()).toBeVisible();
-    await expect(row.first().getByTestId('stock-movement-after')).toHaveText('Not applied');
+    await expect(row.first().getByTestId('stock-movement-result')).toHaveText('not applied');
   });
 
-  test('a movement that created a position reads new, not a question mark', async ({
+  test('a movement that created a position reads as a starting count', async ({
     page,
     api,
   }) => {
@@ -183,10 +194,12 @@ test.describe('G08 stock history', () => {
     test.skip(!created, 'No applied movement without a before-quantity exists on this stack.');
 
     await page.goto(`/inventory/movements?productVariantId=${created!.productVariantId}`);
+    await expect(page.getByTestId('stock-movements-table')).toBeVisible();
+    await expandAllGroups(page);
     const row = page
       .locator('[data-testid="stock-movement-row"][data-movement-status="applied"]')
-      .filter({ has: page.getByTestId('stock-movement-before').filter({ hasText: 'new' }) });
+      .filter({ has: page.getByTestId('stock-movement-result').filter({ hasText: 'starting count' }) });
     await expect(row.first()).toBeVisible();
-    await expect(row.first().getByTestId('stock-movement-after')).not.toHaveText('?');
+    await expect(row.first().getByTestId('stock-movement-change')).toHaveText(String(created!.quantityAfter));
   });
 });

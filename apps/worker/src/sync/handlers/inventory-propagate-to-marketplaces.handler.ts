@@ -232,7 +232,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               // Include write-event token to avoid suppressing legitimate
               // quantity oscillations (e.g. 5->6->5).
               `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}`,
-              payload.inventoryUpdatedAt
+              payload.inventoryUpdatedAt,
+              payload.variantId
             )
           )
         );
@@ -293,7 +294,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               // verbatim would dedupe an Offer update against a ShopProduct
               // update for the same connection/variant/quantity.
               `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:shop:${mapping.externalId}`,
-              payload.inventoryUpdatedAt
+              payload.inventoryUpdatedAt,
+              payload.variantId
             )
           )
         );
@@ -393,7 +395,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     mapping: ExternalIdMapping,
     quantity: number,
     idempotencyKey: string,
-    observedAt: string | null | undefined
+    observedAt: string | null | undefined,
+    productVariantId: string | null | undefined
   ): Promise<void> {
     const updatePayload = {
       schemaVersion: 1 as const,
@@ -404,6 +407,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       // offer (#2617). Absent on a legacy propagation payload, which writes
       // unguarded exactly as before.
       ...(observedAt ? { observedAt } : {}),
+      // Recorded with the push, never sent to the channel (#4062).
+      ...(productVariantId ? { productVariantId } : {}),
     };
 
     const updateJobRequest: SyncJobRequest = {

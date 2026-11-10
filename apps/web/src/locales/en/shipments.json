@@ -1,4 +1,22 @@
 {
+  "cancelError": {
+    "carrierRefused": {
+      "message": "The carrier no longer allows this shipment to be cancelled, usually because the parcel is already confirmed. Cancel the parcel in the carrier's panel or through the carrier's customer service.",
+      "title": "The carrier did not cancel this shipment"
+    },
+    "failed": {
+      "message": "The cancellation may not have reached the carrier. Check the shipment status before you try again.",
+      "title": "Could not cancel the shipment"
+    },
+    "noLongerActive": {
+      "message": "The shipment is already finished or cancelled. Close this window to see its current status.",
+      "title": "This shipment can no longer be cancelled"
+    },
+    "notSupported": {
+      "message": "OpenLinker cannot cancel shipments for this carrier. Cancel the parcel in the carrier's panel.",
+      "title": "This carrier does not support cancelling"
+    }
+  },
   "cancelShipment": {
     "alsoOutstanding": "This shipment was already marked as dispatched, so the sales channel has been told the parcel is on its way. OpenLinker cannot take that back for you - tell the channel yourself after cancelling.",
     "effect": "The label will be voided with {carrier}. This cannot be undone - to ship this order again you'll need to generate a new label."

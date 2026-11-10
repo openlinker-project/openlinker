@@ -273,9 +273,10 @@ describe('Order health summary (integration)', () => {
       const synced = await repository.findMany({ health: 'synced' }, { limit: 1, offset: 0 });
       await ds.query(
         `UPDATE "order_records" SET "salesDocumentBlockReason" = $1 WHERE "internalOrderId" = $2`,
-        // An attention-worthy reason: `trigger-model-manual` is deliberately
-        // excluded from both the count and this filter.
-        ['trigger-model-batched', synced.items[0].internalOrderId],
+        // An attention-worthy reason: `trigger-model-manual` and
+        // `trigger-model-batched` are deliberately excluded from both the count
+        // and this filter (#3583).
+        ['unresolved-routing', synced.items[0].internalOrderId],
       );
 
       const blocked = await repository.findMany(
@@ -283,7 +284,7 @@ describe('Order health summary (integration)', () => {
         { limit: 50, offset: 0 },
       );
       expect(blocked.total).toBe(1);
-      expect(blocked.items[0].salesDocumentBlockReason).toBe('trigger-model-batched');
+      expect(blocked.items[0].salesDocumentBlockReason).toBe('unresolved-routing');
 
       // The two axes AND together — "synced AND invoicing blocked" is the shape an
       // operator actually asks for.

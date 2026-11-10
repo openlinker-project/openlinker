@@ -7,7 +7,9 @@
  * issues (Primary — a SINGLE radio group across ALL rows, so the UI cannot
  * express two primaries by construction), and when (Trigger, disabled for a
  * non-primary row since timing is meaningless until a connection is actually
- * the one issuing).
+ * the one issuing). Trigger is per document kind (#3582): a `'both'` row gets
+ * one control for invoices and one for receipts, each showing the value the
+ * gate will enforce (kind-scoped, else the legacy key, else manual).
  *
  * `EditConnectionForm`'s per-connection section was demoted to a read-only
  * summary + a link here — see `sales-document-status-section.tsx`. This is
@@ -19,6 +21,7 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ChangeEvent, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Button } from '../../../shared/ui/button';
@@ -33,8 +36,11 @@ import { INVOICE_TRIGGER_MODEL_VALUES, INVOICE_TRIGGER_MODEL_LABELS } from '../.
 import { useSalesDocumentRows } from '../hooks/use-sales-document-rows';
 import { useUpdateSalesDocumentMutation } from '../hooks/use-update-sales-document-mutation';
 import { detectSalesDocumentConflict } from '../lib/detect-sales-document-conflict';
+import { issuedDocumentKinds } from '../lib/derive-sales-document-rows';
+import { batchScreenPath } from '../lib/batch-screen-path';
 import {
   getSalesDocumentIssuesOptions,
+  type ConcreteDocumentKind,
   type SalesDocumentKind,
   type SalesDocumentRow,
 } from '../api/sales-documents.types';
@@ -124,10 +130,61 @@ export function SalesDocumentsPanel(): ReactElement {
     );
   }
 
-  function handleTriggerChange(row: SalesDocumentRow, event: ChangeEvent<HTMLSelectElement>): void {
+  function handleTriggerChange(
+    row: SalesDocumentRow,
+    kind: ConcreteDocumentKind,
+    event: ChangeEvent<HTMLSelectElement>,
+  ): void {
     const value = event.target.value;
     void runRowUpdate(row.connectionId, () =>
-      updateField({ connectionId: row.connectionId, patch: { triggerModel: value } }),
+      updateField({ connectionId: row.connectionId, patch: { triggerModel: { kind, value } } }),
+    );
+  }
+
+  function renderTriggerSelect(
+    row: SalesDocumentRow,
+    kind: ConcreteDocumentKind | null,
+    disabled: boolean,
+    showKindLabel: boolean,
+  ): ReactElement {
+    const kindLabel = kind === null ? null : copy.triggerKind[kind];
+    const select = (
+      <Select
+        aria-label={
+          kind === null
+            ? interpolate(copy.triggerLabel, { name: row.name })
+            : interpolate(copy.triggerKindLabel[kind], { name: row.name })
+        }
+        // A row issuing nothing has no kind to read; it shows the invoice value
+        // only as a placeholder, disabled.
+        value={row.triggerModels[kind ?? 'invoice']}
+        disabled={disabled || kind === null}
+        onChange={(event) => {
+          if (kind !== null) handleTriggerChange(row, kind, event);
+        }}
+      >
+        {INVOICE_TRIGGER_MODEL_VALUES.map((value) => (
+          <option key={value} value={value}>
+            {INVOICE_TRIGGER_MODEL_LABELS[value]}
+          </option>
+        ))}
+      </Select>
+    );
+    return (
+      <ReadOnlyLock
+        key={kind ?? 'none'}
+        active={write.demoReadOnly}
+        message={demoReadOnlyActionMessage()}
+      >
+        {showKindLabel && kindLabel !== null ? (
+          <div className="sales-documents-panel__trigger">
+            <span className="muted-text">{kindLabel}</span>
+            {select}
+          </div>
+        ) : (
+          select
+        )}
+      </ReadOnlyLock>
     );
   }
 
@@ -180,6 +237,8 @@ export function SalesDocumentsPanel(): ReactElement {
             {rows.map((row) => {
               const rowPending = isPending && pendingConnectionId === row.connectionId;
               const rowDisabled = !write.canWrite || rowPending;
+              const triggerDisabled = rowDisabled || !row.isPrimary;
+              const triggerKinds = issuedDocumentKinds(row.documentKind);
               return (
                 <tr key={row.connectionId}>
                   <td>
@@ -235,20 +294,22 @@ export function SalesDocumentsPanel(): ReactElement {
                     </ReadOnlyLock>
                   </td>
                   <td>
-                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
-                      <Select
-                        aria-label={interpolate(copy.triggerLabel, { name: row.name })}
-                        value={row.triggerModel}
-                        disabled={rowDisabled || !row.isPrimary}
-                        onChange={(event) => handleTriggerChange(row, event)}
+                    {triggerKinds.length === 0
+                      ? renderTriggerSelect(row, null, triggerDisabled, false)
+                      : triggerKinds.map((kind) =>
+                          renderTriggerSelect(row, kind, triggerDisabled, triggerKinds.length > 1),
+                        )}
+                    {triggerKinds.some((kind) => row.triggerModels[kind] === 'batched') ? (
+                      // M15 note 1: the batch screen is reached from the row whose
+                      // "When it issues" is Batch, and only from there.
+                      <Link
+                        className="sales-documents-panel__configure"
+                        to={batchScreenPath(row.connectionId)}
+                        aria-label={interpolate(copy.configureBatchLabel, { name: row.name })}
                       >
-                        {INVOICE_TRIGGER_MODEL_VALUES.map((value) => (
-                          <option key={value} value={value}>
-                            {INVOICE_TRIGGER_MODEL_LABELS[value]}
-                          </option>
-                        ))}
-                      </Select>
-                    </ReadOnlyLock>
+                        {copy.configureBatch}
+                      </Link>
+                    ) : null}
                   </td>
                 </tr>
               );

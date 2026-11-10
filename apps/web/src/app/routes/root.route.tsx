@@ -53,6 +53,7 @@ import { assignPackingWorkLegacyRedirectRoute, fulfillmentRoute } from './fulfil
 import { operationalSettingsRoute } from './operational-settings.route';
 import { loginPageSettingsRoute } from './login-page-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
+import { salesDocumentBatchRoute } from './sales-document-batch.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
 import { omsOnboardingRoute } from './oms-onboarding.route';
 import { whoDecidesRoute } from './who-decides.route';
@@ -105,6 +106,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     operationalSettingsRoute,
     loginPageSettingsRoute,
     salesDocumentsRoute,
+    salesDocumentBatchRoute,
     ...(omsRoutingUiEnabled ? [sourcingRulesRoute] : []),
     omsOnboardingRoute,
     whoDecidesRoute,

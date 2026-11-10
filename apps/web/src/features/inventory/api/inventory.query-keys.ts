@@ -53,4 +53,5 @@ export const inventoryQueryKeys = {
     ['inventory', 'movements', 'rows', filters ?? {}, pagination ?? {}] as const,
   movementsCount: (filters?: InventoryMovementFilters) =>
     ['inventory', 'movements', 'count', filters ?? {}] as const,
+  movementPushes: (movementId: string) => ['inventory', 'movements', 'pushes', movementId] as const,
 };

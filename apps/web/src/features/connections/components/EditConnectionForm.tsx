@@ -51,7 +51,7 @@ import {
   type PluginEditConnectionFields,
 } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
-import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { resolveTriggerModelForKind } from '../lib/resolve-trigger-model-for-kind';
 import { isPricingDestination } from '../lib/pricing-destination';
 import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
@@ -125,23 +125,18 @@ function readUnmanagedStockQuantity(config: Record<string, unknown>): string {
 }
 
 /**
- * #759 — Read the Subiekt invoice trigger model out of NESTED
- * `config.invoicing.triggerModel`. Narrows to a known
- * `INVOICE_TRIGGER_MODEL_VALUES` value; out-of-band / legacy values fall
- * through to `''` (the operator re-picks), exactly as the BE
- * `getInvoiceTriggerModel` warns-and-defaults. Clone of `readUnmanagedStockQuantity`.
+ * #759 — Read the Subiekt invoice trigger model. Since #3582 this is the
+ * EFFECTIVE `invoice` model, resolved like the BE gate
+ * (`salesDocument.triggerModels.invoice` → legacy `invoicing.triggerModel`), so
+ * the form shows the value that will be enforced even after the sales-documents
+ * table set a kind-scoped one. Nothing recognised reads as `''` (the operator
+ * re-picks), as before.
  */
 function readTriggerModel(
   config: Record<string, unknown>,
 ): NonNullable<EditConnectionFormValues['subiektTriggerModel']> {
-  const invoicing =
-    typeof config.invoicing === 'object' && config.invoicing !== null
-      ? (config.invoicing as Record<string, unknown>)
-      : {};
-  const raw = invoicing.triggerModel;
-  return typeof raw === 'string' && (INVOICE_TRIGGER_MODEL_VALUES as readonly string[]).includes(raw)
-    ? (raw as (typeof INVOICE_TRIGGER_MODEL_VALUES)[number])
-    : '';
+  const resolved = resolveTriggerModelForKind(config, 'invoice');
+  return resolved.source === 'default' ? '' : resolved.model;
 }
 
 /**

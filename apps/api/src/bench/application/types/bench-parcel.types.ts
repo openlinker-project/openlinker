@@ -48,6 +48,7 @@ import {
   type ParcelUndoRefusal,
   ParcelVerificationRefusalValues,
 } from '@openlinker/core/fulfillment';
+import type { FulfillmentProcessorKind } from '@openlinker/core/mappings';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type {
   FiscalArtefactSummary,
@@ -142,6 +143,48 @@ export interface BenchParcelLineView {
   readonly heightMm: number | null;
 }
 
+/**
+ * Who ships this box, as the order's delivery method is routed (#3958).
+ *
+ * The label card needs it to say WHICH of four situations a box is in: the
+ * label exists, OpenLinker will buy one, the shop ships it, or nobody chose.
+ * Without it a box with no shipment rendered nothing, and a branch-1 shipment
+ * the marketplace reported (no label of OpenLinker's) read as "the carrier
+ * would not give us a label", blaming a carrier nobody asked.
+ *
+ * Resolved through the SAME `IFulfillmentRoutingService.resolve` the
+ * auto-dispatch handler uses, from the order's source connection and delivery
+ * method, so the bench and the job that buys the label cannot disagree about
+ * the route.
+ *
+ * Deliberately no connection id: a packer has no edit action and cannot read
+ * `GET /connections`, so an id would be a handle to nothing. A connection's
+ * NAME is operator-authored ("InPost", "My shop") and carries no buyer data.
+ */
+export interface BenchParcelRouteView {
+  readonly processorKind: FulfillmentProcessorKind;
+  /**
+   * The routed connection's operator-given name. `null` for the default
+   * route, which names no connection, and when the connection could not be
+   * read.
+   */
+  readonly processorName: string | null;
+  /**
+   * `true` when an operator saved a rule for this delivery method; `false` for
+   * the `omp_fulfilled` fallback. This is what separates "the shop ships it"
+   * (a choice) from "nobody has chosen" (an unfinished setup).
+   */
+  readonly fromRule: boolean;
+  /**
+   * `false` when the rule names a connection that is no longer active. A
+   * route that buys a label through a switched-off carrier buys nothing, and
+   * promising a label on close there would be false.
+   */
+  readonly processorAvailable: boolean;
+  /** The source's own delivery-method label, as `carrierName` carries it. */
+  readonly methodLabel: string | null;
+}
+
 /** One parcel at the bench. */
 export interface BenchParcelView {
   readonly workId: string;
@@ -173,6 +216,13 @@ export interface BenchParcelView {
    * reports none. Not every source reports a carrier name.
    */
   readonly carrierName: string | null;
+  /**
+   * The resolved route for this box (#3958), or `null` when it could not be
+   * resolved (no order record, or the routing read failed). `null` is not
+   * "the shop ships it": the label card then falls back to what the shipment
+   * alone says, rather than stating a route nobody read.
+   */
+  readonly route: BenchParcelRouteView | null;
   /** The order's dispatch deadline, mirroring the same field on `BenchWorkView`. */
   readonly dispatchByAt: string | null;
   /** `null` when the parcel may be packed. See `BenchParcelRefusal`. */

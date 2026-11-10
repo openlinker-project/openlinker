@@ -340,8 +340,8 @@
     },
     "panel": {
       "fiscalReceipt": {
-        "blockBatchedBody": "OpenLinker nie może dołączyć tego zamówienia do partii, więc nic nie wystawił. Zarejestruj je ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
-        "blockBatchedTitle": "Nie zarejestrowano: rejestracja fiskalna w partiach nie jest jeszcze dostępna.",
+        "blockBatchedBody": "To połączenie wystawia dokumenty zbiorczo, więc następne uruchomienie zarejestruje to zamówienie. Zarejestruj je teraz, jeśli nie powinno czekać.",
+        "blockBatchedTitle": "Czeka na następną partię.",
         "blockCurrencyMismatchBody": "Pasująca reguła porównuje sumę tego zamówienia z kwotą określoną w innej walucie. OpenLinker nigdy nie przelicza walut przy decyzji fiskalnej, więc nic nie zostało zarejestrowane automatycznie. Zarejestruj je ręcznie albo popraw próg reguły.",
         "blockCurrencyMismatchTitle": "Nie zarejestrowano: waluta zamówienia nie pasuje do progu reguły.",
         "blockManualBody": "Wszystko jest w porządku - tutaj paragon nie jest wystawiany automatycznie. Zarejestruj go, kiedy zechcesz.",
@@ -366,8 +366,8 @@
         "noPrimaryTitle": "Automatyczna rejestracja fiskalna jest wyłączona dla tego zamówienia."
       },
       "invoice": {
-        "blockBatchedBody": "OpenLinker nie może dołączyć tego zamówienia do partii, więc nic nie wystawił. Wystaw fakturę ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
-        "blockBatchedTitle": "Nie zafakturowano: fakturowanie w partiach nie jest jeszcze dostępne.",
+        "blockBatchedBody": "To połączenie wystawia dokumenty zbiorczo, więc następne uruchomienie wystawi tę fakturę. Wystaw ją teraz, jeśli nie powinna czekać.",
+        "blockBatchedTitle": "Czeka na następną partię.",
         "blockCurrencyMismatchBody": "Pasująca reguła porównuje sumę tego zamówienia z kwotą określoną w innej walucie. OpenLinker nigdy nie przelicza walut przy decyzji fiskalnej, więc nic nie zostało zafakturowane automatycznie. Wystaw fakturę ręcznie albo popraw próg reguły.",
         "blockCurrencyMismatchTitle": "Nie zafakturowano: waluta zamówienia nie pasuje do progu reguły.",
         "blockManualBody": "Wszystko jest w porządku - tutaj faktura nie jest wystawiana automatycznie. Wystaw ją, kiedy zechcesz.",
@@ -392,8 +392,8 @@
         "noPrimaryTitle": "Automatyczne fakturowanie jest wyłączone dla tego zamówienia."
       },
       "mixed": {
-        "blockBatchedBody": "OpenLinker nie może dołączyć tego zamówienia do partii, więc nic nie wystawił. Wystaw dokument ręcznie albo przełącz połączenie na wystawianie po opłaceniu.",
-        "blockBatchedTitle": "Nie wystawiono: wystawianie dokumentów sprzedaży w partiach nie jest jeszcze dostępne.",
+        "blockBatchedBody": "To połączenie wystawia dokumenty zbiorczo, więc następne uruchomienie wystawi ten dokument. Wystaw go teraz, jeśli nie powinien czekać.",
+        "blockBatchedTitle": "Czeka na następną partię.",
         "blockCurrencyMismatchBody": "Pasująca reguła porównuje sumę tego zamówienia z kwotą określoną w innej walucie. OpenLinker nigdy nie przelicza walut przy decyzji fiskalnej, więc nic nie zostało wystawione automatycznie. Wystaw dokument ręcznie albo popraw próg reguły.",
         "blockCurrencyMismatchTitle": "Nie wystawiono: waluta zamówienia nie pasuje do progu reguły.",
         "blockManualBody": "Wszystko jest w porządku - tutaj dokument nie jest wystawiany automatycznie. Wystaw go, kiedy zechcesz.",

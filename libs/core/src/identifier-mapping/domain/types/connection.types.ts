@@ -63,9 +63,12 @@ export interface ConnectionConfig {
   /**
    * Invoicing trigger configuration (OL #1120). Non-breaking documentation
    * shape over the open index signature — the value is round-tripped verbatim
-   * by `ConnectionRepository`. `triggerModel` is read at transition time by
-   * `AutoIssueTriggerService` and coerced via `parseTriggerModel` (a missing or
-   * unrecognized value defaults to `manual`). Typed as `string` here to keep the
+   * by `ConnectionRepository`. `triggerModel` is the LEGACY, kind-agnostic
+   * trigger model (#3582): `AutoIssueTriggerService` reads it only for a
+   * document kind with no recognised `salesDocument.triggerModels[kind]` entry,
+   * via `resolveTriggerModelForKind` (a missing or unrecognized value ends at
+   * `manual`). Still honoured, so an install that never set a kind-scoped value
+   * behaves exactly as before. Typed as `string` here to keep the
    * identifier-mapping context decoupled from the invoicing enum.
    *
    * `shippingLineName` (#1562) is the optional, operator-supplied label the
@@ -171,9 +174,25 @@ export interface ConnectionConfig {
    * Read via `readSalesDocumentRouting`, which also reads the SAME
    * `invoicing.isPrimary` flag above — decision 4 fixes that shape rather
    * than introducing a second `isPrimary` key here.
+   *
+   * `triggerModels` (#3582) carries the auto-issue trigger model PER document
+   * kind, keyed by the kind string (`invoice`, `fiscal-receipt`, or an
+   * open-world kind), so one connection can batch invoices while issuing
+   * receipts at once. A kind with no recognised entry falls back to the legacy
+   * `invoicing.triggerModel`, then to `manual`; the rule lives in one place,
+   * `resolveTriggerModelForKind` (`@openlinker/core/invoicing`). Values are
+   * typed `string` for the same decoupling reason as the legacy key.
+   *
+   * `batchSchedules` (#3583) carries, per kind, WHEN a batched kind's queue is
+   * run (daily / every N hours / month end, with its time zone). Read by
+   * `readBatchSchedule` and validated on write by `describeInvalidBatchSchedules`
+   * (`@openlinker/core/sales-documents`); typed loosely here for the same
+   * decoupling reason.
    */
   salesDocument?: {
     documentKind?: string;
+    triggerModels?: Record<string, string>;
+    batchSchedules?: Record<string, unknown>;
   };
   /**
    * Operator-declared location for this connection's currently-unlocated

@@ -217,6 +217,15 @@ export interface SalesDocumentBlock {
    * `'line-total-mismatch'` detail is the mapper's own sentence).
    */
   readonly params?: SalesDocumentBlockParams;
+  /**
+   * The connection and kind routing resolved the order to, when the block is
+   * about THAT target (#3583). Set for `trigger-model-batched`, where it is
+   * what puts the order in that connection's batch queue; absent where routing
+   * named no target.
+   */
+  readonly connectionId?: string;
+  /** A `SalesDocumentKind`; typed `string` (its definition) to keep this module import-free. */
+  readonly documentKind?: string;
 }
 
 /**
@@ -327,6 +336,14 @@ export function readSalesDocumentBlockParams(value: unknown): SalesDocumentBlock
   return Object.keys(kept).length > 0 ? kept : null;
 }
 
+/** What the gate enqueued on a `none` outcome (#3583), so a batch run can record it. */
+export interface SalesDocumentEnqueued {
+  readonly connectionId: string;
+  /** A `SalesDocumentKind`, typed `string` for the same import-free reason. */
+  readonly documentKind: string;
+  readonly idempotencyKey: string;
+}
+
 /**
  * What the gate concluded about one order transition, as reported to the caller
  * that owns the persistence.
@@ -352,9 +369,20 @@ export function readSalesDocumentBlockParams(value: unknown): SalesDocumentBlock
  * lets a later rule edit/deletion self-correct the persisted value instead of
  * outliving the decision that produced it. Absent on `indeterminate` because
  * that arm is never persisted at all.
+ *
+ * `enqueued` / `alreadyDocumented` (#3583) say WHY an outcome is `none`, for a
+ * batch run that has to record each order: a job was enqueued, or the order
+ * already carries a document so the block was suppressed. Both absent means
+ * nothing was due (an `auto-on-*` condition not met yet, or no candidate).
+ * Persistence ignores both; they are a report, not state.
  */
 export type SalesDocumentBlockOutcome =
-  | { kind: 'none'; matchedRuleId?: string }
+  | {
+      kind: 'none';
+      matchedRuleId?: string;
+      enqueued?: SalesDocumentEnqueued;
+      alreadyDocumented?: true;
+    }
   | { kind: 'blocked'; block: SalesDocumentBlock; matchedRuleId?: string }
   | { kind: 'indeterminate' };
 
@@ -374,7 +402,11 @@ export type SalesDocumentBlockOutcome =
  * deliberate edit here.
  */
 export const SalesDocumentAttentionReasonValues: readonly SalesDocumentGateBlockReason[] =
-  SalesDocumentGateBlockReasonValues.filter((reason) => reason !== 'trigger-model-manual');
+  SalesDocumentGateBlockReasonValues.filter(
+    // #3583: a batched order is waiting for its scheduled run, a configured
+    // workflow exactly like manual, not a fault to alarm on.
+    (reason) => reason !== 'trigger-model-manual' && reason !== 'trigger-model-batched',
+  );
 
 /**
  * Unresolved reasons that are the DEFAULT STATE of an install which never opted

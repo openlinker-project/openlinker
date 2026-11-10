@@ -1392,6 +1392,46 @@
     "guidedSetup": "Kreator konfiguracji",
     "next": "Dalej"
   },
+  "shipping": {
+    "backToOmsSetup": "Wróć do konfiguracji OMS",
+    "createdAction": "Wybierz metody dostawy",
+    "createdBody": "Teraz wybierz, które metody dostawy wysyła {carrier}. Do tego czasu nie trafi tam żadne zamówienie.",
+    "createdTitle": "Połączono {carrier}.",
+    "rowChange": "Zmień",
+    "rowChoose": "Wybierz",
+    "rowLoading": "Wczytywanie metod dostawy...",
+    "rowUnavailable": "Nie udało się wczytać, kto wysyła te metody dostawy.",
+    "shippingAllLabelled": "Każda metoda dostawy dostaje etykietę z OpenLinker.",
+    "shippingChange": "Zmień, kto co wysyła",
+    "shippingCoverage": {
+      "few": "<count>{labelled} z {n}</count> metod dostawy dostaje etykietę z OpenLinker",
+      "many": "<count>{labelled} z {n}</count> metod dostawy dostaje etykietę z OpenLinker",
+      "one": "<count>{labelled} z {n}</count> metody dostawy dostaje etykietę z OpenLinker",
+      "other": "<count>{labelled} z {n}</count> metody dostawy dostaje etykietę z OpenLinker"
+    },
+    "shippingEyebrow": "Kto wysyła",
+    "shippingLoading": "Wczytywanie metod dostawy...",
+    "shippingNoMethods": "Ten kanał sprzedaży nie ma jeszcze metod dostawy.",
+    "shippingRestByShop": {
+      "few": "{n} metody dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+      "many": "{n} metod dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+      "one": "{n} metodę dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+      "other": "{n} metody dostawy wysyła twój sklep, tak jak przed OpenLinker."
+    },
+    "shippingTitle": "Wysyłka",
+    "shippingUnlisted": "Ten kanał sprzedaży nie udostępnia listy metod dostawy, więc nie ma tu czego przypisać.",
+    "shipsForEmpty": "Żadna metoda dostawy nie trafia jeszcze do {carrier}.",
+    "shipsForEyebrow": "Metody dostawy",
+    "shipsForIntro": "Metody dostawy, dla których etykiety są kupowane u {carrier}, według kanału sprzedaży.",
+    "shipsForNoSources": "Nie połączono jeszcze żadnego kanału sprzedaży. Najpierw połącz kanał, a potem wybierz, które jego metody dostawy wysyła ten przewoźnik.",
+    "shipsForTitle": "Wysyła dla",
+    "shipsForUnnamed": {
+      "few": "{n} metody dostawy (nie wczytano nazw)",
+      "many": "{n} metod dostawy (nie wczytano nazw)",
+      "one": "{n} metoda dostawy (nie wczytano nazwy)",
+      "other": "{n} metody dostawy (nie wczytano nazw)"
+    }
+  },
   "shoperSetupForm": {
     "beforeYouStart": {
       "body": "W panelu administracyjnym {platform} otwórz <strong>Dodaj integrację</strong> i utwórz integrację. {platform} wyda <strong>Token API</strong>; OpenLinker wysyła go jako token bearer w każdym zapytaniu. Nadaj integracji dostęp do: produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki, statusy zamówień, klienci, webhooki, dostawy i płatności.",

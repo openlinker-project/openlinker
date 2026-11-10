@@ -118,6 +118,23 @@ import {
   variantImageProxyPath,
 } from '../../../products/http/product-image-path';
 import { BenchExecutorResolver } from './bench-executor.resolver';
+import { BenchRouteResolver, type BenchRouteQuery } from './bench-route.resolver';
+
+/**
+ * The order facts a route is resolved from, or `null` when there is no order.
+ *
+ * `?? null` on the two getters: an order record that predates either column
+ * reads `undefined` rather than `null`, and the routing query wants a plain
+ * "no delivery method", which resolves to the default route.
+ */
+function toRouteQuery(order: OrderRecord | undefined): BenchRouteQuery | null {
+  if (order === undefined) return null;
+  return {
+    sourceConnectionId: order.sourceConnectionId,
+    sourceDeliveryMethodId: order.sourceDeliveryMethodId ?? null,
+    methodLabel: order.sourceDeliveryMethodName ?? null,
+  };
+}
 
 /** Raised when the work is not a parcel this bench may see at all. */
 export class BenchParcelNotAtThisBenchError extends Error {
@@ -192,7 +209,9 @@ export class BenchParcelService implements IBenchParcelService {
     private readonly workQuery: IFulfillmentWorkQueryService,
     // #3961 - "Done, I took it out" re-runs the reconcile that held the box.
     @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
-    private readonly sourceAmendment: IOrderSourceAmendmentEffectsService
+    private readonly sourceAmendment: IOrderSourceAmendmentEffectsService,
+    // #3958 - who ships this box, for the label card.
+    private readonly routes: BenchRouteResolver
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -901,6 +920,10 @@ export class BenchParcelService implements IBenchParcelService {
     // that carries it, whichever write preceded the call.
     const ownAcknowledgement = acknowledgements.find((entry) => entry.workId === work.id);
 
+    // After the order read rather than inside the `Promise.all` above: the
+    // route is resolved FROM the order's source connection and delivery method.
+    const route = await this.routes.resolve(toRouteQuery(order));
+
     // Field-by-field, never a spread — see the view type's module note.
     return {
       workId: work.id,
@@ -916,6 +939,7 @@ export class BenchParcelService implements IBenchParcelService {
       totalAmount: order?.totalAmount ?? null,
       currency: order?.currency ?? null,
       carrierName: order?.sourceDeliveryMethodName ?? null,
+      route,
       dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
       parcelIndex: index >= 0 ? index + 1 : 1,
       parcelTotal: parcels.length > 0 ? parcels.length : 1,

@@ -102,6 +102,9 @@ export const ORDER_LABEL_VOIDER_TOKEN = Symbol('OrderLabelVoiderPort');
 export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDispatchRelayService');
 // One per-order sales-document read (#2516, ADR-065).
 export const SALES_DOCUMENT_VIEW_SERVICE_TOKEN = Symbol('ISalesDocumentViewService');
+// Batch issuing (#3583): run records + queue read, and the service that runs a queue.
+export const SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN = Symbol('SalesDocumentBatchRunRepositoryPort');
+export const SALES_DOCUMENT_BATCH_SERVICE_TOKEN = Symbol('ISalesDocumentBatchService');
 // Data Coverage tax A/B/C detector (#2465).
 export const TAX_COVERAGE_DETECTION_SERVICE_TOKEN = Symbol('ITaxCoverageDetectionService');
 // Margin reads on net revenue + the no-cost coverage count (#3588, D27).

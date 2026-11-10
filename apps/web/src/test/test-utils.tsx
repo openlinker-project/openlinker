@@ -574,6 +574,7 @@ export function createMockApiClient(
       // #3568. An install with no movements; the count is only requested for a full page.
       listMovements: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
       countMovements: vi.fn().mockResolvedValue({ total: 0 }),
+      listMovementPushes: vi.fn().mockResolvedValue({ items: [] }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       // #3569 - the honest default is a stock view that names no variants, so a
@@ -1161,6 +1162,20 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       ...overrides.salesDocumentList,
     } as ApiClient['salesDocumentList'],
+    // #3584 — batch issuing. Default: nothing scheduled, nothing queued, no runs.
+    salesDocumentBatch: {
+      getOverview: vi.fn().mockResolvedValue({
+        connectionId: '',
+        schedules: [],
+        queueCounts: {},
+        runningRun: null,
+      }),
+      getQueue: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      listRuns: vi.fn().mockResolvedValue({ runs: [], total: 0 }),
+      getRun: vi.fn().mockResolvedValue(null),
+      startRun: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      ...overrides.salesDocumentBatch,
+    } as ApiClient['salesDocumentBatch'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),

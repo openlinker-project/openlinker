@@ -238,31 +238,38 @@ describe('BulkDispatchDialog', () => {
   });
 });
 
-describe('BulkDispatchDialog - routed parcel profile (#3652)', () => {
-  const RULE = {
-    id: 'r1',
-    sourceConnectionId: 'conn_a',
-    sourceDeliveryMethodId: 'dpd-courier',
-    processorKind: 'ol_managed_carrier' as const,
-    processorConnectionId: 'p1',
-    lengthMm: 300,
-    widthMm: 200,
-    heightMm: 100,
-    defaultWeightGrams: 500,
+describe('BulkDispatchDialog - routed parcel profile (#3652, #3958)', () => {
+  // The profile rides on each order's delivery resolution. The routing-rules
+  // endpoint is admin-only, so the dialog must never need it to prefill.
+  const ROUTED: Partial<OrderRecord> = {
+    deliveryResolution: {
+      source: 'rule',
+      processorKind: 'ol_managed_carrier',
+      processorConnectionId: 'p1',
+      processorAvailable: true,
+      parcelProfile: {
+        parcelTemplate: null,
+        lengthMm: 300,
+        widthMm: 200,
+        heightMm: 100,
+        defaultWeightGrams: 500,
+      },
+    },
   };
 
   it('should prefill each row from its routed profile and dispatch without typing', async () => {
     const user = userEvent.setup();
     const bulkGenerateLabels = vi.fn().mockResolvedValue({ results: [] });
+    const getRoutingRules = vi.fn().mockRejectedValue(new Error('admin only'));
     const apiClient = createMockApiClient({
       shipments: { bulkGenerateLabels },
-      mappings: { getRoutingRules: vi.fn().mockResolvedValue([RULE]) },
+      mappings: { getRoutingRules },
     });
 
     renderWithProviders(
       <BulkDispatchDialog
         open
-        orders={[order({ internalOrderId: 'ol_order_1' })]}
+        orders={[order({ internalOrderId: 'ol_order_1', ...ROUTED })]}
         onOpenChange={noop}
         channelLabelFor={() => 'Allegro'}
         onComplete={noop}
@@ -275,6 +282,7 @@ describe('BulkDispatchDialog - routed parcel profile (#3652)', () => {
       expect(length).toHaveValue(300);
     });
     expect(screen.getByLabelText('Weight for ol_order_1')).toHaveValue(500);
+    expect(getRoutingRules).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Dispatch 1 order' }));
     await waitFor(() => {
@@ -288,18 +296,14 @@ describe('BulkDispatchDialog - routed parcel profile (#3652)', () => {
 
   it('should let the dialog-wide default box override the routed profile', async () => {
     const user = userEvent.setup();
-    const apiClient = createMockApiClient({
-      mappings: { getRoutingRules: vi.fn().mockResolvedValue([RULE]) },
-    });
     renderWithProviders(
       <BulkDispatchDialog
         open
-        orders={[order({ internalOrderId: 'ol_order_1' })]}
+        orders={[order({ internalOrderId: 'ol_order_1', ...ROUTED })]}
         onOpenChange={noop}
         channelLabelFor={() => 'Allegro'}
         onComplete={noop}
       />,
-      { apiClient },
     );
     await waitFor(() => {
       expect(screen.getByLabelText('Length for ol_order_1')).toHaveValue(300);

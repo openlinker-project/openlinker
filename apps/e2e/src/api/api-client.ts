@@ -105,6 +105,9 @@ import type {
   SystemConfig,
   UserListResponse,
   WebhookDeliverySummary,
+  SalesDocumentBatchOverview,
+  SalesDocumentBatchRun,
+  SalesDocumentBatchRunDetail,
 } from './api.types';
 
 const API_VERSION_PREFIX = '/v1';
@@ -846,6 +849,35 @@ export class ApiClient {
       this.request<SalesDocumentRule[]>(`/sales-documents/rules${buildQuery({ country })}`),
     deleteRule: (ruleId: string): Promise<void> =>
       this.request<void>(`/sales-documents/rules/${ruleId}`, { method: 'DELETE' }),
+    /** POST /sales-documents/rules - create a routing rule (#3585 golden path). */
+    createRule: (input: {
+      country: string;
+      conditions: unknown[];
+      documentKind: string;
+      connectionId: string;
+      effectiveFrom: string;
+    }): Promise<SalesDocumentRule> =>
+      this.request<SalesDocumentRule>('/sales-documents/rules', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  };
+
+  // ── Batched sales-document issuing (#3583/#3585) ─────────────────────────
+  salesDocumentBatches = {
+    /** GET /sales-documents/batches/:connectionId - schedules, queue counts, running run. */
+    overview: (connectionId: string): Promise<SalesDocumentBatchOverview> =>
+      this.request<SalesDocumentBatchOverview>(`/sales-documents/batches/${connectionId}`),
+    /** GET .../runs - newest first. */
+    runs: (connectionId: string): Promise<{ runs: SalesDocumentBatchRun[]; total: number }> =>
+      this.request<{ runs: SalesDocumentBatchRun[]; total: number }>(
+        `/sales-documents/batches/${connectionId}/runs`,
+      ),
+    /** GET .../runs/:runId - each order's result and outcome. */
+    run: (connectionId: string, runId: string): Promise<SalesDocumentBatchRunDetail> =>
+      this.request<SalesDocumentBatchRunDetail>(
+        `/sales-documents/batches/${connectionId}/runs/${runId}`,
+      ),
   };
 
   // ── Fiscal registrations (#1908, ADR-042) ────────────────────────────────

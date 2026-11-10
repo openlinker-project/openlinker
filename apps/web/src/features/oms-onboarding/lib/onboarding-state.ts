@@ -25,24 +25,58 @@ import type { InventoryLocation } from '../../inventory';
 import { readSourcingClaim, readStockLocationOverride } from './config-merge';
 import { MAX_PRODUCT_MASTERS } from './product-masters';
 
-export const TOTAL_STEPS = 7;
+export const TOTAL_STEPS = 8;
 
 /**
  * The wizard's steps, in order (1-based). Sales documents come right after the
  * product master: which document an order gets is decided by what the shop
- * sells, not by who packs it. "Turn it on" is LAST, so nothing changes in how
- * orders are handled until everything before it is set up, which is what the
- * page's own description promises.
+ * sells, not by who packs it. Shipping follows the packers because a label is
+ * bought when a packer accepts a parcel (#3958). "Turn it on" is LAST, so
+ * nothing changes in how orders are handled until everything before it is set
+ * up, which is what the page's own description promises.
  */
 export const WIZARD_STEPS = {
   productMaster: 1,
   salesDocuments: 2,
   packers: 3,
-  whatChanges: 4,
-  automations: 5,
-  whoDecides: 6,
-  turnOn: 7,
+  shipping: 4,
+  whatChanges: 5,
+  automations: 6,
+  whoDecides: 7,
+  turnOn: 8,
 } as const;
+
+export type WizardStepKey = keyof typeof WIZARD_STEPS;
+
+/**
+ * The `?step=` values the wizard accepts, a fixed list so the parameter can
+ * only ever select a step and is never read as a path or passed anywhere else.
+ */
+export const WIZARD_STEP_KEYS: readonly WizardStepKey[] = [
+  'productMaster',
+  'salesDocuments',
+  'packers',
+  'shipping',
+  'whatChanges',
+  'automations',
+  'whoDecides',
+  'turnOn',
+];
+
+/** The URL search parameter holding the current wizard step. */
+export const WIZARD_STEP_PARAM = 'step';
+
+/** The step number a `?step=` value names, or `null` for an absent or unknown value. */
+export function wizardStepFromKey(value: string | null): number | null {
+  if (value === null) return null;
+  const key = WIZARD_STEP_KEYS.find((candidate) => candidate === value);
+  return key === undefined ? null : WIZARD_STEPS[key];
+}
+
+/** The `?step=` value for a step number. */
+export function wizardStepKey(step: number): WizardStepKey {
+  return WIZARD_STEP_KEYS.find((key) => WIZARD_STEPS[key] === step) ?? 'productMaster';
+}
 
 export const TURN_ON_STEP = WIZARD_STEPS.turnOn;
 
@@ -67,10 +101,11 @@ export type OnboardingDataState =
   | 'step-2-sales-documents'
   | 'step-3-packers-empty'
   | 'step-3-packer-added'
-  | 'step-4-what-changes'
-  | 'step-5-automations'
-  | 'step-6-who-decides'
-  | 'step-7-turn-on'
+  | 'step-4-shipping'
+  | 'step-5-what-changes'
+  | 'step-6-automations'
+  | 'step-7-who-decides'
+  | 'step-8-turn-on'
   | 'waiting-first-order'
   | 'first-order-arrived'
   | 'status-on'
@@ -193,28 +228,42 @@ export function deriveDataState(input: DataStateInput): OnboardingDataState {
     case 3:
       return input.packerCount > 0 ? 'step-3-packer-added' : 'step-3-packers-empty';
     case 4:
-      return 'step-4-what-changes';
+      return 'step-4-shipping';
     case 5:
-      return 'step-5-automations';
+      return 'step-5-what-changes';
     case 6:
-      return 'step-6-who-decides';
+      return 'step-6-automations';
+    case 7:
+      return 'step-7-who-decides';
     default:
-      return 'step-7-turn-on';
+      return 'step-8-turn-on';
   }
 }
 
 /**
- * Where a fresh page load starts. Packing that was ever turned on lands on the
- * status page (on or paused); otherwise the wizard opens at step 1 until it is
- * done, then at step 2 (sales documents). The later steps are not "done" by
- * server state alone: packers are optional and "See what changes" is
- * deliberately re-asked after a reload.
+ * Where a fresh page load starts. A step named in the URL wins, so an operator
+ * who left the wizard (to connect a carrier, say) comes back to the step they
+ * left. Without one, packing that was ever turned on lands on the status page
+ * (on or paused); otherwise the wizard opens at step 1 until it is done, then
+ * at step 2 (sales documents). The later steps are not "done" by server state
+ * alone: packers are optional and "See what changes" is deliberately re-asked
+ * after a reload.
+ *
+ * A requested step past step 1 is honoured only once step 1 is done, because
+ * every later step assumes the packing connection exists. "Turn it on" is not
+ * reopened for packing that is already on or paused: the status page is where
+ * that control lives.
  */
 export function initialPosition(
   live: boolean,
   paused: boolean,
-  step1Done: boolean
+  step1Done: boolean,
+  requestedStep: number | null = null
 ): { view: OnboardingView; step: number } {
+  if (requestedStep !== null && (step1Done || requestedStep === WIZARD_STEPS.productMaster)) {
+    const turnOnReopened = requestedStep === TURN_ON_STEP && (live || paused);
+    if (!turnOnReopened) return { view: 'wizard', step: requestedStep };
+  }
   if (live || paused) return { view: 'status', step: TURN_ON_STEP };
   return { view: 'wizard', step: step1Done ? WIZARD_STEPS.salesDocuments : WIZARD_STEPS.productMaster };
 }

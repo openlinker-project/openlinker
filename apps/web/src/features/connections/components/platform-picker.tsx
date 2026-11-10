@@ -8,15 +8,20 @@
  */
 import { renderRich, useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { usePlatforms } from '../../../shared/plugins';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
 import { captureDemoEvent } from '../../demo';
+import { isFromOmsSetup, withOmsSetupReturn } from '../lib/oms-setup-return';
 
 export function PlatformPicker(): ReactElement {
   const copy = useMessages('connections').platformPicker;
   const plugins = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
+  // An operator sent here by the OMS setup keeps the way back through the
+  // platform's wizard to the connection it creates (#3958).
+  const [searchParams] = useSearchParams();
+  const fromOmsSetup = isFromOmsSetup(searchParams);
   // A featured platform (the OMS) is a single setup, not one card per
   // account: once its connection exists the card says so and leads to it.
   const configuredTypes = new Set((connectionsQuery.data ?? []).map((c) => c.platformType));
@@ -36,7 +41,7 @@ export function PlatformPicker(): ReactElement {
         {cards.map((card) => (
           <li key={card.platformType}>
             <Link
-              to={card.to}
+              to={withOmsSetupReturn(card.to, fromOmsSetup)}
               className={
                 card.featured === true
                   ? 'platform-picker__card platform-picker__card--featured'

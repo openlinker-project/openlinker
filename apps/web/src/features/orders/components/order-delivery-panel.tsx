@@ -34,13 +34,15 @@ import type {
   ParsedOrderPickupPoint,
   ParsedOrderShipping,
 } from '../api/order-snapshot.schema';
-import type { OrderDeliveryRider } from '../api/orders.types';
+import { useShippingRouteCopy } from '../../mappings';
+import type { OrderDeliveryResolution, OrderDeliveryRider } from '../api/orders.types';
 import type { OrderEditsView } from '../api/order-edit.types';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
 import type { DeliveryOwner } from '../lib/delivery-owner';
 import { ConnectionDot } from './connection-dot';
 import { DeliveryOutcomeChip, DeliveryRiderBanner } from './delivery-chip';
 import { DeliveryRiderAction } from './delivery-rider-action';
+import { ShippingRouteAction } from './shipping-route-action';
 
 interface OrderDeliveryPanelProps {
   shippingAddress?: ParsedAddress;
@@ -72,10 +74,17 @@ interface OrderDeliveryPanelProps {
   /**
    * Resolved delivery owner (#1776) — the carrier or destination shop that owns
    * fulfilment, resolved by the caller via `resolveDeliveryOwner`. Renders a
-   * "Shipped by" row (connection mini-badge + name + a muted routing note) as
+   * "Shipped by" row (connection mini-badge + the route in plain words) as
    * the panel's first field. Absent → no Shipped-by row (older payloads).
    */
   deliveryOwner?: DeliveryOwner;
+  /**
+   * How routing resolved for the delivery method (#3958). Words the "Shipped
+   * by" row as a route ("OpenLinker buys the label from InPost") and says
+   * whether an operator set it or it is the default. Absent (older payloads)
+   * -> the route is inferred from `deliveryOwner` and no origin is stated.
+   */
+  deliveryResolution?: OrderDeliveryResolution | null;
   /**
    * Actionable delivery rider (#1793/#1792). When actionable
    * (`unmapped` / `not-connected`) an inline banner + fix-it deep-link button
@@ -141,6 +150,7 @@ export function OrderDeliveryPanel({
   methodFallback,
   deliveryOutcome,
   deliveryOwner,
+  deliveryResolution,
   deliveryRider,
   sourceConnectionId,
   sourceDeliveryMethodId,
@@ -150,34 +160,68 @@ export function OrderDeliveryPanel({
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
+  const routeCopy = useShippingRouteCopy();
+  const routeOrigin = useMessages('orders').shippingRouteOrigin;
   const copy = useMessages('orders').orderDeliveryPanel;
   const channel = channelName ?? copy.edited.theChannel;
 
   const items: KeyValueItem[] = [];
-  // "Shipped by" (#1776) — the first field: who owns fulfilment. A carrier
-  // route reassures "OpenLinker generates the label"; a shop route (named or
-  // the generic destination shop) reads "its own carrier".
+  const methodLabel =
+    shipping?.methodName ?? sourceDeliveryMethodName ?? shipping?.methodId ?? sourceDeliveryMethodId ?? null;
+  // "Shipped by" (#1776) - the first field: who owns fulfilment, worded as a
+  // route with the shared mappings vocabulary (#3958), plus where that route
+  // comes from and the action that changes it. The kind comes from the backend
+  // resolution; only an older payload without one falls back to the owner.
   if (deliveryOwner) {
-    const shippedByName =
+    const routeKind =
+      deliveryResolution?.processorKind ??
+      (deliveryOwner.variant === 'carrier' ? 'ol_managed_carrier' : 'omp_fulfilled');
+    const ownerName =
       deliveryOwner.name ??
       (deliveryOwner.variant === 'carrier'
-        ? copy.shippedBy.carrierFallback
-        : copy.shippedBy.shopFallback);
-    const shippedByNote =
-      deliveryOwner.variant === 'carrier' ? copy.shippedBy.carrierNote : copy.shippedBy.shopNote;
+        ? routeOrigin.aCarrier
+        : routeOrigin.yourShop);
+    const route = routeCopy.describe(routeKind, ownerName);
+    // A rule to a switched-off connection still matches (#1799); say so rather
+    // than present a dead route as the one that will ship the order.
+    const routeText =
+      deliveryResolution?.processorAvailable === false ? routeCopy.unavailable(route) : route;
+    const fromRule = deliveryResolution?.source === 'rule';
     items.push({
       id: 'shipped-by',
       label: copy.shippedBy.label,
       value: (
-        <span className="order-delivery__shipped-by">
-          <ConnectionDot
-            name={deliveryOwner.name}
-            platformType={deliveryOwner.platformType}
-            variant={deliveryOwner.variant}
-          />
-          <span>{shippedByName}</span>
-          <span className="text-muted">{shippedByNote}</span>
-        </span>
+        <>
+          <span className="order-delivery__shipped-by">
+            <ConnectionDot
+              name={deliveryOwner.name}
+              platformType={deliveryOwner.platformType}
+              variant={deliveryOwner.variant}
+            />
+            <span>{routeText}</span>
+          </span>
+          {deliveryResolution ? (
+            <span className="order-delivery__route-origin" data-testid="order-delivery-route-origin">
+              <span className="text-muted">
+                {fromRule
+                  ? channelName
+                    ? interpolate(routeOrigin.rule, { source: channelName })
+                    : routeOrigin.ruleNoSource
+                  : routeOrigin.default}
+              </span>
+              {/* An unmapped rider below already offers this same dialog; one button per action. */}
+              {sourceConnectionId && deliveryRider?.rider !== 'unmapped' ? (
+                <ShippingRouteAction
+                  sourceConnectionId={sourceConnectionId}
+                  sourceName={channelName}
+                  methodLabel={methodLabel}
+                  methodId={shipping?.methodId ?? sourceDeliveryMethodId ?? null}
+                  label={fromRule ? routeOrigin.changeAction : routeOrigin.chooseAction}
+                />
+              ) : null}
+            </span>
+          ) : null}
+        </>
       ),
     });
   }

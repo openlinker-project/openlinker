@@ -25,7 +25,7 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
-import { RoutingRulesPanel } from '../../features/mappings/components/routing-rules-panel';
+import { FulfillmentRoutingSection } from '../../features/mappings/components/fulfillment-routing-section';
 import { AttributeRulesPanel } from '../../features/mappings/components/attribute-rules-panel';
 import { DeliveryOnDocumentsPanel } from '../../features/delivery-on-documents';
 import { publishDestinationKind } from '../../features/listings';
@@ -605,12 +605,8 @@ export function ConnectionMappingsPage(): ReactElement {
 
         {supportsOrderSource && (
           <TabsContent value="fulfillment">
-            <RoutingRulesPanel
-              connectionId={sourceConnectionId}
-              sourceLabel={sourceLabel}
-              deliveryMethods={options.allegroDeliveryMethods}
-              deliveryMethodsLoading={optionsLoading}
-              deliveryMethodsError={optionsErrors.allegroDeliveryMethods ?? null}
+            <FulfillmentRoutingSection
+              sourceConnectionId={sourceConnectionId}
               onDirtyChange={dirtyHandlers.fulfillment}
             />
           </TabsContent>

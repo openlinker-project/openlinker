@@ -92,6 +92,10 @@ import {
   type SalesDocumentListApi,
 } from '../../features/sales-documents/api/sales-document-list.api';
 import {
+  createSalesDocumentBatchApi,
+  type SalesDocumentBatchApi,
+} from '../../features/sales-documents/api/sales-document-batch.api';
+import {
   createPricingSyncApi,
   type PricingSyncApi,
 } from '../../features/price-changes/api/pricing-sync.api';
@@ -292,6 +296,7 @@ export interface CoreApiClient {
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
   salesDocumentList: SalesDocumentListApi;
+  salesDocumentBatch: SalesDocumentBatchApi;
   salesDocumentRules: SalesDocumentRulesApi;
   deliveryOnDocuments: DeliveryOnDocumentsApi;
   sourcingRules: SourcingRulesApi;
@@ -552,6 +557,7 @@ export function createApiClient({
     requestFile,
     requestStream,
     salesDocumentList: createSalesDocumentListApi(request),
+    salesDocumentBatch: createSalesDocumentBatchApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
     deliveryOnDocuments: createDeliveryOnDocumentsApi(request),
     sourcingRules: createSourcingRulesApi(request),

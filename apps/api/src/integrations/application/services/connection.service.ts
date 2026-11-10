@@ -89,6 +89,8 @@ import {
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { parseAuthorityConfig } from '@openlinker/core/fulfillment-authority';
+import { describeInvalidTriggerModels } from '@openlinker/core/invoicing';
+import { describeInvalidBatchSchedules } from '@openlinker/core/sales-documents';
 import { ILocationService, LOCATION_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { IDestinationTaxonomyService } from '@openlinker/core/listings';
 import { DESTINATION_TAXONOMY_SERVICE_TOKEN } from '@openlinker/core/listings';
@@ -777,6 +779,26 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * Core-owned check for the batch-issuing keys (#3582/#3583):
+   * `config.salesDocument.triggerModels[kind]` and
+   * `config.salesDocument.batchSchedules[kind]`. Both readers degrade a bad
+   * value silently (an unrecognised trigger model falls through to the legacy
+   * key; a bad time, interval or zone becomes its default), so a typo would
+   * change WHEN fiscal documents go out with no operator feedback. The form
+   * refuses those values, but the raw JSON editor, curl and MCP bypass it -
+   * the same reported-≠-enforced gap as `validateStockAndPricingConfig`. The
+   * rules live beside their readers in core, so the two cannot disagree.
+   *
+   * Never defaults a value in; absent keys stay absent.
+   */
+  private validateSalesDocumentBatchConfig(config: Record<string, unknown>): void {
+    const problem = describeInvalidTriggerModels(config) ?? describeInvalidBatchSchedules(config);
+    if (problem !== null) {
+      throw new BadRequestException(problem);
+    }
+  }
+
+  /**
    * Core-owned bounds check for `config.autoDispatch` (#3340/#2729) — the
    * per-connection opt-in to buy a shipping label the moment a routed
    * `FulfillmentWork` is accepted. Neutral, like the checks above it: every
@@ -1202,6 +1224,7 @@ export class ConnectionService implements IConnectionService {
         await this.validateDeliveryOnDocumentsConfig(rest.config);
         this.validateGiftOnDocumentsConfig(rest.config);
         this.validateBuyerEmailsConfig(rest.config, enabledCapabilities, undefined);
+        this.validateSalesDocumentBatchConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
@@ -1512,6 +1535,7 @@ export class ConnectionService implements IConnectionService {
           patch.enabledCapabilities ?? existing.enabledCapabilities,
           existing.config
         );
+        this.validateSalesDocumentBatchConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config, existing.config);
         // #2407 — inside this branch, which is correct ONLY because

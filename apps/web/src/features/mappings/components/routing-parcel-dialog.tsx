@@ -16,21 +16,14 @@ import {
   DialogFooter,
   DialogTitle,
 } from '../../../shared/ui/dialog';
-import { FormField } from '../../../shared/ui/form-field';
-import { Input } from '../../../shared/ui/input';
-import { Select } from '../../../shared/ui/select';
 import {
-  PARCEL_TEMPLATE_OPTIONS,
   isDraftEmpty,
   isListedParcelTemplate,
   validateDraft,
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
+import { ParcelProfileForm } from './parcel-profile-form';
 import { interpolate, useMessages } from '../../../shared/i18n';
-
-// Select value for the free-text escape hatch. It never reaches the draft: the
-// draft's `template` holds the typed code, the select only tracks the mode.
-const OTHER_TEMPLATE_OPTION = '__other__';
 
 interface RoutingParcelDialogProps {
   open: boolean;
@@ -56,23 +49,6 @@ export function RoutingParcelDialog({
   );
   const [error, setError] = useState<string | null>(null);
 
-  const set =
-    (field: keyof ParcelProfileDraft) =>
-    (value: string): void => {
-      setDraft((prev) => ({ ...prev, [field]: value }));
-      setError(null);
-    };
-
-  function handleTemplateSelect(value: string): void {
-    if (value === OTHER_TEMPLATE_OPTION) {
-      setCustomTemplate(true);
-      set('template')('');
-      return;
-    }
-    setCustomTemplate(false);
-    set('template')(value);
-  }
-
   function handleApply(): void {
     const problem = validateDraft(draft, { customTemplate });
     if (problem) {
@@ -91,70 +67,15 @@ export function RoutingParcelDialog({
           {interpolate(copy.sectionHintWithMethod, { method: methodLabel })}
         </DialogDescription>
 
-        <FormField label={copy.templateLabel} name="parcelTemplate">
-          <Select
-            value={customTemplate ? OTHER_TEMPLATE_OPTION : draft.template}
-            onChange={(e) => handleTemplateSelect(e.target.value)}
-          >
-            <option value="">{copy.templateNone}</option>
-            {PARCEL_TEMPLATE_OPTIONS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-            <option value={OTHER_TEMPLATE_OPTION}>{copy.templateOther}</option>
-          </Select>
-        </FormField>
-
-        {customTemplate && (
-          <FormField label={copy.customTemplateLabel} name="parcelTemplateCode">
-            <Input value={draft.template} onChange={(e) => set('template')(e.target.value)} />
-          </FormField>
-        )}
-
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <FormField label={copy.lengthLabel} name="parcelLength">
-            <Input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="any"
-              value={draft.lengthCm}
-              onChange={(e) => set('lengthCm')(e.target.value)}
-            />
-          </FormField>
-          <FormField label={copy.widthLabel} name="parcelWidth">
-            <Input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="any"
-              value={draft.widthCm}
-              onChange={(e) => set('widthCm')(e.target.value)}
-            />
-          </FormField>
-          <FormField label={copy.heightLabel} name="parcelHeight">
-            <Input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="any"
-              value={draft.heightCm}
-              onChange={(e) => set('heightCm')(e.target.value)}
-            />
-          </FormField>
-        </div>
-
-        <FormField label={copy.weightLabel} name="parcelWeight">
-          <Input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            value={draft.weightKg}
-            onChange={(e) => set('weightKg')(e.target.value)}
-          />
-        </FormField>
+        <ParcelProfileForm
+          draft={draft}
+          customTemplate={customTemplate}
+          onChange={(next, custom) => {
+            setDraft(next);
+            setCustomTemplate(custom);
+            setError(null);
+          }}
+        />
 
         {error && (
           <p className="error-message" role="alert">

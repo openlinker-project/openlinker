@@ -10,7 +10,7 @@
  * @module features/oms-onboarding/lib
  */
 import { INVOICE_TRIGGER_MODEL_VALUES, type InvoiceTriggerModel } from '../../connections';
-import type { SalesDocumentRow } from '../../sales-documents';
+import { issuedDocumentKinds, type SalesDocumentRow } from '../../sales-documents';
 import { withConfigKey } from './config-merge';
 import { omsOnboardingCopy as COPY } from './oms-onboarding.copy';
 
@@ -105,7 +105,8 @@ export function describeSetupStep(
 // error here, so it cannot silently read as "issued by hand".
 const IS_AUTOMATIC_TRIGGER: Record<InvoiceTriggerModel, boolean> = {
   manual: false,
-  batched: false,
+  // #3583: a batch run issues the order without anyone asking.
+  batched: true,
   'auto-on-paid': true,
   'auto-on-shipped': true,
 };
@@ -131,6 +132,10 @@ export function hasAutomaticDocumentIssuing(rows: readonly SalesDocumentRow[]): 
       row.status === 'active' &&
       row.documentKind !== null &&
       row.isPrimary &&
-      isAutomaticTrigger(row.triggerModel)
+      // #3582: per kind. A row issuing both kinds counts when either kind is
+      // automatic - receipts at once with invoices by hand is still automatic.
+      issuedDocumentKinds(row.documentKind).some((kind) =>
+        isAutomaticTrigger(row.triggerModels[kind])
+      )
   );
 }

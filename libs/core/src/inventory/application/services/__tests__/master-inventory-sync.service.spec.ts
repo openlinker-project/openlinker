@@ -142,6 +142,29 @@ describe('MasterInventorySyncService', () => {
   });
 
   describe('syncFromMasterByExternalId', () => {
+    it('should attribute every written position to the sync run when one is given (#4062)', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'adapter-inv-1',
+          productId: internalProductId,
+          variantId: 'var-1',
+          locationId: 'loc-1',
+          quantity: 4,
+          reserved: 0,
+          available: 4,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId, { syncRunId: 'job-9' });
+
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productVariantId: 'var-1', availableQuantity: 4 }),
+        connectionId,
+        { reason: 'master_sync', sourceKind: 'master_sync', syncRunId: 'job-9' }
+      );
+    });
+
     it('should resolve external→internal ID and set canonical inventory when the adapter returns a complete inventory record', async () => {
       const adapterInventory: InventoryPortInterface = {
         id: 'adapter-inv-1',

@@ -68,6 +68,14 @@ export {
   INVOICE_TRIGGER_MODEL_LABELS,
 } from './types/invoice-trigger-model.types';
 export type { InvoiceTriggerModel } from './types/invoice-trigger-model.types';
+export {
+  resolveTriggerModelForKind,
+  writeTriggerModelForKind,
+} from './lib/resolve-trigger-model-for-kind';
+export type {
+  ResolvedTriggerModel,
+  TriggerModelSource,
+} from './lib/resolve-trigger-model-for-kind';
 
 // Edit-connection schema seam (#1330) — composed by the host with a platform's
 // `ConnectionConfigContribution`; exported so plugin-local tests can exercise
