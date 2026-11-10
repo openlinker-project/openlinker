@@ -146,7 +146,11 @@ export type {
   ShipmentFilters,
   ShipmentPagination,
   PaginatedShipments,
+  ShipmentFailedCauseGroup,
+  ShipmentSummary,
+  ShipmentSummaryOptions,
 } from './domain/types/shipment-query.types';
+export { groupFailedShipmentCauses } from './domain/failed-shipment-causes';
 
 // Domain entity
 export { Shipment } from './domain/entities/shipment.entity';

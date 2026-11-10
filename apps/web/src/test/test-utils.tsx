@@ -1232,6 +1232,16 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
+      summary: vi.fn().mockResolvedValue({
+        total: 0,
+        byStatus: { draft: 0, generated: 0, dispatched: 0, 'in-transit': 0, delivered: 0, failed: 0, cancelled: 0 },
+        byProcessor: { omp: 0, carrier: 0 },
+        byMethod: { paczkomat: 0, pickup: 0, kurier: 0, omp: 0 },
+        byConnection: {},
+        waybillRelayStuck: 0,
+        toSend: 0,
+        failedCauseGroups: [],
+      }),
       generateLabel: vi.fn().mockResolvedValue({ kind: 'omp_fulfilled' }),
       cancel: vi.fn().mockResolvedValue({
         id: 'ol_shipment_1',
