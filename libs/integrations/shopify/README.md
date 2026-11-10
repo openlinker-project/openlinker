@@ -270,6 +270,23 @@ Opt-in. Keeps the stock of products this connection PUBLISHED in step with the m
 - Not together with InventoryMaster: the propagation never writes back to the stock master, so on a connection
   with both nothing is written back. Use a separate publish-only connection.
 
+## Connection page (#3982)
+
+The connection edit page carries a Shopify section and a "Configure webhooks" action:
+
+- **Stock location** - picked from the store's active locations, read live through
+  `GET /integrations/shopify/connections/:id/locations` (`ShopifyLocationReader`, exported as
+  `SHOPIFY_LOCATION_READER_TOKEN`). The read ignores the stored `locationId`, so a wrong id can still be fixed; when
+  the store cannot be read the field falls back to typing the id, and the endpoint answers 502 rather than an empty
+  list.
+- **Quantity for untracked stock** (`unmanagedStockQuantity`), **Sales country** (`salesCountryIso2`) and **Send
+  refunds to Shopify** (`refundsThroughShopify`, with a warning that it moves real money).
+- **OpenLinker callback URL** (`openlinkerCallbackBaseUrl`). "Configure webhooks" stays disabled until it is saved,
+  because the install reads the stored config.
+
+The client runtime is a Nest provider of `ShopifyIntegrationModule`, so the plugin, the webhook provisioner and the
+location reader share one OAuth token memo.
+
 ## Known gaps
 
 - `defaultEnabledCapabilities` turns ProductMaster on for every new connection, so a publish-only connection must

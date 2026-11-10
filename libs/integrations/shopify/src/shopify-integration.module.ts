@@ -10,7 +10,12 @@
  *   - the archive hook, registered on `ConnectionArchiveHookRegistryService`,
  *     which drops the minted token when a connection is archived (K05);
  *   - the webhook provisioner (#3981), which needs `ConnectionPort` and
- *     `IWebhookSecretService` and shares the plugin's client runtime.
+ *     `IWebhookSecretService` and shares the plugin's client runtime;
+ *   - the location reader (#3982), exported for the API's location picker.
+ *
+ * The client runtime is a provider so the plugin, the provisioner and the
+ * location reader share ONE token memo: a second memo would refresh an OAuth
+ * token the others do not see, and the refresh token rotates on every use.
  *
  * Wired into `apps/api/src/plugins.ts` and `apps/worker/src/plugins.ts`.
  *
@@ -56,7 +61,7 @@ import {
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
   CREDENTIALS_SERVICE_TOKEN,
-  ICredentialsService,
+  type ICredentialsService,
   WEBHOOK_SECRET_SERVICE_TOKEN,
   type IWebhookSecretService,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
@@ -71,7 +76,7 @@ import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SchedulerTaskRegistryService,
   SYNC_LOCK_TOKEN,
-  SyncLockPort,
+  type SyncLockPort,
 } from '@openlinker/core/sync';
 import {
   MappingsModule,
@@ -87,11 +92,55 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { ShopifyConnectionArchiveHookAdapter } from './infrastructure/adapters/shopify-connection-archive-hook.adapter';
 import { ShopifyCredentialsWriterAdapter } from './infrastructure/adapters/shopify-credentials-writer.adapter';
 import { ShopifyWebhookProvisioningAdapter } from './infrastructure/adapters/webhooks/shopify-webhook-provisioning.adapter';
-import { createShopifyClientRuntime } from './infrastructure/http/shopify-client.builder';
-import { createShopifyPlugin } from './shopify-plugin';
+import {
+  createShopifyClientRuntime,
+  type ShopifyClientRuntime,
+} from './infrastructure/http/shopify-client.builder';
+import { ShopifyLocationReader } from './infrastructure/readers/shopify-location.reader';
+import { createShopifyPlugin, shopifyAdapterManifest } from './shopify-plugin';
+import { SHOPIFY_LOCATION_READER_TOKEN } from './shopify.tokens';
+
+const SHOPIFY_CLIENT_RUNTIME_TOKEN = Symbol('ShopifyClientRuntime');
 
 @Module({
   imports: [IntegrationsModule, SyncModule, IdentifierMappingModule, MappingsModule, RateLimitModule],
+  providers: [
+    {
+      provide: SHOPIFY_CLIENT_RUNTIME_TOKEN,
+      useFactory: (credentialsService: ICredentialsService, lock: SyncLockPort): ShopifyClientRuntime =>
+        createShopifyClientRuntime({
+          credentialsWriter: new ShopifyCredentialsWriterAdapter(credentialsService),
+          lock,
+        }),
+      inject: [CREDENTIALS_SERVICE_TOKEN, SYNC_LOCK_TOKEN],
+    },
+    {
+      provide: SHOPIFY_LOCATION_READER_TOKEN,
+      useFactory: (
+        connectionPort: ConnectionPort,
+        credentialsResolver: CredentialsResolverPort,
+        http: HttpTransportFactoryPort,
+        runtime: ShopifyClientRuntime,
+        cache?: CachePort,
+      ): ShopifyLocationReader =>
+        new ShopifyLocationReader(
+          connectionPort,
+          credentialsResolver,
+          http,
+          runtime,
+          cache,
+          shopifyAdapterManifest.defaultRateLimit,
+        ),
+      inject: [
+        CONNECTION_PORT_TOKEN,
+        CREDENTIALS_RESOLVER_TOKEN,
+        HTTP_TRANSPORT_FACTORY_TOKEN,
+        SHOPIFY_CLIENT_RUNTIME_TOKEN,
+        { token: CACHE_PORT_TOKEN, optional: true },
+      ],
+    },
+  ],
+  exports: [SHOPIFY_LOCATION_READER_TOKEN],
 })
 export class ShopifyIntegrationModule implements OnModuleInit {
   private readonly logger = new Logger(ShopifyIntegrationModule.name);
@@ -131,10 +180,8 @@ export class ShopifyIntegrationModule implements OnModuleInit {
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
-    @Inject(CREDENTIALS_SERVICE_TOKEN)
-    private readonly credentialsService: ICredentialsService,
-    @Inject(SYNC_LOCK_TOKEN)
-    private readonly syncLock: SyncLockPort,
+    @Inject(SHOPIFY_CLIENT_RUNTIME_TOKEN)
+    private readonly runtime: ShopifyClientRuntime,
     @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
     private readonly http: HttpTransportFactoryPort,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
@@ -152,10 +199,7 @@ export class ShopifyIntegrationModule implements OnModuleInit {
   onModuleInit(): void {
     this.logger.log('Registering Shopify plugin (manifest + factory + side registries)...');
 
-    const runtime = createShopifyClientRuntime({
-      credentialsWriter: new ShopifyCredentialsWriterAdapter(this.credentialsService),
-      lock: this.syncLock,
-    });
+    const runtime = this.runtime;
     const plugin = createShopifyPlugin({
       runtime,
       mappingConfigService: this.mappingConfigService,

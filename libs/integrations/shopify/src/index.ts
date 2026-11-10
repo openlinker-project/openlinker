@@ -32,3 +32,9 @@ export { parseShopifyConfig } from './domain/policies/shopify-config.policy';
 
 export type { ShopifyConnectionConfig } from './domain/types/shopify-config.types';
 export type { ShopifyCredentials } from './domain/types/shopify-credentials.types';
+
+export { SHOPIFY_LOCATION_READER_TOKEN } from './shopify.tokens';
+export type {
+  IShopifyLocationReader,
+  ShopifyLocationSummary,
+} from './domain/types/shopify-location.types';
