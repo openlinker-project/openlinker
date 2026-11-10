@@ -572,6 +572,7 @@ export function createMockApiClient(
       // #3568. An install with no movements; the count is only requested for a full page.
       listMovements: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
       countMovements: vi.fn().mockResolvedValue({ total: 0 }),
+      listMovementPushes: vi.fn().mockResolvedValue({ items: [] }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       // #3569 - the honest default is a stock view that names no variants, so a

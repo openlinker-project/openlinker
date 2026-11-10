@@ -18,6 +18,7 @@ const ctx: StockHistoryContext = {
   copy,
   plural: (n, forms, params) => formatPlural(n, forms, 'en', params),
   masterName: () => 'Shoper',
+  connectionName: (id) => (id === 'c-allegro' ? 'Allegro' : id),
 };
 
 function row(overrides: Partial<InventoryMovementRow> = {}): InventoryMovementRow {
@@ -108,6 +109,24 @@ describe('groupMovements', () => {
       title: 'Shoper changed 2 products',
       amount: { change: '−1', result: 'each' },
     });
+  });
+
+  it('should keep one sync run together across a minute boundary when the run is named', () => {
+    const a = row({ id: 'a', reason: 'master_sync', sourceRef: null, syncRunId: 'run-1' });
+    const b = row({
+      id: 'b',
+      reason: 'master_sync',
+      sourceRef: null,
+      syncRunId: 'run-1',
+      occurredAt: '2026-11-09T10:16:05.000Z',
+    });
+    expect(groupMovements([a, b])).toHaveLength(1);
+  });
+
+  it('should split two named runs that share a minute', () => {
+    const a = row({ id: 'a', reason: 'master_sync', sourceRef: null, syncRunId: 'run-1' });
+    const b = row({ id: 'b', reason: 'master_sync', sourceRef: null, syncRunId: 'run-2' });
+    expect(groupMovements([a, b])).toHaveLength(2);
   });
 
   it('should never hide a refused row inside a group', () => {

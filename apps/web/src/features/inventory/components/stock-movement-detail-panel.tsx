@@ -16,7 +16,8 @@ import { Link } from 'react-router-dom';
 import { SidePanel } from '../../../shared/ui/side-panel';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import type { InventoryMovementRow } from '../api/inventory-movements.types';
+import type { ChannelQuantityPush, InventoryMovementRow } from '../api/inventory-movements.types';
+import { useMovementPushesQuery } from '../hooks/use-movement-pushes-query';
 import { operatorReasonText } from '../lib/stock-movement-presentation';
 import {
   describeMovement,
@@ -55,6 +56,60 @@ function Facts({ items }: { items: readonly Fact[] }): ReactElement {
         </div>
       ))}
     </dl>
+  );
+}
+
+const PUSH_TONE = { sent: 'success', failed: 'error', skipped: 'neutral' } as const;
+
+/**
+ * What OpenLinker sent each channel for this change (#4063). Loading, a
+ * failed read and "nothing was sent" are three different statements, so each
+ * gets its own line; a failed read never claims nothing was sent.
+ */
+function SentToChannels({
+  movementId,
+  context,
+  formatTime,
+}: {
+  movementId: string | null;
+  context: StockHistoryContext;
+  formatTime: (iso: string) => string;
+}): ReactElement {
+  const s = context.copy.detail.sent;
+  const query = useMovementPushesQuery(movementId);
+  let body: ReactNode;
+  if (query.isLoading) {
+    body = <p className="stock-detail__footnote" aria-live="polite">{s.loading}</p>;
+  } else if (query.error || !query.data) {
+    body = <p className="stock-detail__footnote" role="alert">{s.error}</p>;
+  } else if (query.data.items.length === 0) {
+    body = <p className="stock-detail__footnote">{s.nothing}</p>;
+  } else {
+    body = (
+      <ul className="stock-pushes" data-testid="stock-movement-pushes">
+        {query.data.items.map((push: ChannelQuantityPush) => (
+          <li key={push.id} className="stock-pushes__row">
+            <span className="stock-pushes__channel">{context.connectionName(push.connectionId)}</span>
+            <span className="stock-pushes__quantity tabular">{push.quantity ?? s.quantityUnknown}</span>
+            <span className="stock-pushes__time tabular">{formatTime(push.pushedAt)}</span>
+            <StatusBadge compact tone={PUSH_TONE[push.outcome]}>
+              {s.outcomes[push.outcome]}
+            </StatusBadge>
+            {push.outcome === 'skipped' ? (
+              <span className="stock-pushes__detail">{s.skippedHint}</span>
+            ) : push.outcome === 'failed' && push.message ? (
+              <span className="stock-pushes__detail">{push.message}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <section className="stock-detail__section">
+      <h3>{s.title}</h3>
+      {body}
+    </section>
   );
 }
 
@@ -154,6 +209,10 @@ export function StockMovementDetailPanel({
             </dl>
             <p className="stock-detail__footnote">{explanation.footnote}</p>
           </section>
+
+          {row.kind === 'movement' ? (
+            <SentToChannels movementId={row.id} context={context} formatTime={formatTime} />
+          ) : null}
 
           <section className="stock-detail__section">
             <h3>{d.facts.title}</h3>

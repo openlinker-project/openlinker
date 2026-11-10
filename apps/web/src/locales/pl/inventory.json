@@ -611,6 +611,19 @@
         "unchanged": "bez zmian"
       },
       "openProduct": "Otwórz produkt",
+      "sent": {
+        "error": "Nie udało się wczytać, co wysłano do kanałów.",
+        "loading": "Sprawdzam, co wysłano...",
+        "nothing": "Dla tej zmiany nic nie wysłano do kanałów.",
+        "outcomes": {
+          "failed": "Nie wysłano",
+          "sent": "Wysłano",
+          "skipped": "Niepotrzebne"
+        },
+        "quantityUnknown": "brak liczby",
+        "skippedHint": "Kanał miał już nowszą liczbę.",
+        "title": "Wysłane do kanałów"
+      },
       "tech": {
         "id": "ID wpisu",
         "reason": "Powód",
@@ -819,9 +832,14 @@
     "summary": {
       "available": "Dostępne",
       "channels": "Co pokazuje każdy kanał",
+      "lastFailed": "Ostatnie wysłanie nie powiodło się",
+      "mismatch": "Różnica",
+      "mismatchHint": "Kanał pokazuje inną liczbę niż ostatnio wysłana przez OpenLinker.",
       "noChannels": "Żaden kanał jeszcze nie sprzedaje tego produktu.",
       "onHand": "Na stanie",
       "reserved": "Zarezerwowane",
+      "sent": "Wysłano {n}",
+      "sentNothing": "Jeszcze nic nie wysłano",
       "shows": "Pokazuje {n}",
       "showsUnknown": "Jeszcze nie widziano",
       "title": "Stan teraz"

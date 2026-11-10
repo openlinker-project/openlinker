@@ -23,6 +23,8 @@ export interface StockHistoryContext {
   plural: PluralFn;
   /** The name of the connection that keeps the row's stock. */
   masterName: (row: InventoryMovementRow) => string;
+  /** Any connection's name by id, for the channels a change was sent to. */
+  connectionName: (connectionId: string) => string;
 }
 
 // ── Amount ───────────────────────────────────────────────────────────
@@ -186,9 +188,10 @@ function localMinute(iso: string): string {
 
 /**
  * Rows that are the same EVENT on several products. An order groups by its
- * reference. A sync run has no run id on the ledger yet (#4062), so it is
- * approximated by connection and minute. Only applied rows group: a refused
- * or unconfirmed row always stands on its own, so it is never hidden.
+ * reference. A sync run groups by the run id the ledger records (#4062); a
+ * row written before that id existed falls back to connection and minute,
+ * which can split a run across a minute boundary. Only applied rows group: a
+ * refused or unconfirmed row always stands on its own, so it is never hidden.
  */
 export function groupKey(row: InventoryMovementRow): string {
   if (row.kind === 'reservation' && row.sourceRef) return `hold:${row.sourceRef}:${row.status}`;
@@ -196,6 +199,7 @@ export function groupKey(row: InventoryMovementRow): string {
     if (row.reason === 'sale' && row.sourceRef) return `sale:${row.sourceRef}`;
     if (row.reason === 'master_sync') {
       const run = row.quantityBefore === null ? 'first' : 'sync';
+      if (row.syncRunId) return `${run}:run:${row.syncRunId}`;
       return `${run}:${row.sourceConnectionId ?? '-'}:${localMinute(row.occurredAt)}`;
     }
   }

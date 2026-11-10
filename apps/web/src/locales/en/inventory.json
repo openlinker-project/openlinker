@@ -587,6 +587,19 @@
         "unchanged": "unchanged"
       },
       "openProduct": "Open product",
+      "sent": {
+        "error": "Could not load what was sent to channels.",
+        "loading": "Checking what was sent...",
+        "nothing": "Nothing was sent to a channel for this change.",
+        "outcomes": {
+          "failed": "Not sent",
+          "sent": "Sent",
+          "skipped": "Not needed"
+        },
+        "quantityUnknown": "no quantity",
+        "skippedHint": "The channel already had a newer number.",
+        "title": "Sent to channels"
+      },
       "tech": {
         "id": "Record ID",
         "reason": "Reason",
@@ -781,9 +794,14 @@
     "summary": {
       "available": "Available",
       "channels": "What each channel shows",
+      "lastFailed": "Last send failed",
+      "mismatch": "Different",
+      "mismatchHint": "The channel shows a different number than OpenLinker last sent.",
       "noChannels": "No channel sells this product yet.",
       "onHand": "On hand",
       "reserved": "Reserved",
+      "sent": "Sent {n}",
+      "sentNothing": "Nothing sent yet",
       "shows": "Shows {n}",
       "showsUnknown": "Not seen yet",
       "title": "Stock now"

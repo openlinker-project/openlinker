@@ -37339,3 +37339,21 @@ legend.analytics-settings-dialog__label {
   .stock-row__sku { display: block; margin-left: 0; }
   .stock-facts__row { grid-template-columns: 1fr; gap: 0; }
 }
+
+/* ── Stock movement history: what was sent to channels (#4063) ──────────── */
+.stock-pushes { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+
+.stock-pushes__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+}
+
+.stock-pushes__channel { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
+.stock-pushes__quantity { font-weight: 600; }
+.stock-pushes__time { color: var(--text-secondary); }
+.stock-pushes__detail { grid-column: 1 / -1; color: var(--text-secondary); font-size: 0.8125rem; }
+
+.stock-variant__figures { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-3); }
