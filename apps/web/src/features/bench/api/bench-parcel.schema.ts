@@ -87,6 +87,24 @@ export const benchPackerNoteSchema = z.object({
   createdAt: z.string(),
 });
 
+/**
+ * #3958. `.nullish()` as a whole, so an API that predates the field reads as
+ * "route not known" instead of failing the parse and hiding the box.
+ */
+const benchParcelRouteSchema = z
+  .object({
+    processorKind: z.string(),
+    processorName: nullableString,
+    fromRule: z.boolean(),
+    processorAvailable: z
+      .boolean()
+      .nullish()
+      .transform((value) => value ?? true),
+    methodLabel: nullableString,
+  })
+  .nullish()
+  .transform((value) => value ?? null);
+
 export const benchParcelSchema = z.object({
   workId: z.string(),
   version: z.number(),
@@ -95,6 +113,7 @@ export const benchParcelSchema = z.object({
   totalAmount: nullableNumber,
   currency: nullableString,
   carrierName: nullableString,
+  route: benchParcelRouteSchema,
   dispatchByAt: nullableString,
   parcelIndex: z.number(),
   parcelTotal: z.number(),

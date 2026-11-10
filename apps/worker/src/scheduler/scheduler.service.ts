@@ -498,6 +498,7 @@ export class SchedulerService implements OnModuleDestroy {
       this.registerFulfillmentRoutingReapSweepTask();
       this.registerSaleDecrementReconcileSweepTask();
       this.registerOrderHoldReconcileTask();
+      this.registerSalesDocumentBatchTickTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
       // by the time any post-bootstrap start() runs.
@@ -1088,6 +1089,36 @@ export class SchedulerService implements OnModuleDestroy {
    * same minute. The cadence is the TICK, not a cycle: this pass has no cursor,
    * so each tick simply takes the oldest page of whatever is still stalled.
    */
+  /**
+   * Register the batch-issuing tick (#3583).
+   *
+   * Global scope under the nil-UUID system connection: the tick reads every
+   * batched connection's schedule from config and enqueues one
+   * `salesDocument.batch.run` per due slot, each under the batching
+   * connection's own id. Every 5 minutes, which is the precision contract
+   * ("18:00" runs between 18:00 and 18:05).
+   *
+   * **Default ON**, and safe to be: it makes no platform call and enqueues
+   * nothing unless a connection sets a kind to `batched` and gives it a
+   * schedule. The per-tick key is the timestamp; the at-most-once-per-slot
+   * guarantee lives on the run job's slot-derived key, not here.
+   */
+  private registerSalesDocumentBatchTickTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'sales-document-batch-tick',
+      jobType: 'salesDocument.batch.tick',
+      cronExpression: '*/5 * * * *',
+      enabledEnvVar: 'OL_SALES_DOCUMENT_BATCH_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `salesDocument:batch:tick:${timestamp}`,
+    });
+  }
+
   private registerFulfillmentTimeoutSweepTask(): void {
     const systemConnection = this.buildSystemConnection();
 

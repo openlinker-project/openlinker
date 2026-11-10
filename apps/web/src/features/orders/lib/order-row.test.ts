@@ -148,10 +148,12 @@ describe('invoicingBlockedBadge (#2100)', () => {
     });
   });
 
-  it('warns on batched and keeps the action, because nothing collects the order otherwise', () => {
+  // #3583: a batched order is queued for its connection's next run - neutral,
+  // and the action stays for an order that should not wait.
+  it('shows a neutral waiting-for-batch badge and keeps the action', () => {
     expect(invoicingBlockedBadge('trigger-model-batched')).toMatchObject({
-      label: 'Batched',
-      tone: 'warning',
+      label: 'Waiting for batch',
+      tone: 'neutral',
       keepIssueAction: true,
     });
   });

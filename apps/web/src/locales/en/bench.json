@@ -15,6 +15,9 @@
       }
     }
   },
+  "documents": {
+    "labelReady": "Label from {carrier} is ready"
+  },
   "identity": {
     "locked": {
       "body": "Sign in to carry on. Nothing about the order that was open is shown here - no reference, no buyer, no address, nothing about what is in the box.",
@@ -27,6 +30,27 @@
       "title": "Sign in to this bench"
     },
     "warning": "You'll be signed out in {seconds}s - tap anywhere to stay signed in."
+  },
+  "labelRoute": {
+    "buysLabelBadge": "Label on close",
+    "buysLabelBody": "{method} goes with {carrier}. Close the box when it is packed.",
+    "buysLabelBodyNoCarrier": "{method} gets a label from OpenLinker. Close the box when it is packed.",
+    "buysLabelClosedBody": "{method} goes with {carrier}. The label shows here when it is ready.",
+    "buysLabelClosedBodyNoCarrier": "{method} gets a label from OpenLinker. It shows here when it is ready.",
+    "buysLabelClosedTitle": "OpenLinker buys the label for this box",
+    "buysLabelTitle": "OpenLinker buys the label when you close the box",
+    "carrierOffBadge": "No label coming",
+    "carrierOffBody": "Close the box and leave it aside. An admin can turn the carrier back on or choose another in Shipping settings.",
+    "carrierOffTitle": "{carrier} is switched off, so no label is coming",
+    "carrierOffTitleNoCarrier": "The carrier for this box is switched off",
+    "methodFallback": "this delivery method",
+    "noCarrierBadge": "No carrier set",
+    "noCarrierBody": "Close the box and leave it aside. An admin can choose a carrier in Shipping settings.",
+    "noCarrierTitle": "Nobody has chosen who ships {method}",
+    "shopShipsBadge": "No OpenLinker label",
+    "shopShipsBody": "Close the box and put it with the shop’s parcels.",
+    "shopShipsTitle": "{shop} ships {method} orders",
+    "shopShipsTitleNoShop": "The shop ships {method} orders"
   },
   "page": {
     "lede": "Parcels directed to this bench, most urgent first. Bundles are split into the units you really put in the box.",
@@ -176,6 +200,10 @@
         "onOfficeList": {
           "body": "It is in their list of orders that went out without a document - you do not need to write it down.",
           "title": "The office can see this one."
+        },
+        "waitingForBatch": {
+          "body": "This shop issues its documents in batches and this order is in the queue. Send the box; nobody needs to be told.",
+          "title": "The document comes with the next batch."
         }
       },
       "changeSizeAction": "Change size",

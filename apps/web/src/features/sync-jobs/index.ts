@@ -6,3 +6,4 @@
  * connection action panel) import from here.
  */
 export { TriggerSyncDialog } from './components/TriggerSyncDialog';
+export { useEnqueueSyncJobMutation } from './hooks/use-enqueue-sync-job-mutation';

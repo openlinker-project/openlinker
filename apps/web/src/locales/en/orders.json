@@ -394,7 +394,7 @@
     "keepOrder": "Keep order",
     "label": {
       "goToShipment": "Go to shipment",
-      "note": "If the parcel is already with the courier, the label cannot be voided. See the parcel instead of cancelling.",
+      "note": "If the carrier will not cancel the shipment (the parcel is already confirmed or with the courier), cancel the parcel in the carrier's panel or through the carrier's customer service.",
       "stepCancelAgain": "Cancel the order again.",
       "stepCancelShipment": "Cancel the shipment. This voids its label with the carrier.",
       "title": "Cancel the shipment first",
@@ -1697,7 +1697,8 @@
         "fallbackReason": "The label carries the current address and method.",
         "steps": {
           "1": "Cancel the shipment. This voids its label with the carrier.",
-          "2": "Edit the order."
+          "2": "Edit the order.",
+          "3": "If the carrier will not cancel it (the parcel is already confirmed), cancel the parcel in the carrier's panel or through the carrier's customer service."
         },
         "title": "A shipping label is already bought"
       },
@@ -3024,6 +3025,15 @@
   "shipmentTrackingLink": {
     "track": "Track shipment (opens in new tab)",
     "trackOn": "Track shipment on {carrier} (opens in new tab)"
+  },
+  "shippingRouteOrigin": {
+    "aCarrier": "a carrier",
+    "changeAction": "Change who ships it",
+    "chooseAction": "Choose a carrier",
+    "default": "No carrier is set for this delivery method, so your shop ships it.",
+    "rule": "Set for every {source} order on this delivery method.",
+    "ruleNoSource": "Set for every order on this delivery method.",
+    "yourShop": "Your shop"
   },
   "sourceChange": {
     "action": {

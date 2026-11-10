@@ -254,7 +254,7 @@
       "message": "Stock movements are visible to admins, operators and viewers. Ask an administrator if you need them.",
       "title": "Stock history is not available for your role"
     },
-    "description": "Every applied, refused or unconfirmed change to a variant's stock, and the reservations that set stock aside for orders. Gifts have a type of their own.",
+    "description": "What changed your stock, and why. Open a change to see the details.",
     "empty": {
       "body": "Movements appear here once stock changes in a master connection or OpenLinker adjusts it.",
       "clearFilters": "Clear filters",
@@ -303,8 +303,7 @@
     "showAllVariants": "Show all variants",
     "tabsAria": "Movements scope",
     "title": "Stock movement history",
-    "to": "To",
-    "type": "Type"
+    "to": "To"
   },
   "locationDeleteDialog": {
     "delete": "Delete",
@@ -573,6 +572,291 @@
     "transition": "{from} → {to} · {reason}",
     "variant": "Variant",
     "writesTo": "Writes to"
+  },
+  "stockHistory": {
+    "amount": {
+      "each": "each",
+      "expired": "expired",
+      "held": "held",
+      "notApplied": "not applied",
+      "notConfirmed": "not confirmed",
+      "now": "now {n}",
+      "range": "{min} to {max}",
+      "released": "released",
+      "shipped": "shipped",
+      "startingCount": "starting count",
+      "startingCounts": "starting counts",
+      "waiting": "waiting"
+    },
+    "badges": {
+      "inDoubt": "Not confirmed",
+      "pending": "Waiting",
+      "refused": "Refused"
+    },
+    "day": {
+      "today": "Today, {date}",
+      "yesterday": "Yesterday, {date}"
+    },
+    "detail": {
+      "allForSku": "All changes for this SKU",
+      "description": "Details of one stock change.",
+      "facts": {
+        "by": "Done by",
+        "note": "Note",
+        "recorded": "Recorded",
+        "shop": "Stock kept in",
+        "title": "Where it came from"
+      },
+      "footnotes": {
+        "confirmedBy": "Confirmed by {master} at {time}.",
+        "readFrom": "Read from {master} at {time}.",
+        "recordedHold": "Recorded when the order arrived ({time}), not when it ships.",
+        "refusedBy": "Refused by {master} at {time}.",
+        "sentAt": "Sent at {time}."
+      },
+      "howNumbersAddUp": "How the numbers add up",
+      "kickerHold": "Hold for an order",
+      "kickerMovement": "Stock change",
+      "ledger": {
+        "after": "On hand now",
+        "applied": "Applied",
+        "before": "On hand before",
+        "change": "Change",
+        "confirmed": "Confirmed",
+        "noAnswer": "no answer",
+        "notTracked": "not tracked",
+        "onHand": "On hand",
+        "requested": "Requested",
+        "reserved": "Reserved",
+        "unchanged": "unchanged"
+      },
+      "openProduct": "Open product",
+      "sent": {
+        "error": "Could not load what was sent to channels.",
+        "loading": "Checking what was sent...",
+        "nothing": "Nothing was sent to a channel for this change.",
+        "outcomes": {
+          "failed": "Not sent",
+          "sent": "Sent",
+          "skipped": "Not needed"
+        },
+        "quantityUnknown": "no quantity",
+        "skippedHint": "The channel already had a newer number.",
+        "title": "Sent to channels"
+      },
+      "tech": {
+        "id": "Record ID",
+        "reason": "Reason",
+        "ref": "Source reference",
+        "status": "Status",
+        "title": "Technical details",
+        "variant": "Variant ID"
+      },
+      "whatDoesThisMean": "What does this mean?"
+    },
+    "explain": {
+      "bodies": {
+        "cancellationRestore": "OpenLinker gave the units back to {master} so they can sell again.",
+        "firstCount": "The first time OpenLinker saw this product in {master}. There is no earlier number to compare with, so its history starts here.",
+        "held": "Stock on hand did not change. OpenLinker offers these units to no other channel until the order ships or is cancelled.",
+        "inDoubt": "The change reached {master} but no answer came back. OpenLinker will not retry by itself, so check the count in the shop before trying again.",
+        "manualCorrection": "Written to {master} and confirmed.",
+        "pending": "The change is on its way. The count updates here as soon as the shop answers.",
+        "refusedFallback": "{master} refused this change. Nothing changed.",
+        "releasedHold": "Stock on hand did not change. The units are offered to other channels again, or left with the parcel if the order shipped.",
+        "returnRestock": "The returned units were checked and put back in {master}.",
+        "sale": "OpenLinker wrote the sale to {master}, and the shop confirmed the new count.",
+        "shopChange": "{master} reported {after} on hand where OpenLinker had {before}. Nothing in OpenLinker caused this: it sold or was edited in the shop."
+      },
+      "titles": {
+        "cancellationRestore": "Order {ref} was cancelled, {units} back",
+        "firstCount": "Starting count: {after}",
+        "held": "{units} set aside for order {ref}",
+        "inDoubt": "We do not know if this was applied",
+        "manualAdded": "{who} added {units}",
+        "manualRemoved": "{who} removed {units}",
+        "pending": "Waiting for {master}",
+        "refused": "Not applied, stock did not change",
+        "releasedHold": "Order {ref} no longer holds {units}",
+        "returnRestock": "Return {ref} put {units} back",
+        "sale": "Order {ref} took {units}",
+        "shopChange": "Stock went from {before} to {after}"
+      },
+      "units": {
+        "one": "{n} unit",
+        "other": "{n} units"
+      }
+    },
+    "filters": {
+      "button": "Filters",
+      "buttonCount": "Filters ({n})",
+      "clear": "Clear all",
+      "dates": "Dates",
+      "description": "Narrow the list by type, shop or date.",
+      "done": "Show results",
+      "shop": "Shop",
+      "title": "Filters",
+      "type": "Type"
+    },
+    "groups": {
+      "firstCount": {
+        "one": "First count of {n} product from {master}",
+        "other": "First count of {n} products from {master}"
+      },
+      "hide": "Hide products",
+      "holds": {
+        "one": "Order {ref} holds {n} product",
+        "other": "Order {ref} holds {n} products"
+      },
+      "released": {
+        "one": "Order {ref} released {n} product",
+        "other": "Order {ref} released {n} products"
+      },
+      "sale": {
+        "one": "Order {ref} sold {n} product",
+        "other": "Order {ref} sold {n} products"
+      },
+      "show": "Show products",
+      "sync": {
+        "one": "{master} changed {n} product",
+        "other": "{master} changed {n} products"
+      }
+    },
+    "guide": {
+      "description": "What the numbers, states and kinds of change mean.",
+      "empty": "Nothing in the guide matches \"{query}\".",
+      "found": "{n} found",
+      "intro": "Every line is one change to a product's stock, or one hold for an order. Open a line to see how its numbers add up.",
+      "kicker": "Help",
+      "search": "Search the guide",
+      "searchPlaceholder": "Search: refused, reserved, sold",
+      "sections": {
+        "kinds": {
+          "items": {
+            "cancellation": {
+              "body": "An order was cancelled and its units went back to stock.",
+              "title": "Cancelled order"
+            },
+            "correction": {
+              "body": "Someone on your team changed the count by hand. The reason and note stay on the change.",
+              "title": "Correction"
+            },
+            "hold": {
+              "body": "An order set units aside. On hand did not change, only what OpenLinker offers to other channels.",
+              "title": "Hold"
+            },
+            "return": {
+              "body": "Returned units were checked and put back on the shelf.",
+              "title": "Return"
+            },
+            "sale": {
+              "body": "An order took units, and OpenLinker wrote the sale to the shop.",
+              "title": "Sale"
+            },
+            "shopChange": {
+              "body": "The count changed in the shop itself: it sold there or someone edited it. OpenLinker did not cause it.",
+              "title": "Changed in the shop"
+            }
+          },
+          "summary": "Sales, returns, corrections, holds",
+          "title": "Kinds of change"
+        },
+        "numbers": {
+          "items": {
+            "amount": {
+              "body": "The big number is the change. The small line under it is the stock after the change, or why there is none.",
+              "title": "The amount"
+            },
+            "available": {
+              "body": "On hand minus reserved. This is the number OpenLinker sends to your channels.",
+              "title": "Available"
+            },
+            "onHand": {
+              "body": "How many units the shop that keeps your stock says it has.",
+              "title": "On hand"
+            },
+            "reserved": {
+              "body": "Units held for orders that have not shipped. They are still on the shelf, so on hand does not move. They are just not offered anywhere else.",
+              "title": "Reserved"
+            },
+            "startingCount": {
+              "body": "The first time OpenLinker saw a product. There is nothing earlier to compare with, so its history starts here.",
+              "title": "Starting count"
+            }
+          },
+          "summary": "Change, on hand, reserved, available",
+          "title": "Reading the numbers"
+        },
+        "states": {
+          "items": {
+            "inDoubt": {
+              "body": "The change was sent but no answer came back, so OpenLinker does not know if it was applied.",
+              "title": "Not confirmed",
+              "todo": "Check the count in the shop before trying again, so the change is not made twice."
+            },
+            "pending": {
+              "body": "Sent and waiting for the shop to answer. It updates by itself.",
+              "title": "Waiting"
+            },
+            "refused": {
+              "body": "The shop said no, and stock did not change.",
+              "title": "Refused",
+              "todo": "Open the change to see why, fix the cause in the shop, then try again."
+            }
+          },
+          "summary": "Refused, not confirmed, waiting",
+          "title": "States"
+        }
+      },
+      "title": "How to read stock history",
+      "todo": "What to do:"
+    },
+    "help": "How to read this",
+    "openDetails": "{product}. {sentence}. {change}, {result}. Show details",
+    "problems": {
+      "review": "Review",
+      "title": {
+        "one": "{n} change needs a look",
+        "other": "{n} changes need a look"
+      }
+    },
+    "sentences": {
+      "cancellationRestore": "Back after order {ref} was cancelled",
+      "consumed": "Order {ref} shipped, hold closed",
+      "correctedBy": "Corrected by {who}",
+      "correctedByWhy": "Corrected by {who}, {why}",
+      "expired": "Hold for order {ref} expired",
+      "firstCount": "First count from {master}",
+      "held": "Held for order {ref}",
+      "released": "Hold released, order {ref}",
+      "returnRestock": "Back from return {ref}",
+      "sale": "Sold in order {ref}",
+      "shopChange": "Changed in {master}",
+      "someone": "A team member",
+      "unknownRef": "(no number)"
+    },
+    "summary": {
+      "available": "Available",
+      "channels": "What each channel shows",
+      "lastFailed": "Last send failed",
+      "mismatch": "Different",
+      "mismatchHint": "The channel shows a different number than OpenLinker last sent.",
+      "noChannels": "No channel sells this product yet.",
+      "onHand": "On hand",
+      "reserved": "Reserved",
+      "sent": "Sent {n}",
+      "sentNothing": "Nothing sent yet",
+      "shows": "Shows {n}",
+      "showsUnknown": "Not seen yet",
+      "title": "Stock now"
+    },
+    "views": {
+      "all": "All",
+      "attention": "Needs a look",
+      "holds": "Holds",
+      "label": "Show",
+      "stock": "Stock"
+    }
   },
   "stockHistorySection": {
     "availableNow": "Available now",

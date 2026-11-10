@@ -140,7 +140,7 @@ describe('AppShell', () => {
     // and an empty group heading is worse than no group.
     expect(within(primary).queryByText('Planned')).toBeNull();
 
-    expect(within(primary).getByText('Cursors').closest('a')).toHaveAttribute('href', '/cursors');
+    expect(within(primary).getByText('Sync progress').closest('a')).toHaveAttribute('href', '/cursors');
 
     expect(within(primary).queryByText('Add connection')).toBeNull();
   });

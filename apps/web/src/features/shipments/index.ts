@@ -74,6 +74,13 @@ export {
 } from './lib/shipment-action-eligibility';
 export { cancelShipmentCopy } from './lib/cancel-shipment-dialog';
 export type { CancelShipmentCopy } from './lib/cancel-shipment-dialog';
+export {
+  classifyCancelShipmentError,
+  canRetryCancelShipment,
+  CancelShipmentErrorKindValues,
+} from './lib/cancel-shipment-error';
+export type { CancelShipmentErrorKind } from './lib/cancel-shipment-error';
+export { CancelShipmentErrorAlert } from './components/cancel-shipment-error-alert';
 export { deriveSeverityLabel } from './lib/shipment-severity';
 export type { ShipmentSeverity } from './lib/shipment-severity';
 export { ShipmentSeverityLabel } from './components/shipment-severity-label';

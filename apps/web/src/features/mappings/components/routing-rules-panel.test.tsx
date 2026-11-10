@@ -117,12 +117,18 @@ describe('RoutingRulesPanel', () => {
       .getAllByRole('option')
       .map((o) => o.textContent ?? '');
     // Default option is data-driven from the omp_fulfilled candidate's connection.
-    expect(optionLabels.some((l) => /My Shop.*default/.test(l))).toBe(true);
-    // omp_fulfilled is the default — never offered as an explicit divert option.
-    expect(optionLabels.some((l) => l.includes('Order-management platform'))).toBe(false);
-    // The two non-OMP candidates ARE offered.
-    expect(optionLabels.some((l) => l.includes('Marketplace-brokered'))).toBe(true);
-    expect(optionLabels.some((l) => l.includes('OpenLinker-managed carrier'))).toBe(true);
+    expect(optionLabels.some((l) => /My Shop \(default\)/.test(l))).toBe(true);
+    // Options are short names, grouped by what happens (#3958): the shop's
+    // default on one side, the label OpenLinker buys on the other.
+    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.getAttribute('label'));
+    expect(groups).toEqual(['Your shop ships it', 'OpenLinker buys the label']);
+    const labelGroup = select.querySelectorAll('optgroup')[1];
+    // omp_fulfilled is the default - never offered as an explicit divert option.
+    expect(within(select.querySelectorAll('optgroup')[0] as HTMLElement).getAllByRole('option')).toHaveLength(1);
+    // The two non-OMP candidates ARE offered: the brokered one named after the source.
+    const labelOptions = Array.from(labelGroup.querySelectorAll('option')).map((o) => o.textContent ?? '');
+    expect(labelOptions).toHaveLength(2);
+    expect(labelOptions.some((l) => /Allegro shipping/.test(l))).toBe(true);
   });
 
   it('persists only diverted methods via the replace-all mutation', async () => {
@@ -183,6 +189,7 @@ describe('RoutingRulesPanel', () => {
     ];
     renderPanel(buildApiClient(), { deliveryMethods: methods });
 
+    // Two methods with the same name keep their id hint inline; a unique name carries it as a tooltip only (#3958).
     expect(await screen.findByText('erliDP…r5kg')).toBeInTheDocument();
     expect(screen.getByText('erliDP…20kg')).toBeInTheDocument();
     // The old front-truncated hint that made the two rows identical is gone.
@@ -302,7 +309,11 @@ describe('RoutingRulesPanel', () => {
           ],
         }),
       );
-      expect(await screen.findByText('Box 30 x 20 x 10 cm, 0.5 kg')).toBeInTheDocument();
+      // The summary shares one line with its "Default parcel" label, so the
+      // whole line is the text a single element carries.
+      expect(
+        await screen.findByText('Default parcel: Box 30 x 20 x 10 cm, 0.5 kg'),
+      ).toBeInTheDocument();
       expect(await screen.findByRole('button', { name: 'Edit parcel' })).toBeInTheDocument();
     });
 
@@ -442,5 +453,32 @@ describe('RoutingRulesPanel', () => {
         });
       });
     });
+  });
+});
+
+describe('RoutingRulesPanel layout (#3958)', () => {
+  it('shows one "Who ships it" column and no "Routed to" column', async () => {
+    renderPanel(buildApiClient());
+    await screen.findByRole('combobox', { name: /Fulfilment processor for InPost Paczkomat/i });
+    expect(screen.getByRole('heading', { name: 'Who ships each delivery method' })).toBeInTheDocument();
+    expect(screen.getAllByText('Who ships it').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Routed to')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('RoutingRulesPanel embedded in a host (#3958)', () => {
+  it('drops its own title and intro when embedded', async () => {
+    renderPanel(buildApiClient(), { embedded: true });
+    await screen.findByRole('combobox', { name: /Fulfilment processor for InPost Paczkomat/i });
+    expect(screen.queryByRole('heading', { name: 'Who ships each delivery method' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pick who ships each Allegro delivery method/)).not.toBeInTheDocument();
+  });
+
+  it('lists the focused delivery method first and marks it', async () => {
+    renderPanel(buildApiClient(), { focusMethodId: 'm2' });
+    const selects = await screen.findAllByRole('combobox', { name: /Fulfilment processor for/i });
+    expect(selects[0]).toHaveAccessibleName(/Kurier24/);
+    expect(screen.getByText('This order')).toBeInTheDocument();
   });
 });

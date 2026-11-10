@@ -266,6 +266,38 @@
   "routingSplitBar": {
     "legendLabel": "Delivery methods per fulfilment processor"
   },
+  "shippingRoute": {
+    "defaultOption": "{shop} ships it (default)",
+    "defaultOptionNoShop": "Your shop ships it (default)",
+    "defaultShort": "{shop} (default)",
+    "defaultShortNoShop": "Your shop (default)",
+    "dialogDescription": "A change applies to every {source} order from now on.",
+    "dialogDescriptionWithMethod": "The delivery method this order uses is first and marked. A change applies to every {source} order from now on.",
+    "dialogDone": "Done",
+    "dialogTitle": "Who ships {source} orders",
+    "discardCancel": "Keep editing",
+    "discardConfirm": "Close without saving",
+    "discardDescription": "You changed who ships some delivery methods and did not click Save routing.",
+    "discardTitle": "Close without saving?",
+    "groupLabel": {
+      "label": "OpenLinker buys the label",
+      "shop": "Your shop ships it"
+    },
+    "intro": "Pick who ships each {source} delivery method. Anything you leave unchanged is shipped by {shop}, the way it is today.",
+    "introNoShop": "Pick who ships each {source} delivery method. Anything you leave unchanged is shipped by your shop, the way it is today.",
+    "methodColumn": "{source} delivery method",
+    "noCarrier": "No carrier is connected yet, so every delivery method is shipped by your shop. Connect InPost or DPD to let OpenLinker buy the labels.",
+    "panelTitle": "Who ships each delivery method",
+    "route": {
+      "olManagedCarrier": "OpenLinker buys the label from {name}",
+      "ompFulfilled": "{name} ships it",
+      "sourceBrokered": "OpenLinker buys the label through {name} shipping"
+    },
+    "routeColumn": "Who ships it",
+    "sourceShipping": "{source} shipping",
+    "thisOrder": "This order",
+    "unavailable": "{label} (connection is off)"
+  },
   "useMappingPairing": {
     "catalogMissing": "The linked catalog connection could not be found. Check this connection's catalog pairing.",
     "notLinked": "This connection is not linked to a product catalog. Set its catalog on the connection page to configure mappings."

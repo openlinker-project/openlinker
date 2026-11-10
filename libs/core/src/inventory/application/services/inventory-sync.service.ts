@@ -17,7 +17,9 @@ import {
   SYNC_LOCK_TOKEN,
   SyncLockPort,
 } from '@openlinker/core/sync';
-import { AVAILABILITY_SERVICE_TOKEN } from '../../inventory.tokens';
+import { AVAILABILITY_SERVICE_TOKEN, CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import { ChannelQuantityPushRepositoryPort } from '../../domain/ports/channel-quantity-push-repository.port';
+import type { AppendChannelQuantityPushInput } from '../../domain/types/channel-quantity-push.types';
 import { IAvailabilityService } from './availability.service.interface';
 import type {
   UpdateOfferQuantityCommand,
@@ -45,7 +47,9 @@ export class InventorySyncService implements IInventorySyncService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
     @Inject(SYNC_CURSORS_SERVICE_TOKEN)
-    private readonly syncCursors: ISyncCursorsService
+    private readonly syncCursors: ISyncCursorsService,
+    @Inject(CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN)
+    private readonly pushes: ChannelQuantityPushRepositoryPort
   ) {}
 
   async updateOfferQuantity(
@@ -114,7 +118,7 @@ export class InventorySyncService implements IInventorySyncService {
           `offers=${cmd.items.length} — publish Controls could not be resolved; no marketplace ` +
           `call was made`
       );
-      return {
+      const suppressed: UpdateOfferQuantitiesBatchResult = {
         succeeded: [],
         failed: cmd.items.map((i) => ({
           offerId: i.offerId,
@@ -124,6 +128,13 @@ export class InventorySyncService implements IInventorySyncService {
             'suppressed rather than published without the configured stock safety buffer.',
         })),
       };
+      await this.recordPushes(
+        connectionId,
+        cmd.items.map((i) => ({ ...i, quantity: null })),
+        suppressed,
+        new Set()
+      );
+      return suppressed;
     }
 
     const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
@@ -161,9 +172,15 @@ export class InventorySyncService implements IInventorySyncService {
     // locks and compares each observed item first, then hands the survivors to
     // the single batch call, so guarding costs no extra marketplace call
     // (#2617 review). Items with no observation ride along unguarded.
+    // Offers the write-order guard skipped because a newer quantity is already
+    // live. They are reported as succeeded (the job's work is done) but nothing
+    // was sent, so the push record must not call them sent.
+    const superseded = new Set<string>();
+
     if (isOfferQuantityBatchUpdater(marketplace) && normalized.items.length > 1) {
-      const batched = await this.writeBatch(connectionId, marketplace, normalized);
+      const batched = await this.writeBatch(connectionId, marketplace, normalized, superseded);
       if (batched !== null) {
+        await this.recordPushes(connectionId, normalized.items, batched, superseded);
         return batched;
       }
       // Batch call failed - fall through to per-item so a partial batch can
@@ -174,7 +191,7 @@ export class InventorySyncService implements IInventorySyncService {
 
     for (const item of normalized.items) {
       try {
-        await this.writeOne(connectionId, marketplace, item, result);
+        await this.writeOne(connectionId, marketplace, item, result, superseded);
       } catch (error) {
         result.failed.push({
           offerId: item.offerId,
@@ -184,7 +201,62 @@ export class InventorySyncService implements IInventorySyncService {
       }
     }
 
+    await this.recordPushes(connectionId, normalized.items, result, superseded);
     return result;
+  }
+
+  /**
+   * Records what this call sent each listing (#4062), so an operator can tell
+   * "we sent the wrong number" from "we sent nothing" from "the channel refused
+   * it". Best-effort: a failed insert is logged and never fails the write it
+   * describes, which has already happened.
+   *
+   * A `write_contended` failure is not recorded - nothing was attempted, and
+   * the job is retried, so recording it would add a row per retry for a write
+   * that has not happened yet.
+   */
+  private async recordPushes(
+    connectionId: string,
+    items: readonly (Omit<UpdateOfferQuantityCommand, 'quantity'> & { quantity: number | null })[],
+    result: UpdateOfferQuantitiesBatchResult,
+    superseded: ReadonlySet<string>
+  ): Promise<void> {
+    const pushedAt = new Date();
+    const succeeded = new Set(result.succeeded);
+    const failures = new Map(result.failed.map((f) => [f.offerId, f]));
+    const rows: AppendChannelQuantityPushInput[] = [];
+    for (const item of items) {
+      const failure = failures.get(item.offerId);
+      if (failure?.errorCode === 'write_contended') continue;
+      const outcome = superseded.has(item.offerId)
+        ? 'skipped'
+        : failure
+          ? 'failed'
+          : succeeded.has(item.offerId)
+            ? 'sent'
+            : null;
+      if (outcome === null) continue;
+      const observedAt = item.observedAt ? new Date(item.observedAt) : null;
+      rows.push({
+        connectionId,
+        externalOfferId: item.offerId,
+        productVariantId: item.productVariantId ?? null,
+        quantity: item.quantity,
+        outcome,
+        errorCode: failure ? failure.errorCode.slice(0, 48) : null,
+        message: failure?.message ?? null,
+        observedAt: observedAt && !Number.isNaN(observedAt.getTime()) ? observedAt : null,
+        pushedAt,
+      });
+    }
+    try {
+      await this.pushes.appendMany(rows);
+    } catch (error) {
+      this.logger.error(
+        `channel_quantity_push_record_failed connection=${connectionId} rows=${rows.length} ` +
+          `reason=${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   /**
@@ -208,7 +280,8 @@ export class InventorySyncService implements IInventorySyncService {
         cmd: UpdateOfferQuantitiesBatchCommand
       ): Promise<UpdateOfferQuantitiesBatchResult>;
     },
-    normalized: UpdateOfferQuantitiesBatchCommand
+    normalized: UpdateOfferQuantitiesBatchCommand,
+    superseded: Set<string>
   ): Promise<UpdateOfferQuantitiesBatchResult | null> {
     const result: UpdateOfferQuantitiesBatchResult = { succeeded: [], failed: [] };
     const writable: UpdateOfferQuantityCommand[] = [];
@@ -242,6 +315,7 @@ export class InventorySyncService implements IInventorySyncService {
             `offer_quantity_write_superseded connection=${connectionId} offer=${item.offerId} ` +
               `observed=${observedAt} lastWritten=${lastWritten ?? 'none'}`
           );
+          superseded.add(item.offerId);
           result.succeeded.push(item.offerId);
           continue;
         }
@@ -309,7 +383,8 @@ export class InventorySyncService implements IInventorySyncService {
     connectionId: string,
     marketplace: OfferManagerPort,
     item: UpdateOfferQuantityCommand,
-    result: UpdateOfferQuantitiesBatchResult
+    result: UpdateOfferQuantitiesBatchResult,
+    superseded: Set<string>
   ): Promise<void> {
     const observedAt = item.observedAt;
     if (typeof observedAt !== 'string') {
@@ -345,6 +420,7 @@ export class InventorySyncService implements IInventorySyncService {
         );
         // Nothing to do rather than a failure: the channel already carries a
         // newer quantity, so this job's work is done.
+        superseded.add(item.offerId);
         result.succeeded.push(item.offerId);
         return;
       }

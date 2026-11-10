@@ -19,7 +19,6 @@ import { Link } from 'react-router-dom';
 import { useMessages } from '../../shared/i18n';
 import { Button } from '../../shared/ui/button';
 import { PeekPanel, PeekStateCard } from '../../shared/ui/peek-panel';
-import { ProductGallery } from '../../features/products/components/product-gallery';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
 
 export interface ListingPeekView {
@@ -137,23 +136,14 @@ export function ListingPeek({ view, position, count, onNavigate, onOpenChange }:
               <p>{view.reason.text}</p>
             </div>
           ) : null}
-          {/* The product photo big enough to recognise it, with the product
-              page's zoom (#4046 follow-up). */}
-          <div className="peek-panel__media">
-            <ProductGallery
-              images={row.identity?.imageUrl ? [row.identity.imageUrl] : []}
-              name={view.title}
-              productId={row.identity?.productId}
-            />
-            <PeekStateCard
-              label={copy.stateAria}
-              rows={[
-                { label: copy.lifecycle, value: view.lifecycle },
-                { label: copy.onChannelRow, value: view.onChannel },
-                { label: copy.statusRead, value: view.statusRead },
-              ]}
-            />
-          </div>
+          <PeekStateCard
+            label={copy.stateAria}
+            rows={[
+              { label: copy.lifecycle, value: view.lifecycle },
+              { label: copy.onChannelRow, value: view.onChannel },
+              { label: copy.statusRead, value: view.statusRead },
+            ]}
+          />
           <dl className="listing-peek__facts">
             <div>
               <dt className="eyebrow">{copy.externalId}</dt>

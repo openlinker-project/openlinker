@@ -133,6 +133,14 @@ export class InventoryMovementResponseDto {
       'its id and name. Null for any non-gift row or when the order line could not be read.',
   })
   gift!: InventoryMovementGiftResponseDto | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The sync run that wrote this row: a sweep cycle id or a single-product job id. Rows sharing it came from one run. Null outside a sync and on reservation rows',
+  })
+  syncRunId!: string | null;
 }
 
 export class PaginatedInventoryMovementsResponseDto {
@@ -181,5 +189,6 @@ export function toInventoryMovementResponseDto(
     occurredAt: row.occurredAt.toISOString(),
     sourceLabel: row.sourceLabel,
     gift: gifts.get(row.id) ?? null,
+    syncRunId: row.syncRunId,
   };
 }

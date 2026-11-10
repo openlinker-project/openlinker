@@ -1,4 +1,276 @@
 {
+  "batch": {
+    "failureReason": {
+      "connectionNeedsReauth": "connection needs reconnecting",
+      "connectionNotActive": "connection is not active",
+      "connectionNotFound": "connection no longer exists",
+      "queueReadFailed": "the queue could not be read"
+    },
+    "form": {
+      "every": "Every",
+      "everyDescription": "Hours between runs, starting at 00:00.",
+      "frequencies": {
+        "daily": "Daily, at a fixed time",
+        "everyNHours": "Every N hours",
+        "monthEnd": "Month end (business customers only)"
+      },
+      "frequency": "Frequency",
+      "kinds": {
+        "fiscalReceipt": "Fiscal receipts",
+        "invoice": "Invoices"
+      },
+      "monthEndDaily": "Orders without one on this connection go out every day at 23:00, so no order is left unissued.",
+      "monthEndLastDay": "Runs on the last calendar day of the month at 23:00 and issues orders whose buyer has a company tax ID.",
+      "monthEndTitle": "Business customers on the last day, everyone else daily",
+      "noScheduleWait": {
+        "fiscalReceipt": "Queued fiscal receipts wait until you save one or start a run by hand.",
+        "invoice": "Queued invoices wait until you save one or start a run by hand."
+      },
+      "noScheduleYet": "No schedule yet.",
+      "save": {
+        "fiscalReceipt": "Save fiscal receipts schedule",
+        "invoice": "Save invoices schedule"
+      },
+      "saveFailed": "The schedule could not be saved.",
+      "savedDescription": {
+        "fiscalReceipt": "Fiscal receipts schedule updated.",
+        "invoice": "Invoices schedule updated."
+      },
+      "savedTitle": "Schedule saved",
+      "saving": "Saving…",
+      "time": "Time",
+      "timeZone": "Time zone",
+      "timeZoneDescription": "The times above are read in this zone.",
+      "validation": {
+        "everyHours": "Enter a whole number of hours from 1 to 24.",
+        "time": "Enter a time as HH:MM, 24-hour.",
+        "timeZone": "Enter a time zone such as Europe/Warsaw."
+      }
+    },
+    "history": {
+      "caption": "Batch runs, newest first",
+      "columns": {
+        "details": "Details",
+        "duration": "Duration",
+        "orders": "Orders",
+        "result": "Result",
+        "started": "Started",
+        "status": "Status"
+      },
+      "detailsButton": "Details",
+      "detailsLabel": "Run details",
+      "detailsTitle": "{started}: details",
+      "didNotStart": "This run did not start: {reason}.",
+      "emptyMessage": "Runs appear here once a scheduled run starts or someone uses Run now.",
+      "emptyTitle": "No batch runs yet",
+      "errorFallback": "The run could not be read.",
+      "errorTitle": "Unable to load this run",
+      "itemsCaption": "Each order in this run and its outcome",
+      "loadingDetail": "Reading each order's outcome.",
+      "metrics": {
+        "blocked": "Blocked",
+        "issued": "Issued",
+        "needsAttention": "Needs attention"
+      },
+      "nothingToIssue": "This run had nothing to issue.",
+      "nothingTouched": "Nothing in the queue was touched.",
+      "orderCount": {
+        "one": "{n} order",
+        "other": "{n} orders"
+      },
+      "pending": {
+        "one": "{n} still waiting for {provider} to answer.",
+        "other": "{n} still waiting for {provider} to answer."
+      }
+    },
+    "itemColumns": {
+      "buyer": "Buyer",
+      "detail": "Detail",
+      "order": "Order",
+      "outcome": "Outcome"
+    },
+    "itemDetail": {
+      "alreadyDocumented": "Already has a document on another connection.",
+      "blockedFallback": "Blocked by the issuing rules.",
+      "failed": "{provider} refused the document.",
+      "inDoubt": "{provider} did not answer in time, so OpenLinker does not know whether the document was created.",
+      "inDoubtRetry": "Retrying cannot create a duplicate.",
+      "indeterminate": "Could not be checked during the run.",
+      "indeterminateStays": "It stays in the queue for the next one.",
+      "issued": "Issued.",
+      "needsAttention": "Sent to issue, but no document was recorded.",
+      "notRoutedHere": "Routing no longer sends this order to this connection, so it was left alone.",
+      "openOrderCheck": "Open the order to check.",
+      "openOrderWhy": "Open the order to see why.",
+      "pending": "Sent to the provider, waiting for its answer."
+    },
+    "itemOutcome": {
+      "blocked": "Blocked",
+      "failed": "Failed",
+      "inDoubt": "In doubt",
+      "issued": "Issued",
+      "needsAttention": "Needs attention",
+      "pending": "Issuing",
+      "skipped": "Skipped"
+    },
+    "page": {
+      "adminDescription": "Admin-only access.",
+      "adminReason": "Batch issuing creates fiscal documents on a schedule.",
+      "adminRequirement": "It requires an admin session.",
+      "adminTitle": "Admin role required",
+      "backLabel": "Sales documents routing",
+      "description": "Groups this connection's invoices and receipts into scheduled runs instead of issuing each one the moment its order qualifies.",
+      "eyebrow": "Settings · Sales documents",
+      "eyebrowShort": "Settings",
+      "title": "Batch issuing",
+      "titleFor": "Batch issuing: {name}"
+    },
+    "queue": {
+      "blocked": "Blocked",
+      "blockedNote": "Those show up here as Blocked instead of silently dropping out of the queue.",
+      "caption": "Orders in the next batch",
+      "chip": "{label} · {count}",
+      "columns": {
+        "buyer": "Buyer",
+        "order": "Order",
+        "placed": "Placed",
+        "source": "Source",
+        "total": "Total",
+        "willIssue": "Will issue"
+      },
+      "emptyMessage": "Orders appear here once they qualify (paid, or shipped, depending on the market) and this connection is their resolved sales-document connection.",
+      "emptyTitle": "Nothing waiting for the next batch",
+      "filterLabel": "Filter the next batch",
+      "filters": {
+        "all": "All",
+        "blocked": "Blocked",
+        "fiscalReceipt": "Fiscal receipt",
+        "invoice": "Invoice"
+      },
+      "kinds": {
+        "fiscalReceipt": "Fiscal receipt",
+        "invoice": "Invoice"
+      },
+      "noSecondDocument": "A batch never creates a second document for an order that already has one.",
+      "nothingToRun": "Nothing to run",
+      "refusals": {
+        "connectionNeedsReauth": "Reconnect this connection before running a batch.",
+        "connectionNotActive": "This connection is not active, so it cannot issue a batch.",
+        "connectionNotBatched": "This connection does not issue any document in batches any more.",
+        "runInProgress": "A batch run is already in progress.",
+        "waitForIt": "Wait for it to finish."
+      },
+      "runFailed": "The batch run could not be started.",
+      "runNow": "Run now",
+      "runQueued": "The run has been queued and starts in a moment.",
+      "showingFirst": "Showing the first {shown} of {total} queued orders.",
+      "starting": "Starting…",
+      "untouched": {
+        "one": "{n} order queued, untouched since the last successful run.",
+        "other": "{n} orders queued, untouched since the last successful run."
+      }
+    },
+    "runResult": {
+      "blocked": {
+        "one": "{n} blocked",
+        "other": "{n} blocked"
+      },
+      "couldNotStart": "could not start",
+      "inProgress": "in progress",
+      "interrupted": "stopped before it finished",
+      "notIssued": {
+        "one": "{n} not issued",
+        "other": "{n} not issued"
+      },
+      "nothingEligible": "nothing eligible",
+      "sentToIssue": {
+        "one": "{n} sent to issue",
+        "other": "{n} sent to issue"
+      }
+    },
+    "runStatus": {
+      "completed": "Completed",
+      "completedWithIssues": "Completed with issues",
+      "empty": "Nothing to issue",
+      "failedToStart": "Failed to start",
+      "interrupted": "Interrupted",
+      "running": "Running"
+    },
+    "running": {
+      "badge": "Running",
+      "caption": "Orders in the run in progress",
+      "elapsed": "elapsed {elapsed}",
+      "inProgress": "Run in progress…",
+      "lockNote": "Each order is issued under its own lock, so two connections can never issue a document for the same order.",
+      "processed": {
+        "one": "Processed {done} of {n} orders, one at a time.",
+        "other": "Processed {done} of {n} orders, one at a time."
+      },
+      "progressLabel": "Batch run progress",
+      "queued": "Queued",
+      "runNowUnavailable": "Run now is unavailable until this run finishes.",
+      "startedAt": "Run started {time}"
+    },
+    "scheduleTab": {
+      "intro": "Each document this connection batches has its own schedule, so receipts can go out daily while invoices wait for month end.",
+      "lastAndNext": "Last and next run",
+      "lastRun": "Last run",
+      "nextRun": "Next run",
+      "nextRunValue": "{dateTime} ({until}) · {queued}",
+      "noSchedule": "No schedule set · {queued}",
+      "noneYet": "None yet",
+      "offHowTo": "Set \"When it issues\" to Batch for a document on <link>Sales documents routing</link> to use a schedule.",
+      "offNone": "None of its documents issue in batches.",
+      "offTitle": "Batch issuing is off for this connection",
+      "onQueue": "Orders wait in the queue and are issued together on the schedule below.",
+      "onRouting": "OpenLinker still decides invoice or fiscal receipt per order using the routing rules: batching only changes when a document is created, never which kind.",
+      "onTitle": "Batch issuing is on",
+      "queued": {
+        "one": "{n} queued",
+        "other": "{n} queued"
+      },
+      "title": "Schedule"
+    },
+    "screen": {
+      "errorFallback": "The connection could not be read.",
+      "errorTitle": "Unable to load batch issuing",
+      "historyErrorTitle": "Unable to load run history",
+      "historyLoadingMessage": "Reading recent runs.",
+      "historyLoadingTitle": "Loading run history",
+      "loadingMessage": "Reading the schedule and queue.",
+      "loadingTitle": "Loading batch issuing",
+      "queueErrorTitle": "Unable to load the queue",
+      "queueLoadingMessage": "Reading the orders waiting.",
+      "queueLoadingTitle": "Loading the queue",
+      "tabs": {
+        "history": "Run history",
+        "nextBatch": "Next batch",
+        "schedule": "Schedule"
+      },
+      "tabsLabel": "Batch issuing",
+      "unknownSource": "Unknown source"
+    },
+    "timeUntil": {
+      "days": {
+        "one": "in {n} day",
+        "other": "in {n} days"
+      },
+      "dueNow": "due now",
+      "hours": "in {hours} h {minutes} min",
+      "minutes": "in {minutes} min"
+    },
+    "unavailable": {
+      "authFailed": "Its last request failed authentication.",
+      "goToConnection": "Go to connection",
+      "notActive": "The connection is not active.",
+      "queueUnchanged": "The queue stays as it is.",
+      "reconnectFirst": "Reconnect the connection first.",
+      "runsFailUntilActive": "Scheduled runs will fail to start until the connection is active again.",
+      "runsFailUntilReconnected": "Scheduled runs will fail to start until it is reconnected; nothing is retried automatically for an authentication failure.",
+      "titleNeedsReauth": "{name} needs reconnecting",
+      "titleNotActive": "{name} is not active"
+    }
+  },
   "connectionRoleGap": "{name} has no role set under Connected providers yet. This rule will still route on its own, but {name} will show up on the destination-warnings list here until it has one.",
   "countryReset": {
     "acknowledgment": "the no-document acknowledgment",
@@ -120,8 +392,8 @@
       "short": "Tax rate conflict"
     },
     "trigger-model-batched": {
-      "detail": "This connection is set to issue in batches, and batched issuing is not available yet, so nothing was issued. Issue it by hand, or switch the connection to issue on payment.",
-      "short": "Batched"
+      "detail": "This connection issues in batches. The order is waiting in its queue and the next batch run will issue it.",
+      "short": "Waiting for batch"
     },
     "trigger-model-manual": {
       "detail": "This provider only issues when you ask it to, so nothing was issued automatically.",
@@ -524,6 +796,8 @@
       "Fiscalization": "Fiscalization",
       "Invoicing": "Invoicing"
     },
+    "configureBatch": "Configure",
+    "configureBatchLabel": "Configure batch issuing for {name}",
     "conflict": {
       "ambiguousNoPrimary": {
         "body": "Several connections issue a sales document but none is primary, so OpenLinker issues nothing for new orders. Pick exactly one below.",
@@ -570,7 +844,15 @@
       "zeroLine": "0.00 line"
     },
     "title": "Connected providers",
-    "triggerHint": "Trigger is greyed out for a non-primary row since the timing choice does not matter until a connection is actually the one issuing.",
+    "triggerHint": "Trigger is greyed out for a non-primary row since the timing choice does not matter until a connection is actually the one issuing. A connection that issues both kinds has a separate trigger for invoices and for receipts, so invoices can wait for a batch while receipts go out at once.",
+    "triggerKind": {
+      "fiscal-receipt": "Receipts",
+      "invoice": "Invoices"
+    },
+    "triggerKindLabel": {
+      "fiscal-receipt": "When {name} issues receipts",
+      "invoice": "When {name} issues invoices"
+    },
     "triggerLabel": "When {name} issues",
     "zeroLine": {
       "accepts": "Accepts",

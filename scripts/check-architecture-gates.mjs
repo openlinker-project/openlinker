@@ -101,7 +101,12 @@ const MARKER_CONVENTION_STARTS_AT = 48;
 const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/invoicing/domain/types/invoice-trigger.types.ts',
-    { helper: 'parseTriggerModel', key: 'config.invoicing.triggerModel' },
+    // #3582 widened this knob rather than adding one: the same trigger model,
+    // now per document kind, with the legacy key as its fallback.
+    {
+      helper: 'parseTriggerModel',
+      key: 'config.invoicing.triggerModel + config.salesDocument.triggerModels[kind]',
+    },
   ],
   [
     'libs/core/src/identifier-mapping/domain/types/stock-safety-buffer.types.ts',
@@ -166,6 +171,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
     { helper: 'readGiftConnectionForm', key: 'config.giftOnDocuments' },
+  ],
+  [
+    'libs/core/src/sales-documents/domain/types/batch-schedule.types.ts',
+    { helper: 'readBatchSchedule', key: 'config.salesDocument.batchSchedules[kind]' },
   ],
   [
     // #3963: "when the buyer pays later" - mark the destination order paid, or leave it.
@@ -432,13 +441,16 @@ const NON_KNOBS = new Map([
 // Registered rather than excused; the #1032 question still stands, and the
 // number is raised by one so the next knob asks again.
 //
-// Both landed on separate branches (#3930, #3963), so the count is 16 now.
+// Two knobs landed on separate branches and met here: the gift-line form
+// (#3930) and the batch schedule (#3583), so the registry holds 16 and the
+// threshold is raised to 17: one more for each knob, on the same grounds as
+// their predecessors (a pure-rules file in a leaf, no persistence, consolidation
+// still owned by #2169). The next knob asks again.
 //
-// #3941 narrows it rather than adding one: the key stays, but it is now an
-// optional per-connection OVERRIDE of the OpenLinker-wide default held in the
-// `sales_document_settings` singleton (absent = inherit), so the threshold is
-// unchanged.
-const KNOB_THRESHOLD = 16;
+// #3941 narrows the gift-line knob rather than adding one: the key stays, but it
+// is now an optional per-connection OVERRIDE of the OpenLinker-wide default held
+// in the `sales_document_settings` singleton (absent = inherit).
+const KNOB_THRESHOLD = 17;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

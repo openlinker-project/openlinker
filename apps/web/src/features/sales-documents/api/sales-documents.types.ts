@@ -52,8 +52,13 @@ export interface SalesDocumentRow {
   documentKind: SalesDocumentKind | null;
   /** config.invoicing.isPrimary — the SAME flag for both capabilities (ADR-041 decision 4). */
   isPrimary: boolean;
-  /** config.invoicing.triggerModel, defaulted to 'manual' like the BE reader. */
-  triggerModel: string;
+  /**
+   * The EFFECTIVE trigger model per concrete kind (#3582), resolved like the
+   * BE gate: `salesDocument.triggerModels[kind]` → legacy
+   * `invoicing.triggerModel` → `'manual'`. Effective rather than raw so the
+   * table shows what will be enforced, including an inherited legacy value.
+   */
+  triggerModels: Record<ConcreteDocumentKind, string>;
 }
 
 export interface SalesDocumentIssuesOption {
@@ -95,5 +100,21 @@ export function getSalesDocumentIssuesOptions(
 export interface SalesDocumentConfigPatch {
   documentKind?: SalesDocumentKind | '';
   isPrimary?: boolean;
-  triggerModel?: string;
+  /** One kind's trigger model, written to `salesDocument.triggerModels[kind]` (#3582). */
+  triggerModel?: { kind: ConcreteDocumentKind; value: string };
+  /**
+   * One kind's batch schedule, written to `salesDocument.batchSchedules[kind]`
+   * (#3584); `null` removes it.
+   */
+  batchSchedule?: { kind: ConcreteDocumentKind; value: BatchScheduleConfig | null };
+}
+
+/** The stored shape `readBatchSchedule` reads (#3583). */
+export interface BatchScheduleConfig {
+  frequency: 'daily' | 'every-n-hours' | 'month-end';
+  time?: string;
+  everyHours?: number;
+  timeZone: string;
+  /** ISO instant; no slot before it runs, so a new schedule never fires a past slot. */
+  effectiveFrom: string;
 }

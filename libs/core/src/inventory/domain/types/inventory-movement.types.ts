@@ -65,6 +65,12 @@ export interface InventoryMovementAttribution {
   readonly sourceKind: InventoryMovementSourceKind;
   readonly sourceRef?: string | null;
   readonly actorUserId?: string | null;
+  /**
+   * The sync run that produced the change (#4062): a sweep cycle id or the
+   * job id of a single-product sync. Lets a reader group one run's rows
+   * exactly instead of guessing by connection and minute. Null outside a sync.
+   */
+  readonly syncRunId?: string | null;
 }
 
 /**
@@ -102,6 +108,8 @@ export interface AppendInventoryMovementInput {
   readonly sourceKind: InventoryMovementSourceKind;
   readonly sourceRef: string | null;
   readonly actorUserId: string | null;
+  /** See {@link InventoryMovementAttribution.syncRunId}; absent reads as null. */
+  readonly syncRunId?: string | null;
   readonly occurredAt: Date;
 }
 
@@ -185,6 +193,8 @@ export interface InventoryHistoryRow {
   readonly occurredAt: Date;
   /** The order's number (order / reservation rows) or the return's external id; `null` when there is none. */
   readonly sourceLabel: string | null;
+  /** The sync run that wrote a movement row; always null on a reservation row. */
+  readonly syncRunId: string | null;
 }
 
 export interface PaginatedInventoryHistory {

@@ -70,9 +70,10 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'tax-rate-conflict',
       'line-total-mismatch',
       'bundle-split-unknown',
-      'trigger-model-batched',
     ]);
     expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');
+    // #3583: an order waiting for its scheduled batch is a workflow, not a fault.
+    expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-batched');
   });
 
   it('should leave out of the install-level count only what an unconfigured install looks like', () => {

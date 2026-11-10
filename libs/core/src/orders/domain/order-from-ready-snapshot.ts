@@ -34,6 +34,7 @@ import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 import { isTaxRateSource } from '@openlinker/core/products';
 import { isPaymentMethod } from './types/payment-method.types';
 import { readLineGift } from './types/incoming-order.types';
+import { isPaymentStatus } from './types/payment-status.types';
 
 /**
  * The placeholder `redactAddress` writes for a PII-redacted field. Imported
@@ -136,6 +137,14 @@ export function orderFromReadySnapshot(
     : record.paymentMethod;
   if (paymentMethod !== null && paymentMethod !== undefined) {
     order.paymentMethod = paymentMethod;
+  }
+  // #3583: a batch run rebuilds each queued order from its snapshot and asks
+  // the auto-issue gate again, which issues a batched order only when it is
+  // paid. Dropping the status made every queued order read as "not paid yet",
+  // so the run issued nothing and cleared the queue. Present-only, and an
+  // unrecognised stored value reads as absent.
+  if (isPaymentStatus(snapshot.paymentStatus)) {
+    order.paymentStatus = snapshot.paymentStatus;
   }
   if (billingAddress) {
     order.billingAddress = billingAddress;

@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 36 bulk / 5 fiscal / 7 fan-out across 67 job types -
+ * table (19 realtime / 39 bulk / 5 fiscal / 7 fan-out across 70 job types -
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -33,10 +33,13 @@
  * beside it with #3534. `marketplace.sourceFulfillment.statusSync` joined
  * `bulk` beside its destination-side twin (ADR-012 amendment).
  * `fulfillment.routing.reapSweep` joined `bulk` with #2731.
+ * `salesDocument.batch.tick` and `salesDocument.batch.run` joined `bulk` with
+ * #3583: cron-paced orchestration whose documents are the `fiscal` jobs it
+ * enqueues.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 62 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 64 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -47,13 +50,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 63 handler instances.
+    // The constructor takes the registry followed by 65 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 63 },
+      { length: 65 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -157,7 +160,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // thirty-seventh, the fourth fulfilment sweep in `bulk` for the reaper's
     // reason: its candidates have waited past the routing-decision TTL by
     // construction, and the re-route it triggers runs in a `realtime` child.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(37);
+    // #3583's `salesDocument.batch.tick` and `salesDocument.batch.run` are the
+    // thirty-eighth and thirty-ninth: cron-paced orchestration whose documents
+    // are the `fiscal`-lane jobs a run enqueues.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(39);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

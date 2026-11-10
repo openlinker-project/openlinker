@@ -3040,10 +3040,16 @@ export class OrderRecordRepository
     // and a read-then-write there would reintroduce exactly the race this
     // statement's caller-free guard exists to avoid. Only `$n` placeholders are
     // composed below — never a value — so the statement stays fully bound.
+    // $4/$5 (#3583): the connection and kind the block is about. Set for a
+    // batched order (its place in that connection's batch queue), null
+    // otherwise, and moved in the SAME statement so the queue can never name a
+    // connection the reason has already left.
     const params: Array<string | null> = [
       block?.reason ?? null,
       block?.unresolvedReason ?? null,
       block?.detail ?? null,
+      block?.connectionId ?? null,
+      block?.documentKind ?? null,
       block?.params ? JSON.stringify(block.params) : null,
     ];
     let matchedRuleAssignment = '';
@@ -3062,7 +3068,9 @@ export class OrderRecordRepository
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
-              "salesDocumentBlockParams" = $4::jsonb,
+              "salesDocumentBlockConnectionId" = $4,
+              "salesDocumentBlockDocumentKind" = $5,
+              "salesDocumentBlockParams" = $6::jsonb,
               ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
@@ -3078,7 +3086,9 @@ export class OrderRecordRepository
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
             OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
-            OR "salesDocumentBlockParams" IS DISTINCT FROM $4::jsonb
+            OR "salesDocumentBlockConnectionId" IS DISTINCT FROM $4
+            OR "salesDocumentBlockDocumentKind" IS DISTINCT FROM $5
+            OR "salesDocumentBlockParams" IS DISTINCT FROM $6::jsonb
             ${matchedRuleGuard})`,
       params
     );

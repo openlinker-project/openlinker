@@ -20,7 +20,7 @@ Windows box next to Subiekt) → Sfera SDK → **Subiekt nexo**. Adapter key
 | Bridge URL | `config.bridgeBaseUrl` | `https://<host>:5005` — **no** `/api` suffix. |
 | Bridge token | credential `bridgeToken` | == bridge `Auth__ApiKey`; sent as `Authorization: Bearer` (the only header the bridge checks — a redundant `x-bridge-token` header is also sent but ignored). Stored encrypted. |
 | Request timeout | `config.timeoutMs` | optional, 1000–120000 ms. |
-| Trigger model | `config.invoicing.triggerModel` | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
+| Trigger model | `config.salesDocument.triggerModels.invoice` (#3582; the legacy `config.invoicing.triggerModel` is still read as the fallback) | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
 
 ## Bridge configuration (Windows)
 
@@ -109,5 +109,5 @@ for that hardware/driver before relying on the receipt path live.
 
 | Flag | Effect |
 |---|---|
-| `config.invoicing.triggerModel = auto-on-paid` | Worker auto-enqueues issuance when an order is marked paid. |
+| `config.salesDocument.triggerModels.invoice = auto-on-paid` (or the legacy `config.invoicing.triggerModel`) | Worker auto-enqueues issuance when an order is marked paid. |
 | Regulatory-status reconcile job | Periodically refreshes `regulatoryStatus` (KSeF) for issued documents. |

@@ -14,6 +14,8 @@ import { InventoryLocationOrmEntity } from './infrastructure/persistence/entitie
 import { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
 import { ReservationShortfallEpisodeOrmEntity } from './infrastructure/persistence/entities/reservation-shortfall-episode.orm-entity';
 import { InventoryMovementOrmEntity } from './infrastructure/persistence/entities/inventory-movement.orm-entity';
+import { ChannelQuantityPushOrmEntity } from './infrastructure/persistence/entities/channel-quantity-push.orm-entity';
+import { ChannelQuantityPushRepository } from './infrastructure/persistence/repositories/channel-quantity-push.repository';
 import { InventoryMovementRepository } from './infrastructure/persistence/repositories/inventory-movement.repository';
 import { InventoryMovementService } from './application/services/inventory-movement.service';
 import { InventoryCorrectionService } from './application/services/inventory-correction.service';
@@ -65,6 +67,7 @@ import {
   INVENTORY_MOVEMENT_REPOSITORY_TOKEN,
   INVENTORY_MOVEMENT_SERVICE_TOKEN,
   INVENTORY_CORRECTION_SERVICE_TOKEN,
+  CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -100,6 +103,7 @@ export {
       ReservationShortfallEpisodeOrmEntity,
       InventorySaleDecrementOrmEntity,
       InventoryMovementOrmEntity,
+      ChannelQuantityPushOrmEntity,
     ]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
@@ -147,6 +151,8 @@ export {
     InventoryMovementRepository,
     InventoryMovementService,
     InventoryCorrectionService,
+    // #4062 — what OpenLinker sent each channel.
+    ChannelQuantityPushRepository,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -282,6 +288,10 @@ export {
     {
       provide: INVENTORY_MOVEMENT_SERVICE_TOKEN,
       useExisting: InventoryMovementService,
+    },
+    {
+      provide: CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN,
+      useExisting: ChannelQuantityPushRepository,
     },
     {
       provide: INVENTORY_CORRECTION_SERVICE_TOKEN,

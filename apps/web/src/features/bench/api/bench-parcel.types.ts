@@ -77,6 +77,26 @@ export interface BenchPackerNote {
   readonly createdAt: string;
 }
 
+/**
+ * Who ships this box (#3958), so the label card can say which case it is in.
+ *
+ * `processorKind` is a server-owned vocabulary and is kept a plain string, like
+ * every other one on this boundary: an unrecognised value from a newer API is
+ * read as "no route known" by the card rather than failing the parse.
+ */
+export interface BenchParcelRoute {
+  /** `omp_fulfilled` | `ol_managed_carrier` | `source_brokered`, or newer. */
+  readonly processorKind: string;
+  /** The routed connection's operator-given name; `null` on the default route. */
+  readonly processorName: string | null;
+  /** An operator saved a rule for this delivery method (versus the default). */
+  readonly fromRule: boolean;
+  /** `false` when the rule names a connection that is switched off. */
+  readonly processorAvailable: boolean;
+  /** The source's own delivery-method label. */
+  readonly methodLabel: string | null;
+}
+
 /** One box, as the bench sees it. */
 export interface BenchParcel {
   readonly workId: string;
@@ -89,6 +109,12 @@ export interface BenchParcel {
   readonly currency: string | null;
   /** The source's own delivery-method label; `null` when the source reports none. */
   readonly carrierName: string | null;
+  /**
+   * Who ships this box (#3958), or `null` when the API could not resolve it -
+   * which is NOT "the shop ships it": the label card then says only what the
+   * shipment says.
+   */
+  readonly route: BenchParcelRoute | null;
   readonly dispatchByAt: string | null;
   readonly parcelIndex: number;
   readonly parcelTotal: number;

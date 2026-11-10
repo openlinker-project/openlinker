@@ -15,6 +15,7 @@ import type {
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IAvailabilityService } from '../availability.service.interface';
 import type { ISyncCursorsService, SyncLockPort } from '@openlinker/core/sync';
+import type { ChannelQuantityPushRepositoryPort } from '../../../domain/ports/channel-quantity-push-repository.port';
 import { Logger } from '@openlinker/shared/logging';
 
 describe('InventorySyncService', () => {
@@ -24,6 +25,7 @@ describe('InventorySyncService', () => {
   let marketplace: jest.Mocked<OfferManagerPort & OfferQuantityBatchUpdater>;
   let syncLock: jest.Mocked<SyncLockPort>;
   let syncCursors: jest.Mocked<ISyncCursorsService>;
+  let pushes: jest.Mocked<ChannelQuantityPushRepositoryPort>;
   /** In-memory stand-in for the durable per-offer observation mark. */
   let marks: Map<string, string>;
 
@@ -110,11 +112,19 @@ describe('InventorySyncService', () => {
       extend: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<SyncLockPort>;
 
+    pushes = {
+      appendMany: jest.fn().mockResolvedValue(undefined),
+      findForObservation: jest.fn(),
+      findLatestByVariantIds: jest.fn(),
+      pruneOlderThan: jest.fn(),
+    } as unknown as jest.Mocked<ChannelQuantityPushRepositoryPort>;
+
     service = new InventorySyncService(
       integrationsService,
       availabilityService,
       syncLock,
-      syncCursors
+      syncCursors,
+      pushes
     );
   });
 
@@ -619,6 +629,87 @@ describe('InventorySyncService', () => {
       });
 
       expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('channel push record (#4062)', () => {
+    const observedAt = '2026-11-09T10:15:00.000Z';
+    const recorded = (): unknown[] => pushes.appendMany.mock.calls.flatMap((call) => [...call[0]]);
+
+    it('should record a sent push with the buffered quantity, variant and observation', async () => {
+      withBuffer(2);
+
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 10,
+        observedAt,
+        productVariantId: 'v1',
+      });
+
+      expect(recorded()).toEqual([
+        expect.objectContaining({
+          connectionId,
+          externalOfferId: 'o1',
+          productVariantId: 'v1',
+          quantity: 8,
+          outcome: 'sent',
+          errorCode: null,
+          observedAt: new Date(observedAt),
+        }),
+      ]);
+    });
+
+    it('should record a superseded write as skipped, never as sent', async () => {
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 5, observedAt });
+      pushes.appendMany.mockClear();
+
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 9,
+        observedAt: '2026-11-09T10:00:00.000Z',
+      });
+
+      expect(recorded()).toEqual([expect.objectContaining({ outcome: 'skipped', quantity: 9 })]);
+    });
+
+    it('should record a failed write with its error code', async () => {
+      marketplace.updateOfferQuantity.mockRejectedValueOnce(new Error('channel said no'));
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3, observedAt });
+
+      expect(recorded()).toEqual([
+        expect.objectContaining({ outcome: 'failed', errorCode: 'unknown', message: 'channel said no' }),
+      ]);
+    });
+
+    it('should record a suppressed write with no quantity when controls are unknown', async () => {
+      withUnknownControls();
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3, observedAt });
+
+      expect(recorded()).toEqual([
+        expect.objectContaining({ outcome: 'failed', errorCode: 'availability_unknown', quantity: null }),
+      ]);
+    });
+
+    it('should not record a contended write, which is retried and sent nothing', async () => {
+      (syncLock.acquire as unknown as jest.Mock).mockResolvedValueOnce(null);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3, observedAt });
+
+      expect(recorded()).toEqual([]);
+    });
+
+    it('should not fail the write when the record cannot be saved', async () => {
+      pushes.appendMany.mockRejectedValueOnce(new Error('db down'));
+
+      const result = await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 3,
+        observedAt,
+      });
+
+      expect(result).toEqual({ succeeded: ['o1'], failed: [] });
     });
   });
 });

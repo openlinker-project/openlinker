@@ -54,6 +54,7 @@ export * from './domain/types/sales-document-dry-run.types';
 export * from './domain/types/sales-document-country-summary.types';
 export * from './domain/types/sales-document-market-discovery.types';
 export * from './domain/types/sales-document-view.types';
+export * from './domain/types/batch-schedule.types';
 export * from './domain/types/document-attempt.types';
 export * from './domain/ports/capabilities/self-routing-document-kind.capability';
 export * from './domain/domain-services/resolve-sales-document-routing';

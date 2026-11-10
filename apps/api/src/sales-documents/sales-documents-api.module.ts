@@ -25,9 +25,21 @@ import { DeliveryCountryFactsController } from './http/delivery-country-facts.co
 // connection service, which that module exports.
 import { IntegrationsModule as ApiIntegrationsModule } from '../integrations/integrations.module';
 import { SalesDocumentCapabilityGuardService } from './sales-document-capability-guard.service';
+// #3583 batch issuing: CONNECTION_PORT_TOKEN (the connection's schedules and
+// status) and JOB_ENQUEUE_TOKEN ("Run now" enqueues the run job).
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { SyncModule } from '@openlinker/core/sync';
+import { SalesDocumentBatchController } from './http/sales-document-batch.controller';
 
 @Module({
-  imports: [CoreSalesDocumentsModule, CoreIntegrationsModule, CoreOrdersModule, ApiIntegrationsModule],
+  imports: [
+    CoreSalesDocumentsModule,
+    CoreIntegrationsModule,
+    CoreOrdersModule,
+    ApiIntegrationsModule,
+    IdentifierMappingModule,
+    SyncModule,
+  ],
   controllers: [
     SalesDocumentRulesController,
     SalesDocumentTemplatesController,
@@ -35,6 +47,7 @@ import { SalesDocumentCapabilityGuardService } from './sales-document-capability
     DeliveryLineSuggestionsController,
     DeliveryCountryFactsController,
     SalesDocumentSettingsController,
+    SalesDocumentBatchController,
   ],
   providers: [SalesDocumentCapabilityGuardService],
 })

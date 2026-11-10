@@ -43,6 +43,7 @@ import type {
   IMasterInventorySyncService,
   MasterInventoryBatchSyncFailure,
   MasterInventoryBatchSyncResult,
+  MasterInventorySyncOptions,
   MasterInventorySyncResult,
 } from './master-inventory-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
@@ -94,7 +95,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
 
   async syncFromMasterByExternalId(
     connectionId: string,
-    externalId: string
+    externalId: string,
+    options: MasterInventorySyncOptions = {}
   ): Promise<MasterInventorySyncResult> {
     const inventoryAdapter =
       await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
@@ -102,7 +104,13 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         'InventoryMaster'
       );
     const overrideLocationId = await this.resolveStockLocationOverride(connectionId);
-    return this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId);
+    return this.syncOneFromMaster(
+      connectionId,
+      externalId,
+      inventoryAdapter,
+      overrideLocationId,
+      options.syncRunId ?? null
+    );
   }
 
   /**
@@ -138,7 +146,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
    */
   async syncFromMasterByExternalIds(
     connectionId: string,
-    externalIds: readonly string[]
+    externalIds: readonly string[],
+    options: MasterInventorySyncOptions = {}
   ): Promise<MasterInventoryBatchSyncResult> {
     const inventoryAdapter =
       await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
@@ -167,7 +176,13 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       // caller re-enqueues what failed as an ordinary per-product job.
       try {
         results.push(
-          await this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId)
+          await this.syncOneFromMaster(
+            connectionId,
+            externalId,
+            inventoryAdapter,
+            overrideLocationId,
+            options.syncRunId ?? null
+          )
         );
       } catch (error) {
         failures.push({
@@ -208,7 +223,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     connectionId: string,
     externalId: string,
     inventoryAdapter: InventoryMasterPort,
-    overrideLocationId: string | null
+    overrideLocationId: string | null,
+    syncRunId: string | null
   ): Promise<MasterInventorySyncResult> {
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Product,
@@ -250,7 +266,17 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         connectionId,
         overrideLocationId
       );
-      await this.inventoryService.setInventory(inventoryItem, connectionId);
+      // Without a run id the call is exactly the pre-#4062 one, so the row is
+      // recorded as before (reason and source kind default to master_sync).
+      if (syncRunId === null) {
+        await this.inventoryService.setInventory(inventoryItem, connectionId);
+      } else {
+        await this.inventoryService.setInventory(inventoryItem, connectionId, {
+          reason: 'master_sync',
+          sourceKind: 'master_sync',
+          syncRunId,
+        });
+      }
       currentVariantIds.push(inventoryItem.productVariantId);
       // Effective location — an override folded in by `toDomainInventoryItem`
       // makes this position "located" for the #2322 pooled-row repair below

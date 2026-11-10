@@ -4,15 +4,10 @@
  * @module apps/web/src/features/orders/lib
  */
 import { describe, expect, it } from 'vitest';
-import type { RoutingRule } from '../../mappings';
-import { mergeParcelWithRoutedPrefill, parcelPrefillForMethod } from './routed-parcel-profile';
+import { mergeParcelWithRoutedPrefill, parcelPrefillFromFields } from './routed-parcel-profile';
 
-const RULE: RoutingRule = {
-  id: 'r1',
-  sourceConnectionId: 'c1',
-  sourceDeliveryMethodId: 'm1',
-  processorKind: 'ol_managed_carrier',
-  processorConnectionId: 'p1',
+// The shape `deliveryResolution.parcelProfile` carries (#3958).
+const PROFILE = {
   parcelTemplate: 'large',
   lengthMm: 300,
   widthMm: 200,
@@ -20,9 +15,9 @@ const RULE: RoutingRule = {
   defaultWeightGrams: 500,
 };
 
-describe('parcelPrefillForMethod', () => {
-  it('should return the matched rule profile in mm and g', () => {
-    expect(parcelPrefillForMethod([RULE], 'm1')).toEqual({
+describe('parcelPrefillFromFields', () => {
+  it('should return the profile in mm and g', () => {
+    expect(parcelPrefillFromFields(PROFILE)).toEqual({
       template: 'large',
       lengthMm: 300,
       widthMm: 200,
@@ -31,12 +26,11 @@ describe('parcelPrefillForMethod', () => {
     });
   });
 
-  it('should return null without a rule, without a profile, or without a method', () => {
-    expect(parcelPrefillForMethod([RULE], 'other')).toBeNull();
-    expect(parcelPrefillForMethod([{ ...RULE, parcelTemplate: null, lengthMm: null, widthMm: null, heightMm: null, defaultWeightGrams: null }], 'm1')).toBeNull();
-    expect(parcelPrefillForMethod([{ ...RULE, parcelTemplate: undefined, lengthMm: undefined, widthMm: undefined, heightMm: undefined, defaultWeightGrams: undefined }], 'm1')).toBeNull();
-    expect(parcelPrefillForMethod([RULE], undefined)).toBeNull();
-    expect(parcelPrefillForMethod(undefined, 'm1')).toBeNull();
+  it('should return null without a profile or with an empty one', () => {
+    expect(parcelPrefillFromFields(null)).toBeNull();
+    expect(parcelPrefillFromFields(undefined)).toBeNull();
+    expect(parcelPrefillFromFields({ parcelTemplate: null, lengthMm: null, widthMm: null, heightMm: null, defaultWeightGrams: null })).toBeNull();
+    expect(parcelPrefillFromFields({ parcelTemplate: undefined, lengthMm: undefined, widthMm: undefined, heightMm: undefined, defaultWeightGrams: undefined })).toBeNull();
   });
 });
 

@@ -1586,7 +1586,7 @@ describe('OrdersListPage', () => {
         await screen.findByText('ALG-882414');
         // The card is a deliberate parallel render path — deleting its ~20
         // duplicated lines used to leave the suite green.
-        expect(screen.getByText('Batched')).toBeInTheDocument();
+        expect(screen.getByText('Waiting for batch')).toBeInTheDocument();
       } finally {
         viewport.restore();
       }
