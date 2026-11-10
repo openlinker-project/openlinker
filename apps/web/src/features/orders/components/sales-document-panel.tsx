@@ -913,6 +913,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 kind="invoice"
                 documentId={invoice.id}
                 internalOrderId={order.internalOrderId}
+                buyerEmail={parsedSnapshot.customerEmail ?? null}
                 notReadyReason={
                   // The mailer refuses a document the authority has not settled, so
                   // the card says why instead of offering a send that is refused.
@@ -1320,6 +1321,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 kind="fiscal-receipt"
                 documentId={fiscalRecord.id}
                 internalOrderId={order.internalOrderId}
+                buyerEmail={parsedSnapshot.customerEmail ?? null}
               />
               {whyKindDisclosure}
               <FiscalEarlierAttempts attempts={fiscalEarlierAttempts} />
