@@ -1,13 +1,13 @@
-import { AutomationGiftDocumentFormValues } from '@openlinker/core/automation';
+import { PromotionGiftDocumentFormValues } from '@openlinker/core/promotions';
 import { BundleGiftDocumentFormValues } from '@openlinker/core/products';
 
 import { GiftDocumentFormValues } from '../incoming-order.types';
 
 describe('gift document form vocabulary', () => {
-  // The three contexts each own a list because none may value-import another's
+  // The contexts each own a list because none may value-import another's
   // types file without a module cycle; they must stay one vocabulary, in one order.
-  it('should be the same list for orders, bundles and gift rules', () => {
+  it('should be the same list for orders, bundles and promotions', () => {
     expect([...BundleGiftDocumentFormValues]).toEqual([...GiftDocumentFormValues]);
-    expect([...AutomationGiftDocumentFormValues]).toEqual([...GiftDocumentFormValues]);
+    expect([...PromotionGiftDocumentFormValues]).toEqual([...GiftDocumentFormValues]);
   });
 });

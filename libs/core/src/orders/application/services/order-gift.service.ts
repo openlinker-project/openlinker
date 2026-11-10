@@ -1,12 +1,18 @@
 /**
  * Order Gift Service (#3938, gifts spec 4.5)
  *
- * Evaluates OpenLinker gift rules INLINE at ingestion, after the operator overlay
+ * Evaluates OpenLinker promotions INLINE at ingestion, after the operator overlay
  * is applied and before anything reserves, routes or decrements: the gift has to
  * be a line of the order when stock is reserved, which the dispatch seam (it runs
- * after) cannot give. The decision is the pure `planGiftApplication`; this service
- * is the I/O around it - rules, ledger, stock - and the one write, a set of keyed
- * lines into the overlay's `addedLines`.
+ * after) cannot give. The decision is the promotions planner; the one write here
+ * is a set of keyed lines into the overlay's `addedLines`.
+ *
+ * ## Where the decision lives
+ * Which promotions apply, and why not, is the `promotions` context's planner; this
+ * service is the order-side half: it projects the order onto facts, supplies the
+ * gift's stock, and writes the keyed lines into the overlay's `addedLines`. The
+ * promotion id is the line's `ruleRef`, so lines written before the move keep
+ * working (the migration kept every id).
  *
  * ## Idempotency has two keys and they are checked in this order
  * 1. The overlay key `ol-gift:{ruleId}:{lineId}` already on the order -> the gift
@@ -46,22 +52,15 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  AUTOMATION_RUN_RECORDER_TOKEN,
-  GIFT_RULE_SERVICE_TOKEN,
-  evaluateAutomationRules,
-  planGiftApplication,
-  sortGiftRules,
-  ATTRIBUTION_OPENLINKER,
-  type AutomationGiftAction,
-  type AutomationRule,
-  type AutomationSubjectFacts,
-  type GiftPlanLine,
-  type GiftRuleContext,
-  type GiftRuleOutcome,
-  type GiftStockAnswer,
-  type IAutomationRunRecorderService,
-  type IGiftRuleService,
-} from '@openlinker/core/automation';
+  PROMOTION_APPLICATION_SERVICE_TOKEN,
+  type IPromotionApplicationService,
+  type Promotion,
+  type PromotionLineGrant,
+  type PromotionOrderFacts,
+  type PromotionPlanLine,
+  type PromotionStockAnswer,
+  type PromotionStockReader,
+} from '@openlinker/core/promotions';
 import { AVAILABILITY_SERVICE_TOKEN, type IAvailabilityService } from '@openlinker/core/inventory';
 import {
   BUNDLE_DEFINITION_SERVICE_TOKEN,
@@ -77,11 +76,12 @@ import { ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 import { isGiftDocumentForm, type LineGift } from '../../domain/types/incoming-order.types';
 import {
   applyOrderEditsToOrder,
+  OL_GIFT_LINE_KEY_PREFIX,
   olGiftLineKey,
   type OrderAddedLineEdit,
 } from '../../domain/types/order-edits.types';
 import type { Order } from '../../domain/types/order.types';
-import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
+import { buildOrderPromotionFacts } from '../../domain/order-promotion-facts-projection';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { freezeGiftUnitCost } from './gift-unit-cost';
 import { previewPhysicalLines } from './order-line-expansion';
@@ -93,45 +93,44 @@ import type {
   IOrderGiftService,
 } from './order-gift.service.interface';
 
-/** What a gift line is built from: the rule's action at grant time, or the stored grant on a self-heal. */
+/** What a gift line is built from: the promotion's benefit at grant time, or the stored grant on a self-heal. */
 interface GiftLineSource {
   readonly productId: string;
   readonly variantId: string;
   readonly documentForm: string | null;
 }
 
-/** One gift line per rule per order today, so its `lineId` is a fixed ordinal. */
-const GIFT_LINE_ID = '1';
-
-function giftActionOf(rule: AutomationRule): AutomationGiftAction | null {
-  const step = rule.actions.find((a) => a.action === 'add-gift');
-  return step !== undefined && step.action === 'add-gift' ? step : null;
+/** The promotion id inside an overlay key `ol-gift:{promotionId}:{lineId}`, or `null` for any other key. */
+function promotionIdOfGiftKey(key: string): string | null {
+  if (!key.startsWith(OL_GIFT_LINE_KEY_PREFIX)) return null;
+  const rest = key.slice(OL_GIFT_LINE_KEY_PREFIX.length);
+  const id = rest.slice(0, rest.indexOf(':'));
+  return id.length > 0 ? id : null;
 }
+
+/** One gift line per promotion per order today, so its `lineId` is a fixed ordinal. */
+const GIFT_LINE_ID = '1';
 
 @Injectable()
 export class OrderGiftService implements IOrderGiftService {
   private readonly logger = new Logger(OrderGiftService.name);
 
   constructor(
-    @Inject(GIFT_RULE_SERVICE_TOKEN)
-    private readonly giftRules: IGiftRuleService,
+    @Inject(PROMOTION_APPLICATION_SERVICE_TOKEN)
+    private readonly promotions: IPromotionApplicationService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
     private readonly availability: IAvailabilityService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
-    @Inject(AUTOMATION_RUN_RECORDER_TOKEN)
-    private readonly recorder: IAutomationRunRecorderService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
     @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
-    private readonly bundles: IBundleDefinitionService,
+    private readonly bundles: IBundleDefinitionService
   ) {}
 
   async applyGiftRules(input: ApplyGiftRulesInput): Promise<ApplyGiftRulesResult> {
     const { order } = input;
-    let rules: AutomationRule[] = [];
-    let affected: readonly AutomationRule[] = [];
-    const now = new Date();
+    let inPlay: readonly Pick<Promotion, 'id' | 'name'>[] = [];
     try {
       // A cancelled order is never given a gift (its grant was released), and an
       // order past routing/mirroring cannot take a new line (see the header).
@@ -139,116 +138,35 @@ export class OrderGiftService implements IOrderGiftService {
         return { order, outcomes: [] };
       }
 
-      rules = await this.giftRules.listOrderedRules();
-      affected = rules;
-      if (rules.length === 0) return { order, outcomes: [] };
-
+      const now = new Date();
       const existingKeys = new Set(Object.keys(input.edits?.addedLines ?? {}));
-      const grants = await this.giftRules.getGrantsForOrder(order.id);
-      const grantByRule = new Map(grants.map((g) => [g.ruleId, g] as const));
-      const alreadyAppliedRuleIds = new Set(
-        rules
-          .filter(
-            (rule) =>
-              existingKeys.has(olGiftLineKey(rule.id, GIFT_LINE_ID)) || grantByRule.has(rule.id),
-          )
-          .map((rule) => rule.id),
-      );
-
-      const facts = this.factsFromOrder(order, input.sourceConnectionId, input.occurredAt);
-      const evaluation = evaluateAutomationRules({
-        trigger: 'order.ingested',
-        facts,
-        rules,
-        now,
-        // R4: a rule never reaches back to an order placed before it was saved.
-        enforceRetroactivityFloor: true,
+      const applied = await this.promotions.apply({
+        facts: this.factsFromOrder(order, input.sourceConnectionId, input.occurredAt),
+        lines: this.planLines(order),
+        componentProductIds: await this.componentProductIds(
+          order.items,
+          input.frozenDefinitions ?? null
+        ),
+        customerId: input.customerId,
+        presentPromotionIds: new Set(
+          [...existingKeys].flatMap((key) => {
+            const id = promotionIdOfGiftKey(key);
+            return id === null ? [] : [id];
+          })
+        ),
+        readStock: this.stockReader(),
+        isFirstIngestion: input.isFirstIngestion,
       });
+      inPlay = applied.promotions;
 
-      const candidates = rules.filter(
-        (rule) =>
-          !alreadyAppliedRuleIds.has(rule.id) &&
-          evaluation.matched.some((m) => m.ruleId === rule.id),
-      );
-      affected = candidates;
-
-      // Read the ledger, plan and write the grants under one lock per candidate
-      // rule: two concurrent ingestions otherwise both read the same unit count
-      // and both give, overshooting the cap or the customer limit.
-      const planned = await this.giftRules.withRulesLocked(
-        candidates.map((rule) => rule.id),
-        async () => {
-          const contexts = await this.buildContexts(candidates, input.customerId, order.id);
-          const componentProductIds = await this.componentProductIds(
-            order.items,
-            input.frozenDefinitions ?? null,
-          );
-          const planOutcomes = planGiftApplication({
-            rules,
-            evaluations: evaluation.evaluations,
-            alreadyAppliedRuleIds,
-            lines: this.planLines(order),
-            componentProductIds,
-            contexts,
-          });
-          const lines: Record<string, OrderAddedLineEdit> = {};
-          for (const outcome of planOutcomes) {
-            const rule = rules.find((r) => r.id === outcome.ruleId);
-            const action = rule === undefined ? null : giftActionOf(rule);
-            if (rule === undefined || action === null) continue;
-
-            if (outcome.applied && !outcome.alreadyApplied) {
-              await this.giftRules.recordGrant({
-                ruleId: rule.id,
-                internalOrderId: order.id,
-                customerId: input.customerId,
-                quantity: outcome.quantity,
-                productId: action.productId,
-                variantId: action.variantId,
-                documentForm: action.documentForm ?? null,
-              });
-              lines[olGiftLineKey(rule.id, GIFT_LINE_ID)] = await this.buildAddedLine(
-                rule.id,
-                rule.name,
-                {
-                  productId: action.productId,
-                  variantId: action.variantId,
-                  documentForm: action.documentForm ?? null,
-                },
-                outcome.quantity,
-                now,
-                input.occurredAt,
-              );
-            } else if (outcome.alreadyApplied) {
-              // Granted earlier; re-add the line only when it is missing (crash
-              // between the grant and the line write), at the granted quantity.
-              const key = olGiftLineKey(rule.id, GIFT_LINE_ID);
-              const grant = grantByRule.get(rule.id);
-              if (!existingKeys.has(key) && grant !== undefined) {
-                // From the GRANT: the rule's action may have been edited since.
-                lines[key] = await this.buildAddedLine(
-                  rule.id,
-                  rule.name,
-                  {
-                    productId: grant.productId,
-                    variantId: grant.variantId,
-                    documentForm: grant.documentForm,
-                  },
-                  grant.quantity,
-                  now,
-                  input.occurredAt,
-                );
-              }
-            }
-            if (outcome.stateChange !== null) {
-              await this.giftRules.applyStateChange(rule.id, outcome.stateChange);
-            }
-          }
-          return { outcomes: planOutcomes, newLines: lines };
-        },
-      );
-      const outcomes = planned.outcomes;
-      const newLines = planned.newLines;
+      const newLines: Record<string, OrderAddedLineEdit> = {};
+      for (const grant of applied.lineGrants) {
+        newLines[olGiftLineKey(grant.promotion.id, GIFT_LINE_ID)] = await this.buildAddedLine(
+          grant,
+          now,
+          input.occurredAt
+        );
+      }
 
       let result = order;
       if (Object.keys(newLines).length > 0) {
@@ -263,139 +181,72 @@ export class OrderGiftService implements IOrderGiftService {
           result = applyOrderEditsToOrder(input.channelOrder, written.orderEdits);
         } else {
           this.logger.warn(
-            `Gift lines for order ${order.id} were not written (the record is not ready); the next ingestion retries.`,
+            `Gift lines for order ${order.id} were not written (the record is not ready); the next ingestion retries.`
           );
         }
       }
-
-      await this.recordRuns(rules, outcomes, facts, now, input.isFirstIngestion);
-      return { order: result, outcomes };
+      return { order: result, outcomes: applied.outcomes };
     } catch (error) {
       this.logger.error(
-        `Gift rules failed for order ${order.id}; the order continues without a gift: ${(error as Error).message}`,
-        (error as Error).stack,
+        `Promotions failed for order ${order.id}; the order continues without a gift: ${(error as Error).message}`,
+        (error as Error).stack
       );
-      await this.recordFailure(affected, order, input.sourceConnectionId, now, error as Error);
+      // Fail-open must not be silent: an order from a journal-cursor source is not
+      // re-delivered, so a retry may never come.
+      await this.promotions.recordFailure(
+        inPlay,
+        order.id,
+        `Gift not added to order ${order.id}: ${(error as Error).message}`
+      );
       return { order, outcomes: [] };
     }
   }
 
   async releaseGrantsForCancelledOrder(internalOrderId: string): Promise<void> {
     try {
-      const released = await this.giftRules.releaseGrantsForOrder(internalOrderId);
+      const released = await this.promotions.releaseForOrder(internalOrderId);
       if (released > 0) {
         this.logger.log(
-          `gift_grants_released order=${internalOrderId} count=${released}: the cancelled order's gift units returned to the rules`,
+          `gift_grants_released order=${internalOrderId} count=${released}: the cancelled order's gift units returned to the promotions`
         );
       }
     } catch (error) {
       this.logger.error(
         `Could not release the gift grants of cancelled order ${internalOrderId}: ${(error as Error).message}`,
-        (error as Error).stack,
+        (error as Error).stack
       );
     }
   }
 
-  /**
-   * Fail-open must not be silent: an order from a journal-cursor source is not
-   * re-delivered, so a retry may never come. Each rule that was in play gets a
-   * FAILED run naming it and the order; `automation_runs` failures are what the
-   * automation attention state reads, so the operator sees the missing gift.
-   */
-  private async recordFailure(
-    rules: readonly AutomationRule[],
-    order: Order,
-    sourceConnectionId: string,
-    now: Date,
-    error: Error,
-  ): Promise<void> {
-    const message = `Gift not added to order ${order.id}: ${error.message}`;
-    for (const rule of rules) {
-      try {
-        await this.recorder.record({
-          rule,
-          trigger: 'order.ingested',
-          facts: { subjectKind: 'order', subjectId: order.id, sourceConnectionId },
-          outcome: 'failed',
-          steps: [
-            {
-              stepIndex: 0,
-              action: 'add-gift',
-              status: 'failed',
-              detail: message,
-              report: { attributedTo: ATTRIBUTION_OPENLINKER, message },
-            },
-          ],
-          firedAt: now,
-        });
-      } catch (recordError) {
-        this.logger.warn(
-          `Could not record the failed gift run for rule ${rule.id}: ${(recordError as Error).message}`,
-        );
-      }
-    }
-  }
-
   async previewForOrder(input: GiftPreviewInput): Promise<GiftPreviewResult> {
-    const { record, draftRule } = input;
-    const saved = await this.giftRules.listOrderedRules();
-    const rules = sortGiftRules(
-      draftRule !== undefined && !saved.some((rule) => rule.id === draftRule.id)
-        ? [...saved, draftRule]
-        : saved,
-    );
-    const now = new Date();
+    const { record, draft } = input;
     const items = record.orderItems;
-    const facts = buildOrderAutomationFacts(record, record.placedAt ?? record.createdAt);
-    const evaluation = evaluateAutomationRules({
-      trigger: 'order.ingested',
-      facts,
-      rules,
-      now,
-      enforceRetroactivityFloor: false,
-    });
-    const savedIds = new Set(saved.map((rule) => rule.id));
-    const candidates = rules.filter(
-      (rule) => savedIds.has(rule.id) && evaluation.matched.some((m) => m.ruleId === rule.id),
-    );
-    const contexts = await this.buildContexts(candidates, record.customerId, record.internalOrderId);
-    // A draft has no ledger rows; it plans against an empty ledger and live stock.
-    if (draftRule !== undefined && !savedIds.has(draftRule.id)) {
-      if (evaluation.matched.some((m) => m.ruleId === draftRule.id)) {
-        contexts.set(draftRule.id, await this.draftContext(draftRule, record.customerId));
-      }
-    }
-    const componentProductIds = await this.componentProductIds(
-      items,
-      record.lineExpansion?.definitions ?? null,
-    );
-    const outcomes = planGiftApplication({
-      rules,
-      evaluations: evaluation.evaluations,
-      componentProductIds,
-      // A preview asks "would this rule give a gift", so a gift the order already
-      // carries from a real run does not answer it.
-      alreadyAppliedRuleIds: new Set(),
-      lines: items.map<GiftPlanLine>((item) => ({
+    return this.promotions.preview({
+      facts: buildOrderPromotionFacts(record, record.placedAt ?? record.createdAt),
+      lines: items.map<PromotionPlanLine>((item) => ({
         productId: item.productId,
         ...(item.variantId !== undefined && { variantId: item.variantId }),
         quantity: item.quantity,
         isGift: item.gift !== undefined,
       })),
-      contexts,
+      componentProductIds: await this.componentProductIds(
+        items,
+        record.lineExpansion?.definitions ?? null
+      ),
+      customerId: record.customerId,
+      readStock: this.stockReader(),
+      ...(draft !== undefined && { draft }),
     });
-    return { evaluatedAt: now, evaluations: evaluation.evaluations, outcomes };
   }
 
   private factsFromOrder(
     order: Order,
     sourceConnectionId: string,
-    occurredAt: Date,
-  ): AutomationSubjectFacts {
+    occurredAt: Date
+  ): PromotionOrderFacts {
     const country = order.shippingAddress?.country;
     return {
-      subjectKind: 'order',
-      subjectId: order.id,
+      orderId: order.id,
       occurredAt,
       sourceConnectionId,
       ...(country !== undefined && country !== '' && { country }),
@@ -403,7 +254,7 @@ export class OrderGiftService implements IOrderGiftService {
       currency: order.totals.currency,
       lineProductIds: order.items.filter((i) => i.gift === undefined).map((i) => i.productId),
       lineVariantIds: order.items.flatMap((i) =>
-        i.gift === undefined && i.variantId !== undefined ? [i.variantId] : [],
+        i.gift === undefined && i.variantId !== undefined ? [i.variantId] : []
       ),
     };
   }
@@ -418,16 +269,16 @@ export class OrderGiftService implements IOrderGiftService {
    */
   private async componentProductIds(
     items: Order['items'],
-    frozenDefinitions: readonly BundleDefinition[] | null,
+    frozenDefinitions: readonly BundleDefinition[] | null
   ): Promise<ReadonlySet<string>> {
     const own = items.filter((item) => item.gift === undefined);
     const physical = await previewPhysicalLines(own, frozenDefinitions, this.bundles);
     return new Set(
-      physical.filter((line) => line.parentLineId !== undefined).map((line) => line.productId),
+      physical.filter((line) => line.parentLineId !== undefined).map((line) => line.productId)
     );
   }
 
-  private planLines(order: Order): GiftPlanLine[] {
+  private planLines(order: Order): PromotionPlanLine[] {
     return order.items.map((item) => ({
       productId: item.productId,
       ...(item.variantId !== undefined && { variantId: item.variantId }),
@@ -436,105 +287,53 @@ export class OrderGiftService implements IOrderGiftService {
     }));
   }
 
-  private async buildContexts(
-    candidates: readonly AutomationRule[],
-    customerId: string | null,
-    orderId: string,
-  ): Promise<Map<string, GiftRuleContext>> {
-    const contexts = new Map<string, GiftRuleContext>();
-    if (candidates.length === 0) return contexts;
-    const ledger = await this.giftRules.getLedgerSnapshot(
-      candidates.map((rule) => rule.id),
-      customerId,
-    );
-    const stock = await this.readStock(candidates, orderId);
-    for (const rule of candidates) {
-      contexts.set(rule.id, {
-        state: ledger.states.get(rule.id) ?? null,
-        unitsGiven: ledger.unitsGiven.get(rule.id) ?? 0,
-        customerUnits: customerId === null ? null : (ledger.customerUnits.get(rule.id) ?? 0),
-        stock: stock.get(rule.id) ?? { kind: 'unknown' },
-      });
-    }
-    return contexts;
-  }
-
-  private async draftContext(rule: AutomationRule, customerId: string | null): Promise<GiftRuleContext> {
-    const stock = await this.readStock([rule], null);
-    return {
-      state: null,
-      unitsGiven: 0,
-      customerUnits: customerId === null ? null : 0,
-      stock: stock.get(rule.id) ?? { kind: 'unknown' },
-    };
-  }
-
-  /** Stock per rule; `unknown` (never zero) when the availability read could not answer. */
-  private async readStock(
-    rules: readonly AutomationRule[],
-    orderId: string | null,
-  ): Promise<Map<string, GiftStockAnswer>> {
-    const answers = new Map<string, GiftStockAnswer>();
-    const variantIds = [
-      ...new Set(
-        rules.flatMap((rule) => {
-          const action = giftActionOf(rule);
-          return action === null ? [] : [action.variantId];
-        }),
-      ),
-    ];
-    let byVariant = new Map<string, GiftStockAnswer>();
-    try {
+  /**
+   * The gift's promisable quantity per variant, or `unknown` (never zero) when the
+   * availability read cannot answer. Units another order was granted but has not
+   * reserved are subtracted by the promotions context, which owns the ledger.
+   */
+  private stockReader(): PromotionStockReader {
+    return async (variantIds) => {
+      const answers = new Map<string, PromotionStockAnswer>();
       const quantities = await this.availability.getPromisableQuantities({
-        variantIds,
+        variantIds: [...variantIds],
         scope: { kind: 'global' },
       });
-      // Units another order was already granted but has not reserved yet are not
-      // in the availability number; without this two simultaneous orders both see
-      // the last unit.
-      const pending = await this.giftRules.getPendingGrantUnits(variantIds, orderId);
-      byVariant = new Map(
-        quantities.map((q) => [
+      for (const q of quantities) {
+        answers.set(
           q.productVariantId,
           q.provenance === 'unknown' || q.quantity === null
-            ? ({ kind: 'unknown' } as const)
-            : ({
-                kind: 'known',
-                available: Math.max(0, q.quantity - (pending.get(q.productVariantId) ?? 0)),
-              } as const),
-        ]),
-      );
-    } catch (error) {
-      this.logger.warn(`Gift stock read failed; treating it as unknown: ${(error as Error).message}`);
-    }
-    for (const rule of rules) {
-      const action = giftActionOf(rule);
-      if (action !== null) answers.set(rule.id, byVariant.get(action.variantId) ?? { kind: 'unknown' });
-    }
-    return answers;
+            ? { kind: 'unknown' }
+            : { kind: 'known', available: q.quantity }
+        );
+      }
+      return answers;
+    };
   }
 
   private async buildAddedLine(
-    ruleId: string,
-    ruleName: string,
-    action: GiftLineSource,
-    quantity: number,
+    grant: PromotionLineGrant,
     at: Date,
-    placedAt: Date,
+    placedAt: Date
   ): Promise<OrderAddedLineEdit> {
+    const action: GiftLineSource = {
+      productId: grant.productId,
+      variantId: grant.variantId,
+      documentForm: grant.documentForm,
+    };
     const gift: LineGift = {
       source: 'ol-rule',
-      ruleRef: ruleId,
+      ruleRef: grant.promotion.id,
       ...(isGiftDocumentForm(action.documentForm) && { documentForm: action.documentForm }),
     };
     return {
-      changeId: ruleId,
+      changeId: grant.promotion.id,
       editedAt: at.toISOString(),
       editedBy: null,
       productId: action.productId,
       variantId: action.variantId,
-      quantity,
-      name: ruleName,
+      quantity: grant.quantity,
+      name: grant.promotion.name,
       gift,
       ...(await this.catalogueTaxRate(action)),
       ...(await freezeGiftUnitCost(this.products, action.variantId, placedAt, this.logger)),
@@ -547,7 +346,7 @@ export class OrderGiftService implements IOrderGiftService {
    * catalogue that answers nothing leaves the line rate-less, never guessed.
    */
   private async catalogueTaxRate(
-    action: GiftLineSource,
+    action: GiftLineSource
   ): Promise<Pick<OrderAddedLineEdit, 'taxRate' | 'taxRateCountry' | 'taxSource' | 'taxRateReadAt'>> {
     try {
       const rate = await this.products.getEffectiveTaxRate(action.productId, action.variantId);
@@ -561,53 +360,9 @@ export class OrderGiftService implements IOrderGiftService {
       }
     } catch (error) {
       this.logger.warn(
-        `Tax rate for gift product ${action.productId} could not be read: ${(error as Error).message}`,
+        `Tax rate for gift product ${action.productId} could not be read: ${(error as Error).message}`
       );
     }
     return {};
-  }
-
-  private async recordRuns(
-    rules: readonly AutomationRule[],
-    outcomes: readonly GiftRuleOutcome[],
-    facts: AutomationSubjectFacts,
-    now: Date,
-    isFirstIngestion: boolean,
-  ): Promise<void> {
-    for (const outcome of outcomes) {
-      // "Did not match" is the ordinary case for most rules on most orders and
-      // would drown the history; a matched rule that could NOT apply, and every
-      // gift actually given, are what an operator needs named.
-      const noteworthy =
-        (outcome.applied && !outcome.alreadyApplied) ||
-        (!outcome.applied && outcome.reason !== 'rule-not-matching' && isFirstIngestion);
-      if (!noteworthy) continue;
-      const rule = rules.find((r) => r.id === outcome.ruleId);
-      if (rule === undefined) continue;
-      const message = outcome.applied
-        ? `Added ${outcome.quantity} gift unit(s) to the order.`
-        : `No gift added: ${outcome.reason ?? 'unknown'}.`;
-      try {
-        await this.recorder.record({
-          rule,
-          trigger: 'order.ingested',
-          facts,
-          outcome: outcome.applied ? 'done' : 'nothing-to-do',
-          steps: [
-            {
-              stepIndex: 0,
-              action: 'add-gift',
-              status: outcome.applied ? 'done' : 'nothing-to-do',
-              detail: message,
-              report: { attributedTo: ATTRIBUTION_OPENLINKER, message },
-              ...(!outcome.applied && outcome.reason !== null && { reasonCode: outcome.reason }),
-            },
-          ],
-          firedAt: now,
-        });
-      } catch (error) {
-        this.logger.warn(`Could not record the gift run for rule ${rule.id}: ${(error as Error).message}`);
-      }
-    }
   }
 }

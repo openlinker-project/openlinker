@@ -126,6 +126,7 @@ import { MappingsModule } from '@openlinker/core/mappings';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { CustomersModule } from '@openlinker/core/customers';
 import { AutomationModule } from '@openlinker/core/automation';
+import { PromotionsModule } from '@openlinker/core/promotions';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { CurrencyModule } from '@openlinker/core/currency';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
@@ -182,6 +183,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // its own order read at the worker handler instead, so `automation` imports no
     // sibling context and there is no module cycle to survive (#2100's direction).
     AutomationModule,
+    // #3935: gift promotions applied at ingestion. One-way: promotions imports nothing from orders.
+    PromotionsModule,
     // One-way edge to a LEAF context (#2125): OrderFxStampService injects
     // CURRENCY_RATE_SERVICE_TOKEN + REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN.
     // `currency` imports no sibling core context, so no cycle is possible.

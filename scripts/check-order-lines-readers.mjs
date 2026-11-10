@@ -77,7 +77,7 @@ export const ALLOWED = new Map([
   ['libs/core/src/orders/domain/entities/order-record.entity.ts', COMMERCIAL.entity],
   ['libs/core/src/orders/domain/order-amendment-diff.ts', 'the amendment diff compares commercial lines (decision 8)'],
   ['libs/core/src/orders/domain/order-analytics-projection.ts', COMMERCIAL.analytics],
-  ['libs/core/src/orders/domain/order-automation-facts-projection.ts', 'projects the purchase lines onto the automation facts a gift condition matches (commercial grain)'],
+  ['libs/core/src/orders/domain/order-promotion-facts-projection.ts', 'projects the purchase lines onto the promotion facts a purchase condition matches (commercial grain; #3935)'],
   ['libs/core/src/orders/domain/order-export-columns.ts', COMMERCIAL.projection],
   ['libs/core/src/orders/domain/order-from-ready-snapshot.ts', COMMERCIAL.entity],
   ['libs/core/src/orders/domain/order-search-text.ts', COMMERCIAL.projection],

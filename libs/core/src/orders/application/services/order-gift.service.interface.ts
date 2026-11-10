@@ -1,16 +1,16 @@
 /**
  * Order Gift Service Interface (#3938)
  *
- * Applies OpenLinker gift rules to an order at ingestion, and previews what they
+ * Applies OpenLinker promotions to an order at ingestion, and previews what they
  * would do to a stored order without writing anything.
  *
  * @module libs/core/src/orders/application/services
  */
 import type {
-  AutomationRule,
-  AutomationRuleEvaluation,
-  GiftRuleOutcome,
-} from '@openlinker/core/automation';
+  Promotion,
+  PromotionEvaluation,
+  PromotionOutcome,
+} from '@openlinker/core/promotions';
 
 import type { BundleDefinition } from '@openlinker/core/products';
 
@@ -60,19 +60,19 @@ export interface ApplyGiftRulesInput {
 export interface ApplyGiftRulesResult {
   /** The order with every gift line merged; the very `order` argument when nothing was added. */
   readonly order: Order;
-  readonly outcomes: readonly GiftRuleOutcome[];
+  readonly outcomes: readonly PromotionOutcome[];
 }
 
 export interface GiftPreviewInput {
   readonly record: OrderRecord;
-  /** A rule not yet saved, evaluated beside the saved ones. */
-  readonly draftRule?: AutomationRule;
+  /** A promotion not yet saved, evaluated beside the saved ones. */
+  readonly draft?: Promotion;
 }
 
 export interface GiftPreviewResult {
   readonly evaluatedAt: Date;
-  readonly evaluations: readonly AutomationRuleEvaluation[];
-  readonly outcomes: readonly GiftRuleOutcome[];
+  readonly evaluations: readonly PromotionEvaluation[];
+  readonly outcomes: readonly PromotionOutcome[];
 }
 
 export interface IOrderGiftService {
