@@ -21,9 +21,6 @@ import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18
 import { Input } from '../../shared/ui/input';
 import { StatusTabs } from '../../shared/ui/status-tabs';
 import { FilterDropdown, FilterGroup } from '../../shared/ui/filter-dropdown';
-import { useQuery } from '@tanstack/react-query';
-import { useApiClient } from '../../app/api/api-client-provider';
-import { inventoryQueryKeys } from '../../features/inventory/api/inventory.query-keys';
 import { GiftsGuide } from '../../features/gifts';
 import { StockMovementPeek } from '../../features/inventory/components/stock-movement-peek';
 import type { InventoryMovementRow } from '../../features/inventory/api/inventory-movements.types';
@@ -32,6 +29,7 @@ import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../features/connections';
 import {
   useInventoryMovementsCountQuery,
+  useInventoryMovementsTabCount,
   useInventoryMovementsQuery,
 } from '../../features/inventory/hooks/use-inventory-movements-query';
 import { StockMovementsTable } from '../../features/inventory/components/stock-movements-table';
@@ -57,14 +55,8 @@ function usePageCopy(): { eyebrow: string; title: string; description: string } 
   return { eyebrow: copy.eyebrow, title: copy.title, description: copy.description };
 }
 
-/** One tab's count: the same filters minus the tab itself, so the number is what the tab would show. */
 function useScopeCount(state: MovementUrlState, chip: MovementChip): number | undefined {
-  const apiClient = useApiClient();
-  const filters = toMovementFilters({ ...state, chip, offset: 0 });
-  return useQuery({
-    queryKey: inventoryQueryKeys.movementsCount(filters),
-    queryFn: ({ signal }) => apiClient.inventory.countMovements(filters, { signal }),
-  }).data?.total;
+  return useInventoryMovementsTabCount(toMovementFilters({ ...state, chip, offset: 0 }));
 }
 
 export function InventoryMovementsPage(): ReactElement {

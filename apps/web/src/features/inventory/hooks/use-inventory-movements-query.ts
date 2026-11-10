@@ -55,3 +55,15 @@ export function useInventoryMovementsCountQuery(
     enabled: page !== undefined,
   });
 }
+
+/**
+ * One status tab's total (#3935): the same filters minus the tab itself, so the
+ * number is what the tab would show. `undefined` while unknown, never 0.
+ */
+export function useInventoryMovementsTabCount(filters: InventoryMovementFilters): number | undefined {
+  const apiClient = useApiClient();
+  return useQuery({
+    queryKey: inventoryQueryKeys.movementsCount(filters),
+    queryFn: ({ signal }) => apiClient.inventory.countMovements(filters, { signal }),
+  }).data?.total;
+}

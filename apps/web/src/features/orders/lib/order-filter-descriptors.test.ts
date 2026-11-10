@@ -66,6 +66,9 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'untagged',
         'waiting',
         'withGift',
+        'withBundle',
+        'giftNotAdded',
+        'giftShopRejected',
       ].sort(),
     );
   });
@@ -100,6 +103,9 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       openReturn: 'openReturn=true',
       hasBuyerNote: 'hasBuyerNote=true',
       withGift: 'withGift=true',
+      withBundle: 'withBundle=true',
+      giftNotAdded: 'giftNotAdded=true',
+      giftShopRejected: 'giftShopRejected=true',
       tag: 'tag=tag-vip',
       untagged: 'untagged=true',
       paymentNotSent: 'paymentNotSent=true',
