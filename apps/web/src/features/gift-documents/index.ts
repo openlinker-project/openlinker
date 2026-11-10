@@ -21,3 +21,12 @@ export {
 } from './lib/gift-lines';
 export { useGiftDocumentSettingsQuery } from './hooks/use-gift-documents-queries';
 export { readGiftConnectionOverride } from './lib/gift-on-documents-config';
+export { GiftDocumentPreview, previewLines } from './gift-document-preview';
+export {
+  isGiftUnitPriceAmount,
+  presentGiftLines,
+  type GiftPresentationLine,
+} from './lib/gift-lines';
+export { useDocumentProvidersQuery } from './hooks/use-gift-documents-queries';
+export { zeroAvailability } from './lib/zero-availability';
+export { GiftDocumentFormCards, type GiftDocumentCardValue } from './components/gift-document-form-cards';

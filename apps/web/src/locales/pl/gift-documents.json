@@ -1,4 +1,33 @@
 {
+  "cards": {
+    "changeDefault": "Zmień domyślne",
+    "customPriceLabel": "Cena gratisu na dokumencie",
+    "forms": {
+      "custom-price": {
+        "description": "Gratis z Twoją ceną, odjętą od najdroższej pozycji.",
+        "title": "Własna cena"
+      },
+      "omit": {
+        "description": "Gratisu nie ma na dokumencie. Zapytaj księgowego.",
+        "title": "Pominięty"
+      },
+      "priced-in": {
+        "description": "Część płatności przechodzi na gratis, proporcjonalnie do cen.",
+        "title": "Wliczony proporcjonalnie"
+      },
+      "show-zero": {
+        "description": "Tylko tam, gdzie dostawca dokumentów przyjmuje pozycję zerową.",
+        "title": "Pokazany jako 0,00"
+      },
+      "technical-cent": {
+        "description": "Gratis jest pozycją 0,01, zdjętą z najdroższej pozycji.",
+        "title": "0,01, zdjęte z najdroższej płatnej pozycji"
+      }
+    },
+    "inheritDescription": "Gratis używa domyślnej formy dla tego kanału.",
+    "inheritTitle": "Jak w ustawieniach (domyślnie: {form})",
+    "inheritTitleUnknown": "Jak w ustawieniach"
+  },
   "connection": {
     "defaultBadge": "Domyślnie",
     "fieldHelp": "Gratisy z tego kanału używają tej formy, chyba że sam gratis mówi inaczej.",
@@ -67,6 +96,14 @@
       "label": "0,01, zdjęte z najdroższej płatnej pozycji",
       "short": "0,01, z najdroższej"
     }
+  },
+  "miniDoc": {
+    "ariaLabel": "Przykład dokumentu",
+    "coffee": "Kawa ziarnista 1 kg",
+    "gift": "Kubek ceramiczny (gratis)",
+    "tea": "Herbata Earl Grey 100 g",
+    "total": "Razem",
+    "unchanged": "Suma bez zmian"
   },
   "perGift": {
     "asInSettings": "Jak w ustawieniach",

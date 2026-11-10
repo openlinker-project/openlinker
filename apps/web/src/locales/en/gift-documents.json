@@ -1,4 +1,33 @@
 {
+  "cards": {
+    "changeDefault": "Change the default",
+    "customPriceLabel": "Gift price on the document",
+    "forms": {
+      "custom-price": {
+        "description": "The gift shows your price, taken off the most expensive paid item.",
+        "title": "Your own price"
+      },
+      "omit": {
+        "description": "The gift is not on the document. Ask your accountant.",
+        "title": "Omitted"
+      },
+      "priced-in": {
+        "description": "Part of the payment moves to the gift, in proportion to prices.",
+        "title": "Priced in proportionally"
+      },
+      "show-zero": {
+        "description": "Only where the document provider accepts a zero line.",
+        "title": "Shown as 0.00"
+      },
+      "technical-cent": {
+        "description": "The gift is a 0.01 line, taken off the most expensive item.",
+        "title": "0.01, taken from the most expensive paid item"
+      }
+    },
+    "inheritDescription": "The gift uses the default form for this channel.",
+    "inheritTitle": "As in settings (default: {form})",
+    "inheritTitleUnknown": "As in settings"
+  },
   "connection": {
     "defaultBadge": "Default",
     "fieldHelp": "Gifts from this channel use this form unless the gift itself says otherwise.",
@@ -67,6 +96,14 @@
       "label": "0.01, taken from the most expensive paid item",
       "short": "0.01, from the most expensive"
     }
+  },
+  "miniDoc": {
+    "ariaLabel": "Document example",
+    "coffee": "Coffee beans 1 kg",
+    "gift": "Ceramic mug (gift)",
+    "tea": "Earl Grey tea 100 g",
+    "total": "Total",
+    "unchanged": "Total unchanged"
   },
   "perGift": {
     "asInSettings": "As in settings",
