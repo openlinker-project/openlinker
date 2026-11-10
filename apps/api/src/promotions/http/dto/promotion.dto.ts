@@ -25,14 +25,20 @@ import {
   MaxLength,
   Matches,
   Min,
+  ValidateBy,
   ValidateIf,
+  type ValidationArguments,
   ValidateNested,
 } from 'class-validator';
 import {
   PromotionBenefitKindValues,
+  PromotionCombinationModeValues,
+  type PromotionCombinationMode,
   PromotionGiftDocumentFormValues,
   PromotionPauseReasonValues,
   type FreeGiftBenefit,
+  type PreviewCustomerLimit,
+  type PromotionCombination,
   type PromotionBenefit,
   type PromotionEvaluation,
   type PromotionGiftDocumentForm,
@@ -146,6 +152,34 @@ export class PromotionLimitsDto {
   customerLimit?: number | null;
 }
 
+export class CombinesWithDto {
+  @ApiProperty({ enum: PromotionCombinationModeValues })
+  @IsIn(PromotionCombinationModeValues)
+  mode!: PromotionCombinationMode;
+
+  @ApiPropertyOptional({ type: [String], description: 'Required for `selected`, forbidden otherwise.' })
+  @ValidateIf((o: CombinesWithDto) => o.mode === 'selected' || o.promotionIds !== undefined)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  @ValidateBy({
+    name: 'promotionIdsOnlyForSelected',
+    validator: {
+      validate: (value: unknown, args?: ValidationArguments): boolean =>
+        (args?.object as CombinesWithDto | undefined)?.mode === 'selected' ||
+        (Array.isArray(value) && value.length === 0),
+      defaultMessage: (): string => 'promotionIds is only allowed for mode "selected"',
+    },
+  })
+  promotionIds?: string[];
+
+  toCombination(): PromotionCombination {
+    return this.mode === 'selected'
+      ? { mode: 'selected', promotionIds: this.promotionIds ?? [] }
+      : { mode: this.mode };
+  }
+}
+
 export class WritePromotionDto {
   @ApiProperty()
   @IsString()
@@ -182,11 +216,15 @@ export class WritePromotionDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Default true. False = a matching promotion with this stops the ones below it in the list.',
+    type: CombinesWithDto,
+    description:
+      'Which promotions this one stacks with. Default `{ "mode": "all" }`. Stacking needs MUTUAL consent: two ' +
+      'promotions stack only when each allows the other; otherwise the later one (when the earlier one applied) is skipped.',
   })
   @IsOptional()
-  @IsBoolean()
-  combinable?: boolean;
+  @ValidateNested()
+  @Type(() => CombinesWithDto)
+  combinesWith?: CombinesWithDto;
 
   @ApiPropertyOptional({ type: PromotionLimitsDto })
   @IsOptional()
@@ -209,7 +247,7 @@ export class WritePromotionDto {
       conditions: this.conditions,
       benefit: this.benefit.toBenefit(),
       ...(this.isActive !== undefined && { isActive: this.isActive }),
-      ...(this.combinable !== undefined && { combinable: this.combinable }),
+      ...(this.combinesWith !== undefined && { combinesWith: this.combinesWith.toCombination() }),
       limits: {
         unitCap: this.limits?.unitCap ?? null,
         customerLimit: this.limits?.customerLimit ?? null,
@@ -247,6 +285,15 @@ export class EvaluatePromotionsDto {
   @IsString()
   promotionId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Count the customer limit for this customer (internal customer id) instead of the order\'s own. 404 when unknown.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  customerId?: string;
+
   @ApiPropertyOptional({ type: WritePromotionDto, description: 'An unsaved draft to test beside the saved promotions.' })
   @IsOptional()
   @ValidateNested()
@@ -270,7 +317,8 @@ export class PromotionResponseDto {
   @ApiProperty({ nullable: true, type: String }) effectiveTo!: string | null;
   @ApiProperty({ type: [Object] }) conditions!: readonly unknown[];
   @ApiProperty({ type: Object, description: 'Discriminated on `kind`.' }) benefit!: PromotionBenefit;
-  @ApiProperty() combinable!: boolean;
+  @ApiProperty({ type: Object, description: '`{mode:"all"}`, `{mode:"none"}` or `{mode:"selected", promotionIds}`.' })
+  combinesWith!: PromotionCombination;
   @ApiProperty({ type: PromotionLimitsResponseDto }) limits!: PromotionLimitsResponseDto;
   @ApiProperty({
     enum: ['inactive', 'scheduled', 'active', 'paused', 'ended'],
@@ -298,7 +346,7 @@ export class PromotionResponseDto {
     dto.effectiveTo = promotion.effectiveTo ? promotion.effectiveTo.toISOString() : null;
     dto.conditions = promotion.conditions;
     dto.benefit = promotion.benefit;
-    dto.combinable = promotion.combinable;
+    dto.combinesWith = promotion.combinesWith;
     dto.limits = { unitCap: promotion.limits.unitCap, customerLimit: promotion.limits.customerLimit };
     dto.pausedReason = state?.pausedReason ?? null;
     dto.pausedAt = state?.pausedAt ? state.pausedAt.toISOString() : null;
@@ -323,6 +371,14 @@ export class PromotionResponseDto {
   }
 }
 
+export class PromotionCustomerLimitDto {
+  @ApiProperty() limit!: number;
+  @ApiProperty({ nullable: true, type: Number, description: 'Units the customer already received; null when no customer.' })
+  usedByCustomer!: number | null;
+  @ApiProperty({ description: 'The customer is at or over the limit (or the planner refused for it).' })
+  wouldExceed!: boolean;
+}
+
 export class PromotionDryRunVerdictDto {
   @ApiProperty() promotionId!: string;
   @ApiProperty() promotionName!: string;
@@ -333,8 +389,10 @@ export class PromotionDryRunVerdictDto {
   reason!: string | null;
   @ApiProperty({ nullable: true, type: String, description: "The evaluator's own reason, with `rule-not-matching`." })
   nonFiringReason!: string | null;
-  @ApiProperty({ nullable: true, type: String, description: 'The earlier non-combinable promotion that stopped this one.' })
+  @ApiProperty({ nullable: true, type: String, description: 'The earlier promotion that applied and did not stack with this one.' })
   supersededByPromotionId!: string | null;
+  @ApiProperty({ nullable: true, type: PromotionCustomerLimitDto, description: 'Present only when the promotion has a customer limit.' })
+  customerLimit!: PromotionCustomerLimitDto | null;
   @ApiProperty({ type: [Object], description: 'Every condition with its outcome, for the "why".' })
   conditionTraces!: readonly unknown[];
   @ApiProperty() retroactivityFloorWaived!: boolean;
@@ -350,7 +408,8 @@ export class PromotionDryRunResponseDto {
     evaluatedAt: Date,
     evaluations: readonly PromotionEvaluation[],
     outcomes: readonly PromotionOutcome[],
-    subjectPromotionId: string | null
+    subjectPromotionId: string | null,
+    customerLimits: ReadonlyMap<string, PreviewCustomerLimit> = new Map()
   ): PromotionDryRunResponseDto {
     const evaluationById = new Map(evaluations.map((e) => [e.promotionId, e] as const));
     const dto = new PromotionDryRunResponseDto();
@@ -367,6 +426,17 @@ export class PromotionDryRunResponseDto {
       verdict.reason = outcome.reason;
       verdict.nonFiringReason = outcome.nonFiringReason;
       verdict.supersededByPromotionId = outcome.supersededByPromotionId;
+      const limit = customerLimits.get(outcome.promotionId);
+      verdict.customerLimit =
+        limit === undefined
+          ? null
+          : {
+              limit: limit.limit,
+              usedByCustomer: limit.usedByCustomer,
+              wouldExceed:
+                outcome.reason === 'customer-limit-reached' ||
+                (limit.usedByCustomer !== null && limit.usedByCustomer >= limit.limit),
+            };
       verdict.conditionTraces = evaluation?.conditionTraces ?? [];
       verdict.retroactivityFloorWaived = evaluation?.retroactivityFloorWaived ?? false;
       return verdict;

@@ -36,6 +36,10 @@ import {
   type Promotion,
 } from '@openlinker/core/promotions';
 
+import {
+  CUSTOMER_PROJECTION_SERVICE_TOKEN,
+  type ICustomerProjectionService,
+} from '@openlinker/core/customers';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   EvaluatePromotionsDto,
@@ -56,7 +60,9 @@ export class PromotionsController {
     @Inject(ORDER_GIFT_SERVICE_TOKEN)
     private readonly orderGifts: IOrderGiftService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
-    private readonly orders: IOrderRecordService
+    private readonly orders: IOrderRecordService,
+    @Inject(CUSTOMER_PROJECTION_SERVICE_TOKEN)
+    private readonly customers: ICustomerProjectionService
   ) {}
 
   @Get()
@@ -64,7 +70,7 @@ export class PromotionsController {
   @ApiOperation({
     summary: 'List promotions in list order',
     description:
-      'List order is the order stacking is defined against: a matching non-combinable promotion stops the ones ' +
+      'List order is the order stacking is defined against: a promotion that applied stops the ones ' +
       'below it. Each row carries what the promotion has given (`unitsGiven` of `effectiveCap`) and why it is paused.',
   })
   @ApiResponse({ status: 200, type: [PromotionResponseDto] })
@@ -103,20 +109,30 @@ export class PromotionsController {
       'retroactivity floor is waived so a promotion can be tested against any order; the verdict reports the waiver.',
   })
   @ApiResponse({ status: 200, type: PromotionDryRunResponseDto })
-  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 404, description: 'Order or customer not found' })
   async evaluate(@Body() dto: EvaluatePromotionsDto): Promise<PromotionDryRunResponseDto> {
     const record = await this.orders.getOrderRecord(dto.orderId);
     if (record === null) throw new NotFoundException(`Order "${dto.orderId}" not found.`);
 
+    if (dto.customerId !== undefined) {
+      const customer = await this.customers.getProjection(dto.customerId);
+      if (customer === null) throw new NotFoundException(`Customer "${dto.customerId}" not found.`);
+    }
+
     let draft: Promotion | undefined;
     if (dto.promotion !== undefined) draft = this.promotions.buildDraft(dto.promotion.toInput());
-    const preview = await this.orderGifts.previewForOrder({ record, ...(draft && { draft }) });
+    const preview = await this.orderGifts.previewForOrder({
+      record,
+      ...(draft && { draft }),
+      ...(dto.customerId !== undefined && { customerId: dto.customerId }),
+    });
     return PromotionDryRunResponseDto.from(
       dto.orderId,
       preview.evaluatedAt,
       preview.evaluations,
       preview.outcomes,
-      draft?.id ?? dto.promotionId ?? null
+      draft?.id ?? dto.promotionId ?? null,
+      preview.customerLimits
     );
   }
 

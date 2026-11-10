@@ -10,6 +10,7 @@
  * @module apps/api/src/promotions
  */
 import { Module } from '@nestjs/common';
+import { CustomersModule } from '@openlinker/core/customers';
 import { OrdersModule } from '@openlinker/core/orders';
 import { PromotionsModule } from '@openlinker/core/promotions';
 
@@ -17,7 +18,7 @@ import { GiftAttentionController } from './http/gift-attention.controller';
 import { PromotionsController } from './http/promotions.controller';
 
 @Module({
-  imports: [PromotionsModule, OrdersModule],
+  imports: [PromotionsModule, OrdersModule, CustomersModule],
   controllers: [PromotionsController, GiftAttentionController],
 })
 export class PromotionsApiModule {}
