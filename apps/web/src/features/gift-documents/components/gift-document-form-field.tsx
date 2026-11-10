@@ -15,7 +15,7 @@ import type { ReactElement } from 'react';
 import { useMessages } from '../../../shared/i18n';
 import { Select } from '../../../shared/ui/select';
 import { useDocumentProvidersQuery } from '../hooks/use-gift-documents-queries';
-import { GiftDocumentFormChoiceValues, type GiftDocumentFormChoice } from '../lib/gift-lines';
+import { GiftFormPickerValues, type GiftDocumentFormChoice } from '../lib/gift-lines';
 import { useGiftFormLabels } from '../lib/use-gift-form-labels';
 import { zeroAvailability } from '../lib/zero-availability';
 
@@ -49,7 +49,7 @@ export function GiftDocumentFormField({
       onChange={(event) => onChange(event.target.value as GiftDocumentFormChoice)}
     >
       <option value="">{copy.perGift.asInSettings}</option>
-      {GiftDocumentFormChoiceValues.map((form) => (
+      {GiftFormPickerValues.map((form) => (
         <option key={form} value={form} disabled={form === 'show-zero' && !zero.available}>
           {labels.label(form)}
         </option>

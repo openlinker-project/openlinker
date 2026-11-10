@@ -18,11 +18,20 @@ import { minorUnitExponentFor } from '../../invoicing';
 /** The four forms an operator picks (gifts spec section 8.2). */
 export const GiftDocumentFormChoiceValues = [
   'technical-cent',
+  'custom-price',
   'priced-in',
   'show-zero',
   'omit',
 ] as const;
 export type GiftDocumentFormChoice = (typeof GiftDocumentFormChoiceValues)[number];
+
+/**
+ * The forms the pickers offer. `custom-price` needs an amount input the pickers
+ * do not have yet, so it is set through the API only; the labels still name it
+ * so a saved value reads correctly. Not part of the mirrored core vocabulary.
+ */
+export const GiftFormPickerValues: readonly GiftDocumentFormChoice[] =
+  GiftDocumentFormChoiceValues.filter((form) => form !== 'custom-price');
 
 /** The four choices plus the off-document record, which the UI does not offer. */
 export const GiftLineFormValues = [...GiftDocumentFormChoiceValues, 'internal-record'] as const;
@@ -39,9 +48,26 @@ export function isGiftLineForm(value: unknown): value is GiftLineForm {
 export const GiftFormSourceValues = ['rule', 'connection', 'default'] as const;
 export type GiftFormSource = (typeof GiftFormSourceValues)[number];
 
+/**
+ * A `custom-price` gift carries the gross unit price it shows at, a decimal
+ * string in the order's currency, per gift unit: positive, at most two decimals.
+ */
+export function isGiftUnitPriceAmount(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+(\.\d{1,2})?$/.test(value) && Number(value) > 0;
+}
+
 export interface ResolvedGiftForm {
   form: GiftLineForm;
   source: GiftFormSource;
+  /** Set only for `custom-price`: the amount that came with the winning level. */
+  unitPrice?: string;
+}
+
+/** The amount each level carries for `custom-price`; ignored for any other form. */
+export interface GiftFormAmounts {
+  line?: unknown;
+  connection?: unknown;
+  global?: unknown;
 }
 
 /**
@@ -52,13 +78,27 @@ export function resolveGiftDocumentForm(
   lineForm: unknown,
   connectionForm: unknown,
   globalForm: unknown,
+  amounts: GiftFormAmounts = {},
 ): ResolvedGiftForm {
-  if (isGiftLineForm(lineForm)) return { form: lineForm, source: 'rule' };
-  if (isGiftLineForm(connectionForm)) return { form: connectionForm, source: 'connection' };
-  return {
-    form: isGiftLineForm(globalForm) ? globalForm : DEFAULT_GIFT_LINE_FORM,
-    source: 'default',
-  };
+  // A level naming `custom-price` without a usable amount reads as absent: the
+  // amount comes with its level, never from a less specific one.
+  const usable = (form: unknown, amount: unknown): form is GiftLineForm =>
+    isGiftLineForm(form) && (form !== 'custom-price' || isGiftUnitPriceAmount(amount));
+  const withAmount = (
+    form: GiftLineForm,
+    source: GiftFormSource,
+    amount: unknown,
+  ): ResolvedGiftForm =>
+    form === 'custom-price' && isGiftUnitPriceAmount(amount)
+      ? { form, source, unitPrice: amount }
+      : { form, source };
+  if (usable(lineForm, amounts.line)) return withAmount(lineForm, 'rule', amounts.line);
+  if (usable(connectionForm, amounts.connection)) {
+    return withAmount(connectionForm, 'connection', amounts.connection);
+  }
+  return usable(globalForm, amounts.global)
+    ? withAmount(globalForm, 'default', amounts.global)
+    : { form: DEFAULT_GIFT_LINE_FORM, source: 'default' };
 }
 
 /** The slice of a document line the helper reads and rewrites. */
@@ -74,6 +114,12 @@ export interface GiftPresentationLine {
    */
   giftForm?: GiftLineForm;
   /**
+   * The gross unit price a `custom-price` gift shows at, per gift unit, resolved
+   * by the caller alongside `giftForm`. Absent or non-positive: the form cannot
+   * be applied and is noted `custom-price-invalid`.
+   */
+  giftUnitPriceGross?: number;
+  /**
    * What one unit would cost on its own, gross. Only `priced-in` reads it, as
    * the weight the payment is shared by; without it a gift carries no value to
    * price in and falls back to `omit`.
@@ -85,6 +131,8 @@ export type GiftPresentationNote =
   | 'show-not-offered'
   | 'no-reference-price'
   | 'technical-cent-no-donor'
+  | 'custom-price-no-donor'
+  | 'custom-price-invalid'
   | 'zero-line-unfloorable';
 
 export interface GiftPresentationResult<T extends GiftPresentationLine> {
@@ -219,12 +267,20 @@ export function presentGiftLines<T extends GiftPresentationLine>(
       toDrop.push(entry);
     } else if (effective === 'show-zero') {
       // the line stays at 0,00 untouched.
-    } else if (effective === 'technical-cent') {
-      // One minor unit per gift unit from the most expensive paid line, whatever
-      // its rate; with none able to spare it the gift is priced in instead.
+    } else if (effective === 'technical-cent' || effective === 'custom-price') {
+      // The gift's price per unit (one minor unit for technical-cent, the chosen
+      // amount for custom-price) is taken from the most expensive paid line,
+      // whatever its rate; with none able to spare it the gift is priced in
+      // instead and the note names why.
+      const customUnit = toMinor(entry.source.giftUnitPriceGross ?? 0);
+      if (effective === 'custom-price' && customUnit < 1) {
+        notes.push('custom-price-invalid');
+        effective = 'technical-cent';
+      }
+      const unitMinor = effective === 'custom-price' ? customUnit : 1;
       const need =
         Number.isInteger(entry.source.quantity) && entry.source.quantity >= 1
-          ? entry.source.quantity
+          ? entry.source.quantity * unitMinor
           : 0;
       // A donor must keep at least one minor unit per unit after giving, or its
       // own line would become a 0.00 row.
@@ -234,9 +290,11 @@ export function presentGiftLines<T extends GiftPresentationLine>(
           : undefined;
       if (donor !== undefined) {
         setEntryTotal(donor, entryTotal(donor) - need);
-        entry.lines = [{ ...entry.source, unitPriceGross: fromMinor(1) }];
+        entry.lines = [{ ...entry.source, unitPriceGross: fromMinor(unitMinor) }];
       } else {
-        notes.push('technical-cent-no-donor');
+        notes.push(
+          effective === 'custom-price' ? 'custom-price-no-donor' : 'technical-cent-no-donor',
+        );
         effective = 'priced-in';
         toPriceIn.push(entry);
       }

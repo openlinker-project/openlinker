@@ -25,6 +25,7 @@ export function useGiftFormLabels(): GiftFormLabels {
   const copy = useMessages('gift-documents');
   const key = {
     'technical-cent': 'technicalCent',
+    'custom-price': 'customPrice',
     'priced-in': 'pricedIn',
     'show-zero': 'showZero',
     omit: 'omit',

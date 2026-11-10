@@ -41,6 +41,8 @@ export interface PromotionLineGrant {
   readonly productId: string;
   readonly variantId: string;
   readonly documentForm: string | null;
+  /** The amount that goes with `documentForm: 'custom-price'`. */
+  readonly documentUnitPrice?: string | null;
   readonly quantity: number;
   /** `new` = granted by this call; `self-heal` = granted earlier but the line is missing. */
   readonly origin: 'new' | 'self-heal';

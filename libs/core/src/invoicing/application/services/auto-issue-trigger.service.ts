@@ -1734,8 +1734,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    */
   private async resolveGiftDocumentSettings(config: unknown): Promise<GiftDocumentSettings> {
     try {
-      const { form } = await this.salesDocumentSettings.getGiftDocumentForm();
-      return readGiftDocumentSettings(config, form);
+      const { form, unitPrice } = await this.salesDocumentSettings.getGiftDocumentForm();
+      return readGiftDocumentSettings(config, form, unitPrice);
     } catch (error) {
       this.logger.warn(
         `Gift default lookup failed; the code default form applies, which may differ from the ` +

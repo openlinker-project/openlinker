@@ -270,7 +270,8 @@ function sameGiftPayload(
     existing !== null &&
     existing['variantId'] === requested['variantId'] &&
     existing['quantity'] === requested['quantity'] &&
-    existing['documentForm'] === requested['documentForm']
+    existing['documentForm'] === requested['documentForm'] &&
+    existing['documentUnitPrice'] === requested['documentUnitPrice']
   );
 }
 
@@ -325,6 +326,8 @@ export class OrderEditService implements IOrderEditService {
         const gift: LineGift = {
           source: 'operator',
           ...(input.documentForm !== undefined && { documentForm: input.documentForm }),
+          ...(input.documentForm === 'custom-price' &&
+            input.documentUnitPrice !== undefined && { documentUnitPrice: input.documentUnitPrice }),
         };
         const entry: OrderAddedLineEdit = {
           changeId: '',
@@ -352,6 +355,10 @@ export class OrderEditService implements IOrderEditService {
             variantId: variant.id,
             quantity: input.quantity,
             ...(input.documentForm !== undefined && { documentForm: input.documentForm }),
+            ...(input.documentForm === 'custom-price' &&
+              input.documentUnitPrice !== undefined && {
+                documentUnitPrice: input.documentUnitPrice,
+              }),
           },
           // The key carries the change id, which does not exist yet: `stampChange` mints it.
           patch: { addedLines: { [OPERATOR_GIFT_LINE_KEY_PREFIX]: entry } },

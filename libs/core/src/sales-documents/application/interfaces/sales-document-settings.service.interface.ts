@@ -11,6 +11,8 @@ import type { GiftDocumentFormChoice } from '../../domain/types/gift-lines.types
 
 export interface GiftDocumentFormSetting {
   form: GiftDocumentFormChoice;
+  /** Set only when `form` is `custom-price`: the gross unit price per gift unit. */
+  unitPrice: string | null;
   source: 'setting' | 'default';
   updatedAt: Date | null;
   updatedBy: string | null;
@@ -19,9 +21,14 @@ export interface GiftDocumentFormSetting {
 export interface ISalesDocumentSettingsService {
   /** The OpenLinker-wide gift form on documents. Never throws on a missing row. */
   getGiftDocumentForm(): Promise<GiftDocumentFormSetting>;
-  /** Save the default. Throws `InvalidGiftDocumentFormError` for a form not on offer. */
+  /**
+   * Save the default. Throws `InvalidGiftDocumentFormError` for a form not on
+   * offer, or a `custom-price` without a valid amount. The amount is dropped
+   * for any other form.
+   */
   setGiftDocumentForm(
     form: string,
     updatedBy: string | null,
+    unitPrice?: string | null,
   ): Promise<GiftDocumentFormSetting>;
 }

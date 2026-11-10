@@ -123,6 +123,7 @@ export class PromotionLedgerRepository implements PromotionLedgerPort {
       productId: row.productId,
       variantId: row.variantId,
       documentForm: row.documentForm,
+      documentUnitPrice: row.documentUnitPrice,
       createdAt: row.createdAt,
     }));
   }
@@ -168,6 +169,7 @@ export class PromotionLedgerRepository implements PromotionLedgerPort {
         productId: grant.productId,
         variantId: grant.variantId,
         documentForm: grant.documentForm,
+        documentUnitPrice: grant.documentUnitPrice ?? null,
       })
       .orIgnore()
       .returning('id')

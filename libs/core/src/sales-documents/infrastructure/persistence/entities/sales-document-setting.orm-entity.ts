@@ -19,6 +19,10 @@ export class SalesDocumentSettingOrmEntity {
   @Column({ type: 'varchar', length: 32, name: 'gift_document_form', nullable: true })
   giftDocumentForm!: string | null;
 
+  /** The `custom-price` amount that goes with the default form; NULL otherwise. */
+  @Column({ type: 'varchar', length: 16, name: 'gift_document_unit_price', nullable: true })
+  giftDocumentUnitPrice!: string | null;
+
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
 

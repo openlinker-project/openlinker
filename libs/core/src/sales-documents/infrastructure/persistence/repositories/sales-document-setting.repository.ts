@@ -32,10 +32,11 @@ export class SalesDocumentSettingRepository implements SalesDocumentSettingRepos
 
   async upsertGiftDocumentForm(
     form: string | null,
+    unitPrice: string | null,
     updatedBy: string | null,
   ): Promise<SalesDocumentSettingRecord> {
     await this.ormRepository.upsert(
-      { id: SINGLETON_ID, giftDocumentForm: form, updatedBy },
+      { id: SINGLETON_ID, giftDocumentForm: form, giftDocumentUnitPrice: unitPrice, updatedBy },
       { conflictPaths: ['id'] },
     );
     const saved = await this.ormRepository.findOneOrFail({ where: { id: SINGLETON_ID } });
@@ -45,6 +46,7 @@ export class SalesDocumentSettingRepository implements SalesDocumentSettingRepos
   private toRecord(entity: SalesDocumentSettingOrmEntity): SalesDocumentSettingRecord {
     return {
       giftDocumentForm: entity.giftDocumentForm,
+      giftDocumentUnitPrice: entity.giftDocumentUnitPrice,
       updatedAt: entity.updatedAt,
       updatedBy: entity.updatedBy,
     };

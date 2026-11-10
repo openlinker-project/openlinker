@@ -25,6 +25,7 @@ import {
   Max,
   Min,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -161,4 +162,15 @@ export class AddOrderGiftRequestDto extends DryRunDto {
   @IsOptional()
   @IsIn(GiftDocumentFormValues as readonly string[])
   documentForm?: GiftDocumentForm;
+
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Gross unit price per gift unit for custom-price: a positive decimal string with at most 2 decimals. Required with custom-price, ignored otherwise.',
+  })
+  @ValidateIf((o: { documentForm?: string }) => o.documentForm === 'custom-price')
+  @Matches(/^(?!0+(\.0+)?$)\d+(\.\d{1,2})?$/, {
+    message: 'documentUnitPrice must be a decimal with at most 2 decimals',
+  })
+  documentUnitPrice?: string;
 }

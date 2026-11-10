@@ -19,6 +19,7 @@ export type PromotionBenefitKind = (typeof PromotionBenefitKindValues)[number];
 /** How a sales document shows a gift; same values as the order line's gift form. */
 export const PromotionGiftDocumentFormValues = [
   'technical-cent',
+  'custom-price',
   'priced-in',
   'show-zero',
   'omit',
@@ -42,6 +43,12 @@ export interface FreeGiftBenefit {
   /** Skip when the gift product is already in the order (also inside a bundle's components). */
   readonly skipIfPresent: boolean;
   readonly documentForm?: PromotionGiftDocumentForm;
+  /**
+   * The gross unit price, per gift unit, a `custom-price` gift shows at on
+   * documents: a decimal string, positive, at most two decimals. Required with
+   * that form and meaningless without it.
+   */
+  readonly documentUnitPrice?: string;
 }
 
 export type PromotionBenefit = FreeGiftBenefit;
@@ -54,6 +61,11 @@ function nonEmptyString(value: unknown): value is string {
 }
 function positiveInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+/** Positive decimal string, at most two decimals (same rule as sales-documents' `isGiftUnitPriceAmount`). */
+export function isDocumentUnitPrice(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+(\.\d{1,2})?$/.test(value) && Number(value) > 0;
 }
 
 export function isPromotionBenefitKind(value: unknown): value is PromotionBenefitKind {
@@ -70,10 +82,14 @@ export function isFreeGiftBenefit(value: unknown): value is FreeGiftBenefit {
     if (value.perUnit.maxPerOrder !== null && !positiveInt(value.perUnit.maxPerOrder)) return false;
   }
   if (typeof value.skipIfPresent !== 'boolean') return false;
-  return (
-    value.documentForm === undefined ||
-    (PromotionGiftDocumentFormValues as readonly unknown[]).includes(value.documentForm)
-  );
+  if (
+    value.documentForm !== undefined &&
+    !(PromotionGiftDocumentFormValues as readonly unknown[]).includes(value.documentForm)
+  ) {
+    return false;
+  }
+  if (value.documentForm === 'custom-price') return isDocumentUnitPrice(value.documentUnitPrice);
+  return value.documentUnitPrice === undefined;
 }
 
 /** Narrow an untrusted value to a well-formed benefit of any kind. */

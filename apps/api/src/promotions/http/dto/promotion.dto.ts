@@ -23,7 +23,9 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  Matches,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
@@ -97,6 +99,17 @@ export class FreeGiftBenefitDto {
   @IsIn(PromotionGiftDocumentFormValues as readonly string[])
   documentForm?: PromotionGiftDocumentForm;
 
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Gross unit price per gift unit for custom-price: a positive decimal string with at most 2 decimals. Required with custom-price, ignored otherwise.',
+  })
+  @ValidateIf((o: { documentForm?: string }) => o.documentForm === 'custom-price')
+  @Matches(/^(?!0+(\.0+)?$)\d+(\.\d{1,2})?$/, {
+    message: 'documentUnitPrice must be a decimal with at most 2 decimals',
+  })
+  documentUnitPrice?: string;
+
   toBenefit(): FreeGiftBenefit {
     return {
       kind: 'free-gift',
@@ -113,6 +126,8 @@ export class FreeGiftBenefitDto {
             },
       skipIfPresent: this.skipIfPresent ?? true,
       ...(this.documentForm !== undefined && { documentForm: this.documentForm }),
+      ...(this.documentForm === 'custom-price' &&
+        this.documentUnitPrice !== undefined && { documentUnitPrice: this.documentUnitPrice }),
     };
   }
 }

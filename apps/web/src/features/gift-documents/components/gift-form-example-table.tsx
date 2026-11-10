@@ -15,7 +15,7 @@ import {
   SAMPLE_BOOK_PRICE,
   SAMPLE_MUG_PRICE,
 } from '../lib/gift-form-preview';
-import { GiftDocumentFormChoiceValues } from '../lib/gift-lines';
+import { GiftFormPickerValues } from '../lib/gift-lines';
 import { useGiftFormLabels } from '../lib/use-gift-form-labels';
 
 export function GiftFormExampleTable(): ReactElement {
@@ -43,7 +43,7 @@ export function GiftFormExampleTable(): ReactElement {
           </tr>
         </thead>
         <tbody>
-          {GiftDocumentFormChoiceValues.map((form) => {
+          {GiftFormPickerValues.map((form) => {
             const { lines } = previewGiftForm(sample, form, true);
             const book = lines.find((line) => line.isGift !== true);
             const mug = lines.find((line) => line.isGift === true);

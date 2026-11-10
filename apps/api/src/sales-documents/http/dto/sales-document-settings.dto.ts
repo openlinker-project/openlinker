@@ -3,8 +3,8 @@
  *
  * @module apps/api/src/sales-documents/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, Matches, ValidateIf } from 'class-validator';
 import {
   GiftDocumentFormChoiceValues,
   type GiftDocumentFormChoice,
@@ -18,11 +18,23 @@ export class SetSalesDocumentSettingsDto {
   })
   @IsIn(GiftDocumentFormChoiceValues as readonly string[])
   giftDocumentForm!: GiftDocumentFormChoice;
+
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Gross unit price per gift unit for custom-price: a positive decimal string with at most 2 decimals. Required with custom-price, ignored otherwise.',
+  })
+  @ValidateIf((o: { giftDocumentForm?: string }) => o.giftDocumentForm === 'custom-price')
+  @Matches(/^(?!0+(\.0+)?$)\d+(\.\d{1,2})?$/, { message: 'giftDocumentUnitPrice must be a decimal with at most 2 decimals' })
+  giftDocumentUnitPrice?: string;
 }
 
 export class SalesDocumentSettingsResponseDto {
   @ApiProperty({ enum: GiftDocumentFormChoiceValues })
   giftDocumentForm!: GiftDocumentFormChoice;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Set only for custom-price' })
+  giftDocumentUnitPrice!: string | null;
 
   @ApiProperty({
     enum: ['setting', 'default'],
@@ -36,6 +48,7 @@ export class SalesDocumentSettingsResponseDto {
   static fromSetting(setting: GiftDocumentFormSetting): SalesDocumentSettingsResponseDto {
     const dto = new SalesDocumentSettingsResponseDto();
     dto.giftDocumentForm = setting.form;
+    dto.giftDocumentUnitPrice = setting.unitPrice;
     dto.giftDocumentFormSource = setting.source;
     dto.updatedAt = setting.updatedAt?.toISOString() ?? null;
     return dto;

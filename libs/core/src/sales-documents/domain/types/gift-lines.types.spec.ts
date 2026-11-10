@@ -1,10 +1,13 @@
 import {
   DEFAULT_GIFT_LINE_FORM,
   GiftDocumentFormChoiceValues,
+  isGiftUnitPriceAmount,
   offeredGiftLineForms,
   presentGiftLines,
   readGiftConnectionForm,
+  readGiftConnectionUnitPrice,
   readGiftDocumentSettings,
+  resolveGiftPresentationFields,
   resolveGiftDocumentForm,
   validateGiftOnDocumentsShape,
   type GiftLineForm,
@@ -273,14 +276,14 @@ describe('presentGiftLines', () => {
   });
 
   it('should keep the document total equal to what was paid for every form', () => {
-    const forms: GiftLineForm[] = ['technical-cent', 'priced-in', 'show-zero', 'omit', 'internal-record'];
+    const forms: GiftLineForm[] = ['technical-cent', 'custom-price', 'priced-in', 'show-zero', 'omit', 'internal-record'];
     for (const form of forms) {
       for (const accepts of [true, false, undefined]) {
         const result = presentGiftLines(
           [
             line({ unitPriceGross: 64.99 }),
             line({ unitPriceGross: 12.5, taxRate: '8', quantity: 3 }),
-            gift({ taxRate: '5', referenceUnitPriceGross: 9.99, quantity: 2 }),
+            gift({ taxRate: '5', referenceUnitPriceGross: 9.99, quantity: 2, giftUnitPriceGross: 4.5 }),
           ],
           form,
           accepts,
@@ -306,6 +309,145 @@ describe('presentGiftLines', () => {
         false,
       );
       expect(result.notes).toContain('zero-line-unfloorable');
+    });
+  });
+});
+
+describe('custom-price', () => {
+  it('should accept only a positive amount with at most two decimals', () => {
+    for (const ok of ['5', '5.0', '5.25', '0.01', '120.5']) expect(isGiftUnitPriceAmount(ok)).toBe(true);
+    for (const bad of ['0', '0.00', '-1', '5.123', '', 'abc', 5, null, undefined]) {
+      expect(isGiftUnitPriceAmount(bad)).toBe(false);
+    }
+  });
+
+  it('should show the gift at the chosen price and take the same total from the largest paid line', () => {
+    const result = presentGiftLines(
+      [line({ name: 'Set', unitPriceGross: 64.99 }), gift({ giftUnitPriceGross: 5 })],
+      'custom-price',
+      false,
+    );
+    expect(result.lines.find((l) => l.name === 'Gift')?.unitPriceGross).toBe(5);
+    expect(result.lines.find((l) => l.name === 'Set')?.unitPriceGross).toBeCloseTo(59.99);
+    expect(total(result.lines)).toBe(6499);
+    expect(result.appliedForm).toBe('custom-price');
+    expect(result.notes).toEqual([]);
+  });
+
+  it('should multiply the amount by the gift quantity and split the donor line', () => {
+    const result = presentGiftLines(
+      [line({ name: 'Set', quantity: 3, unitPriceGross: 10 }), gift({ quantity: 2, giftUnitPriceGross: 2.5 })],
+      'custom-price',
+      false,
+    );
+    const gifts = result.lines.filter((l) => l.name === 'Gift');
+    expect(gifts).toHaveLength(1);
+    expect(gifts[0].quantity).toBe(2);
+    expect(gifts[0].unitPriceGross).toBe(2.5);
+    // 5.00 taken from 30.00: 25.00 over 3 units does not divide, so it splits.
+    expect(result.lines.filter((l) => l.name === 'Set')).toHaveLength(2);
+    expect(total(result.lines)).toBe(3000);
+  });
+
+  it('should take it from the most expensive line whatever its rate, and behave as technical-cent at 0.01', () => {
+    const lines = [
+      line({ name: 'Small', unitPriceGross: 20, taxRate: '23' }),
+      line({ name: 'Big', unitPriceGross: 80, taxRate: '5' }),
+      gift({ taxRate: '8' }),
+    ];
+    const custom = presentGiftLines(
+      lines.map((l) => (l.name === 'Gift' ? { ...l, giftUnitPriceGross: 0.01 } : l)),
+      'custom-price',
+      false,
+    );
+    const cent = presentGiftLines(lines, 'technical-cent', false);
+    const prices = (r: typeof cent) => r.lines.map((l) => [l.name, l.quantity, l.unitPriceGross]);
+    expect(prices(custom)).toEqual(prices(cent));
+  });
+
+  it('should name why and fall back when no paid line can absorb it', () => {
+    const result = presentGiftLines(
+      [line({ unitPriceGross: 10 }), gift({ giftUnitPriceGross: 10, referenceUnitPriceGross: 10 })],
+      'custom-price',
+      false,
+    );
+    expect(result.notes).toContain('custom-price-no-donor');
+    expect(total(result.lines)).toBe(1000);
+  });
+
+  it('should not let the donor drop below a minor unit per unit', () => {
+    const result = presentGiftLines(
+      [line({ unitPriceGross: 10 }), gift({ giftUnitPriceGross: 9.99 })],
+      'custom-price',
+      false,
+    );
+    expect(result.notes).not.toContain('custom-price-no-donor');
+    expect(result.lines.find((l) => l.name === 'Item')?.unitPriceGross).toBeCloseTo(0.01);
+    expect(total(result.lines)).toBe(1000);
+  });
+
+  it('should note an unusable amount and apply technical-cent instead', () => {
+    const result = presentGiftLines(
+      [line({ unitPriceGross: 10 }), gift()],
+      'custom-price',
+      false,
+    );
+    expect(result.notes).toContain('custom-price-invalid');
+    expect(result.lines.find((l) => l.name === 'Gift')?.unitPriceGross).toBeCloseTo(0.01);
+  });
+
+  describe('precedence', () => {
+    it('should carry the amount of the level that wins', () => {
+      expect(
+        resolveGiftDocumentForm('custom-price', 'custom-price', 'omit', { line: '3', connection: '4' }),
+      ).toEqual({ form: 'custom-price', source: 'rule', unitPrice: '3' });
+      expect(
+        resolveGiftDocumentForm(undefined, 'custom-price', 'custom-price', { connection: '4', global: '5' }),
+      ).toEqual({ form: 'custom-price', source: 'connection', unitPrice: '4' });
+      expect(
+        resolveGiftDocumentForm(undefined, undefined, 'custom-price', { global: '5.5' }),
+      ).toEqual({ form: 'custom-price', source: 'default', unitPrice: '5.5' });
+    });
+
+    it('should read a level naming custom-price without a usable amount as absent, never borrowing a less specific amount', () => {
+      expect(
+        resolveGiftDocumentForm('custom-price', 'priced-in', undefined, { line: '0', connection: '9' }),
+      ).toEqual({ form: 'priced-in', source: 'connection' });
+      expect(
+        resolveGiftDocumentForm(undefined, 'custom-price', 'custom-price', { global: '5' }),
+      ).toEqual({ form: 'custom-price', source: 'default', unitPrice: '5' });
+      expect(resolveGiftDocumentForm('custom-price', undefined, undefined)).toEqual({
+        form: 'technical-cent',
+        source: 'default',
+      });
+    });
+
+    it('should hand a mapper the form and the amount as a number', () => {
+      expect(
+        resolveGiftPresentationFields(undefined, undefined, {
+          giftConnectionForm: 'custom-price',
+          giftConnectionUnitPrice: '4.20',
+        }),
+      ).toEqual({ giftForm: 'custom-price', giftUnitPriceGross: 4.2 });
+      expect(resolveGiftPresentationFields('omit', undefined, {})).toEqual({ giftForm: 'omit' });
+    });
+  });
+
+  describe('connection config', () => {
+    it('should read and validate the amount', () => {
+      const config = { giftOnDocuments: { form: 'custom-price', unitPrice: '4.5' } };
+      expect(readGiftConnectionUnitPrice(config)).toBe('4.5');
+      expect(readGiftConnectionUnitPrice({ giftOnDocuments: { unitPrice: '0' } })).toBeUndefined();
+      expect(readGiftDocumentSettings(config, 'omit', '7')).toEqual({
+        giftConnectionForm: 'custom-price',
+        giftConnectionUnitPrice: '4.5',
+        giftGlobalForm: 'omit',
+        giftGlobalUnitPrice: '7',
+      });
+      expect(validateGiftOnDocumentsShape(config)).toEqual([]);
+      expect(validateGiftOnDocumentsShape({ form: 'custom-price' })).toHaveLength(1);
+      expect(validateGiftOnDocumentsShape({ form: 'custom-price', unitPrice: '1.234' })).toHaveLength(2);
+      expect(validateGiftOnDocumentsShape({ form: 'omit', unitPrice: 'x' })).toHaveLength(1);
     });
   });
 });

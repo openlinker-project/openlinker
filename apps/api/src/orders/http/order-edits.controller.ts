@@ -196,6 +196,8 @@ export class OrderEditsController {
           variantId: dto.variantId,
           quantity: dto.quantity,
           ...(dto.documentForm !== undefined && { documentForm: dto.documentForm }),
+          ...(dto.documentForm === 'custom-price' &&
+            dto.documentUnitPrice !== undefined && { documentUnitPrice: dto.documentUnitPrice }),
         })
       );
     } catch (error) {

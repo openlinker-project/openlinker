@@ -22,7 +22,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
-import { GiftDocumentFormField, GiftDocumentFormChoiceValues, type GiftDocumentFormChoice } from '../../gift-documents';
+import { GiftDocumentFormField, GiftFormPickerValues, type GiftDocumentFormChoice } from '../../gift-documents';
 import { Button } from '../../../shared/ui/button';
 import {
   DropdownMenu,
@@ -47,7 +47,7 @@ import { BundleHistory } from './bundle-history';
 import { BundleProductPicker } from './bundle-product-picker';
 
 function isGiftDocumentFormChoice(value: string): value is GiftDocumentFormChoice {
-  return (GiftDocumentFormChoiceValues as readonly string[]).includes(value);
+  return (GiftFormPickerValues as readonly string[]).includes(value);
 }
 
 export interface BundleFormSeedComponent {

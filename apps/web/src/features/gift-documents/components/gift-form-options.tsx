@@ -12,13 +12,14 @@
 import type { ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { GiftDocumentFormChoiceValues, type GiftDocumentFormChoice } from '../lib/gift-lines';
+import { GiftFormPickerValues, type GiftDocumentFormChoice } from '../lib/gift-lines';
 import { useGiftFormLabels } from '../lib/use-gift-form-labels';
 
 export type GiftFormOptionValue = GiftDocumentFormChoice | 'inherit';
 
 const OPTION_TEST_ID: Record<GiftDocumentFormChoice, string> = {
   'technical-cent': 'doc-gift-set-option-grosz',
+  'custom-price': 'doc-gift-set-option-custom-price',
   'priced-in': 'doc-gift-set-option-priced-in',
   'show-zero': 'doc-gift-set-option-zero',
   omit: 'doc-gift-set-option-omit',
@@ -92,7 +93,7 @@ export function GiftFormOptions({
           <p className="gift-form-option__desc">{copy.connection.inheritDescription}</p>
         </li>
       ) : null}
-      {GiftDocumentFormChoiceValues.map((form) => {
+      {GiftFormPickerValues.map((form) => {
         const unavailable = form === 'show-zero' && !zeroAvailable;
         const isDefault = !withInherit && form === 'technical-cent';
         return (

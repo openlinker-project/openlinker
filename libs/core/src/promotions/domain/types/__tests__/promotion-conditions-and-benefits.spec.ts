@@ -96,10 +96,22 @@ describe('promotion benefits', () => {
   it('should carry the same document forms as the order line gift', () => {
     expect([...PromotionGiftDocumentFormValues]).toEqual([
       'technical-cent',
+      'custom-price',
       'priced-in',
       'show-zero',
       'omit',
     ]);
+  });
+
+  it('should require a valid amount with custom-price and refuse one without it', () => {
+    const custom = { ...GIFT, documentForm: 'custom-price' };
+    expect(isPromotionBenefit({ ...custom, documentUnitPrice: '4.50' })).toBe(true);
+    expect(isPromotionBenefit(custom)).toBe(false);
+    for (const bad of ['0', '0.00', '-1', '1.234', 'x', 5]) {
+      expect(isPromotionBenefit({ ...custom, documentUnitPrice: bad })).toBe(false);
+    }
+    expect(isPromotionBenefit({ ...GIFT, documentForm: 'omit', documentUnitPrice: '4' })).toBe(false);
+    expect(isPromotionBenefit({ ...GIFT, documentUnitPrice: '4' })).toBe(false);
   });
 
   it('should accept a well-formed free gift, with or without a form and per-unit block', () => {

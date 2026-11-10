@@ -42,6 +42,11 @@
     "title": "Przykład"
   },
   "forms": {
+    "customPrice": {
+      "description": "Gratis jest pokazany w wybranej przez Ciebie cenie, a ta sama kwota jest zdjęta z najdroższej płatnej pozycji. Suma się nie zmienia.",
+      "label": "Wybrana cena, zdjęta z najdroższej płatnej pozycji",
+      "short": "Wybrana cena, z najdroższej"
+    },
     "omit": {
       "description": "Gratisu nie ma na dokumencie. Może to zostać uznane za darowiznę, zapytaj księgowego.",
       "label": "Pominięty",

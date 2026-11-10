@@ -41,6 +41,10 @@ export class PromotionGrantOrmEntity {
   @Column({ type: 'varchar', length: 32, nullable: true })
   documentForm!: string | null;
 
+  /** The `custom-price` amount frozen with the form; NULL for every other form. */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  documentUnitPrice!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

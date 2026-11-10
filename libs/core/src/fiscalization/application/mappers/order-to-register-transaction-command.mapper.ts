@@ -36,6 +36,7 @@ import {
   presentBundleComponents,
   type BundleDocumentPresentation,
   resolveGiftDocumentForm,
+  resolveGiftPresentationFields,
   type GiftLineForm,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
@@ -102,8 +103,12 @@ export interface OrderToRegisterTransactionCommandInput {
    * (gifts spec section 8.3).
    */
   giftConnectionForm?: GiftLineForm;
+  /** The amount that goes with a `custom-price` connection form. */
+  giftConnectionUnitPrice?: string;
   /** The OpenLinker-wide default; absent is `technical-cent`. */
   giftGlobalForm?: GiftLineForm;
+  /** The amount that goes with a `custom-price` OpenLinker-wide default. */
+  giftGlobalUnitPrice?: string;
   /**
    * Ignored: a receipt is always composed as if the register refuses a
    * zero-value line (ADR-082 decision 7), whatever the provider declares.
@@ -154,6 +159,7 @@ export function toRegisterTransactionCommand(
   type WorkingLine = FiscalTransactionLine & {
     isGift?: boolean;
     giftForm?: GiftLineForm;
+    giftUnitPriceGross?: number;
     itemId?: string;
     referenceUnitPriceGross?: number;
   };
@@ -161,13 +167,7 @@ export function toRegisterTransactionCommand(
     order.items.map((item) => ({
       ...toFiscalLine(item, order.id),
       isGift: item.gift !== undefined,
-      ...(item.gift !== undefined && {
-        giftForm: resolveGiftDocumentForm(
-          item.gift.documentForm,
-          input.giftConnectionForm,
-          input.giftGlobalForm,
-        ).form,
-      }),
+      ...(item.gift !== undefined && resolveGiftPresentationFields(item.gift.documentForm, item.gift.documentUnitPrice, input)),
       // The receipt line carries no order line id; the item id is what the
       // bundle presentation keys on.
       itemId: item.id,
@@ -201,7 +201,10 @@ export function toRegisterTransactionCommand(
   // A receipt always refuses zero (`false`, never the provider's declaration).
   const presentedGifts = presentGiftLines(
     itemLines.lines,
-    resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm).form,
+    resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm, {
+      connection: input.giftConnectionUnitPrice,
+      global: input.giftGlobalUnitPrice,
+    }).form,
     false,
     { currency: order.totals.currency },
   );
@@ -225,6 +228,7 @@ export function toRegisterTransactionCommand(
       const line: WorkingLine = { ...presented };
       delete line.isGift;
       delete line.giftForm;
+      delete line.giftUnitPriceGross;
       delete line.itemId;
       delete line.referenceUnitPriceGross;
       return line as FiscalTransactionLine;

@@ -98,6 +98,7 @@ interface GiftLineSource {
   readonly productId: string;
   readonly variantId: string;
   readonly documentForm: string | null;
+  readonly documentUnitPrice?: string | null;
 }
 
 /** The promotion id inside an overlay key `ol-gift:{promotionId}:{lineId}`, or `null` for any other key. */
@@ -320,11 +321,14 @@ export class OrderGiftService implements IOrderGiftService {
       productId: grant.productId,
       variantId: grant.variantId,
       documentForm: grant.documentForm,
+      documentUnitPrice: grant.documentUnitPrice ?? null,
     };
     const gift: LineGift = {
       source: 'ol-rule',
       ruleRef: grant.promotion.id,
       ...(isGiftDocumentForm(action.documentForm) && { documentForm: action.documentForm }),
+      ...(action.documentForm === 'custom-price' &&
+        action.documentUnitPrice != null && { documentUnitPrice: action.documentUnitPrice }),
     };
     return {
       changeId: grant.promotion.id,

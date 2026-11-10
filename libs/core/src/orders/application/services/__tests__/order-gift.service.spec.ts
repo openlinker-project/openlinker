@@ -311,6 +311,24 @@ describe('OrderGiftService', () => {
     expect(call.addedLines?.[olGiftLineKey('promo-1', '1')].gift).not.toHaveProperty('documentForm');
   });
 
+  it.each([
+    ['custom-price', '4.50', { documentForm: 'custom-price', documentUnitPrice: '4.50' }],
+    ['omit', '9', { documentForm: 'omit' }],
+  ])('should carry the amount only for custom-price (%s)', async (form, amount, expected) => {
+    promotions.apply.mockResolvedValue({
+      outcomes: [],
+      lineGrants: [lineGrant({ documentForm: form, documentUnitPrice: amount })],
+      promotions: [makePromotion()],
+    });
+
+    await apply(makeOrder());
+
+    const call = (orderRecords.applyOrderEdit.mock.calls as [ApplyOrderEditInput][])[0][0];
+    const gift = call.addedLines?.[olGiftLineKey('promo-1', '1')].gift;
+    expect(gift).toMatchObject(expected);
+    if (form !== 'custom-price') expect(gift).not.toHaveProperty('documentUnitPrice');
+  });
+
   it('should add nothing once the order is past routing or mirroring', async () => {
     const result = await apply(makeOrder(), null as never, { allowNewGrants: false });
 

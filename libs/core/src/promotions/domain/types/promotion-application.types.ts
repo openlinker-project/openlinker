@@ -46,6 +46,8 @@ export interface PromotionGrant {
   readonly productId: string;
   readonly variantId: string;
   readonly documentForm: string | null;
+  /** The amount that goes with `documentForm: 'custom-price'`; frozen with the form. */
+  readonly documentUnitPrice?: string | null;
   readonly createdAt: Date;
 }
 

@@ -99,6 +99,7 @@ describe('PromotionApplicationService', () => {
       productId: 'p-gift',
       variantId: 'v-gift',
       documentForm: 'technical-cent',
+      documentUnitPrice: null,
     });
     expect(result.lineGrants).toEqual([
       expect.objectContaining({ origin: 'new', quantity: 1, variantId: 'v-gift' }),
@@ -106,6 +107,21 @@ describe('PromotionApplicationService', () => {
     expect(log.append).toHaveBeenCalledWith([
       expect.objectContaining({ promotionId: 'p1', outcome: 'applied', quantity: 1 }),
     ]);
+  });
+
+  it('should freeze the custom-price amount with the form and hand it back on the line', async () => {
+    const customGift = { ...GIFT, documentForm: 'custom-price' as const, documentUnitPrice: '4.50' };
+    promotions.findAllOrdered.mockResolvedValue([
+      new Promotion('p1', 'Free mug', true, 1, CREATED, null,
+        [{ field: 'containsProduct', op: 'eq', value: 'p-book' }], customGift, true,
+        { unitCap: null, customerLimit: null }, 'hash', CREATED, CREATED),
+    ]);
+    const result = await service.apply(baseInput());
+
+    expect(ledger.recordGrant).toHaveBeenCalledWith(
+      expect.objectContaining({ documentForm: 'custom-price', documentUnitPrice: '4.50' }),
+    );
+    expect(result.lineGrants[0]).toMatchObject({ documentForm: 'custom-price', documentUnitPrice: '4.50' });
   });
 
   it('should give nothing a second time when the line is already on the order (re-ingestion)', async () => {

@@ -53,6 +53,8 @@ export interface EditOrderAddGiftInput extends EditOrderBase {
   readonly quantity: number;
   /** Absent means "as in settings" (gifts spec 8.3). */
   readonly documentForm?: GiftDocumentForm;
+  /** Gross unit price per gift unit; meaningful only with `custom-price`. */
+  readonly documentUnitPrice?: string;
 }
 
 /** What adding a gift by hand did beyond the overlay (#3940). */

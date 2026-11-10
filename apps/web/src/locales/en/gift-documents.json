@@ -42,6 +42,11 @@
     "title": "Example"
   },
   "forms": {
+    "customPrice": {
+      "description": "The gift is shown at a price you choose; the same amount is taken off the most expensive paid item. The total does not change.",
+      "label": "A price you choose, taken from the most expensive paid item",
+      "short": "Chosen price, from the most expensive"
+    },
     "omit": {
       "description": "The gift is not on the document. It may be treated as a free transfer, ask your accountant.",
       "label": "Omitted",

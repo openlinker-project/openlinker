@@ -183,14 +183,35 @@ export interface LineGift {
    * mappers.
    */
   documentForm?: GiftDocumentForm;
+  /**
+   * The gross unit price, per gift unit in the order's currency, a
+   * `custom-price` gift shows at on a document. A decimal string: positive, at
+   * most two decimals. Present only together with `documentForm: 'custom-price'`.
+   */
+  documentUnitPrice?: string;
 }
 
-/** The four gift forms on a document (gifts spec section 8.2). */
-export const GiftDocumentFormValues = ['technical-cent', 'priced-in', 'show-zero', 'omit'] as const;
+/** The gift forms on a document (gifts spec section 8.2). */
+export const GiftDocumentFormValues = [
+  'technical-cent',
+  'custom-price',
+  'priced-in',
+  'show-zero',
+  'omit',
+] as const;
 export type GiftDocumentForm = (typeof GiftDocumentFormValues)[number];
 
 export function isGiftDocumentForm(value: unknown): value is GiftDocumentForm {
   return typeof value === 'string' && (GiftDocumentFormValues as readonly string[]).includes(value);
+}
+
+/**
+ * A `custom-price` amount: positive decimal string, at most two decimals.
+ * Same rule as `isGiftUnitPriceAmount` in sales-documents, restated here
+ * because this vocabulary file imports no sibling context.
+ */
+export function isGiftDocumentUnitPrice(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+(\.\d{1,2})?$/.test(value) && Number(value) > 0;
 }
 
 /**
@@ -206,7 +227,15 @@ export function readLineGift(value: unknown): LineGift | undefined {
   const gift: LineGift = { source: raw.source as GiftSource };
   if (typeof raw.ruleRef === 'string') gift.ruleRef = raw.ruleRef;
   // An unrecognised form reads as absent ("as in settings"), never as a guess.
-  if (isGiftDocumentForm(raw.documentForm)) gift.documentForm = raw.documentForm;
+  // A `custom-price` without a usable amount cannot be applied: absent too.
+  if (isGiftDocumentForm(raw.documentForm)) {
+    if (raw.documentForm !== 'custom-price') {
+      gift.documentForm = raw.documentForm;
+    } else if (isGiftDocumentUnitPrice(raw.documentUnitPrice)) {
+      gift.documentForm = raw.documentForm;
+      gift.documentUnitPrice = raw.documentUnitPrice;
+    }
+  }
   return gift;
 }
 

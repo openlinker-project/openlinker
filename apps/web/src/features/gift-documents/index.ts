@@ -14,6 +14,7 @@ export { resolveGiftDocumentForm, type GiftFormSource, type ResolvedGiftForm } f
 export { GiftDocumentFormField } from './components/gift-document-form-field';
 export {
   GiftDocumentFormChoiceValues,
+  GiftFormPickerValues,
   isGiftLineForm,
   type GiftDocumentFormChoice,
   type GiftLineForm,

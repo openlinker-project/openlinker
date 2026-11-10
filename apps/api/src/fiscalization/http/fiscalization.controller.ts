@@ -180,7 +180,7 @@ export class FiscalizationController {
   private async resolveGiftSettings(sourceConnectionId: string): Promise<GiftDocumentSettings> {
     const globalForm = await this.salesDocumentSettings
       .getGiftDocumentForm()
-      .then((setting) => setting.form)
+      .then((setting) => ({ form: setting.form, unitPrice: setting.unitPrice }))
       .catch((error: unknown) => {
         // Not defaulted: registering at the code default could print a 0.01 gift
         // the operator had set to be omitted, and a fiscal registration cannot be
@@ -196,14 +196,14 @@ export class FiscalizationController {
       });
     try {
       const source = await this.connectionPort.get(sourceConnectionId);
-      return readGiftDocumentSettings(source.config, globalForm);
+      return readGiftDocumentSettings(source.config, globalForm.form, globalForm.unitPrice);
     } catch (error) {
       this.logger.debug(
         `Gift settings lookup failed for connection ${sourceConnectionId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return readGiftDocumentSettings(undefined, globalForm);
+      return readGiftDocumentSettings(undefined, globalForm.form, globalForm.unitPrice);
     }
   }
 

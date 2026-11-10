@@ -108,7 +108,11 @@ export class SalesDocumentSettingsController {
   ): Promise<SalesDocumentSettingsResponseDto> {
     try {
       return SalesDocumentSettingsResponseDto.fromSetting(
-        await this.settings.setGiftDocumentForm(dto.giftDocumentForm, user?.id ?? null),
+        await this.settings.setGiftDocumentForm(
+          dto.giftDocumentForm,
+          user?.id ?? null,
+          dto.giftDocumentUnitPrice ?? null,
+        ),
       );
     } catch (error) {
       if (error instanceof InvalidGiftDocumentFormError) {

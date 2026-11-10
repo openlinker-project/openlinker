@@ -1062,6 +1062,36 @@ describe('toIssueInvoiceCommand - gift lines (#3930)', () => {
     expect(total(cmd.lines)).toBe(10000);
   });
 
+  it('should show the gift at the chosen price from the level that names it, total unchanged', () => {
+    const own = toIssueInvoiceCommand({
+      order: makeOrder({
+        items: [
+          makeItem({ id: 'i1', price: 100, taxRate: '23' }),
+          makeItem({
+            id: 'i2', productId: 'prod-2', price: 0, name: 'Spoon', taxRate: '23',
+            gift: { source: 'operator', documentForm: 'custom-price', documentUnitPrice: '4.50' },
+          }),
+        ],
+      }),
+      connectionId: 'c',
+      giftConnectionForm: 'custom-price',
+      giftConnectionUnitPrice: '7',
+    });
+    expect(own.lines[1].unitPriceGross).toBe(4.5);
+    expect(total(own.lines)).toBe(10000);
+
+    const connection = toIssueInvoiceCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      giftConnectionForm: 'custom-price',
+      giftConnectionUnitPrice: '7',
+    });
+    expect(connection.lines[1].unitPriceGross).toBe(7);
+    expect(connection.lines[0].unitPriceGross).toBe(93);
+    expect(connection.lines[1]).not.toHaveProperty('giftUnitPriceGross');
+    expect(total(connection.lines)).toBe(10000);
+  });
+
   it('should default to a technical cent when no setting is saved', () => {
     const cmd = toIssueInvoiceCommand({ order: giftOrder(), connectionId: 'c' });
     expect(cmd.lines).toHaveLength(2);

@@ -15,6 +15,7 @@ import { InvalidGiftDocumentFormError } from '../../domain/exceptions/invalid-gi
 import {
   DEFAULT_GIFT_LINE_FORM,
   GiftDocumentFormChoiceValues,
+  isGiftUnitPriceAmount,
   type GiftDocumentFormChoice,
 } from '../../domain/types/gift-lines.types';
 import { SALES_DOCUMENT_SETTING_REPOSITORY_TOKEN } from '../../sales-documents.tokens';
@@ -39,26 +40,46 @@ export class SalesDocumentSettingsService implements ISalesDocumentSettingsServi
   async getGiftDocumentForm(): Promise<GiftDocumentFormSetting> {
     const row = await this.repository.findSetting();
     const form = narrow(row?.giftDocumentForm ?? null);
-    if (row === null || form === null) {
+    const unitPrice = isGiftUnitPriceAmount(row?.giftDocumentUnitPrice)
+      ? row.giftDocumentUnitPrice
+      : null;
+    // A saved `custom-price` whose amount is unusable resolves to the code default.
+    if (row === null || form === null || (form === 'custom-price' && unitPrice === null)) {
       return {
         form: DEFAULT_GIFT_LINE_FORM as GiftDocumentFormChoice,
+        unitPrice: null,
         source: 'default',
         updatedAt: null,
         updatedBy: null,
       };
     }
-    return { form, source: 'setting', updatedAt: row.updatedAt, updatedBy: row.updatedBy };
+    return {
+      form,
+      unitPrice: form === 'custom-price' ? unitPrice : null,
+      source: 'setting',
+      updatedAt: row.updatedAt,
+      updatedBy: row.updatedBy,
+    };
   }
 
   async setGiftDocumentForm(
     form: string,
     updatedBy: string | null,
+    unitPrice?: string | null,
   ): Promise<GiftDocumentFormSetting> {
     const choice = narrow(form);
     if (choice === null) throw new InvalidGiftDocumentFormError(form);
-    const saved = await this.repository.upsertGiftDocumentForm(choice, updatedBy);
+    if (choice === 'custom-price' && !isGiftUnitPriceAmount(unitPrice)) {
+      throw new InvalidGiftDocumentFormError(
+        form,
+        'custom-price needs a positive amount with at most 2 decimals',
+      );
+    }
+    const amount = choice === 'custom-price' ? (unitPrice as string) : null;
+    const saved = await this.repository.upsertGiftDocumentForm(choice, amount, updatedBy);
     return {
       form: choice,
+      unitPrice: amount,
       source: 'setting',
       updatedAt: saved.updatedAt,
       updatedBy: saved.updatedBy,

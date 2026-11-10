@@ -124,6 +124,7 @@ export class PromotionApplicationService implements IPromotionApplicationService
           if (outcome.applied && !outcome.alreadyApplied) {
             const benefit = promotion.benefit;
             const documentForm = benefit.documentForm ?? null;
+            const documentUnitPrice = benefit.documentUnitPrice ?? null;
             await this.ledger.recordGrant({
               promotionId: promotion.id,
               internalOrderId: orderId,
@@ -132,12 +133,14 @@ export class PromotionApplicationService implements IPromotionApplicationService
               productId: benefit.productId,
               variantId: benefit.variantId,
               documentForm,
+              documentUnitPrice,
             });
             lineGrants.push({
               promotion,
               productId: benefit.productId,
               variantId: benefit.variantId,
               documentForm,
+              documentUnitPrice,
               quantity: outcome.quantity,
               origin: 'new',
             });
@@ -150,6 +153,7 @@ export class PromotionApplicationService implements IPromotionApplicationService
                 productId: grant.productId,
                 variantId: grant.variantId,
                 documentForm: grant.documentForm,
+                documentUnitPrice: grant.documentUnitPrice ?? null,
                 quantity: grant.quantity,
                 origin: 'self-heal',
               });

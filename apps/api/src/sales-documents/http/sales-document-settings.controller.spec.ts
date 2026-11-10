@@ -23,6 +23,7 @@ describe('SalesDocumentSettingsController', () => {
   it('should report the default and its source when nothing is saved', async () => {
     settings.getGiftDocumentForm.mockResolvedValue({
       form: 'technical-cent',
+      unitPrice: null,
       source: 'default',
       updatedAt: null,
       updatedBy: null,
@@ -38,13 +39,30 @@ describe('SalesDocumentSettingsController', () => {
     const updatedAt = new Date('2026-11-05T10:00:00Z');
     settings.setGiftDocumentForm.mockResolvedValue({
       form: 'priced-in',
+      unitPrice: null,
       source: 'setting',
       updatedAt,
       updatedBy: 'u1',
     });
     const result = await controller.set({ giftDocumentForm: 'priced-in' }, { id: 'u1' } as never);
-    expect(settings.setGiftDocumentForm).toHaveBeenCalledWith('priced-in', 'u1');
+    expect(settings.setGiftDocumentForm).toHaveBeenCalledWith('priced-in', 'u1', null);
     expect(result.giftDocumentFormSource).toBe('setting');
+  });
+
+  it('should pass the custom-price amount through and report it', async () => {
+    settings.setGiftDocumentForm.mockResolvedValue({
+      form: 'custom-price',
+      unitPrice: '4.50',
+      source: 'setting',
+      updatedAt: new Date('2026-11-05T10:00:00Z'),
+      updatedBy: 'u1',
+    });
+    const result = await controller.set(
+      { giftDocumentForm: 'custom-price', giftDocumentUnitPrice: '4.50' },
+      { id: 'u1' } as never
+    );
+    expect(settings.setGiftDocumentForm).toHaveBeenCalledWith('custom-price', 'u1', '4.50');
+    expect(result.giftDocumentUnitPrice).toBe('4.50');
   });
 
   it('should answer 400 for a form the service refuses', async () => {

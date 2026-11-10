@@ -35,6 +35,7 @@ import {
   presentBundleComponents,
   type BundleDocumentPresentation,
   resolveGiftDocumentForm,
+  resolveGiftPresentationFields,
   type GiftLineForm,
   type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
@@ -101,8 +102,12 @@ export interface OrderToIssueInvoiceCommandInput {
    * (gifts spec section 8.3).
    */
   giftConnectionForm?: GiftLineForm;
+  /** The amount that goes with a `custom-price` connection form. */
+  giftConnectionUnitPrice?: string;
   /** The OpenLinker-wide default; absent is `technical-cent`. */
   giftGlobalForm?: GiftLineForm;
+  /** The amount that goes with a `custom-price` OpenLinker-wide default. */
+  giftGlobalUnitPrice?: string;
   /**
    * The invoicing provider's `ZeroValueLineSupport` declaration as a plain
    * boolean (`readZeroValueLineSupport`), so this mapper stays pure. `undefined`
@@ -162,18 +167,12 @@ export function toIssueInvoiceCommand(
   // Gift lines are presented BEFORE delivery and discount reconciliation, so
   // the lines that follow see the amounts the document will really carry and the
   // total still equals what the buyer paid (#3930).
-  type WorkingLine = InvoiceLine & { isGift?: boolean; giftForm?: GiftLineForm; referenceUnitPriceGross?: number };
+  type WorkingLine = InvoiceLine & { isGift?: boolean; giftForm?: GiftLineForm; giftUnitPriceGross?: number; referenceUnitPriceGross?: number };
   const itemLines = presentBundleComponents<WorkingLine>(
     order.items.map((item) => ({
       ...toInvoiceLine(item, order.id),
       isGift: item.gift !== undefined,
-      ...(item.gift !== undefined && {
-        giftForm: resolveGiftDocumentForm(
-          item.gift.documentForm,
-          input.giftConnectionForm,
-          input.giftGlobalForm,
-        ).form,
-      }),
+      ...(item.gift !== undefined && resolveGiftPresentationFields(item.gift.documentForm, item.gift.documentUnitPrice, input)),
     })),
     (line) => line.orderLineId,
     input.bundleDocument,
@@ -202,7 +201,10 @@ export function toIssueInvoiceCommand(
   );
   const presentedGifts = presentGiftLines(
     itemLines.lines,
-    resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm).form,
+    resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm, {
+      connection: input.giftConnectionUnitPrice,
+      global: input.giftGlobalUnitPrice,
+    }).form,
     input.acceptsZeroValueLine,
     { currency: order.totals.currency },
   );
@@ -230,6 +232,7 @@ export function toIssueInvoiceCommand(
       const line: WorkingLine = { ...presented };
       delete line.isGift;
       delete line.giftForm;
+      delete line.giftUnitPriceGross;
       delete line.referenceUnitPriceGross;
       return line as InvoiceLine;
     },
