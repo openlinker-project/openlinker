@@ -1,9 +1,9 @@
 /**
- * Bundle history tab (#3624)
+ * Bundle history (#3624, restyled #3520)
  *
- * When the composition changed and what changed, newest first, with how many
- * open orders still ship an older composition. The version numbers are not
- * shown: an operator decides nothing by them, the freezing is automatic.
+ * Earlier versions of a bundle's composition, newest first, each with the
+ * number of open orders that still ship with it. Rendered inside a composer
+ * section, so it carries no card chrome of its own.
  *
  * @module apps/web/src/features/bundles/components
  */
@@ -32,34 +32,40 @@ export function BundleHistory({ entries, isLoading, isError }: BundleHistoryProp
   const { locale } = useLocale();
   const format = useFormat();
 
-  if (isLoading) return <p className="text-muted">{copy.form.saving}</p>;
+  if (isLoading) return <p className="pm-help">{copy.form.saving}</p>;
   if (isError || entries === undefined) return <p role="alert">{copy.form.loadFailed}</p>;
-  if (entries.length === 0) return <p className="text-muted">{copy.form.historyEmpty}</p>;
+  if (entries.length === 0) return <p className="pm-help">{copy.form.historyEmpty}</p>;
+
+  const openOlder = entries.filter((entry) => !entry.current).reduce((sum, entry) => sum + entry.openOrders, 0);
 
   return (
-    <section className="detail-card">
-      <div className="detail-card__head">
-        <h3 className="detail-card__title">{copy.form.historyTitle}</h3>
-      </div>
-      <ul data-testid="bundle-form-history" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+    <>
+      <ul className="pm-log" data-testid="bundle-form-history">
         {entries.map((entry, index) => {
           const isFirst = index === entries.length - 1;
           const date = format.date(entry.createdAt);
           return (
             <li key={entry.version} data-testid={`bundle-form-history-entry-${String(entry.version)}`}>
-              <p>
-                {interpolate(isFirst ? copy.form.historyCreated : copy.form.historyEntryChanged, { date })}
-              </p>
-              <p className="text-muted">{describeComponents(entry)}</p>
+              <span>
+                <b>{interpolate(isFirst ? copy.form.historyCreated : copy.form.historyEntryChanged, { date })}</b>
+                <span className="text-muted">{describeComponents(entry)}</span>
+              </span>
               {entry.openOrders > 0 ? (
-                <p className="text-muted">
-                  {formatPlural(entry.openOrders, copy.form.historyOpenOrders, locale)}
-                </p>
+                <span className="cx-tag cx-tag--quiet">{formatPlural(entry.openOrders, copy.form.historyOpenOrders, locale)}</span>
               ) : null}
             </li>
           );
         })}
       </ul>
-    </section>
+      {openOlder > 0 ? (
+        <div className="cx-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16v.5" />
+          </svg>
+          <p>{formatPlural(openOlder, copy.form.openOrdersNote, locale)}</p>
+        </div>
+      ) : null}
+    </>
   );
 }
