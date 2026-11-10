@@ -16,6 +16,7 @@ import {
   OrderAlreadyHasInvoiceException,
   FiscalRegistrationContendedException,
   MissingFiscalTaxRateException,
+  FiscalRegistrationAttemptClosedException,
 } from '@openlinker/core/fiscalization';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
@@ -220,6 +221,22 @@ describe('FiscalizationRegisterHandler', () => {
       );
       const result = await handler.execute(makeJob(makePayload()));
       expect(result).toEqual({ outcome: 'business_failure' });
+    });
+
+    it('should end terminally, never retry, when a job enqueued before #3960 hits a refused attempt', async () => {
+      // A job queued under the refused attempt's key before #3960 used to
+      // re-claim the row and re-send it. Now `register` refuses without sending,
+      // and that must read as a terminal refusal, not a plain `ok` and not a
+      // retry that can never change a persisted refusal.
+      fiscalRegistrations.register.mockRejectedValue(
+        new FiscalRegistrationAttemptClosedException('order-1', 'rec-0'),
+      );
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rec-0'));
     });
 
     it('MissingIdempotencyKeyException is terminal', async () => {

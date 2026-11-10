@@ -12,6 +12,8 @@
  *
  * @module libs/core/src/fiscalization/domain/types
  */
+import { withAttemptSuffix } from '@openlinker/core/sales-documents';
+import type { DocumentRequestOutcome } from '@openlinker/core/sales-documents';
 
 /**
  * The exactly-once key one connection registering one order is held under.
@@ -30,8 +32,9 @@
 export function fiscalRegistrationIdempotencyKey(
   connectionId: string,
   orderId: string,
+  attempt = 0,
 ): string {
-  return `fiscal:${connectionId}:${orderId}`;
+  return withAttemptSuffix(`fiscal:${connectionId}:${orderId}`, attempt);
 }
 
 /**
@@ -55,6 +58,26 @@ export interface FiscalRegistrationRequestAccepted {
   /** The enqueued (or already-enqueued) `fiscalization.register` job. */
   jobId: string;
   /**
+   * What this request did (#3960). Never a no-op: a request that would change
+   * nothing is refused instead of being answered with one of these.
+   *
+   * ADVISORY under concurrency. The job lookup and `schedule` run outside the
+   * per-order lock, so two simultaneous requests can both read "no job yet" and
+   * both answer `new-attempt` while the job row's unique key leaves exactly one
+   * job. Correctness does not rest on this field: the write path links the
+   * attempt under the lock and the job key dedups the work. Taking the lock
+   * here would serialise every request behind a provider round trip to make a
+   * label exact, so it is documented instead.
+   */
+  outcome: DocumentRequestOutcome;
+  /** 0-based attempt the job registers (#3960). `1` is the second attempt. */
+  attempt: number;
+  /** The refused attempt this one follows, or `null` for a first attempt (#3960). */
+  previousAttemptId: string | null;
+  /**
+   * @deprecated since #3960, read `outcome === 'redriven'`. Kept one release
+   * for callers built against the old response.
+   *
    * True when this request re-drove a job that had exhausted its retries and was
    * left `dead`, rather than enqueueing or joining a live one.
    *

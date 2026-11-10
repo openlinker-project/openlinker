@@ -91,6 +91,8 @@ import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
+import { OrderPaymentMarker } from '../../features/orders/components/order-payment-marker';
+import { PaymentWritebackBulkBar } from '../../features/orders/components/payment-writeback-bulk-bar';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { capSelectionPerSource } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
@@ -812,6 +814,8 @@ export function OrdersListPage(): ReactElement {
                   dropped on the Wave-2 merge, where #2350's badge claimed the
                   same one. The guide's composition note is the authority. */}
               <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
+              {/* #3963 - only on a row whose payment did not reach a shop. */}
+              <OrderPaymentMarker entries={order.paymentWriteback} />
               {h.reason ? (
                 <span className="orders-status-reason" title={h.reason}>
                   {h.reason}
@@ -1410,6 +1414,12 @@ export function OrdersListPage(): ReactElement {
         )
       ) : (
         <>
+          {/* #3963 - the actions that fix every order the filter shows. */}
+          {filterState.paymentNotSent ? (
+            <PaymentWritebackBulkBar
+              internalOrderIds={(query.data?.items ?? []).map((order) => order.internalOrderId)}
+            />
+          ) : null}
           <DataTable
             caption={copy.tableCaption}
             columns={visibleColumns}
@@ -1815,6 +1825,7 @@ export function OrdersListPage(): ReactElement {
                       compact
                     />
                     <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
+                    <OrderPaymentMarker entries={order.paymentWriteback} />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
                     </StatusBadge>

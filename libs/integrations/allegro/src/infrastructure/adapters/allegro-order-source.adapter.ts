@@ -200,6 +200,14 @@ export class AllegroOrderSourceAdapter
           return { outcome: 'applied' };
         }
         case 'delivered':
+        case 'paid': {
+          // #3963: a marketplace is where a payment comes FROM; it is the
+          // relay's origin and never a target of `paid`.
+          return {
+            outcome: 'unsupported',
+            detail: 'Allegro is the source of the payment; nothing to write back',
+          };
+        }
         case 'in-progress': {
           return {
             outcome: 'unsupported',

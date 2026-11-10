@@ -14,9 +14,11 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { UserRole } from '@openlinker/core/users';
 import {
+  AmbiguousProductMasterException,
   CONTENT_DRAFT_SERVICE_TOKEN,
   CONTENT_STATE_READER_SERVICE_TOKEN,
   CONTENT_SUGGESTION_SERVICE_TOKEN,
+  NoProductMasterAdapterException,
   type IContentDraftService,
   type IContentStateReaderService,
   type IContentSuggestionService,
@@ -169,6 +171,19 @@ describe('ContentController', () => {
       await expect(
         controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
       ).rejects.toBe(original);
+    });
+  });
+
+  describe('product master mapping (#4068)', () => {
+    it.each([
+      ['no ProductMaster claims the product', new NoProductMasterAdapterException('product-1', 'description')],
+      ['two ProductMasters claim the product', new AmbiguousProductMasterException('product-1', ['a', 'b'])],
+    ])('answers 422, not 500, when %s', async (_case, error) => {
+      drafts.publishDraft.mockRejectedValueOnce(error);
+
+      await expect(
+        controller.publish('product-1', { connectionId: null, fieldKey: 'description' })
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
 

@@ -47,6 +47,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import {
   AdapterCapabilityNotSupportedException,
+  ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
   CatalogProductNotFoundException,
   CategoryNotFoundException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -64,8 +65,10 @@ import {
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
+  IAttributeProjectionPreviewService,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
+  MasterCatalogConnectionNotConfiguredException,
   IOfferStatusReadService,
   IOfferStatusSyncService,
   IPublishedVariantsService,
@@ -133,6 +136,11 @@ import {
   ResolveCategoryBatchRequestDto,
   ResolveCategoryBatchResponseDto,
 } from './dto/resolve-category-batch.dto';
+import {
+  AttributeProjectionPreviewRequestDto,
+  AttributeProjectionPreviewResponseDto,
+  type AttributeProjectionPreviewEntryView,
+} from './dto/attribute-projection-preview.dto';
 import type { ResolveCategoryStreamLine } from './dto/resolve-category-stream.dto';
 import {
   RESOLVE_CATEGORY_STREAM_CONTENT_TYPE,
@@ -209,6 +217,8 @@ export class ListingsController {
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
     private readonly productVariantRepository: ProductVariantRepositoryPort,
+    @Inject(ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN)
+    private readonly attributeProjectionPreview: IAttributeProjectionPreviewService,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
     private readonly categoryResolution: ICategoryResolutionService,
     @Inject(OFFER_STATUS_READ_SERVICE_TOKEN)
@@ -963,6 +973,58 @@ export class ListingsController {
         // `getCapabilityAdapter('OfferManager')` gate). An adapter that simply
         // can't batch-match EANs no longer reaches here — the service degrades
         // it to per-variant `no-match` for manual category selection (ADR-025 §3).
+        throw new UnprocessableEntityException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Post('connections/:connectionId/attribute-projection/preview')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Preview the parameters attribute mappings and rules fill, per variant (#3995)',
+    description:
+      'Runs the same attribute projection an offer publish runs - mappings (#1038) and ' +
+      'operator rules (#1841) against the live category schema - for up to 200 variants, ' +
+      'without creating anything. The bulk offer wizard reads it to show rule-filled values ' +
+      'and to let them satisfy its required-parameter check. A value the operator sets on ' +
+      'the offer still wins over a rule at publish, by parameter id.',
+  })
+  @ApiResponse({ status: 200, type: AttributeProjectionPreviewResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Connection is not an OfferManager marketplace, or has no master catalogue connection.',
+  })
+  async previewAttributeProjection(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: AttributeProjectionPreviewRequestDto
+  ): Promise<AttributeProjectionPreviewResponseDto> {
+    try {
+      const { entries } = await this.attributeProjectionPreview.preview({
+        connectionId,
+        items: dto.items.map((item) => ({
+          internalVariantId: item.variantId,
+          categoryId: item.categoryId,
+          ...(item.ean ? { ean: item.ean } : {}),
+        })),
+      });
+      return {
+        entries: entries.map(
+          ({ internalVariantId, ...rest }): AttributeProjectionPreviewEntryView => ({
+            variantId: internalVariantId,
+            ...rest,
+          })
+        ),
+      };
+    } catch (error) {
+      if (
+        error instanceof AdapterCapabilityNotSupportedException ||
+        error instanceof MasterCatalogConnectionNotConfiguredException
+      ) {
         throw new UnprocessableEntityException(error.message);
       }
       throw error;
