@@ -11,6 +11,7 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InventoryMasterPort } from '@openlinker/core/inventory';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
+import type { ShopProductManagerPort } from '@openlinker/core/listings';
 import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
@@ -66,4 +67,11 @@ export interface IShopifyAdapterFactory {
     identifierMapping: IdentifierMappingPort,
     mappingConfig?: IMappingConfigService,
   ): OrderProcessorManagerPort;
+
+  /**
+   * The publish destination of one resolution (#3979): `ProductPublisher`
+   * plus its narrowed sub-capabilities (category provisioning and browse,
+   * attributes, currency, price-only updates).
+   */
+  createProductPublisher(resolution: ShopifyResolution, cache?: CachePort): ShopProductManagerPort;
 }

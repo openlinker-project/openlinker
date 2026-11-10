@@ -10,7 +10,8 @@
  * that delivers them (the #980 rule); ProductMaster arrived with #3975,
  * InventoryMaster with #3976, OrderSource with #3977 (with its scheduler
  * tasks: the orders poll, and the two returns passes, off by default) and
- * OrderProcessorManager with #3978. Inbound webhooks (#3981) register a
+ * OrderProcessorManager with #3978, ProductPublisher + CategoryProvisioner
+ * with #3979. Inbound webhooks (#3981) register a
  * decoder and a translator here and a provisioner in the module. Their rungs (`ModifiedProductLister`,
  * `BulkProductReader`, `ProductTaxRateReader`, `BulkInventoryReader`) are
  * guard-only (never in the manifest), narrowed off the dispatched adapter.
@@ -69,11 +70,17 @@ export const shopifyAdapterManifest: AdapterMetadata = {
     'InventoryMaster',
     'OrderSource',
     'OrderProcessorManager',
-    // Advertised-without-dispatch sub-capabilities of the order source, for
-    // host discovery only; resolved by narrowing the dispatched `OrderSource`
-    // adapter with their guards, never through `getCapabilityAdapter`.
+    'ProductPublisher',
+    // Dispatched to the same publisher instance (the Shoper shape); the publish
+    // builder narrows the `ProductPublisher` adapter, so that is what gates it.
+    'CategoryProvisioner',
+    // Advertised-without-dispatch sub-capabilities, for host discovery only;
+    // resolved by narrowing the dispatched adapter with their guards, never
+    // through `getCapabilityAdapter`.
     'ReturnSourceReader',
     'ReturnDecliner',
+    'ShopCategoryBrowser',
+    'ShopAttributeReader',
   ],
   // Stated rather than left to "every supported capability": `OrderSource` is
   // opt-in, because ingesting a shop's orders is polling load against the
@@ -81,6 +88,9 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // connection meant only as a catalogue and stock master must not start it.
   // `OrderProcessorManager` is opt-in for the same reason in reverse: it makes
   // the store receive every marketplace order (the Shoper precedent).
+  // `ProductPublisher` and `CategoryProvisioner` WRITE to the store, and a
+  // connection that is also the master would read its own publications back
+  // (A20), so they are opt-in and the publisher refuses a master connection.
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   // Shopify signs every webhook with the app client secret, which OpenLinker
   // can only store, never rotate (#3981).
@@ -184,6 +194,8 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
                 host.identifierMapping,
                 deps.mappingConfigService,
               ) as T,
+            ProductPublisher: async () => factory.createProductPublisher(await resolve(), host.cache) as T,
+            CategoryProvisioner: async () => factory.createProductPublisher(await resolve(), host.cache) as T,
           },
           SHOPIFY_BRAND,
         );
