@@ -1,109 +1,124 @@
 /**
- * GiftRuleLimitsSection (#3935, mockup `gifts-rule-detail` "Limity i dokumenty")
+ * PromotionLimitsSection (#3935, mockups "Limity i dokumenty")
  *
- * The limits and the document line an operator reaches for, with the options
- * most promotions never touch folded under "More options" and a one-line summary
- * of how they stand.
+ * The piece limit for the whole promotion, the most one customer can get, and
+ * how the gift looks on an invoice or receipt. The last is cards with a mini
+ * document each, because "0.01 taken from the most expensive item" means little
+ * until you see the total did not move.
  *
- * @module apps/web/src/features/gifts/components
+ * @module apps/web/src/features/promotions/components
  */
 import type { ReactElement } from 'react';
-import { interpolate, useMessages } from '../../../shared/i18n';
-import { DetailSection } from '../../../shared/ui/detail-section';
-import { FormField } from '../../../shared/ui/form-field';
-import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
+import { useMessages } from '../../../shared/i18n';
+import { ComposerSection } from '../../../shared/ui/composer-section';
+import { HelpHint } from '../../../shared/ui/help-hint';
 import { Input } from '../../../shared/ui/input';
-import { GiftDocumentFormField } from '../../gift-documents';
-import type { GiftRuleSectionProps } from './gift-rule-section.types';
+import {
+  GiftDocumentFormCards,
+  useGiftDocumentSettingsQuery,
+  type GiftDocumentCardValue,
+} from '../../gift-documents';
+import { PromotionField } from './promotion-field';
+import type { PromotionSectionProps } from './promotion-section.types';
 
-export function GiftRuleLimitsSection({ form, values, readOnly }: GiftRuleSectionProps): ReactElement {
-  const copy = useMessages('gifts');
+export interface PromotionLimitsSectionProps extends PromotionSectionProps {
+  /** "34 / 100 pcs" on a saved promotion; the new page says "optional". */
+  aside?: string;
+  /** Use the "once the limit is given out" help without the "resume" sentence. */
+  isNew?: boolean;
+  /** Where "Change the default" goes. */
+  settingsHref?: string;
+}
 
-  const moreSummary = [
-    values.doNotCombine ? copy.composer.summary.noStack : copy.composer.summary.combines,
-    values.skipIfPresent ? copy.detail.skipsPresent : copy.detail.givesAgain,
-    values.customerLimit.trim() === ''
-      ? copy.detail.noCustomerLimit
-      : interpolate(copy.detail.customerLimitN, { n: values.customerLimit.trim() }),
-  ].join(' · ');
-
+export function PromotionLimitsSection({
+  form,
+  values,
+  readOnly,
+  invalid,
+  riseIndex,
+  step,
+  aside,
+  isNew = false,
+  settingsHref,
+}: PromotionLimitsSectionProps): ReactElement {
+  const copy = useMessages('promotions').s.limits;
+  const settings = useGiftDocumentSettingsQuery();
+  const cardValue: GiftDocumentCardValue = values.documentForm === '' ? 'inherit' : values.documentForm;
   return (
-    <DetailSection title={copy.detail.limits}>
-      <fieldset className="gift-section" disabled={readOnly}>
-        <FormField label={copy.composer.unitCap} name="gift-unit-cap">
+    <ComposerSection
+      step={step}
+      title={copy.title}
+      aside={aside ?? copy.aside}
+      riseIndex={riseIndex}
+      data-testid="promotion-limits-section"
+    >
+      <fieldset className="pm-fieldset" disabled={readOnly}>
+        <PromotionField
+          label={copy.unitCap}
+          htmlFor="promotion-unit-cap"
+          hint={<HelpHint guide="g-limit" label={copy.unitCapLabel} />}
+          description={isNew ? copy.unitCapHelpNew : copy.unitCapHelp}
+          invalid={invalid?.has('unit-cap') === true}
+          error={copy.unitCapError}
+        >
           <Input
-            type="number"
-            min={1}
+            id="promotion-unit-cap"
+            className="mono tabular pm-narrow"
+            inputMode="numeric"
+            placeholder={copy.unitCapPlaceholder}
             value={values.unitCap}
-            onChange={(event) => form.setValue('unitCap', event.target.value)}
-            data-testid="gift-composer-opt-unit-cap"
+            onChange={(event) => {
+              form.setValue('unitCap', event.target.value, { shouldDirty: true });
+            }}
+            data-testid="promotion-unit-cap"
           />
-        </FormField>
-        {values.kind === 'unit' ? (
-          <div className="gift-section__row">
-            <FormField label={copy.composer.perN} name="gift-per-n">
-              <Input
-                type="number"
-                min={1}
-                value={values.perN}
-                onChange={(event) => form.setValue('perN', event.target.value)}
-                data-testid="gift-composer-opt-per-n"
-              />
-            </FormField>
-            <FormField label={copy.composer.maxPerOrder} name="gift-max-per-order">
-              <Input
-                type="number"
-                min={1}
-                value={values.maxPerOrder}
-                onChange={(event) => form.setValue('maxPerOrder', event.target.value)}
-                data-testid="gift-composer-opt-max-order"
-              />
-            </FormField>
-          </div>
-        ) : null}
-        <FormField label={copy.composer.docForm} name="gift-doc-form">
-          <GiftDocumentFormField
-            data-testid="gift-composer-opt-doc-form"
-            value={values.documentForm}
-            onChange={(next) => form.setValue('documentForm', next)}
+        </PromotionField>
+        <PromotionField
+          label={copy.perCustomer}
+          htmlFor="promotion-customer-limit"
+          hint={<HelpHint guide="g-perclient" label={copy.perCustomerLabel} />}
+          description={copy.perCustomerHelp}
+        >
+          <Input
+            id="promotion-customer-limit"
+            className="mono tabular pm-narrow"
+            inputMode="numeric"
+            placeholder={copy.perCustomerPlaceholder}
+            value={values.customerLimit}
+            onChange={(event) => {
+              form.setValue('customerLimit', event.target.value, { shouldDirty: true });
+            }}
+            data-testid="promotion-customer-limit"
           />
-        </FormField>
-
-        <div data-testid="gift-composer-more">
-          <InlineDisclosure label={copy.detail.moreOptions} value={moreSummary}>
-            <div className="gift-section">
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={values.doNotCombine}
-                  onChange={(event) => form.setValue('doNotCombine', event.target.checked)}
-                  data-testid="gift-composer-opt-no-stack"
-                />
-                <span className="filter-check__label">{copy.composer.noStack}</span>
-              </label>
-              <p className="text-muted gift-section__hint">{copy.detail.noStackHint}</p>
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={values.skipIfPresent}
-                  onChange={(event) => form.setValue('skipIfPresent', event.target.checked)}
-                  data-testid="gift-composer-opt-skip-present"
-                />
-                <span className="filter-check__label">{copy.composer.skipPresent}</span>
-              </label>
-              <FormField label={copy.composer.perCustomer} name="gift-per-customer">
-                <Input
-                  type="number"
-                  min={1}
-                  value={values.customerLimit}
-                  onChange={(event) => form.setValue('customerLimit', event.target.value)}
-                  data-testid="gift-composer-opt-per-customer"
-                />
-              </FormField>
-            </div>
-          </InlineDisclosure>
-        </div>
+        </PromotionField>
+        <PromotionField
+          label={copy.doc}
+          hint={<HelpHint guide="g-doc" label={copy.docLabel} />}
+          description={copy.docHelp}
+          invalid={invalid?.has('doc-price') === true}
+          error={copy.docPriceError}
+        >
+          <GiftDocumentFormCards
+            name="promotion-doc"
+            aria-label={copy.doc}
+            value={cardValue}
+            onChange={(next) => {
+              form.setValue('documentForm', next === 'inherit' ? '' : next, { shouldDirty: true });
+            }}
+            customPrice={values.documentUnitPrice}
+            onCustomPriceChange={(next) => {
+              form.setValue('documentUnitPrice', next, { shouldDirty: true });
+            }}
+            withInherit
+            inheritedForm={settings.data?.giftDocumentForm ?? null}
+            settingsHref={settingsHref}
+            currency={values.currency}
+            disabled={readOnly}
+            invalidPrice={invalid?.has('doc-price') === true}
+          />
+        </PromotionField>
       </fieldset>
-    </DetailSection>
+    </ComposerSection>
   );
 }
+

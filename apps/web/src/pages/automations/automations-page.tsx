@@ -52,7 +52,6 @@ export function AutomationsPage(): ReactElement {
   const errorCopy = messages.errors;
   const plural = usePlural();
   const navigate = useNavigate();
-  const giftCopy = useMessages('gifts');
   const vocabularyQuery = useAutomationVocabularyQuery();
   const summaryQuery = useAutomationSummaryQuery();
 
@@ -63,13 +62,6 @@ export function AutomationsPage(): ReactElement {
 
   const header = (
     <>
-      <Button
-        tone="secondary"
-        onClick={() => void navigate('/automations/gifts')}
-        data-testid="automations-gift-promotions-link"
-      >
-        {giftCopy.list.title}
-      </Button>
       <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
         {pageCopy.runLogAction}
       </Button>

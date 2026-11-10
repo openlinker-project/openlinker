@@ -17,6 +17,7 @@
  */
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
+import { giftRulesLegacyRedirects } from './promotions.route';
 
 const automationsIndexCrumb: RouteCrumbHandle = {
   crumb: { group: 'operations', page: 'automations' },
@@ -28,14 +29,6 @@ const automationActivityCrumb: RouteCrumbHandle = {
 
 const automationTriggerCrumb: RouteCrumbHandle = {
   crumb: { group: 'operations', page: 'automationRules' },
-};
-
-const giftPromotionsCrumb: RouteCrumbHandle = {
-  crumb: { group: 'operations', page: 'giftPromotions' },
-};
-
-const giftPromotionCrumb: RouteCrumbHandle = {
-  crumb: { group: 'operations', page: 'giftPromotion' },
 };
 
 export const automationsRoute: RouteObject = {
@@ -59,25 +52,8 @@ export const automationsRoute: RouteObject = {
         return { Component: AutomationActivityPage };
       },
     },
-    {
-      // Gift promotions are automation rules with one step, edited on their own
-      // pages (#3940). Static segments outrank `:trigger`; kept before it for
-      // the same reason `activity` is.
-      path: 'gifts',
-      handle: giftPromotionsCrumb,
-      lazy: async () => {
-        const { GiftPromotionsPage } = await import('../../pages/gifts/gift-promotions-page');
-        return { Component: GiftPromotionsPage };
-      },
-    },
-    {
-      path: 'gifts/:ruleId',
-      handle: giftPromotionCrumb,
-      lazy: async () => {
-        const { GiftRulePage } = await import('../../pages/gifts/gift-rule-page');
-        return { Component: GiftRulePage };
-      },
-    },
+    // Gift rules moved to Promotions (#3935); the old addresses redirect.
+    ...giftRulesLegacyRedirects,
     {
       path: ':trigger',
       handle: automationTriggerCrumb,

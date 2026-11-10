@@ -1,21 +1,19 @@
 /**
- * GiftRuleComposer (#3940, #3935; mockup `gifts-rule-detail`)
+ * PromotionComposer (#3935, mockup `promotions-detail`)
  *
- * The page of one promotion: the header with its actions, the notices, the form
- * in the main column and what helps while editing in the rail. It owns the one
- * `react-hook-form` instance and everything derived from it; each card of the
- * form is a section component that only reads and writes through it.
+ * The page of one saved promotion: the editable title with its state, the
+ * benefit type, the numbered cards of the form in the main column and what
+ * helps while editing in the rail. It owns the one `react-hook-form` instance
+ * (through `usePromotionFormState`); each card is a section component that only
+ * reads and writes through it.
  *
- * Three kinds of promotion (a gift with a product, from an order amount, for
- * every unit) share the form. Four things are visible up front - when, the gift,
- * channels, period - and the options most promotions never touch are folded
- * under "More options" with a one-line summary.
+ * Saving never blocks on a disabled button: pressing it with something missing
+ * draws what is missing on the fields and moves to the first of them.
  *
- * @module apps/web/src/features/gifts/components
+ * @module apps/web/src/features/promotions/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { useForm } from 'react-hook-form';
-import { useMessages } from '../../../shared/i18n';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -27,224 +25,349 @@ import {
 } from '../../../shared/ui/dropdown-menu';
 import { PageLayout } from '../../../shared/ui/page-layout';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { SaveButton } from '../../../shared/ui/save-button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import type { GiftRule } from '../api/gifts.types';
-import {
-  formToWriteInput,
-  suggestRuleName,
-  validateGiftRuleForm,
-  type GiftRuleFormValues,
-} from '../lib/gift-rule-form';
-import { RULE_STATE_TONE, ruleStateKey } from '../lib/gift-rule-view';
-import { GiftRuleChannelsSection } from './gift-rule-channels-section';
-import { GiftRuleGiftSection } from './gift-rule-gift-section';
-import { GiftRuleLimitsSection } from './gift-rule-limits-section';
-import { GiftRuleNameSection } from './gift-rule-name-section';
-import { GiftRuleNotices } from './gift-rule-notices';
-import { GiftRulePeriodSection } from './gift-rule-period-section';
-import { GiftRuleRail } from './gift-rule-rail';
-import { GiftRuleWhenSection } from './gift-rule-when-section';
+import { useGuide } from '../../../shared/ui/guide-drawer';
+import { useConnectionsQuery } from '../../connections';
+import type { Promotion } from '../api/promotions.types';
+import { formToWriteInput, type PromotionFormValues } from '../lib/promotion-form';
+import { focusFirstInvalid, usePromotionFormState } from '../lib/promotion-form-state';
+import { PROMOTION_STATE_TONE, promotionStateKey } from '../lib/promotion-view';
+import { BenefitTypeCard } from './promotion-benefit-type';
+import { PromotionChannelChip } from './promotion-channel-chip';
+import { PromotionChannelsSection } from './promotion-channels-section';
+import { PromotionCombineSection } from './promotion-combine-section';
+import { PromotionGiftSection } from './promotion-gift-section';
+import { PromotionLimitsSection } from './promotion-limits-section';
+import { PromotionNameSection } from './promotion-name-section';
+import { PromotionNotices } from './promotion-notices';
+import { PromotionPeriodSection } from './promotion-period-section';
+import { PromotionRail } from './promotion-rail';
+import { PromotionWhenSection } from './promotion-when-section';
 
-/** Vertical-ellipsis glyph on the row menu trigger; the accessible name is the aria-label. */
-const MENU_GLYPH = '\u22EF';
+/** Vertical-ellipsis glyph on the menu trigger; the accessible name is the aria-label. */
+const MENU_GLYPH = '⋯';
 
-export interface GiftRuleComposerProps {
-  initial: GiftRuleFormValues;
-  /** The saved rule being edited; `null` for a new one. */
-  rule: GiftRule | null;
+export interface PromotionComposerProps {
+  initial: PromotionFormValues;
+  promotion: Promotion;
+  /** Every promotion in check order. */
+  all: readonly Promotion[];
   canWrite: boolean;
   saving: boolean;
-  onSave: (values: GiftRuleFormValues, isActive: boolean, extend?: { to: string }) => void;
+  /** Increases by one each time a save succeeds (drives the "Saved" state of the button). */
+  savedCount: number;
+  onSave: (values: PromotionFormValues, isActive: boolean, extend?: { to: string }) => void;
   onResume: (additionalUnits: number) => void;
   onCopy: () => void;
-  /** Deletes the saved rule; absent for a role that cannot. */
   onDelete?: () => void;
   deleting?: boolean;
   saveError: string | null;
 }
 
-export function GiftRuleComposer({
+export function PromotionComposer({
   initial,
-  rule,
+  promotion,
+  all,
   canWrite,
   saving,
+  savedCount,
   onSave,
   onResume,
   onCopy,
   onDelete,
   deleting = false,
   saveError,
-}: GiftRuleComposerProps): ReactElement {
-  const copy = useMessages('gifts');
-  const form = useForm<GiftRuleFormValues>({ defaultValues: initial });
-  const values = form.watch();
-  const [nameTouched, setNameTouched] = useState(initial.name !== '');
+}: PromotionComposerProps): ReactElement {
+  const copy = useMessages('promotions');
+  const openGuide = useGuide();
+  const connections = useConnectionsQuery();
+  const state = usePromotionFormState({
+    initial,
+    editedKey: `${promotion.id}|${promotion.updatedAt}`,
+    suggest: () => '',
+  });
+  const { form, values, problems, invalid } = state;
+  const root = useRef<HTMLDivElement>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const titleInput = useRef<HTMLInputElement>(null);
+  const [titleDraft, setTitleDraft] = useState(values.name);
 
-  // Reset only when the thing being edited changes (another rule, or the saved
-  // rule's own `updatedAt`), or when the starting values changed under a form the
-  // operator has not touched (product names arriving late). A failed save, a
-  // refetch or a re-render with the same content must never wipe typed values.
-  const { reset, getValues } = form;
-  const editedKey = `${rule?.id ?? 'new'}|${rule?.updatedAt ?? ''}`;
-  const initialKey = JSON.stringify(initial);
-  const lastEditedKey = useRef(editedKey);
-  const appliedKey = useRef<string | null>(null);
   useEffect(() => {
-    const switched = lastEditedKey.current !== editedKey;
-    lastEditedKey.current = editedKey;
-    // `setValue` does not mark the form dirty here, so touched means "differs from what was applied".
-    const touched = appliedKey.current !== null && JSON.stringify(getValues()) !== appliedKey.current;
-    if (!switched && touched) return;
-    appliedKey.current = initialKey;
-    reset(initial);
-    setNameTouched(initial.name !== '');
-  }, [editedKey, initialKey, reset, getValues]);
-
-  const problems = validateGiftRuleForm(values);
-  const draft = problems.length === 0 ? formToWriteInput(values, true) : null;
-  const disabled = !canWrite || saving;
-
-  // The name follows what the operator picked until they type their own.
-  const suggested = suggestRuleName(values, copy.composer.nameTemplates);
-  useEffect(() => {
-    if (!nameTouched && suggested !== '' && suggested !== values.name) {
-      form.setValue('name', suggested);
+    if (editingTitle) {
+      titleInput.current?.focus();
+      titleInput.current?.select();
     }
-  }, [nameTouched, suggested, values.name, form]);
+  }, [editingTitle]);
 
-  const state = rule === null ? 'new' : rule.status;
-  const ended = rule?.status === 'ended';
-  const isDraftLike = state === 'new' || state === 'inactive';
-  const sectionProps = { form, values, readOnly: !canWrite };
+  const stateKey = promotionStateKey(promotion);
+  const ended = promotion.status === 'ended';
+  const isDraft = promotion.status === 'inactive';
+  const others = all.filter((p) => p.id !== promotion.id);
+  const index = all.findIndex((p) => p.id === promotion.id);
+  const disabled = !canWrite || saving;
+  const sectionProps = { form, values, readOnly: !canWrite, invalid };
+
+  const covered =
+    values.channelIds.length === 0
+      ? (connections.data ?? []).filter((c) => c.enabledCapabilities.includes('OrderSource'))
+      : (connections.data ?? []).filter((c) => values.channelIds.includes(c.id));
+
+  const submit = (isActive: boolean): void => {
+    if (problems.length > 0) {
+      state.attempt();
+      focusFirstInvalid(root.current);
+      return;
+    }
+    onSave(values, isActive);
+  };
+
+  const commitTitle = (save: boolean): void => {
+    setEditingTitle(false);
+    const next = titleDraft.trim();
+    if (save && next !== '') form.setValue('name', next, { shouldDirty: true });
+    else setTitleDraft(values.name);
+  };
+  const onTitleKey = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitTitle(true);
+    }
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      commitTitle(false);
+    }
+  };
 
   const actions = (
-    <ReadOnlyLock active={!canWrite} message={copy.list.readOnly}>
-      <span className="gift-detail__actions">
-        {isDraftLike ? (
-          <Button
-            tone="secondary"
-            disabled={disabled || problems.length > 0}
-            onClick={() => onSave(values, false)}
-            data-testid="gift-composer-save-draft"
-          >
-            {copy.composer.saveDraft}
-          </Button>
-        ) : rule !== null && !ended ? (
-          <Button
-            tone="secondary"
-            disabled={disabled}
-            onClick={() => onSave(values, false)}
-            data-testid="gift-composer-pause"
-          >
-            {copy.composer.pause}
-          </Button>
-        ) : null}
-        <Button
-          disabled={disabled || problems.length > 0 || (!isDraftLike && ended === true)}
-          onClick={() => onSave(values, true)}
-          data-testid="gift-composer-primary"
+    <ReadOnlyLock active={!canWrite} message={copy.detail.readOnly}>
+      <span className="pm-actions">
+        <button
+          type="button"
+          className="button button--secondary button--sm pm-helpbtn"
+          onClick={() => {
+            openGuide?.(null);
+          }}
         >
-          {isDraftLike ? copy.composer.turnOn : copy.composer.saveChanges}
-        </Button>
-        {rule !== null ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                tone="secondary"
-                aria-label={copy.detail.actionsMenu}
-                data-testid="gift-composer-menu"
-              >
-                {MENU_GLYPH}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onCopy} data-testid="gift-composer-copy">
-                {copy.composer.copy}
-              </DropdownMenuItem>
-              {onDelete ? (
-                <DropdownMenuItem
-                  disabled={deleting}
-                  onSelect={() => setConfirmingDelete(true)}
-                  data-testid="gift-composer-delete"
-                >
-                  {copy.composer.delete}
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <span className="pm-qmark" aria-hidden="true">
+            ?
+          </span>
+          {copy.page.guideButton}
+          <span className="button__shortcut" aria-hidden="true">
+            ?
+          </span>
+        </button>
+        {isDraft ? (
+          <Button
+            tone="secondary"
+            className="button--sm"
+            disabled={disabled}
+            onClick={() => {
+              submit(false);
+            }}
+            data-testid="promotion-save-draft"
+          >
+            {copy.detail.saveDraft}
+          </Button>
+        ) : !ended ? (
+          <Button
+            tone="secondary"
+            className="button--sm"
+            disabled={disabled}
+            onClick={() => {
+              submit(false);
+            }}
+            data-testid="promotion-pause"
+          >
+            {copy.detail.pause}
+          </Button>
         ) : null}
+        <SaveButton
+          label={isDraft ? copy.detail.turnOn : copy.detail.save}
+          busyLabel={isDraft ? copy.detail.turningOn : copy.detail.saving}
+          doneLabel={isDraft ? copy.detail.turnedOn : copy.detail.saved}
+          pending={saving}
+          savedCount={savedCount}
+          disabled={!canWrite || ended}
+          onClick={() => {
+            submit(true);
+          }}
+          data-testid="promotion-primary"
+        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              tone="secondary"
+              className="button--sm"
+              aria-label={copy.detail.actionsMenu}
+              data-testid="promotion-menu"
+            >
+              {MENU_GLYPH}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onCopy} data-testid="promotion-copy">
+              {copy.detail.copy}
+            </DropdownMenuItem>
+            {onDelete ? (
+              <DropdownMenuItem
+                disabled={deleting}
+                onSelect={() => {
+                  setConfirmingDelete(true);
+                }}
+                data-testid="promotion-delete"
+              >
+                {copy.detail.delete}
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </span>
     </ReadOnlyLock>
   );
 
   return (
     <PageLayout
-      eyebrow={copy.list.eyebrow}
-      backTo={{
-        to: '/automations/gifts',
-        label: copy.composer.back,
-        'data-testid': 'gift-composer-back',
-      }}
+      eyebrow={copy.detail.eyebrow}
+      backTo={{ to: '/promotions', label: copy.page.back, 'data-testid': 'promotion-back' }}
       title={
-        <span className="gift-detail__title">
-          <span data-testid="gift-composer-title">
-            {rule === null ? copy.composer.newTitle : rule.name}
+        <span className={['pm-title', editingTitle ? 'is-editing' : ''].filter(Boolean).join(' ')}>
+          <span className="pm-title__box">
+            <span
+              className="pm-title__view"
+              onClick={(event) => {
+                if (canWrite && !(event.target as HTMLElement).closest('button')) {
+                  setTitleDraft(values.name);
+                  setEditingTitle(true);
+                }
+              }}
+            >
+              <span data-testid="promotion-title">{values.name}</span>
+              {canWrite ? (
+                <button
+                  type="button"
+                  className="pm-title__pencil"
+                  aria-label={copy.detail.renameAria}
+                  title={copy.detail.renameTitle}
+                  onClick={() => {
+                    setTitleDraft(values.name);
+                    setEditingTitle(true);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 20l4-1L19 8l-3-3L5 16l-1 4z" />
+                    <path d="M14 7l3 3" />
+                  </svg>
+                </button>
+              ) : null}
+            </span>
+            <input
+              ref={titleInput}
+              className="pm-title__input"
+              type="text"
+              value={titleDraft}
+              maxLength={80}
+              aria-label={copy.detail.nameAria}
+              tabIndex={editingTitle ? 0 : -1}
+              onChange={(event) => {
+                setTitleDraft(event.target.value);
+              }}
+              onKeyDown={onTitleKey}
+              onBlur={() => {
+                if (editingTitle) commitTitle(true);
+              }}
+            />
           </span>
-          {rule !== null ? (
-            <StatusBadge tone={RULE_STATE_TONE[ruleStateKey(rule)]} withDot>
-              {copy.status[ruleStateKey(rule)]}
-            </StatusBadge>
-          ) : null}
+          <StatusBadge tone={PROMOTION_STATE_TONE[stateKey]} withDot>
+            {copy.status[stateKey]}
+          </StatusBadge>
         </span>
+      }
+      description={isDraft ? copy.detail.draftNote : copy.detail.editNote}
+      summary={
+        <div className="pm-meta">
+          {covered.length > 0 ? (
+            <>
+              <span className="pm-hint">{copy.detail.channelsLabel}</span>
+              <span className="pm-chans">
+                {covered.map((channel) => (
+                  <PromotionChannelChip key={channel.id} connection={channel} link />
+                ))}
+              </span>
+            </>
+          ) : null}
+          {index >= 0 ? (
+            <span className="pm-hint pm-meta__pos">
+              {interpolate(copy.detail.position, { n: String(index + 1), total: String(all.length) })}
+            </span>
+          ) : null}
+        </div>
       }
       actions={actions}
     >
-      <div className="gift-composer" data-testid="gift-composer">
-        <GiftRuleNotices
-          rule={rule}
+      <div ref={root} className="pm-page" data-testid="promotion-composer">
+        <PromotionNotices
+          promotion={promotion}
           canWrite={canWrite}
           saving={saving}
           hasProblems={problems.length > 0}
           onResume={onResume}
-          onExtend={(to) => onSave(values, true, { to })}
+          onExtend={(to) => {
+            onSave({ ...values, to }, true, { to });
+          }}
         />
-        {problems.length > 0 && values.name.trim() !== '' ? (
-          <p className="text-muted" data-testid="gift-composer-missing">
-            {copy.composer.missing}: {problems.map((key) => copy.composer.problems[key]).join(', ')}
-          </p>
-        ) : null}
         {saveError !== null ? (
-          <Alert tone="error" data-testid="gift-composer-save-error">
+          <Alert tone="error" data-testid="promotion-save-error">
             {saveError}
           </Alert>
         ) : null}
-
-        <div className="order-detail__primary-grid order-detail__primary-grid--split">
-          <div className="order-detail__stack">
-            <GiftRuleNameSection {...sectionProps} onTyped={() => setNameTouched(true)} />
-            <GiftRuleWhenSection {...sectionProps} />
-            <GiftRuleGiftSection {...sectionProps} />
-            <GiftRuleChannelsSection {...sectionProps} />
-            <GiftRulePeriodSection {...sectionProps} />
-            <GiftRuleLimitsSection {...sectionProps} />
+        <BenefitTypeCard />
+        <div className="pm-grid">
+          <div className="pm-col">
+            <PromotionNameSection {...sectionProps} step="00" riseIndex={2} onTyped={state.markNameTyped} />
+            <PromotionWhenSection {...sectionProps} step="01" riseIndex={3} />
+            <PromotionGiftSection {...sectionProps} step="02" riseIndex={4} />
+            <PromotionChannelsSection {...sectionProps} step="03" riseIndex={5} />
+            <PromotionCombineSection {...sectionProps} step="04" riseIndex={6} others={others} />
+            <PromotionPeriodSection {...sectionProps} step="05" riseIndex={7} />
+            <PromotionLimitsSection
+              {...sectionProps}
+              step="06"
+              riseIndex={8}
+              settingsHref="/settings/sales-documents"
+              aside={
+                promotion.effectiveCap !== null
+                  ? interpolate(copy.table.pcs, {
+                      given: String(promotion.unitsGiven),
+                      cap: String(promotion.effectiveCap),
+                    })
+                  : undefined
+              }
+            />
           </div>
-          <div className="order-detail__stack">
-            <GiftRuleRail values={values} rule={rule} draft={draft} />
-          </div>
+          <PromotionRail
+            values={values}
+            promotion={promotion}
+            all={all}
+            draft={problems.length === 0 ? formToWriteInput(values, true) : null}
+            ready={problems.length === 0}
+          />
         </div>
       </div>
 
       <ConfirmDialog
-        open={confirmingDelete && rule !== null && onDelete !== undefined}
+        open={confirmingDelete && onDelete !== undefined}
         onOpenChange={setConfirmingDelete}
         tone="danger"
-        title={copy.composer.deleteTitle}
-        description={copy.composer.deleteBody}
-        confirmLabel={copy.composer.deleteConfirm}
-        cancelLabel={copy.composer.deleteKeep}
+        title={copy.detail.deleteTitle}
+        description={copy.detail.deleteBody}
+        confirmLabel={copy.detail.deleteConfirm}
+        cancelLabel={copy.detail.deleteKeep}
         isConfirming={deleting}
-        onConfirm={() => onDelete?.()}
+        onConfirm={() => {
+          onDelete?.();
+        }}
       />
     </PageLayout>
   );

@@ -1,0 +1,564 @@
+{
+  "attention": {
+    "label": "To check",
+    "limitDesc": "Paused. Raise the limit and resume it.",
+    "limitLabel": "The limit is used up",
+    "limitShort": "limit",
+    "stockDesc": "Paused until the gift is back in stock. It resumes by itself.",
+    "stockLabel": "The gift ran out",
+    "stockShort": "out of stock"
+  },
+  "benefit": {
+    "gift": "Gift",
+    "giftDesc": "Add a product to the order",
+    "label": "Benefit type",
+    "more": "More types",
+    "moreDesc": "They will appear here",
+    "only": "For now only a gift"
+  },
+  "columns": {
+    "actions": "Actions",
+    "benefit": "Benefit",
+    "channels": "Channels",
+    "order": "Order",
+    "promotion": "Promotion",
+    "state": "State",
+    "usage": "Usage"
+  },
+  "detail": {
+    "actionsMenu": "More actions",
+    "channelsLabel": "Channels",
+    "copy": "Duplicate",
+    "copySuffix": "(copy)",
+    "delete": "Delete",
+    "deleteBody": "Gifts already added to orders stay. The promotion stops applying and its history stays.",
+    "deleteConfirm": "Delete promotion",
+    "deleteKeep": "Keep it",
+    "deleteTitle": "Delete this promotion?",
+    "deleted": "Promotion deleted.",
+    "draftNote": "Nothing runs until you turn the promotion on.",
+    "editNote": "The change applies from now. Orders already placed keep their gift.",
+    "ended": {
+      "body": "Set a new end date to run it again.",
+      "extend": "Extend",
+      "title": "Ended on {date}",
+      "to": "New end date"
+    },
+    "eyebrow": "Promotion",
+    "loadFailed": "The promotion could not be loaded",
+    "nameAria": "Promotion name",
+    "newTitle": "New promotion",
+    "notFound": "There is no such promotion.",
+    "pause": "Pause",
+    "paused": {
+      "limitBody": "Gave {given} of {cap} pcs. Add units to resume it.",
+      "limitTitle": "Paused: the piece limit is used up",
+      "resume": "Resume",
+      "resumeUnits": "Units to add",
+      "stockBody": "The promotion resumes by itself when the gift is back in stock. Orders go through without it meanwhile.",
+      "stockTitle": "Paused: the gift is out of stock"
+    },
+    "position": "Order {n} of {total}",
+    "readOnly": "You can see this promotion but not change it.",
+    "renameAria": "Change the promotion name",
+    "renameTitle": "Rename the promotion",
+    "save": "Save changes",
+    "saveDraft": "Save as draft",
+    "saved": "Saved",
+    "savedToast": "Promotion saved.",
+    "saving": "Saving",
+    "turnOn": "Turn on",
+    "turnedOn": "Turned on",
+    "turningOn": "Turning on"
+  },
+  "empty": {
+    "hint": "Change the filter or add a new promotion.",
+    "noneHint": "Add a promotion and OpenLinker adds the gift to matching orders by itself. Nothing runs until you turn it on.",
+    "noneTitle": "No promotions yet",
+    "title": "There are no promotions here"
+  },
+  "guide": {
+    "close": "Close",
+    "escKey": "Esc",
+    "eyebrow": "Guide",
+    "flow": {
+      "aria": "Example of checking an order for 236.40 zl",
+      "s1": "A mug with orders from 200 zl",
+      "s1c": "Does not stack",
+      "s1d": "The order is 236.40 zl. We add the mug.",
+      "s2": "A spoon for loose tea",
+      "s2d": "Skipped, because the first promotion does not stack with others.",
+      "s3": "Tea from 120 zl",
+      "s3d": "Skipped for the same reason."
+    },
+    "footerBefore": "Press",
+    "footerEnd": "closes it.",
+    "footerMid": "on this page to open the guide,",
+    "i": {
+      "channels": {
+        "body": "It works only in the channels you tick. In all of them by default.",
+        "name": "Channels"
+      },
+      "doc": {
+        "body": "The gift goes onto the order at 0.00 zl. On an invoice or a receipt you choose the form: Priced in proportionally (part of the payment moves to the gift), 0.01 taken from the most expensive paid item (the total does not change), Shown as 0.00 (only when the document provider accepts a zero line), Omitted (ask your accountant) or Your own price.",
+        "name": "On the document"
+      },
+      "limit": {
+        "body": "When the whole limit is given out, the promotion pauses. Resume it with the Resume button after raising the limit.",
+        "name": "Piece limit"
+      },
+      "new": {
+        "body": "Changes apply to orders placed after saving. Orders already placed keep their gift. The date the order was placed counts.",
+        "name": "The change does not work backwards"
+      },
+      "nostack": {
+        "body": "A promotion works together with another only when both agree. You have three options: stacks with all, only with selected (you tick them in the list) or with none. When a promotion that stacks with none applies, the ones below it are not checked.",
+        "chip": "Do not stack",
+        "name": "Stacking with other promotions"
+      },
+      "order": {
+        "body": "OpenLinker checks promotions in the order of the list. The higher one goes first. Change it with the arrows by the number or in the menu, Move up.",
+        "name": "Top to bottom"
+      },
+      "ownprice": {
+        "body": "The gift shows on the document at this price, and that amount is taken off the most expensive paid item, so the total does not change.",
+        "name": "Your own price"
+      },
+      "perclient": {
+        "body": "How many times the same customer can get a gift from this promotion. We recognise the customer by the buyer account and the e-mail address. On Allegro that is one buyer account (the Allegro e-mail is masked, but stable for the account). In shops it is the e-mail on the order, also for guests. The same e-mail in two channels is the same customer. If we do not know who the customer is, no gift is added and you will see \"customer not known\" in the history.",
+        "name": "At most per customer"
+      },
+      "skip": {
+        "body": "If the customer already has this gift in the cart, also as a part of a set, we do not add a second one.",
+        "name": "Skip if the product is already in the order"
+      },
+      "stock": {
+        "body": "The promotion pauses itself and comes back by itself when the gift is in stock again. You do not have to do anything.",
+        "name": "The gift is out of stock"
+      },
+      "what": {
+        "body": "A promotion has a condition, which is the cart amount or a product in the order, and a benefit. For now the benefit is a gift: a product added to the order for 0.00 zl.",
+        "name": "Condition and benefit"
+      }
+    },
+    "lede": "A promotion adds a gift to a new order before it reaches the shop or a document. Here is how it works, in short.",
+    "s": {
+      "doc": {
+        "sum": "0.00 zl",
+        "title": "The gift on the order and the document"
+      },
+      "limits": {
+        "sum": "they stop by themselves",
+        "title": "Limits and pauses"
+      },
+      "new": {
+        "sum": "does not work backwards",
+        "title": "New orders only"
+      },
+      "order": {
+        "sum": "top to bottom",
+        "title": "Order of checking"
+      },
+      "stack": {
+        "sum": "both sides must agree",
+        "title": "Stacking promotions"
+      },
+      "what": {
+        "sum": "condition and gift",
+        "title": "What a promotion is"
+      }
+    },
+    "title": "How promotions work"
+  },
+  "history": {
+    "applied": "Added",
+    "empty": "Nothing yet. Orders appear here once the promotion meets them.",
+    "error": "Error",
+    "failed": "The history could not be loaded.",
+    "reasons": {
+      "below-per-unit-threshold": "not enough units",
+      "customer-limit-reached": "customer already got the gift",
+      "customer-unknown": "customer not known",
+      "gift-already-in-order": "gift already in the order",
+      "gift-out-of-stock": "gift out of stock",
+      "gift-stock-unknown": "gift stock not known",
+      "paused-unit-cap": "piece limit used up",
+      "rule-not-matching": "order did not match",
+      "superseded-by-earlier-rule": "an earlier promotion applied",
+      "unit-cap-reached": "piece limit used up"
+    },
+    "skipped": "Skipped",
+    "today": "today, {time}",
+    "yesterday": "yesterday, {time}"
+  },
+  "menu": {
+    "aria": "Promotion actions",
+    "delete": "Delete",
+    "duplicate": "Duplicate",
+    "pause": "Pause",
+    "resume": "Turn on"
+  },
+  "new": {
+    "changeTemplate": "Change template",
+    "description": "Choose a benefit type and a template, and set the rest in the form. Nothing runs until you turn it on.",
+    "missing": "Missing:",
+    "missingItems": {
+      "amount": "amount",
+      "cap": "a whole piece limit",
+      "channel": "channel",
+      "combine": "promotions to stack with",
+      "docPrice": "a price for the document",
+      "gift": "gift product",
+      "name": "name",
+      "perN": "a whole number for \"1 gift per N\"",
+      "period": "a valid period",
+      "product": "product in the order",
+      "quantity": "quantity"
+    },
+    "nameSuggest": {
+      "basket": "{gift} with orders from {amount}",
+      "product": "{gift} with {product}",
+      "unit": "{gift} for every unit: {product}"
+    },
+    "ready": "Ready to turn on",
+    "saveFailed": "The promotion was not saved.",
+    "template": {
+      "basket": {
+        "example": "e.g. a coffee sample with orders from 150 zl",
+        "title": "Gift from an order amount"
+      },
+      "empty": {
+        "example": "You set everything yourself, from scratch.",
+        "title": "Empty promotion"
+      },
+      "product": {
+        "example": "e.g. a spoon with every morning set",
+        "title": "Gift with a product"
+      },
+      "unit": {
+        "example": "e.g. a bag for every second mug",
+        "title": "Gift for every unit"
+      }
+    },
+    "templateHint": "Choose when the customer gets the gift. You set the details in the next step.",
+    "templateTitle": "Start from a template",
+    "title": "New promotion",
+    "typeTitle": "Benefit type",
+    "use": "Use"
+  },
+  "page": {
+    "back": "Promotions",
+    "create": "New promotion",
+    "deleteFailed": "The promotion could not be deleted.",
+    "description": "Rules OpenLinker uses to add a benefit to an order in each channel. For now you can add gifts.",
+    "eyebrow": "Operations",
+    "guideButton": "How promotions work",
+    "loadFailed": "The promotions could not be loaded",
+    "loading": "Loading promotions",
+    "readOnly": "You can see promotions but not change them.",
+    "reorderFailed": "The order could not be saved. Reload and try again.",
+    "title": "Promotions",
+    "writeFailed": "The change was not saved."
+  },
+  "peek": {
+    "aria": "Promotion preview",
+    "channels": "Channels",
+    "close": "Close preview",
+    "kicker": "Promotion",
+    "open": "Open",
+    "order": "order {n}",
+    "pause": "Pause",
+    "range": "last 30 days",
+    "recent": "Recent uses",
+    "recentNone": "Nothing yet. Orders appear here once the promotion meets them.",
+    "results": "Results",
+    "resume": "Turn on"
+  },
+  "rail": {
+    "history": {
+      "tab": "History"
+    },
+    "historyTab": "History",
+    "order": {
+      "change": "Change in the list",
+      "first": "Checked first",
+      "help": "About: the order promotions are checked in",
+      "last": "Checked last",
+      "nth": "Checked as number {n}",
+      "of": "{n} of {total}",
+      "title": "Order"
+    },
+    "tabsAria": "Test and history",
+    "testTab": "Test on an order"
+  },
+  "rb": {
+    "amount": "amount",
+    "anyChannel": "any channel",
+    "basket": "When an order from {channels} is worth {amount} or more, we add a gift: {gift}, {qty} pcs.",
+    "cap": "Limit is {cap} pcs.",
+    "channel": "channel",
+    "channelsLabel": "Channels",
+    "eyebrow": "The rule in one sentence",
+    "from": "Works from {from}.",
+    "fromTo": "Works from {from} to {to}.",
+    "gift_ph": "gift product",
+    "name_ph": "name",
+    "or": " or ",
+    "product": "When an order from {channels} contains {product}, we add a gift: {gift}, {qty} pcs.",
+    "product_ph": "product in the order",
+    "stackAll": "Stacks with all promotions.",
+    "stackNone": "Does not stack with others.",
+    "stackSelected": "Stacks only with: {names}.",
+    "stackSelectedNone": "Stacks only with selected (none yet).",
+    "unit": "For every {n} pcs of {product} in an order from {channels} we add a gift: {gift}, {qty} pcs."
+  },
+  "results": {
+    "cost": "Cost",
+    "costAverage": "{avg} avg.",
+    "costBasis": "by purchase price",
+    "costPartial": "{n} pcs without a purchase price",
+    "failed": "The results could not be loaded.",
+    "given": "Given",
+    "givenOf": "of {cap} pcs",
+    "none": "No gifts given in the last 30 days.",
+    "orders": "Orders",
+    "ordersLast": "last {when}",
+    "pcs": "pcs",
+    "range": "last 30 days",
+    "title": "Results",
+    "usage": "Limit usage"
+  },
+  "row": {
+    "basket": "Cart from {amount}",
+    "contains": "Contains {product}",
+    "gift": "Gift × {n}",
+    "noCombine": "Does not combine",
+    "noEnd": "no end",
+    "onlySelected": "Only with selected ({n})",
+    "pausedLimit": "Gave {given} of {cap} pcs",
+    "pausedStock": "The gift ran out",
+    "perUnit": "For every {n} pcs of {product}",
+    "starts": "from {date}",
+    "until": "until {date}"
+  },
+  "s": {
+    "channels": {
+      "aside": "{n} of {total}",
+      "doubleGift": "A shop can also give gifts by itself. If it does, the customer may get two.",
+      "error": "Choose at least one channel.",
+      "help": "Where the promotion works. All channels by default.",
+      "kindMarket": "Seller account",
+      "kindShop": "Online shop",
+      "title": "Channels"
+    },
+    "combine": {
+      "all": "Stacks with all",
+      "asideAll": "with all",
+      "asideNone": "with none",
+      "asideSelected": "only with selected ({n})",
+      "error": "Choose at least one promotion, or switch to another option.",
+      "groupAria": "Stacking with other promotions",
+      "help": "Works together with another only when both agree.",
+      "helpLabel": "About: stacking with other promotions",
+      "noMatch": "No promotion matches.",
+      "noOthers": "There are no other promotions to choose from yet.",
+      "none": "Does not stack with any",
+      "question": "Does it stack with other promotions",
+      "search": "Search promotions",
+      "selectActive": "Select all active",
+      "selected": "Stacks only with selected",
+      "skip": "Skip if the product is already in the order",
+      "skipHelp": "Also as a part of a set.",
+      "skipLabel": "About: skip if the product is already in the order",
+      "title": "Stacking and duplicates",
+      "titleShort": "Stacking"
+    },
+    "combineSimple": {
+      "aside": "optional",
+      "title": "Stacking and period"
+    },
+    "gift": {
+      "aside": "1 product",
+      "change": "Change",
+      "choose": "Choose a product",
+      "costUnknown": "No purchase price on file",
+      "costsYouAfter": " a piece",
+      "costsYouBefore": "It costs you ",
+      "customerPays": "The customer pays",
+      "empty": "No gift chosen",
+      "emptyHelp": "Choose the product we add to the order.",
+      "error": "Choose the gift product.",
+      "inStock": "in stock: {n} pcs",
+      "quantity": "Quantity",
+      "searchLabel": "Product",
+      "searchPlaceholder": "Type a name or SKU",
+      "sku": "SKU {sku}",
+      "stockUnknown": "stock not known",
+      "title": "Benefit: gift"
+    },
+    "limits": {
+      "aside": "optional",
+      "doc": "On the document",
+      "docHelp": "How the gift looks on an invoice or a receipt. Example: an order for 203.98 zl with your gift.",
+      "docLabel": "About: the gift on the document",
+      "docPriceError": "Enter a price with at most 2 decimals.",
+      "perCustomer": "At most per customer",
+      "perCustomerHelp": "We recognise the customer by the buyer account or the e-mail on the order. Without that no gift is added.",
+      "perCustomerLabel": "About: at most per customer",
+      "perCustomerPlaceholder": "no limit",
+      "title": "Limits and documents",
+      "unitCap": "Piece limit for the whole promotion",
+      "unitCapError": "Enter a whole number of pieces.",
+      "unitCapHelp": "Once the limit is given out the promotion pauses. Resume it after raising the limit.",
+      "unitCapHelpNew": "Once the limit is given out the promotion pauses.",
+      "unitCapLabel": "About: the piece limit",
+      "unitCapPlaceholder": "no limit"
+    },
+    "name": {
+      "aside": "shown in the list",
+      "error": "The name is required.",
+      "help": "This is how it reads in the promotions list and in order history. You can also click the page title.",
+      "label": "Promotion name",
+      "placeholder": "e.g. A mug with orders from 200 zl",
+      "required": "required",
+      "suggestion": "Suggestion:",
+      "title": "Name",
+      "useSuggestion": "Use the suggestion"
+    },
+    "period": {
+      "asideFrom": "from {date}",
+      "error": "The end date must be after the start.",
+      "from": "From",
+      "help": "The date the order was placed counts. The promotion does not work backwards.",
+      "title": "Period",
+      "to": "To (optional)",
+      "toPlaceholder": "no end"
+    },
+    "when": {
+      "amount": "Order from",
+      "amountError": "Enter the amount.",
+      "amountHelp": "The amount the customer paid counts, without delivery.",
+      "amountPlaceholder": "0.00",
+      "aside": {
+        "basket": "condition",
+        "product": "condition",
+        "unit": "condition"
+      },
+      "basket": "Cart from an amount",
+      "currency": "Currency",
+      "group": "Condition",
+      "maxPerOrder": "At most per order",
+      "maxPerOrderPlaceholder": "no ceiling",
+      "perN": "1 gift per pcs",
+      "product": "Contains a product",
+      "productEmpty": "No product chosen",
+      "productEmptyHelp": "The promotion applies when it is in the order.",
+      "productError": "Choose a product.",
+      "product_label": "Product in the order",
+      "title": "When",
+      "unit": "For every unit"
+    }
+  },
+  "status": {
+    "active": "Active",
+    "draft": "Draft",
+    "ended": "Ended",
+    "pausedLimit": "Paused",
+    "pausedStock": "Paused",
+    "scheduled": "Scheduled"
+  },
+  "table": {
+    "caption": "Promotions in the order they are checked",
+    "edit": "Edit",
+    "endedLabel": "Ended",
+    "facts": {
+      "benefit": "Benefit",
+      "channels": "Channels",
+      "usage": "Usage"
+    },
+    "help": {
+      "order": "About: the order promotions are checked in",
+      "usage": "About: the piece limit"
+    },
+    "moreAria": "More: {name}",
+    "moveDown": "Move down",
+    "moveDownAria": "Move down: {name}",
+    "moveUp": "Move up",
+    "moveUpAria": "Move up: {name}",
+    "off": "Off",
+    "on": "On",
+    "pcs": "{given} / {cap} pcs",
+    "pcsNoCap": "{given} pcs",
+    "toggleAria": "{name}: on",
+    "usageAria": "Limit usage"
+  },
+  "tabs": {
+    "active": "Active",
+    "all": "All",
+    "aria": "Promotion state",
+    "draft": "Drafts",
+    "ended": "Ended",
+    "paused": "Paused",
+    "scheduled": "Scheduled"
+  },
+  "test": {
+    "aside": "nothing is saved",
+    "conditionsMet": "The conditions are met.",
+    "customer": "Customer (optional)",
+    "customerHelp": "It also checks the per-customer limit for this customer.",
+    "customerLimit": {
+      "notChecked": "No customer given, so the limit was not checked.",
+      "notCheckedBadge": "Not checked",
+      "over": "Limit",
+      "title": "Customer limit",
+      "unknown": "The customer on this order is not known, so the limit cannot be checked.",
+      "used": "{used} of {limit} used, the gift {will}.",
+      "willAdd": "will be added",
+      "willNot": "will not be added",
+      "within": "within the limit"
+    },
+    "customerNone": "No customer found",
+    "customerPlaceholder": "E-mail or customer name",
+    "customerSearching": "Searching",
+    "failed": "The check did not run.",
+    "help": "Shows which promotions would add a gift to this order and why the others would not. Nothing is saved.",
+    "noneApply": "No gift would be added",
+    "notReady": "Fill in the missing fields to check it.",
+    "notReadyBadge": "Not ready",
+    "order": "Order",
+    "orderNotFound": "There is no such order.",
+    "orderPlaceholder": "Order id (ol_order_...)",
+    "reasons": {
+      "alreadyInOrder": "The gift is already in the order.",
+      "belowThreshold": "Not enough units of the product in the order.",
+      "customerLimit": "This customer already got the most allowed.",
+      "customerUnknown": "The customer is not known, so the per-customer limit cannot be checked.",
+      "limit": "The piece limit is used up.",
+      "notMatching": "The order does not meet the conditions.",
+      "outOfStock": "The gift is out of stock.",
+      "stockUnknown": "The stock of the gift is not known, so it was not added.",
+      "superseded": "An earlier promotion that does not stack already applied."
+    },
+    "run": "Check",
+    "running": "Checking",
+    "skipped": "Skipped",
+    "thisPromotion": "This promotion",
+    "title": "Test on an order",
+    "wouldAdd": "Will add {count} pcs."
+  },
+  "toolbar": {
+    "anyBenefit": "Any benefit",
+    "anyChannel": "Any channel",
+    "benefit": "Benefit",
+    "benefitGift": "Gift",
+    "channel": "Channel",
+    "checkedInOrder": "Checked from top to bottom",
+    "clear": "Clear filter",
+    "filtersAria": "Filters",
+    "results": {
+      "one": "{n} result",
+      "other": "{n} results"
+    },
+    "search": "Search promotions"
+  }
+}

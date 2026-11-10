@@ -1,96 +1,166 @@
 /**
- * GiftRuleWhenSection (#3935, mockup `gifts-rule-detail` "Kiedy")
+ * PromotionWhenSection (#3935, mockups "Kiedy")
  *
- * When does the customer get the gift: from an order amount, or when the order
- * contains a product. A rule that gives a gift for every unit keeps that third
- * choice visible but it is not offered on other rules, because the unit options
- * (1 gift per N, maximum per order) belong to it alone.
+ * When does the customer get the gift: from an order amount, when the order
+ * contains a product, or for every unit of a product. The third choice sits on
+ * the new-promotion page; on a saved promotion it appears only when the
+ * promotion already is one, because its options (1 gift per N, a ceiling per
+ * order) belong to it alone.
  *
- * @module apps/web/src/features/gifts/components
+ * @module apps/web/src/features/promotions/components
  */
 import type { ReactElement } from 'react';
 import { useMessages } from '../../../shared/i18n';
-import { Button } from '../../../shared/ui/button';
-import { DetailSection } from '../../../shared/ui/detail-section';
-import { FormField } from '../../../shared/ui/form-field';
+import { ComposerSection } from '../../../shared/ui/composer-section';
 import { Input } from '../../../shared/ui/input';
-import { Select } from '../../../shared/ui/select';
 import { SegmentedControl, type SegmentedControlOption } from '../../../shared/ui/segmented-control';
-import { BundleProductPicker } from '../../bundles';
-import type { GiftRuleKind } from '../lib/gift-rule-form';
-import type { GiftRuleSectionProps } from './gift-rule-section.types';
-import { toPicked } from './gift-rule-picked';
+import { Select } from '../../../shared/ui/select';
+import type { PromotionKind } from '../lib/promotion-form';
+import { PromotionField } from './promotion-field';
+import { PromotionProductPicker } from './promotion-product-picker';
+import type { PromotionSectionProps } from './promotion-section.types';
 
 const CURRENCIES = ['PLN', 'EUR', 'CZK', 'HUF', 'USD', 'GBP'];
 
-export function GiftRuleWhenSection({ form, values, readOnly }: GiftRuleSectionProps): ReactElement {
-  const copy = useMessages('gifts');
-  const options: SegmentedControlOption<GiftRuleKind>[] = [
-    { value: 'basket', label: copy.detail.kindBasket, 'data-testid': 'gift-composer-kind-basket' },
-    { value: 'product', label: copy.detail.kindProduct, 'data-testid': 'gift-composer-kind-product' },
+export interface PromotionWhenSectionProps extends PromotionSectionProps {
+  /** Offer "For every unit" as a choice (the new page), not only when already chosen. */
+  offerUnit?: boolean;
+}
+
+export function PromotionWhenSection({
+  form,
+  values,
+  readOnly,
+  invalid,
+  riseIndex,
+  step,
+  offerUnit = false,
+}: PromotionWhenSectionProps): ReactElement {
+  const messages = useMessages('promotions');
+  const copy = messages.s.when;
+  const options: SegmentedControlOption<PromotionKind>[] = [
+    { value: 'basket', label: copy.basket, 'data-testid': 'promotion-kind-basket' },
+    { value: 'product', label: copy.product, 'data-testid': 'promotion-kind-product' },
   ];
-  if (values.kind === 'unit') {
-    options.push({ value: 'unit', label: copy.detail.kindUnit, 'data-testid': 'gift-composer-kind-unit' });
+  if (offerUnit || values.kind === 'unit') {
+    options.push({ value: 'unit', label: copy.unit, 'data-testid': 'promotion-kind-unit' });
   }
 
   return (
-    <DetailSection title={copy.composer.when}>
-      <fieldset className="gift-section" disabled={readOnly}>
+    <ComposerSection
+      step={step}
+      title={copy.title}
+      aside={copy.aside[values.kind]}
+      riseIndex={riseIndex}
+      data-testid="promotion-when-section"
+    >
+      <fieldset className="pm-fieldset" disabled={readOnly}>
         <SegmentedControl
-          className="gift-when-toggle"
-          aria-label={copy.detail.kindLabel}
+          aria-label={copy.group}
           options={options}
           value={values.kind}
-          onChange={(kind) => form.setValue('kind', kind)}
+          onChange={(kind) => {
+            form.setValue('kind', kind, { shouldDirty: true });
+          }}
         />
         {values.kind === 'basket' ? (
-          <div className="gift-section__row" data-testid="gift-composer-when-basket">
-            <FormField label={copy.composer.basketFrom} name="gift-basket-min">
-              <Input
-                inputMode="decimal"
-                value={values.basketMin}
-                onChange={(event) => form.setValue('basketMin', event.target.value)}
-                data-testid="gift-composer-basket-min"
-              />
-            </FormField>
-            <FormField label={copy.composer.currency} name="gift-currency">
-              <Select
-                value={values.currency}
-                onChange={(event) => form.setValue('currency', event.target.value)}
+          <div data-testid="promotion-when-basket">
+            <div className="pm-row2">
+              <PromotionField
+                label={copy.amount}
+                htmlFor="promotion-amount"
+                required={step !== undefined}
+                invalid={invalid?.has('basket') === true}
+                error={copy.amountError}
               >
-                {CURRENCIES.map((currency) => (
-                  <option key={currency} value={currency}>
-                    {currency}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
-            <p className="text-muted gift-section__hint">{copy.composer.basketHelp}</p>
+                <Input
+                  id="promotion-amount"
+                  className="mono tabular"
+                  inputMode="decimal"
+                  placeholder={copy.amountPlaceholder}
+                  value={values.basketMin}
+                  onChange={(event) => {
+                    form.setValue('basketMin', event.target.value, { shouldDirty: true });
+                  }}
+                  data-testid="promotion-basket-min"
+                />
+              </PromotionField>
+              <PromotionField label={copy.currency} htmlFor="promotion-currency">
+                <Select
+                  id="promotion-currency"
+                  value={values.currency}
+                  onChange={(event) => {
+                    form.setValue('currency', event.target.value, { shouldDirty: true });
+                  }}
+                >
+                  {CURRENCIES.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </Select>
+              </PromotionField>
+            </div>
+            <p className="form-field__description pm-after-row">{copy.amountHelp}</p>
           </div>
         ) : (
-          <div data-testid="gift-composer-when-product">
-            <p className="text-muted">
-              {values.kind === 'unit' ? copy.composer.unitProductHelp : copy.composer.productHelp}
-            </p>
-            {values.when !== null ? (
-              <p className="gift-section__picked">
-                <strong>{values.when.name}</strong>
-                <Button tone="secondary" onClick={() => form.setValue('when', null)}>
-                  {copy.composer.change}
-                </Button>
-              </p>
-            ) : (
-              <BundleProductPicker
-                label={copy.composer.productLabel}
-                placeholder={copy.composer.productPlaceholder}
+          <div data-testid="promotion-when-product">
+            <PromotionField
+              label={copy.product_label}
+              required={step !== undefined}
+              className="pm-when-pick"
+            >
+              <PromotionProductPicker
+                value={values.when}
+                onChange={(next) => {
+                  form.setValue('when', next, { shouldDirty: true });
+                }}
+                emptyTitle={copy.productEmpty}
+                emptyHelp={copy.productEmptyHelp}
+                searchLabel={copy.product_label}
+                placeholder={messages.s.gift.searchPlaceholder}
                 disabled={readOnly}
-                onPick={(choice) => form.setValue('when', toPicked(choice))}
-                testIdPrefix="gift-composer-when-search"
+                invalid={invalid?.has('when') === true}
+                errorText={copy.productError}
+                testIdPrefix="promotion-when"
               />
-            )}
+            </PromotionField>
+            {values.kind === 'unit' ? (
+              <div className="pm-row2 pm-after-row">
+                <PromotionField
+                  label={copy.perN}
+                  htmlFor="promotion-per-n"
+                  invalid={invalid?.has('per-n') === true}
+                >
+                  <Input
+                    id="promotion-per-n"
+                    className="mono tabular"
+                    inputMode="numeric"
+                    value={values.perN}
+                    onChange={(event) => {
+                      form.setValue('perN', event.target.value, { shouldDirty: true });
+                    }}
+                    data-testid="promotion-per-n"
+                  />
+                </PromotionField>
+                <PromotionField label={copy.maxPerOrder} htmlFor="promotion-max-per-order">
+                  <Input
+                    id="promotion-max-per-order"
+                    className="mono tabular"
+                    inputMode="numeric"
+                    placeholder={copy.maxPerOrderPlaceholder}
+                    value={values.maxPerOrder}
+                    onChange={(event) => {
+                      form.setValue('maxPerOrder', event.target.value, { shouldDirty: true });
+                    }}
+                    data-testid="promotion-max-per-order"
+                  />
+                </PromotionField>
+              </div>
+            ) : null}
           </div>
         )}
       </fieldset>
-    </DetailSection>
+    </ComposerSection>
   );
 }

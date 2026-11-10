@@ -1,7 +1,7 @@
 /**
- * Gift rules - query and mutation hooks (#3940)
+ * Promotions - query and mutation hooks (#3935)
  *
- * @module apps/web/src/features/gifts/hooks
+ * @module apps/web/src/features/promotions/hooks
  */
 import {
   useMutation,
@@ -12,129 +12,101 @@ import {
 } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { ApiError } from '../../../shared/api/api-error';
-import { giftsQueryKeys } from '../api/gifts.query-keys';
+import { promotionsQueryKeys } from '../api/promotions.query-keys';
 import type {
-  AddGiftInput,
-  AddGiftResult,
-  GiftAttentionEntry,
-  GiftAttentionResult,
-  GiftDryRunResult,
-  GiftEvaluateInput,
-  GiftRule,
-  GiftRuleWriteInput,
-} from '../api/gifts.types';
+  Promotion,
+  PromotionDryRunResult,
+  PromotionEvaluateInput,
+  PromotionHistory,
+  PromotionWriteInput,
+} from '../api/promotions.types';
 
-export function useGiftRulesQuery(): UseQueryResult<GiftRule[]> {
+export function usePromotionsQuery(): UseQueryResult<Promotion[]> {
   const apiClient = useApiClient();
   return useQuery({
-    queryKey: giftsQueryKeys.rules(),
-    queryFn: () => apiClient.gifts.listRules(),
+    queryKey: promotionsQueryKeys.list(),
+    queryFn: () => apiClient.promotions.list(),
   });
 }
 
-export function useGiftRuleQuery(ruleId: string | null): UseQueryResult<GiftRule> {
+export function usePromotionQuery(id: string | null): UseQueryResult<Promotion> {
   const apiClient = useApiClient();
   return useQuery({
-    queryKey: [...giftsQueryKeys.rules(), 'one', ruleId ?? ''],
-    queryFn: () => apiClient.gifts.getRule(ruleId ?? ''),
-    enabled: ruleId !== null,
+    queryKey: promotionsQueryKeys.one(id ?? ''),
+    queryFn: () => apiClient.promotions.get(id ?? ''),
+    enabled: id !== null,
   });
 }
 
-function useInvalidateRules(): () => void {
+export function usePromotionHistoryQuery(id: string, enabled: boolean): UseQueryResult<PromotionHistory> {
+  const apiClient = useApiClient();
+  return useQuery({
+    queryKey: promotionsQueryKeys.history(id),
+    queryFn: () => apiClient.promotions.history(id),
+    enabled,
+  });
+}
+
+function useInvalidatePromotions(): () => void {
   const queryClient = useQueryClient();
   return () => {
-    void queryClient.invalidateQueries({ queryKey: giftsQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: promotionsQueryKeys.all });
   };
 }
 
-export function useSaveGiftRuleMutation(): UseMutationResult<
-  GiftRule,
+export function useSavePromotionMutation(): UseMutationResult<
+  Promotion,
   ApiError,
-  { ruleId: string | null; input: GiftRuleWriteInput }
+  { id: string | null; input: PromotionWriteInput }
 > {
   const apiClient = useApiClient();
-  const invalidate = useInvalidateRules();
+  const invalidate = useInvalidatePromotions();
   return useMutation({
-    mutationFn: ({ ruleId, input }) =>
-      ruleId === null ? apiClient.gifts.createRule(input) : apiClient.gifts.replaceRule(ruleId, input),
+    mutationFn: ({ id, input }) =>
+      id === null ? apiClient.promotions.create(input) : apiClient.promotions.replace(id, input),
     onSuccess: invalidate,
   });
 }
 
-export function useReorderGiftRulesMutation(): UseMutationResult<GiftRule[], ApiError, string[]> {
-  const apiClient = useApiClient();
-  const invalidate = useInvalidateRules();
-  return useMutation({
-    mutationFn: (ruleIds) => apiClient.gifts.reorderRules(ruleIds),
-    onSuccess: invalidate,
-  });
-}
-
-export function useResumeGiftRuleMutation(): UseMutationResult<
-  GiftRule,
-  ApiError,
-  { ruleId: string; additionalUnits: number }
-> {
-  const apiClient = useApiClient();
-  const invalidate = useInvalidateRules();
-  return useMutation({
-    mutationFn: ({ ruleId, additionalUnits }) => apiClient.gifts.resumeRule(ruleId, additionalUnits),
-    onSuccess: invalidate,
-  });
-}
-
-export function useDeleteGiftRuleMutation(): UseMutationResult<void, ApiError, string> {
-  const apiClient = useApiClient();
-  const invalidate = useInvalidateRules();
-  return useMutation({
-    mutationFn: (ruleId) => apiClient.gifts.deleteRule(ruleId),
-    onSuccess: invalidate,
-  });
-}
-
-export function useEvaluateGiftRulesMutation(): UseMutationResult<
-  GiftDryRunResult,
-  ApiError,
-  GiftEvaluateInput
-> {
-  const apiClient = useApiClient();
-  return useMutation({ mutationFn: (input) => apiClient.gifts.evaluate(input) });
-}
-
-export function useAddGiftMutation(
-  internalOrderId: string,
-): UseMutationResult<AddGiftResult, ApiError, AddGiftInput> {
+export function useReorderPromotionsMutation(): UseMutationResult<Promotion[], ApiError, string[]> {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input) => apiClient.gifts.addGiftToOrder(internalOrderId, input),
-    onSuccess: (result) => {
-      if (result.dryRun) return;
-      void queryClient.invalidateQueries({ queryKey: ['orders'] });
-      void queryClient.invalidateQueries({ queryKey: giftsQueryKeys.all });
+    mutationFn: (ids) => apiClient.promotions.reorder(ids),
+    onSuccess: (rows) => {
+      queryClient.setQueryData(promotionsQueryKeys.list(), rows);
+      void queryClient.invalidateQueries({ queryKey: promotionsQueryKeys.all });
     },
   });
 }
 
-export function useGiftAttentionQuery(internalOrderId: string): UseQueryResult<GiftAttentionResult> {
+export function useResumePromotionMutation(): UseMutationResult<
+  Promotion,
+  ApiError,
+  { id: string; additionalUnits: number }
+> {
   const apiClient = useApiClient();
-  return useQuery({
-    queryKey: giftsQueryKeys.attention(internalOrderId),
-    queryFn: () => apiClient.gifts.getGiftAttention(internalOrderId),
-    enabled: internalOrderId.length > 0,
+  const invalidate = useInvalidatePromotions();
+  return useMutation({
+    mutationFn: ({ id, additionalUnits }) => apiClient.promotions.resume(id, additionalUnits),
+    onSuccess: invalidate,
   });
 }
 
-export function useSkipGiftAttentionMutation(
-  internalOrderId: string,
-): UseMutationResult<GiftAttentionEntry, ApiError, string> {
+export function useDeletePromotionMutation(): UseMutationResult<void, ApiError, string> {
   const apiClient = useApiClient();
-  const queryClient = useQueryClient();
+  const invalidate = useInvalidatePromotions();
   return useMutation({
-    mutationFn: (runId: string) => apiClient.gifts.skipGiftAttention(internalOrderId, runId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: giftsQueryKeys.attention(internalOrderId) });
-    },
+    mutationFn: (id) => apiClient.promotions.remove(id),
+    onSuccess: invalidate,
   });
+}
+
+export function useEvaluatePromotionsMutation(): UseMutationResult<
+  PromotionDryRunResult,
+  ApiError,
+  PromotionEvaluateInput
+> {
+  const apiClient = useApiClient();
+  return useMutation({ mutationFn: (input) => apiClient.promotions.evaluate(input) });
 }

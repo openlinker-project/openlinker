@@ -1,0 +1,563 @@
+{
+  "attention": {
+    "label": "Do sprawdzenia",
+    "limitDesc": "Wstrzymana. Podnieś limit i wznów ją.",
+    "limitLabel": "Limit wyczerpany",
+    "limitShort": "limit",
+    "stockDesc": "Wstrzymana do czasu, gdy gratis wróci na stan. Wznowi się sama.",
+    "stockLabel": "Gratis się skończył",
+    "stockShort": "brak towaru"
+  },
+  "benefit": {
+    "gift": "Gratis",
+    "giftDesc": "Dodaj produkt do zamówienia",
+    "label": "Rodzaj korzyści",
+    "more": "Kolejne rodzaje",
+    "moreDesc": "Pojawią się tutaj",
+    "only": "Na razie tylko gratis"
+  },
+  "columns": {
+    "actions": "Działania",
+    "benefit": "Korzyść",
+    "channels": "Kanały",
+    "order": "Kolejność",
+    "promotion": "Promocja",
+    "state": "Stan",
+    "usage": "Wykorzystanie"
+  },
+  "detail": {
+    "actionsMenu": "Więcej działań",
+    "channelsLabel": "Kanały",
+    "copy": "Duplikuj",
+    "copySuffix": "(kopia)",
+    "delete": "Usuń",
+    "deleteBody": "Gratisy już dodane do zamówień zostają. Promocja przestaje działać, a jej historia zostaje.",
+    "deleteConfirm": "Usuń promocję",
+    "deleteKeep": "Zostaw",
+    "deleteTitle": "Usunąć tę promocję?",
+    "deleted": "Promocja usunięta.",
+    "draftNote": "Nic nie działa, dopóki nie włączysz promocji.",
+    "editNote": "Zmiana działa od teraz. Zamówienia już złożone zostają przy swoim gratisie.",
+    "ended": {
+      "body": "Ustaw nową datę końca, żeby uruchomić ją ponownie.",
+      "extend": "Przedłuż",
+      "title": "Zakończona {date}",
+      "to": "Nowa data końca"
+    },
+    "eyebrow": "Promocja",
+    "loadFailed": "Nie udało się wczytać promocji",
+    "nameAria": "Nazwa promocji",
+    "newTitle": "Nowa promocja",
+    "notFound": "Nie ma takiej promocji.",
+    "pause": "Wstrzymaj",
+    "paused": {
+      "limitBody": "Rozdano {given} z {cap} szt. Dodaj sztuki, żeby ją wznowić.",
+      "limitTitle": "Wstrzymana: limit sztuk wyczerpany",
+      "resume": "Wznów",
+      "resumeUnits": "Ile sztuk dodać",
+      "stockBody": "Promocja wznowi się sama, gdy gratis wróci na stan. Zamówienia przechodzą w tym czasie bez niego.",
+      "stockTitle": "Wstrzymana: nie ma gratisu na stanie"
+    },
+    "position": "Kolejność {n} z {total}",
+    "readOnly": "Możesz oglądać tę promocję, ale jej nie zmieniać.",
+    "renameAria": "Zmień nazwę promocji",
+    "renameTitle": "Zmień nazwę",
+    "save": "Zapisz zmiany",
+    "saveDraft": "Zapisz jako szkic",
+    "saved": "Zapisano",
+    "savedToast": "Promocja zapisana.",
+    "saving": "Zapisuję",
+    "turnOn": "Włącz promocję",
+    "turnedOn": "Włączona",
+    "turningOn": "Włączam"
+  },
+  "empty": {
+    "hint": "Zmień filtr albo dodaj nową promocję.",
+    "noneHint": "Dodaj promocję, a OpenLinker sam doda gratis do pasujących zamówień. Nic nie działa, dopóki jej nie włączysz.",
+    "noneTitle": "Nie masz jeszcze promocji",
+    "title": "Nie ma tu żadnej promocji"
+  },
+  "guide": {
+    "close": "Zamknij",
+    "escKey": "Esc",
+    "eyebrow": "Przewodnik",
+    "flow": {
+      "aria": "Przykład sprawdzania zamówienia za 236,40 zł",
+      "s1": "Kubek przy zakupach od 200 zł",
+      "s1c": "Nie łączy się",
+      "s1d": "Zamówienie ma 236,40 zł. Dodajemy kubek.",
+      "s2": "Łyżeczka do herbaty sypanej",
+      "s2d": "Pominięta, bo pierwsza promocja nie łączy się z innymi.",
+      "s3": "Herbata od 120 zł",
+      "s3d": "Pominięta z tego samego powodu."
+    },
+    "footerBefore": "Naciśnij",
+    "footerEnd": "zamyka.",
+    "footerMid": "na tej stronie, aby otworzyć przewodnik,",
+    "i": {
+      "channels": {
+        "body": "Działa tylko w kanałach, które zaznaczysz. Domyślnie we wszystkich.",
+        "name": "Kanały"
+      },
+      "doc": {
+        "body": "Gratis trafia do zamówienia z ceną 0,00 zł. Na fakturze lub paragonie wybierasz formę: Wliczony proporcjonalnie (część płatności przechodzi na gratis), 0,01 zdjęte z najdroższej płatnej pozycji (suma się nie zmienia), Pokazany jako 0,00 (tylko gdy dostawca dokumentów przyjmuje pozycję zerową), Pominięty (zapytaj księgowego) albo Własna cena.",
+        "name": "Na dokumencie"
+      },
+      "limit": {
+        "body": "Gdy rozdasz cały limit, promocja się wstrzymuje. Wznów ją przyciskiem Wznów po podniesieniu limitu.",
+        "name": "Limit sztuk"
+      },
+      "new": {
+        "body": "Zmiany obowiązują zamówienia złożone po zapisaniu. Zamówienia już złożone zostają przy swoim gratisie. Liczy się data złożenia zamówienia.",
+        "name": "Zmiana nie działa wstecz"
+      },
+      "nostack": {
+        "body": "Promocja zadziała razem z inną tylko wtedy, gdy obie się na to zgadzają. Masz trzy opcje: łączy się ze wszystkimi, tylko z wybranymi (zaznaczasz je na liście) albo z żadną. Gdy zadziała promocja, która nie łączy się z żadną, kolejne pod nią nie są sprawdzane.",
+        "chip": "Nie łącz",
+        "name": "Łączenie z innymi promocjami"
+      },
+      "order": {
+        "body": "OpenLinker sprawdza promocje w kolejności z listy. Wyższa jest pierwsza. Zmienisz to strzałkami przy numerze albo w menu Przesuń wyżej.",
+        "name": "Od góry do dołu"
+      },
+      "ownprice": {
+        "body": "Gratis pokaże się na dokumencie z tą ceną, a ta kwota zostanie odjęta od najdroższej płatnej pozycji, więc suma się nie zmieni.",
+        "name": "Własna cena"
+      },
+      "perclient": {
+        "body": "Ile razy ten sam klient może dostać gratis z tej promocji. Klienta rozpoznajemy po koncie kupującego i adresie e-mail. Na Allegro to jedno konto kupującego (e-mail Allegro jest maskowany, ale stały dla konta). W sklepach to e-mail z zamówienia, także dla gości. Ten sam e-mail w dwóch kanałach to ten sam klient. Jeśli nie wiemy, kim jest klient, gratis nie jest dodawany i zobaczysz to w historii jako „nie znamy klienta”.",
+        "name": "Najwyżej na klienta"
+      },
+      "skip": {
+        "body": "Jeśli klient ma już ten gratis w koszyku, także jako składnik zestawu, nie dodajemy drugiego.",
+        "name": "Pomiń, jeśli produkt jest już w zamówieniu"
+      },
+      "stock": {
+        "body": "Promocja wstrzymuje się sama i wraca sama, gdy gratis znów jest na stanie. Nic nie musisz robić.",
+        "name": "Brak gratisu na stanie"
+      },
+      "what": {
+        "body": "Promocja ma warunek, czyli kwotę koszyka albo produkt w zamówieniu, i korzyść. Na razie korzyścią jest gratis: produkt dodany do zamówienia za 0,00 zł.",
+        "name": "Warunek i korzyść"
+      }
+    },
+    "lede": "Promocja dodaje gratis do nowego zamówienia, zanim trafi do sklepu lub na dokument. Tu w skrócie, jak to działa.",
+    "s": {
+      "doc": {
+        "sum": "0,00 zł",
+        "title": "Gratis na zamówieniu i dokumencie"
+      },
+      "limits": {
+        "sum": "same się zatrzymują",
+        "title": "Limity i wstrzymania"
+      },
+      "new": {
+        "sum": "nie działa wstecz",
+        "title": "Tylko nowe zamówienia"
+      },
+      "order": {
+        "sum": "od góry do dołu",
+        "title": "Kolejność sprawdzania"
+      },
+      "stack": {
+        "sum": "zgoda obu stron",
+        "title": "Łączenie promocji"
+      },
+      "what": {
+        "sum": "warunek i gratis",
+        "title": "Czym jest promocja"
+      }
+    },
+    "title": "Jak działają promocje"
+  },
+  "history": {
+    "applied": "Dodano",
+    "empty": "Jeszcze nic. Zamówienia pojawią się tu, gdy promocja się z nimi spotka.",
+    "error": "Błąd",
+    "failed": "Nie udało się wczytać historii.",
+    "reasons": {
+      "below-per-unit-threshold": "za mało sztuk",
+      "customer-limit-reached": "klient dostał już gratis",
+      "customer-unknown": "nie znamy klienta",
+      "gift-already-in-order": "gratis już w zamówieniu",
+      "gift-out-of-stock": "gratisu nie ma na stanie",
+      "gift-stock-unknown": "nie znamy stanu gratisu",
+      "paused-unit-cap": "limit sztuk wyczerpany",
+      "rule-not-matching": "zamówienie nie pasowało",
+      "superseded-by-earlier-rule": "zadziałała wcześniejsza promocja",
+      "unit-cap-reached": "limit sztuk wyczerpany"
+    },
+    "skipped": "Pominięto",
+    "today": "dziś, {time}",
+    "yesterday": "wczoraj, {time}"
+  },
+  "menu": {
+    "aria": "Działania promocji",
+    "delete": "Usuń",
+    "duplicate": "Duplikuj",
+    "pause": "Wstrzymaj",
+    "resume": "Włącz"
+  },
+  "new": {
+    "changeTemplate": "Zmień szablon",
+    "description": "Wybierz rodzaj korzyści i szablon, a resztę ustawisz w formularzu. Nic nie działa, dopóki jej nie włączysz.",
+    "missing": "Brakuje:",
+    "missingItems": {
+      "amount": "kwota",
+      "cap": "całkowity limit sztuk",
+      "channel": "kanał",
+      "combine": "promocje, z którymi się łączy",
+      "docPrice": "cena na dokumencie",
+      "gift": "produkt gratisu",
+      "name": "nazwa",
+      "perN": "liczba całkowita dla \"1 gratis na N\"",
+      "period": "poprawny okres",
+      "product": "produkt w zamówieniu",
+      "quantity": "ilość"
+    },
+    "nameSuggest": {
+      "basket": "{gift} przy zakupach od {amount}",
+      "product": "{gift} do {product}",
+      "unit": "{gift} do każdej sztuki: {product}"
+    },
+    "ready": "Gotowa do włączenia",
+    "saveFailed": "Nie udało się zapisać promocji.",
+    "template": {
+      "basket": {
+        "example": "np. próbka kawy do zamówień od 150 zł",
+        "title": "Gratis od kwoty zamówienia"
+      },
+      "empty": {
+        "example": "Wszystko ustawisz sam, od zera.",
+        "title": "Pusta promocja"
+      },
+      "product": {
+        "example": "np. łyżeczka do każdego zestawu porannego",
+        "title": "Gratis do produktu"
+      },
+      "unit": {
+        "example": "np. torba na co drugi kubek",
+        "title": "Gratis do każdej sztuki"
+      }
+    },
+    "templateHint": "Wybierz, kiedy klient dostaje gratis. Szczegóły ustawisz w następnym kroku.",
+    "templateTitle": "Zacznij od szablonu",
+    "title": "Nowa promocja",
+    "typeTitle": "Rodzaj korzyści",
+    "use": "Użyj"
+  },
+  "page": {
+    "back": "Promocje",
+    "create": "Nowa promocja",
+    "deleteFailed": "Nie udało się usunąć promocji.",
+    "description": "Zasady, według których OpenLinker dodaje korzyść do zamówienia w każdym kanale. Na razie możesz dodawać gratisy.",
+    "eyebrow": "Operacje",
+    "guideButton": "Jak działają promocje",
+    "loadFailed": "Nie udało się wczytać promocji",
+    "loading": "Wczytuję promocje",
+    "readOnly": "Możesz oglądać promocje, ale ich nie zmieniać.",
+    "reorderFailed": "Nie udało się zapisać kolejności. Odśwież stronę i spróbuj ponownie.",
+    "title": "Promocje",
+    "writeFailed": "Zmiana nie została zapisana."
+  },
+  "peek": {
+    "aria": "Podgląd promocji",
+    "channels": "Kanały",
+    "close": "Zamknij podgląd",
+    "kicker": "Promocja",
+    "open": "Otwórz",
+    "order": "kolejność {n}",
+    "pause": "Wstrzymaj",
+    "range": "ostatnie 30 dni",
+    "recent": "Ostatnie użycia",
+    "recentNone": "Jeszcze nic. Zamówienia pojawią się tu, gdy promocja się z nimi spotka.",
+    "results": "Wyniki",
+    "resume": "Włącz"
+  },
+  "rail": {
+    "historyTab": "Historia",
+    "order": {
+      "change": "Zmień na liście",
+      "first": "Sprawdzana jako pierwsza",
+      "help": "O: kolejność sprawdzania",
+      "last": "Sprawdzana jako ostatnia",
+      "nth": "Sprawdzana jako numer {n}",
+      "of": "{n} z {total}",
+      "title": "Kolejność"
+    },
+    "tabsAria": "Test i historia",
+    "testTab": "Test na zamówieniu"
+  },
+  "rb": {
+    "amount": "kwota",
+    "anyChannel": "dowolnego kanału",
+    "basket": "Gdy zamówienie z {channels} ma wartość od {amount}, dodajemy gratis: {gift}, {qty} szt.",
+    "cap": "Limit to {cap} szt.",
+    "channel": "kanał",
+    "channelsLabel": "Kanały",
+    "eyebrow": "Reguła w jednym zdaniu",
+    "from": "Działa od {from}.",
+    "fromTo": "Działa od {from} do {to}.",
+    "gift_ph": "produkt gratisu",
+    "name_ph": "nazwa",
+    "or": " lub ",
+    "product": "Gdy zamówienie z {channels} zawiera {product}, dodajemy gratis: {gift}, {qty} szt.",
+    "product_ph": "produkt w zamówieniu",
+    "stackAll": "Łączy się ze wszystkimi promocjami.",
+    "stackNone": "Nie łączy się z innymi.",
+    "stackSelected": "Łączy się tylko z: {names}.",
+    "stackSelectedNone": "Łączy się tylko z wybranymi (jeszcze żadna).",
+    "unit": "Za każde {n} szt. produktu {product} w zamówieniu z {channels} dodajemy gratis: {gift}, {qty} szt."
+  },
+  "results": {
+    "cost": "Koszt",
+    "costAverage": "{avg} śr.",
+    "costBasis": "wg cen zakupu",
+    "costPartial": "{n} szt. bez ceny zakupu",
+    "failed": "Nie udało się wczytać wyników.",
+    "given": "Wydano",
+    "givenOf": "z {cap} szt.",
+    "none": "W ostatnich 30 dniach nie wydano gratisu.",
+    "orders": "Zamówienia",
+    "ordersLast": "ostatnie {when}",
+    "pcs": "szt.",
+    "range": "ostatnie 30 dni",
+    "title": "Wyniki",
+    "usage": "Wykorzystanie limitu"
+  },
+  "row": {
+    "basket": "Koszyk od {amount}",
+    "contains": "Zawiera {product}",
+    "gift": "Gratis × {n}",
+    "noCombine": "Nie łącz",
+    "noEnd": "bez końca",
+    "onlySelected": "Tylko z wybranymi ({n})",
+    "pausedLimit": "Rozdano {given} z {cap} szt.",
+    "pausedStock": "Gratis się skończył",
+    "perUnit": "Za każde {n} szt. {product}",
+    "starts": "od {date}",
+    "until": "do {date}"
+  },
+  "s": {
+    "channels": {
+      "aside": "{n} z {total}",
+      "doubleGift": "Sklep może też sam dawać gratisy. Jeśli to robi, klient może dostać dwa.",
+      "error": "Wybierz co najmniej jeden kanał.",
+      "help": "Gdzie działa promocja. Domyślnie wszystkie kanały.",
+      "kindMarket": "Konto sprzedawcy",
+      "kindShop": "Sklep internetowy",
+      "title": "Kanały"
+    },
+    "combine": {
+      "all": "Łączy się ze wszystkimi",
+      "asideAll": "ze wszystkimi",
+      "asideNone": "z żadną",
+      "asideSelected": "tylko z wybranymi ({n})",
+      "error": "Wybierz co najmniej jedną promocję albo wybierz inną opcję.",
+      "groupAria": "Łączenie z innymi promocjami",
+      "help": "Promocja zadziała razem z inną tylko wtedy, gdy obie się na to zgadzają.",
+      "helpLabel": "O: łączenie z innymi promocjami",
+      "noMatch": "Żadna promocja nie pasuje.",
+      "noOthers": "Nie ma jeszcze innych promocji do wyboru.",
+      "none": "Nie łączy się z żadną",
+      "question": "Czy łączy się z innymi promocjami",
+      "search": "Szukaj promocji",
+      "selectActive": "Zaznacz wszystkie aktywne",
+      "selected": "Łączy się tylko z wybranymi",
+      "skip": "Pomiń, jeśli produkt jest już w zamówieniu",
+      "skipHelp": "Także jako składnik zestawu.",
+      "skipLabel": "O: Pomiń, jeśli produkt jest już w zamówieniu",
+      "title": "Łączenie i duplikaty",
+      "titleShort": "Łączenie"
+    },
+    "combineSimple": {
+      "aside": "opcjonalne",
+      "title": "Łączenie i okres"
+    },
+    "gift": {
+      "aside": "1 produkt",
+      "change": "Zmień",
+      "choose": "Wybierz produkt",
+      "costUnknown": "Brak ceny zakupu",
+      "costsYouAfter": " za sztukę",
+      "costsYouBefore": "Kosztuje Cię ",
+      "customerPays": "Klient płaci",
+      "empty": "Nie wybrano gratisu",
+      "emptyHelp": "Wybierz produkt, który dodamy do zamówienia.",
+      "error": "Wybierz produkt gratisu.",
+      "inStock": "na stanie {n} szt.",
+      "quantity": "Ilość",
+      "searchLabel": "Produkt",
+      "searchPlaceholder": "Wpisz nazwę lub SKU produktu",
+      "sku": "SKU {sku}",
+      "stockUnknown": "stan nieznany",
+      "title": "Korzyść: gratis"
+    },
+    "limits": {
+      "aside": "opcjonalne",
+      "doc": "Na dokumencie",
+      "docHelp": "Jak gratis wygląda na fakturze lub paragonie. Przykład: zamówienie za 203,98 zł z Twoim gratisem.",
+      "docLabel": "O: na dokumencie",
+      "docPriceError": "Wpisz cenę, najwyżej z dwoma miejscami po przecinku.",
+      "perCustomer": "Najwyżej na klienta",
+      "perCustomerHelp": "Klienta rozpoznajemy po koncie kupującego lub e-mailu z zamówienia. Bez tego gratis nie jest dodawany.",
+      "perCustomerLabel": "O: najwyżej na klienta",
+      "perCustomerPlaceholder": "bez limitu",
+      "title": "Limity i dokumenty",
+      "unitCap": "Limit sztuk w całej promocji",
+      "unitCapError": "Wpisz liczbę sztuk, całkowitą.",
+      "unitCapHelp": "Po rozdaniu limitu promocja się wstrzyma. Wznów ją po podniesieniu limitu.",
+      "unitCapHelpNew": "Po rozdaniu limitu promocja się wstrzyma.",
+      "unitCapLabel": "O: limit sztuk w całej promocji",
+      "unitCapPlaceholder": "bez limitu"
+    },
+    "name": {
+      "aside": "widoczna na liście",
+      "error": "Nazwa jest wymagana.",
+      "help": "Tak widać ją na liście promocji i w historii zamówień. Możesz też kliknąć tytuł strony.",
+      "label": "Nazwa promocji",
+      "placeholder": "np. Kubek przy zakupach od 200 zł",
+      "required": "wymagana",
+      "suggestion": "Podpowiedź:",
+      "title": "Nazwa",
+      "useSuggestion": "Użyj sugestii"
+    },
+    "period": {
+      "asideFrom": "od {date}",
+      "error": "Data końca musi być po dacie początku.",
+      "from": "Od",
+      "help": "Liczy się data złożenia zamówienia. Promocja nie działa wstecz.",
+      "title": "Okres",
+      "to": "Do (opcjonalnie)",
+      "toPlaceholder": "bez końca"
+    },
+    "when": {
+      "amount": "Zamówienie od",
+      "amountError": "Wpisz kwotę.",
+      "amountHelp": "Liczy się kwota, którą zapłacił klient, bez dostawy.",
+      "amountPlaceholder": "0,00",
+      "aside": {
+        "basket": "warunek",
+        "product": "warunek",
+        "unit": "warunek"
+      },
+      "basket": "Koszyk od kwoty",
+      "currency": "Waluta",
+      "group": "Warunek",
+      "maxPerOrder": "Najwyżej w zamówieniu",
+      "maxPerOrderPlaceholder": "bez ograniczenia",
+      "perN": "1 gratis na sztuk",
+      "product": "Zawiera produkt",
+      "productEmpty": "Nie wybrano produktu",
+      "productEmptyHelp": "Promocja zadziała, gdy będzie w zamówieniu.",
+      "productError": "Wybierz produkt.",
+      "product_label": "Produkt w zamówieniu",
+      "title": "Kiedy",
+      "unit": "Za każdą sztukę"
+    }
+  },
+  "status": {
+    "active": "Aktywna",
+    "draft": "Szkic",
+    "ended": "Zakończona",
+    "pausedLimit": "Wstrzymana",
+    "pausedStock": "Wstrzymana",
+    "scheduled": "Zaplanowana"
+  },
+  "table": {
+    "caption": "Promocje w kolejności sprawdzania",
+    "edit": "Edytuj",
+    "endedLabel": "Zakończona",
+    "facts": {
+      "benefit": "Korzyść",
+      "channels": "Kanały",
+      "usage": "Użycie"
+    },
+    "help": {
+      "order": "O: kolejność sprawdzania",
+      "usage": "O: limit sztuk"
+    },
+    "moreAria": "Więcej: {name}",
+    "moveDown": "Przesuń niżej",
+    "moveDownAria": "Przesuń niżej: {name}",
+    "moveUp": "Przesuń wyżej",
+    "moveUpAria": "Przesuń wyżej: {name}",
+    "off": "Wyłączona",
+    "on": "Włączona",
+    "pcs": "{given} / {cap} szt.",
+    "pcsNoCap": "{given} szt.",
+    "toggleAria": "{name}: włączona",
+    "usageAria": "Wykorzystanie limitu"
+  },
+  "tabs": {
+    "active": "Aktywne",
+    "all": "Wszystkie",
+    "aria": "Stan promocji",
+    "draft": "Szkice",
+    "ended": "Zakończone",
+    "paused": "Wstrzymane",
+    "scheduled": "Zaplanowane"
+  },
+  "test": {
+    "aside": "nic się nie zapisuje",
+    "conditionsMet": "Warunki są spełnione.",
+    "customer": "Klient (opcjonalnie)",
+    "customerHelp": "Sprawdza też limit na klienta dla tego klienta.",
+    "customerLimit": {
+      "notChecked": "Nie podano klienta, więc limitu nie sprawdziliśmy.",
+      "notCheckedBadge": "Nie sprawdzono",
+      "over": "Limit",
+      "title": "Limit na klienta",
+      "unknown": "Klient z tego zamówienia jest nieznany, więc nie sprawdzimy limitu.",
+      "used": "{used} z {limit} wykorzystany, gratis {will}.",
+      "willAdd": "zostanie dodany",
+      "willNot": "nie zostanie dodany",
+      "within": "W normie"
+    },
+    "customerNone": "Nie znaleziono klienta",
+    "customerPlaceholder": "E-mail lub nazwa klienta",
+    "customerSearching": "Szukam",
+    "failed": "Sprawdzenie się nie udało.",
+    "help": "Pokazuje, które promocje dodałyby gratis do tego zamówienia i dlaczego pozostałe nie. Nic się nie zapisuje.",
+    "noneApply": "Nie dodano by żadnego gratisu",
+    "notReady": "Uzupełnij brakujące pola, żeby ją sprawdzić.",
+    "notReadyBadge": "Niegotowa",
+    "order": "Zamówienie",
+    "orderNotFound": "Nie ma takiego zamówienia.",
+    "orderPlaceholder": "Id zamówienia (ol_order_...)",
+    "reasons": {
+      "alreadyInOrder": "Gratis jest już w zamówieniu.",
+      "belowThreshold": "W zamówieniu jest za mało sztuk produktu.",
+      "customerLimit": "Ten klient dostał już najwięcej, ile wolno.",
+      "customerUnknown": "Klient jest nieznany, więc nie sprawdzimy limitu na klienta.",
+      "limit": "Limit sztuk jest wyczerpany.",
+      "notMatching": "Zamówienie nie spełnia warunków.",
+      "outOfStock": "Gratisu nie ma na stanie.",
+      "stockUnknown": "Nie znamy stanu gratisu, więc go nie dodano.",
+      "superseded": "Wyższa promocja, która nie łączy się z innymi, już zadziałała."
+    },
+    "run": "Sprawdź",
+    "running": "Sprawdzam",
+    "skipped": "Pominięta",
+    "thisPromotion": "Ta promocja",
+    "title": "Test na zamówieniu",
+    "wouldAdd": "Doda {count} szt."
+  },
+  "toolbar": {
+    "anyBenefit": "Każda korzyść",
+    "anyChannel": "Każdy kanał",
+    "benefit": "Korzyść",
+    "benefitGift": "Gratis",
+    "channel": "Kanał",
+    "checkedInOrder": "Sprawdzane od góry do dołu",
+    "clear": "Wyczyść filtr",
+    "filtersAria": "Filtry",
+    "results": {
+      "few": "{n} wyniki",
+      "many": "{n} wyników",
+      "one": "{n} wynik",
+      "other": "{n} wyniku"
+    },
+    "search": "Szukaj promocji"
+  }
+}

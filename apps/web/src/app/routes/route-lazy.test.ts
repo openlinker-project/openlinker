@@ -145,11 +145,15 @@ const lazyRoutes = collectLazyRoutes([
  *
  * #3943 adds the gift cost report (`analytics/gifts`), from 82 to 83.
  *
+ * #3935 moves gift rules to Promotions: `automations/gifts` and its composer
+ * become redirects (two lazy routes fewer) and `promotions`, `promotions/new`
+ * and `promotions/:promotionId` take their place, from 83 to 84.
+ *
  * #4029: `/register` joins `/login` under one eager layout route (so a tab
  * switch does not remount the card), which removes one lazy guest route, and
  * `/settings/login-page` adds one authenticated lazy route - net 0, still 78.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 83;
+const EXPECTED_LAZY_ROUTE_COUNT = 84;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

@@ -1,24 +1,24 @@
 /**
- * Gift rule form model tests (#3940)
+ * Promotion form model tests (#3935)
  */
 import { describe, expect, it } from 'vitest';
-import type { GiftRule } from '../api/gifts.types';
+import type { Promotion } from '../api/promotions.types';
 import {
-  emptyGiftRuleForm,
+  emptyPromotionForm,
   formToWriteInput,
-  kindOfRule,
-  ruleToForm,
-  suggestRuleName,
-  validateGiftRuleForm,
-  type GiftRuleFormValues,
-} from './gift-rule-form';
+  kindOfPromotion,
+  promotionToForm,
+  suggestPromotionName,
+  validatePromotionForm,
+  type PromotionFormValues,
+} from './promotion-form';
 
 const spoon = { productId: 'p-spoon', variantId: 'v-spoon', name: 'Spoon' };
 const set = { productId: 'p-set', variantId: 'v-set', name: 'Morning set' };
 
-function filled(overrides: Partial<GiftRuleFormValues> = {}): GiftRuleFormValues {
+function filled(overrides: Partial<PromotionFormValues> = {}): PromotionFormValues {
   return {
-    ...emptyGiftRuleForm('product', new Date('2026-11-05T10:00:00Z')),
+    ...emptyPromotionForm('product', new Date('2026-11-05T10:00:00Z')),
     name: 'Spoon with the set',
     when: set,
     gift: spoon,
@@ -26,28 +26,50 @@ function filled(overrides: Partial<GiftRuleFormValues> = {}): GiftRuleFormValues
   };
 }
 
-describe('validateGiftRuleForm', () => {
+describe('validatePromotionForm', () => {
   it('should find nothing missing when a product promotion is complete', () => {
-    expect(validateGiftRuleForm(filled())).toEqual([]);
+    expect(validatePromotionForm(filled())).toEqual([]);
   });
 
   it('should list what is missing in the order the form reads', () => {
-    const empty = emptyGiftRuleForm('product', new Date('2026-11-05T10:00:00Z'));
-    expect(validateGiftRuleForm(empty)).toEqual(['name', 'when', 'gift']);
+    const empty = emptyPromotionForm('product', new Date('2026-11-05T10:00:00Z'));
+    expect(validatePromotionForm(empty)).toEqual(['name', 'when', 'gift']);
   });
 
   it('should ask for an amount, not a product, on an amount promotion', () => {
-    const problems = validateGiftRuleForm(filled({ kind: 'basket', when: null, basketMin: '' }));
+    const problems = validatePromotionForm(filled({ kind: 'basket', when: null, basketMin: '' }));
     expect(problems).toEqual(['basket']);
-    expect(validateGiftRuleForm(filled({ kind: 'basket', when: null, basketMin: '150' }))).toEqual([]);
+    expect(validatePromotionForm(filled({ kind: 'basket', when: null, basketMin: '150' }))).toEqual([]);
   });
 
   it('should refuse an end date before the start', () => {
-    expect(validateGiftRuleForm(filled({ from: '2026-11-05', to: '2026-11-01' }))).toEqual(['period']);
+    expect(validatePromotionForm(filled({ from: '2026-11-05', to: '2026-11-01' }))).toEqual(['period']);
   });
 
   it('should refuse a piece limit that is not a whole number', () => {
-    expect(validateGiftRuleForm(filled({ unitCap: '2.5' }))).toEqual(['unit-cap']);
+    expect(validatePromotionForm(filled({ unitCap: '2.5' }))).toEqual(['unit-cap']);
+  });
+});
+
+describe('stacking and documents', () => {
+  it('should send the chosen promotions only for "only with selected"', () => {
+    expect(formToWriteInput(filled({ combineMode: 'none' }), true).combinesWith).toEqual({ mode: 'none' });
+    expect(
+      formToWriteInput(filled({ combineMode: 'selected', combineIds: ['a', 'b'] }), true).combinesWith,
+    ).toEqual({ mode: 'selected', promotionIds: ['a', 'b'] });
+  });
+
+  it('should refuse "only with selected" with nothing selected', () => {
+    expect(validatePromotionForm(filled({ combineMode: 'selected' }))).toEqual(['combine']);
+  });
+
+  it('should carry a custom price only with the custom-price form and demand a valid one', () => {
+    expect(validatePromotionForm(filled({ documentForm: 'custom-price' }))).toEqual(['doc-price']);
+    const input = formToWriteInput(filled({ documentForm: 'custom-price', documentUnitPrice: '2.50' }), true);
+    expect(input.benefit).toMatchObject({ documentForm: 'custom-price', documentUnitPrice: '2.50' });
+    expect(
+      formToWriteInput(filled({ documentForm: 'omit', documentUnitPrice: '2.50' }), true).benefit,
+    ).not.toHaveProperty('documentUnitPrice');
   });
 });
 
@@ -56,16 +78,16 @@ describe('formToWriteInput', () => {
     const input = formToWriteInput(filled(), true);
 
     expect(input.conditions).toEqual([{ field: 'containsProduct', op: 'eq', value: 'v-set' }]);
-    expect(input.gift).toMatchObject({
+    expect(input.benefit).toMatchObject({
+      kind: 'free-gift',
       productId: 'p-spoon',
       variantId: 'v-spoon',
       quantity: 1,
       perUnit: null,
-      unitCap: null,
       skipIfPresent: true,
-      doNotCombine: false,
-      customerLimit: null,
     });
+    expect(input.combinesWith).toEqual({ mode: 'all' });
+    expect(input.limits).toEqual({ unitCap: null, customerLimit: 1 });
     expect(input.isActive).toBe(true);
   });
 
@@ -82,7 +104,7 @@ describe('formToWriteInput', () => {
   it('should count units of the product on a per-unit promotion', () => {
     const input = formToWriteInput(filled({ kind: 'unit', perN: '2', maxPerOrder: '3' }), false);
 
-    expect(input.gift.perUnit).toEqual({ productId: 'p-set', per: 2, maxPerOrder: 3 });
+    expect(input.benefit.perUnit).toEqual({ productId: 'p-set', per: 2, maxPerOrder: 3 });
     expect(input.isActive).toBe(false);
   });
 
@@ -98,8 +120,8 @@ describe('formToWriteInput', () => {
   });
 
   it('should carry the gift document form only when the operator chose one', () => {
-    expect(formToWriteInput(filled(), true).gift).not.toHaveProperty('documentForm');
-    expect(formToWriteInput(filled({ documentForm: 'show-zero' }), true).gift.documentForm).toBe(
+    expect(formToWriteInput(filled(), true).benefit).not.toHaveProperty('documentForm');
+    expect(formToWriteInput(filled({ documentForm: 'show-zero' }), true).benefit.documentForm).toBe(
       'show-zero',
     );
   });
@@ -110,8 +132,8 @@ describe('formToWriteInput', () => {
   });
 });
 
-describe('ruleToForm', () => {
-  const rule: GiftRule = {
+describe('promotionToForm', () => {
+  const rule: Promotion = {
     id: 'r1',
     name: 'Spoon with the set',
     isActive: true,
@@ -122,17 +144,18 @@ describe('ruleToForm', () => {
       { field: 'containsProduct', op: 'eq', value: 'v-set' },
       { field: 'sourceConnectionIn', op: 'in', values: ['c-1'] },
     ],
-    gift: {
+    benefit: {
+      kind: 'free-gift',
       productId: 'p-spoon',
       variantId: 'v-spoon',
       quantity: 2,
       perUnit: null,
-      unitCap: 200,
       skipIfPresent: false,
-      doNotCombine: true,
-      customerLimit: null,
-      documentForm: 'priced-in',
+      documentForm: 'custom-price',
+      documentUnitPrice: '2.50',
     },
+    combinesWith: { mode: 'selected', promotionIds: ['x'] },
+    limits: { unitCap: 200, customerLimit: 1 },
     status: 'active',
     pausedReason: null,
     pausedAt: null,
@@ -143,7 +166,7 @@ describe('ruleToForm', () => {
   };
 
   it('should read a saved rule back into the form with the names it was given', () => {
-    const form = ruleToForm(rule, new Map([['v-set', 'Morning set'], ['v-spoon', 'Spoon']]));
+    const form = promotionToForm(rule, new Map([['v-set', 'Morning set'], ['v-spoon', 'Spoon']]));
 
     expect(form).toMatchObject({
       kind: 'product',
@@ -151,35 +174,38 @@ describe('ruleToForm', () => {
       gift: { variantId: 'v-spoon', name: 'Spoon' },
       giftQuantity: '2',
       unitCap: '200',
-      doNotCombine: true,
+      combineMode: 'selected',
+      combineIds: ['x'],
+      customerLimit: '1',
       skipIfPresent: false,
       channelIds: ['c-1'],
-      documentForm: 'priced-in',
+      documentForm: 'custom-price',
+      documentUnitPrice: '2.50',
     });
   });
 
   it('should show the id when a name could not be resolved', () => {
-    expect(ruleToForm(rule).when?.name).toBe('v-set');
+    expect(promotionToForm(rule).when?.name).toBe('v-set');
   });
 
   it('should tell the three kinds apart by what the rule holds', () => {
-    expect(kindOfRule(rule)).toBe('product');
+    expect(kindOfPromotion(rule)).toBe('product');
     expect(
-      kindOfRule({
-        gift: rule.gift,
+      kindOfPromotion({
+        benefit: rule.benefit,
         conditions: [{ field: 'orderTotalGross', op: 'gte', amount: '150', currency: 'PLN' }],
       }),
     ).toBe('basket');
     expect(
-      kindOfRule({
-        gift: { ...(rule.gift as NonNullable<GiftRule['gift']>), perUnit: { productId: 'p', per: 2, maxPerOrder: null } },
+      kindOfPromotion({
+        benefit: { ...rule.benefit, perUnit: { productId: 'p', per: 2, maxPerOrder: null } },
         conditions: rule.conditions,
       }),
     ).toBe('unit');
   });
 });
 
-describe('suggestRuleName', () => {
+describe('suggestPromotionName', () => {
   const template = {
     product: '{gift} with {product}',
     basket: '{gift} for orders from {amount}',
@@ -187,13 +213,13 @@ describe('suggestRuleName', () => {
   };
 
   it('should build the name from the gift and what triggers it', () => {
-    expect(suggestRuleName(filled(), template)).toBe('Spoon with Morning set');
-    expect(suggestRuleName(filled({ kind: 'basket', when: null, basketMin: '150' }), template)).toBe(
+    expect(suggestPromotionName(filled(), template)).toBe('Spoon with Morning set');
+    expect(suggestPromotionName(filled({ kind: 'basket', when: null, basketMin: '150' }), template)).toBe(
       'Spoon for orders from 150',
     );
   });
 
   it('should suggest nothing before a gift is picked', () => {
-    expect(suggestRuleName(filled({ gift: null }), template)).toBe('');
+    expect(suggestPromotionName(filled({ gift: null }), template)).toBe('');
   });
 });

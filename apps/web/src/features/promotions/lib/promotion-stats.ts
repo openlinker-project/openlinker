@@ -10,7 +10,7 @@
  * gifts counts once per gift, so the figure is the number of gift-carrying
  * order lines, not of distinct orders.
  *
- * @module apps/web/src/features/gifts/lib
+ * @module apps/web/src/features/promotions/lib
  */
 import type { GiftReportGroup } from '../../gift-report';
 
@@ -19,22 +19,22 @@ export interface GiftResultCost {
   costNet: number;
 }
 
-export interface GiftResults {
+export interface PromotionResults {
   units: number;
   orders: number;
   costs: GiftResultCost[];
   unknownCostUnits: number;
 }
 
-export function summariseGiftResults(
+export function summarisePromotionResults(
   groups: readonly GiftReportGroup[],
-  ruleId: string | null,
-): GiftResults {
+  promotionId: string | null,
+): PromotionResults {
   const costs = new Map<string | null, number>();
-  const results: GiftResults = { units: 0, orders: 0, costs: [], unknownCostUnits: 0 };
+  const results: PromotionResults = { units: 0, orders: 0, costs: [], unknownCostUnits: 0 };
   for (const group of groups) {
     if (group.giftSource !== 'rule') continue;
-    if (ruleId !== null && group.ruleRef !== ruleId) continue;
+    if (promotionId !== null && group.ruleRef !== promotionId) continue;
     results.units += group.units;
     results.orders += group.orders;
     results.unknownCostUnits += group.unknownCostUnits;
@@ -45,7 +45,7 @@ export function summariseGiftResults(
 }
 
 /** Average cost per unit, per currency; `null` when nothing was given. */
-export function averageUnitCost(results: GiftResults): GiftResultCost[] | null {
+export function averageUnitCost(results: PromotionResults): GiftResultCost[] | null {
   if (results.units === 0) return null;
   return results.costs.map((c) => ({ currency: c.currency, costNet: c.costNet / results.units }));
 }

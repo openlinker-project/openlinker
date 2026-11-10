@@ -28,7 +28,7 @@ import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { BundleProductPicker, type BundleProductChoice } from '../../bundles';
 import { GiftDocumentFormField, type GiftDocumentFormChoice } from '../../gift-documents';
-import { useAddGiftMutation } from '../hooks/use-gift-rules';
+import { useAddGiftMutation } from '../hooks/use-gifts';
 import { giftCostText, readGiftCost } from '../lib/gift-cost';
 import { readAddGiftRefusal } from '../lib/gift-refusal';
 

@@ -145,6 +145,7 @@ import {
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createBundlesApi, type BundlesApi } from '../../features/bundles/api/bundles.api';
 import { createGiftsApi, type GiftsApi } from '../../features/gifts/api/gifts.api';
+import { createPromotionsApi, type PromotionsApi } from '../../features/promotions/api/promotions.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
 import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
@@ -293,6 +294,7 @@ export interface CoreApiClient {
   products: ProductsApi;
   bundles: BundlesApi;
   gifts: GiftsApi;
+  promotions: PromotionsApi;
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: ApiRequest;
@@ -559,6 +561,7 @@ export function createApiClient({
     products: createProductsApi(request),
     bundles: createBundlesApi(request),
     gifts: createGiftsApi(request),
+    promotions: createPromotionsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,

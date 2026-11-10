@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { GiftReportGroup } from '../../gift-report';
-import { averageUnitCost, summariseGiftResults } from './gift-rule-stats';
+import { averageUnitCost, summarisePromotionResults } from './promotion-stats';
 
 const group = (over: Partial<GiftReportGroup>): GiftReportGroup => ({
   key: 'k',
@@ -23,9 +23,9 @@ const group = (over: Partial<GiftReportGroup>): GiftReportGroup => ({
   ...over,
 });
 
-describe('summariseGiftResults', () => {
+describe('summarisePromotionResults', () => {
   it('should sum only the groups of the named promotion', () => {
-    const results = summariseGiftResults(
+    const results = summarisePromotionResults(
       [group({}), group({ units: 5, orders: 4, costNet: 20 }), group({ ruleRef: 'r2', units: 99 })],
       'r1',
     );
@@ -36,7 +36,7 @@ describe('summariseGiftResults', () => {
   });
 
   it('should ignore manual gifts and keep currencies apart', () => {
-    const results = summariseGiftResults(
+    const results = summarisePromotionResults(
       [group({}), group({ giftSource: 'manual', units: 7 }), group({ currency: 'EUR', costNet: 3 })],
       null,
     );
@@ -49,15 +49,15 @@ describe('summariseGiftResults', () => {
   });
 
   it('should carry the pieces that have no purchase cost', () => {
-    expect(summariseGiftResults([group({ unknownCostUnits: 4 })], 'r1').unknownCostUnits).toBe(4);
+    expect(summarisePromotionResults([group({ unknownCostUnits: 4 })], 'r1').unknownCostUnits).toBe(4);
   });
 });
 
 describe('averageUnitCost', () => {
   it('should divide the cost by the units, and say nothing when none were given', () => {
-    expect(averageUnitCost(summariseGiftResults([group({})], 'r1'))).toEqual([
+    expect(averageUnitCost(summarisePromotionResults([group({})], 'r1'))).toEqual([
       { currency: 'PLN', costNet: 4 },
     ]);
-    expect(averageUnitCost(summariseGiftResults([], 'r1'))).toBeNull();
+    expect(averageUnitCost(summarisePromotionResults([], 'r1'))).toBeNull();
   });
 });

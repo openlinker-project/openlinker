@@ -1,5 +1,5 @@
 /**
- * GiftRuleNotices (#3940, #3935)
+ * PromotionNotices (#3940, #3935)
  *
  * The states of a saved promotion that need a sentence, shown as alerts under
  * the page header: read-only, paused by itself (stock or limit), ended, and
@@ -7,7 +7,7 @@
  * separate screen. The resume-with-more-units and extend-with-a-new-date
  * controls live in their alert because that is where the operator reads why.
  *
- * @module apps/web/src/features/gifts/components
+ * @module apps/web/src/features/promotions/components
  */
 import { useState, type ReactElement } from 'react';
 import { formatAbsoluteDate as formatDate } from '../../../shared/format/format-date';
@@ -15,11 +15,11 @@ import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
-import type { GiftRule } from '../api/gifts.types';
-import { isSelfPaused } from '../lib/gift-rule-view';
+import type { Promotion } from '../api/promotions.types';
+import { isSelfPaused } from '../lib/promotion-view';
 
-export interface GiftRuleNoticesProps {
-  rule: GiftRule | null;
+export interface PromotionNoticesProps {
+  promotion: Promotion | null;
   canWrite: boolean;
   saving: boolean;
   /** True while the form is incomplete: extending an ended rule needs a saveable form. */
@@ -28,15 +28,15 @@ export interface GiftRuleNoticesProps {
   onExtend: (to: string) => void;
 }
 
-export function GiftRuleNotices({
-  rule,
+export function PromotionNotices({
+  promotion: rule,
   canWrite,
   saving,
   hasProblems,
   onResume,
   onExtend,
-}: GiftRuleNoticesProps): ReactElement {
-  const copy = useMessages('gifts');
+}: PromotionNoticesProps): ReactElement {
+  const copy = useMessages('promotions');
   const [extendTo, setExtendTo] = useState('');
   const [resumeUnits, setResumeUnits] = useState('50');
   const selfPaused = rule !== null && isSelfPaused(rule);
@@ -44,8 +44,8 @@ export function GiftRuleNotices({
   return (
     <>
       {!canWrite ? (
-        <Alert tone="info" data-testid="gift-rule-readonly-notice">
-          {copy.list.readOnly}
+        <Alert tone="info" data-testid="promotion-readonly-notice">
+          {copy.detail.readOnly}
         </Alert>
       ) : null}
 
@@ -53,77 +53,72 @@ export function GiftRuleNotices({
         <Alert
           tone="warning"
           title={
-            rule.pausedReason === 'unit-cap' ? copy.composer.limitTitle : copy.composer.pausedStockTitle
+            rule.pausedReason === 'unit-cap' ? copy.detail.paused.limitTitle : copy.detail.paused.stockTitle
           }
-          data-testid="gift-composer-selfpause-alert"
+          data-testid="promotion-selfpause-alert"
           action={
             rule.pausedReason === 'unit-cap' && canWrite ? (
-              <span className="gift-composer__resume">
+              <span className="pm-inline-form">
                 <Input
                   type="number"
                   min={1}
-                  aria-label={copy.composer.resumeUnits}
+                  aria-label={copy.detail.paused.resumeUnits}
                   value={resumeUnits}
                   onChange={(event) => setResumeUnits(event.target.value)}
-                  data-testid="gift-composer-resume-units"
+                  data-testid="promotion-resume-units"
                 />
                 <Button
                   disabled={saving || !(Number(resumeUnits) > 0)}
                   onClick={() => onResume(Number(resumeUnits))}
-                  data-testid="gift-composer-resume"
+                  data-testid="promotion-resume"
                 >
-                  {copy.composer.resume}
+                  {copy.detail.paused.resume}
                 </Button>
               </span>
             ) : null
           }
         >
           {rule.pausedReason === 'unit-cap'
-            ? interpolate(copy.composer.limitBody, {
+            ? interpolate(copy.detail.paused.limitBody, {
                 given: String(rule.unitsGiven),
                 cap: String(rule.effectiveCap ?? rule.unitsGiven),
               })
-            : copy.composer.pausedStockBody}
+            : copy.detail.paused.stockBody}
         </Alert>
       ) : null}
 
       {rule?.status === 'ended' ? (
         <Alert
           tone="info"
-          title={interpolate(copy.composer.endedTitle, {
+          title={interpolate(copy.detail.ended.title, {
             date: formatDate(rule.effectiveTo ?? rule.updatedAt),
           })}
-          data-testid="gift-composer-ended-alert"
+          data-testid="promotion-ended-alert"
           action={
             canWrite ? (
-              <span className="gift-composer__resume">
+              <span className="pm-inline-form">
                 <Input
                   type="date"
-                  aria-label={copy.composer.extendTo}
+                  aria-label={copy.detail.ended.to}
                   value={extendTo}
                   onChange={(event) => setExtendTo(event.target.value)}
-                  data-testid="gift-composer-extend-to"
+                  data-testid="promotion-extend-to"
                 />
                 <Button
                   disabled={saving || extendTo === '' || hasProblems}
                   onClick={() => onExtend(extendTo)}
-                  data-testid="gift-composer-extend"
+                  data-testid="promotion-extend"
                 >
-                  {copy.composer.extend}
+                  {copy.detail.ended.extend}
                 </Button>
               </span>
             ) : null
           }
         >
-          {copy.composer.endedBody}
+          {copy.detail.ended.body}
         </Alert>
       ) : null}
 
-      {rule !== null && rule.status === 'active' ? (
-        <Alert tone="info" data-testid="gift-composer-edit-alert">
-          {copy.composer.editNote}
-        </Alert>
-      ) : null}
     </>
   );
 }

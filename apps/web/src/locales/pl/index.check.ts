@@ -53,6 +53,7 @@ import orders from './orders.json';
 import posthogSettings from './posthog-settings.json';
 import priceChanges from './price-changes.json';
 import products from './products.json';
+import promotions from './promotions.json';
 import promptTemplates from './prompt-templates.json';
 import returnGifts from './return-gifts.json';
 import returns from './returns.json';
@@ -91,6 +92,7 @@ const polish: PolishCopy<Messages> = {
   'gift-documents': giftDocuments,
   'gift-report': giftReport,
   gifts,
+  promotions,
   inventory,
   invoicing,
   listings,

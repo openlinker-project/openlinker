@@ -20,7 +20,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { usePermission } from '../../../shared/auth/use-permission';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { useGiftAttentionQuery, useSkipGiftAttentionMutation } from '../hooks/use-gift-rules';
+import { useGiftAttentionQuery, useSkipGiftAttentionMutation } from '../hooks/use-gifts';
 import {
   GIFT_ATTENTION_ACTIONABLE,
   readGiftAttention,

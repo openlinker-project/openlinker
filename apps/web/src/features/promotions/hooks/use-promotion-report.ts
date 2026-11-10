@@ -5,7 +5,7 @@
  * report page uses. The window is derived from today's date, so it rolls over at
  * midnight while the query key stays the same for the whole day.
  *
- * @module apps/web/src/features/gifts/hooks
+ * @module apps/web/src/features/promotions/hooks
  */
 import { useMemo } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -15,7 +15,7 @@ const WINDOW_DAYS = 30;
 
 const day = (date: Date): string => date.toISOString().slice(0, 10);
 
-export function useGiftRuleReportQuery(enabled = true): UseQueryResult<GiftReport> {
+export function usePromotionReportQuery(enabled = true): UseQueryResult<GiftReport> {
   const today = day(new Date());
   const filters = useMemo<GiftReportFilters>(() => {
     const to = new Date(`${today}T00:00:00.000Z`);

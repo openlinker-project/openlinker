@@ -1,75 +1,89 @@
 /**
- * GiftRuleChannelsSection (#3935, mockup `gifts-rule-detail` "Kanały")
+ * PromotionChannelsSection (#3935, mockups "Kanały")
  *
- * Where the promotion works. An empty selection means every channel. A channel
- * whose shop may also give gifts itself carries a marker, and a warning appears
- * while the promotion covers one, because a double gift is possible there.
+ * Where the promotion works: one row per sales channel with a checkbox, the
+ * connection's name, what kind of channel it is and its platform chip. An empty
+ * choice means every channel, which the card shows as all ticked; the form keeps
+ * the explicit list only once the operator unticks one. A shop that also gives
+ * gifts by itself gets one warning, because a customer could receive two.
  *
- * @module apps/web/src/features/gifts/components
+ * @module apps/web/src/features/promotions/components
  */
 import { useMemo, type ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
-import { DetailSection } from '../../../shared/ui/detail-section';
-import { StatusBadge } from '../../../shared/ui/status-badge';
+import { ComposerSection } from '../../../shared/ui/composer-section';
 import { useConnectionsQuery } from '../../connections';
-import { channelMarker, coversNativeChannel, orderSourceChannels } from '../lib/gift-channels';
-import type { GiftRuleSectionProps } from './gift-rule-section.types';
+import { channelMarker, coversNativeChannel, orderSourceChannels } from '../../gifts/lib/gift-channels';
+import { PromotionChannelChip } from './promotion-channel-chip';
+import type { PromotionSectionProps } from './promotion-section.types';
 
-export function GiftRuleChannelsSection({ form, values, readOnly }: GiftRuleSectionProps): ReactElement {
-  const copy = useMessages('gifts');
+export function PromotionChannelsSection({
+  form,
+  values,
+  readOnly,
+  riseIndex,
+  step,
+}: PromotionSectionProps): ReactElement {
+  const copy = useMessages('promotions').s.channels;
   const connections = useConnectionsQuery();
   const channels = useMemo(() => orderSourceChannels(connections.data ?? []), [connections.data]);
   const covered = values.channelIds.length === 0 ? channels.length : values.channelIds.length;
 
   const toggle = (id: string): void => {
-    if (values.channelIds.length === 0) {
-      form.setValue(
-        'channelIds',
-        channels.map((c) => c.id).filter((channelId) => channelId !== id),
-      );
-      return;
-    }
-    const current = values.channelIds;
-    form.setValue('channelIds', current.includes(id) ? current.filter((c) => c !== id) : [...current, id]);
+    const current =
+      values.channelIds.length === 0 ? channels.map((channel) => channel.id) : values.channelIds;
+    const next = current.includes(id) ? current.filter((c) => c !== id) : [...current, id];
+    // The last channel stays: an empty list means every channel, so unticking
+    // it would read as the opposite of what the operator did.
+    if (next.length === 0) return;
+    form.setValue('channelIds', next.length === channels.length ? [] : next, { shouldDirty: true });
   };
 
   return (
-    <DetailSection
-      title={copy.composer.channels}
-      titleAside={
-        channels.length > 0 ? (
-          <span className="text-muted">
-            {interpolate(copy.detail.channelsCount, { n: String(covered), total: String(channels.length) })}
-          </span>
-        ) : undefined
-      }
+    <ComposerSection
+      step={step}
+      title={copy.title}
+      aside={channels.length > 0 ? interpolate(copy.aside, { n: String(covered), total: String(channels.length) }) : undefined}
+      riseIndex={riseIndex}
+      data-testid="promotion-channels-section"
     >
-      <fieldset className="gift-section" disabled={readOnly} data-testid="gift-composer-channels">
-        <p className="text-muted">{copy.composer.channelsHelp}</p>
-        {channels.map((channel) => {
-          const marker = channelMarker(channel.platformType);
-          const checked = values.channelIds.length === 0 || values.channelIds.includes(channel.id);
-          return (
-            <label key={channel.id} className="filter-check" data-testid={`gift-composer-channel-${channel.id}`}>
-              <input type="checkbox" checked={checked} onChange={() => toggle(channel.id)} />
-              <span className="filter-check__label">{channel.name}</span>
-              <StatusBadge
-                tone={marker === 'native' ? 'info' : 'neutral'}
-                compact
-                data-testid={`gift-composer-channel-marker-${channel.id}`}
-              >
-                {marker === 'native' ? copy.composer.markerNative : copy.composer.markerOpenLinker}
-              </StatusBadge>
-            </label>
-          );
-        })}
-        {coversNativeChannel(values.channelIds, channels) ? (
-          <Alert tone="warning" density="compact" data-testid="gift-composer-prestashop-warning">
-            {copy.composer.doubleGiftWarning}
-          </Alert>
-        ) : null}
+      <p className="form-field__description pm-tight">{copy.help}</p>
+      <fieldset className="pm-fieldset" disabled={readOnly}>
+        <div className={['form-field', ''].filter(Boolean).join(' ')}>
+          <div className="pm-checks" data-testid="promotion-channels">
+            {channels.map((channel) => {
+              const checked = values.channelIds.length === 0 || values.channelIds.includes(channel.id);
+              return (
+                <label key={channel.id} className="pm-check" data-testid={`promotion-channel-${channel.id}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      toggle(channel.id);
+                    }}
+                  />
+                  <span>
+                    <span className="pm-check__n">{channel.name}</span>
+                    <span className="pm-check__s">
+                      {channelMarker(channel.platformType) === 'native' ? copy.kindShop : copy.kindMarket}
+                    </span>
+                  </span>
+                  <span className="pm-chans">
+                    <PromotionChannelChip connection={channel} />
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="pm-err">{copy.error}</p>
+        </div>
       </fieldset>
-    </DetailSection>
+      {coversNativeChannel(values.channelIds, channels) ? (
+        <Alert tone="warning" density="compact" data-testid="promotion-double-gift-warning">
+          {copy.doubleGift}
+        </Alert>
+      ) : null}
+    </ComposerSection>
   );
 }
