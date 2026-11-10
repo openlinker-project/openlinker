@@ -14,12 +14,14 @@ import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documen
 import {
   BadRequestException,
   ConflictException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
 import { resolveReceiptLineNameLimit } from './resolve-receipt-line-name-limit';
+import { toConfigShapeErrorBody, VALIDATION_FAILED } from './connection-shape-error-body';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import type {
   Connection,
@@ -376,10 +378,7 @@ export class ConnectionService implements IConnectionService {
       await validator.validate(config, previous !== undefined ? { previous } : undefined);
     } catch (error) {
       if (error instanceof InvalidConnectionConfigException) {
-        throw new BadRequestException({
-          message: error.message,
-          errors: error.errors,
-        });
+        throw new BadRequestException(toConfigShapeErrorBody(error));
       }
       throw error;
     }
@@ -859,7 +858,14 @@ export class ConnectionService implements IConnectionService {
       await validator.validate(credentials);
     } catch (error) {
       if (error instanceof InvalidCredentialsShapeException) {
-        throw new BadRequestException(error.message);
+        // One sentence and no path, so no `fields`; the body keeps the shape
+        // a string-bodied BadRequestException had, plus the code (#3861).
+        throw new BadRequestException({
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: error.message,
+          error: 'Bad Request',
+          code: VALIDATION_FAILED,
+        });
       }
       throw error;
     }
