@@ -31,12 +31,10 @@ export function BenefitTypeCard({ step, withGhost = false }: BenefitTypeCardProp
       {step !== undefined ? (
         <div className="pm-stepbar">
           {label}
-          <span className="pm-hint pm-hint--plain">{copy.benefit.only}</span>
         </div>
       ) : (
         <div className="pm-types__head">
           <span className="eyebrow pm-eyebrow--muted">{copy.benefit.label}</span>
-          <span className="pm-hint pm-hint--plain">{copy.benefit.only}</span>
         </div>
       )}
       <div className="pm-types__row">

@@ -13,8 +13,7 @@
     "giftDesc": "Add a product to the order",
     "label": "Benefit type",
     "more": "More types",
-    "moreDesc": "They will appear here",
-    "only": "For now only a gift"
+    "moreDesc": "They will appear here"
   },
   "columns": {
     "actions": "Actions",
