@@ -688,6 +688,7 @@
   "listings:bulkBlockers.chips.stockUnknown": 26,
   "listings:bulkBlockers.chips.taxRateOnChannel": 44,
   "listings:bulkBlockers.chips.unknownCategoryResult": 23,
+  "listings:bulkBlockers.panel.advisoryNote": 22,
   "listings:bulkCardCategoryDialog.barcodeMatch": 20,
   "listings:bulkCardCategoryDialog.editProduct": 24,
   "listings:bulkCardCategoryDialog.inUse": 20,

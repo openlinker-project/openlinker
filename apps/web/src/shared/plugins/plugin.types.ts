@@ -383,6 +383,42 @@ export interface OfferBlockerDescriptor {
    * neutral ids. Absent ⇒ the modal opens unfocused, as before.
    */
   field?: OfferBlockerField;
+  /**
+   * The sentence the bulk editor and the Review chip show for this blocker
+   * (#4003). The platform owns the blocker, so it owns the words: without this
+   * the host can only say "needs attention", which names neither the problem
+   * nor the field. Must be pure and read only `context`. Absent ⇒ the host's
+   * generic sentence, which still names the chip label.
+   */
+  describe?: (context: OfferBlockerDescribeContext) => OfferBlockerCopy;
+}
+
+/**
+ * What the host knows when it asks a blocker for its sentence (#4003).
+ *
+ * `missingParameterNames` keeps three states apart on purpose, because an
+ * empty list must never read as "nothing is missing" when nobody checked:
+ * - `undefined` - this surface did not compute it (the Review chip tooltip);
+ * - `null` - it tried and the category's parameter list could not be loaded;
+ * - an array - the required product parameters still without a value, by
+ *   their marketplace name (possibly empty: everything is filled in now).
+ *
+ * It carries no destination name: a platform's sentence names its own
+ * marketplace, and an operator's connection label would read wrongly there.
+ */
+export interface OfferBlockerDescribeContext {
+  missingParameterNames?: readonly string[] | null;
+}
+
+/** A blocker's sentence (#4003): what is wrong, then what to do about it. */
+export interface OfferBlockerCopy {
+  title: string;
+  detail: string;
+  /**
+   * Values the title refers to, rendered as a list (e.g. the missing
+   * parameter names). Shown verbatim - they come from the marketplace.
+   */
+  items?: readonly string[];
 }
 
 /**
