@@ -72,6 +72,10 @@ export class WebhookDeliveryOrmEntity {
   @Column({ type: 'text', nullable: true })
   dlqReason!: string | null;
 
+  /** Code for `dlqReason` (#3866); free text, coerced on read. */
+  @Column({ type: 'text', nullable: true })
+  dlqCode!: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   payload!: Record<string, unknown> | null;
 

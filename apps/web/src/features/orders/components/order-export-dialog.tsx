@@ -63,7 +63,7 @@ import {
   orderExportFileName,
 } from '../lib/order-export-columns';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type ExportScope = 'view' | 'selected' | 'range';
 
@@ -123,7 +123,6 @@ export function OrderExportDialog({
 }: OrderExportDialogProps): ReactElement {
   const uid = useId();
   const copy = useMessages('orders').orderExport;
-  const serverSaid = useMessages('orders').common.serverSaid;
   const fmt = useFormat();
   const plural = usePlural();
   const formatExportCount = (value: number): string => fmt.number(value);
@@ -519,7 +518,7 @@ export function OrderExportDialog({
           ) : null}
           {requestExport.isError ? (
             <Alert tone="error" className="export-dialog__notice">
-              {serverErrorText(serverSaid, requestExport.error.message, copy.startFailed)}
+              {describeApiError(requestExport.error, 'orders')}
             </Alert>
           ) : null}
 
@@ -649,7 +648,7 @@ export function OrderExportDialog({
             })}
           </p>
           {requestExport.isError ? (
-            <Alert tone="error">{serverErrorText(serverSaid, requestExport.error.message, copy.startFailed)}</Alert>
+            <Alert tone="error">{describeApiError(requestExport.error, 'orders')}</Alert>
           ) : null}
         </div>
         <DialogFooter className="dialog__footer--split">

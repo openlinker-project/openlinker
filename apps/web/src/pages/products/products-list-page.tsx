@@ -112,6 +112,7 @@ import {
   attentionTitle,
   useOmsAttentionQuery,
 } from '../../features/fulfillment-authority';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -1466,7 +1467,7 @@ export function ProductsListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
+          message={describeApiError(query.error, 'products')}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>}
         />
       ) : items.length === 0 ? (

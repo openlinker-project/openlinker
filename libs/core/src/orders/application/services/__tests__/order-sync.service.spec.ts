@@ -140,6 +140,7 @@ describe('OrderSyncService', () => {
       getCategoryMappings: jest.fn(),
       upsertCategoryMapping: jest.fn(),
       deleteCategoryMapping: jest.fn(),
+      reassignCategoryMappings: jest.fn(),
       resolveDestinationCategory: jest.fn(),
       getAttributeMappings: jest.fn(),
       getAttributeMappingsByProvenance: jest.fn(),

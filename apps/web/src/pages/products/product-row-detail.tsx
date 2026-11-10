@@ -31,6 +31,7 @@ import type { Connection } from '../../features/connections';
 import { usePlatforms } from '../../shared/plugins';
 import { findPlatformDisplayName } from '../../features/mappings';
 import { interpolate, useFormat, useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 export interface ProductRowDetailProps {
   product: Product;
@@ -70,7 +71,7 @@ export function ProductRowDetail({
         {linksStrip}
         <ErrorState
           title={copy.variantsError.title}
-          message={productQuery.error?.message ?? copy.variantsError.notFound}
+          message={productQuery.error ? describeApiError(productQuery.error, 'products') : copy.variantsError.notFound}
         />
       </div>
     );
@@ -80,7 +81,7 @@ export function ProductRowDetail({
     return (
       <div className="products-row-detail">
         {linksStrip}
-        <ErrorState title={copy.stockError} message={inventoryQuery.error.message} />
+        <ErrorState title={copy.stockError} message={describeApiError(inventoryQuery.error, 'products')} />
       </div>
     );
   }

@@ -11,6 +11,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { BulkDispatchDialog, splitIdForWrap } from './bulk-dispatch-dialog';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import type { OrderRecord } from '../api/orders.types';
 import type { Shipment } from '../../shipments';
 
@@ -119,7 +121,9 @@ describe('BulkDispatchDialog', () => {
 
   it('synthesizes per-order failures when a source group request rejects (no silent drop)', async () => {
     const user = userEvent.setup();
-    const bulkGenerateLabels = vi.fn().mockRejectedValue(new Error('Network error'));
+    const bulkGenerateLabels = vi
+      .fn()
+      .mockRejectedValue(ApiError.fromNetworkFailure(new Error('Network error')));
     const apiClient = createMockApiClient({ shipments: { bulkGenerateLabels } });
 
     const orders = [
@@ -139,7 +143,7 @@ describe('BulkDispatchDialog', () => {
     // Both orders surface as failed with the group error — neither vanishes.
     expect(screen.getByText('ol_order_1')).toBeInTheDocument();
     expect(screen.getByText('ol_order_2')).toBeInTheDocument();
-    expect(screen.getAllByText('Network error')).toHaveLength(2);
+    expect(screen.getAllByText(getMessages('errors').status.network)).toHaveLength(2);
     // No dispatched shipments → no protocol button.
     expect(screen.queryByRole('button', { name: /protocol|\(\d+\)/ })).not.toBeInTheDocument();
   });

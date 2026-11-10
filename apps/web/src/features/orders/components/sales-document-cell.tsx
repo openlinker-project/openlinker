@@ -41,6 +41,7 @@ import {
 } from '../../../shared/i18n';
 import { resolveSalesDocumentCellState } from '../lib/sales-document-cell-state';
 import type { SalesDocumentView } from '../api/orders.types';
+import { describeSalesDocumentBlockDetail } from '../lib/sales-document-block-detail';
 
 export interface SalesDocumentCellProps {
   internalOrderId: string;
@@ -205,10 +206,19 @@ export function SalesDocumentCell({
   const regulatoryStatus =
     view?.document?.kind === 'invoice' ? view.document.regulatoryStatus : null;
 
+  const blockDetail = view
+    ? describeSalesDocumentBlockDetail({
+        reason: view.blockReason,
+        unresolvedReason: view.unresolvedReason,
+        detail: view.blockDetail,
+        params: view.blockParams,
+      })
+    : null;
+
   const popoverBody = (
     <>
       {state.reasonDetail ? <p className="sales-doc-popover__why">{state.reasonDetail}</p> : null}
-      {view?.blockDetail ? <p className="sales-doc-popover__why">{view.blockDetail}</p> : null}
+      {blockDetail ? <p className="sales-doc-popover__why">{blockDetail}</p> : null}
       {identity?.documentNumber ? <Fact label={copy.fact.number}>{identity.documentNumber}</Fact> : null}
       {identity?.connectionId ? (
         <Fact label={copy.fact.provider}>

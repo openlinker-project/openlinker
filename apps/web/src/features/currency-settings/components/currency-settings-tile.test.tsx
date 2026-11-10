@@ -15,6 +15,7 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../../test/test-utils';
+import { getMessages } from '../../../shared/i18n';
 import type { CurrencySettingsView } from '../api/currency-settings.types';
 import { CurrencySettingsTile } from './currency-settings-tile';
 
@@ -83,7 +84,9 @@ describe('CurrencySettingsTile', () => {
     renderWithProviders(<CurrencySettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(
-      await screen.findByText(/Could not load currency settings: Network down/)
+      await screen.findByText(
+        `${getMessages('currency-settings').currencySettingsTile.loadError} ${getMessages('errors').status.other}`,
+      )
     ).toBeInTheDocument();
   });
 

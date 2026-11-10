@@ -40,8 +40,7 @@
     "testAccepted": "Accepted",
     "testMissingInput": "Enter an API key and a resolved host first",
     "testRejected": "Rejected - check the key and region match the same PostHog project",
-    "title": "Edit analytics settings",
-    "unknownError": "Unknown error"
+    "title": "Edit analytics settings"
   },
   "posthogSettingsFormSchema": {
     "apiKeyTooLong": "API key is too long (max {max} characters)",
@@ -59,7 +58,7 @@
     "edit": "Edit",
     "enabled": "Enabled",
     "eyebrow": "Product analytics",
-    "loadError": "Could not load analytics settings: {message}",
+    "loadError": "Could not load analytics settings.",
     "loading": "Loading analytics settings…",
     "notSet": "Not set",
     "off": "Off",

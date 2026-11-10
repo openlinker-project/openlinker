@@ -50,14 +50,7 @@
  * pull request rather than applied silently. Behaviourally identical for every
  * role that exists today, so re-admitting `packer` is one word.
  */
-import {
-  BadRequestException,
-  Controller,
-  Get,
-  Inject,
-  Query,
-  type StreamableFile,
-} from '@nestjs/common';
+import { Controller, Get, Inject, Query, type StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
@@ -87,6 +80,7 @@ import {
   type IConnectionService,
 } from '../../integrations/application/interfaces/connection.service.interface';
 import { buildSalesByChannelCsv, reportingCurrencyOf } from './sales-analytics-csv';
+import { analyticsRangeInvalid, analyticsRangeTooWide } from './analytics-errors';
 
 /** Shared shape of a headline/channel row's currency-bucket fields — the input to `buildDisplayCurrencyConversion`. */
 interface CurrencyBucketRow {
@@ -142,7 +136,7 @@ export class SalesAnalyticsController {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
     const isCsv = query.format === 'csv';
     if (isCsv) {
@@ -150,9 +144,7 @@ export class SalesAnalyticsController {
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_SALES_ANALYTICS_RANGE_DAYS) {
-      throw new BadRequestException(
-        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_SALES_ANALYTICS_RANGE_DAYS}-day limit`
-      );
+      throw analyticsRangeTooWide(rangeDays, MAX_SALES_ANALYTICS_RANGE_DAYS);
     }
 
     // Read fresh on every request — see the class doc comment.

@@ -15,6 +15,7 @@
  */
 import { useId, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
@@ -142,7 +143,7 @@ function NewTagCard({
       </div>
       {create.isError ? (
         <Alert tone="error" title={manager.createErrorTitle}>
-          {create.error.message}
+          {describeApiError(create.error, 'orders')}
         </Alert>
       ) : null}
       <div className="tag-new__foot">
@@ -183,7 +184,7 @@ function TagRow({
       {
         onSuccess: () => { setEditing(false); },
         onError: (error) => {
-          showToast({ tone: 'error', title: manager.saveErrorTitle, description: error.message });
+          showToast({ tone: 'error', title: manager.saveErrorTitle, description: describeApiError(error, 'orders') });
         },
       },
     );
@@ -297,7 +298,7 @@ export function OrderTagsSettingsPage(): ReactElement {
       onSuccess: () => { setPendingDelete(null); },
       onError: (error) => {
         setPendingDelete(null);
-        showToast({ tone: 'error', title: manager.deleteErrorTitle, description: error.message });
+        showToast({ tone: 'error', title: manager.deleteErrorTitle, description: describeApiError(error, 'orders') });
       },
     });
   }
@@ -329,7 +330,7 @@ export function OrderTagsSettingsPage(): ReactElement {
       {tagsQuery.isLoading ? (
         <LoadingState liveRegion="off" title={manager.loading} message={manager.loadingMessage} />
       ) : tagsQuery.isError ? (
-        <Alert tone="error">{tagsQuery.error.message}</Alert>
+        <Alert tone="error">{describeApiError(tagsQuery.error, 'orders')}</Alert>
       ) : tags.length === 0 ? (
         <EmptyState liveRegion="off" title={manager.emptyTitle} message={manager.emptyMessage} />
       ) : (

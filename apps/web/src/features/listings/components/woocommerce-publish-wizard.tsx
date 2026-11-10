@@ -70,7 +70,7 @@ import {
   type WoocommercePublishWizardSubmission,
   type WoocommercePublishWizardValues,
 } from './woocommerce-publish-wizard.schema';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface WoocommercePublishWizardProps {
   connection: Connection;
@@ -131,7 +131,6 @@ export function WoocommercePublishWizard({
   onSubmitted,
 }: WoocommercePublishWizardProps): ReactElement {
   const copy = useMessages('listings').woocommercePublishWizard;
-  const common = useMessages('listings').common;
   const plural = usePlural();
   const schema = useMemo(() => createWoocommercePublishWizardSchema(copy.validation), [copy]);
   const propsIds = useMemo(
@@ -655,7 +654,7 @@ export function WoocommercePublishWizard({
         >
           <span aria-hidden="true">←</span> {copy.actions.back}
         </Button>
-        {mutationError ? <Alert tone="error">{serverErrorText(common.serverSaid, mutationError.message, common.unknownError)}</Alert> : null}
+        {mutationError ? <Alert tone="error">{describeApiError(mutationError, 'listings')}</Alert> : null}
         <dl className="shop-publish-kv">
           <div className="shop-publish-kv__row">
             <dt>{copy.review.shop}</dt>
@@ -715,7 +714,7 @@ export function WoocommercePublishWizard({
   // ── Configure step (single + bulk share the field layout) ─────────────
   return (
     <form onSubmit={(e) => void submit(e)} noValidate className="wizard-card">
-      {mutationError ? <Alert tone="error">{serverErrorText(common.serverSaid, mutationError.message, common.unknownError)}</Alert> : null}
+      {mutationError ? <Alert tone="error">{describeApiError(mutationError, 'listings')}</Alert> : null}
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}

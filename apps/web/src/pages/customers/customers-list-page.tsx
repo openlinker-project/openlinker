@@ -49,6 +49,7 @@ import { useCustomerRowsQuery } from '../../features/customers/hooks/use-custome
 import { useCustomersTotal } from '../../features/customers/hooks/use-customers-total';
 import type { CustomerFilters, CustomerProjection } from '../../features/customers/api/customers.types';
 import { interpolate, useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -296,7 +297,7 @@ export function CustomersListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
+          message={describeApiError(query.error, 'customers')}
           action={
             <Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>
           }

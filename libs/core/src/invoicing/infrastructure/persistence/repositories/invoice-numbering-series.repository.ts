@@ -31,6 +31,7 @@ import { InvoiceNumberingSeries } from '../../../domain/entities/invoice-numberi
 import { DuplicateDocumentNumberException } from '../../../domain/exceptions/duplicate-document-number.exception';
 import { InvoiceNumberingSeriesNotFoundException } from '../../../domain/exceptions/invoice-numbering-series-not-found.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
+import { canInheritRefusedDocumentNumber } from '../../../domain/types/refused-number-inheritance.types';
 import type { InvoiceNumberingSeriesRepositoryPort } from '../../../domain/ports/invoice-numbering-series-repository.port';
 import {
   assertDocumentNumberWithinLength,
@@ -333,6 +334,70 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
         throw error;
       }
 
+      return { documentNumber, allocatedSeq };
+    });
+  }
+
+  async inheritNumber(input: {
+    fromRecordId: string;
+    toRecordId: string;
+    seriesId: string;
+  }): Promise<AllocatedNumber | null> {
+    return this.dataSource.transaction(async (manager) => {
+      // Lock the predecessor so a concurrent allocation or audit cannot read it
+      // half-moved.
+      const predecessor = await manager.findOne(InvoiceRecordOrmEntity, {
+        where: { id: input.fromRecordId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      // The inheritance rule is applied HERE, under the predecessor's row lock,
+      // so the facts it reads cannot change between the decision and the move.
+      // It refuses unless the refused number provably never left OpenLinker:
+      // a number the provider saw may be recorded there, and reusing it risks a
+      // duplicate document number, whereas a fresh number only leaves an
+      // audited gap. See `canInheritRefusedDocumentNumber`.
+      if (
+        !predecessor ||
+        !canInheritRefusedDocumentNumber(predecessor) ||
+        predecessor.documentNumber === null ||
+        predecessor.allocatedSeq === null ||
+        predecessor.numberingSeriesId !== input.seriesId
+      ) {
+        return null;
+      }
+      const { documentNumber, allocatedSeq } = predecessor;
+
+      const successor = await manager.findOne(InvoiceRecordOrmEntity, {
+        where: { id: input.toRecordId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!successor) {
+        throw new InvoiceRecordNotFoundException(input.toRecordId);
+      }
+      if (successor.documentNumber !== null) {
+        // Numbered by an earlier run of this same attempt: nothing to move.
+        return null;
+      }
+
+      await manager
+        .createQueryBuilder()
+        .update(InvoiceRecordOrmEntity)
+        .set({ numberingSeriesId: null, documentNumber: null, allocatedSeq: null })
+        .where('id = :id', { id: input.fromRecordId })
+        .execute();
+
+      const moved = await manager
+        .createQueryBuilder()
+        .update(InvoiceRecordOrmEntity)
+        .set({ numberingSeriesId: input.seriesId, documentNumber, allocatedSeq })
+        .where('id = :id', { id: input.toRecordId })
+        .andWhere('"documentNumber" IS NULL')
+        .execute();
+      if (!moved.affected || moved.affected === 0) {
+        // The successor is missing or already numbered. Throwing rolls the
+        // predecessor's clear back, so its number is never lost.
+        throw new InvoiceRecordNotFoundException(input.toRecordId);
+      }
       return { documentNumber, allocatedSeq };
     });
   }

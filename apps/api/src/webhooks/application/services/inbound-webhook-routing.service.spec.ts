@@ -178,6 +178,7 @@ describe('InboundWebhookRoutingService', () => {
 
     expect(outcome).toEqual({
       kind: 'unroutable',
+      code: 'no-translator',
       reason: 'no-translator: prestashop.webservice.v1',
     });
   });
@@ -187,7 +188,7 @@ describe('InboundWebhookRoutingService', () => {
 
     const outcome = await service.resolveEvent(makeEvent());
 
-    expect(outcome).toMatchObject({ kind: 'unroutable' });
+    expect(outcome).toMatchObject({ kind: 'unroutable', code: 'undecodable' });
     expect((outcome as { reason: string }).reason).toContain('undecodable');
   });
 
@@ -202,6 +203,7 @@ describe('InboundWebhookRoutingService', () => {
 
     expect(outcome).toEqual({
       kind: 'unroutable',
+      code: 'ungated',
       reason: 'ungated: product requires OrderSource',
     });
   });
@@ -303,6 +305,7 @@ describe('InboundWebhookRoutingService', () => {
 
       expect(outcome).toEqual({
         kind: 'unroutable',
+        code: 'ungated',
         reason: 'ungated: product requires ProductMaster; inventory requires InventoryMaster',
       });
     });
@@ -312,7 +315,7 @@ describe('InboundWebhookRoutingService', () => {
 
       const outcome = await service.resolveEvent(makeEvent());
 
-      expect(outcome).toMatchObject({ kind: 'unroutable' });
+      expect(outcome).toMatchObject({ kind: 'unroutable', code: 'undecodable' });
       expect((outcome as { reason: string }).reason).toContain('undecodable');
       expect(routingPolicy.resolve).not.toHaveBeenCalled();
     });

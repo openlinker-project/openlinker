@@ -12,6 +12,10 @@
     "title": "Opublikuj nową cenę",
     "willPublish": "Zostanie opublikowana"
   },
+  "apiErrors": {
+    "PRICE_CHANGE_BLOCKED": "Ta zmiana ceny jest zablokowana i nie można jej teraz opublikować.",
+    "PRICE_CHANGE_STALE": "Cena zmieniła się ponownie w trakcie przeglądu - odśwież i sprawdź jeszcze raz."
+  },
   "autoAppliedDialog": {
     "close": "Zamknij",
     "description": "Te połączenia publikują bez pytania, więc nic tutaj nie wymaga decyzji.",
@@ -55,11 +59,7 @@
     "tryAgain": "Spróbuj ponownie"
   },
   "describePriceChangeError": {
-    "blocked": "Ta zmiana ceny jest zablokowana i nie można jej teraz opublikować.",
-    "conflict": "Cena zmieniła się ponownie w trakcie przeglądu - odśwież i sprawdź jeszcze raz.",
-    "currencyMismatch": "Nie można opublikować tej ceny - waluta źródła i kanału docelowego się różnią. Sprawdź ustawienia waluty połączenia.",
-    "fallback": "Coś poszło nie tak.",
-    "withServerMessage": "Serwer odpowiedział: {message}"
+    "currencyMismatch": "Nie można opublikować tej ceny - waluta źródła i kanału docelowego się różnią. Sprawdź ustawienia waluty połączenia."
   },
   "editPriceChangeDialog": {
     "ambiguous": "Ta liczba jest niejednoznaczna - użyj kropki lub przecinka dziesiętnego z 2 miejscami po przecinku (np. 399,50).",

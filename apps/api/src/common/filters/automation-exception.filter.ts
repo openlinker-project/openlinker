@@ -35,6 +35,8 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
+import { codedErrorBody } from '../errors/coded-http.exception';
 import {
   AutomationIllegalConditionFieldError,
   AutomationIllegalPairError,
@@ -71,12 +73,31 @@ export class AutomationExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
     const statusCode = this.resolveStatus(exception);
 
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-      ...this.detailsOf(exception),
-    });
+    const details = this.detailsOf(exception);
+
+    response.status(statusCode).json(
+      codedErrorBody(statusCode, this.resolveCode(exception), exception.message, details, {
+        error: exception.name,
+        // The facts stay top-level for the clients that read them there.
+        ...details,
+      })
+    );
+  }
+
+  /** One explicit code per refusal (#3863); the class name is no longer the contract. */
+  private resolveCode(exception: AutomationRefusal): KnownApiErrorCode {
+    if (exception instanceof AutomationIllegalPairError) return 'AUTOMATION_TRIGGER_ACTION_ILLEGAL';
+    if (exception instanceof AutomationIllegalConditionFieldError) {
+      return 'AUTOMATION_CONDITION_FIELD_ILLEGAL';
+    }
+    if (exception instanceof AutomationInvalidTriggerConfigError) {
+      return 'AUTOMATION_TRIGGER_CONFIG_INVALID';
+    }
+    if (exception instanceof AutomationInvalidConditionError) return 'AUTOMATION_CONDITION_INVALID';
+    if (exception instanceof AutomationInvalidActionError) return 'AUTOMATION_ACTION_INVALID';
+    if (exception instanceof AutomationStepCountError) return 'AUTOMATION_STEP_COUNT_INVALID';
+    if (exception instanceof AutomationRuleConflictError) return 'AUTOMATION_RULE_CONFLICT';
+    return 'AUTOMATION_RULE_NOT_FOUND';
   }
 
   private resolveStatus(exception: AutomationRefusal): number {
@@ -93,7 +114,7 @@ export class AutomationExceptionFilter implements ExceptionFilter {
    * trigger-only arm placed first would swallow the pair the AC requires the
    * body to name.
    */
-  private detailsOf(exception: AutomationRefusal): Record<string, unknown> {
+  private detailsOf(exception: AutomationRefusal): ApiErrorParams {
     if (exception instanceof AutomationIllegalPairError) {
       return {
         trigger: exception.trigger,
@@ -123,7 +144,9 @@ export class AutomationExceptionFilter implements ExceptionFilter {
     if (exception instanceof AutomationRuleConflictError) {
       return {
         trigger: exception.trigger,
-        conflictingRuleId: exception.conflictingRuleId,
+        ...(exception.conflictingRuleId === null
+          ? {}
+          : { conflictingRuleId: exception.conflictingRuleId }),
       };
     }
     return { ruleId: exception.ruleId };

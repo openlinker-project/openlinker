@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/orders/http
  */
-import { Controller, Get, Inject, NotFoundException, Param } from '@nestjs/common';
+import { Controller, Get, Inject, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
@@ -15,6 +15,7 @@ import {
 import { ORDER_LINE_COST_SERVICE_TOKEN, type IOrderLineCostService } from '@openlinker/core/orders';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrderLineCostsResponseDto } from './dto/order-line-costs-response.dto';
+import { orderNotFound } from './orders-errors';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -41,7 +42,7 @@ export class OrderLineCostsController {
       includeBackfilledTaxRatesInNetSales
     );
     if (!result) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     return result;
   }

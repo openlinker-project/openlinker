@@ -18,15 +18,7 @@
  *
  * @module apps/api/src/analytics/http
  */
-import {
-  BadRequestException,
-  Controller,
-  Get,
-  Inject,
-  Param,
-  Query,
-  type StreamableFile,
-} from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query, type StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   MARGIN_ANALYTICS_SERVICE_TOKEN,
@@ -62,6 +54,7 @@ import {
   MARGIN_ANALYTICS_API_SERVICE_TOKEN,
   type IMarginAnalyticsApiService,
 } from '../application/services/margin-analytics-api.service.interface';
+import { analyticsRangeInvalid, analyticsRangeTooWide } from './analytics-errors';
 
 /** Mirrors `SalesAnalyticsController`'s bound - see that controller for the rationale. */
 const MAX_MARGIN_RANGE_DAYS = 400;
@@ -207,7 +200,7 @@ export class MarginAnalyticsController {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
     // A CSV answers the coded export error for ANY too-wide range, so the
     // screens' generic window cap must not fire first (#3589).
@@ -216,9 +209,7 @@ export class MarginAnalyticsController {
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_MARGIN_RANGE_DAYS) {
-      throw new BadRequestException(
-        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_MARGIN_RANGE_DAYS}-day limit`
-      );
+      throw analyticsRangeTooWide(rangeDays, MAX_MARGIN_RANGE_DAYS);
     }
     return { from, to };
   }

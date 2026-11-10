@@ -31,6 +31,13 @@ export class RetryInvoiceResultDto {
       'state, or not found). Absent for retried records.',
   })
   reason?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The record that now carries the invoice after a retry (#3960). A retry of a refused ' +
+      'invoice is its next attempt, a separate record; absent when skipped.',
+  })
+  recordId?: string;
 }
 
 export class RetryInvoicesResponseDto {

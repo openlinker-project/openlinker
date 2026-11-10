@@ -14,6 +14,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -135,7 +136,7 @@ export function MailerSettingsDialog({
       showToast({
         tone: 'error',
         title: copy.clearErrorTitle,
-        description: error instanceof Error ? error.message : copy.unknownError,
+        description: describeApiError(error, 'mailer-settings'),
       });
     }
   };
@@ -164,7 +165,7 @@ export function MailerSettingsDialog({
 
         {mutationError ? (
           <Alert tone="error" title={copy.saveErrorTitle}>
-            {mutationError.message}
+            {describeApiError(mutationError, 'mailer-settings')}
           </Alert>
         ) : null}
 

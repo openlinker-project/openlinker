@@ -101,6 +101,7 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
       return {
         success: false,
         status: undefined,
+        outcome: 'unreachable',
         message: 'Erli connection failed (network error)',
         latencyMs,
       };

@@ -10,6 +10,7 @@ import { useDemoMode } from '../../system';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /**
  * Routing readiness panel (#2407, REVIEW D3).
@@ -86,7 +87,7 @@ export function RouterReadinessPanel(): ReactElement {
       <div className="panel panel--dense">
         <ErrorState
           title={copy.errorTitle}
-          message={countQuery.error.message}
+          message={describeApiError(countQuery.error, 'connections')}
           action={
             <button
               type="button"
@@ -198,7 +199,7 @@ export function RouterReadinessPanel(): ReactElement {
       ) : null}
 
       {bootstrap.error ? (
-        <ErrorState title={copy.createErrorTitle} message={bootstrap.error.message} />
+        <ErrorState title={copy.createErrorTitle} message={describeApiError(bootstrap.error, 'connections')} />
       ) : null}
     </div>
   );

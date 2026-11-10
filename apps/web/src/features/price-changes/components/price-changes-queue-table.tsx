@@ -89,6 +89,7 @@ import { deltaToneFor, formatDeltaLabel, roundingLabelFor } from '../lib/price-r
 import { describePriceChangeActionError } from '../lib/describe-price-change-error';
 import { interpolate, usePlural, useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /**
  * A destination that can carry a price-change episode — a marketplace
@@ -842,7 +843,7 @@ export function PriceChangesQueueTable(): ReactElement {
         <div data-state="queue-error">
           <ErrorState
             title={copy.error.title}
-            message={query.error.message}
+            message={describeApiError(query.error, 'price-changes')}
             action={
               <Button tone="secondary" onClick={() => void query.refetch()}>
                 {copy.error.tryAgain}

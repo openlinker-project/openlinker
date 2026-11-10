@@ -1,5 +1,7 @@
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { ConfirmEmailStatus } from './ConfirmEmailStatus';
 
@@ -34,13 +36,17 @@ describe('ConfirmEmailStatus', () => {
   });
 
   it('shows an error state with a retry option and a way back to sign-in when confirmation fails', async () => {
-    const confirmEmail = vi.fn().mockRejectedValue(new Error('Invalid or expired token'));
+    const confirmEmail = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError('Invalid or expired token', 400, { code: 'EMAIL_CONFIRMATION_LINK_INVALID' }),
+      );
     const apiClient = createMockApiClient({ auth: { confirmEmail } });
 
     renderWithProviders(<ConfirmEmailStatus token="raw-token" />, { apiClient });
 
     expect(await screen.findByText(/we couldn't confirm this link/i)).toBeInTheDocument();
-    expect(screen.getByText('Invalid or expired token')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').codes.EMAIL_CONFIRMATION_LINK_INVALID)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /back to sign in/i })).toHaveAttribute(
       'href',
       '/login',

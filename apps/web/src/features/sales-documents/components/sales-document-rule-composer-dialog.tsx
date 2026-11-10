@@ -92,6 +92,7 @@ import {
   findSalesDocumentConnectionRoleGap,
 } from '../lib/find-sales-document-connection-role-gap';
 import { renderRich, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
@@ -465,7 +466,9 @@ export function SalesDocumentRuleComposerDialog({
       >
         <DialogTitle>{copy.title}</DialogTitle>
 
-        {createRule.error ? <Alert tone="error">{createRule.error.message}</Alert> : null}
+        {createRule.error ? (
+          <Alert tone="error">{describeApiError(createRule.error, 'sales-documents')}</Alert>
+        ) : null}
 
         <section className="rule-composer-section">
           <header className="rule-composer-section__header">
@@ -687,7 +690,7 @@ export function SalesDocumentRuleComposerDialog({
 
               {dryRun.error ? (
                 <Alert tone="error" data-testid="rule-test-sample-order-error">
-                  {dryRun.error.message}
+                  {describeApiError(dryRun.error, 'sales-documents')}
                 </Alert>
               ) : null}
 

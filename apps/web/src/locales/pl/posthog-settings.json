@@ -42,8 +42,7 @@
     "testAccepted": "Przyjęte",
     "testMissingInput": "Najpierw wpisz klucz API i używany host",
     "testRejected": "Odrzucone - sprawdź, czy klucz i region dotyczą tego samego projektu PostHog",
-    "title": "Edytuj ustawienia analityki",
-    "unknownError": "Nieznany błąd"
+    "title": "Edytuj ustawienia analityki"
   },
   "posthogSettingsFormSchema": {
     "apiKeyTooLong": "Klucz API jest za długi (maks. {max} znaków)",
@@ -61,7 +60,7 @@
     "edit": "Edytuj",
     "enabled": "Włączone",
     "eyebrow": "Analityka produktu",
-    "loadError": "Nie udało się wczytać ustawień analityki: {message}",
+    "loadError": "Nie udało się wczytać ustawień analityki.",
     "loading": "Wczytywanie ustawień analityki…",
     "notSet": "Nie ustawiono",
     "off": "Wył.",

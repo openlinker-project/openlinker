@@ -46,6 +46,11 @@ import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/
   unique: true,
   where: '"idempotencyKey" IS NOT NULL',
 })
+// One successor per refused attempt (#3960). Partial: a first attempt has none.
+@Index('UQ_invoice_records_previous_attempt', ['previousAttemptId'], {
+  unique: true,
+  where: '"previousAttemptId" IS NOT NULL',
+})
 // Reconciliation scan (#1121): issued + non-terminal regulatory status, ordered
 // `updatedAt ASC, id ASC`, connection-scoped. Partial so terminal/receipt rows
 // (the bulk of the table over time) stay out of the index.
@@ -236,6 +241,17 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   sourceDocumentHash!: string | null;
+
+  /** 0-based attempt at this (connection, order) invoice (#3960). */
+  @Column({ type: 'int', default: 0 })
+  attempt!: number;
+
+  /**
+   * The refused attempt this one follows (#3960). Unique when set, so a refused
+   * invoice has at most one successor.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  previousAttemptId!: string | null;
 
   /**
    * Neutral issuance-time line snapshot (#1297) — `{ buyer, currency, lines }`
