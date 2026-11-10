@@ -36394,6 +36394,39 @@ legend.analytics-settings-dialog__label {
   flex: none;
 }
 
+/* ── Orders list: gift / bundle quick filter and row marks (#3935) ───────── */
+.orders-bundle-mark {
+  margin-left: var(--space-1);
+  color: var(--text-muted);
+  flex: none;
+}
+.gift-quick-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 1.875rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.gift-quick-filter:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.gift-quick-filter:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.gift-quick-filter--on {
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  border-color: var(--status-info-border);
+}
+.gift-quick-filter__count {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
 /* Return gift decisions are sentences ("Zostaje u klienta"), not one-word
    enum values, so the segmented control's capitalize would Title Case them. */
 /* Same for the gift "Kiedy" toggle and the products bundle filter: Polish

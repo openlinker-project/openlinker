@@ -111,6 +111,8 @@ export interface OrderListFilterState {
   hasBuyerNote: boolean;
   /** `?withGift=true` - only orders carrying a gift line (#3940). */
   withGift: boolean;
+  /** `?withBundle=true` - only orders carrying a bundle (#3935). */
+  withBundle: boolean;
   tag?: string;
   untagged: boolean;
   /** The URL value (updates every keystroke); the query uses a debounced copy. */
@@ -372,6 +374,16 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
       return single('withGift', copy.chipLabel, s.withGift ? copy.chipValue : null);
     },
   },
+  withBundle: {
+    param: 'withBundle',
+    group: 'exceptions',
+    analyticsName: 'with_bundle',
+    isActive: (s) => s.withBundle,
+    chip: (s) => {
+      const copy = getMessages('gifts').filter;
+      return single('withBundle', copy.bundleChipLabel, s.withBundle ? copy.bundleChipValue : null);
+    },
+  },
   // `tag` and `untagged` are mutually exclusive by convention; removing either
   // chip clears BOTH params in one write so a stale pair can never survive.
   tag: {
@@ -467,6 +479,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     openReturn: params.get('openReturn') === 'true',
     hasBuyerNote: params.get('hasBuyerNote') === 'true',
     withGift: params.get('withGift') === 'true',
+    withBundle: params.get('withBundle') === 'true',
     tag: params.get('tag') || undefined,
     untagged: params.get('untagged') === 'true',
     search: params.get('search') ?? '',
@@ -491,6 +504,7 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   openReturn: 'true',
   hasBuyerNote: 'true',
   withGift: 'true',
+  withBundle: 'true',
 } as const satisfies Partial<Record<NarrowingOrderFilterKey, string>>;
 
 export type OrderToggleFilterKey = keyof typeof ORDER_TOGGLE_FILTER_VALUES;
@@ -525,6 +539,7 @@ export function toOrderQueryFilters(
     openReturn: state.openReturn ? true : undefined,
     hasBuyerNote: state.hasBuyerNote ? true : undefined,
     withGift: state.withGift ? true : undefined,
+    withBundle: state.withBundle ? true : undefined,
     tag: state.tag,
     untagged: state.untagged ? true : undefined,
   };

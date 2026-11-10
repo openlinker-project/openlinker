@@ -506,6 +506,7 @@ export function OrdersListPage(): ReactElement {
           onNavigate={() => captureDemoEvent('demo_order_opened', {})}
           tags={tags}
           hasGift={parsed.items.some((item) => item.gift != null)}
+          hasBundle={order.hasBundle === true}
         />
       );
     },

@@ -213,6 +213,10 @@
     }
   },
   "filter": {
+    "bundleCheck": "With a bundle",
+    "bundleChipLabel": "Bundle",
+    "bundleChipValue": "Included",
+    "bundleRowIcon": "Includes a bundle",
     "check": "With a gift",
     "chipLabel": "Gift",
     "chipValue": "Included",

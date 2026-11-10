@@ -105,6 +105,8 @@ export interface OrderIdentityCellProps {
    * name, so the filter's result is recognisable without opening the order.
    */
   hasGift?: boolean;
+  /** The order carries a bundle (#3935): a box mark beside the gift mark. */
+  hasBundle?: boolean;
 }
 
 function GiftMark({ label, testId }: { label: string; testId: string }): ReactElement {
@@ -128,6 +130,26 @@ function GiftMark({ label, testId }: { label: string; testId: string }): ReactEl
   );
 }
 
+function BundleMark({ label, testId }: { label: string; testId: string }): ReactElement {
+  return (
+    <svg
+      className="orders-bundle-mark"
+      role="img"
+      aria-label={label}
+      data-testid={testId}
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <title>{label}</title>
+      <path d="M8 1.5l6 3v7l-6 3-6-3v-7l6-3zM2 4.5l6 3 6-3M8 7.5v7" />
+    </svg>
+  );
+}
+
 export function OrderIdentityCell({
   orderId,
   orderNumber,
@@ -138,6 +160,7 @@ export function OrderIdentityCell({
   className = '',
   tags,
   hasGift = false,
+  hasBundle = false,
 }: OrderIdentityCellProps): ReactElement {
   const giftCopy = useMessages('gifts');
   const copy = useMessages('orders').identityCell;
@@ -212,6 +235,7 @@ export function OrderIdentityCell({
                 +{moreCount}
               </span>
             ) : null}
+            {hasBundle ? <BundleMark label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
             {hasGift ? <GiftMark label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
           </span>
         ) : totalItems > 1 ? (

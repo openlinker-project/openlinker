@@ -441,8 +441,17 @@ export function OrderListFilterBar({
         <FilterCheck
           label={giftCopy.filter.check}
           checked={state.withGift}
+          count={summary?.withGift}
           onChange={() => {
             filtersApi.toggle('withGift');
+          }}
+        />
+        <FilterCheck
+          label={giftCopy.filter.bundleCheck}
+          checked={state.withBundle}
+          count={summary?.withBundle}
+          onChange={() => {
+            filtersApi.toggle('withBundle');
           }}
         />
         <FilterCheck
@@ -639,6 +648,26 @@ export function OrderListFilterBar({
             </span>
           </button>
         </FilterGroup>
+        <button
+          type="button"
+          className={['gift-quick-filter', state.withGift ? 'gift-quick-filter--on' : '']
+            .filter(Boolean)
+            .join(' ')}
+          aria-pressed={state.withGift}
+          data-testid="orders-gift-quick-filter"
+          onClick={() => {
+            filtersApi.toggle('withGift');
+          }}
+        >
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="2" y="6" width="12" height="8" rx="1" />
+            <path d="M1.5 4h13v2h-13zM8 4v10M8 4C6 4 4.5 3 5.5 2s2.5 1 2.5 2zM8 4c2 0 3.5-1 2.5-2S8 3 8 4z" />
+          </svg>
+          {giftCopy.filter.quick}
+          {summary?.withGift !== undefined ? (
+            <span className="gift-quick-filter__count">{summary.withGift}</span>
+          ) : null}
+        </button>
         <span className="list-toolbar__spacer" />
         <span className="text-muted mono tabular list-results" aria-live="polite">
           {resultCount === null

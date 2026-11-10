@@ -213,6 +213,10 @@
     }
   },
   "filter": {
+    "bundleCheck": "Z zestawem",
+    "bundleChipLabel": "Zestaw",
+    "bundleChipValue": "Jest",
+    "bundleRowIcon": "Zawiera zestaw",
     "check": "Z gratisem",
     "chipLabel": "Gratis",
     "chipValue": "Jest",

@@ -326,6 +326,9 @@ function buildQuery(
     params.set('hasBuyerNote', String(filters.hasBuyerNote));
   }
   // #3940: boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.withBundle !== undefined) {
+    params.set('withBundle', String(filters.withBundle));
+  }
   if (filters?.withGift !== undefined) {
     params.set('withGift', String(filters.withGift));
   }
