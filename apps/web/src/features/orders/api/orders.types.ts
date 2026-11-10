@@ -402,6 +402,23 @@ export interface OrderDeliveryResolution {
    * for older/degraded payloads → treated as available.
    */
   processorAvailable?: boolean;
+  /**
+   * The matched rule's default parcel (#3651), for prefilling the label forms.
+   * Read here rather than from `GET /connections/:id/routing-rules`, which is
+   * admin-only, so an operator who can buy a label gets the prefill too
+   * (#3958). Null for the default fallback and for a rule saved without one;
+   * absent on older payloads.
+   */
+  parcelProfile?: OrderParcelProfile | null;
+}
+
+/** Mirror of the BE `ParcelProfileResponseDto` (mm / g, carrier template code). */
+export interface OrderParcelProfile {
+  parcelTemplate: string | null;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  defaultWeightGrams: number | null;
 }
 
 // Actionable delivery hint (#1792/#1799): `unmapped` (a supported carrier is

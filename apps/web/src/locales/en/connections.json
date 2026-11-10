@@ -1362,6 +1362,40 @@
     "guidedSetup": "Guided setup",
     "next": "Next"
   },
+  "shipping": {
+    "backToOmsSetup": "Back to OMS setup",
+    "createdAction": "Choose delivery methods",
+    "createdBody": "Next, choose which delivery methods {carrier} ships. Until then no order goes to it.",
+    "createdTitle": "{carrier} is connected.",
+    "rowChange": "Change",
+    "rowChoose": "Choose",
+    "rowLoading": "Loading delivery methods...",
+    "rowUnavailable": "Could not load who ships these delivery methods.",
+    "shippingAllLabelled": "Every delivery method gets a label from OpenLinker.",
+    "shippingChange": "Change who ships what",
+    "shippingCoverage": {
+      "one": "<count>{labelled} of {n}</count> delivery methods get an OpenLinker label",
+      "other": "<count>{labelled} of {n}</count> delivery methods get an OpenLinker label"
+    },
+    "shippingEyebrow": "Who ships it",
+    "shippingLoading": "Loading delivery methods...",
+    "shippingNoMethods": "This sales channel has no delivery methods yet.",
+    "shippingRestByShop": {
+      "one": "{n} delivery method is shipped by your shop, the way it was before OpenLinker.",
+      "other": "{n} delivery methods are shipped by your shop, the way they were before OpenLinker."
+    },
+    "shippingTitle": "Shipping",
+    "shippingUnlisted": "This sales channel cannot list its delivery methods, so there is nothing to route here.",
+    "shipsForEmpty": "No delivery method goes to {carrier} yet.",
+    "shipsForEyebrow": "Delivery methods",
+    "shipsForIntro": "The delivery methods {carrier} buys the labels for, per sales channel.",
+    "shipsForNoSources": "No sales channel is connected yet. Connect one first, then choose which of its delivery methods this carrier ships.",
+    "shipsForTitle": "Ships for",
+    "shipsForUnnamed": {
+      "one": "{n} delivery method (name not loaded)",
+      "other": "{n} delivery methods (names not loaded)"
+    }
+  },
   "shoperSetupForm": {
     "beforeYouStart": {
       "body": "In your {platform} admin panel open <strong>Dodaj integrację</strong> and create an integration. {platform} issues a <strong>Token API</strong>; OpenLinker sends it as a bearer token on every request. Grant the integration access to: produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki, statusy zamówień, klienci, webhooki, dostawy and płatności.",

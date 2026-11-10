@@ -60,6 +60,7 @@ import {
 } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
+import { ShippingRouteAction } from './shipping-route-action';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -131,6 +132,7 @@ export function OrderShipmentPanel({
   autoOpenForShipmentId,
 }: OrderShipmentPanelProps): ReactElement | null {
   const ordersCopy = useMessages('orders');
+  const routeOrigin = ordersCopy.shippingRouteOrigin;
   const copy = ordersCopy.orderShipmentPanel;
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
@@ -367,10 +369,22 @@ export function OrderShipmentPanel({
           />
         ) : (
           // Affirmative shop-fulfilled empty state (#1776 E2) — the shop owns
-          // fulfilment; no CTA, no dead-end label action.
+          // fulfilment, so there is no label action. The one action is to pick
+          // a carrier for the delivery method (#3958): the panel used to end
+          // here with nothing to do when the method name matched no carrier.
           <EmptyState
             title={copy.shopFulfilled.title}
             message={shopFulfilledMessage(shopConnectionName, copy.shopFulfilled)}
+            action={
+              order.sourceConnectionId ? (
+                <ShippingRouteAction
+                  sourceConnectionId={order.sourceConnectionId}
+                  methodLabel={order.sourceDeliveryMethodName ?? order.sourceDeliveryMethodId}
+                  methodId={order.sourceDeliveryMethodId}
+                  label={routeOrigin.chooseAction}
+                />
+              ) : undefined
+            }
           />
         )
       ) : (

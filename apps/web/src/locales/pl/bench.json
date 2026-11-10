@@ -15,6 +15,9 @@
       }
     }
   },
+  "documents": {
+    "labelReady": "Etykieta od {carrier} jest gotowa"
+  },
   "identity": {
     "locked": {
       "body": "Zaloguj się, aby kontynuować. Nic z otwartego zamówienia nie jest tu pokazywane - ani numer, ani kupujący, ani adres, ani zawartość paczki.",
@@ -27,6 +30,27 @@
       "title": "Zaloguj się na tym stanowisku"
     },
     "warning": "Wylogowanie za {seconds} s - dotknij dowolnego miejsca, aby sesja pozostała aktywna."
+  },
+  "labelRoute": {
+    "buysLabelBadge": "Etykieta przy zamknięciu",
+    "buysLabelBody": "{method} - wysyłka przez {carrier}. Zamknij karton, gdy będzie spakowany.",
+    "buysLabelBodyNoCarrier": "{method} - etykietę kupuje OpenLinker. Zamknij karton, gdy będzie spakowany.",
+    "buysLabelClosedBody": "{method} - wysyłka przez {carrier}. Etykieta pojawi się tutaj, gdy będzie gotowa.",
+    "buysLabelClosedBodyNoCarrier": "{method} - etykietę kupuje OpenLinker. Pojawi się tutaj, gdy będzie gotowa.",
+    "buysLabelClosedTitle": "OpenLinker kupi etykietę dla tego kartonu",
+    "buysLabelTitle": "OpenLinker kupi etykietę, gdy zamkniesz karton",
+    "carrierOffBadge": "Etykiety nie będzie",
+    "carrierOffBody": "Zamknij karton i odłóż go na bok. Administrator może ponownie włączyć przewoźnika albo wybrać innego w ustawieniach wysyłki.",
+    "carrierOffTitle": "Połączenie {carrier} jest wyłączone, więc etykiety nie będzie",
+    "carrierOffTitleNoCarrier": "Przewoźnik dla tego kartonu jest wyłączony",
+    "methodFallback": "Ta metoda dostawy",
+    "noCarrierBadge": "Brak przewoźnika",
+    "noCarrierBody": "Zamknij karton i odłóż go na bok. Administrator może wybrać przewoźnika w ustawieniach wysyłki.",
+    "noCarrierTitle": "{method} - nikt nie wybrał, kto wysyła te zamówienia",
+    "shopShipsBadge": "Bez etykiety OpenLinker",
+    "shopShipsBody": "Zamknij karton i odłóż go do paczek sklepu.",
+    "shopShipsTitle": "{method} - zamówienia wysyła {shop}",
+    "shopShipsTitleNoShop": "{method} - zamówienia wysyła sklep"
   },
   "parcel": {
     "activity": {

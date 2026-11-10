@@ -2,12 +2,13 @@
  * Routed parcel profile (#3652)
  *
  * Reads the default parcel a routing rule carries for an order's delivery
- * method, in the units the dispatch forms hold (mm / g, template code). Absent
- * or empty profile -> null, so callers keep today's behaviour untouched.
+ * method, in the units the dispatch forms hold (mm / g, template code). The
+ * profile arrives on the order's `deliveryResolution` (#3958). Absent or empty
+ * profile -> null, so callers keep today's behaviour untouched.
  *
  * @module apps/web/src/features/orders/lib
  */
-import { hasParcelProfile, type ParcelProfileFields, type RoutingRule } from '../../mappings';
+import { hasParcelProfile, type ParcelProfileFields } from '../../mappings';
 
 export interface RoutedParcelPrefill {
   template?: string;
@@ -15,14 +16,6 @@ export interface RoutedParcelPrefill {
   widthMm?: number;
   heightMm?: number;
   weightGrams?: number;
-}
-
-export function findRuleForMethod(
-  rules: readonly RoutingRule[] | undefined,
-  deliveryMethodId: string | undefined,
-): RoutingRule | undefined {
-  if (!deliveryMethodId) return undefined;
-  return (rules ?? []).find((r) => r.sourceDeliveryMethodId === deliveryMethodId);
 }
 
 export function parcelPrefillFromFields(
@@ -36,13 +29,6 @@ export function parcelPrefillFromFields(
   if (fields.heightMm != null) out.heightMm = fields.heightMm;
   if (fields.defaultWeightGrams != null) out.weightGrams = fields.defaultWeightGrams;
   return out;
-}
-
-export function parcelPrefillForMethod(
-  rules: readonly RoutingRule[] | undefined,
-  deliveryMethodId: string | undefined,
-): RoutedParcelPrefill | null {
-  return parcelPrefillFromFields(findRuleForMethod(rules, deliveryMethodId));
 }
 
 /** Parcel inputs as the bulk dialog holds them (strings, mm / g). */

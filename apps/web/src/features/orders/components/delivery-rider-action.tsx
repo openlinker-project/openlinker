@@ -5,8 +5,10 @@
  * #1776). Rendered into the `actionSlot` of #1793's `DeliveryRiderBanner`,
  * replacing the disabled "Coming soon" placeholder with a real navigation:
  *
- * - `unmapped` → **Add mapping**: the source connection's Delivery (carriers)
- *   mapping tab, pre-focused on the unmapped source method.
+ * - `unmapped` → **Add mapping**: opens the routing editor for the source
+ *   connection in a dialog (#3958). The rider promises OpenLinker will generate
+ *   the label, which only a fulfilment routing rule does; the Delivery
+ *   (carriers) tab it used to link to maps a shop carrier and never buys one.
  * - `not-connected` → **Connect {carrier}**: the candidate carrier's guided
  *   new-connection wizard (or the platform picker when it ships no wizard).
  * - `disabled` → **Enable {carrier}** (#1799): the connections list, where the
@@ -19,17 +21,17 @@ import { Link } from 'react-router-dom';
 
 import { useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
-import { buildDeliveryMappingLink } from '../../mappings';
 import type { OrderDeliveryRider } from '../api/orders.types';
+import { ShippingRouteAction } from './shipping-route-action';
 import { deliveryRiderActionLabel } from './delivery-chip';
 
 interface DeliveryRiderActionProps {
   rider: OrderDeliveryRider;
-  /** Source connection whose Delivery mapping tab the Add-mapping link targets. */
+  /** Source connection whose routing the Add-mapping dialog edits. */
   sourceConnectionId: string;
-  /** Unmapped source delivery-method id (Add-mapping pre-focus target). */
+  /** Unmapped source delivery-method id; names the method when no label is known. */
   sourceDeliveryMethodId?: string | null;
-  /** Source delivery-method label (fallback pre-focus copy). */
+  /** Source delivery-method label, named in the dialog. */
   sourceDeliveryMethodName?: string | null;
 }
 
@@ -48,15 +50,14 @@ export function DeliveryRiderAction({
   const connectTarget = usePlatform(candidate?.platformType)?.setupCard?.to ?? '/connections/new';
 
   if (rider.rider === 'unmapped') {
-    const to = buildDeliveryMappingLink({
-      connectionId: sourceConnectionId,
-      sourceDeliveryMethodId,
-      sourceDeliveryMethodName,
-    });
     return (
-      <Link to={to} className="delivery-rider-banner__button">
-        {deliveryRiderActionLabel('unmapped', carrier, copy)}
-      </Link>
+      <ShippingRouteAction
+        sourceConnectionId={sourceConnectionId}
+        methodLabel={sourceDeliveryMethodName ?? sourceDeliveryMethodId}
+        methodId={sourceDeliveryMethodId}
+        label={deliveryRiderActionLabel('unmapped', carrier, copy)}
+        appearance="rider"
+      />
     );
   }
 

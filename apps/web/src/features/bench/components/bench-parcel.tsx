@@ -1140,7 +1140,12 @@ export function BenchParcelView({
           per document whether it is ready, so an open box is never told a
           label exists that does not — nor told an open box is closed. */}
       {canWrite ? (
-        <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} closed={closed} />
+        <BenchDocumentsPanel
+          workId={workId}
+          unitsPacked={totals.verified}
+          closed={closed}
+          route={parcel.route}
+        />
       ) : null}
 
       {/* #3411 (epic #3401). Rendered on every state — activity happened

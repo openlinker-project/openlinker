@@ -864,6 +864,7 @@ export function OrderDetailPage(): ReactElement {
             methodFallback={methodFallback}
             deliveryOutcome={deliveryOutcome}
             deliveryOwner={deliveryOwner}
+            deliveryResolution={order.deliveryResolution}
             deliveryRider={order.deliveryRider}
             sourceConnectionId={order.sourceConnectionId}
             sourceDeliveryMethodId={order.sourceDeliveryMethodId}

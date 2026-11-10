@@ -4103,6 +4103,16 @@ a.delivery-rider-banner__button:focus-visible {
   flex-wrap: wrap;
 }
 
+/* Where the route comes from (#3958), on its own line under the route so the
+   "Change who ships it" action reads as acting on the route, not the name. */
+.order-delivery__route-origin {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
 .state-card {
   border: 1px solid var(--border-default);
   border-radius: 0.5rem;
@@ -34431,6 +34441,69 @@ legend.analytics-settings-dialog__label {
 .oms-onboarding__next-steps { margin: var(--space-2) 0 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
 .oms-onboarding__next-hint { color: var(--text-secondary); }
 
+/* Shipping step (#3958): two dependent parts, one row per order source. */
+.oms-onboarding__ship-part { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.oms-onboarding__ship-part:first-child { border-top: 0; padding-top: 0; }
+.oms-onboarding__ship-part-head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+.oms-onboarding__ship-part-n {
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid var(--accent-primary);
+  color: var(--accent-primary);
+}
+.oms-onboarding__ship-part-n--done { background: var(--accent-primary); color: var(--bg-surface); }
+.oms-onboarding__ship-part-titles { display: grid; gap: 2px; min-width: 0; }
+.oms-onboarding__ship-part-titles h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary); text-wrap: balance; }
+.oms-onboarding__ship-part-titles p { margin: 0; }
+.oms-onboarding__ship-part-body { display: grid; gap: var(--space-3); padding-left: calc(26px + var(--space-3)); min-width: 0; }
+@media (max-width: 560px) { .oms-onboarding__ship-part-body { padding-left: 0; } }
+.oms-onboarding__ship-part--locked .oms-onboarding__ship-part-n { border-color: var(--border-strong); color: var(--text-secondary); }
+.oms-onboarding__ship-part--locked .dd-choices { opacity: 0.55; }
+.oms-onboarding__ship-part--locked .dd-choice { cursor: not-allowed; }
+.oms-onboarding__ship-sources { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.oms-onboarding__ship-source { border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); min-width: 0; }
+.oms-onboarding__ship-source--open { border-color: var(--border-strong); }
+.oms-onboarding__ship-source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--space-3); align-items: center; padding: var(--space-3); }
+.oms-onboarding__ship-source-toggle {
+  inline-size: 100%;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  line-height: 1.4;
+  white-space: normal;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__ship-source-toggle:hover { background: var(--bg-surface-muted); }
+.oms-onboarding__ship-source-toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.oms-onboarding__ship-source-text { display: grid; gap: 2px; min-width: 0; }
+.oms-onboarding__ship-source-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.oms-onboarding__ship-source-detail { font-size: 13px; color: var(--text-secondary); }
+.oms-onboarding__ship-source-chev { inline-size: 20px; text-align: center; font-size: 18px; color: var(--text-secondary); }
+.oms-onboarding__ship-source-body { border-top: 1px solid var(--border-subtle); padding: var(--space-3); display: grid; gap: var(--space-3); min-width: 0; }
+.oms-onboarding__ship-source-body[hidden] { display: none; }
+.oms-onboarding__ship-source-body > .panel { margin: 0; }
+@media (max-width: 480px) {
+  .oms-onboarding__ship-source-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .oms-onboarding__ship-source-row > .oms-onboarding__ship-source-text { grid-column: 1; grid-row: 1; }
+  .oms-onboarding__ship-source-row > :nth-child(2) { grid-column: 1; grid-row: 2; justify-self: start; }
+  .oms-onboarding__ship-source-chev { grid-row: 1; grid-column: 2; }
+}
+.oms-onboarding__ship-defaults { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.oms-onboarding__ship-defaults-head { display: grid; gap: 2px; }
+.oms-onboarding__ship-defaults-head h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.oms-onboarding__ship-defaults-head p { margin: 0; font-size: 13px; }
+.oms-onboarding__ship-summary { margin: 0; padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-surface-muted); font-size: 14px; color: var(--text-primary); max-width: 76ch; }
+
 /* The platform's own product (the OpenLinker OMS), set apart from the
    third-party integrations around it in the platform picker. */
 .platform-picker__card--featured {
@@ -36433,6 +36506,58 @@ legend.analytics-settings-dialog__label {
   min-height: 44px;
   font-weight: 600;
 }
+
+/* #3958 - the routing panel's single "Who ships it" cell: the choice, then the
+   default parcel for a method OpenLinker buys a label for. */
+.routing-dialog { width: min(52rem, 94vw); max-width: none; max-height: 90vh; overflow-y: auto; }
+.routing-route-cell { display: grid; gap: 4px; min-width: 0; }
+/* Wide enough for the longest carrier name, so a choice is never cut mid-word. */
+.routing-route-cell select { width: 100%; }
+/* The route column is sized here, not by its content: a long shop name in the
+   default option otherwise squeezes the select and truncates the only word
+   that says which system ships the order. */
+@media (min-width: 768px) {
+  .routing-panel .data-table th:last-child,
+  .routing-panel .data-table td:last-child { width: 44%; }
+}
+.routing-route-cell__parcel { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); font-size: 12.5px; color: var(--text-secondary); }
+.routing-route-cell__parcel-action {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: var(--text-link);
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.routing-route-cell__parcel-action:hover { color: var(--text-primary); }
+.routing-route-cell__parcel-action:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: 2px; }
+.routing-route-cell__parcel-action:disabled { color: var(--text-secondary); cursor: not-allowed; text-decoration: none; }
+.routing-method { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; }
+/* Marks the method an operator came from (order detail); quiet, sentence case. */
+.routing-method__mark {
+  font-size: 12px; font-weight: 600; line-height: 1.6; padding: 0 8px; border-radius: 9999px;
+  background: var(--accent-primary-soft); color: var(--text-primary); white-space: nowrap;
+}
+.routing-panel__intro { margin: 0 0 var(--space-4); max-width: 72ch; }
+.routing-panel__actions { margin-top: var(--space-4); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.routing-panel--embedded { display: grid; gap: var(--space-3); min-width: 0; }
+.routing-panel--embedded .routing-panel__actions { margin-top: 0; }
+.routing-split__key--empty { opacity: 0.55; }
+
+/* #3958 - connection pages. One readable sentence for coverage, the bar under
+   it; per-source rows list method names as separate items, never one comma run. */
+.source-shipping { display: grid; gap: var(--space-3); }
+.source-shipping p { margin: 0; }
+.source-shipping__coverage { font-size: 15px; color: var(--text-secondary); }
+.source-shipping__coverage strong { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ships-for { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.ships-for__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); }
+.ships-for__row + .ships-for__row { border-top: 1px solid var(--border-subtle); }
+.ships-for__text { display: grid; gap: var(--space-2); min-width: 0; }
+.ships-for__source { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.ships-for__methods { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.ships-for__method {
+  font-size: 12.5px; line-height: 1.5; padding: 2px 10px; border-radius: 9999px;
+  border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary);
+}
+.ships-for__method--muted { color: var(--text-secondary); border-style: dashed; }
+@media (max-width: 560px) { .ships-for__row { flex-direction: column; align-items: stretch; } .ships-for__row > .button { align-self: flex-start; } }
 
 /* ── Attribute rules panel, bulk wizard Review step (#3995) ──────────────────
    One quiet surface: what the rules fill, as a coverage strip per parameter,

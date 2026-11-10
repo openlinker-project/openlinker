@@ -270,11 +270,11 @@ export function GenerateLabelForm({
   const lockerTemplateRegister = form.register('lockerTemplate');
   const lockerTemplate = form.watch('lockerTemplate');
 
-  // Default parcel of the routing rule this delivery method matches (#3652).
-  // Rules load asynchronously, so prefill once when the profile arrives and
-  // never overwrite a field the operator already touched. No profile -> no-op,
+  // Default parcel of the routing rule this delivery method matches (#3652),
+  // carried on the order itself (#3958). Prefill when the profile arrives or
+  // changes and never overwrite a field the operator already touched. No profile -> no-op,
   // leaving the empty fields and 'medium' locker size exactly as before.
-  const routedParcel = useRoutedParcelProfile(order.sourceConnectionId, snapshot.shipping?.methodId);
+  const routedParcel = useRoutedParcelProfile(order.deliveryResolution);
   useEffect(() => {
     if (!routedParcel) return;
     const dirty = form.formState.dirtyFields;
@@ -328,11 +328,7 @@ export function GenerateLabelForm({
   // backstop). Only relevant for the editable fallback field, not the read-only
   // sourced panel.
   const orderCurrency = snapshot.totals?.currency;
-  const routedCarrierPlatform = useRoutedCarrierPlatform(
-    order.sourceConnectionId,
-    snapshot.shipping?.methodId,
-    { enabled: codAllowed && !showSourcedCod },
-  );
+  const routedCarrierPlatform = useRoutedCarrierPlatform(order.deliveryResolution);
   const allowedCodCurrencies = useMemo(
     () => codCurrenciesForPlatform(routedCarrierPlatform),
     [routedCarrierPlatform],

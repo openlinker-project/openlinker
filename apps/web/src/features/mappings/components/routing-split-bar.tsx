@@ -78,7 +78,9 @@ export function RoutingSplitBar({ buckets }: RoutingSplitBarProps): ReactElement
       </div>
       <div className="routing-split__legend" aria-label={copy.legendLabel}>
         {coloured.map(({ bucket, color }) => (
-          <span key={bucket.key} className="routing-split__key">
+          // An empty bucket keeps its legend slot (stable colour) but steps back,
+          // so the eye lands on where methods actually go.
+          <span key={bucket.key} className={`routing-split__key${bucket.count === 0 ? ' routing-split__key--empty' : ''}`}>
             <span className="routing-split__swatch" style={{ background: color }} aria-hidden="true" />
             {bucket.label} <span className="routing-split__count">{bucket.count}</span>
           </span>

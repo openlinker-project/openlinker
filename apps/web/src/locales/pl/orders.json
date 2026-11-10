@@ -3163,6 +3163,15 @@
     "track": "Śledź przesyłkę (otwiera nową kartę)",
     "trackOn": "Śledź przesyłkę w {carrier} (otwiera nową kartę)"
   },
+  "shippingRouteOrigin": {
+    "aCarrier": "przewoźnika",
+    "changeAction": "Zmień, kto wysyła",
+    "chooseAction": "Wybierz przewoźnika",
+    "default": "Dla tej metody dostawy nie ustawiono przewoźnika, więc wysyła twój sklep.",
+    "rule": "Ustawione dla wszystkich zamówień z {source} z tą metodą dostawy.",
+    "ruleNoSource": "Ustawione dla wszystkich zamówień z tą metodą dostawy.",
+    "yourShop": "twój sklep"
+  },
   "sourceChange": {
     "action": {
       "handled": "Oznacz jako załatwione",

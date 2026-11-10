@@ -37,6 +37,9 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Shipping label | Etykieta nadawcza | |
 | Tracking number | Numer przesyłki | what the buyer is given to follow the parcel; the same identifier as the waybill number, so use "Numer przesyłki" in buyer-facing and status text |
 | Carrier | Przewoźnik | |
+| Delivery method | Metoda dostawy | the buyer's chosen way of delivery on a sales channel |
+| Routing (who ships a delivery method) | Przypisanie przewoźnika | plural "przypisania przewoźników"; never "routing" in Polish copy |
+| Box (at the pack bench) | Karton | what the packer closes; the shipment it becomes is a "paczka" |
 | Parcel locker | Automat paczkowy | "Paczkomat" only for InPost (brand) |
 | Pickup point | Punkt odbioru | |
 | Waybill | List przewozowy | the document; say "List przewozowy" only when the document is meant, otherwise "Numer przesyłki" |

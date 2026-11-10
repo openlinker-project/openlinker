@@ -274,6 +274,38 @@
   "routingSplitBar": {
     "legendLabel": "Metody dostawy według obsługi realizacji"
   },
+  "shippingRoute": {
+    "defaultOption": "Wysyła {shop} (domyślnie)",
+    "defaultOptionNoShop": "Wysyła twój sklep (domyślnie)",
+    "defaultShort": "{shop} (domyślnie)",
+    "defaultShortNoShop": "Twój sklep (domyślnie)",
+    "dialogDescription": "Zmiana dotyczy od teraz wszystkich zamówień z {source}.",
+    "dialogDescriptionWithMethod": "Metoda dostawy tego zamówienia jest na górze listy i jest oznaczona. Zmiana dotyczy od teraz wszystkich zamówień z {source}.",
+    "dialogDone": "Gotowe",
+    "dialogTitle": "Kto wysyła zamówienia z {source}",
+    "discardCancel": "Edytuj dalej",
+    "discardConfirm": "Zamknij bez zapisywania",
+    "discardDescription": "Zmieniono, kto wysyła niektóre metody dostawy, ale tych zmian nie zapisano.",
+    "discardTitle": "Zamknąć bez zapisywania?",
+    "groupLabel": {
+      "label": "OpenLinker kupuje etykietę",
+      "shop": "Wysyła twój sklep"
+    },
+    "intro": "Wybierz, kto wysyła każdą metodę dostawy {source}. To, czego nie zmienisz, nadal wysyła {shop}, tak jak dotąd.",
+    "introNoShop": "Wybierz, kto wysyła każdą metodę dostawy {source}. To, czego nie zmienisz, nadal wysyła twój sklep, tak jak dotąd.",
+    "methodColumn": "Metoda dostawy {source}",
+    "noCarrier": "Nie połączono jeszcze żadnego przewoźnika, więc każdą metodę dostawy wysyła twój sklep. Połącz InPost lub DPD, aby OpenLinker kupował etykiety.",
+    "panelTitle": "Kto wysyła każdą metodę dostawy",
+    "route": {
+      "olManagedCarrier": "OpenLinker kupuje etykietę u {name}",
+      "ompFulfilled": "Wysyła {name}",
+      "sourceBrokered": "OpenLinker kupuje etykietę przez wysyłkę {name}"
+    },
+    "routeColumn": "Kto wysyła",
+    "sourceShipping": "Wysyłka {source}",
+    "thisOrder": "To zamówienie",
+    "unavailable": "{label} (połączenie wyłączone)"
+  },
   "useMappingPairing": {
     "catalogMissing": "Nie znaleziono powiązanego połączenia z katalogiem. Sprawdź powiązanie katalogu w tym połączeniu.",
     "notLinked": "To połączenie nie jest powiązane z katalogiem produktów. Ustaw jego katalog na stronie połączenia, aby skonfigurować mapowania."

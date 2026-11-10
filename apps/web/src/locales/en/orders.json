@@ -3003,6 +3003,15 @@
     "track": "Track shipment (opens in new tab)",
     "trackOn": "Track shipment on {carrier} (opens in new tab)"
   },
+  "shippingRouteOrigin": {
+    "aCarrier": "a carrier",
+    "changeAction": "Change who ships it",
+    "chooseAction": "Choose a carrier",
+    "default": "No carrier is set for this delivery method, so your shop ships it.",
+    "rule": "Set for every {source} order on this delivery method.",
+    "ruleNoSource": "Set for every order on this delivery method.",
+    "yourShop": "Your shop"
+  },
   "sourceChange": {
     "action": {
       "handled": "Mark as handled",

@@ -226,6 +226,47 @@ describe('OrderShipmentPanel — empty state', () => {
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
   });
 
+  it('should offer Choose a carrier in the shop-ships-it state and open the routing dialog for the source (#3958)', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          makeConnection(),
+          makeConnection({
+            id: 'conn-allegro',
+            platformType: 'allegro',
+            name: 'Allegro',
+            supportedCapabilities: ['OrderSource'],
+            enabledCapabilities: ['OrderSource'],
+          }),
+        ]),
+      },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      sourceDeliveryMethodName: 'Kurier DPD',
+      deliveryResolution: {
+        source: 'default',
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        processorAvailable: true,
+        parcelProfile: null,
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByText('Shipped by the shop')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose a carrier' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(screen.getByText('Who ships Allegro orders')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/delivery method this order uses is first and marked/);
+  });
+
   it('should suppress the Generate-label CTA and point to Delivery for a disabled-carrier route (#1799)', async () => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
