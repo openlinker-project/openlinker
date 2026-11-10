@@ -255,6 +255,7 @@
     "availableLineOk": "Available: {n} pcs",
     "availableLineUnknown": "Availability unknown.",
     "back": "Products",
+    "bundleAvailable": "available {n}",
     "bundleTag": "Bundle",
     "bundlesWord": "bundles",
     "canAssemble": "You can assemble {n} bundles, limited by {name}.",
@@ -274,6 +275,9 @@
     "historyTitle": "Composition history",
     "inBundles": "In bundles",
     "limits": "limits",
+    "limitsIn": "{bundle}: limits",
+    "limitsNothing": "This product does not limit any of them.",
+    "limitsSome": "This product limits the availability of:",
     "listHere": "+ List an offer",
     "listOffer": "List an offer",
     "liveAside": "calculated live",
@@ -307,6 +311,7 @@
       "Unsynced": "Not synced"
     },
     "stockUnknown": "stock unknown",
+    "unit": "pcs",
     "version": "Version {n}",
     "versionsCount": {
       "one": "{n} version",

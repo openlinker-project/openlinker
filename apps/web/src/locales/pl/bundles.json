@@ -269,6 +269,7 @@
     "availableLineOk": "Dostępne: {n} szt.",
     "availableLineUnknown": "Dostępność nieznana.",
     "back": "Produkty",
+    "bundleAvailable": "dostępne {n}",
     "bundleTag": "Zestaw",
     "bundlesWord": "zestawów",
     "canAssemble": "Złożysz {n} zestawów, ogranicza {name}.",
@@ -288,6 +289,9 @@
     "historyTitle": "Historia składu",
     "inBundles": "W zestawach",
     "limits": "ogranicza",
+    "limitsIn": "{bundle}: ogranicza",
+    "limitsNothing": "Ten produkt nie ogranicza żadnego z nich.",
+    "limitsSome": "Ten produkt ogranicza dostępność:",
     "listHere": "+ Wystaw ofertę",
     "listOffer": "Wystaw ofertę",
     "liveAside": "liczona na bieżąco",
@@ -323,6 +327,7 @@
       "Unsynced": "Niezsynchronizowana"
     },
     "stockUnknown": "stan nieznany",
+    "unit": "szt.",
     "version": "Wersja {n}",
     "versionsCount": {
       "few": "{n} wersje",

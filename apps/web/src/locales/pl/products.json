@@ -263,6 +263,31 @@
       "message": "Pobieranie szczegółów produktu…",
       "title": "Wczytywanie produktu"
     },
+    "overview": {
+      "bundlesTitle": "Zestawy",
+      "defaultVariant": "Domyślny",
+      "detailsHeading": "Szczegóły stanów",
+      "editContent": "Edytuj treść",
+      "eyebrow": "Produkt",
+      "listedOnCol": "Wystawiony w",
+      "missingOn": "brak: {list}",
+      "moreSummary": "korekta stanu, koszt, historia",
+      "moreTitle": "Więcej o stanach i wariantach",
+      "noSource": "Brak źródła",
+      "photoCount": {
+        "few": "{n} zdjęcia",
+        "many": "{n} zdjęć",
+        "one": "{n} zdjęcie",
+        "other": "{n} zdjęcia"
+      },
+      "photos": "Zdjęcia",
+      "productId": "ID produktu",
+      "reservedCol": "Zarezerw.",
+      "stockCol": "Stan",
+      "updated": "Zaktualizowano",
+      "variantCol": "Wariant",
+      "vat": "Stawka VAT"
+    },
     "retry": "Ponów",
     "source": "Źródło",
     "tabs": {

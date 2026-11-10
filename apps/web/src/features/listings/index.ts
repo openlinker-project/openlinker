@@ -56,3 +56,5 @@ export type { ShopAttribute, ShopAttributeTerm } from './api/listings.types';
 // listings page imports the launcher via its direct component path instead.
 export { useListingsQuery } from './hooks/use-listings-query';
 export type { OfferLifecycle } from './api/listings.types';
+export { useVariantListingsQueries } from './hooks/use-variant-listings-queries';
+export type { OfferMapping } from './api/listings.types';

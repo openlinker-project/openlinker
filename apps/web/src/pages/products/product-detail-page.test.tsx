@@ -129,7 +129,7 @@ function paginatedListings(items: OfferMapping[]): PaginatedOfferMappings {
 async function findAvailableKpiCard(): Promise<HTMLElement> {
   const labels = await screen.findAllByText('Available');
   const kpiCard = labels
-    .map((label) => label.closest('.kpi-card'))
+    .map((label) => label.closest('.pm-kpi'))
     .find((card): card is HTMLElement => card !== null);
   if (!kpiCard) {
     throw new Error('Available KpiCard not found');
@@ -347,7 +347,7 @@ describe('ProductDetailPage', () => {
     renderDetailPage(mockApi);
 
     const attributesSection = (await screen.findByRole('heading', { name: 'Attributes' })).closest(
-      '.detail-section',
+      '.rule-composer-section',
     ) as HTMLElement;
     expect(within(attributesSection).getByText('Brand')).toBeInTheDocument();
     expect(within(attributesSection).getByText('Acme')).toBeInTheDocument();
@@ -410,7 +410,7 @@ describe('ProductDetailPage', () => {
     renderDetailPage(mockApi, true);
 
     const kpiCard = await findAvailableKpiCard();
-    await waitFor(() => expect(kpiCard).toHaveClass('kpi-card--error'));
+    await waitFor(() => expect(kpiCard).toHaveAttribute('data-tone', 'error'));
     expect(within(kpiCard).getByText('0')).toBeInTheDocument();
   });
 
@@ -429,7 +429,7 @@ describe('ProductDetailPage', () => {
     const kpiCard = await findAvailableKpiCard();
     expect(within(kpiCard).getByTestId('stock-summary-atp')).toHaveTextContent('—');
     expect(within(kpiCard).getByText('not known right now')).toBeInTheDocument();
-    expect(kpiCard).not.toHaveClass('kpi-card--success');
+    expect(kpiCard).not.toHaveAttribute('data-tone', 'success');
     expect(within(kpiCard).queryByText('40')).not.toBeInTheDocument();
   });
 
@@ -603,7 +603,7 @@ describe('ProductDetailPage', () => {
     renderDetailPage(mockApi, true);
 
     const kpiCard = await findAvailableKpiCard();
-    await waitFor(() => expect(kpiCard).toHaveClass('kpi-card--warning'));
+    await waitFor(() => expect(kpiCard).toHaveAttribute('data-tone', 'warning'));
     expect(within(kpiCard).getByTestId('stock-summary-atp')).toHaveTextContent('8');
     expect(within(kpiCard).getByText(/1 short/)).toBeInTheDocument();
     expect(within(kpiCard).queryByText(/oversold/i)).not.toBeInTheDocument();
@@ -804,8 +804,7 @@ describe('ProductDetailPage', () => {
 
     renderDetailPage(mockApi);
 
-    const summary = await screen.findByRole('region', { name: 'Product summary' });
-    expect(within(summary).getByText('Dom i kuchnia › Ceramika')).toBeInTheDocument();
+    expect(await screen.findByText('Dom i kuchnia › Ceramika')).toBeInTheDocument();
   });
 
   it('should render the variants table for a multi-variant product', async () => {
