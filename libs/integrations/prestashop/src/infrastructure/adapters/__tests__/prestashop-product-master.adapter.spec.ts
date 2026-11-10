@@ -1328,7 +1328,8 @@ describe('PrestashopProductMasterAdapter', () => {
 
         await built.createProduct(input);
 
-        const body = (mockHttpClient.createResource as jest.Mock).mock.calls[0][1] as Record<string, unknown>;
+        const calls = (mockHttpClient.createResource as jest.Mock).mock.calls as unknown[][];
+        const body = calls[0][1] as Record<string, unknown>;
         expect(body).toMatchObject({
           reference: 'SET-1',
           price: '100.000000',

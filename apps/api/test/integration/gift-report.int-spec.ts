@@ -207,6 +207,6 @@ describe('Gift cost report (integration, #3943)', () => {
   it('should answer an empty report for a range with no gifts', async () => {
     const controller = harness.getApp().get(GiftReportController, { strict: false });
     const report = await controller.getReport({ from: FROM, to: TO });
-    expect(report).toEqual({ groups: [], totals: [] });
+    expect(report).toEqual({ groups: [], series: [], totals: [] });
   });
 });

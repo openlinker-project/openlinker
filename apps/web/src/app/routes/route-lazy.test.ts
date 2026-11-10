@@ -155,8 +155,11 @@ const lazyRoutes = collectLazyRoutes([
  *
  * #3584 adds the batch issuing screen (`settings/sales-documents/batches/:connectionId`), one
  * lazy route, from 78 to 79.
+ *
+ * The gifts branch (#3935) and the batch screen (#3584) were counted on separate
+ * branches; where they meet the registered tree holds 85 lazy routes.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 84;
+const EXPECTED_LAZY_ROUTE_COUNT = 85;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
