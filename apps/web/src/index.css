@@ -25629,32 +25629,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
-/* ── Listings toolbar wrap opt-in (#2030) ────────────────────────────────────
-   `.toolbar` / `.toolbar__group` stay `nowrap` by default (see the comment on
-   `.list-toolbar` below) because most toolbars fit their controls on one
-   row. This page's toolbar (search + channel select + Clear) doesn't at
-   tablet/phone widths, so it opts in the same way `.list-toolbar` does:
-   wrap the toolbar itself, and wrap its `.toolbar__group` child so the
-   search/select pair inside it can also drop onto their own lines rather
-   than being squeezed into a single nowrap row. */
-.listings-toolbar {
-  flex-wrap: wrap;
-}
-.listings-toolbar .toolbar__group {
-  flex-wrap: wrap;
-}
-/* `.toolbar`'s base `justify-content: space-between` only right-anchors Clear
-   while it shares a line with `.toolbar__group`. The moment the row above
-   wraps, Clear becomes the lone item on its own line, and `space-between`
-   degrades to `flex-start` per the flexbox spec - stranding it at the LEFT
-   edge instead. `.list-toolbar` never hit this because it has no separate
-   Clear sibling (all its controls sit inside one `.toolbar__group`). `margin
-   -left: auto` absorbs the leftover space itself, so Clear stays right-
-   anchored whether it's sharing a line or wrapped onto its own. */
-.listings-toolbar > .button {
-  margin-left: auto;
-}
-
 /* ── Listings table row anatomy (#2028) ──────────────────────────────────────
    Transcribed from the #1965 mockup: a listing row leads with the catalog
    product name, groups its three identifiers on a second line, and keeps the
@@ -25796,24 +25770,25 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
-/* Shop-level channel problems, carried once per connection above the table
-   (#2231) instead of on every row that repeats them. */
-.listings-connection-notice {
-  margin-bottom: var(--space-3);
-}
-.listings-connection-notice__problems {
-  list-style: none;
-  margin: var(--space-1) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.listings-connection-notice__code {
-  margin-left: var(--space-2);
-  font-size: 0.625rem;
-  color: var(--text-disabled);
-}
+/* ── Listings on the list filter system (#4046) ── */
+.listings-head-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.seg-count { margin-left: 4px; font-size: 0.6875rem; color: var(--text-muted); }
+.segmented-control__option--active .seg-count { color: inherit; opacity: 0.8; }
+.price-changes-queue .list-filters { margin-top: var(--space-2); }
+.attention-note__block { display: flex; flex-direction: column; gap: var(--space-2); }
+.attention-note__block + .attention-note__block { padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.attention-note__problems { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 0.8125rem; color: var(--text-secondary); }
+.attention-note__problems .problem-line__code { margin-left: var(--space-2); font-size: 0.6875rem; color: var(--text-muted); }
+.listing-peek__id { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.listing-peek__id .peek-panel__title-link { font-family: var(--font-sans); }
+.listing-peek__price { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 0.75rem; }
+.listing-peek__badges,
+.listing-peek__on-channel { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.listing-peek__reason { padding: var(--space-3); border-left: 3px solid var(--status-error); border-radius: var(--radius-sm); background: var(--status-error-soft); }
+.listing-peek__reason p { margin: 4px 0 0; font-size: 0.8125rem; color: var(--text-primary); }
+.listing-peek__reason--muted { border-left-color: var(--border-strong); background: var(--bg-surface-muted); }
+.listing-peek__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.listing-peek__facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 
 /* Mobile card head (#1965 frame 05): at 360px the name is what the card is
    about, so nothing next to it may hold a fixed width and nothing may clip. */

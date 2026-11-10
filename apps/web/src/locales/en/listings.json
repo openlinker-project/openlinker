@@ -1475,6 +1475,40 @@
     }
   },
   "listingsListPage": {
+    "attention": {
+      "label": "Needs a look",
+      "priceChanges": {
+        "body": {
+          "one": "{n} price changed in your shop and waits for your review before it goes to the channel.",
+          "other": "{n} prices changed in your shop and wait for your review before they go to the channel."
+        },
+        "bodyUnknown": "Prices that changed in your shop wait here for your review before they go to the channel.",
+        "label": "Price changes",
+        "review": "Review price changes",
+        "short": "price changes"
+      },
+      "sellingDeleted": {
+        "itemDesc": "The product was deleted in your shop, but the channel still sells it. Pause or end the offer.",
+        "itemTitle": "Live offers selling a deleted product",
+        "label": "Selling a deleted product",
+        "short": "selling deleted"
+      },
+      "shopBlocked": {
+        "affected": {
+          "one": "{n} listing is affected.",
+          "other": "{n} listings are affected."
+        },
+        "clear": "Stop showing only blocked listings",
+        "label": "Shop-level block",
+        "none": "No connection reports a shop-level block for these listings.",
+        "openConnection": "Open connection",
+        "scope": "Reported against every listing on the connection, not against any one of them.",
+        "short": "blocked by shop",
+        "show": "Show these listings",
+        "title": "{connection} reports a shop-level block.",
+        "unknownConnection": "A connection"
+      }
+    },
     "card": {
       "channel": "Channel",
       "channelProblems": "Channel problems",
@@ -1509,14 +1543,6 @@
       "quantity": "Quantity",
       "statusRead": "status read",
       "updated": "Updated"
-    },
-    "connectionNotice": {
-      "affectedShown": {
-        "one": "{n} of the listings shown here is affected.",
-        "other": "{n} of the listings shown here are affected."
-      },
-      "summary": "{problems} - this is reported against every listing on the connection, not against any one of them.",
-      "title": "{connection} reports a shop-level block"
     },
     "description": "Everything you sell on connected channels, and what state it is in right now.",
     "empty": {
@@ -1571,6 +1597,34 @@
       "unnamedProduct": "Unnamed product"
     },
     "loading": "Loading listings…",
+    "peek": {
+      "channel": "Channel",
+      "checkStatus": "Check status",
+      "checkingStatus": "Checking…",
+      "description": "Listing details. Use the arrow keys or j and k to move between listings.",
+      "details": "Details",
+      "detailsAria": "Open details for {name}",
+      "ean": "EAN",
+      "editOffer": "Edit offer",
+      "externalId": "External ID",
+      "kicker": "Listing",
+      "lifecycle": "Lifecycle",
+      "onChannel": "on channel",
+      "onChannelRow": "On channel",
+      "openListing": "Open listing",
+      "openProduct": "Open product",
+      "sku": "SKU",
+      "stateAria": "Listing state",
+      "statusRead": "Status read",
+      "whyNotSelling": "Why it is not selling"
+    },
+    "pills": {
+      "channel": "Channel",
+      "needsALook": "Needs a look",
+      "search": "Search",
+      "sellingDeleted": "Selling deleted",
+      "shopBlocked": "Blocked by shop"
+    },
     "publishProducts": "Publish products",
     "retry": "Retry",
     "status": {
@@ -1582,14 +1636,20 @@
     "title": "Listings",
     "toolbar": {
       "allChannels": "All channels",
-      "channelAriaLabel": "Filter by channel",
-      "clear": "Clear",
+      "channel": "Channel",
+      "clearAll": "Clear all",
+      "filterGroupAria": "Filters",
+      "results": {
+        "one": "{total} result",
+        "other": "{total} results"
+      },
       "searchAriaLabel": "Search listings by product name, SKU, EAN or external ID",
       "searchPlaceholder": "Product name, SKU, EAN or external ID"
     },
     "views": {
       "all": "All listings",
       "ariaLabel": "Listings views",
+      "countUnavailable": "Count unavailable",
       "priceChanges": "Price changes"
     }
   },
