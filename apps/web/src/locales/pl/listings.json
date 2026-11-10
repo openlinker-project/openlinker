@@ -265,6 +265,51 @@
     "validating": "Walidacja w marketplace…"
   },
   "bulkBlockers": {
+    "allegro": {
+      "eanUnverified": {
+        "detail": "Kod może być poprawny. Możesz opublikować mimo to; sprawdź kod, jeśli to niespodziewane.",
+        "title": "Tego kodu kreskowego nie ma w katalogu Allegro."
+      },
+      "inStoreBarcode": {
+        "detail": "Takie kody służą do użytku wewnątrz jednego sklepu. Możesz opublikować mimo to.",
+        "title": "Ten kod wygląda na kod wewnętrzny sklepu, a nie kod produktu."
+      },
+      "needsProductParameters": {
+        "allFilledDetail": "Zapisz, żeby zdjąć tę blokadę.",
+        "allFilledTitle": "Każdy wymagany parametr produktu ma już wartość.",
+        "listDetail": "Wybierz parametr, żeby przejść do jego pola.",
+        "listTitle": {
+          "few": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "many": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "one": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "other": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:"
+        },
+        "notCheckedDetail": "Lista pojawi się w edytorze, gdy wczytają się parametry kategorii.",
+        "notCheckedTitle": "Allegro potrzebuje parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu.",
+        "notLoadedDetail": "Dlatego OpenLinker nie wie, których brakuje. Wczytaj parametry ponownie albo wybierz kategorię jeszcze raz.",
+        "notLoadedTitle": "Allegro wymaga parametrów produktu w tej kategorii, ale nie udało się wczytać ich listy."
+      },
+      "noPhoto": {
+        "detail": "Allegro wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      },
+      "paramValueInvalid": {
+        "detail": "Sprawdź parametry poniżej z limitami podanymi obok nich.",
+        "title": "Wartość parametru przekracza limit tej kategorii Allegro."
+      },
+      "siblingsWithoutCard": {
+        "detail": "Allegro wiąże nową kartę produktu z pierwszym przyjętym wariantem i odrzuca pozostałe. Daj każdemu wariantowi kod kreskowy pasujący do produktu z katalogu.",
+        "title": "Wszystkie te warianty utworzyłyby jedną nową kartę produktu."
+      },
+      "titleTooLong": {
+        "detail": "Skróć go w polu tytułu.",
+        "title": "Tytuł oferty jest dłuższy, niż pozwala Allegro."
+      },
+      "titleTooShort": {
+        "detail": "Allegro wymaga co najmniej 12 znaków i 3 słów.",
+        "title": "Tytuł oferty jest za krótki dla Allegro."
+      }
+    },
     "chips": {
       "alreadyListed": "Już wystawiony",
       "cardCategoryDiffers": "katalog ≠ mapowanie",
@@ -340,6 +385,18 @@
         "detail": "Wybierz kategorię, aby kontynuować. Wynik wyszukiwania nie był pusty - nie udało się go odczytać, więc niczego nie wykluczono.",
         "title": "{destination} zwrócił wynik kategorii, którego ta wersja nie rozpoznaje."
       }
+    },
+    "erli": {
+      "missingImage": {
+        "detail": "Erli wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      }
+    },
+    "panel": {
+      "advisoryNote": "Można opublikować",
+      "ariaLabel": "Co blokuje ten wariant",
+      "consequence": "Wynika z przyczyny powyżej",
+      "jumpTo": "Przejdź do pola {name}"
     }
   },
   "bulkCardCategoryDialog": {

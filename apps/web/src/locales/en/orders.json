@@ -2827,6 +2827,7 @@
     "panel": {
       "fixRouting": "Fix routing settings",
       "manualOverride": "Issue or register manually instead",
+      "technicalDetails": "Technical details ({count})",
       "title": "Sales document",
       "whyThisKind": "Why this kind?"
     }
@@ -2835,9 +2836,9 @@
     "failed": "Could not email the document to the buyer.",
     "language": "Email language",
     "lastSentVia": "{when} · {via}",
+    "noBuyerEmail": "This order has no buyer email.",
+    "otherAddressHint": "A different address is sent by OpenLinker rather than the invoicing provider.",
     "recipient": "Recipient",
-    "recipientHint": "Leave empty to use the buyer's address on the order. A different address is sent by OpenLinker rather than the invoicing provider.",
-    "recipientPlaceholder": "Buyer's address on the order",
     "send": "Send email",
     "sendAgain": "Send again",
     "sending": "Sending…",
@@ -2849,6 +2850,8 @@
     "statusNone": "Not sent yet",
     "statusSent": "Sent",
     "title": "Email to buyer",
+    "useBuyerAddress": "Send to the buyer's address on the order ({email})",
+    "useBuyerAddressNone": "Send to the buyer's address on the order",
     "viaOpenLinker": "via OpenLinker",
     "viaProvider": "via the invoicing provider"
   },
