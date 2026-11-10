@@ -22,8 +22,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateGiftRules1938700000000 implements MigrationInterface {
-  name = 'CreateGiftRules1938700000000';
+export class CreateGiftRules1939200000000 implements MigrationInterface {
+  name = 'CreateGiftRules1939200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "automation_rules" ADD COLUMN "position" integer`);

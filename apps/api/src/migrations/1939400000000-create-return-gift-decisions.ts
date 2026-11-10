@@ -10,8 +10,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateReturnGiftDecisions1938900000000 implements MigrationInterface {
-  name = 'CreateReturnGiftDecisions1938900000000';
+export class CreateReturnGiftDecisions1939400000000 implements MigrationInterface {
+  name = 'CreateReturnGiftDecisions1939400000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

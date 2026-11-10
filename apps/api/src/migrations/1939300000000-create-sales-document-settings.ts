@@ -11,8 +11,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateSalesDocumentSettings1938800000000 implements MigrationInterface {
-  name = 'CreateSalesDocumentSettings1938800000000';
+export class CreateSalesDocumentSettings1939300000000 implements MigrationInterface {
+  name = 'CreateSalesDocumentSettings1939300000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
