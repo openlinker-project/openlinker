@@ -270,6 +270,9 @@
     "label": "Postęp konfiguracji",
     "step": "Krok {current} z {total}"
   },
+  "sidePanel": {
+    "close": "Zamknij"
+  },
   "structuredErrors": {
     "copied": "skopiowano",
     "copiedPath": "Skopiowano {path}",

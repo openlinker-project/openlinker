@@ -250,6 +250,9 @@
     "label": "Setup progress",
     "step": "Step {current} of {total}"
   },
+  "sidePanel": {
+    "close": "Close"
+  },
   "structuredErrors": {
     "copied": "copied",
     "copiedPath": "Copied {path}",
