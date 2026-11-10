@@ -171,6 +171,8 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
     ['onPackBench=false', { onPackBench: false }],
     ['withGift=true', { withGift: true }],
     ['withGift=false', { withGift: false }],
+    ['withBundle=true', { withBundle: true }],
+    ['withBundle=false', { withBundle: false }],
     [
       'every filter at once',
       {

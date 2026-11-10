@@ -311,6 +311,7 @@ export function toOrderRecordFilters(
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
     withGift: query.withGift,
+    withBundle: query.withBundle,
     omsAttentionReason: query.attentionReason,
     paymentNotSent: query.paymentNotSent,
     activeHoldReason: query.hold,
@@ -2119,6 +2120,7 @@ export class OrdersController {
       // read the list widens who may read the start of the buyer's note: decide
       // a list audience as if it were the note's audience.
       hasBuyerNote: order.hasBuyerNote,
+      hasBundle: (order.lineExpansion?.definitions.length ?? 0) > 0,
       buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
       buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
       // The read marker is a timestamp, not free text, so the list may carry it:

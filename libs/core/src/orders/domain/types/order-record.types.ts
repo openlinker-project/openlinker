@@ -211,6 +211,10 @@ export interface OrderHealthSummary {
   openReturn: number;
   /** #4025 - orders with a buyer note an operator can act on (the `hasBuyerNote` filter's predicate). */
   hasBuyerNote: number;
+  /** #3935 - orders carrying a gift line (the `withGift` filter's predicate). Orthogonal to the health partition. */
+  withGift: number;
+  /** #3935 - orders carrying a bundle (the `withBundle` filter's predicate). Orthogonal to the health partition. */
+  withBundle: number;
   /**
    * #4025 - orders with a ship-by deadline inside the next 24 hours or already
    * past (the `dueBefore` list filter's predicate, evaluated at now + 24 h).
@@ -477,6 +481,8 @@ export interface OrderRecordFilters {
    * two columns, ANDed with every other axis; not a health bucket.
    */
   withGift?: boolean;
+  /** "With a bundle" filter (#3935): orders that froze a bundle definition at ingestion. */
+  withBundle?: boolean;
   /**
    * Restrict to orders carrying an attention entry with exactly this reason
    * (#3961 - the "Changed by the shop" filter). Composes with `omsAttention`;

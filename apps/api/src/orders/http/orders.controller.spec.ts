@@ -1033,7 +1033,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 9,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -1053,7 +1053,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 4,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -1073,7 +1073,7 @@ describe('OrdersController', () => {
         awaitingDispatch: 0,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       await controller.statusSummary({
@@ -1094,7 +1094,7 @@ describe('OrdersController', () => {
         total: 4, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 1, awaitingDispatch: 3,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 2, hasBuyerNote: 1, dueWithin24h: 3, bySource: { 'conn-001': 4 },
+        openReturn: 2, hasBuyerNote: 1, withGift: 0, withBundle: 0, dueWithin24h: 3, bySource: { 'conn-001': 4 },
         attention: { lateToShip: 3, stuck: 0, toHandle: 2 },
       });
 
@@ -1114,7 +1114,7 @@ describe('OrdersController', () => {
         total: 0, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 0, awaitingDispatch: 0,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
         waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});

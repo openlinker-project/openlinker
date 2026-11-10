@@ -646,6 +646,15 @@ export class OrderRecordRepository
       );
     }
 
+    if (filters.withBundle !== undefined) {
+      // #3935 - its own axis like `withGift`: a bundle order is usually also synced.
+      qb.andWhere(
+        filters.withBundle
+          ? OrderRecordRepository.HAS_BUNDLE
+          : `NOT (${OrderRecordRepository.HAS_BUNDLE})`
+      );
+    }
+
     if (filters.omsAttention !== undefined) {
       // #2353 - the OMS inert-state axis, ANDed with `health` exactly like
       // `salesDocumentBlocked` and `taxRateConflict`. It is NOT the
@@ -971,6 +980,8 @@ export class OrderRecordRepository
       .join(' OR ');
     qb.addSelect(`COUNT(*) FILTER (WHERE ${hasOpenReturn})`, 'open_return')
       .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`, 'has_buyer_note')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_GIFT})`, 'with_gift')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_BUNDLE})`, 'with_bundle')
       .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
       .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
       .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
@@ -1013,6 +1024,8 @@ export class OrderRecordRepository
         sales_document_issued_on_request: string;
         open_return: string;
         has_buyer_note: string;
+        with_gift: string;
+        with_bundle: string;
         due_within_24h: string;
         attention_late_to_ship: string;
         attention_stuck: string;
@@ -1044,6 +1057,8 @@ export class OrderRecordRepository
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
       openReturn: Number(raw?.open_return ?? 0),
       hasBuyerNote: Number(raw?.has_buyer_note ?? 0),
+      withGift: Number(raw?.with_gift ?? 0),
+      withBundle: Number(raw?.with_bundle ?? 0),
       dueWithin24h: Number(raw?.due_within_24h ?? 0),
       bySource,
       attention: {
@@ -2119,6 +2134,12 @@ export class OrderRecordRepository
     // `orderEdits` is NULL on an order nobody edited; a NULL here would make the
     // negated filter drop that order instead of keeping it.
     `COALESCE(jsonb_path_exists(rec."orderEdits", '$.addedLines.*'), false))`;
+
+  /**
+   * "Carries a bundle" (#3935): the order froze at least one bundle definition
+   * into `lineExpansion` at ingestion. Same signal the gift report's bundle scope reads.
+   */
+  private static readonly HAS_BUNDLE = `rec."lineExpansion" IS NOT NULL`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED =
     OrderRecordRepository.buildSalesDocumentBlockedPredicate();

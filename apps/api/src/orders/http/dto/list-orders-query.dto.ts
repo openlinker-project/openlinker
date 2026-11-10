@@ -314,6 +314,17 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   withGift?: boolean;
 
   @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"With a bundle" filter (#3935): true keeps only orders that carry a bundle line, false only the ' +
+      'rest, omitted does not filter. ANDed with `health`, not a health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  withBundle?: boolean;
+
+  @ApiPropertyOptional({
     enum: AuthorityAttentionReasonValues,
     name: 'attentionReason',
     description:
