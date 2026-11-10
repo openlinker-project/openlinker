@@ -31,6 +31,7 @@ import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/
 import { useVariantListingsQueries } from '../../features/listings';
 import type { OfferLifecycle } from '../../features/listings';
 import { ProductUsedInBundles } from '../../features/bundles/components/product-used-in-bundles';
+import { useVariantCostsQuery } from '../../features/products';
 import { ProductGallery } from '../../features/products/components/product-gallery';
 import type { Product, ProductVariant } from '../../features/products';
 import type { StockRowModel } from '../../features/inventory';
@@ -119,6 +120,8 @@ export function ProductOverview(props: ProductOverviewProps): ReactElement {
   const plural = usePlural();
   const connections = useConnectionsQuery();
   const { moreOpen, onMoreOpenChange } = props;
+  // Cost is a separate, role-gated read: when it fails or is empty the price tile simply shows the currency.
+  const costs = useVariantCostsQuery(product.id);
 
   // One read per variant: the listings API filters by the variant it maps.
   const { byVariant: listingsByVariant, loaded: listingsLoaded } = useVariantListingsQueries(
@@ -133,6 +136,22 @@ export function ProductOverview(props: ProductOverviewProps): ReactElement {
     .filter((row) => row.listings.length === 0)
     .map((row) => row.connection.name);
   const currency = product.currency ?? undefined;
+  const costValues = (costs.data ?? [])
+    .map((cost) => (cost.netUnitCost === null ? null : Number(cost.netUnitCost)))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  const costCurrency =
+    (costs.data ?? []).find((cost) => cost.costCurrency !== null)?.costCurrency ?? currency;
+  const costLow = costValues.length > 0 ? Math.min(...costValues) : null;
+  const costHigh = costValues.length > 0 ? Math.max(...costValues) : null;
+  const priceSub =
+    costLow === null || costHigh === null
+      ? (currency ?? '')
+      : costLow === costHigh
+        ? interpolate(copy.overview.costSub, { amount: format.money(costLow, costCurrency) })
+        : interpolate(copy.overview.costRangeSub, {
+            min: format.money(costLow, costCurrency),
+            max: format.money(costHigh, costCurrency),
+          });
   const sourceMapping = product.externalIds?.[0];
   const sourceConnection = (connections.data ?? []).find(
     (c) => c.id === sourceMapping?.connectionId
@@ -168,7 +187,7 @@ export function ProductOverview(props: ProductOverviewProps): ReactElement {
               <span className="pm-kpi__n mono tabular">
                 {product.price === null ? '—' : format.money(product.price, currency)}
               </span>
-              <span className="pm-kpi__s">{currency ?? ''}</span>
+              <span className="pm-kpi__s">{priceSub}</span>
             </div>
             <div className="pm-kpi">
               <span className="pm-kpi__l">{copy.kpis.listings}</span>

@@ -38702,3 +38702,25 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .pm-kpi[data-tone=error] .pm-kpi__n{color:var(--status-error-fg)}
 .pm-kpi[data-tone=warning] .pm-kpi__n{color:var(--status-warning-fg)}
 .pm-kpi[data-tone=success] .pm-kpi__n{color:var(--status-success-fg)}
+
+/* ---- Wizard shell in the catalog mockup's flat shape (#3935): stepper and destination bar ---- */
+.bulk-wizard__stepper .setup-stepper__indicator{width:1.375rem;height:1.375rem;font-family:var(--font-mono);font-size:.6875rem}
+.bulk-wizard__stepper .setup-stepper__step--done .setup-stepper__indicator{background:var(--status-success-soft);border-color:var(--status-success-border);color:var(--status-success-strong)}
+.bulk-wizard__stepper .setup-stepper__step--current .setup-stepper__indicator{background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-primary);box-shadow:none}
+.bulk-wizard__stepper .setup-stepper__step--current .setup-stepper__label{font-weight:600;color:var(--text-primary)}
+.bulk-wizard__stepper .setup-stepper__label{font-size:.8125rem}
+.bulk-wizard__stepper .setup-stepper__connector{width:1.5rem;height:1px;background:var(--border-default)}
+.bulk-destbar{border-left-width:1px;box-shadow:none}
+.bulk-destbar__main{justify-content:space-between;padding:var(--space-2) var(--space-4)}
+.bulk-destbar__label{white-space:nowrap}
+.bulk-destbar__actions{margin-left:auto;display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center}
+.bulk-destbar__toggle{margin-left:0}
+.bulk-destbar__name{font-size:.8125rem}
+.bulk-wizard__body--flat{background:none;border:0;padding:0;box-shadow:none}
+.bulk-review__header{padding:0}
+/* Category cell in the mockup's shape: the whole path, then where it came from as a plain note (#3935) */
+.review-cat__leaf.cx-cat{font-weight:500;white-space:normal;overflow-wrap:anywhere}
+.review-cat__source.cx-sub{padding:0;border:0;background:none;font-family:var(--font-sans);text-transform:none;letter-spacing:0;font-size:.75rem;color:var(--text-muted);font-weight:400}
+.bulk-review__header,.bulk-review__toolbar{justify-content:flex-start;width:100%}
+.bulk-review__filter{max-width:26rem}
+.bulk-wizard__stepper{margin-bottom:0}

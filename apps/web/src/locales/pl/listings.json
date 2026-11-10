@@ -580,6 +580,7 @@
       "sandbox": "Sandbox"
     },
     "hideSettings": "Ukryj ustawienia",
+    "label": "Kanał docelowy",
     "settingsChanged": {
       "few": "Zmieniono {n} ustawienia",
       "many": "Zmieniono {n} ustawień",
@@ -1349,7 +1350,7 @@
       "ownOfferWithId": "własna oferta {id}"
     },
     "noOwnEan": "bez własnego EAN",
-    "publishComponent": "Opublikuj składnik",
+    "publishComponent": "Wystaw składnik",
     "quantity": "×{n}",
     "useFirstComponentCategory": "Użyj kategorii pierwszego składnika"
   },

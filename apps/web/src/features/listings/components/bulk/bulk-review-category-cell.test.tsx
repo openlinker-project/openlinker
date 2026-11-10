@@ -97,7 +97,7 @@ describe('compactTrail', () => {
 });
 
 describe('ReviewCategoryCell', () => {
-  it('should show the leaf, the shortened path and the source', async () => {
+  it('should show the whole path and the source', async () => {
     const apiClient = createMockApiClient({
       mappings: {
         getCategoryPath: vi.fn().mockResolvedValue([
@@ -113,8 +113,7 @@ describe('ReviewCategoryCell', () => {
       { apiClient },
     );
 
-    expect(await screen.findByText('T-shirty')).toBeInTheDocument();
-    expect(screen.getByText('Moda › … › Odzież męska')).toBeInTheDocument();
+    expect(await screen.findByText('Moda › Odzież › Odzież męska › T-shirty')).toBeInTheDocument();
     expect(screen.getByText('Mapping')).toBeInTheDocument();
   });
 

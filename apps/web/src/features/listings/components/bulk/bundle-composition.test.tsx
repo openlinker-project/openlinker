@@ -65,7 +65,7 @@ describe('BundleComposition', () => {
 
   it('should link a component that cannot be listed to publishing it on its own', () => {
     renderIt('74035');
-    expect(screen.getByRole('link', { name: 'Publish component' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'List component' })).toHaveAttribute(
       'href',
       '/listings/bulk-create/wizard?productIds=p-l&connectionId=conn-1'
     );

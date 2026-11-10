@@ -468,21 +468,6 @@ export function BulkReviewStep({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-      <header className="bulk-review__header">
-        <div className="bulk-review__toolbar">
-          <Input
-            type="search"
-            placeholder={copy.filter.placeholder}
-            value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value);
-            }}
-            className="bulk-review__filter"
-            aria-label={copy.filter.ariaLabel}
-          />
-        </div>
-      </header>
-
       <div className="bulk-review__summary bulk-review__summary--chips" role="status">
         <StatusBadge tone="success" withDot data-testid="bulk-summary-ready">
           {copy.summary.ready}: <span className="n">{counts.includedReady}</span>
@@ -504,6 +489,21 @@ export function BulkReviewStep({
           <span>{copy.onlyFlagged}</span>
         </label>
       </div>
+
+      <header className="bulk-review__header">
+        <div className="bulk-review__toolbar">
+          <Input
+            type="search"
+            placeholder={copy.filter.placeholder}
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value);
+            }}
+            className="bulk-review__filter"
+            aria-label={copy.filter.ariaLabel}
+          />
+        </div>
+      </header>
 
       {/* Batch-level platform preconditions (#2240). One banner for the whole
           batch, above the readiness line: the fact belongs to the connection,
@@ -543,11 +543,24 @@ export function BulkReviewStep({
           counts.includedNeedsAttention === 0 &&
           duplicateEanIds.size === 0 &&
           batchIssues.length === 0
-            ? 'bulk-review__banner bulk-review__banner--ok'
-            : 'bulk-review__banner'
+            ? 'cx-note cx-note--ok bulk-review__banner'
+            : 'cx-note cx-note--warn bulk-review__banner'
         }
         role="status"
       >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          {counts.includedNeedsAttention === 0 &&
+          duplicateEanIds.size === 0 &&
+          batchIssues.length === 0 ? (
+            <path d="M5 12l5 5 9-10" />
+          ) : (
+            <>
+              <path d="M12 4l9 16H3L12 4z" />
+              <path d="M12 10v4M12 17v.5" />
+            </>
+          )}
+        </svg>
+        <p>
         {overExpansionCeiling ? (
           <>
             <b>
@@ -585,11 +598,21 @@ export function BulkReviewStep({
           <>
             <b>{plural(counts.includedNeedsAttention, copy.banner.needsAttention.title)}</b>{' '}
             {copy.banner.needsAttention.detail}
-            <Button tone="secondary" className="button--sm" style={{ marginLeft: 'auto' }} onClick={jumpToNextFlagged}>
-              {copy.jumpToNextFlagged}
-            </Button>
+
           </>
         )}
+        </p>
+        {counts.includedNeedsAttention > 0 &&
+        duplicateEanIds.size === 0 &&
+        batchIssues.length === 0 &&
+        !overExpansionCeiling &&
+        !overExclusionCap ? (
+          <span className="cx-note__a">
+            <Button tone="secondary" className="button--sm" onClick={jumpToNextFlagged}>
+              {copy.jumpToNextFlagged}
+            </Button>
+          </span>
+        ) : null}
       </div>
 
       <div className="bulk-review__table bulk-review__table--with-category">
@@ -828,6 +851,35 @@ function ProductRow({
   const productPrice =
     row.variants[0]?.masterPrice ?? row.masterPrice ?? null;
 
+  // Two bundle blockers are fixed where they are shown (#3935). A component the
+  // destination cannot list opens the wizard for the missing components in a new
+  // tab - the batch is fixed by its URL, so adding them here would drop the
+  // operator's edits. The category blocker applies the first component's category.
+  const bundleFix = (blocker: string): (() => void) | undefined => {
+    if (!bundle) return undefined;
+    if (blocker.endsWith(':bundle-component-missing')) {
+      const missing = bundle.components.filter((component) => component.mode === 'missing');
+      if (missing.length === 0) return undefined;
+      return () => {
+        window.open(
+          `/listings/bulk-create/wizard?${new URLSearchParams({
+            productIds: missing.map((component) => component.productId).join(','),
+            connectionId: config.connectionId,
+          }).toString()}`,
+          '_blank',
+          'noopener'
+        );
+      };
+    }
+    if (blocker.endsWith(':bundle-category-mismatch') && bundle.suggestedCategoryId && onUseBundleCategory) {
+      const suggested = bundle.suggestedCategoryId;
+      return () => {
+        onUseBundleCategory(row.productId, suggested);
+      };
+    }
+    return undefined;
+  };
+
   const mainClass = [
     'bulk-review__grid',
     'bulk-review__prow-main',
@@ -986,6 +1038,7 @@ function ProductRow({
                 config,
                 bundle
               )}
+              customFix={bundle ? bundleFix : undefined}
               onFix={(focusField) => {
                 onEdit(row.variants[0].variantId, focusField);
               }}
@@ -1216,7 +1269,10 @@ function VariantChips({
   destinationName,
   projection,
   copyContext,
+  customFix,
 }: {
+  /** In-place fix for a blocker that needs no editor; `undefined` falls back to opening the editor. */
+  customFix?: (blocker: string) => (() => void) | undefined;
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
   onFix: (focusField?: OfferBlockerField) => void;
@@ -1275,7 +1331,11 @@ function VariantChips({
           <Chip
             key={b}
             descriptor={descriptor}
-            onFix={descriptor.fixable ? () => onFix(descriptor.field) : undefined}
+            onFix={
+              descriptor.fixable
+                ? (customFix?.(b) ?? (() => onFix(descriptor.field)))
+                : undefined
+            }
             fixLabel={interpolate(copy.chips.fixLabel, {
               chip: descriptor.label,
               variant: label,

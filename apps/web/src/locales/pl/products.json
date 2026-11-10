@@ -265,6 +265,8 @@
     },
     "overview": {
       "bundlesTitle": "Zestawy",
+      "costRangeSub": "koszt netto {min} do {max}",
+      "costSub": "koszt netto {amount}",
       "defaultVariant": "Domyślny",
       "detailsHeading": "Szczegóły stanów",
       "editContent": "Edytuj treść",

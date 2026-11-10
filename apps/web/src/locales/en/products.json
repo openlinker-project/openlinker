@@ -235,6 +235,8 @@
     },
     "overview": {
       "bundlesTitle": "Bundles",
+      "costRangeSub": "net cost {min} to {max}",
+      "costSub": "net cost {amount}",
       "defaultVariant": "Default",
       "detailsHeading": "Stock details",
       "editContent": "Edit content",

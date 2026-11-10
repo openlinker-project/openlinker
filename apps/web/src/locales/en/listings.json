@@ -538,6 +538,7 @@
       "sandbox": "Sandbox"
     },
     "hideSettings": "Hide settings",
+    "label": "Target channel",
     "settingsChanged": {
       "one": "{n} setting changed",
       "other": "{n} settings changed"
@@ -1223,7 +1224,7 @@
       "ownOfferWithId": "own offer {id}"
     },
     "noOwnEan": "no own EAN",
-    "publishComponent": "Publish component",
+    "publishComponent": "List component",
     "quantity": "×{n}",
     "useFirstComponentCategory": "Use first component's category"
   },
