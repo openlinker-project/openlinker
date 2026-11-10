@@ -1152,7 +1152,7 @@ export function BulkWizard({
       </div>
     </PageLayout>
   );
-  return hasBundles ? <BundleGuide>{page}</BundleGuide> : page;
+  return hasBundles ? <BundleGuide defaultOpen="offer">{page}</BundleGuide> : page;
 }
 
 /** Order-sensitive blocker-list equality. */

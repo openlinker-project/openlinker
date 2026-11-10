@@ -26,7 +26,7 @@ import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
 import { ComposerSection } from '../../../shared/ui/composer-section';
 import { ReadbackSentence } from '../../../shared/ui/readback-sentence';
-import { SaveButton } from '../../../shared/ui/save-button';
+import { SaveButton, useSaveButtonState } from '../../../shared/ui/save-button';
 import { StickyActionBar } from '../../../shared/ui/sticky-action-bar';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDemoMode } from '../../system';
@@ -40,8 +40,8 @@ import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
 import { splitBundlePrice } from '../lib/bundle-price-split';
 import {
   GiftFormPickerValues,
-  useDocumentProvidersQuery,
-  zeroAvailability,
+  GiftDocumentFormCards,
+  useGiftDocumentSettingsQuery,
   type GiftDocumentFormChoice,
 } from '../../gift-documents';
 import { BundleGuide, BundleGuideButton } from './bundle-guide';
@@ -120,8 +120,7 @@ function readErrorCode(error: ApiError | null): { code: string | null; reason: s
 export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps): ReactElement {
   const copy = useMessages('bundles');
   const giftCopy = useMessages('gift-documents');
-  const documentProviders = useDocumentProvidersQuery();
-  const zeroForms = zeroAvailability(documentProviders.data?.providers);
+  const giftSettings = useGiftDocumentSettingsQuery();
   const { locale } = useLocale();
   const format = useFormat();
   const apiClient = useApiClient();
@@ -142,6 +141,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const [shakeKey, setShakeKey] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
   const save = useSaveBundleMutation();
+  const saveButtonState = useSaveButtonState(save.isPending, savedCount);
   const syncFromMaster = useSyncBundleFromMasterMutation();
 
   const [bundleProduct, setBundleProduct] = useState<BundleProductChoice | null>(null);
@@ -824,68 +824,28 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                                     <b>{copy.form.giftOnDocument}</b>
                                     <span>{copy.form.giftDefault}</span>
                                   </div>
-                                  <div
-                                    className="cx-forms"
-                                    role="radiogroup"
+                                  <GiftDocumentFormCards
+                                    name={`gift-form-${key}`}
                                     aria-label={giftCopy.perGift.label}
-                                  >
-                                    {(
-                                      [
-                                        '',
-                                        'technical-cent',
-                                        'priced-in',
-                                        'show-zero',
-                                        ...(row.documentForm === 'omit' ? ['omit'] : []),
-                                      ] as const
-                                    ).map((choice) => {
-                                      const unavailable =
-                                        choice === 'show-zero' && !zeroForms.available;
-                                      const title =
-                                        choice === ''
-                                          ? copy.form.giftInherit
-                                          : giftCopy.cards.forms[choice as GiftDocumentFormChoice]
-                                              .title;
-                                      const description =
-                                        choice === ''
-                                          ? copy.form.giftInheritHint
-                                          : giftCopy.cards.forms[choice as GiftDocumentFormChoice]
-                                              .description;
-                                      return (
-                                        <label
-                                          key={choice || 'inherit'}
-                                          className="cx-form"
-                                          title={
-                                            unavailable
-                                              ? giftCopy.connection.zeroNoProvider
-                                              : undefined
-                                          }
-                                          style={
-                                            unavailable
-                                              ? { opacity: 0.55, cursor: 'not-allowed' }
-                                              : undefined
-                                          }
-                                        >
-                                          <input
-                                            type="radio"
-                                            name={`gift-form-${key}`}
-                                            value={choice}
-                                            checked={(row.documentForm ?? '') === choice}
-                                            disabled={readOnly || unavailable}
-                                            data-testid={`bundle-form-component-doc-form-${key}-${choice || 'inherit'}`}
-                                            onChange={() => {
-                                              form.setValue(
-                                                `components.${index}.documentForm`,
-                                                choice,
-                                                { shouldDirty: true }
-                                              );
-                                            }}
-                                          />
-                                          <b>{title}</b>
-                                          <small>{description}</small>
-                                        </label>
+                                    value={isGiftDocumentFormChoice(row.documentForm) ? row.documentForm : 'inherit'}
+                                    onChange={(next) => {
+                                      form.setValue(
+                                        `components.${index}.documentForm`,
+                                        next === 'inherit' ? '' : next,
+                                        { shouldDirty: true }
                                       );
-                                    })}
-                                  </div>
+                                    }}
+                                    customPrice=""
+                                    onCustomPriceChange={() => undefined}
+                                    withInherit
+                                    forms={
+                                      row.documentForm === 'omit'
+                                        ? ['priced-in', 'technical-cent', 'show-zero', 'omit']
+                                        : ['priced-in', 'technical-cent', 'show-zero']
+                                    }
+                                    inheritedForm={giftSettings.data?.giftDocumentForm ?? null}
+                                    disabled={readOnly}
+                                  />
                                   <p className="cx-gift__f">
                                     {copy.form.giftDecision}{' '}
                                     <Link to="/settings/sales-documents">
@@ -1103,12 +1063,10 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
               {copy.form.cancel}
             </Link>
             <SaveButton
-              label={copy.form.save}
-              busyLabel={copy.form.saving}
-              doneLabel={copy.form.savedShort}
-              pending={save.isPending}
-              savedCount={savedCount}
+              state={saveButtonState}
+              labels={{ idle: copy.form.save, saving: copy.form.saving, saved: copy.form.savedShort }}
               disabled={saveBlocked}
+              title={readOnly ? copy.form.viewOnlyReason : undefined}
               onClick={pressSave}
               data-testid="bundle-form-save"
             />

@@ -43,6 +43,8 @@ export interface GiftDocumentFormCardsProps {
   /** The `custom-price` amount the "As in settings" card resolves to, when it does. */
   inheritedCustomPrice?: string | null;
   withInherit?: boolean;
+  /** Limits the cards to these forms (a surface whose wire cannot carry the rest). */
+  forms?: readonly GiftDocumentFormChoice[];
   /** Where "Change the default" goes; omit to hide the link. */
   settingsHref?: string;
   currency?: string;
@@ -60,6 +62,7 @@ export function GiftDocumentFormCards({
   inheritedForm = null,
   inheritedCustomPrice = null,
   withInherit = false,
+  forms,
   settingsHref,
   currency = 'PLN',
   disabled = false,
@@ -113,6 +116,7 @@ export function GiftDocumentFormCards({
   }
   for (const form of CARD_ORDER) {
     if (!(GiftDocumentFormChoiceValues as readonly string[]).includes(form)) continue;
+    if (forms !== undefined && !forms.includes(form)) continue;
     const unavailable = form === 'show-zero' && !zero.available;
     options.push({
       value: form,
