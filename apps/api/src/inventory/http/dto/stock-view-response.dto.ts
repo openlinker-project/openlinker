@@ -96,6 +96,17 @@ export class StockViewChannelShowsDto {
   observedAt!: string | null;
 }
 
+export class StockViewLastSentDto {
+  @ApiProperty({ type: Number, nullable: true, description: 'The quantity OpenLinker sent; null when it could not resolve one.' })
+  quantity!: number | null;
+
+  @ApiProperty({ enum: ['sent', 'failed', 'skipped'], description: 'How the write went: accepted, did not land, or not needed (a newer quantity was already live).' })
+  outcome!: 'sent' | 'failed' | 'skipped';
+
+  @ApiProperty({ description: 'When OpenLinker made the write (ISO 8601).' })
+  pushedAt!: string;
+}
+
 export class StockViewChannelDto {
   @ApiProperty()
   connectionId!: string;
@@ -114,6 +125,9 @@ export class StockViewChannelDto {
 
   @ApiProperty({ type: StockViewChannelShowsDto })
   channelShows!: StockViewChannelShowsDto;
+
+  @ApiProperty({ type: StockViewLastSentDto, nullable: true, description: 'The last write OpenLinker made to this channel for the variant; null when none is recorded.' })
+  lastSent!: StockViewLastSentDto | null;
 }
 
 export class StockViewVariantDto {

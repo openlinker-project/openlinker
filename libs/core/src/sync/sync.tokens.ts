@@ -23,6 +23,4 @@ export const SYNC_JOBS_SERVICE_TOKEN = Symbol('ISyncJobsService');
 export const SYNC_CURSORS_SERVICE_TOKEN = Symbol('ISyncCursorsService');
 export const INBOUND_ROUTING_POLICY_TOKEN = Symbol('IInboundRoutingPolicyService');
 export const CONNECTION_SYNC_STATUS_SERVICE_TOKEN = Symbol('IConnectionSyncStatusService');
-
-
-
+export const CURSOR_OVERVIEW_SERVICE_TOKEN = Symbol('ICursorOverviewService');

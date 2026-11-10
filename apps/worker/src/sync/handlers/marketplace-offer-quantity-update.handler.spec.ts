@@ -50,6 +50,17 @@ describe('MarketplaceOfferQuantityUpdateHandler', () => {
     expect(result).toEqual({ outcome: 'ok' });
   });
 
+  it('should thread the variant id into the core command so the push names it (#4062)', async () => {
+    await handler.execute(
+      job({ schemaVersion: 1, offerId: 'o1', quantity: 4, productVariantId: 'v1' })
+    );
+
+    expect(inventorySync.updateOfferQuantity).toHaveBeenCalledWith(
+      'conn-1',
+      expect.objectContaining({ offerId: 'o1', productVariantId: 'v1' })
+    );
+  });
+
   it('should execute a payload carrying no observedAt', async () => {
     const result = await handler.execute(job({ schemaVersion: 1, offerId: 'o1', quantity: 4 }));
 

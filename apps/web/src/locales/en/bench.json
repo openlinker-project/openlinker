@@ -15,6 +15,9 @@
       }
     }
   },
+  "documents": {
+    "labelReady": "Label from {carrier} is ready"
+  },
   "identity": {
     "locked": {
       "body": "Sign in to carry on. Nothing about the order that was open is shown here - no reference, no buyer, no address, nothing about what is in the box.",
@@ -27,6 +30,27 @@
       "title": "Sign in to this bench"
     },
     "warning": "You'll be signed out in {seconds}s - tap anywhere to stay signed in."
+  },
+  "labelRoute": {
+    "buysLabelBadge": "Label on close",
+    "buysLabelBody": "{method} goes with {carrier}. Close the box when it is packed.",
+    "buysLabelBodyNoCarrier": "{method} gets a label from OpenLinker. Close the box when it is packed.",
+    "buysLabelClosedBody": "{method} goes with {carrier}. The label shows here when it is ready.",
+    "buysLabelClosedBodyNoCarrier": "{method} gets a label from OpenLinker. It shows here when it is ready.",
+    "buysLabelClosedTitle": "OpenLinker buys the label for this box",
+    "buysLabelTitle": "OpenLinker buys the label when you close the box",
+    "carrierOffBadge": "No label coming",
+    "carrierOffBody": "Close the box and leave it aside. An admin can turn the carrier back on or choose another in Shipping settings.",
+    "carrierOffTitle": "{carrier} is switched off, so no label is coming",
+    "carrierOffTitleNoCarrier": "The carrier for this box is switched off",
+    "methodFallback": "this delivery method",
+    "noCarrierBadge": "No carrier set",
+    "noCarrierBody": "Close the box and leave it aside. An admin can choose a carrier in Shipping settings.",
+    "noCarrierTitle": "Nobody has chosen who ships {method}",
+    "shopShipsBadge": "No OpenLinker label",
+    "shopShipsBody": "Close the box and put it with the shop’s parcels.",
+    "shopShipsTitle": "{shop} ships {method} orders",
+    "shopShipsTitleNoShop": "The shop ships {method} orders"
   },
   "parcel": {
     "activity": {

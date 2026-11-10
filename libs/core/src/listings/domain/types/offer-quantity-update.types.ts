@@ -44,6 +44,14 @@ export interface UpdateOfferQuantityCommand {
    * zeroes a listing on its own authority) writes unguarded, exactly as before.
    */
   observedAt?: string;
+
+  /**
+   * The internal variant whose stock this write expresses (#4062). Read only by
+   * core, to record what was sent for which variant; adapters never read it and
+   * it plays no part in what is written. Absent on a caller with no single
+   * variant to name (the stale-offer pause) and on a legacy job.
+   */
+  productVariantId?: string;
 }
 
 /**

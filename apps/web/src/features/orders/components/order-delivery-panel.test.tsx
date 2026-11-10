@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { renderWithProviders } from '../../../test/test-utils';
+import { createAuthenticatedSessionAdapter, renderWithProviders } from '../../../test/test-utils';
 import { OrderDeliveryPanel } from './order-delivery-panel';
 
 describe('OrderDeliveryPanel', () => {
@@ -149,7 +150,8 @@ describe('OrderDeliveryPanel', () => {
   });
 
   describe('fix-it deep-link wiring (#1794)', () => {
-    it('should render the real Add-mapping deep link when sourceConnectionId is provided', () => {
+    it('should open the routing dialog from Add mapping, not the carriers tab, when sourceConnectionId is provided (#3958)', async () => {
+      const user = userEvent.setup();
       renderWithProviders(
         <OrderDeliveryPanel
           deliveryOutcome="shop-fulfilled"
@@ -157,15 +159,20 @@ describe('OrderDeliveryPanel', () => {
             rider: 'unmapped',
             candidateCarrier: { platformType: 'inpost', displayName: 'InPost' },
           }}
-          sourceConnectionId="conn-abc"
+          sourceConnectionId="conn_1"
           sourceDeliveryMethodId="method-xyz"
           sourceDeliveryMethodName="InPost Paczkomat"
+          channelName="Main PrestaShop Store"
         />,
+        { sessionAdapter: createAuthenticatedSessionAdapter() },
       );
-      const link = screen.getByRole('link', { name: 'Add mapping' });
-      expect(link.getAttribute('href')).toContain('/connections/conn-abc/mappings');
-      expect(link.getAttribute('href')).toContain('method=method-xyz');
-      expect(screen.queryByRole('button', { name: 'Add mapping' })).not.toBeInTheDocument();
+      const action = await screen.findByRole('button', { name: 'Add mapping' });
+      expect(action).toBeEnabled();
+      expect(document.querySelector('a[href*="tab=carriers"]')).toBeNull();
+
+      await user.click(action);
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Who ships Main PrestaShop Store orders')).toBeInTheDocument();
     });
 
     it('should fall back to the disabled placeholder when sourceConnectionId is absent', () => {
@@ -180,6 +187,99 @@ describe('OrderDeliveryPanel', () => {
       );
       expect(screen.getByRole('button', { name: 'Add mapping' })).toBeDisabled();
       expect(screen.queryByRole('link', { name: 'Add mapping' })).not.toBeInTheDocument();
+    });
+  });
+  describe('shipped-by route and its origin (#3958)', () => {
+    const CARRIER_OWNER = { name: 'InPost', platformType: 'inpost', variant: 'carrier' as const };
+    const SHOP_OWNER = { name: null, platformType: null, variant: 'shop' as const };
+
+    it('should word a rule route and say it is set for every order on the method', async () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          shipping={{ methodId: 'm1', methodName: 'InPost Paczkomat' }}
+          deliveryOwner={CARRIER_OWNER}
+          deliveryResolution={{
+            source: 'rule',
+            processorKind: 'ol_managed_carrier',
+            processorConnectionId: 'conn-inpost',
+            processorAvailable: true,
+            parcelProfile: null,
+          }}
+          sourceConnectionId="conn_1"
+          channelName="Allegro"
+        />,
+        { sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+      expect(screen.getByText('OpenLinker buys the label from InPost')).toBeInTheDocument();
+      expect(screen.getByTestId('order-delivery-route-origin')).toHaveTextContent(
+        'Set for every Allegro order on this delivery method.',
+      );
+      expect(await screen.findByRole('button', { name: 'Change who ships it' })).toBeInTheDocument();
+    });
+
+    it('should say the shop ships it by default and offer to choose a carrier in a dialog', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <OrderDeliveryPanel
+          shipping={{ methodId: 'm1', methodName: 'Kurier DPD' }}
+          deliveryOwner={SHOP_OWNER}
+          deliveryResolution={{
+            source: 'default',
+            processorKind: 'omp_fulfilled',
+            processorConnectionId: null,
+            processorAvailable: true,
+            parcelProfile: null,
+          }}
+          sourceConnectionId="conn_1"
+          channelName="Allegro"
+        />,
+        { sessionAdapter: createAuthenticatedSessionAdapter() },
+      );
+      expect(screen.getByText('Your shop ships it')).toBeInTheDocument();
+      expect(screen.getByTestId('order-delivery-route-origin')).toHaveTextContent(
+        'No carrier is set for this delivery method, so your shop ships it.',
+      );
+
+      await user.click(await screen.findByRole('button', { name: 'Choose a carrier' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(screen.getByText('Who ships Allegro orders')).toBeInTheDocument();
+      expect(dialog).toHaveTextContent(/delivery method this order uses is first and marked/);
+    });
+
+    it('should mark a rule to a switched-off carrier as off', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOwner={CARRIER_OWNER}
+          deliveryResolution={{
+            source: 'rule',
+            processorKind: 'ol_managed_carrier',
+            processorConnectionId: 'conn-inpost',
+            processorAvailable: false,
+            parcelProfile: null,
+          }}
+        />,
+      );
+      expect(
+        screen.getByText('OpenLinker buys the label from InPost (connection is off)'),
+      ).toBeInTheDocument();
+    });
+
+    it('should show the origin but no action to a role that cannot change routing', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          deliveryOwner={SHOP_OWNER}
+          deliveryResolution={{
+            source: 'default',
+            processorKind: 'omp_fulfilled',
+            processorConnectionId: null,
+            processorAvailable: true,
+            parcelProfile: null,
+          }}
+          sourceConnectionId="conn_1"
+        />,
+      );
+      expect(screen.getByTestId('order-delivery-route-origin')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Choose a carrier' })).not.toBeInTheDocument();
     });
   });
 });

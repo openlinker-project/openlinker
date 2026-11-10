@@ -419,8 +419,25 @@ describe('InventoryService', () => {
         sourceKind: 'master_sync',
         sourceRef: null,
         actorUserId: null,
+        syncRunId: null,
         occurredAt: at,
       });
+    });
+
+    it('should record the sync run that produced the change (#4062)', async () => {
+      const persisted = createItem({ availableQuantity: 7, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a', {
+        reason: 'master_sync',
+        sourceKind: 'master_sync',
+        syncRunId: 'cycle-7',
+      });
+
+      expect(movementRepository.append).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'master_sync', syncRunId: 'cycle-7', quantityDelta: 2 })
+      );
     });
 
     it('should not append a row when the quantity did not change', async () => {

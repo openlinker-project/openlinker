@@ -396,6 +396,8 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         expect.objectContaining({
           payload: expect.objectContaining({
             quantity: 50,
+            // Recorded with the push so the history can say what was sent (#4062).
+            productVariantId: 'variant-id',
           }),
         })
       );

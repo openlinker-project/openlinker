@@ -45,6 +45,7 @@ import mailerSettings from './mailer-settings.json';
 import mappings from './mappings.json';
 import mcpTokens from './mcp-tokens.json';
 import omsCore from './oms-core.json';
+import omsOnboarding from './oms-onboarding.json';
 import orders from './orders.json';
 import posthogSettings from './posthog-settings.json';
 import priceChanges from './price-changes.json';
@@ -91,6 +92,7 @@ const polish: PolishCopy<Messages> = {
   mappings,
   'mcp-tokens': mcpTokens,
   'oms-core': omsCore,
+  'oms-onboarding': omsOnboarding,
   orders,
   'posthog-settings': posthogSettings,
   'price-changes': priceChanges,

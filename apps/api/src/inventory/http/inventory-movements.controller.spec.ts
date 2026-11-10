@@ -7,6 +7,7 @@
  *
  * @module apps/api/src/inventory/http
  */
+import { NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { IInventoryMovementService, InventoryHistoryRow } from '@openlinker/core/inventory';
@@ -37,6 +38,7 @@ const row = (overrides: Partial<InventoryHistoryRow> = {}): InventoryHistoryRow 
   refusalDetail: null,
   occurredAt: new Date('2026-01-01T10:00:00.000Z'),
   sourceLabel: 'ORD-1001',
+  syncRunId: null,
   ...overrides,
 });
 
@@ -53,6 +55,8 @@ describe('InventoryMovementsController', () => {
       listMovements: jest.fn().mockResolvedValue([row()]),
       countMovements: jest.fn().mockResolvedValue(1),
       pruneOlderThan: jest.fn(),
+      listChannelPushes: jest.fn(),
+      getLastChannelPushes: jest.fn(),
     } as unknown as jest.Mocked<IInventoryMovementService>;
     users = {
       getDisplayNames: jest.fn().mockResolvedValue(new Map([['u1', 'Anna Wisniewska']])),
@@ -70,6 +74,7 @@ describe('InventoryMovementsController', () => {
         quantityDelta: -2,
         occurredAt: '2026-01-01T10:00:00.000Z',
         sourceLabel: 'ORD-1001',
+        syncRunId: null,
       });
       expect(result).toMatchObject({ total: 1, limit: 20, offset: 0 });
     });
@@ -159,6 +164,46 @@ describe('InventoryMovementsController', () => {
       const errors = await validate(parse(plain));
 
       expect(errors.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('listChannelPushes (#4062)', () => {
+    it('should return the pushes with an ISO timestamp', async () => {
+      service.listChannelPushes.mockResolvedValue([
+        {
+          id: 'p1',
+          connectionId: 'c1',
+          externalOfferId: 'offer-1',
+          productVariantId: 'v1',
+          quantity: 8,
+          outcome: 'sent',
+          errorCode: null,
+          message: null,
+          observedAt: new Date('2026-11-09T10:00:00.000Z'),
+          pushedAt: new Date('2026-11-09T10:00:02.000Z'),
+        },
+      ]);
+
+      await expect(controller.listChannelPushes('m1')).resolves.toEqual({
+        items: [
+          {
+            id: 'p1',
+            connectionId: 'c1',
+            externalOfferId: 'offer-1',
+            quantity: 8,
+            outcome: 'sent',
+            errorCode: null,
+            message: null,
+            pushedAt: '2026-11-09T10:00:02.000Z',
+          },
+        ],
+      });
+    });
+
+    it('should answer 404 when the movement does not exist', async () => {
+      service.listChannelPushes.mockResolvedValue(null);
+
+      await expect(controller.listChannelPushes('missing')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

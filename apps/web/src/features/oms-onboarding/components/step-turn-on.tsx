@@ -12,7 +12,7 @@
  * - **No active warehouse** (#2407). Step 1 creates one, so this is reachable
  *   only if it was retired since; mapped by code, never by message.
  *
- * State (mockup vocabulary): `step-7-turn-on`.
+ * State (mockup vocabulary): `step-8-turn-on`.
  *
  * @module features/oms-onboarding/components
  */
