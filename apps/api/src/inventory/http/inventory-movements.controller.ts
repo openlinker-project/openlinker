@@ -12,8 +12,11 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import {
   INVENTORY_MOVEMENT_SERVICE_TOKEN,
   type IInventoryMovementService,
+  type InventoryHistoryRow,
   type InventoryMovementFilters,
 } from '@openlinker/core/inventory';
+import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
+import { PROMOTION_SERVICE_TOKEN, type IPromotionService } from '@openlinker/core/promotions';
 import {
   USER_MANAGEMENT_SERVICE_TOKEN,
   type IUserManagementService,
@@ -21,6 +24,7 @@ import {
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
+  InventoryMovementGiftResponseDto,
   PaginatedInventoryMovementsResponseDto,
   toInventoryMovementResponseDto,
 } from './dto/inventory-movement-response.dto';
@@ -51,8 +55,56 @@ export class InventoryMovementsController {
     @Inject(INVENTORY_MOVEMENT_SERVICE_TOKEN)
     private readonly movements: IInventoryMovementService,
     @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
-    private readonly users: IUserManagementService
+    private readonly users: IUserManagementService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orders: IOrderRecordService,
+    @Inject(PROMOTION_SERVICE_TOKEN)
+    private readonly promotions: IPromotionService
   ) {}
+
+  /**
+   * Where each gift movement came from (#3935), read off the order's gift line.
+   * Best-effort: a failed read leaves the rows without a source instead of
+   * failing the history, which is read-only evidence and re-readable.
+   */
+  private async giftSources(
+    rows: readonly InventoryHistoryRow[]
+  ): Promise<Map<string, InventoryMovementGiftResponseDto>> {
+    const result = new Map<string, InventoryMovementGiftResponseDto>();
+    const giftRows = rows.filter(
+      (row) => row.kind === 'movement' && row.reason === 'gift' && row.sourceKind === 'order' && row.sourceRef !== null
+    );
+    if (giftRows.length === 0) {
+      return result;
+    }
+    try {
+      const orderIds = [...new Set(giftRows.map((row) => row.sourceRef as string))];
+      const [orders, promotions] = await Promise.all([
+        this.orders.findByIds(orderIds),
+        this.promotions.list(),
+      ]);
+      const orderById = new Map(orders.map((order) => [order.internalOrderId, order]));
+      const nameById = new Map(promotions.map((view) => [view.promotion.id, view.promotion.name]));
+      for (const row of giftRows) {
+        const items = orderById.get(row.sourceRef as string)?.orderItems ?? [];
+        const gifts = items.filter((item) => item.gift !== undefined);
+        const line =
+          gifts.find((item) => item.variantId === row.productVariantId) ?? gifts[0];
+        if (line?.gift === undefined) {
+          continue;
+        }
+        const ruleRef = line.gift.ruleRef ?? null;
+        const dto = new InventoryMovementGiftResponseDto();
+        dto.source = line.gift.source;
+        dto.promotionId = line.gift.source === 'ol-rule' ? ruleRef : null;
+        dto.promotionName = ruleRef === null ? null : (nameById.get(ruleRef) ?? null);
+        result.set(row.id, dto);
+      }
+    } catch {
+      // Evidence only; see the method note.
+    }
+    return result;
+  }
 
   @Roles('admin', 'operator', 'viewer')
   @Get()
@@ -78,7 +130,8 @@ export class InventoryMovementsController {
       .map((row) => row.actorUserId)
       .filter((id): id is string => id !== null);
     const actorNames = actorIds.length > 0 ? await this.users.getDisplayNames(actorIds) : new Map<string, string>();
-    const items = rows.map((row) => toInventoryMovementResponseDto(row, actorNames));
+    const gifts = await this.giftSources(rows);
+    const items = rows.map((row) => toInventoryMovementResponseDto(row, actorNames, gifts));
 
     // Two branches so the response object does not CARRY `total` when it was not
     // asked for: an absent total and a genuine zero are different claims.

@@ -40,6 +40,10 @@ export interface StockMovementsTableProps {
    */
   layout: 'variant' | 'global';
   caption: string;
+  /** Opens the peek for a row (global page). Absent keeps the rows inert. */
+  onRowClick?: (row: InventoryMovementRow) => void;
+  /** The row whose peek is open, highlighted in the list. */
+  activeKey?: string | null;
 }
 
 function connectionLabel(
@@ -163,6 +167,29 @@ function StatusCell({
   );
 }
 
+/** Who decided a movement's line is a gift, one line under the order (#3935). */
+export function giftSourceText(
+  gift: NonNullable<InventoryMovementRow['gift']>,
+  copy: { promotion: string; cartRule: string; channel: string; operator: string },
+): string {
+  if (gift.source === 'ol-rule') {
+    return gift.promotionName !== null ? interpolate(copy.promotion, { name: gift.promotionName }) : copy.promotion.replace(': {name}', '');
+  }
+  if (gift.source === 'cart-rule') return copy.cartRule;
+  if (gift.source === 'channel') return copy.channel;
+  return copy.operator;
+}
+
+function GiftSourceLine({ row }: { row: InventoryMovementRow }): ReactElement | null {
+  const copy = useMessages('inventory').stockMovementsTable.giftSource;
+  if (row.gift === undefined || row.gift === null) return null;
+  return (
+    <div className="muted-text stock-movement__gift-source" data-testid="stock-movement-gift-source">
+      {giftSourceText(row.gift, copy)}
+    </div>
+  );
+}
+
 function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
   const copy = useMessages('inventory').stockMovementsTable;
   const kind = sourceKindLabel(row.sourceKind);
@@ -203,6 +230,7 @@ function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
     <>
       <div className="muted-text stock-movement__source-kind">{kind}</div>
       {ref}
+      <GiftSourceLine row={row} />
     </>
   );
 }
@@ -219,6 +247,8 @@ export function StockMovementsTable({
   connectionNames,
   layout,
   caption,
+  onRowClick,
+  activeKey = null,
 }: StockMovementsTableProps): ReactElement {
   const columnsCopy = useMessages('inventory').stockMovementsTable.columns;
   const time: DataTableColumn<InventoryMovementRow> = {
@@ -329,7 +359,12 @@ export function StockMovementsTable({
           </>
         ),
       }}
-      rowClassName={rowClass}
+      onRowClick={onRowClick}
+      rowClassName={(row) =>
+        [rowClass(row), activeKey === `${row.kind}:${row.id}` ? 'list-row--peek' : undefined]
+          .filter(Boolean)
+          .join(' ') || undefined
+      }
       rowAttributes={(row) => ({
         'data-testid': 'stock-movement-row',
         'data-movement-type': presentMovementType(row).token,

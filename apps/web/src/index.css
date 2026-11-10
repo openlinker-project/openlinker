@@ -37197,3 +37197,14 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-work-row__gifts { font-size: 0.8125rem; color: var(--status-info-fg); }
+
+/* ── Stock movement peek (#3935) ─────────────────────────────────────────── */
+.stock-movement-peek__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+.stock-movement-peek__facts dd { margin: var(--space-1) 0 0; }
+.stock-movement-peek__order { display: grid; gap: var(--space-1); }
+.stock-movement__gift-source { font-size: 0.8125rem; }

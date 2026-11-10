@@ -55,6 +55,12 @@ export interface InventoryMovementRow {
   refusalReason: string | null;
   refusalDetail: string | null;
   occurredAt: string;
+  /** Where a gift movement came from (#3935); null for any other row. Absent on older servers. */
+  gift?: {
+    source: 'channel' | 'cart-rule' | 'ol-rule' | 'operator';
+    promotionId: string | null;
+    promotionName: string | null;
+  } | null;
 }
 
 export interface InventoryMovementFilters {

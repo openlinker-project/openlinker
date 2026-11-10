@@ -10,6 +10,8 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { IInventoryMovementService, InventoryHistoryRow } from '@openlinker/core/inventory';
+import type { IOrderRecordService } from '@openlinker/core/orders';
+import type { IPromotionService } from '@openlinker/core/promotions';
 import { InventoryMovementsController } from './inventory-movements.controller';
 import type { IUserManagementService } from '../../users/user-management.service.interface';
 import { ListInventoryMovementsQueryDto } from './dto/list-inventory-movements-query.dto';
@@ -46,6 +48,8 @@ const parse = (plain: Record<string, unknown>): ListInventoryMovementsQueryDto =
 describe('InventoryMovementsController', () => {
   let service: jest.Mocked<IInventoryMovementService>;
   let users: jest.Mocked<IUserManagementService>;
+  let orders: { findByIds: jest.Mock };
+  let promotions: { list: jest.Mock };
   let controller: InventoryMovementsController;
 
   beforeEach(() => {
@@ -57,7 +61,14 @@ describe('InventoryMovementsController', () => {
     users = {
       getDisplayNames: jest.fn().mockResolvedValue(new Map([['u1', 'Anna Wisniewska']])),
     } as unknown as jest.Mocked<IUserManagementService>;
-    controller = new InventoryMovementsController(service, users);
+    orders = { findByIds: jest.fn().mockResolvedValue([]) };
+    promotions = { list: jest.fn().mockResolvedValue([]) };
+    controller = new InventoryMovementsController(
+      service,
+      users,
+      orders as unknown as IOrderRecordService,
+      promotions as unknown as IPromotionService
+    );
   });
 
   describe('listMovements', () => {
@@ -88,6 +99,33 @@ describe('InventoryMovementsController', () => {
       expect(users.getDisplayNames).toHaveBeenCalledWith(['u1', 'u1', 'gone']);
       expect(result.items.map((i) => i.actorName)).toEqual(['Anna Wisniewska', 'Anna Wisniewska', null, null]);
       expect(JSON.stringify(result)).not.toContain('@');
+    });
+
+    it('should name where a gift movement came from, from the order gift line and the promotion list', async () => {
+      service.listMovements.mockResolvedValue([
+        row({ id: 'g', reason: 'gift', sourceKind: 'order', sourceRef: 'ol_order_1', productVariantId: 'v1' } as never),
+        row({ id: 's' }),
+      ]);
+      orders.findByIds.mockResolvedValue([
+        { internalOrderId: 'ol_order_1', orderItems: [{ id: 'l', variantId: 'v1', gift: { source: 'ol-rule', ruleRef: 'p1' } }] },
+      ]);
+      promotions.list.mockResolvedValue([{ promotion: { id: 'p1', name: 'Kubek przy zakupach' } }]);
+
+      const result = await controller.listMovements(parse({}));
+
+      expect(result.items[0].gift).toEqual({ source: 'ol-rule', promotionId: 'p1', promotionName: 'Kubek przy zakupach' });
+      expect(result.items[1].gift).toBeNull();
+    });
+
+    it('should still list the history when the gift source cannot be read', async () => {
+      service.listMovements.mockResolvedValue([
+        row({ id: 'g', reason: 'gift', sourceKind: 'order', sourceRef: 'ol_order_1' } as never),
+      ]);
+      orders.findByIds.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.listMovements(parse({}));
+
+      expect(result.items[0].gift).toBeNull();
     });
 
     it('should not read users when no row has an actor', async () => {

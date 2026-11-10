@@ -241,6 +241,7 @@
     "allConnections": "Wszystkie połączenia",
     "allTypes": "Wszystkie typy",
     "attention": {
+      "bannerBody": "Sumy mogą jeszcze nie uwzględniać tych zmian. Otwórz je i sprawdź w systemie głównym.",
       "body": "{parts}. Sumy mogą jeszcze nie uwzględniać tych zmian.",
       "inDoubt": "Niepotwierdzone: {n}",
       "onThisPage": "{parts} na tej stronie. Sumy mogą jeszcze nie uwzględniać tych zmian.",
@@ -271,7 +272,7 @@
       "message": "Ruchy magazynowe widzą administratorzy, operatorzy i przeglądający. Jeśli są potrzebne, poproś administratora.",
       "title": "Historia stanów nie jest dostępna dla Twojej roli"
     },
-    "description": "Każda zastosowana, odrzucona lub niepotwierdzona zmiana stanu wariantu - oraz rezerwacje, które odkładają towar dla zamówień.",
+    "description": "Każda zastosowana, odrzucona lub niepotwierdzona zmiana stanu wariantu oraz rezerwacje, które odkładają towar dla zamówień. Gratisy mają własny typ.",
     "empty": {
       "body": "Ruchy pojawią się tutaj, gdy stan zmieni się w połączeniu głównym albo zostanie skorygowany przez OpenLinker.",
       "clearFilters": "Wyczyść filtry",
@@ -286,14 +287,38 @@
     "eyebrow": "Produkty",
     "filterMaster": "Filtruj według połączenia głównego",
     "filterType": "Filtruj według typu",
+    "filters": "Typ",
     "from": "Od",
     "master": "Połączenie główne",
+    "peek": {
+      "change": "Zmiana",
+      "description": "Szczegóły ruchu magazynowego",
+      "giftBody": "Klient płaci za niego 0,00 zł, a stan jest rezerwowany jak przy zwykłej pozycji.",
+      "giftFrom": {
+        "cart-rule": "Dodała go reguła koszyka w sklepie.",
+        "channel": "Oznaczył go kanał sprzedaży.",
+        "ol-rule": "Dodała go promocja w OpenLinkerze.",
+        "operator": "Dodał go operator ręcznie."
+      },
+      "giftTitle": "Skąd jest gratis.",
+      "kicker": "Ruch magazynowy",
+      "master": "Połączenie główne",
+      "openOrder": "Otwórz zamówienie",
+      "order": "Zamówienie",
+      "seePromotion": "Zobacz promocję",
+      "status": "Status",
+      "system": "system",
+      "time": "Czas",
+      "type": "Typ",
+      "who": "Kto"
+    },
     "retry": "Ponów",
     "scopeProduct": "Widoczny tylko jeden produkt.",
     "scopeVariant": "Widoczny tylko jeden wariant.",
     "search": "Szukaj po SKU lub nazwie wariantu",
     "showAllProducts": "Pokaż wszystkie produkty",
     "showAllVariants": "Pokaż wszystkie warianty",
+    "tabsAria": "Zakres ruchów",
     "title": "Historia ruchów magazynowych",
     "to": "Do",
     "type": "Typ"
@@ -647,6 +672,12 @@
       "status": "Status",
       "time": "Czas",
       "type": "Typ"
+    },
+    "giftSource": {
+      "cartRule": "Reguła koszyka w sklepie",
+      "channel": "Gratis z kanału sprzedaży",
+      "operator": "Dodany ręcznie",
+      "promotion": "Promocja: {name}"
     },
     "new": "nowy",
     "notApplied": "Nie zastosowano",
