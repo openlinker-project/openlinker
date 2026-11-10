@@ -42,6 +42,54 @@ function renderDetail(onOpenProduct = vi.fn()): { onOpenProduct: ReturnType<type
   return { onOpenProduct };
 }
 
+describe('OrderPeekDetail bundles and gifts (#3935)', () => {
+  it('should show the components of a bundle line under it, "in the bundle price"', async () => {
+    const bundleOrder: OrderRecord = {
+      ...order,
+      hasBundle: true,
+      orderSnapshot: {
+        ...order.orderSnapshot,
+        items: [{ id: 'z1', quantity: 1, price: 129, name: 'Morning set', sku: 'ZES-1' }],
+      },
+    };
+    const detail: OrderRecord = {
+      ...bundleOrder,
+      bundleLines: [
+        {
+          lineId: 'z1',
+          bundleVariantId: 'v',
+          version: 1,
+          olderComposition: false,
+          components: [
+            { lineId: 'z1~c1', variantId: 'v1', productId: 'p1', name: 'Coffee beans', sku: 'KAW-250', quantity: 1, perUnit: 1 },
+            { lineId: 'z1~c2', variantId: 'v2', productId: 'p2', name: 'Spoon', sku: 'LYZ-01', quantity: 1, perUnit: 1, giftSlot: true },
+          ],
+        },
+      ],
+    };
+    renderWithProviders(<OrderPeekDetail order={bundleOrder} thumbLabel="A" />, {
+      apiClient: createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(detail) } }),
+    });
+
+    expect(await screen.findByText('Coffee beans')).toBeInTheDocument();
+    expect(screen.getAllByText('in the bundle price')).toHaveLength(2);
+    expect(screen.getByText('Spoon').closest('.order-peek-items__name')).toHaveTextContent('Gift');
+  });
+
+  it('should tag a gift line with its gift tag', () => {
+    const giftOrder: OrderRecord = {
+      ...order,
+      orderSnapshot: {
+        ...order.orderSnapshot,
+        items: [{ id: 'g1', quantity: 1, price: 0, name: 'Free sample', sku: 'KAW-50', gift: { source: 'operator' } }],
+      },
+    };
+    renderWithProviders(<OrderPeekDetail order={giftOrder} thumbLabel="A" />, { apiClient: createMockApiClient() });
+
+    expect(screen.getByTestId('order-gift-tag-KAW-50')).toBeInTheDocument();
+  });
+});
+
 describe('OrderPeekDetail', () => {
   it('should open the product when its line is clicked', async () => {
     const { onOpenProduct } = renderDetail();

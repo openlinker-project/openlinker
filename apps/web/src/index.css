@@ -37208,3 +37208,20 @@ legend.analytics-settings-dialog__label {
 .stock-movement-peek__facts dd { margin: var(--space-1) 0 0; }
 .stock-movement-peek__order { display: grid; gap: var(--space-1); }
 .stock-movement__gift-source { font-size: 0.8125rem; }
+
+/* Order peek: bundle components under their line (#3935). */
+.order-peek-items__row--component { background: var(--bg-surface-hover); }
+.order-peek-items__component { padding-left: var(--space-4); }
+.bundle-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
