@@ -1,13 +1,13 @@
 /**
  * Product Row Detail
  *
- * Expandable-drawer body for the products cockpit (#1720), matching the
- * approved mockup: a links strip, a 4-up field grid (internal id / source
- * external id / currency / stock freshness), then a compact per-variant
- * list with a per-connection listings breakdown (one pill per active
- * OfferCreator connection, or a "+ Create offer" CTA when that connection
- * has no mapping for the variant). Mounted only when a row is expanded (or
- * an in-card disclosure is open), so its queries fire lazily.
+ * The body of the product peek (#4027, before that the expanded row of #1720):
+ * a compact per-variant list with a per-connection listings breakdown (one pill
+ * per active OfferCreator connection, or a "+ Create offer" CTA when that
+ * connection has no mapping for the variant), the live marketplace status, then
+ * a 4-up field grid (internal id / source external id / currency / stock
+ * freshness). The peek's header carries the Open product / Edit content links.
+ * Mounted only while the peek shows the product, so its queries fire lazily.
  *
  * @module apps/web/src/pages/products
  */
@@ -21,7 +21,6 @@ import { OfferPublicationStatusPanel } from '../../features/listings/components/
 import {
   deriveStockStatus,
   ProductDetailFields,
-  ProductDetailLinks,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from '../../features/products';
@@ -53,13 +52,11 @@ export function ProductRowDetail({
   const productQuery = useProductQuery(product.id);
   const inventoryQuery = useInventoryQuery({ productId: product.id });
 
-  const linksStrip = <ProductDetailLinks productId={product.id} />;
   const fieldsGrid = <ProductDetailFields productId={product.id} product={product} />;
 
   if (productQuery.isLoading || inventoryQuery.isLoading) {
     return (
       <div className="products-row-detail">
-        {linksStrip}
         <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       </div>
     );
@@ -68,7 +65,6 @@ export function ProductRowDetail({
   if (productQuery.error || !productQuery.data) {
     return (
       <div className="products-row-detail">
-        {linksStrip}
         <ErrorState
           title={copy.variantsError.title}
           message={productQuery.error ? describeApiError(productQuery.error, 'products') : copy.variantsError.notFound}
@@ -80,7 +76,6 @@ export function ProductRowDetail({
   if (inventoryQuery.error) {
     return (
       <div className="products-row-detail">
-        {linksStrip}
         <ErrorState title={copy.stockError} message={describeApiError(inventoryQuery.error, 'products')} />
       </div>
     );
@@ -96,8 +91,6 @@ export function ProductRowDetail({
 
   return (
     <div className="products-row-detail">
-      {linksStrip}
-      {fieldsGrid}
       <div className="products-detail-variants">
         <div className="products-detail-field__label">
           {variants.length > 0
@@ -125,6 +118,7 @@ export function ProductRowDetail({
         <div className="products-detail-field__label">{copy.liveMarketplaceStatus}</div>
         <OfferPublicationStatusPanel productId={product.id} />
       </div>
+      {fieldsGrid}
     </div>
   );
 }

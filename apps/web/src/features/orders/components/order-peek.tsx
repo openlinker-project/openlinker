@@ -14,10 +14,9 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '../../../shared/ui/button';
-import { SidePanel } from '../../../shared/ui/side-panel';
+import { PeekPanel, PeekStateCard } from '../../../shared/ui/peek-panel';
 import { formatOrderRef } from './order-identity-cell';
 import { interpolate, useMessages } from '../../../shared/i18n';
 
@@ -50,16 +49,6 @@ export interface OrderPeekProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.tagName === 'SELECT' ||
-    target.isContentEditable
-  );
-}
-
 /** The mockup's quiet "Copy" beside the order number. */
 function CopyReference({ value }: { value: string }): ReactElement {
   const COPY = useMessages('orders').peek;
@@ -68,7 +57,7 @@ function CopyReference({ value }: { value: string }): ReactElement {
   return (
     <button
       type="button"
-      className="orders-peek__copy"
+      className="peek-panel__copy"
       title={COPY.copyReference}
       onClick={(event) => {
         event.stopPropagation();
@@ -93,42 +82,21 @@ export function OrderPeek({
   onOpenChange,
 }: OrderPeekProps): ReactElement {
   const COPY = useMessages('orders').peek;
-  const open = view !== null;
-  const hasPrevious = position > 1;
-  const hasNext = position < count;
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function onKeydown(e: KeyboardEvent): void {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
-      if ((e.key === 'ArrowDown' || e.key === 'j') && hasNext) {
-        e.preventDefault();
-        onNavigate(1);
-      } else if ((e.key === 'ArrowUp' || e.key === 'k') && hasPrevious) {
-        e.preventDefault();
-        onNavigate(-1);
-      }
-    }
-    document.addEventListener('keydown', onKeydown);
-    return () => {
-      document.removeEventListener('keydown', onKeydown);
-    };
-  }, [open, hasNext, hasPrevious, onNavigate]);
-
   return (
-    <SidePanel
-      open={open}
+    <PeekPanel
+      open={view !== null}
       onOpenChange={onOpenChange}
-      width={560}
-      className="orders-peek"
-      closeIcon
-      closeLabel={COPY.closeDetails}
+      position={position}
+      count={count}
+      onNavigate={onNavigate}
+      bodyKey={view?.internalOrderId}
+      description={COPY.description}
       title={
         view ? (
-          <span className="orders-peek__ref">
-            <Link className="orders-peek__title-link" to={`/orders/${view.internalOrderId}`}>
+          <span className="peek-panel__ref">
+            <Link className="peek-panel__title-link" to={`/orders/${view.internalOrderId}`}>
               {formatOrderRef(view.reference)}
-              <span className="orders-peek__title-arrow" aria-hidden="true">
+              <span className="peek-panel__title-arrow" aria-hidden="true">
                 ↗
               </span>
             </Link>
@@ -140,7 +108,7 @@ export function OrderPeek({
       }
       meta={
         view ? (
-          <span className="orders-peek__meta">
+          <span className="peek-panel__meta">
             {view.source}
             {view.destination ? <span>→ {view.destination}</span> : null}
             {view.placed ? <span>{view.placed}</span> : null}
@@ -150,43 +118,15 @@ export function OrderPeek({
       headerAside={
         view ? (
           <>
-            {view.total ? <span className="orders-peek__total tabular">{view.total}</span> : null}
+            {view.total ? <span className="peek-panel__total tabular">{view.total}</span> : null}
             {view.payment}
           </>
         ) : null
       }
-      description={COPY.description}
-      footer={
-        <div className="orders-peek__foot">
-          <span className="text-muted mono tabular">{interpolate(COPY.position, { index: String(position), count: String(count) })}</span>
-          <span className="button-group">
-            <Button
-              tone="secondary"
-              className="button--sm"
-              disabled={!hasPrevious}
-              onClick={() => {
-                onNavigate(-1);
-              }}
-            >
-              {COPY.previous}
-            </Button>
-            <Button
-              tone="secondary"
-              className="button--sm"
-              disabled={!hasNext}
-              onClick={() => {
-                onNavigate(1);
-              }}
-            >
-              {COPY.next}
-            </Button>
-          </span>
-        </div>
-      }
     >
       {view ? (
-        <div className="orders-peek__body" key={view.internalOrderId}>
-          <div className="orders-peek__actions">
+        <>
+          <div className="peek-panel__actions">
             <Link className="button button--primary button--sm" to={`/orders/${view.internalOrderId}`}>
               {COPY.openOrder}
             </Link>
@@ -206,23 +146,17 @@ export function OrderPeek({
               </Link>
             ) : null}
           </div>
-          <section className="orders-peek__state" aria-label={COPY.stateAria}>
-            <div className="orders-peek__state-row">
-              <span className="eyebrow">{COPY.status}</span>
-              <div className="orders-peek__state-value">{view.status}</div>
-            </div>
-            <div className="orders-peek__state-row">
-              <span className="eyebrow">{COPY.shipment}</span>
-              <div className="orders-peek__state-value">{view.shipment}</div>
-            </div>
-            <div className="orders-peek__state-row">
-              <span className="eyebrow">{COPY.money}</span>
-              <div className="orders-peek__state-value">{view.money}</div>
-            </div>
-          </section>
+          <PeekStateCard
+            label={COPY.stateAria}
+            rows={[
+              { label: COPY.status, value: view.status },
+              { label: COPY.shipment, value: view.shipment },
+              { label: COPY.money, value: view.money },
+            ]}
+          />
           {view.detail}
-        </div>
+        </>
       ) : null}
-    </SidePanel>
+    </PeekPanel>
   );
 }

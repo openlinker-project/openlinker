@@ -1220,8 +1220,6 @@
     },
     "reviewDispatchRisk": "Sprawdź ryzyko nadania",
     "scopeItem": "{label} {value}",
-    "scrollTabsLeft": "Pokaż wcześniejsze statusy",
-    "scrollTabsRight": "Pokaż kolejne statusy",
     "search": {
       "label": "Szukaj zamówień",
       "placeholderNoPii": "Szukaj po numerze zamówienia, SKU lub numerze przesyłki…",
@@ -1247,9 +1245,6 @@
       "on_track": "W terminie",
       "overdue": "Po terminie"
     },
-    "sortButton": "Sortuj: {label}",
-    "sortButtonReversed": "Sortuj: {label} (odwrotnie)",
-    "sortDefaultMark": "domyślnie",
     "sortMenuAria": "Sortuj zamówienia",
     "sortOptions": {
       "createdAt": "Ostatnio zsynchronizowane",
@@ -2751,7 +2746,6 @@
   },
   "peek": {
     "billing": "Rozliczenie",
-    "closeDetails": "Zamknij szczegóły",
     "copyReference": "Kopiuj numer zamówienia",
     "customer": "Klient",
     "description": "Podsumowanie zamówienia. Strzałki albo J i K przechodzą między zamówieniami.",
@@ -2763,13 +2757,8 @@
     "items": "Pozycje",
     "kicker": "Zamówienie",
     "money": "Płatność",
-    "moreBadges": "+{n} więcej",
-    "moreBadgesTitle": "Pokaż wszystko w panelu bocznym",
-    "next": "Następne ↓",
     "openOrder": "Otwórz zamówienie",
     "openProduct": "Otwórz produkt {name}",
-    "position": "{index} z {count}",
-    "previous": "↑ Poprzednie",
     "reference": "Numer zamówienia",
     "shipBy": "Termin wysyłki",
     "shipment": "Przesyłka",

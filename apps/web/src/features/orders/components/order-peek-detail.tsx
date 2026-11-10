@@ -32,7 +32,7 @@ function addressLines(address: ParsedAddress | undefined): ReactNode {
   ].filter((line): line is string => Boolean(line && line.length > 0));
   if (lines.length === 0) return EMPTY;
   return lines.map((line, index) => (
-    <span key={index} className="orders-peek__line">
+    <span key={index} className="peek-panel__line">
       {line}
     </span>
   ));
@@ -58,24 +58,24 @@ export function OrderPeekDetail({ order, thumbLabel }: OrderPeekDetailProps): Re
   return (
     <>
       {order.hasBuyerNote === true ? (
-        <dl className="orders-peek__note">
+        <dl className="peek-panel__note">
           <OrderRowBuyerNote internalOrderId={order.internalOrderId} />
         </dl>
       ) : order.buyerNoteState === 'unknown' ? (
-        <section className="orders-peek__note orders-peek__note--empty">
+        <section className="peek-panel__note peek-panel__note--empty">
           <span className="eyebrow">{buyerNote.rowFieldLabel}</span>
           <p>{buyerNote.listUnknownHint}</p>
         </section>
       ) : null}
 
       <section>
-        <h3 className="orders-peek__h">
+        <h3 className="peek-panel__h">
           {COPY.items} <span className="text-muted tabular">{parsed.items.length}</span>
         </h3>
         {parsed.items.length === 0 ? (
           <p className="text-muted">{EMPTY}</p>
         ) : (
-          <ul className="orders-peek__items">
+          <ul className="peek-panel__items">
             {parsed.items.map((item) => {
               const name = item.name ?? item.sku ?? item.id;
               const content = (
@@ -83,12 +83,12 @@ export function OrderPeekDetail({ order, thumbLabel }: OrderPeekDetailProps): Re
                   {item.imageUrl ? (
                     <ProductThumbnail name={name} src={item.imageUrl} size="sm" />
                   ) : (
-                    <span className="orders-peek__thumb" aria-hidden="true">
+                    <span className="peek-panel__thumb" aria-hidden="true">
                       {thumbLabel}
                     </span>
                   )}
-                  <span className="orders-peek__item-name">
-                    <span className="orders-peek__item-title">{name}</span>
+                  <span className="peek-panel__item-name">
+                    <span className="peek-panel__item-title">{name}</span>
                     {item.sku ? <span className="text-muted mono orders-cell-sub">{item.sku}</span> : null}
                   </span>
                   <span className="tabular">{interpolate(COPY.itemPrice, { quantity: String(item.quantity), price: money(item.price) })}</span>
@@ -99,15 +99,15 @@ export function OrderPeekDetail({ order, thumbLabel }: OrderPeekDetailProps): Re
                 <li key={item.id}>
                   {item.productId ? (
                     <Link
-                      className="orders-peek__item orders-peek__item--link"
+                      className="peek-panel__item peek-panel__item--link"
                       to={`/products/${item.productId}`}
                       title={interpolate(COPY.openProduct, { name })}
                     >
                       {content}
-                      <span className="orders-peek__item-go" aria-hidden="true" />
+                      <span className="peek-panel__item-go" aria-hidden="true" />
                     </Link>
                   ) : (
-                    <div className="orders-peek__item">{content}</div>
+                    <div className="peek-panel__item">{content}</div>
                   )}
                 </li>
               );
@@ -116,7 +116,7 @@ export function OrderPeekDetail({ order, thumbLabel }: OrderPeekDetailProps): Re
         )}
       </section>
 
-      <section className="orders-peek__grid">
+      <section className="peek-panel__grid">
         <div>
           <span className="eyebrow">{COPY.customer}</span>
           <p>{addressLines(parsed.shippingAddress)}</p>
@@ -138,7 +138,7 @@ export function OrderPeekDetail({ order, thumbLabel }: OrderPeekDetailProps): Re
               <>
                 {invoiceBadge(parsed.invoice).label}
                 {parsed.invoice.clearanceReference ? (
-                  <span className="orders-peek__line mono text-muted">{parsed.invoice.clearanceReference}</span>
+                  <span className="peek-panel__line mono text-muted">{parsed.invoice.clearanceReference}</span>
                 ) : null}
               </>
             ) : (
