@@ -243,6 +243,29 @@ describe('FiscalizationController', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
+    it('should name the blocking receipt by code and record (#3865)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      service.requestRegistration.mockRejectedValue(
+        new OrderAlreadyRegisteredException(
+          ORDER_ID,
+          'conn-other',
+          CONNECTION_ID,
+          'registered',
+          'rec-first',
+        ),
+      );
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'ORDER_ALREADY_HAS_FISCAL_RECEIPT',
+          registeringConnectionId: 'conn-other',
+          blockingRecordId: 'rec-first',
+        },
+      });
+    });
+
     it('should clear the persisted block reason once the registration is accepted (#3646)', async () => {
       // Without this, `trigger-model-manual` outlived the receipt it described
       // and every surface kept saying no document was made.

@@ -58,6 +58,10 @@ import type {
   SalesDocumentView,
 } from '@openlinker/core/sales-documents';
 import { SalesDocumentConditionDto } from '../../../sales-documents/http/dto/sales-document-condition.dto';
+import {
+  SalesDocumentBlockParamsDto,
+  toSalesDocumentBlockParamsDto,
+} from './sales-document-block-params.dto';
 
 export class SalesDocumentIdentityDto {
   @ApiProperty({ description: "The underlying record's own id, for the per-document routes." })
@@ -302,6 +306,13 @@ export class SalesDocumentViewResponseDto {
   blockDetail!: string | null;
 
   @ApiProperty({
+    type: SalesDocumentBlockParamsDto,
+    nullable: true,
+    description: 'The values behind blockDetail (#3866), for the operator-facing sentence.',
+  })
+  blockParams!: SalesDocumentBlockParamsDto | null;
+
+  @ApiProperty({
     type: [SalesDocumentOtherRecordDto],
     description:
       'Records for this order on OTHER connections. Empty for the overwhelming majority of orders; a ' +
@@ -352,6 +363,7 @@ export function toSalesDocumentViewDto(view: SalesDocumentView): SalesDocumentVi
     blockReason: view.blockReason,
     unresolvedReason: view.unresolvedReason,
     blockDetail: view.blockDetail,
+    blockParams: toSalesDocumentBlockParamsDto(view.blockParams),
     otherRecords: view.otherRecords.map(toOtherRecordDto),
     matchedRule: view.matchedRule === null ? null : toMatchedRuleViewDto(view.matchedRule),
     afterIssueAttention: view.afterIssueAttention,

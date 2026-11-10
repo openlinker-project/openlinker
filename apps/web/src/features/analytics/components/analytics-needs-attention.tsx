@@ -11,6 +11,7 @@
  */
 import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import {
   Button,
@@ -70,7 +71,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
         </div>
         <ErrorState
           title={copy.error.title}
-          message={needsAttentionQuery.error.message}
+          message={describeApiError(needsAttentionQuery.error, 'analytics')}
           action={
             <Button type="button" onClick={() => void needsAttentionQuery.refetch()}>
               {copy.error.retry}

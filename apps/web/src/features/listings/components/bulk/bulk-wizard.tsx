@@ -17,7 +17,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
-import type { StatusBadgeTone } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -58,7 +57,7 @@ import {
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
-import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
+import { gatingBlockers, resolveBlockerChips, type ChipDescriptor } from './bulk-blockers';
 import { describeBulkSubmitOutcome } from './bulk-submit-summary';
 import {
   computeResolvedPrice,
@@ -80,6 +79,7 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 interface BulkWizardProps {
   /** Selected products from the Products page (already hydrated with variants). */
@@ -321,18 +321,10 @@ export function BulkWizard({
   // Same merge the Review step builds (#1741 review #11's "never drift" rule) -
   // readiness here must agree with the banner's readiness, or a row the banner
   // calls ready gets excluded at submit for an advisory-only chip (#2243/#3492).
-  const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
-    const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
-    for (const chip of platformBlockerChips) {
-      merged[chip.id] = {
-        tone: chip.tone as StatusBadgeTone,
-        label: chip.label,
-        fixable: true,
-        advisory: chip.advisory === true,
-      };
-    }
-    return merged;
-  }, [platformBlockerChips]);
+  const blockerChips = useMemo<Record<string, ChipDescriptor>>(
+    () => resolveBlockerChips(platformBlockerChips),
+    [platformBlockerChips],
+  );
 
   const destinationBrowsesCategories =
     (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
@@ -956,7 +948,7 @@ export function BulkWizard({
                 config={config}
                 demoReadOnly={write.demoReadOnly}
                 isSubmitting={shopMutation.isPending}
-                errorMessage={shopMutation.error ? shopMutation.error.message : null}
+                errorMessage={shopMutation.error ? describeApiError(shopMutation.error, 'listings') : null}
                 alreadyListedVariantIds={alreadyListedSet}
                 destinationName={dupGuardDestinationName}
                 onSetVariantIncluded={setVariantIncluded}
@@ -1010,7 +1002,7 @@ export function BulkWizard({
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
             demoReadOnly={write.demoReadOnly}
-            errorMessage={mutation.error ? mutation.error.message : null}
+            errorMessage={mutation.error ? describeApiError(mutation.error, 'listings') : null}
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);
             }}

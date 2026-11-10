@@ -7,7 +7,7 @@
  *
  * @module apps/api/src/auth
  */
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import type { User } from '@openlinker/core/users';
@@ -19,6 +19,7 @@ import {
 import { LoginResponseDto } from './dto/login-response.dto';
 import type { ChangePasswordOutcome, IAuthService } from './auth.service.interface';
 import type { JwtPayload } from './auth.types';
+import { unauthorized } from './auth-errors';
 
 @Injectable()
 export class AuthService implements IAuthService {
@@ -90,7 +91,7 @@ export class AuthService implements IAuthService {
   async getMe(userId: string): Promise<User> {
     const user = await this.userRepository.findById(userId);
     if (!user) {
-      throw new UnauthorizedException('User no longer exists');
+      throw unauthorized('AUTH_USER_NO_LONGER_EXISTS', 'User no longer exists');
     }
     return user;
   }

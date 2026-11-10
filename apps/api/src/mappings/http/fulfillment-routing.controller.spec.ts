@@ -119,7 +119,22 @@ describe('FulfillmentRoutingController', () => {
       await expect(controller.replaceRules(SOURCE, dto())).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('should name an incompatible processor by code, without the reason sentence (#3865)', async () => {
+      routing.replaceRules.mockRejectedValue(
+        new IncompatibleProcessorException('conn-inpost', 'ol_managed_carrier', 'nope'),
+      );
+
+      await expect(controller.replaceRules(SOURCE, dto())).rejects.toMatchObject({
+        response: {
+          statusCode: 400,
+          code: 'ROUTING_PROCESSOR_INCOMPATIBLE',
+          params: { processorConnectionId: 'conn-inpost', processorKind: 'ol_managed_carrier' },
+        },
+      });
+    });
+
     it('should map DuplicateRoutingRuleException to 400', async () => {
+
       routing.replaceRules.mockRejectedValue(new DuplicateRoutingRuleException('method-x'));
 
       await expect(controller.replaceRules(SOURCE, dto())).rejects.toBeInstanceOf(BadRequestException);

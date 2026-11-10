@@ -28,6 +28,7 @@ import customers from './customers.json';
 import deliveryOnDocuments from './delivery-on-documents.json';
 import demo from './demo.json';
 import devUi from './dev-ui.json';
+import errors from './errors.json';
 import fiscalization from './fiscalization.json';
 import format from './format.json';
 import fulfillment from './fulfillment.json';
@@ -73,6 +74,7 @@ export const en = {
   'delivery-on-documents': deliveryOnDocuments,
   demo,
   'dev-ui': devUi,
+  errors,
   fiscalization,
   format,
   fulfillment,

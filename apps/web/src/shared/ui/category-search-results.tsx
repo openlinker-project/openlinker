@@ -27,6 +27,7 @@
  * @module apps/web/src/shared/ui
  */
 import { forwardRef } from 'react';
+import { describeApiError } from '../api/describe-api-error';
 import { Button } from './button';
 import { LoadingState, ErrorState, EmptyState } from './feedback-state';
 import { useMessages } from '../i18n/use-messages';
@@ -127,7 +128,7 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
       return (
         <ErrorState
           title={copy.errorTitle}
-          message={error.message}
+          message={describeApiError(error, 'ui')}
           action={<Button onClick={onRetry}>{common.retry}</Button>}
         />
       );

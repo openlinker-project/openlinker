@@ -50,6 +50,8 @@ export class FiscalRegistrationRecordRepository
     entity.providerType = input.providerType;
     entity.idempotencyKey = input.idempotencyKey;
     entity.status = input.status;
+    entity.attempt = input.attempt ?? 0;
+    entity.previousAttemptId = input.previousAttemptId ?? null;
 
     try {
       const saved = await this.repository.save(entity);
@@ -76,6 +78,17 @@ export class FiscalRegistrationRecordRepository
   ): Promise<FiscalRegistrationRecord | null> {
     const entity = await this.repository.findOne({
       where: { connectionId, idempotencyKey },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
+  async findLatestAttempt(
+    connectionId: string,
+    orderId: string,
+  ): Promise<FiscalRegistrationRecord | null> {
+    const entity = await this.repository.findOne({
+      where: { connectionId, orderId },
+      order: { attempt: 'DESC', createdAt: 'DESC', id: 'DESC' },
     });
     return entity ? this.toDomain(entity) : null;
   }
@@ -160,12 +173,13 @@ export class FiscalRegistrationRecordRepository
         // Claimable iff NOT held by a live attempt, NOT already registered, and
         // NOT an in-doubt failure (the sale may already be registered):
         //   - pending (no lease by definition), OR
-        //   - a TERMINAL-`rejected` failed row (the provider created nothing), OR
         //   - registering with an EXPIRED lease (a crashed prior attempt).
-        // A `registered`, an in-doubt/mode-less `failed`, or a live `registering`
-        // row NEVER matches, so none can be re-claimed and re-sent.
+        // No `failed` row matches, `rejected` included (#3960): a refused attempt
+        // is final, and asking again starts a NEW attempt record under a new key.
+        // Re-claiming the refused row would resend under the key the provider
+        // already refused, and could resend an old attempt after a newer one
+        // registered the sale.
         `(status = 'pending'
-          OR (status = 'failed' AND "failureMode" = 'rejected')
           OR (status = 'registering' AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= :now)))`,
         { now },
       )
@@ -280,6 +294,8 @@ export class FiscalRegistrationRecordRepository
       entity.createdAt,
       entity.updatedAt,
       entity.providerFailureDetails ?? null,
+      entity.attempt ?? 0,
+      entity.previousAttemptId ?? null,
     );
   }
 }

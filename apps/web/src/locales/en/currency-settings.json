@@ -53,7 +53,7 @@
     "adminOnly": "Admin only",
     "body": "Every figure on Analytics is reported in this. Invoices are unaffected - they compute their own rate.",
     "eyebrow": "Platform",
-    "loadError": "Could not load currency settings: {message}",
+    "loadError": "Could not load currency settings.",
     "loading": "Loading currency settings…",
     "notConfigured": "Not configured",
     "rateDateRule": "Rate date rule",

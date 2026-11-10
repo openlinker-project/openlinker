@@ -27,7 +27,6 @@
  * @module apps/api/src/currency/http
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -36,7 +35,6 @@ import {
   Inject,
   Put,
   Res,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -57,6 +55,7 @@ import { ORDER_FX_READ_SERVICE_TOKEN, type IOrderFxReadService } from '@openlink
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   CurrencySettingsResponseDto,
   ReportingCurrencyCoverageDto,
@@ -189,11 +188,19 @@ export class CurrencySettingsController {
       return await fn();
     } catch (error) {
       if (error instanceof InvalidReportingCurrencyError) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'REPORTING_CURRENCY_INVALID', error.message, {
+          currency: error.submitted,
+        });
       }
       if (error instanceof ReportingCurrencyUnsupportedError) {
-        throw new UnprocessableEntityException(error.message);
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'REPORTING_CURRENCY_UNSUPPORTED',
+          error.message,
+          { currency: error.submitted, supportedCurrencies: error.supportedCurrencies.join(', ') }
+        );
       }
+
       throw error;
     }
   }

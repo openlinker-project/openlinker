@@ -17,6 +17,7 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
+import { getMessages } from '../../shared/i18n';
 import type {
   PaginatedOrders,
   OrderRecord,
@@ -264,7 +265,8 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load orders')).toBeInTheDocument();
-    expect(screen.getByText('The server said: Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
+    expect(screen.queryByText(/Network error/)).not.toBeInTheDocument();
   });
 
   it('should show empty state with a Manage connections CTA when no orders exist and no filter is active', async () => {

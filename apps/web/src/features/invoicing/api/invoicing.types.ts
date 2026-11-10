@@ -214,16 +214,6 @@ export interface IssueInvoiceInput extends IssueInvoiceOptions {
 }
 
 /**
- * Structured error body shape used to type-narrow `ApiError.details` for the
- * capability-disabled discriminator (plan §2.6). The capability filter emits
- * `{ statusCode, error: <ExceptionName>, message }`.
- */
-export interface CapabilityErrorBody {
-  error?: string;
-  message?: string;
-}
-
-/**
  * `GET /invoices` query filters (#758 list page, #1202 tax-id). `taxId` is the
  * neutral with/without-buyer-tax-id presence filter (W5 #1202), served by the
  * denormalized `hasBuyerTaxId` column — a presence concept, not "nip".

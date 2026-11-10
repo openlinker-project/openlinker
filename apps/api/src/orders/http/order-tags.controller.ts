@@ -14,14 +14,12 @@
  */
 import {
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   Put,
@@ -34,6 +32,7 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_TAG_SERVICE_TOKEN,
+  ORDER_TAG_WORKSPACE_LIMIT,
   OrderTagLimitReachedError,
   OrderTagNotFoundError,
   type IOrderRecordService,
@@ -54,6 +53,8 @@ import {
   BulkRemoveOrderTagResponseDto,
 } from './dto/order-tag-response.dto';
 import { dedupeOrderIds, unexpectedRowFailure } from './bulk-row-result';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { orderTagNotFound } from './orders-errors';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -94,7 +95,9 @@ export class OrderTagsController {
       return this.toDto({ ...tag, orderCount: 0 });
     } catch (error) {
       if (error instanceof OrderTagLimitReachedError) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_TAG_LIMIT_REACHED', error.message, {
+          limit: ORDER_TAG_WORKSPACE_LIMIT,
+        });
       }
       throw error;
     }
@@ -120,7 +123,7 @@ export class OrderTagsController {
     const all = await this.service.listAll();
     const withCount = all.find((t) => t.id === id);
     if (!withCount) {
-      throw new NotFoundException(`Order tag not found: ${id}`);
+      throw orderTagNotFound(id);
     }
     return this.toDto(withCount);
   }
@@ -233,7 +236,7 @@ export class OrderTagsController {
 
   private mapNotFound(error: unknown, id: string): Error {
     if (error instanceof OrderTagNotFoundError) {
-      return new NotFoundException(`Order tag not found: ${id}`);
+      return orderTagNotFound(id);
     }
     return error as Error;
   }

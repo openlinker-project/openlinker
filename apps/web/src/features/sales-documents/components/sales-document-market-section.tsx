@@ -41,6 +41,7 @@ import { SalesDocumentMarketRow } from './sales-document-market-row';
 import { SalesDocumentMarketSectionSkeleton } from './sales-document-market-section-skeleton';
 import type { SalesDocumentMarketRow as MarketRowData } from '../api/sales-document-markets.types';
 import { useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // #2806 review — one list, filtered, instead of two separate tables (the
 // "recently active" markets read here and the "everything ever configured"
@@ -70,7 +71,7 @@ export function SalesDocumentMarketSection({
     return (
       <ErrorState
         title={copy.loadError}
-        message={marketsQuery.error.message}
+        message={describeApiError(marketsQuery.error, 'sales-documents')}
         action={
           <button
             type="button"

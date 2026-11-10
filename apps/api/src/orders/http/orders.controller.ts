@@ -48,9 +48,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   ServiceUnavailableException,
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
@@ -68,6 +66,8 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedErrorBody, codedHttpError } from '../../common/errors/coded-http.exception';
+import { orderCancellationNotFound, orderNotFound } from './orders-errors';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -124,6 +124,7 @@ import {
   IInvoiceService,
 } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
+import type { KnownApiErrorCode } from '@openlinker/shared/errors';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
   RESERVATION_SHORTFALL_SERVICE_TOKEN,
@@ -251,6 +252,7 @@ import {
   FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
   type IFulfillmentParcelClosureNotifier,
 } from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
+import { toSalesDocumentBlockParamsDto } from './dto/sales-document-block-params.dto';
 
 /**
  * The one DTO-to-filters mapping this list has (#2944).
@@ -325,13 +327,16 @@ function assertCancelledPhaseAgree(
   if (cancelled === undefined || phase === undefined) return;
   const phaseIsCancelled = phase === 'cancelled';
   if (phaseIsCancelled === cancelled) return;
-  throw new BadRequestException(
+  throw codedHttpError(
+    HttpStatus.BAD_REQUEST,
+    'ORDER_FILTERS_CONTRADICTORY',
     phaseIsCancelled
       ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
         'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
       : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
         'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
-        '?cancelled=false.'
+        '?cancelled=false.',
+    { phase, cancelled }
   );
 }
 
@@ -399,7 +404,7 @@ export async function enrichCrossContextFilters(
  * shape `ORDER_ALREADY_ON_HOLD` and `NO_BUYER_NOTE` already use on this
  * controller, so a client reads one error shape across `/orders`.
  */
-const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, string> = {
+const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, KnownApiErrorCode> = {
   'not-held': 'ROUTING_RETRY_NOT_HELD',
   'not-retryable': 'ROUTING_RETRY_NOT_RETRYABLE',
   'no-router': 'ROUTING_RETRY_NO_ROUTER',
@@ -809,7 +814,7 @@ export class OrdersController {
   ): Promise<OrderRecordResponseDto> {
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     const dto = this.toDto(order, await this.hasOpenAmendment(internalOrderId));
     // Buyer tax id (#3180). DETAIL READ ONLY — off the shared `toDto`, so the
@@ -948,7 +953,7 @@ export class OrdersController {
   ): Promise<SalesDocumentViewResponseDto> {
     const view = await this.salesDocumentView.getForOrder(internalOrderId);
     if (view === null) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     return toSalesDocumentViewDto(view);
   }
@@ -985,7 +990,7 @@ export class OrdersController {
       return toSourceFulfillmentDto(await this.sourceFulfillment.read(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+        throw orderNotFound(internalOrderId);
       }
       throw error;
     }
@@ -1058,17 +1063,29 @@ export class OrdersController {
         jobType: result.jobType,
       };
     } catch (error) {
-      if (
-        error instanceof OrderRecordNotFoundException ||
-        error instanceof OrderDestinationNotFoundException
-      ) {
-        throw new NotFoundException(error.message);
+      if (error instanceof OrderRecordNotFoundException) {
+        throw orderNotFound(error.internalOrderId, error.message);
+      }
+      if (error instanceof OrderDestinationNotFoundException) {
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_DESTINATION_NOT_FOUND', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
+        });
       }
       if (error instanceof OrderDestinationNotRetryableException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_DESTINATION_NOT_RETRYABLE', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
+          status: error.currentStatus,
+        });
       }
       if (error instanceof MissingSourceExternalIdException) {
-        throw new InternalServerErrorException(error.message);
+        throw new InternalServerErrorException(
+          codedErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, 'ORDER_SOURCE_ID_MISSING', error.message, {
+            orderId: error.internalOrderId,
+            connectionId: error.sourceConnectionId,
+          })
+        );
       }
       throw error;
     }
@@ -1110,7 +1127,7 @@ export class OrdersController {
       case 'enqueued':
         return { internalOrderId, jobId: result.jobId };
       case 'order-not-found':
-        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+        throw orderNotFound(internalOrderId);
       case 'refused':
         // A machine-readable CODE: the three states have different remedies, and
         // a status code alone cannot tell an operator which one.
@@ -1120,7 +1137,12 @@ export class OrdersController {
           message: `Routing cannot be retried for order ${internalOrderId}`,
         });
       case 'enqueue-failed':
-        throw new ServiceUnavailableException('Could not queue the routing retry');
+        throw codedHttpError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'ROUTING_RETRY_NOT_QUEUED',
+          'Could not queue the routing retry',
+          { orderId: internalOrderId }
+        );
     }
   }
 
@@ -1152,7 +1174,7 @@ export class OrdersController {
       return dto;
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       if (error instanceof NoBuyerNoteException) {
         throw new ConflictException({
@@ -1218,7 +1240,7 @@ export class OrdersController {
 
   private async requireOrder(internalOrderId: string): Promise<void> {
     if ((await this.orderRecordService.getOrderRecord(internalOrderId)) === null) {
-      throw new NotFoundException(`Order ${internalOrderId} not found`);
+      throw orderNotFound(internalOrderId, `Order ${internalOrderId} not found`);
     }
   }
 
@@ -1248,7 +1270,7 @@ export class OrdersController {
       return this.toDto(packed, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       throw error;
     }
@@ -1274,7 +1296,7 @@ export class OrdersController {
       return this.toDto(cleared, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       throw error;
     }
@@ -1425,7 +1447,7 @@ export class OrdersController {
     // NOT worth a lock: the window is tiny and the row is inert audit data.
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1491,8 +1513,11 @@ export class OrdersController {
     // refusal: a concurrent release in the window is caught below as 409.
     const holds = await this.holdService.listHolds(internalOrderId);
     if (!holds.some((hold) => hold.id === holdId)) {
-      throw new NotFoundException(
-        `Hold not found on order ${internalOrderId}: ${holdId}`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_HOLD_NOT_FOUND',
+        `Hold not found on order ${internalOrderId}: ${holdId}`,
+        { orderId: internalOrderId, holdId }
       );
     }
 
@@ -1506,7 +1531,10 @@ export class OrdersController {
       released = transition.hold;
     } catch (error) {
       if (error instanceof OrderHoldNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_HOLD_NOT_FOUND', error.message, {
+          orderId: internalOrderId,
+          holdId: error.holdId,
+        });
       }
       if (error instanceof HoldAlreadyReleasedError) {
         throw new ConflictException({
@@ -1518,12 +1546,17 @@ export class OrdersController {
       if (error instanceof HoldReleaseNoteRequiredError) {
         // Fixable by resubmitting with a note — a request problem, not a
         // permission one.
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'HOLD_RELEASE_NOTE_REQUIRED', error.message, {
+          holdId: error.holdId,
+          placedByService: error.placedByService,
+        });
       }
       if (error instanceof HoldReleaseNotPermittedError) {
         // Unreachable from this route (the actor is always a user), but mapped
         // so a future service-actor route cannot fall through to a 500.
-        throw new ForbiddenException(error.message);
+        throw codedHttpError(HttpStatus.FORBIDDEN, 'HOLD_RELEASE_NOT_PERMITTED', error.message, {
+          holdId: error.holdId,
+        });
       }
       throw error;
     }
@@ -1585,7 +1618,7 @@ export class OrdersController {
     // 404 first, before any state is read or written.
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1666,7 +1699,7 @@ export class OrdersController {
   ): Promise<OrderChangeResponseDto[]> {
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     const items = await this.orderChanges.listOperatorChangesByOrder(internalOrderId);
     return items.map(({ change, open }) => this.toOrderChangeDto(change, open));
@@ -1720,7 +1753,7 @@ export class OrdersController {
 
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1844,13 +1877,15 @@ export class OrdersController {
       });
     }
     if (error instanceof OrderCancellationNotFoundError) {
-      return new NotFoundException(error.message);
+      return orderCancellationNotFound(error);
     }
-    if (
-      error instanceof OrderCancellationNoteRequiredError ||
-      error instanceof OrderCancellationInvalidReasonError
-    ) {
-      return new BadRequestException(error.message);
+    if (error instanceof OrderCancellationNoteRequiredError) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ORDER_CANCEL_NOTE_REQUIRED', error.message);
+    }
+    if (error instanceof OrderCancellationInvalidReasonError) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ORDER_CANCEL_REASON_INVALID', error.message, {
+        reason: error.reason,
+      });
     }
     if (error instanceof CancelCorrectionFailedError) {
       return new UnprocessableEntityException({
@@ -1943,6 +1978,7 @@ export class OrdersController {
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
+      salesDocumentBlockParams: toSalesDocumentBlockParamsDto(order.salesDocumentBlockParams),
       destinationRoutingBlockReason: order.destinationRoutingBlockReason,
       destinationRoutingBlockDetail: order.destinationRoutingBlockDetail,
       salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,

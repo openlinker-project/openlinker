@@ -56,6 +56,7 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
       if (typeof config.siteUrl !== 'string' || config.siteUrl.length === 0) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Connection config is missing siteUrl',
           latencyMs: Date.now() - startedAt,
         };
@@ -146,6 +147,7 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
           });
           return {
             success: false,
+            outcome: 'timeout',
             message:
               'WooCommerce connection test timed out — the site did not respond in time',
             latencyMs: Date.now() - startedAt,
@@ -157,6 +159,7 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
         });
         return {
           success: false,
+          outcome: 'unreachable',
           // Include the original error message so operators see e.g. "ECONNREFUSED"
           message: error.originalError?.message ?? error.message,
           latencyMs: Date.now() - startedAt,

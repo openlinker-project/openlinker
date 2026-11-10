@@ -30,6 +30,7 @@ import { useSetDefaultBankAccountMutation } from './use-set-default-bank-account
 import type { BankAccount } from '../api/connections.types';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface UsePickBankAccountOptions {
   connectionId: string;
@@ -86,7 +87,7 @@ export function usePickBankAccount(
               title: copy.errorTitle,
               description: interpolate(copy.errorDescription, {
                 hint: persistErrorHint,
-                message: error.message,
+                message: describeApiError(error, 'connections'),
               }),
             });
           },

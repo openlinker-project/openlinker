@@ -237,6 +237,49 @@
     "validating": "Validating on marketplace…"
   },
   "bulkBlockers": {
+    "allegro": {
+      "eanUnverified": {
+        "detail": "It may still be a valid code. You can publish anyway; check the barcode if this is unexpected.",
+        "title": "This barcode has no match in the Allegro catalogue."
+      },
+      "inStoreBarcode": {
+        "detail": "Codes like this are meant for use inside one shop. You can publish anyway.",
+        "title": "This barcode looks like an in-store code, not a product barcode."
+      },
+      "needsProductParameters": {
+        "allFilledDetail": "Save to clear this blocker.",
+        "allFilledTitle": "Every required product parameter now has a value.",
+        "listDetail": "Select one to go to its field.",
+        "listTitle": {
+          "one": "Allegro needs {n} product parameter to create a product card for this variant:",
+          "other": "Allegro needs {n} product parameters to create a product card for this variant:"
+        },
+        "notCheckedDetail": "The list appears in the editor once the category's parameters have loaded.",
+        "notCheckedTitle": "Allegro needs product parameters to create a product card for this variant.",
+        "notLoadedDetail": "So OpenLinker cannot say which ones are missing. Reload the parameters, or pick the category again.",
+        "notLoadedTitle": "Allegro needs product parameters for this category, but the parameter list could not be loaded."
+      },
+      "noPhoto": {
+        "detail": "Allegro needs at least one. Add one in the images section.",
+        "title": "This offer has no photo."
+      },
+      "paramValueInvalid": {
+        "detail": "Check the parameters below against the limits shown next to them.",
+        "title": "A parameter value breaks a limit this Allegro category declares."
+      },
+      "siblingsWithoutCard": {
+        "detail": "Allegro ties a new product card to the first variant it accepts and rejects the rest. Give each variant a barcode that matches a catalogue product.",
+        "title": "These variants would all create one new product card."
+      },
+      "titleTooLong": {
+        "detail": "Shorten it in the title field.",
+        "title": "The offer title is longer than Allegro allows."
+      },
+      "titleTooShort": {
+        "detail": "Allegro needs at least 12 characters and 3 words.",
+        "title": "The offer title is too short for Allegro."
+      }
+    },
     "chips": {
       "alreadyListed": "Already listed",
       "cardCategoryDiffers": "catalog ≠ mapping",
@@ -310,6 +353,18 @@
         "detail": "Pick a category to continue. The lookup was not empty - its answer was not understood, so nothing was ruled out.",
         "title": "{destination} returned a category result this version doesn't recognise."
       }
+    },
+    "erli": {
+      "missingImage": {
+        "detail": "Erli needs at least one. Add one in the images section.",
+        "title": "This offer has no image."
+      }
+    },
+    "panel": {
+      "advisoryNote": "Can still publish",
+      "ariaLabel": "What blocks this variant",
+      "consequence": "Follows from the cause above",
+      "jumpTo": "Go to {name}"
     }
   },
   "bulkCardCategoryDialog": {
@@ -834,7 +889,6 @@
       "other": "{done} of {n} products done"
     },
     "pullingTitle": "Pulling master price and stock",
-    "resolutionFailed": "Resolution failed.",
     "resolvedSoFar": {
       "one": "{resolved} of {n} variant already resolved. Retrying picks up the remaining ones instead of starting over.",
       "other": "{resolved} of {n} variants already resolved. Retrying picks up the remaining ones instead of starting over."
@@ -1189,10 +1243,6 @@
     "selectPlaceholder": "Select…",
     "showOptional": "Show optional fields ({count})"
   },
-  "common": {
-    "serverSaid": "The server said: {message}",
-    "unknownError": "Something went wrong. Please try again."
-  },
   "duplicateGuardModal": {
     "cancel": "Go back",
     "confirmMarketplace": "Publish remaining variants",
@@ -1262,8 +1312,7 @@
     "loading": "Loading delivery price lists…",
     "placeholder": "Choose a delivery price list…",
     "refresh": "Refresh",
-    "retry": "Retry",
-    "tryAgain": "Please try again."
+    "retry": "Retry"
   },
   "erliDeliveryPriceListOverrideField": {
     "batchDefault": "Batch default",
@@ -1280,8 +1329,7 @@
     "placeholder": "Choose a delivery price list…",
     "refresh": "Refresh",
     "resetToBatchDefault": "Reset to batch default",
-    "retry": "Retry",
-    "tryAgain": "Please try again."
+    "retry": "Retry"
   },
   "erliDispatchTimeField": {
     "fromDefault": "connection default",
@@ -1333,8 +1381,7 @@
     "label": "Producer",
     "loadErrorTitle": "Unable to load producers",
     "loading": "Loading producers…",
-    "placeholder": "Choose a producer…",
-    "tryAgain": "Please try again."
+    "placeholder": "Choose a producer…"
   },
   "listingDetailPage": {
     "contextTitle": "Context",
@@ -1578,7 +1625,7 @@
       "withId": "Offer is live · external id <id>{externalId}</id>.",
       "withoutId": "Offer is live."
     },
-    "loadFailed": "Unable to load status: {message}",
+    "loadFailed": "Unable to load status.",
     "loading": "Loading status…",
     "processing": "Still processing - the status will update automatically.",
     "reused": {
@@ -1894,7 +1941,7 @@
         "one": "{n} failed",
         "other": "{n} failed"
       },
-      "loadError": "Unable to load batch: {message}",
+      "loadError": "Unable to load batch.",
       "loading": "Loading batch…",
       "none": "No batch available.",
       "progress": "{done} / {total}",
@@ -1911,7 +1958,7 @@
     "single": {
       "failedBody": "Publishing failed. No product was created on the shop.",
       "failedTitle": "Publish failed",
-      "loadError": "Unable to load status: {message}",
+      "loadError": "Unable to load status.",
       "loading": "Loading status…",
       "none": "No status available.",
       "product": "Product",

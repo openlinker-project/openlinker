@@ -42,6 +42,7 @@ import {
   type AddPackerFormValues,
 } from './step-packers.schema';
 import { StepPanel } from './step-panel';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface StepPackersProps {
   readonly packers: readonly PackerSummary[];
@@ -80,8 +81,8 @@ export function PackerCreator({ packers, canWrite, demoReadOnly }: PackerCreator
     resolver: zodResolver(addPackerFormSchema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : []
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : []
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -132,7 +133,7 @@ export function PackerCreator({ packers, canWrite, demoReadOnly }: PackerCreator
         ) : null}
         {unmappedError !== null ? (
           <Alert tone="error" title={COPY.step2.createFailedTitle}>
-            {unmappedError.message}
+            {describeApiError(unmappedError)}
           </Alert>
         ) : null}
         <div className="oms-onboarding__fields">

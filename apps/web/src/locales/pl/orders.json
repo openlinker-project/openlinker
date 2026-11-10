@@ -246,7 +246,6 @@
       },
       "partialTitle": "{name}: części zamówień nie zaktualizowano",
       "removeBack": "Wróć do dodawania tagów",
-      "removeErrorFallback": "OpenLinker nie mógł usunąć tagu. Spróbuj ponownie.",
       "removeErrorTitle": "Nie usunięto tagu",
       "removeHeading": {
         "few": "Usuń tag z {n} zamówień",
@@ -289,7 +288,6 @@
   "bulkDispatchDialog": {
     "cancel": "Anuluj",
     "description": "Wygeneruj etykiety dla zaznaczonych zamówień - nadawane w partiach według źródła.",
-    "dispatchFailed": "Nadanie nie powiodło się",
     "dispatching": "Nadawanie…",
     "invalidParcel": "Nieprawidłowa paczka",
     "needAttention": {
@@ -419,7 +417,6 @@
     "channelFallback": "kanał sprzedaży",
     "confirm": {
       "description": "OpenLinker poprosi {channel} o anulowanie. Gdy {channel} potwierdzi, reszta stanie się automatycznie - poza zwrotem pieniędzy, który robisz sam.",
-      "errorFallback": "Nie udało się anulować tego zamówienia.",
       "errorTitle": "Nie udało się anulować tego zamówienia",
       "title": "Anulować zamówienie {order}?"
     },
@@ -446,7 +443,6 @@
     },
     "keepOrder": "Zachowaj zamówienie",
     "label": {
-      "fallback": "Dla tego zamówienia istnieje etykieta nadawcza, więc OpenLinker jeszcze go nie anuluje.",
       "goToShipment": "Przejdź do przesyłki",
       "note": "Jeśli paczka jest już u kuriera, etykiety nie można unieważnić. Zajrzyj do paczki zamiast anulować.",
       "stepCancelAgain": "Ponownie anuluj zamówienie.",
@@ -477,7 +473,6 @@
     "shipped": {
       "alertTitle": "Paczka jest już w drodze",
       "close": "Zamknij",
-      "fallback": "To zamówienie zostało już wysłane.",
       "insteadTitle": "Co możesz zrobić zamiast tego",
       "stepInvoice": "Faktura pozostaje wystawiona. Zwrot zaproponuje fakturę korygującą.",
       "stepRefund": "Gdy towar wróci, zwróć pieniądze kupującemu i potwierdź zwrot pieniędzy tutaj.",
@@ -498,9 +493,7 @@
     "ownOnly": "Rabat: {amount} w OpenLinker",
     "ownPart": "{amount} w OpenLinker"
   },
-  "common": {
-    "serverSaid": "Serwer odpowiedział: {message}"
-  },
+  "common": {},
   "confirmOrderRefund": {
     "action": "Potwierdź zwrot pieniędzy",
     "ceiling": {
@@ -510,7 +503,6 @@
       "title": "To więcej niż wartość zamówienia"
     },
     "description": "Zapisz zwrot pieniędzy, który wykonałeś dla kupującego. OpenLinker nie przesyła pieniędzy.",
-    "failed": "Nie udało się zapisać zwrotu pieniędzy.",
     "recorded": "Zwrot pieniędzy zapisany.",
     "title": "Potwierdź zwrot pieniędzy"
   },
@@ -861,10 +853,6 @@
     "total": "Razem"
   },
   "holds": {
-    "errors": {
-      "alreadyOnHold": "To zamówienie jest już wstrzymane. Trwa wczytywanie otwartego wstrzymania.",
-      "alreadyReleased": "To wstrzymanie zostało już zdjęte. Trwa ponowne wczytywanie zamówienia."
-    },
     "onHold": "Wstrzymane - {reason}",
     "panel": {
       "activeSince": "od <time></time>",
@@ -883,7 +871,6 @@
     "placeDialog": {
       "cancel": "Anuluj",
       "description": "OpenLinker przestanie przekazywać to zamówienie do kanału docelowego i nadawać je, dopóki wstrzymanie nie zostanie zdjęte.",
-      "errorFallback": "Nie udało się wstrzymać tego zamówienia.",
       "noteDescription": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
       "noteLabel": "Notatka (opcjonalnie)",
       "placedToast": "Zamówienie wstrzymane.",
@@ -931,7 +918,6 @@
     "releaseDialog": {
       "cancel": "Anuluj",
       "description": "OpenLinker znów zacznie przekazywać to zamówienie do kanału docelowego.",
-      "errorFallback": "Nie udało się zdjąć tego wstrzymania.",
       "noteDescriptionOptional": "Wszystko, co powinna wiedzieć kolejna osoba. Nigdy dane kupującego.",
       "noteDescriptionPlacerUnknown": "Nie zapisano, kto wstrzymał to zamówienie, więc wyjaśnij, dlaczego można bezpiecznie zdjąć wstrzymanie.",
       "noteDescriptionRequired": "OpenLinker sam wstrzymał to zamówienie, więc wyjaśnij, dlaczego można bezpiecznie zdjąć wstrzymanie.",
@@ -1506,7 +1492,6 @@
     "confirmed": "Korekta potwierdzona.",
     "confirming": "Potwierdzanie…",
     "discountReason": "Zamówienie objęto rabatem, więc faktura jest korygowana do cen po rabacie.",
-    "errorBody": "Nie udało się potwierdzić korekty.",
     "errorTitle": "Nie udało się potwierdzić korekty",
     "irreversible": "Potwierdzenie wystawia fakturę korygującą, a wystawionej korekty nie można wycofać.",
     "title": "Faktura korygująca",
@@ -1650,7 +1635,6 @@
     "confirm": "Potwierdź zwrot pieniędzy",
     "confirming": "Potwierdzanie…",
     "discountLowered": "Rabat obniżył kwotę należną od kupującego.",
-    "errorBody": "Nie udało się potwierdzić zwrotu pieniędzy.",
     "errorTitle": "Nie udało się potwierdzić zwrotu pieniędzy",
     "recorded": "Zwrot pieniędzy zapisany.",
     "refundFirst": "OpenLinker nie przesyła pieniędzy: najpierw zwróć różnicę w {channel}, a potem potwierdź to tutaj, aby dokumenty zgadzały się z tym, co zapłacił kupujący.",
@@ -1878,7 +1862,6 @@
       "modePercent": "Procent wartości towarów"
     },
     "failure": {
-      "fallback": "Nie udało się zapisać tej zmiany.",
       "title": "Nie udało się zapisać tej zmiany"
     },
     "lines": {
@@ -1989,7 +1972,6 @@
     "refundIntentFailed": "Rabat zapisano, ale OpenLinker nie mógł otworzyć dla niego zwrotu pieniędzy. Wyślij ten sam rabat ponownie, aby go otworzyć, a potem zwróć różnicę w {channel}.",
     "refundPending": "Zwróć {amount} w {channel}, a potem potwierdź tutaj zwrot pieniędzy.",
     "resend": "Wyślij rabat ponownie",
-    "resendFailed": "Nie udało się ponownie wysłać rabatu.",
     "resending": "Wysyłanie…",
     "reviewCorrection": "Sprawdź korektę",
     "stillShows": "{channel} nadal pokazuje zamówienie tak, jak złożył je kupujący.",
@@ -2138,7 +2120,6 @@
     "separator": "Separator",
     "separatorHint": "UTF-8, otwiera się bezpośrednio w Excelu.",
     "separatorValue": "Średnik (;), Excel w języku polskim",
-    "startFailed": "Nie udało się rozpocząć eksportu. Spróbuj ponownie.",
     "submitBackground": "Uruchom eksport w tle",
     "submitCount": {
       "few": "Eksportuj {n} zamówienia",
@@ -2268,12 +2249,10 @@
       "counter": "{length} / {max}",
       "label": "Nowa notatka",
       "packerWarning": "Pakowacze widzą ten tekst na stanowisku pakowania. Nie wpisuj numerów telefonów, e-maili ani adresów.",
-      "pinErrorFallback": "OpenLinker nie mógł przypiąć notatki. Przypnij ją z listy.",
       "pinErrorTitle": "Notatkę dodano, ale nie przypięto",
       "pinToTop": "Przypnij na górze",
       "placeholder": "Dodaj notatkę dla zespołu",
       "retry": "Spróbuj ponownie",
-      "saveErrorFallback": "OpenLinker nie mógł połączyć się z serwerem.",
       "saveErrorTail": "Tekst nadal jest w polu powyżej.",
       "saveErrorTitle": "Nie zapisano notatki",
       "showToPacker": "Pokaż pakowaczowi na stanowisku pakowania",
@@ -2283,7 +2262,6 @@
       "confirm": "Usuń notatkę",
       "descriptionRemoved": "Tekst zostanie usunięty dla wszystkich, także na stanowisku pakowania.",
       "descriptionTimeline": "W historii aktywności pozostanie wpis, że notatka autorstwa <strong>{author}</strong> została usunięta, bez jej treści.",
-      "errorFallback": "OpenLinker nie mógł usunąć notatki. Spróbuj ponownie.",
       "errorTitle": "Nie usunięto notatki",
       "keep": "Zachowaj notatkę",
       "title": "Usunąć tę notatkę?"
@@ -2307,12 +2285,10 @@
     "readOnly": "Możesz czytać notatki. Dodawanie i zmienianie ich wymaga roli operatora lub administratora.",
     "retry": "Spróbuj ponownie",
     "row": {
-      "actionErrorFallback": "OpenLinker nie mógł zmienić notatki. Spróbuj ponownie.",
       "actionErrorTitle": "Nie zmieniono notatki",
       "cancel": "Anuluj",
       "delete": "Usuń",
       "edit": "Edytuj",
-      "editErrorFallback": "OpenLinker nie mógł zapisać zmiany. Spróbuj ponownie.",
       "editErrorTitle": "Nie zapisano zmiany",
       "editHint": "Wszyscy zobaczą, że notatka była edytowana.",
       "editLabel": "Edytuj notatkę",
@@ -2454,7 +2430,6 @@
     "bulk": {
       "allHaveIt": "Wszystkie go mają",
       "emptyVocabulary": "Nie ma jeszcze tagów.",
-      "errorFallback": "OpenLinker nie mógł dodać tagu. Spróbuj ponownie.",
       "errorTitle": "Nie dodano tagu",
       "hasIt": {
         "few": "Mają go {n} z {total}",
@@ -2549,7 +2524,6 @@
     },
     "noTags": "Brak tagów",
     "picker": {
-      "createErrorFallback": "OpenLinker nie mógł utworzyć tagu. Spróbuj ponownie.",
       "createErrorTitle": "Nie utworzono tagu",
       "createRow": "+ Utwórz „{name}”",
       "createdToastDescription": "{name} jest już w tym zamówieniu.",
@@ -2566,7 +2540,6 @@
         "one": "zamówienie",
         "other": "zamówienia"
       },
-      "saveErrorFallback": "OpenLinker nie mógł zapisać zmiany. Spróbuj ponownie.",
       "saveErrorTitle": "Nie zapisano tagu",
       "savedHint": "Zmiany zapisują się od razu",
       "searchPlaceholder": "Znajdź lub utwórz tag"
@@ -2598,7 +2571,6 @@
     "title": "Pakowanie",
     "toasts": {
       "cleared": "Usunięto oznaczenie spakowania.",
-      "failed": "Nie udało się zaktualizować oznaczenia spakowania.",
       "marked": "Zamówienie oznaczone jako spakowane."
     },
     "undo": "Cofnij"
@@ -2714,6 +2686,34 @@
     "other": "Inny powód",
     "withdrawal": "Kupujący zmienił zdanie",
     "wrongItem": "Wysłano niewłaściwy towar"
+  },
+  "salesDocumentBlockDetail": {
+    "candidates": "Połączenia, które mogą go wystawić: {n}.",
+    "capabilities": {
+      "Fiscalization": "paragony",
+      "Invoicing": "faktury",
+      "or": "{a} lub {b}"
+    },
+    "connectionState": {
+      "archived": "To połączenie jest zarchiwizowane.",
+      "changed": "To połączenie zmieniło się podczas sprawdzania zamówienia.",
+      "disabled": "To połączenie jest wyłączone.",
+      "error": "To połączenie jest w stanie błędu.",
+      "missing-capability": "Na tym połączeniu nie są włączone: {documents}.",
+      "needs-reauth": "To połączenie wymaga ponownego zalogowania.",
+      "not-found": "To połączenie już nie istnieje.",
+      "unreadable": "Nie udało się odczytać tego połączenia."
+    },
+    "firstLine": "Pierwszy produkt: {ref}.",
+    "invoiceUnsupported": "Połączenie {connectionId} nie wystawia faktur.",
+    "kindUnsupported": "Połączenie {connectionId} ma ustawiony rodzaj dokumentu, którego OpenLinker nie obsługuje ({documentKind}).",
+    "linesWithoutRate": "Pozycje bez stawki VAT: {lineCount} z {totalLines}.",
+    "noKindDeclared": "Połączenia, które mogą wystawiać dokumenty: {n}. Żadne nie określa rodzaju dokumentu.",
+    "nonePrimary": "Połączenia, które mogą go wystawić: {n}. Żadne nie jest oznaczone jako główne.",
+    "routed": "Routing kieruje to zamówienie do połączenia {connectionId}.",
+    "routedByRule": "Reguła {ruleId} kieruje to zamówienie do połączenia {connectionId}.",
+    "severalPrimary": "Połączenia, które mogą go wystawić: {n}. Więcej niż jedno jest oznaczone jako główne.",
+    "shippingWithoutRate": "Nie można przypisać stawki VAT do kosztu dostawy."
   },
   "salesDocumentCell": {
     "action": {
@@ -2985,17 +2985,17 @@
     "panel": {
       "fixRouting": "Popraw ustawienia wyboru dokumentu",
       "manualOverride": "Wystaw lub zarejestruj ręcznie",
+      "technicalDetails": "Szczegóły techniczne ({count})",
       "title": "Dokument sprzedaży",
       "whyThisKind": "Dlaczego ten rodzaj?"
     }
   },
   "sendDocumentEmail": {
-    "failed": "Nie udało się wysłać dokumentu e-mailem do kupującego.",
     "language": "Język e-maila",
     "lastSentVia": "{when} · {via}",
+    "noBuyerEmail": "To zamówienie nie ma adresu e-mail kupującego.",
+    "otherAddressHint": "Na inny adres wysyła OpenLinker, a nie dostawca fakturowania.",
     "recipient": "Odbiorca",
-    "recipientHint": "Zostaw puste, aby użyć adresu kupującego z zamówienia. Na inny adres wysyła OpenLinker, a nie dostawca fakturowania.",
-    "recipientPlaceholder": "Adres kupującego z zamówienia",
     "send": "Wyślij e-mail",
     "sendAgain": "Wyślij ponownie",
     "sending": "Wysyłanie…",
@@ -3007,6 +3007,8 @@
     "statusNone": "Jeszcze nie wysłano",
     "statusSent": "Wysłano",
     "title": "E-mail do kupującego",
+    "useBuyerAddress": "Wyślij na adres kupującego z zamówienia ({email})",
+    "useBuyerAddressNone": "Wyślij na adres kupującego z zamówienia",
     "viaOpenLinker": "przez OpenLinker",
     "viaProvider": "przez dostawcę fakturowania"
   },

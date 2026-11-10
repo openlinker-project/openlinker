@@ -23,13 +23,11 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   Res,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -44,6 +42,14 @@ import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import {
+  adapterCapabilityNotSupported,
+  masterCatalogConnectionNotConfigured,
+  categoryNotFound,
+  offerMappingNotFound,
+  providerCapabilityUnsupported,
+} from './listings-errors';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import {
   AdapterCapabilityNotSupportedException,
@@ -391,7 +397,7 @@ export class ListingsController {
   ): Promise<OfferMappingResponseDto> {
     const mapping = await this.offerMappingRepository.findById(id);
     if (!mapping) {
-      throw new NotFoundException(`Offer mapping not found: ${id}`);
+      throw offerMappingNotFound(id, `Offer mapping not found: ${id}`);
     }
 
     const dto = this.toDto(mapping);
@@ -449,13 +455,14 @@ export class ListingsController {
   ): Promise<MarketplaceOfferResponseDto> {
     const mapping = await this.offerMappingRepository.findById(id);
     if (!mapping) {
-      throw new NotFoundException(`Offer mapping not found: ${id}`);
+      throw offerMappingNotFound(id, `Offer mapping not found: ${id}`);
     }
     // Treat non-Offer mappings as 404 rather than a separate 4xx — the
     // existence of the mapping isn't actionable for the live-offer surface
     // and the response shape is identical to "mapping doesn't exist".
     if (mapping.entityType !== ('Offer' satisfies CoreEntityType)) {
-      throw new NotFoundException(
+      throw offerMappingNotFound(
+        id,
         `Offer mapping ${id} is not of entityType=Offer (got: ${mapping.entityType})`
       );
     }
@@ -469,7 +476,10 @@ export class ListingsController {
     );
 
     if (!isOfferReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'OfferReader',
+        mapping.connectionId,
         `Adapter for connection ${mapping.connectionId} does not support live offer reading`
       );
     }
@@ -483,7 +493,10 @@ export class ListingsController {
       // renders the soft "live data unavailable" fallback rather than a hard
       // error, keeping the rest of the detail page rendering.
       if (error instanceof OfferNotFoundOnMarketplaceException) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'MARKETPLACE_OFFER_NOT_FOUND', error.message, {
+          externalOfferId: error.externalOfferId,
+          connectionId: error.connectionId,
+        });
       }
       throw error;
     }
@@ -633,7 +646,12 @@ export class ListingsController {
     const record = await this.offerCreationRecords.findById(offerCreationRecordId);
     if (!record || record.connectionId !== connectionId) {
       // Cross-connection lookups return 404 to avoid leaking record existence.
-      throw new NotFoundException(`Offer creation record not found: ${offerCreationRecordId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'OFFER_CREATION_RECORD_NOT_FOUND',
+        `Offer creation record not found: ${offerCreationRecordId}`,
+        { recordId: offerCreationRecordId }
+      );
     }
     return this.toOfferCreationStatusDto(record);
   }
@@ -681,8 +699,11 @@ export class ListingsController {
       internalVariantId: body.internalVariantId,
     });
     if (publicationStatus === null) {
-      throw new NotFoundException(
-        `Live status unavailable for offer ${externalOfferId} on connection ${connectionId}`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'OFFER_LIVE_STATUS_UNAVAILABLE',
+        `Live status unavailable for offer ${externalOfferId} on connection ${connectionId}`,
+        { externalOfferId, connectionId }
       );
     }
     return { publicationStatus };
@@ -795,7 +816,10 @@ export class ListingsController {
     );
 
     if (!isCategoryParametersReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CategoryParametersReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support category-parameters reading`
       );
     }
@@ -808,9 +832,7 @@ export class ListingsController {
         // Bubble category-level 404 distinct from connection-level 404 — the FE
         // can show a friendlier message and let the operator pick a different
         // category without re-resolving the connection.
-        throw new NotFoundException(
-          `Category ${categoryId} not found on connection ${connectionId}`
-        );
+        throw categoryNotFound(categoryId, connectionId);
       }
       throw err;
     }
@@ -855,7 +877,10 @@ export class ListingsController {
     );
 
     if (!isCategoryPathReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CategoryPathReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support category-path reading`
       );
     }
@@ -865,9 +890,7 @@ export class ListingsController {
       path = await adapter.fetchCategoryPath(categoryId);
     } catch (err) {
       if (err instanceof CategoryNotFoundException) {
-        throw new NotFoundException(
-          `Category ${categoryId} not found on connection ${connectionId}`
-        );
+        throw categoryNotFound(categoryId, connectionId);
       }
       throw err;
     }
@@ -973,7 +996,7 @@ export class ListingsController {
         // `getCapabilityAdapter('OfferManager')` gate). An adapter that simply
         // can't batch-match EANs no longer reaches here — the service degrades
         // it to per-variant `no-match` for manual category selection (ADR-025 §3).
-        throw new UnprocessableEntityException(error.message);
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
       }
       throw error;
     }
@@ -1021,11 +1044,11 @@ export class ListingsController {
         ),
       };
     } catch (error) {
-      if (
-        error instanceof AdapterCapabilityNotSupportedException ||
-        error instanceof MasterCatalogConnectionNotConfiguredException
-      ) {
-        throw new UnprocessableEntityException(error.message);
+      if (error instanceof AdapterCapabilityNotSupportedException) {
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (error instanceof MasterCatalogConnectionNotConfiguredException) {
+        throw masterCatalogConnectionNotConfigured(error, HttpStatus.UNPROCESSABLE_ENTITY);
       }
       throw error;
     }
@@ -1210,7 +1233,7 @@ export class ListingsController {
         if (error instanceof AdapterCapabilityNotSupportedException) {
           // Mirrors the batch route: the connection is not an OfferManager
           // marketplace at all.
-          throw new UnprocessableEntityException(error.message);
+          throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
         }
         throw error;
       }
@@ -1311,7 +1334,10 @@ export class ListingsController {
     );
 
     if (!isCatalogProductReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CatalogProductReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support catalog-product reading`
       );
     }
@@ -1358,7 +1384,10 @@ export class ListingsController {
     );
 
     if (!isCatalogProductReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CatalogProductReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support catalog-product reading`
       );
     }
@@ -1368,8 +1397,11 @@ export class ListingsController {
       return this.toCatalogProductResponseDto(product);
     } catch (err) {
       if (err instanceof CatalogProductNotFoundException) {
-        throw new NotFoundException(
-          `Catalog product ${productId} not found on connection ${connectionId}`
+        throw codedHttpError(
+          HttpStatus.NOT_FOUND,
+          'CATALOG_PRODUCT_NOT_FOUND',
+          `Catalog product ${productId} not found on connection ${connectionId}`,
+          { productId, connectionId }
         );
       }
       throw err;

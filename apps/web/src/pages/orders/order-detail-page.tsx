@@ -43,6 +43,7 @@ import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
+import { describeSalesDocumentBlockDetail } from '../../features/orders/lib/sales-document-block-detail';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import {
   OrderNotesPanel,
@@ -111,7 +112,7 @@ import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit
 import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
-import { serverErrorText } from '../../features/orders/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -135,7 +136,6 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const ordersCopy = useMessages('orders');
-  const serverSaid = ordersCopy.common.serverSaid;
   const copy = ordersCopy.orderDetailPage;
   const format = useFormat();
   const plural = usePlural();
@@ -264,12 +264,16 @@ export function OrderDetailPage(): ReactElement {
             });
           },
           onError: (error) => {
-            showToast({ tone: 'error', title: copy.retryFailedTitle, description: serverErrorText(serverSaid, error.message, '') });
+            showToast({
+              tone: 'error',
+              title: copy.retryFailedTitle,
+              description: describeApiError(error, 'orders'),
+            });
           },
         },
       );
     },
-    [retry, internalOrderId, showToast, copy, serverSaid],
+    [retry, internalOrderId, showToast, copy]
   );
 
   if (query.isLoading) {
@@ -285,7 +289,7 @@ export function OrderDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
           title={copy.loadErrorTitle}
-          message={serverErrorText(serverSaid, query.error?.message, copy.notFound)}
+          message={query.error ? describeApiError(query.error, 'orders') : copy.notFound}
           action={
             <Button
               onClick={() => {
@@ -955,7 +959,12 @@ export function OrderDetailPage(): ReactElement {
           mappingFailureReason={order.mappingFailureReason}
           salesDocumentBlockReason={order.salesDocumentBlockReason}
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
-          salesDocumentBlockDetail={order.salesDocumentBlockDetail}
+          salesDocumentBlockDetail={describeSalesDocumentBlockDetail({
+            reason: order.salesDocumentBlockReason,
+            unresolvedReason: order.salesDocumentUnresolvedReason,
+            detail: order.salesDocumentBlockDetail,
+            params: order.salesDocumentBlockParams,
+          })}
           invoice={snapshot.invoice}
           lastAmendedAt={order.lastAmendedAt}
           lastAmendmentChanges={order.lastAmendmentChanges}

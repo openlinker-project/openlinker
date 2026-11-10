@@ -44,6 +44,7 @@ import {
   type MappingOption,
   type RoutingRuleInput,
 } from '../api/mappings.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface RoutingRulesPanelProps {
   connectionId: string;
@@ -457,7 +458,7 @@ export function RoutingRulesPanel({
 
   const dataError = deliveryMethodsError ?? rulesQuery.error ?? candidatesQuery.error ?? null;
   if (dataError) {
-    return <ErrorState title={copy.errorTitle} message={dataError.message} />;
+    return <ErrorState title={copy.errorTitle} message={describeApiError(dataError, 'mappings')} />;
   }
 
   const containerHeight = Math.min(
@@ -534,7 +535,7 @@ export function RoutingRulesPanel({
 
       {replaceMutation.error && (
         <p className="error-message" role="alert" style={{ marginTop: 'var(--space-2)' }}>
-          {replaceMutation.error.message}
+          {describeApiError(replaceMutation.error, 'mappings')}
         </p>
       )}
 

@@ -34,6 +34,7 @@ import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
 import { useSuggestContentMutation } from '../hooks/use-content-mutations';
 import type { PromptTemplateChannel } from '../api/content.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface SuggestionDialogProps {
   productId: string;
@@ -54,17 +55,11 @@ const MAX_EXTRA_LENGTH = 1024;
 
 /**
  * #490: detect the structured 404 the API returns when a prompt template is
- * unseeded for the requested (key, channel) — most commonly the master tab's
- * `offer.description.suggest` row before the seed migration runs. Stepping
- * stone: the back-end could emit a typed error code, but the message-prefix
- * match is good enough until the unified error-shape work picks it up.
+ * unseeded for the requested (key, channel) - most commonly the master tab's
+ * `offer.description.suggest` row before the seed migration runs.
  */
 function isMissingTemplateError(error: Error): boolean {
-  return (
-    error instanceof ApiError &&
-    error.isNotFound() &&
-    error.message.startsWith('Prompt template not found')
-  );
+  return error instanceof ApiError && error.code === 'PROMPT_TEMPLATE_NOT_FOUND';
 }
 
 export function SuggestionDialog({
@@ -213,13 +208,13 @@ export function SuggestionDialog({
           {mutation.error &&
             (isMissingTemplateError(mutation.error) ? (
               <Alert tone="error">
-                {mutation.error.message}{' '}
+                {describeApiError(mutation.error, 'content')}{' '}
                 <Link to="/ai/prompt-templates" className="content-suggestion__alert-link">
                   {copy.openPromptTemplates}
                 </Link>
               </Alert>
             ) : (
-              <Alert tone="error">{mutation.error.message}</Alert>
+              <Alert tone="error">{describeApiError(mutation.error, 'content')}</Alert>
             ))}
 
           {suggestion !== null && (

@@ -41,7 +41,9 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
-import type { ProductMasterPort } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
+import { PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN } from '../../content.tokens';
+import { IProductMasterResolverService } from './product-master-resolver.service.interface';
 import {
   isOfferFieldUpdater,
   OFFER_MAPPINGS_SERVICE_TOKEN,
@@ -52,7 +54,6 @@ import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exception
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
 import { EmptyAfterDescriptionFormatException } from '../../domain/exceptions/empty-after-description-format.exception';
 import { NoLinkedOffersException } from '../../domain/exceptions/no-linked-offers.exception';
-import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import type {
   ContentPublishRequest,
   ContentPublishResult,
@@ -77,7 +78,11 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
-    private readonly offerMappings: IOfferMappingsService
+    private readonly offerMappings: IOfferMappingsService,
+    @Inject(PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN)
+    private readonly masterResolver: IProductMasterResolverService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService
   ) {}
 
   async publish(request: ContentPublishRequest): Promise<ContentPublishResult> {
@@ -88,25 +93,10 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
   }
 
   private async publishMaster(request: ContentPublishRequest): Promise<ContentPublishResult> {
-    const masters = await this.integrationsService.listCapabilityAdapters<ProductMasterPort>({
-      capability: 'ProductMaster',
-    });
-
-    if (masters.length === 0) {
-      throw new NoProductMasterAdapterException(request.productId, request.fieldKey);
-    }
-
-    if (masters.length > 1) {
-      // Today there is at most one ProductMaster connection in practice, but the contract
-      // returns an array. Log + pick the first; refine to an explicit selection rule
-      // (e.g. the connection that owns the product) when multi-master is real.
-      this.logger.warn(
-        `[content] Multiple ProductMaster adapters resolved (${masters.length}); using the first. ` +
-          `Refine selection when multi-master is wired.`
-      );
-    }
-
-    const { adapter } = masters[0];
+    // The product's OWN master (#4068): with PrestaShop + Shoper connected, the
+    // first master is not the product's, and writing there would put this
+    // description into another shop. No claimant or two claimants refuse.
+    const adapter = await this.masterResolver.resolve(request.productId, request.fieldKey);
 
     // ADR-046 deliberately does NOT apply a `DescriptionFormat` here, and this
     // comment exists so the absence reads as a decision rather than a gap.
@@ -142,17 +132,11 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
       );
     }
 
-    // Need the product's variants to discover linked offers. Channel publishing
-    // uses the single ProductMaster adapter as a read source regardless of the
-    // target channel — the variant set is master-scoped.
-    const masters = await this.integrationsService.listCapabilityAdapters<ProductMasterPort>({
-      capability: 'ProductMaster',
-    });
-    if (masters.length === 0) {
-      throw new NoProductMasterAdapterException(request.productId, request.fieldKey);
-    }
-    const { adapter: productMaster } = masters[0];
-    const variants = await productMaster.getProductVariants(request.productId);
+    // Need the product's variants to discover linked offers. Offer mappings are
+    // keyed on OpenLinker's own variant ids, so they come from the catalogue
+    // rather than a live master - which would also be the wrong master when
+    // more than one is connected (#4068).
+    const variants = await this.products.getVariantsByProductId(request.productId);
 
     const externalOfferIds = new Set<string>();
     for (const variant of variants) {

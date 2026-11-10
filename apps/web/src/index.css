@@ -1831,25 +1831,30 @@ textarea,
    checked the shell's placeholder stays invisible for a moment, so a quick
    check shows the calm page background instead of a loader flashing past; a
    slow one shows the placeholder after 400 ms. `.shell--app` / `--pending`
-   keep this off the login page's blurred preview, which reuses the markup. */
+   keep this off the login page's blurred preview, which reuses the markup.
+   Every entrance here fills `backwards` only: a `both`/`forwards` fill keeps
+   the animation in effect after it ends, so the element would stay a stacking
+   context (and, for `transform`, the containing block of its fixed
+   descendants) for good, trapping a dropdown under the next block. */
 .shell--app {
-  animation: page-fade-in 320ms var(--ease-out) both;
+  animation: page-fade-in 320ms var(--ease-out) backwards;
 }
 
 .shell--pending,
 .guest-layout--pending {
-  animation: page-fade-in 240ms var(--ease-out) 400ms both;
+  animation: page-fade-in 240ms var(--ease-out) 400ms backwards;
 }
 
 .login-stage {
-  animation: page-fade-in 320ms var(--ease-out) both;
+  animation: page-fade-in 320ms var(--ease-out) backwards;
 }
 
 /* ── Content entrance (#4029) ──────────────────────────────────────────
  * One small, repeatable reveal: each block rises 8 px into place while it
- * fades in, one after another, 50 ms apart. It plays on the first page after
- * signing in or in a new tab (`.shell--intro`, set by app-shell.tsx through
- * shared/lib/entrance.ts) for a page's blocks (`.page-section > *`) and the
+ * fades in, one after another, 50 ms apart, on EVERY page: the shell re-keys
+ * its content per route (`key={location.pathname}`), so each page mounts fresh
+ * and plays it once, while a filter or a search param change does not. It
+ * covers a page's blocks (the outermost `.page-section`'s children) and the
  * cards of a KPI row. `.reveal-stagger` gives any container the same reveal
  * for its children, every time it mounts. Transform and opacity only, and no
  * transform is left behind once it ends (the keyframes set only `from`).
@@ -1899,15 +1904,21 @@ textarea,
   --rise-i: 7;
 }
 
-.shell--intro .shell-content > .page-section > *,
+/* `:not(.page-section .page-section)` keeps the outermost section only, so a
+ * nested section's children do not rise a second time inside a rising block. */
+.shell--app .shell-content .page-section:not(.page-section .page-section) > *,
 .reveal-stagger > * {
-  animation: content-rise 520ms var(--ease-out) both;
+  animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(60ms + var(--rise-i) * 50ms);
 }
 
-/* Cards in a row start once their row has begun, then follow one another. */
-.shell--intro .shell-content :is(.status-strip, .ds-grid) > * {
-  animation: content-rise 520ms var(--ease-out) both;
+/* Cards in a row start once their row has begun, then follow one another.
+ * The scope is the whole content, not the route's first paint, on purpose: an
+ * animation plays once per mount, so a filter or search change (the KPI rows
+ * stay mounted, keyed by segment) replays nothing, while content that really
+ * arrives later, a tab panel or a loaded section, rises in like the rest. */
+.shell--app .shell-content :is(.status-strip, .ds-grid) > * {
+  animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(160ms + var(--rise-i) * 50ms);
 }
 
@@ -1919,8 +1930,8 @@ textarea,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shell--intro .shell-content > .page-section > *,
-  .shell--intro .shell-content :is(.status-strip, .ds-grid) > *,
+  .shell--app .shell-content .page-section:not(.page-section .page-section) > *,
+  .shell--app .shell-content :is(.status-strip, .ds-grid) > *,
   .reveal-stagger > * {
     animation: none;
   }
@@ -3152,6 +3163,46 @@ textarea,
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: inherit;
+}
+
+/* ── Fiscal earlier attempts (#3960) ──
+   Refused attempts kept on record under the current one, collapsed by default
+   so the receipt's own state stays the first thing read. */
+.fiscal-earlier-attempts {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  font-size: 0.875rem;
+}
+
+.fiscal-earlier-attempts summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.fiscal-earlier-attempts__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fiscal-earlier-attempts__item {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fiscal-earlier-attempts__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fiscal-earlier-attempts__name {
+  font-weight: 500;
+  color: var(--text-primary);
 }
 
 /* ── Fiscal failure details (#3843) ──
@@ -7537,201 +7588,585 @@ html:has(.login-stage) {
   align-items: center;
 }
 
-/* ── Category Mappings Layout ────────────────────────────────────── */
+/* ── Category Mappings (#3993) ───────────────────────────────────
+ * A map of correspondences for one (catalogue, marketplace) pair: each row
+ * is a catalogue category beside the marketplace category it goes to. The
+ * one deliberate flourish is the joint between the two columns - a dot on
+ * the divider that says whether that correspondence exists (solid), is still
+ * open (hollow), or is not needed yet (none, on a parent). Editing happens in
+ * a side sheet, so the map stays an overview.
+ */
 
-.category-mappings-toolbar {
+.category-map-context {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  margin: var(--space-2) 0 var(--space-5);
+  padding-block: var(--space-3);
+  border-block: 1px solid var(--border-subtle);
 }
 
-.category-mappings-toolbar__label {
-  font-weight: 600;
-}
-
-.category-mappings-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
-  gap: 1.5rem;
-  align-items: start;
-}
-
-.category-mappings-layout__tree,
-.category-mappings-layout__search {
-  border: 1px solid var(--border-default);
-  border-radius: 0.5rem;
-  background: var(--bg-surface);
-  padding: 1rem;
-  max-height: 36rem;
-  overflow-y: auto;
-}
-
-.category-mappings-layout__hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin: 0 0 0.5rem;
-}
-
-.category-mappings-layout__tree h3,
-.category-mappings-layout__search h3 {
-  margin: 0 0 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 600;
+.category-map-context__pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.9375rem;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
 }
 
-/* ── Category Tree ───────────────────────────────────────────────── */
-
-.category-tree {
-  display: flex;
-  flex-direction: column;
+.category-map-context__catalogue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
 }
 
-.category-tree__row {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.category-tree__toggle,
-.category-tree__toggle-placeholder {
-  width: 1.25rem;
-  height: 1.25rem;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  padding: 0;
-}
-
-.category-tree__toggle-placeholder {
-  cursor: default;
-}
-
-/* ── Category Row ────────────────────────────────────────────────── */
-
-.category-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.375rem 0.5rem;
-  border: 1px solid transparent;
-  background: none;
+.category-map-context__catalogue-name {
+  font-weight: 600;
   color: var(--text-primary);
-  cursor: pointer;
-  border-radius: 0.375rem;
-  text-align: left;
+}
+
+.category-map-context__platform {
   font-size: 0.8125rem;
-  transition: background 0.1s;
+  color: var(--text-muted);
 }
 
-.category-row:hover {
-  background: var(--bg-surface-elevated);
-  border-color: var(--border-default);
+.category-map-context__select {
+  width: auto;
+  min-width: 15rem;
+  font-weight: 600;
 }
 
-.category-row--selected {
-  border-color: var(--accent-primary);
+.category-map-context__progress {
+  display: grid;
+  justify-items: end;
+  gap: 0.375rem;
+  min-width: 12rem;
+}
+
+.category-map-context__progress-text {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.category-map-context__bar {
+  position: relative;
+  width: 100%;
+  height: 0.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-strong);
+  overflow: hidden;
+}
+
+.category-map-context__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--accent-primary);
+  transition: width var(--duration-fast) var(--ease-out);
+}
+
+.category-map-notice {
+  margin-bottom: var(--space-4);
+}
+
+.category-mappings-catalogue-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.category-map-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.category-map-toolbar__filter {
+  flex: 1 1 16rem;
+  max-width: 22rem;
+}
+
+.category-map {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.category-map__head,
+.category-map__row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+.category-map__head {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.category-map__head > :last-child {
+  padding-left: var(--space-5);
+}
+
+.category-map__row + .category-map__row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.category-map__row--editing {
   background: var(--accent-primary-soft);
 }
 
-.category-row__name {
-  flex: 1;
+.category-map__source {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-3) + var(--tree-level, 0) * 1.25rem);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.category-map__name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.category-row__badge {
-  flex-shrink: 0;
-  font-size: 0.6875rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.25rem;
-  max-width: 12rem;
+.category-map__row[data-state='parent'] .category-map__name {
+  font-weight: 600;
+}
+
+.category-map__toggle,
+.category-map__toggle-space {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.category-map__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.category-map__toggle:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.category-map__toggle:disabled {
+  cursor: default;
+}
+
+.category-map__toggle svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.category-map__toggle svg.is-open {
+  transform: rotate(90deg);
+}
+
+.category-map__target {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  border-left: 1px solid var(--border-subtle);
+}
+
+/* The joint on the column divider. */
+.category-map__target::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -0.3125rem;
+  width: 0.5625rem;
+  height: 0.5625rem;
+  border-radius: var(--radius-pill);
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.category-map__row[data-state='mapped'] .category-map__target::before {
+  background: var(--status-success);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+
+.category-map__row[data-state='open'] .category-map__target::before {
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1.5px var(--border-strong), 0 0 0 2px var(--bg-surface);
+}
+
+.category-map__row--editing .category-map__target::before {
+  box-shadow: inset 0 0 0 1.5px var(--accent-primary), 0 0 0 2px var(--accent-primary-soft);
+}
+
+.category-map__slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-5);
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.category-map__slot:hover {
+  background: var(--bg-surface-hover);
+}
+
+.category-map__row--editing .category-map__slot:hover {
+  background: transparent;
+}
+
+.category-map__slot:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.category-map__slot-action {
+  flex: none;
+  margin-left: auto;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  opacity: 0;
+}
+
+.category-map__slot:hover .category-map__slot-action,
+.category-map__slot:focus-visible .category-map__slot-action {
+  opacity: 1;
+}
+
+.category-map__placeholder {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1875rem 0.625rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.category-map__slot:hover .category-map__placeholder,
+.category-map__slot:focus-visible .category-map__placeholder {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* A parent usually needs no mapping of its own; its slot appears on demand. */
+.category-map__row[data-state='parent'] .category-map__placeholder {
+  border-color: transparent;
+  color: transparent;
+}
+
+.category-map__row[data-state='parent'] .category-map__slot:hover .category-map__placeholder,
+.category-map__row[data-state='parent'] .category-map__slot:focus-visible .category-map__placeholder {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.category-map__empty {
+  margin: 0;
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.category-map-legacy-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.category-map-legacy-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.category-map-legacy-list__source {
+  font-weight: 600;
+}
+
+.category-map-legacy-list__arrow {
+  color: var(--text-muted);
+}
+
+/* ── Category path text ─────────────────────────────────────────── */
+
+.category-path-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.category-path-text__ancestors {
+  color: var(--text-secondary);
+}
+
+.category-path-text__sep {
+  margin-inline: 0.3125rem;
+  color: var(--text-muted);
+}
+
+.category-path-text__leaf {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.category-path-text--truncate {
+  display: flex;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.category-row__badge--mapped {
-  background: var(--status-success-soft);
-  color: var(--status-success);
-  border: 1px solid var(--status-success-border);
-}
-
-.category-row__badge--unmapped {
+.category-path-text--truncate .category-path-text__ancestors {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-muted);
-  font-style: italic;
 }
 
-/* ── Allegro Category Search ─────────────────────────────────────── */
+.category-path-text--truncate .category-path-text__sep,
+.category-path-text--truncate .category-path-text__leaf {
+  flex: none;
+}
 
-.allegro-category-search__current {
+/* ── Side sheet (category editor) ────────────────────────────────── */
+
+.dialog__content.dialog__content--side {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  transform: none;
+  width: min(34rem, 100vw);
+  max-width: none;
+  max-height: none;
+  height: 100dvh;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border-subtle);
+  border-radius: 0;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
-  background: var(--status-success-soft);
-  border: 1px solid var(--status-success-border);
-  border-radius: 0.375rem;
+  flex-direction: column;
+  overflow: hidden;
+  animation: side-sheet-in var(--duration-normal) var(--ease-out);
+}
+
+@keyframes side-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog__content.dialog__content--side {
+    animation: none;
+  }
+}
+
+.side-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.side-sheet__heading {
+  min-width: 0;
+}
+
+.side-sheet__eyebrow {
+  margin: 0 0 var(--space-1);
   font-size: 0.8125rem;
-  flex-wrap: wrap;
+  color: var(--text-muted);
 }
 
-.allegro-category-search__path {
+.dialog__title.side-sheet__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.dialog__description.side-sheet__description {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
   color: var(--text-secondary);
-  font-size: 0.75rem;
 }
 
-/* Whole-tree search input above the browser (#2075). */
-.allegro-category-search__search {
-  margin-bottom: var(--space-2);
+.side-sheet__close {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.side-sheet__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+/* ── Marketplace category picker ─────────────────────────────────── */
+
+.allegro-category-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.allegro-category-search__current,
+.allegro-category-search__staged {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  font-size: 0.875rem;
 }
 
 .allegro-category-search__staged {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
+  border-color: var(--accent-primary-border);
   background: var(--accent-primary-soft);
-  border: 1px solid var(--accent-primary);
-  border-radius: 0.375rem;
-  font-size: 0.8125rem;
-  flex-wrap: wrap;
 }
 
-.allegro-category-search__staged-label {
+.allegro-category-search__label {
+  flex-basis: 100%;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
 
+.allegro-category-search__current .category-path-text,
+.allegro-category-search__staged .category-path-text {
+  flex: 1;
+}
+
+.allegro-category-search__note {
+  flex-basis: 100%;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.allegro-category-search__clear,
 .allegro-category-search__staged-actions {
-  display: flex;
-  gap: 0.5rem;
   margin-left: auto;
 }
 
-/* Browse / selection surface is now the shared `.category-tree-browser`
- * primitive (see `shared/ui/category-tree-browser.tsx`). Classes moved
- * there: `__breadcrumbs`, `__crumb`, `__separator`, `__list`, `__item`,
- * `__item--staged`, `__name`, `__actions`. Wrapper-specific surfaces
- * (current mapping, staged preview) remain here. */
+.allegro-category-search__staged-actions {
+  display: flex;
+  gap: var(--space-2);
+}
 
-@media (max-width: 900px) {
-  .category-mappings-layout {
+/* Every browse row carries its own Select. In the editor they read as quiet
+ * outline buttons and take the accent only on the row being pointed at, so
+ * the list is not a column of orange. Scoped to the editor on purpose: the
+ * shared tree browser keeps its own emphasis everywhere else. */
+.side-sheet__body .allegro-category-search li .button:not(.button--ghost):not(.button--secondary) {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.side-sheet__body .allegro-category-search li:hover .button:not(.button--ghost):not(.button--secondary),
+.side-sheet__body .allegro-category-search li:focus-within .button:not(.button--ghost):not(.button--secondary) {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+}
+
+@media (max-width: 640px) {
+  .category-map-context__progress {
+    justify-items: start;
+    width: 100%;
+  }
+
+  .category-map-context__select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .category-map__head > :last-child {
+    display: none;
+  }
+
+  .category-map__head,
+  .category-map__row {
     grid-template-columns: 1fr;
+  }
+
+  .category-map__source {
+    padding-bottom: 0;
+  }
+
+  .category-map__target {
+    border-left: 0;
+  }
+
+  .category-map__target::before {
+    display: none;
+  }
+
+  .category-map__slot {
+    padding-left: calc(var(--space-3) + var(--tree-level, 0) * 1.25rem + 1.625rem);
+  }
+
+  /* No hover on touch: a parent's optional slot is a quiet line instead. */
+  .category-map__row[data-state='parent'] .category-map__slot {
+    min-height: 0;
+    padding-top: 0;
+  }
+
+  .category-map__row[data-state='parent'] .category-map__placeholder {
+    padding-inline: 0;
+    color: var(--text-muted);
   }
 }
 
@@ -17192,6 +17627,88 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .bulk-editor__banner--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
 .bulk-editor__banner b { color: var(--text-primary); }
+/* What blocks a variant (#4003): one neutral list, one row per cause.
+   Colour marks only the cause's tone (a 2 px rule and a dot), never the
+   whole panel - an editor with three blockers must not read as an incident.
+   Advisory rows are hollow and muted: they do not gate the batch. */
+.blocker-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.blocker-list__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.blocker-list__item + .blocker-list__item { border-top: 1px solid var(--border-subtle); }
+.blocker-list__item::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: transparent;
+}
+.blocker-list__mark {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.blocker-list__item--error::before { background: var(--status-error); }
+.blocker-list__item--error .blocker-list__mark { background: var(--status-error); }
+.blocker-list__item--warning::before { background: var(--status-warning); }
+.blocker-list__item--warning .blocker-list__mark { background: var(--status-warning); }
+.blocker-list__item--advisory .blocker-list__mark,
+.blocker-list__item--consequence .blocker-list__mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+}
+.blocker-list__body { min-width: 0; display: grid; gap: 6px; }
+.blocker-list__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.blocker-list__label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--text-primary);
+}
+.blocker-list__label::first-letter { text-transform: uppercase; }
+.blocker-list__item--advisory .blocker-list__label,
+.blocker-list__item--consequence .blocker-list__label { font-weight: 500; color: var(--text-secondary); }
+.blocker-list__note { font-size: 12px; color: var(--text-muted); }
+.blocker-list__title,
+.blocker-list__detail { margin: 0; font-size: 13px; line-height: 19px; max-width: 72ch; }
+.blocker-list__title { color: var(--text-primary); }
+.blocker-list__detail { color: var(--text-secondary); }
+.blocker-list__item--advisory .blocker-list__title { color: var(--text-secondary); }
+.blocker-list__tokens { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0; }
+.blocker-list__token {
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 18px;
+  padding: 3px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.blocker-list__token:hover { border-color: var(--border-strong); background: var(--bg-surface); }
+.blocker-list__token:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
+.blocker-list__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .blocker-list__token { transition: none; } }
 
 /* Variant blocker chips (#2240) - cause + consequence above the banner, so
    the panel states what is wrong before it states what to do about it. */

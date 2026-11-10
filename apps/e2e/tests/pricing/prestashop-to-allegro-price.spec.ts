@@ -212,6 +212,7 @@ test('the Allegro offer carries the gross price a PL shop buyer pays', async ({
   const batchId = await test.step('OpenLinker: publish to Allegro with the default "Use master price"', async () => {
     // Operator's PS -> Allegro category mapping, scripted (same as golden-path S0).
     await api.mappings.upsertCategoryMapping(allegro!.id, created.categoryId, {
+      sourceConnectionId: prestashop!.id,
       allegroCategoryId: env.freshAllegroCategoryId,
       allegroCategoryName: 'E2E pricing category',
     });
