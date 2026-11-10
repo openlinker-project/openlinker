@@ -29,7 +29,7 @@ export class ApiError extends Error {
     this.status = status;
     this.details = details;
     const body = isRecord(details) ? details : {};
-    this.code = typeof body.code === 'string' && body.code.length > 0 ? body.code : undefined;
+    this.code = readCode(body);
     this.params = readParams(body.params);
     this.fields = readFields(body.fields);
     this.providerMessage =
@@ -103,6 +103,20 @@ export class ApiError extends Error {
  */
 export function isUnmappedApiError(error: unknown, isMapped: (apiError: ApiError) => boolean): boolean {
   return !(error instanceof ApiError && isMapped(error));
+}
+
+/** A legacy code sent in `error`: upper snake case, e.g. `ORDER_ALREADY_ON_HOLD`. */
+const LEGACY_ERROR_CODE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+
+/**
+ * The body's code: its own `code`, else a legacy upper-snake code in `error`.
+ * The same rule as the API's `resolveApiErrorCode` (#3860), so a body that
+ * predates the envelope still names its code; an exception class name or a
+ * status title in `error` is not a code.
+ */
+function readCode(body: Record<string, unknown>): string | undefined {
+  if (typeof body.code === 'string' && body.code.length > 0) return body.code;
+  return typeof body.error === 'string' && LEGACY_ERROR_CODE.test(body.error) ? body.error : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

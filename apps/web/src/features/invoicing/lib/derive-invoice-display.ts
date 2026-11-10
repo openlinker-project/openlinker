@@ -93,8 +93,21 @@ export function resolveFailureCopy(invoice: InvoiceRecord): string {
   if (isConnectionSettingFailureCode(code) && invoice.failureReason) {
     return invoice.failureReason;
   }
-  if (code && (FailureCodeValues as readonly string[]).includes(code)) {
-    return copy[code];
+  const known = failureCodeCopy(code);
+  if (known !== null) {
+    return known;
   }
   return copy.unknown;
+}
+
+/**
+ * The fixed operator copy for a known `failureCode`, or `null` for an absent or
+ * unknown one. Shared by the stored record and the issue response (#3863), so a
+ * rejection reads the same in the toast and in the panel.
+ */
+export function failureCodeCopy(code: string | null | undefined): string | null {
+  if (!code || !(FailureCodeValues as readonly string[]).includes(code)) {
+    return null;
+  }
+  return getMessages('invoicing').invoice.failureCode[code as FailureCode];
 }

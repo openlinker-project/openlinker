@@ -62,4 +62,19 @@ describe('ApiError', () => {
       expect(error.providerMessage).toBeUndefined();
     });
   });
+
+  describe('legacy codes (#3863)', () => {
+    it('reads an upper-snake code from error when the body has no code', () => {
+      expect(new ApiError('x', 409, { error: 'ORDER_ALREADY_ON_HOLD' }).code).toBe('ORDER_ALREADY_ON_HOLD');
+    });
+
+    it('does not read an exception class name or a status title as a code', () => {
+      expect(new ApiError('x', 409, { error: 'OrderAlreadyInvoicedException' }).code).toBeUndefined();
+      expect(new ApiError('x', 404, { error: 'Not Found' }).code).toBeUndefined();
+    });
+
+    it('prefers the body code over error', () => {
+      expect(new ApiError('x', 409, { code: 'A_CODE', error: 'OTHER_CODE' }).code).toBe('A_CODE');
+    });
+  });
 });
