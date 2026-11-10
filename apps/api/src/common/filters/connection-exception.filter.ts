@@ -28,6 +28,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { withApiErrorCode } from '@openlinker/shared/errors';
 import {
   ConnectionDisabledException,
   ConnectionInUseException,
@@ -44,23 +45,31 @@ export class ConnectionExceptionFilter implements ExceptionFilter {
   catch(exception: ConnectionException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     if (exception instanceof ConnectionInUseException) {
-      response.status(HttpStatus.CONFLICT).json({
-        statusCode: HttpStatus.CONFLICT,
-        error: exception.name,
-        message: exception.message,
-        reason: exception.reason,
-        referrers: exception.referrers,
-      });
+      response.status(HttpStatus.CONFLICT).json(
+        withApiErrorCode(
+          {
+            statusCode: HttpStatus.CONFLICT,
+            error: exception.name,
+            message: exception.message,
+            reason: exception.reason,
+            referrers: exception.referrers,
+          },
+          HttpStatus.CONFLICT
+        )
+      );
       return;
     }
     const statusCode =
-      exception instanceof ConnectionDisabledException
-        ? HttpStatus.CONFLICT
-        : HttpStatus.NOT_FOUND;
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-    });
+      exception instanceof ConnectionDisabledException ? HttpStatus.CONFLICT : HttpStatus.NOT_FOUND;
+    response.status(statusCode).json(
+      withApiErrorCode(
+        {
+          statusCode,
+          error: exception.name,
+          message: exception.message,
+        },
+        statusCode
+      )
+    );
   }
 }

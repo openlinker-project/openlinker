@@ -41,6 +41,7 @@ describe('RateLimitBusyFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+      code: 'HTTP_503',
       error: name,
       message: expect.stringContaining('was not sent'),
     });
