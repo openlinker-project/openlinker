@@ -37110,3 +37110,28 @@ legend.analytics-settings-dialog__label {
 .bundle-stock { display: grid; gap: 1px; justify-items: end; }
 .bundle-stock small { color: var(--text-muted); font-size: 11px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bundle-comp-panel { padding: var(--space-3) var(--space-4) var(--space-4) calc(var(--space-4) + 36px); background: var(--bg-shell); border-top: 1px solid var(--border-subtle); }
+
+/* ── GuideDrawer and HelpHint, shared (#3935) ───────────────────────────── */
+.guide-drawer__intro { margin: 0 0 var(--space-4); color: var(--text-secondary); }
+.guide-drawer__sections { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.guide-drawer__section { border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); }
+.guide-drawer__head {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%;
+  padding: var(--space-3); border: none; background: none; font: inherit; text-align: left; cursor: pointer;
+  color: var(--text-primary);
+}
+.guide-drawer__head:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.guide-drawer__num { color: var(--accent-primary-soft-strong); font-size: 0.75rem; }
+.guide-drawer__title { flex: 1; font-weight: 600; }
+.guide-drawer__tag { color: var(--text-muted); font-size: 0.75rem; }
+.guide-drawer__chev { color: var(--text-muted); font-size: 0.625rem; }
+.guide-drawer__body { padding: var(--space-3); display: grid; gap: var(--space-3); color: var(--text-secondary); }
+.guide-drawer__body p { margin: 0; }
+.guide-drawer__hint { margin: 0; color: var(--text-muted); font-size: 0.8125rem; }
+.help-hint {
+  display: inline-grid; place-items: center; width: 1.125rem; height: 1.125rem; padding: 0;
+  border: 1px solid var(--border-default); border-radius: 50%; background: none; cursor: pointer;
+  color: var(--text-muted); font: inherit; font-size: 0.6875rem; line-height: 1;
+}
+.help-hint:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.help-hint:focus-visible { outline: none; box-shadow: var(--shadow-focus); }

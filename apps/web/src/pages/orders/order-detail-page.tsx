@@ -105,7 +105,7 @@ import { OrderCancelResultNotice } from '../../features/orders/components/order-
 import { buildOrderCancelTimelineEvents } from '../../features/orders/components/order-cancel-timeline-events';
 import type { CancelOrderResult } from '../../features/orders/api/order-cancel.types';
 import { OrderEditAction } from '../../features/orders/components/order-edit-action';
-import { OrderAddGiftAction, OrderGiftAttention } from '../../features/gifts';
+import { GiftsGuide, OrderAddGiftAction, OrderGiftAttention } from '../../features/gifts';
 import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
 import { OrderSourceChangeCard } from '../../features/orders/components/order-source-change-card';
 import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
@@ -568,6 +568,7 @@ export function OrderDetailPage(): ReactElement {
       title={copy.title}
       actions={
         <>
+        <GiftsGuide variant="detail" />
         <OrderConfirmRefundAction
           internalOrderId={order.internalOrderId}
           currency={snapshot.totals?.currency ?? null}

@@ -22,7 +22,7 @@
     "title": "Dodaj gratis do zamówienia {order}"
   },
   "attention": {
-    "addAnother": "Dodaj inny gratis",
+    "addAnother": "Dodaj ręcznie",
     "decisionSaved": "Decyzja zapisana",
     "openRule": "Otwórz promocję",
     "readFailed": "Nie udało się odczytać, dlaczego brakuje gratisu.",
@@ -69,7 +69,7 @@
       "body": "Zamówienie ma pozycję z gratisem, a sklep je odrzucił. Usuń przyczynę w statusie synchronizacji niżej albo zdejmij gratis z zamówienia i ponów.",
       "title": "Sklep nie przyjął zamówienia z gratisem"
     },
-    "skip": "Wyślij bez gratisu",
+    "skip": "Pomiń gratis",
     "skipFailed": "Nie udało się zapisać decyzji"
   },
   "composer": {
@@ -223,6 +223,50 @@
     "chipValue": "Jest",
     "quick": "Z gratisem",
     "rowIcon": "Zawiera gratis"
+  },
+  "guide": {
+    "button": "Jak działają gratisy i zestawy",
+    "detail": {
+      "intro": "Jak czytać pozycje, które nie kosztują klienta nic albo są częścią zestawu, i co zrobić, gdy gratisu zabrakło.",
+      "s1": {
+        "bundle": "Zestaw jest jedną pozycją za cenę zestawu. Pod nią widać składniki z napisem „w cenie zestawu”. Pakowacz dostaje skład z dnia zamówienia, więc późniejsza zmiana zestawu nie rusza tego zamówienia.",
+        "gift": "Pozycja za 0,00 zł. Kliknij znaczek, żeby zobaczyć, skąd jest gratis, kto za niego płaci i jak pokaże się na dokumencie sprzedaży.",
+        "source": "Promocja w OpenLinkerze (z linkiem do niej), reguła koszyka w sklepie, aplikacja gratisów w sklepie albo dodany ręcznie przez operatora. Każdy finansujesz Ty: klient płaci 0,00 zł, a koszt widać wg ceny zakupu.",
+        "tag": "zestaw i gratis",
+        "title": "Pozycje zamówienia"
+      },
+      "s2": {
+        "manual": "Możesz dać inny gratis zamiast brakującego. Działa, dopóki paczka nie jest zamknięta.",
+        "skip": "Zamówienie idzie dalej bez gratisu. Decyzja się zapisuje i powiadomienie znika. Promocja nie próbuje drugi raz.",
+        "tag": "2 decyzje",
+        "title": "Gdy gratisu zabrakło"
+      },
+      "s3": {
+        "body": "Forma gratisu to decyzja podatkowa. Wygrywa najbardziej szczegółowe ustawienie: sam gratis, potem kanał sprzedaży, potem domyślne w OpenLinkerze. Przy każdym gratisie widać, skąd pochodzi jego forma. Własna cena pokazuje gratis w wybranej kwocie i zdejmuje ją z najdroższej płatnej pozycji, więc suma się nie zmienia.",
+        "tag": "forma",
+        "title": "Gratis na dokumencie"
+      },
+      "title": "Gratisy i zestawy w zamówieniu"
+    },
+    "footer": "Naciśnij ? na tej stronie, aby otworzyć przewodnik, Esc zamyka.",
+    "kicker": "Przewodnik",
+    "list": {
+      "intro": "Tak OpenLinker pokazuje na liście zamówień towar, którego klient nie zapłacił osobno, i to, co z nim zrobić.",
+      "s1": {
+        "bundle": "Jedna pozycja zamówienia składa się z kilku produktów. W podglądzie widzisz je pod zestawem, z napisem „w cenie zestawu”. Gratis w zestawie jest oznaczony osobno.",
+        "gift": "Zamówienie ma pozycję za 0,00 zł. Dodała ją promocja, reguła koszyka w sklepie albo operator. Filtr „Z gratisem” pokazuje tylko takie zamówienia.",
+        "missing": "Promocja miała dodać gratis, ale się nie udało, na przykład z braku towaru. Zamówienie idzie dalej bez gratisu. Otwórz je, żeby pominąć gratis albo dodać go ręcznie.",
+        "tag": "dwie ikony",
+        "title": "Oznaczenia w wierszu"
+      },
+      "s2": {
+        "attention": "Liczby nad tabelą to zamówienia, w których coś wymaga Ciebie: gratis nie dodany, sklep odrzucił gratis, termin minął.",
+        "quick": "Przycisk obok filtrów włącza ten filtr jednym kliknięciem. To samo znajdziesz w Filtry, w sekcji Wyjątki.",
+        "tag": "od ręki",
+        "title": "Filtry"
+      },
+      "title": "Gratisy i zestawy w zamówieniach"
+    }
   },
   "list": {
     "allChannels": "Wszystkie kanały",

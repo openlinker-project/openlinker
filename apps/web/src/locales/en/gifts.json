@@ -22,7 +22,7 @@
     "title": "Add a gift to order {order}"
   },
   "attention": {
-    "addAnother": "Add another gift",
+    "addAnother": "Add by hand",
     "decisionSaved": "Decision saved",
     "openRule": "Open the promotion",
     "readFailed": "The reason a gift is missing could not be read.",
@@ -69,7 +69,7 @@
       "body": "The order carries a gift line and the shop refused the order. Fix the cause in the sync status below, or take the gift off the order and retry.",
       "title": "The shop did not accept the order with the gift"
     },
-    "skip": "Send without the gift",
+    "skip": "Skip the gift",
     "skipFailed": "The decision could not be saved"
   },
   "composer": {
@@ -223,6 +223,50 @@
     "chipValue": "Included",
     "quick": "With a gift",
     "rowIcon": "Includes a gift"
+  },
+  "guide": {
+    "button": "How gifts and bundles work",
+    "detail": {
+      "intro": "How to read lines that cost the customer nothing or belong to a bundle, and what to do when a gift is missing.",
+      "s1": {
+        "bundle": "A bundle is one line at the bundle price. Below it you see its components marked \"in the bundle price\". The packer gets the composition from the day of the order, so later changes to the bundle do not touch this order.",
+        "gift": "A 0.00 line. Click the tag to see where the gift came from, who pays for it and how it shows on the sales document.",
+        "source": "A promotion in OpenLinker (with a link), a shop cart rule, a gift app in the shop or added by hand by an operator. You fund each one: the customer pays 0.00 and the cost shows at purchase price.",
+        "tag": "bundle and gift",
+        "title": "Order lines"
+      },
+      "s2": {
+        "manual": "You can give another gift instead of the missing one. It works until the parcel is closed.",
+        "skip": "The order goes on without the gift. The decision is saved and the notice goes away. The promotion does not try again.",
+        "tag": "2 decisions",
+        "title": "When a gift is missing"
+      },
+      "s3": {
+        "body": "The gift form is a tax decision. The most specific setting wins: the gift itself, then the sales channel, then the OpenLinker default. Every gift shows where its form came from. Own price shows the gift at a price you choose and takes that amount off the most expensive paid line, so the total does not change.",
+        "tag": "form",
+        "title": "Gift on the document"
+      },
+      "title": "Gifts and bundles in an order"
+    },
+    "footer": "Press ? on this page to open the guide, Esc closes.",
+    "kicker": "Guide",
+    "list": {
+      "intro": "How OpenLinker shows goods the customer did not pay for separately on the orders list, and what to do about them.",
+      "s1": {
+        "bundle": "One order line is made of several products. The peek shows them under the bundle, marked \"in the bundle price\". A gift inside a bundle is marked separately.",
+        "gift": "The order has a 0.00 line. A promotion, a shop cart rule or an operator added it. The \"With a gift\" filter shows only these orders.",
+        "missing": "A promotion was meant to add a gift but could not, for example because it is out of stock. The order goes on without it. Open it to skip the gift or add one by hand.",
+        "tag": "two icons",
+        "title": "Row marks"
+      },
+      "s2": {
+        "attention": "The numbers above the table are orders where something needs you: gift not added, shop rejected the gift, deadline passed.",
+        "quick": "The button beside the filters turns this filter on with one click. The same one is under Filters, in Exceptions.",
+        "tag": "one click",
+        "title": "Filters"
+      },
+      "title": "Gifts and bundles in orders"
+    }
   },
   "list": {
     "allChannels": "All channels",

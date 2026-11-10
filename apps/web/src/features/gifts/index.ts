@@ -5,6 +5,7 @@
  * gift" dialog on an order, and the notices that say why an order has no gift it
  * should have.
  */
+export { GiftsGuide } from './components/gifts-guide';
 export { GiftPromotionsList } from './components/gift-promotions-list';
 export { GiftPromotionsKpis } from './components/gift-promotions-kpis';
 export { GiftRuleComposer } from './components/gift-rule-composer';

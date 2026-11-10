@@ -117,6 +117,7 @@ import type {
 } from '../../features/orders/api/orders.types';
 import { ORDER_LIST_COLUMN_IDS } from '../../features/orders/api/orders.types';
 import { useOrderListFilters } from '../../features/orders/hooks/use-order-list-filters';
+import { GiftsGuide } from '../../features/gifts';
 import { OrderListFilterBar } from '../../features/orders/components/order-list-filter-bar';
 import { OrderStatusTabs } from '../../features/orders/components/order-status-tabs';
 import { OrderAttentionSummary } from '../../features/orders/components/order-attention-summary';
@@ -1297,6 +1298,7 @@ export function OrdersListPage(): ReactElement {
       title={copy.title}
       actions={
         <div className="button-group">
+          <GiftsGuide variant="list" />
           {exportAccess.canWrite || exportAccess.demoReadOnly ? (
             <ReadOnlyLock active={exportAccess.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
