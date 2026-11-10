@@ -23,6 +23,7 @@ import {
   type BatchRunRefusalCode,
 } from '../api/sales-document-batch.types';
 import { isNotSentToIssue, joinSentences, type BatchCopy } from './describe-batch-run';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export const BatchQueueFilterValues = ['all', 'invoice', 'fiscal-receipt', 'blocked'] as const;
 export type BatchQueueFilter = (typeof BatchQueueFilterValues)[number];
@@ -105,5 +106,5 @@ export function describeRunNowError(error: unknown, copy: BatchCopy): string {
       return refusalCopy(copy, code as BatchRunRefusalCode);
     }
   }
-  return error instanceof Error && error.message.length > 0 ? error.message : copy.queue.runFailed;
+  return error instanceof Error ? describeApiError(error, 'sales-documents') : copy.queue.runFailed;
 }

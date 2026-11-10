@@ -84,6 +84,8 @@
     "CONNECTION_NOT_ARCHIVED": "Only an archived connection can be restored.",
     "CONNECTION_NOT_DISABLED": "Disable the connection before archiving it.",
     "CONNECTION_NOT_FOUND": "This connection no longer exists.",
+    "STOCK_MOVEMENT_NOT_FOUND": "This stock movement no longer exists.",
+    "SALES_DOCUMENT_BATCH_RUN_NOT_FOUND": "This batch run no longer exists.",
     "CONNECTION_NOT_OMS": "This connection is not the OpenLinker order management, so it has no sourcing rules.",
     "CONNECTION_NOT_SUBIEKT_INVOICING": "This connection does not issue invoices from an accounting system.",
     "CONNECTION_TEST_UNSUPPORTED": "This integration does not offer a connection test.",

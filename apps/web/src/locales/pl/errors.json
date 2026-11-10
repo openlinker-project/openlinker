@@ -84,6 +84,8 @@
     "CONNECTION_NOT_ARCHIVED": "Przywrócić można tylko zarchiwizowane połączenie.",
     "CONNECTION_NOT_DISABLED": "Przed archiwizacją wyłącz połączenie.",
     "CONNECTION_NOT_FOUND": "To połączenie już nie istnieje.",
+    "STOCK_MOVEMENT_NOT_FOUND": "Ten ruch magazynowy już nie istnieje.",
+    "SALES_DOCUMENT_BATCH_RUN_NOT_FOUND": "Ten przebieg batcha już nie istnieje.",
     "CONNECTION_NOT_OMS": "To połączenie nie jest systemem zarządzania zamówieniami OpenLinker, więc nie ma reguł wyboru magazynu.",
     "CONNECTION_NOT_SUBIEKT_INVOICING": "To połączenie nie wystawia faktur z systemu księgowego.",
     "CONNECTION_TEST_UNSUPPORTED": "Ta integracja nie oferuje testu połączenia.",

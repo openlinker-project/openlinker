@@ -8,6 +8,7 @@ import {
   describeRunNowError,
   filterBatchQueueRows,
 } from './batch-queue-rows';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const entry = (orderId: string, documentKind = 'invoice'): BatchQueueEntry => ({
   orderId,
@@ -86,7 +87,9 @@ describe('describeRunNowError', () => {
     );
   });
 
-  it('should fall back to the error message for an unknown failure', () => {
-    expect(describeRunNowError(new Error('Network down'), COPY)).toBe('Network down');
+  it('should fall back to the generic error copy for an unknown failure', () => {
+    expect(describeRunNowError(new Error('Network down'), COPY)).toBe(
+      describeApiError(new Error('Network down'), 'sales-documents')
+    );
   });
 });

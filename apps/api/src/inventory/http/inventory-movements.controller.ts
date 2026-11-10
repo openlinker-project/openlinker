@@ -13,7 +13,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Query,
@@ -46,6 +45,7 @@ import {
   ChannelQuantityPushesResponseDto,
   toChannelQuantityPushResponseDto,
 } from './dto/channel-quantity-push-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 function toFilters(query: MovementFiltersQueryDto): InventoryMovementFilters {
   return {
@@ -216,7 +216,12 @@ export class InventoryMovementsController {
   ): Promise<ChannelQuantityPushesResponseDto> {
     const pushes = await this.movements.listChannelPushes(movementId);
     if (pushes === null) {
-      throw new NotFoundException(`Stock movement ${movementId} not found`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'STOCK_MOVEMENT_NOT_FOUND',
+        `Stock movement ${movementId} not found`,
+        { movementId }
+      );
     }
     return { items: pushes.map(toChannelQuantityPushResponseDto) };
   }

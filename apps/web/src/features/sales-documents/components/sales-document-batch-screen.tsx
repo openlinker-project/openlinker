@@ -47,6 +47,7 @@ import {
 import { BatchQueueTab } from './batch-queue-tab';
 import { BatchRunHistoryTab } from './batch-run-history-tab';
 import { BatchScheduleForm } from './batch-schedule-form';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /** How long the screen waits for a requested run to appear before giving the button back. */
 const AWAIT_RUN_TIMEOUT_MS = 2 * 60 * 1000;
@@ -189,7 +190,7 @@ export function SalesDocumentBatchScreen({
           {queue.error ? (
             <ErrorState
               title={copy.queueErrorTitle}
-              message={queue.error.message}
+              message={describeApiError(queue.error, 'sales-documents')}
               action={<Button onClick={() => void queue.refetch()}>{retry}</Button>}
             />
           ) : queue.isLoading ? (
@@ -216,7 +217,7 @@ export function SalesDocumentBatchScreen({
           {runs.error ? (
             <ErrorState
               title={copy.historyErrorTitle}
-              message={runs.error.message}
+              message={describeApiError(runs.error, 'sales-documents')}
               action={<Button onClick={() => void runs.refetch()}>{retry}</Button>}
             />
           ) : runs.isLoading ? (

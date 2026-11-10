@@ -14,6 +14,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import type { CursorOverviewItem } from '../api/cursors.types';
 import { useRewindCursorMutation } from '../hooks/use-rewind-cursor-mutation';
 import type { SyncProgressCopy } from '../lib/sync-progress-copy';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface RewindPanelProps {
   connectionId: string;
@@ -49,7 +50,7 @@ export function RewindPanel({
           setConfirming(false);
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: R.failed(error.message) });
+          showToast({ tone: 'error', description: R.failed(describeApiError(error, 'cursors')) });
         },
       }
     );

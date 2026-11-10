@@ -28,6 +28,10 @@ export const ApiErrorCodeValues = [
   // ── Connections (#3864) ──
   /** No connection has this id. params: `connectionId`. */
   'CONNECTION_NOT_FOUND',
+  /** No stock movement has this id. params: `movementId`. */
+  'STOCK_MOVEMENT_NOT_FOUND',
+  /** The connection has no batch run with this id. params: `runId`. */
+  'SALES_DOCUMENT_BATCH_RUN_NOT_FOUND',
   /**
    * A `config` value is refused. params: `field` (dotted path), `rule` (what the
    * value must be: `object`, `boolean`, `string`, `email`, `one-of`, `min`,

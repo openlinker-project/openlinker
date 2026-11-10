@@ -330,7 +330,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
           body={
             shipping.error === null ? undefined : (
               <Alert tone="error" title={shippingCopy.stopFailedTitle}>
-                {shipping.error.message}
+                {describeApiError(shipping.error)}
               </Alert>
             )
           }

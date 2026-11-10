@@ -34,6 +34,7 @@ import {
   type BatchScheduleFormSubmission,
   type BatchScheduleFormValues,
 } from './batch-schedule.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface BatchScheduleFormProps {
   connectionId: string;
@@ -81,7 +82,7 @@ export function BatchScheduleForm({
       });
     } catch (error) {
       form.setError('root', {
-        message: error instanceof Error ? error.message : copy.saveFailed,
+        message: error instanceof Error ? describeApiError(error, 'sales-documents') : copy.saveFailed,
       });
     }
   });
