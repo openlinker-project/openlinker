@@ -234,7 +234,7 @@ export class OrderGiftService implements IOrderGiftService {
         items,
         record.lineExpansion?.definitions ?? null
       ),
-      customerId: record.customerId,
+      customerId: input.customerId !== undefined ? input.customerId : record.customerId,
       readStock: this.stockReader(),
       ...(draft !== undefined && { draft }),
     });

@@ -17,7 +17,7 @@ export class PromotionNotFoundError extends Error {
 /** A promotion definition that does not narrow (condition, benefit or limits). */
 export class PromotionInvalidError extends Error {
   constructor(
-    public readonly part: 'condition' | 'benefit' | 'limits' | 'window' | 'name',
+    public readonly part: 'condition' | 'benefit' | 'limits' | 'window' | 'name' | 'combinesWith',
     public readonly index: number | null,
     detail: string,
   ) {

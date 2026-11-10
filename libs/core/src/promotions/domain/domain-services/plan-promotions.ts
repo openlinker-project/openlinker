@@ -6,12 +6,14 @@
  * dry run both call, so a preview cannot disagree with what ingestion does.
  *
  * Order of checks per matched promotion, each a named outcome:
- *   superseded by an earlier non-combinable promotion -> paused for the unit cap ->
+ *   superseded by an earlier applied promotion that does not combine -> paused for the unit cap ->
  *   [benefit: quantity / threshold / skip-if-present] -> unit cap -> customer limit ->
  *   [benefit: supply].
- * A promotion that stops here applies nothing, and a non-combinable promotion stops
- * the ones below it ONLY when it actually applied: one that could not give its
- * benefit must not also deny the substitute below it.
+ * A promotion that stops here applies nothing. Stacking needs MUTUAL consent: P is
+ * superseded when some earlier promotion Q that actually APPLIED does not allow P,
+ * or P does not allow Q (see `PromotionCombination`). Only promotions that applied
+ * count: one that could not give its benefit must not also deny the substitute
+ * below it.
  *
  * Promotions that already gave on an earlier ingestion are passed as
  * `alreadyAppliedPromotionIds` and re-decided for nothing: what was given stays as
@@ -20,6 +22,7 @@
  * @module libs/core/src/promotions/domain/domain-services
  */
 import type { Promotion } from '../entities/promotion.entity';
+import { combinationAllows } from '../types/promotion-combination.types';
 import type {
   PromotionContext,
   PromotionOutcome,
@@ -75,15 +78,24 @@ function refuse(
   return outcome(promotion, { applied: false, reason, ...extra });
 }
 
+/** Mutual consent: each side must allow the other. */
+function stacks(earlier: Promotion, later: Promotion): boolean {
+  return (
+    combinationAllows(earlier.combinesWith, later.id) &&
+    combinationAllows(later.combinesWith, earlier.id)
+  );
+}
+
 export function planPromotions(input: PlanPromotionsInput): PromotionOutcome[] {
   const evaluationById = new Map(input.evaluations.map((e) => [e.promotionId, e] as const));
   const outcomes: PromotionOutcome[] = [];
-  let combineStopper: Promotion | null = null;
+  /** Earlier promotions that actually applied, in list order. */
+  const applied: Promotion[] = [];
 
   for (const promotion of input.promotions) {
     if (input.alreadyAppliedPromotionIds.has(promotion.id)) {
       outcomes.push(outcome(promotion, { applied: true, alreadyApplied: true }));
-      if (!promotion.combinable && combineStopper === null) combineStopper = promotion;
+      applied.push(promotion);
       continue;
     }
 
@@ -97,10 +109,11 @@ export function planPromotions(input: PlanPromotionsInput): PromotionOutcome[] {
       continue;
     }
 
-    if (combineStopper !== null) {
+    const blocker = applied.find((earlier) => !stacks(earlier, promotion));
+    if (blocker !== undefined) {
       outcomes.push(
         refuse(promotion, 'superseded-by-earlier-rule', {
-          supersededByPromotionId: combineStopper.id,
+          supersededByPromotionId: blocker.id,
         }),
       );
       continue;
@@ -116,7 +129,7 @@ export function planPromotions(input: PlanPromotionsInput): PromotionOutcome[] {
 
     const result = planOne(promotion, context, input);
     outcomes.push(result);
-    if (result.applied && !promotion.combinable) combineStopper = promotion;
+    if (result.applied) applied.push(promotion);
   }
   return outcomes;
 }

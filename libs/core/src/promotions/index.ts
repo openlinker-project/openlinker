@@ -14,6 +14,7 @@ export { Promotion } from './domain/entities/promotion.entity';
 export * from './domain/types/promotion-benefit.types';
 export * from './domain/types/promotion-condition.types';
 export * from './domain/types/promotion-limits.types';
+export * from './domain/types/promotion-combination.types';
 export * from './domain/types/promotion-facts.types';
 export * from './domain/types/promotion-application.types';
 export * from './domain/types/promotion-definition-hash.types';
@@ -48,6 +49,7 @@ export type {
   ApplyPromotionsResult,
   IPromotionApplicationService,
   PreviewPromotionsInput,
+  PreviewCustomerLimit,
   PreviewPromotionsResult,
   PromotionLineGrant,
   PromotionStockReader,

@@ -23,8 +23,8 @@ export interface PromotionInput {
   readonly effectiveTo: Date | null;
   readonly conditions: readonly unknown[];
   readonly benefit: unknown;
-  /** Omitted means combinable. */
-  readonly combinable?: boolean;
+  /** Omitted means `{ mode: 'all' }`. Untrusted: narrowed and validated on the way in. */
+  readonly combinesWith?: unknown;
   readonly limits?: { readonly unitCap?: number | null; readonly customerLimit?: number | null };
 }
 

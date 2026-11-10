@@ -32,7 +32,7 @@ function input(overrides: Partial<PromotionInput> = {}): PromotionInput {
 }
 
 function fromPersist(id: string, position: number, p: PromotionPersistInput): Promotion {
-  return new Promotion(id, p.name, p.isActive, position, p.effectiveFrom, p.effectiveTo, p.conditions, p.benefit, p.combinable, p.limits, p.definitionHash, NOW, NOW);
+  return new Promotion(id, p.name, p.isActive, position, p.effectiveFrom, p.effectiveTo, p.conditions, p.benefit, p.combinesWith, p.limits, p.definitionHash, NOW, NOW);
 }
 
 describe('PromotionService', () => {
@@ -76,7 +76,7 @@ describe('PromotionService', () => {
     const view = await service.create(input({ limits: { unitCap: 10 } }));
 
     expect(view.promotion.isActive).toBe(false);
-    expect(view.promotion.combinable).toBe(true);
+    expect(view.promotion.combinesWith).toEqual({ mode: 'all' });
     expect(view.unitsGiven).toBe(4);
     expect(view.effectiveCap).toBe(10);
   });
@@ -119,6 +119,52 @@ describe('PromotionService', () => {
     await service.create(input());
 
     await expect(service.update('p1', input({ name: 'Renamed' }))).resolves.toBeDefined();
+  });
+
+  describe('combinesWith', () => {
+    it('should dedupe the selected ids and keep them sorted', async () => {
+      await service.create(input());
+      await service.create(input({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'PL' }] }));
+
+      const view = await service.create(
+        input({
+          conditions: [{ field: 'orderCountry', op: 'eq', value: 'DE' }],
+          combinesWith: { mode: 'selected', promotionIds: ['p2', 'p1', 'p2'] },
+        })
+      );
+
+      expect(view.promotion.combinesWith).toEqual({ mode: 'selected', promotionIds: ['p1', 'p2'] });
+    });
+
+    it('should refuse an unknown promotion id', async () => {
+      await expect(
+        service.create(input({ combinesWith: { mode: 'selected', promotionIds: ['ghost'] } }))
+      ).rejects.toMatchObject({ part: 'combinesWith' });
+    });
+
+    it('should refuse the promotion combining with itself', async () => {
+      await service.create(input());
+
+      await expect(
+        service.update('p1', input({ combinesWith: { mode: 'selected', promotionIds: ['p1'] } }))
+      ).rejects.toMatchObject({ part: 'combinesWith' });
+    });
+
+    it('should refuse an unknown mode or a selected list that is not strings', async () => {
+      await expect(service.create(input({ combinesWith: { mode: 'some' } }))).rejects.toBeInstanceOf(
+        PromotionInvalidError
+      );
+      await expect(
+        service.create(input({ combinesWith: { mode: 'selected', promotionIds: [1] } }))
+      ).rejects.toBeInstanceOf(PromotionInvalidError);
+    });
+
+    it('should hash a different combination to a different definition', async () => {
+      const all = await service.create(input());
+      const none = await service.create(input({ combinesWith: { mode: 'none' } }));
+
+      expect(none.promotion.definitionHash).not.toBe(all.promotion.definitionHash);
+    });
   });
 
   it('should answer not found for an unknown promotion on get, update, delete and resume', async () => {

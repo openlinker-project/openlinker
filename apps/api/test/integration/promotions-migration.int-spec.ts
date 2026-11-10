@@ -18,6 +18,7 @@ import { DataSource, type QueryRunner } from 'typeorm';
 
 import { ensureMigrationPrerequisites } from '../../src/database/ensure-migration-prerequisites';
 import { CreatePromotions1939500000000 } from '../../src/migrations/1939500000000-create-promotions';
+import { PromotionCombinesWith1939700000000 } from '../../src/migrations/1939700000000-promotion-combines-with';
 import type { IntegrationTestHarness} from './setup';
 import { getTestHarness, teardownTestHarness } from './setup';
 
@@ -48,6 +49,7 @@ describe('Promotions migration', () => {
   let runner: QueryRunner;
   const DB = 'promotions_migration';
   const migration = new CreatePromotions1939500000000();
+  const combinesWithMigration = new PromotionCombinesWith1939700000000();
 
   const q = <T = Array<Record<string, unknown>>>(sql: string, params: unknown[] = []): Promise<T> =>
     runner.query(sql, params) as Promise<T>;
@@ -79,7 +81,9 @@ describe('Promotions migration', () => {
     await migrated.runMigrations();
     runner = migrated.createQueryRunner();
     await runner.connect();
-    // Back to the pre-move schema, then leave what a gift rule leaves behind.
+    // Back to the pre-move schema (the later `combinesWith` migration first), then
+    // leave what a gift rule leaves behind.
+    await combinesWithMigration.down(runner);
     await migration.down(runner);
     await seed();
   }, 240000);
@@ -250,5 +254,59 @@ describe('Promotions migration', () => {
 
     expect(await count('promotions')).toBe(2);
     expect(await count('promotion_grants')).toBe(2);
+  });
+
+  describe('combinable -> combinesWith', () => {
+    const hashes = async (): Promise<Map<string, string>> =>
+      new Map(
+        (await q<Array<{ id: string; definitionHash: string }>>(`SELECT "id","definitionHash" FROM "promotions"`)).map(
+          (r) => [r.id, r.definitionHash]
+        )
+      );
+
+    it('should map true to all and false to none and recompute the hashes', async () => {
+      const before = await hashes();
+      await combinesWithMigration.up(runner);
+
+      const rows = await q<Array<{ id: string; combinesWith: unknown }>>(
+        `SELECT "id","combinesWith" FROM "promotions"`
+      );
+      expect(Object.fromEntries(rows.map((r) => [r.id, r.combinesWith]))).toEqual({
+        [RULE_B]: { mode: 'all' },
+        [RULE]: { mode: 'none' },
+      });
+      const after = await hashes();
+      expect(after.get(RULE)).not.toBe(before.get(RULE));
+      expect(after.get(RULE_B)).not.toBe(before.get(RULE_B));
+      expect(
+        await q(`SELECT 1 FROM information_schema.columns WHERE table_name='promotions' AND column_name='combinable'`)
+      ).toHaveLength(0);
+    });
+
+    it('should reverse lossily: selected reads as not combinable', async () => {
+      await q(`UPDATE "promotions" SET "combinesWith" = $1::jsonb WHERE "id" = $2`, [
+        JSON.stringify({ mode: 'selected', promotionIds: [RULE] }),
+        RULE_B,
+      ]);
+      await combinesWithMigration.down(runner);
+
+      const rows = await q<Array<{ id: string; combinable: boolean }>>(
+        `SELECT "id","combinable" FROM "promotions"`
+      );
+      expect(Object.fromEntries(rows.map((r) => [r.id, r.combinable]))).toEqual({
+        [RULE_B]: false,
+        [RULE]: false,
+      });
+      expect(
+        await q(`SELECT 1 FROM information_schema.columns WHERE table_name='promotions' AND column_name='combinesWith'`)
+      ).toHaveLength(0);
+    });
+
+    it('should migrate again after the reversal', async () => {
+      await combinesWithMigration.up(runner);
+
+      const rows = await q<Array<{ combinesWith: { mode: string } }>>(`SELECT "combinesWith" FROM "promotions"`);
+      expect(rows.map((r) => r.combinesWith.mode)).toEqual(['none', 'none']);
+    });
   });
 });

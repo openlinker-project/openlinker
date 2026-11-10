@@ -22,6 +22,8 @@ import type {
   PromotionPersistInput,
   PromotionRepositoryPort,
 } from '../../../domain/ports/promotion-repository.port';
+import { readPromotionCombination } from '../../../domain/types/promotion-combination.types';
+import { computePromotionDefinitionHash } from '../../../domain/types/promotion-definition-hash.types';
 import { isPromotionBenefit } from '../../../domain/types/promotion-benefit.types';
 import { isPromotionCondition } from '../../../domain/types/promotion-condition.types';
 import { PromotionOrmEntity } from '../entities/promotion.orm-entity';
@@ -79,7 +81,33 @@ export class PromotionRepository implements PromotionRepositoryPort {
   }
 
   async delete(id: string): Promise<void> {
-    await this.orm.delete({ id });
+    await this.orm.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(PromotionOrmEntity);
+      await repo.delete({ id });
+      const rows = await repo.find();
+      for (const row of rows) {
+        const combination = readPromotionCombination(row.combinesWith);
+        if (combination.mode !== 'selected' || !combination.promotionIds.includes(id)) continue;
+        const promotion = this.toDomain(row);
+        if (promotion === null) continue;
+        const next = {
+          mode: 'selected' as const,
+          promotionIds: combination.promotionIds.filter((other) => other !== id),
+        };
+        await repo.update(
+          { id: row.id },
+          {
+            combinesWith: next,
+            definitionHash: computePromotionDefinitionHash({
+              conditions: promotion.conditions,
+              benefit: promotion.benefit,
+              combinesWith: next,
+              limits: promotion.limits,
+            }),
+          },
+        );
+      }
+    });
   }
 
   async setPositions(orderedIds: readonly string[]): Promise<void> {
@@ -127,7 +155,7 @@ export class PromotionRepository implements PromotionRepositoryPort {
       effectiveTo: input.effectiveTo === null ? null : toDateOnly(input.effectiveTo),
       conditions: [...input.conditions],
       benefit: input.benefit,
-      combinable: input.combinable,
+      combinesWith: input.combinesWith,
       unitCap: input.limits.unitCap,
       customerLimit: input.limits.customerLimit,
       definitionHash: input.definitionHash,
@@ -151,7 +179,7 @@ export class PromotionRepository implements PromotionRepositoryPort {
       entity.effectiveTo === null ? null : new Date(entity.effectiveTo),
       rawConditions.filter(isPromotionCondition),
       entity.benefit,
-      entity.combinable,
+      readPromotionCombination(entity.combinesWith),
       { unitCap: entity.unitCap ?? null, customerLimit: entity.customerLimit ?? null },
       entity.definitionHash,
       entity.createdAt,

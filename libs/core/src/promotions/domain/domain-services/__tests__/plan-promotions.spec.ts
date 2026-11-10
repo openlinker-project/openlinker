@@ -1,5 +1,6 @@
 import { Promotion } from '../../entities/promotion.entity';
 import type { PromotionContext, PromotionOutcome } from '../../types/promotion-application.types';
+import type { PromotionCombination } from '../../types/promotion-combination.types';
 import type { FreeGiftBenefit } from '../../types/promotion-benefit.types';
 import type { PromotionCondition } from '../../types/promotion-condition.types';
 import type { PromotionPlanLine } from '../../types/promotion-facts.types';
@@ -14,7 +15,7 @@ interface PromotionOptions {
   conditions?: PromotionCondition[];
   position?: number;
   createdAt?: Date;
-  combinable?: boolean;
+  combinesWith?: PromotionCombination;
   unitCap?: number | null;
   customerLimit?: number | null;
 }
@@ -41,7 +42,7 @@ function promotion(id: string, benefit: FreeGiftBenefit, options: PromotionOptio
     null,
     options.conditions ?? [],
     benefit,
-    options.combinable ?? true,
+    options.combinesWith ?? { mode: 'all' },
     { unitCap: options.unitCap ?? null, customerLimit: options.customerLimit ?? null },
     `hash-${id}`,
     options.createdAt ?? CREATED,
@@ -128,7 +129,7 @@ describe('planPromotions', () => {
   });
 
   it('should apply only the first non-combinable promotion that applies', () => {
-    const first = promotion('p1', gift(), { combinable: false, position: 1 });
+    const first = promotion('p1', gift(), { combinesWith: { mode: 'none' }, position: 1 });
     const second = promotion('p2', gift({ productId: 'p-b', variantId: 'v-b' }), { position: 2 });
     const outcomes = plan([first, second]);
     expect(outcomes[0].applied).toBe(true);
@@ -140,7 +141,7 @@ describe('planPromotions', () => {
   });
 
   it('should let a lower promotion substitute when a non-combinable one could not give its gift', () => {
-    const first = promotion('p1', gift(), { combinable: false, position: 1 });
+    const first = promotion('p1', gift(), { combinesWith: { mode: 'none' }, position: 1 });
     const second = promotion('p2', gift({ productId: 'p-b', variantId: 'v-b' }), { position: 2 });
     const outcomes = plan([first, second], { p1: { stock: { kind: 'known', available: 0 } } });
     expect(outcomes[0]).toMatchObject({ applied: false, reason: 'gift-out-of-stock' });
@@ -156,11 +157,77 @@ describe('planPromotions', () => {
   });
 
   it('should treat an already-applied non-combinable promotion as still stopping those below', () => {
-    const first = promotion('p1', gift(), { combinable: false, position: 1 });
+    const first = promotion('p1', gift(), { combinesWith: { mode: 'none' }, position: 1 });
     const second = promotion('p2', gift({ productId: 'p-b', variantId: 'v-b' }), { position: 2 });
     const outcomes = plan([first, second], {}, { already: ['p1'] });
     expect(outcomes[0]).toMatchObject({ applied: true, alreadyApplied: true });
     expect(outcomes[1].reason).toBe('superseded-by-earlier-rule');
+  });
+
+  describe('combinesWith', () => {
+    const other = (id: string, position: number, combinesWith?: PromotionCombination): Promotion =>
+      promotion(id, gift({ productId: `p-${id}`, variantId: `v-${id}` }), {
+        position,
+        ...(combinesWith && { combinesWith }),
+      });
+
+    it('should stack two promotions that both combine with all', () => {
+      expect(plan([other('p1', 1), other('p2', 2)]).map((o) => o.applied)).toEqual([true, true]);
+    });
+
+    it('should stack nothing with a promotion that combines with none, whichever comes first', () => {
+      const none: PromotionCombination = { mode: 'none' };
+      const afterNone = plan([other('p1', 1, none), other('p2', 2)]);
+      expect(afterNone[1]).toMatchObject({ applied: false, supersededByPromotionId: 'p1' });
+      const beforeNone = plan([other('p1', 1), other('p2', 2, none)]);
+      expect(beforeNone[1]).toMatchObject({
+        applied: false,
+        reason: 'superseded-by-earlier-rule',
+        supersededByPromotionId: 'p1',
+      });
+    });
+
+    it('should stack two promotions that select each other', () => {
+      const outcomes = plan([
+        other('p1', 1, { mode: 'selected', promotionIds: ['p2'] }),
+        other('p2', 2, { mode: 'selected', promotionIds: ['p1'] }),
+      ]);
+      expect(outcomes.map((o) => o.applied)).toEqual([true, true]);
+    });
+
+    it('should need mutual consent: A allows B but B does not allow A skips B', () => {
+      const outcomes = plan([
+        other('p1', 1, { mode: 'selected', promotionIds: ['p2'] }),
+        other('p2', 2, { mode: 'selected', promotionIds: ['p3'] }),
+      ]);
+      expect(outcomes[1]).toMatchObject({ applied: false, supersededByPromotionId: 'p1' });
+    });
+
+    it('should skip a later promotion that the earlier one does not select', () => {
+      const outcomes = plan([
+        other('p1', 1, { mode: 'selected', promotionIds: ['p3'] }),
+        other('p2', 2),
+      ]);
+      expect(outcomes[1]).toMatchObject({ applied: false, supersededByPromotionId: 'p1' });
+    });
+
+    it('should let list order decide who wins when two promotions do not stack', () => {
+      const none: PromotionCombination = { mode: 'none' };
+      const outcomes = plan([other('p2', 2, none), other('p1', 1, none)]);
+      expect(outcomes.map((o) => [o.promotionId, o.applied])).toEqual([
+        ['p1', true],
+        ['p2', false],
+      ]);
+    });
+
+    it('should not let an earlier promotion that did not apply block a later one', () => {
+      const outcomes = plan(
+        [other('p1', 1, { mode: 'none' }), other('p2', 2)],
+        { p1: { stock: { kind: 'known', available: 0 } } }
+      );
+      expect(outcomes[0].applied).toBe(false);
+      expect(outcomes[1].applied).toBe(true);
+    });
   });
 
   it('should skip the gift when its product is already in the order', () => {

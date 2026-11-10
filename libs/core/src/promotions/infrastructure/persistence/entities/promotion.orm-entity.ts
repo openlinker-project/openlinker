@@ -47,8 +47,8 @@ export class PromotionOrmEntity {
   @Column({ type: 'jsonb' })
   benefit!: unknown;
 
-  @Column({ type: 'boolean', default: true })
-  combinable!: boolean;
+  @Column({ type: 'jsonb', default: () => `'{"mode":"all"}'` })
+  combinesWith!: unknown;
 
   @Column({ type: 'int', nullable: true })
   unitCap!: number | null;

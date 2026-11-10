@@ -44,6 +44,7 @@ import type {
   ApplyPromotionsResult,
   IPromotionApplicationService,
   PreviewPromotionsInput,
+  PreviewCustomerLimit,
   PreviewPromotionsResult,
   PromotionLineGrant,
   PromotionStockReader,
@@ -214,7 +215,20 @@ export class PromotionApplicationService implements IPromotionApplicationService
       }),
       contexts,
     });
-    return { evaluatedAt: now, evaluations: evaluation.evaluations, outcomes };
+    const limited = all.filter((p) => p.limits.customerLimit !== null);
+    const savedLimitedIds = limited.filter((p) => savedIds.has(p.id)).map((p) => p.id);
+    const used =
+      input.customerId === null || savedLimitedIds.length === 0
+        ? new Map<string, number>()
+        : await this.ledger.sumUnitsForCustomer(savedLimitedIds, input.customerId);
+    const customerLimits = new Map<string, PreviewCustomerLimit>();
+    for (const p of limited) {
+      customerLimits.set(p.id, {
+        limit: p.limits.customerLimit as number,
+        usedByCustomer: input.customerId === null ? null : (used.get(p.id) ?? 0),
+      });
+    }
+    return { evaluatedAt: now, customerLimits, evaluations: evaluation.evaluations, outcomes };
   }
 
   async recordFailure(

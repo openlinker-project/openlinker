@@ -146,20 +146,20 @@ describe('promotion definition hash', () => {
   const limits = { unitCap: null, customerLimit: null };
 
   it('should not depend on the authoring order of conditions or of object keys', () => {
-    const one = computePromotionDefinitionHash({ conditions: [a, b], benefit, combinable: true, limits });
+    const one = computePromotionDefinitionHash({ conditions: [a, b], benefit, combinesWith: { mode: 'all' }, limits });
     const two = computePromotionDefinitionHash({
       conditions: [b, a],
       benefit: { skipIfPresent: true, perUnit: null, quantity: 1, variantId: 'v', productId: 'p', kind: 'free-gift' },
-      combinable: true,
+      combinesWith: { mode: 'all' },
       limits,
     });
     expect(one).toBe(two);
   });
 
   it('should change when the benefit, combinability or a limit changes', () => {
-    const base = computePromotionDefinitionHash({ conditions: [a], benefit, combinable: true, limits });
-    expect(computePromotionDefinitionHash({ conditions: [a], benefit: { ...benefit, quantity: 2 }, combinable: true, limits })).not.toBe(base);
-    expect(computePromotionDefinitionHash({ conditions: [a], benefit, combinable: false, limits })).not.toBe(base);
-    expect(computePromotionDefinitionHash({ conditions: [a], benefit, combinable: true, limits: { unitCap: 5, customerLimit: null } })).not.toBe(base);
+    const base = computePromotionDefinitionHash({ conditions: [a], benefit, combinesWith: { mode: 'all' }, limits });
+    expect(computePromotionDefinitionHash({ conditions: [a], benefit: { ...benefit, quantity: 2 }, combinesWith: { mode: 'all' }, limits })).not.toBe(base);
+    expect(computePromotionDefinitionHash({ conditions: [a], benefit, combinesWith: { mode: 'none' }, limits })).not.toBe(base);
+    expect(computePromotionDefinitionHash({ conditions: [a], benefit, combinesWith: { mode: 'all' }, limits: { unitCap: 5, customerLimit: null } })).not.toBe(base);
   });
 });

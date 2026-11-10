@@ -1,3 +1,4 @@
+import type { PromotionCombination } from '../../../domain/types/promotion-combination.types';
 import { Promotion } from '../../../domain/entities/promotion.entity';
 import type { PromotionGrant } from '../../../domain/types/promotion-application.types';
 import type { FreeGiftBenefit } from '../../../domain/types/promotion-benefit.types';
@@ -17,7 +18,7 @@ const GIFT: FreeGiftBenefit = {
   documentForm: 'technical-cent',
 };
 
-function promotion(overrides: { unitCap?: number | null; combinable?: boolean } = {}): Promotion {
+function promotion(overrides: { unitCap?: number | null; combinesWith?: PromotionCombination } = {}): Promotion {
   return new Promotion(
     'p1',
     'Free mug',
@@ -27,7 +28,7 @@ function promotion(overrides: { unitCap?: number | null; combinable?: boolean } 
     null,
     [{ field: 'containsProduct', op: 'eq', value: 'p-book' }],
     GIFT,
-    overrides.combinable ?? true,
+    overrides.combinesWith ?? { mode: 'all' },
     { unitCap: overrides.unitCap ?? null, customerLimit: null },
     'hash',
     CREATED,
@@ -113,7 +114,7 @@ describe('PromotionApplicationService', () => {
     const customGift = { ...GIFT, documentForm: 'custom-price' as const, documentUnitPrice: '4.50' };
     promotions.findAllOrdered.mockResolvedValue([
       new Promotion('p1', 'Free mug', true, 1, CREATED, null,
-        [{ field: 'containsProduct', op: 'eq', value: 'p-book' }], customGift, true,
+        [{ field: 'containsProduct', op: 'eq', value: 'p-book' }], customGift, { mode: 'all' },
         { unitCap: null, customerLimit: null }, 'hash', CREATED, CREATED),
     ]);
     const result = await service.apply(baseInput());
@@ -204,7 +205,7 @@ describe('PromotionApplicationService', () => {
     const draft = promotion();
     promotions.findAllOrdered.mockResolvedValue([]);
 
-    const preview = await service.preview({ ...baseInput(), draft: new Promotion('draft', draft.name, true, 99, CREATED, null, draft.conditions, GIFT, true, draft.limits, 'h', CREATED, CREATED) });
+    const preview = await service.preview({ ...baseInput(), draft: new Promotion('draft', draft.name, true, 99, CREATED, null, draft.conditions, GIFT, { mode: 'all' }, draft.limits, 'h', CREATED, CREATED) });
 
     expect(preview.outcomes[0]).toMatchObject({ promotionId: 'draft', applied: true });
     expect(ledger.recordGrant).not.toHaveBeenCalled();

@@ -2,7 +2,7 @@
  * Promotion Definition Hash (#3935)
  *
  * The canonicalisation + SHA-256 behind the save-time duplicate guard. Identity
- * is conditions + benefit + combinability + limits; the name, window and list
+ * is conditions + benefit + combination + limits; the name, window and list
  * position are not part of it (two identical promotions with non-overlapping
  * windows are the legitimate versioning case). Conditions are sorted (AND-ed, so
  * authoring order carries no meaning); every object's keys are sorted
@@ -13,13 +13,14 @@
 import { createHash } from 'node:crypto';
 
 import type { PromotionBenefit } from './promotion-benefit.types';
+import { readPromotionCombination, type PromotionCombination } from './promotion-combination.types';
 import type { PromotionCondition } from './promotion-condition.types';
 import type { PromotionLimits } from './promotion-limits.types';
 
 export interface PromotionDefinition {
   readonly conditions: readonly PromotionCondition[];
   readonly benefit: PromotionBenefit;
-  readonly combinable: boolean;
+  readonly combinesWith: PromotionCombination;
   readonly limits: PromotionLimits;
 }
 
@@ -39,7 +40,7 @@ export function canonicalizePromotionDefinition(definition: PromotionDefinition)
   return JSON.stringify({
     conditions,
     benefit: withSortedKeys(definition.benefit),
-    combinable: definition.combinable,
+    combinesWith: readPromotionCombination(definition.combinesWith),
     limits: withSortedKeys(definition.limits),
   });
 }

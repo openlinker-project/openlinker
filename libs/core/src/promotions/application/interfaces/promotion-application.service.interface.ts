@@ -65,8 +65,17 @@ export interface PreviewPromotionsInput {
   readonly draft?: Promotion;
 }
 
+/** The customer-limit position of one promotion for the previewed customer. */
+export interface PreviewCustomerLimit {
+  readonly limit: number;
+  /** Units the customer already received from it; `null` = no customer to count for. */
+  readonly usedByCustomer: number | null;
+}
+
 export interface PreviewPromotionsResult {
   readonly evaluatedAt: Date;
+  /** Only promotions that carry a customer limit are present. */
+  readonly customerLimits: ReadonlyMap<string, PreviewCustomerLimit>;
   readonly evaluations: readonly PromotionEvaluation[];
   readonly outcomes: readonly PromotionOutcome[];
 }

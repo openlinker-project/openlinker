@@ -32,6 +32,12 @@ import type {
 import type { PromotionState } from '../../domain/types/promotion-application.types';
 import { isPromotionBenefit } from '../../domain/types/promotion-benefit.types';
 import { isPromotionCondition, type PromotionCondition } from '../../domain/types/promotion-condition.types';
+import {
+  COMBINES_WITH_ALL,
+  PromotionCombinationModeValues,
+  readPromotionCombination,
+  type PromotionCombination,
+} from '../../domain/types/promotion-combination.types';
 import { computePromotionDefinitionHash } from '../../domain/types/promotion-definition-hash.types';
 import type { PromotionLimits } from '../../domain/types/promotion-limits.types';
 import {
@@ -81,6 +87,7 @@ export class PromotionService implements IPromotionService {
 
   async create(input: PromotionInput): Promise<PromotionView> {
     const persist = this.validateAndHash(input);
+    await this.assertCombinationTargetsExist(persist.combinesWith, null);
     await this.assertNoConflict(persist, null);
     const created = await this.promotions.create(persist);
     return this.get(created.id);
@@ -90,6 +97,7 @@ export class PromotionService implements IPromotionService {
     const existing = await this.promotions.findById(id);
     if (existing === null) throw new PromotionNotFoundError(id);
     const persist = this.validateAndHash(input);
+    await this.assertCombinationTargetsExist(persist.combinesWith, id);
     await this.assertNoConflict(persist, id);
     await this.promotions.update(id, persist);
     return this.get(id);
@@ -140,7 +148,7 @@ export class PromotionService implements IPromotionService {
       persist.effectiveTo,
       persist.conditions,
       persist.benefit,
-      persist.combinable,
+      persist.combinesWith,
       persist.limits,
       persist.definitionHash,
       now,
@@ -186,7 +194,7 @@ export class PromotionService implements IPromotionService {
       throw new PromotionInvalidError('window', null, 'the end precedes the start');
     }
     const limits: PromotionLimits = { unitCap, customerLimit };
-    const combinable = input.combinable ?? true;
+    const combinesWith = this.narrowCombination(input.combinesWith);
     return {
       name,
       // Fails closed: a promotion is switched on deliberately.
@@ -195,15 +203,46 @@ export class PromotionService implements IPromotionService {
       effectiveTo: input.effectiveTo,
       conditions,
       benefit: input.benefit,
-      combinable,
+      combinesWith,
       limits,
       definitionHash: computePromotionDefinitionHash({
         conditions,
         benefit: input.benefit,
-        combinable,
+        combinesWith,
         limits,
       }),
     };
+  }
+
+  /** Shape only: the ids are checked against the saved promotions by `assertCombinationTargetsExist`. */
+  private narrowCombination(raw: unknown): PromotionCombination {
+    if (raw === undefined || raw === null) return COMBINES_WITH_ALL;
+    const mode = (raw as { mode?: unknown }).mode;
+    if (typeof raw !== 'object' || !PromotionCombinationModeValues.some((m) => m === mode)) {
+      throw new PromotionInvalidError('combinesWith', null, 'mode must be all, none or selected');
+    }
+    if (mode === 'selected') {
+      const ids = (raw as { promotionIds?: unknown }).promotionIds;
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+        throw new PromotionInvalidError('combinesWith', null, 'selected needs a list of promotion ids');
+      }
+    }
+    return readPromotionCombination(raw);
+  }
+
+  private async assertCombinationTargetsExist(
+    combination: PromotionCombination,
+    selfId: string | null,
+  ): Promise<void> {
+    if (combination.mode !== 'selected') return;
+    if (selfId !== null && combination.promotionIds.includes(selfId)) {
+      throw new PromotionInvalidError('combinesWith', null, 'a promotion cannot combine with itself');
+    }
+    const known = new Set((await this.promotions.findAllOrdered()).map((p) => p.id));
+    const unknown = combination.promotionIds.filter((id) => !known.has(id));
+    if (unknown.length > 0) {
+      throw new PromotionInvalidError('combinesWith', null, `unknown promotion ids: ${unknown.join(', ')}`);
+    }
   }
 
   private async assertNoConflict(

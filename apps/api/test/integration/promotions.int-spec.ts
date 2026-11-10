@@ -114,7 +114,7 @@ describe('Promotions at ingestion (integration, #3935)', () => {
       name,
       conditions: [{ field: 'containsProduct', op: 'eq', value: 'v_book' }],
       benefit: benefitOf(overrides),
-      combinable: !(overrides.doNotCombine ?? false),
+      combinesWith: overrides.doNotCombine ? { mode: 'none' } : { mode: 'all' },
       limits: { unitCap: overrides.unitCap ?? null, customerLimit: overrides.customerLimit ?? null },
       isActive: true,
       effectiveFrom: new Date(Date.now() - 24 * 3600 * 1000),
@@ -284,7 +284,7 @@ describe('Promotions at ingestion (integration, #3935)', () => {
     expect(promotionId).toBeDefined();
   });
 
-  it('should apply only the first non-combinable promotion in list order', async () => {
+  it('should apply only the first promotion when it combines with none in list order', async () => {
     const first = await createPromotion({ doNotCombine: true });
     await seedVariant(harness.getDataSource(), 'v_pen', 5);
     const second = await createPromotion({ productId: 'p_v_pen', variantId: 'v_pen' }, 'Free pen');
@@ -299,6 +299,28 @@ describe('Promotions at ingestion (integration, #3935)', () => {
       [second, false],
     ]);
     expect(result.outcomes[1].reason).toBe('superseded-by-earlier-rule');
+  });
+
+  it('should remove a deleted promotion from the selected lists of the others in the same call', async () => {
+    const first = await createPromotion({}, 'First');
+    await seedVariant(harness.getDataSource(), 'v_pen', 5);
+    const second = await createPromotion({ productId: 'p_v_pen', variantId: 'v_pen' }, 'Second');
+    const view = await promotions.update(second, {
+      name: 'Second',
+      conditions: [{ field: 'containsProduct', op: 'eq', value: 'v_book' }],
+      benefit: benefitOf({ productId: 'p_v_pen', variantId: 'v_pen' }),
+      combinesWith: { mode: 'selected', promotionIds: [first] },
+      limits: { unitCap: null, customerLimit: null },
+      isActive: true,
+      effectiveFrom: new Date(Date.now() - 24 * 3600 * 1000),
+      effectiveTo: null,
+    });
+    expect(view.promotion.combinesWith).toEqual({ mode: 'selected', promotionIds: [first] });
+
+    await promotions.delete(first);
+
+    const after = await promotions.get(second);
+    expect(after.promotion.combinesWith).toEqual({ mode: 'selected', promotionIds: [] });
   });
 
   it('should not overshoot the unit cap when two orders are ingested at the same instant', async () => {

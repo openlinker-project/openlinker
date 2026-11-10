@@ -35,7 +35,7 @@ function makePromotion(): Promotion {
       skipIfPresent: true,
       documentForm: 'technical-cent',
     },
-    true,
+    { mode: 'all' },
     { unitCap: null, customerLimit: null },
     'hash',
     CREATED,

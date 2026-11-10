@@ -67,10 +67,16 @@ export interface GiftPreviewInput {
   readonly record: OrderRecord;
   /** A promotion not yet saved, evaluated beside the saved ones. */
   readonly draft?: Promotion;
+  /**
+   * Count the customer limit for this customer instead of the order's own; `null`
+   * counts for nobody ("customer-unknown"). Omitted keeps the order's customer.
+   */
+  readonly customerId?: string | null;
 }
 
 export interface GiftPreviewResult {
   readonly evaluatedAt: Date;
+  readonly customerLimits: ReadonlyMap<string, { readonly limit: number; readonly usedByCustomer: number | null }>;
   readonly evaluations: readonly PromotionEvaluation[];
   readonly outcomes: readonly PromotionOutcome[];
 }
