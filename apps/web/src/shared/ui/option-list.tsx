@@ -1,8 +1,9 @@
 /**
  * OptionList
  *
- * A pick-one list for a popover (#4029): rows come in one after another, the
- * selection is a soft accent box that slides from row to row, and the row
+ * A pick-one list for a popover (#4029): rows come in one after another
+ * (`entrance`, off where the list is already on screen with its surroundings,
+ * like the account menu), the selection is a soft accent box that slides from row to row, and the row
  * under the pointer or the keyboard is highlighted. A `listbox` with
  * `aria-activedescendant`: focus stays on the list while Arrow keys move the
  * highlight (wrapping), Home/End jump, Enter/Space choose, and Escape or Tab
@@ -53,6 +54,12 @@ export interface OptionListProps<T extends string> {
   'aria-label'?: string;
   /** Focus the list when it mounts (it lives in a freshly opened popover). */
   autoFocus?: boolean;
+  /**
+   * Rows come in one after another when the list mounts. Off where the list
+   * opens together with other content that does not animate (the account
+   * menu), or that section alone appears late.
+   */
+  entrance?: boolean;
   id?: string;
   className?: string;
 }
@@ -64,6 +71,7 @@ function OptionListInner<T extends string>(
     onSelect,
     onDismiss,
     autoFocus = true,
+    entrance = true,
     id,
     className,
     ...aria
@@ -126,7 +134,7 @@ function OptionListInner<T extends string>(
       tabIndex={-1}
       aria-activedescendant={active ? `${listId}-${active.value}` : undefined}
       onKeyDown={onKeyDown}
-      initial="hidden"
+      initial={entrance ? 'hidden' : false}
       animate="show"
       variants={ENTRANCE_GROUP}
       {...aria}
