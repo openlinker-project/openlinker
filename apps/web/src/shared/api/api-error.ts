@@ -9,16 +9,33 @@
  * @module shared/api
  */
 import { getMessages } from '../i18n';
+import type { ApiErrorField, ApiErrorParams } from './api-error.types';
 
 export class ApiError extends Error {
   readonly status: number;
   readonly details: unknown;
+  /** The body's stable machine code (#3860), or `undefined` when it sent none. */
+  readonly code: string | undefined;
+  /** The values the code's copy needs. Empty when the body sent none. */
+  readonly params: ApiErrorParams;
+  /** The invalid request-body fields (#3861). Empty when the body sent none. */
+  readonly fields: readonly ApiErrorField[];
+  /** An external system's own words (`PROVIDER_REJECTED`), shown verbatim. */
+  readonly providerMessage: string | undefined;
 
   constructor(message: string, status: number, details: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.details = details;
+    const body = isRecord(details) ? details : {};
+    this.code = typeof body.code === 'string' && body.code.length > 0 ? body.code : undefined;
+    this.params = readParams(body.params);
+    this.fields = readFields(body.fields);
+    this.providerMessage =
+      typeof body.providerMessage === 'string' && body.providerMessage.length > 0
+        ? body.providerMessage
+        : undefined;
   }
 
   isUnauthorized(): boolean {
@@ -86,4 +103,37 @@ export class ApiError extends Error {
  */
 export function isUnmappedApiError(error: unknown, isMapped: (apiError: ApiError) => boolean): boolean {
   return !(error instanceof ApiError && isMapped(error));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isParamValue(value: unknown): value is string | number | boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+}
+
+/** Keeps only scalar entries: anything else is not a param the copy can use. */
+function readParams(value: unknown): ApiErrorParams {
+  if (!isRecord(value)) return {};
+  const params: Record<string, string | number | boolean> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (isParamValue(entry)) params[key] = entry;
+  }
+  return params;
+}
+
+function readFields(value: unknown): readonly ApiErrorField[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): ApiErrorField[] => {
+    if (!isRecord(entry) || typeof entry.path !== 'string' || typeof entry.code !== 'string') {
+      return [];
+    }
+    const params = readParams(entry.params);
+    return [
+      Object.keys(params).length > 0
+        ? { path: entry.path, code: entry.code, params }
+        : { path: entry.path, code: entry.code },
+    ];
+  });
 }
