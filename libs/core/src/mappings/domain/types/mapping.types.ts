@@ -39,10 +39,11 @@ export interface CategoryMappingInput {
   destinationCategoryName: string;
   destinationCategoryPath?: string;
   /**
-   * Owning source connection. Optional for now (#1036 record-only): the API
-   * create path doesn't yet supply it, so rows are created with `null` and the
-   * lookup falls back to the destination+source-category key. Threading the
-   * source connection through create/resolve is a follow-up.
+   * Owning source (master) connection. Every interactive writer supplies it
+   * (the Category Mappings page and the MCP write tool, #3993): a row written
+   * without one is a source-agnostic wildcard, and a second write for the same
+   * category would then insert a duplicate instead of updating it. Still
+   * optional on the type because historical rows carry `null`.
    */
   sourceConnectionId?: string | null;
   /**
@@ -73,4 +74,15 @@ export interface AttributeMappingInput {
   destinationTaxonomyProvenance?: string;
   /** Source→destination value translations (e.g. `Red → Czerwony`). */
   values?: { sourceValue: string; destinationValue: string }[];
+}
+
+/**
+ * Result of moving category mappings from one destination connection to
+ * another (#3993). `keptSourceCategoryIds` lists the source categories that
+ * already had a mapping at the target, so the moved row was dropped and the
+ * target's own mapping was left as it was.
+ */
+export interface CategoryMappingReassignResult {
+  moved: number;
+  keptSourceCategoryIds: string[];
 }

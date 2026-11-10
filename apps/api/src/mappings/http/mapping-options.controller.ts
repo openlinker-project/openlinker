@@ -38,9 +38,8 @@ import {
   Get,
   Param,
   Query,
+  HttpStatus,
   Inject,
-  NotImplementedException,
-  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -67,6 +66,7 @@ import {
 
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { MappingOptionResponseDto } from './dto/mapping-option-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { AllegroCategoryResponseDto } from './dto/allegro-category-response.dto';
 import { CategoryPathNodeResponseDto } from './dto/category-path-node-response.dto';
 import { ICategoriesCacheService } from '../../categories/categories-cache.service.interface';
@@ -299,8 +299,11 @@ export class MappingOptionsController {
       'OrderProcessorManager'
     );
     if (!isDestinationOptionsReader(adapter)) {
-      throw new NotImplementedException(
-        `Adapter for connection ${partnerConnectionId} does not implement DestinationOptionsReader`
+      throw codedHttpError(
+        HttpStatus.NOT_IMPLEMENTED,
+        'PROVIDER_CAPABILITY_UNSUPPORTED',
+        `Adapter for connection ${partnerConnectionId} does not implement DestinationOptionsReader`,
+        { capability: 'DestinationOptionsReader', connectionId: partnerConnectionId }
       );
     }
     return adapter[method]();
@@ -320,8 +323,11 @@ export class MappingOptionsController {
       'OrderSource'
     );
     if (!isSourceOptionsReader(adapter)) {
-      throw new NotImplementedException(
-        `Adapter for connection ${partnerConnectionId} does not implement SourceOptionsReader`
+      throw codedHttpError(
+        HttpStatus.NOT_IMPLEMENTED,
+        'PROVIDER_CAPABILITY_UNSUPPORTED',
+        `Adapter for connection ${partnerConnectionId} does not implement SourceOptionsReader`,
+        { capability: 'SourceOptionsReader', connectionId: partnerConnectionId }
       );
     }
     return adapter[method]();
@@ -378,16 +384,22 @@ export class MappingOptionsController {
         }
       }
       if (paired.length === 0) {
-        throw new BadRequestException(
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'MAPPING_SOURCE_NOT_PAIRED',
           `Connection "${url.name}" (${shortId(url.id)}) has no source paired. ` +
-            `Open the marketplace connection's edit page and set its catalog to this connection.`
+            `Open the marketplace connection's edit page and set its catalog to this connection.`,
+          { connectionId: url.id, connectionName: url.name }
         );
       }
       if (paired.length > 1) {
         const ids = paired.map((c) => c.id).join(', ');
-        throw new BadRequestException(
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'MAPPING_SOURCE_PAIRING_AMBIGUOUS',
           `Connection "${url.name}" (${shortId(url.id)}) has multiple paired source connections (${ids}). ` +
-            `Open the mappings page from the source connection you want to configure.`
+            `Open the mappings page from the source connection you want to configure.`,
+          { connectionId: url.id, connectionName: url.name, pairedConnectionIds: ids }
         );
       }
       const [only] = paired;
@@ -431,10 +443,14 @@ export class MappingOptionsController {
   ): Promise<void> {
     const { metadata } = await this.integrationsService.getAdapter(connection.id);
     if (!metadata.supportedCapabilities.includes(capability)) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'MAPPING_SIDE_CAPABILITY_UNSUPPORTED',
         `Connection "${connection.name}" (${shortId(connection.id)}) does not support ${capability}, ` +
-          `so it cannot serve this side of the mappings page.`
+          `so it cannot serve this side of the mappings page.`,
+        { connectionId: connection.id, connectionName: connection.name, capability }
       );
+
     }
   }
 }

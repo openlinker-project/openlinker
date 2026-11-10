@@ -14,6 +14,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { useMessages } from '../../shared/i18n';
 import {
   ANALYTICS_DATA_COVERAGE_ANCHOR_ID,
@@ -245,7 +246,7 @@ export function AnalyticsPage(): ReactElement {
           copy={{
             error: {
               title: copy.trustError.title,
-              message: trustQuery.error.message,
+              message: describeApiError(trustQuery.error, 'analytics'),
               retry: copy.trustError.retry,
             },
             denied: {

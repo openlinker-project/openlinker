@@ -161,6 +161,15 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
           return { type: 'delivered', externalOrderId, deliveredAt: relayEvent.deliveredAt };
         case 'in-progress':
           return { type: 'in-progress', externalOrderId };
+        case 'paid':
+          return {
+            type: 'paid',
+            externalOrderId,
+            amount: relayEvent.amount,
+            currency: relayEvent.currency,
+            paidAt: relayEvent.paidAt,
+            paidOn: relayEvent.paidOn,
+          };
         default:
           return assertNever(relayEvent, 'OrderLifecycleRelayInput.event');
       }

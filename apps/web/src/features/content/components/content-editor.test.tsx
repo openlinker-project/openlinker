@@ -17,6 +17,7 @@ import {
 } from '../../../test/test-utils';
 import type { SessionUser } from '../../../shared/auth/session.types';
 import type { ContentState } from '../api/content.types';
+import { getMessages } from '../../../shared/i18n';
 
 const viewerUser: SessionUser = {
   id: 'user_viewer',
@@ -321,7 +322,7 @@ describe('ContentEditor', () => {
       await user.click(screen.getByRole('button', { name: 'Publish' }));
       await user.click(screen.getByRole('button', { name: 'Publish' }));
 
-      expect(await screen.findByText('plain old error')).toBeInTheDocument();
+      expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
       expect(screen.queryByRole('list', { name: /allegro errors/i })).toBeNull();
     });
   });

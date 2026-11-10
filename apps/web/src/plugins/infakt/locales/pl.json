@@ -53,7 +53,6 @@
     "rejectedFallback": "KSeF odrzucił tę fakturę.",
     "resend": "Ponów wysyłkę do KSeF",
     "resendFailed": "Ponowne wysłanie nieudane",
-    "resendFailedDesc": "Nie udało się ponownie wysłać faktury do KSeF.",
     "resendSuccess": "Wysłano ponownie do KSeF",
     "resendSuccessDesc": "inFakt ponownie przesyła tę fakturę do KSeF. Status rozliczenia wkrótce się odświeży.",
     "resending": "Wysyłanie ponownie…",
@@ -112,7 +111,7 @@
     "persistErrorHint": "wybierz je ponownie na ekranie edycji połączenia.",
     "test": {
       "failed": "Test połączenia nieudany",
-      "latency": "{message} ({ms}ms)",
+      "latency": "({ms}ms)",
       "passed": "Test połączenia udany",
       "run": "Przetestuj połączenie",
       "running": "Testowanie…",

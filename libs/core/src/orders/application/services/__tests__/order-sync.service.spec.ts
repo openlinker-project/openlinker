@@ -140,6 +140,7 @@ describe('OrderSyncService', () => {
       getCategoryMappings: jest.fn(),
       upsertCategoryMapping: jest.fn(),
       deleteCategoryMapping: jest.fn(),
+      reassignCategoryMappings: jest.fn(),
       resolveDestinationCategory: jest.fn(),
       getAttributeMappings: jest.fn(),
       getAttributeMappingsByProvenance: jest.fn(),
@@ -427,6 +428,7 @@ describe('OrderSyncService', () => {
           destinationConnectionId: 'dest-a',
           status: 'success',
           orderRef: { orderId: 'dest_order_789', orderNumber: 'DEST-001' },
+          created: true,
         },
       ]);
     });
@@ -458,6 +460,7 @@ describe('OrderSyncService', () => {
           destinationConnectionId: 'dest-a',
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-1' },
+          created: false,
         },
       ]);
     });
@@ -534,6 +537,7 @@ describe('OrderSyncService', () => {
         destinationConnectionId: 'dest-ok',
         status: 'success',
         orderRef: { orderId: 'ok-1' },
+        created: true,
       });
       expect(badResult).toEqual({
         destinationConnectionId: 'dest-bad',
@@ -858,6 +862,7 @@ describe('OrderSyncService', () => {
           destinationConnectionId: 'dest-a',
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-42' },
+          created: false,
         },
       ]);
     });
@@ -885,7 +890,7 @@ describe('OrderSyncService', () => {
       });
 
       expect(results).toEqual([
-        { destinationConnectionId: 'dest-a', status: 'success', orderRef: { orderId: 'dest-1' } },
+        { destinationConnectionId: 'dest-a', status: 'success', orderRef: { orderId: 'dest-1' }, created: true },
       ]);
     });
 

@@ -30,6 +30,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { codedErrorBody } from '../errors/coded-http.exception';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 
 /** Seconds; see the module doc for why this is a fixed hint. */
@@ -43,12 +44,15 @@ export class RateLimitBusyFilter implements ExceptionFilter {
       return;
     }
     response.setHeader('Retry-After', String(RATE_LIMIT_BUSY_RETRY_AFTER_SECONDS));
-    response.status(HttpStatus.SERVICE_UNAVAILABLE).json({
-      statusCode: HttpStatus.SERVICE_UNAVAILABLE,
-      error: exception.name,
-      message:
+    response.status(HttpStatus.SERVICE_UNAVAILABLE).json(
+      codedErrorBody(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'PLATFORM_CONNECTION_BUSY',
         'The platform connection is busy right now, so this request was not sent. ' +
-        'Nothing was changed. Try again in a few seconds.',
-    });
+          'Nothing was changed. Try again in a few seconds.',
+        { retryAfterSeconds: RATE_LIMIT_BUSY_RETRY_AFTER_SECONDS },
+        { error: exception.name }
+      )
+    );
   }
 }

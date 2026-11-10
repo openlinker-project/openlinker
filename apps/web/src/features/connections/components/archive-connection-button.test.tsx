@@ -9,6 +9,7 @@ import {
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { ArchiveConnectionButton } from './archive-connection-button';
+import { getMessages } from '../../../shared/i18n';
 
 const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
 const adminSession = { sessionAdapter: createAuthenticatedSessionAdapter() };
@@ -72,7 +73,7 @@ describe('ArchiveConnectionButton (#3657)', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Archive connection' }));
 
-    expect(await screen.findByText('Connection is active; disable it first')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Archive connection' })).toBeInTheDocument();
   });
 
@@ -121,6 +122,7 @@ describe('ArchiveConnectionButton (#3657)', () => {
     const archive = vi.fn().mockRejectedValue(
       new ApiError('Connection is active; disable it before archiving', 409, {
         statusCode: 409,
+        code: 'CONNECTION_ARCHIVE_NOT_BY_STATUS',
         message: 'Connection is active; disable it before archiving',
       })
     );
@@ -138,7 +140,7 @@ describe('ArchiveConnectionButton (#3657)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Archive connection' }));
 
     expect(
-      await screen.findByText('Connection is active; disable it before archiving')
+      await screen.findByText(getMessages('errors').codes.CONNECTION_ARCHIVE_NOT_BY_STATUS)
     ).toBeInTheDocument();
     expect(screen.queryByText('Other connections still use this catalog')).not.toBeInTheDocument();
   });

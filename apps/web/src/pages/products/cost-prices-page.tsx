@@ -63,6 +63,7 @@ import {
 } from '../../features/products/api/products.types';
 import { formatCostAmount } from './variant-cost';
 import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 const FALLBACK_CURRENCIES = ['PLN', 'EUR', 'CZK'] as const;
@@ -252,7 +253,7 @@ export function CostPricesPage(): ReactElement {
           if (next) setFocusRowId(next.variantId);
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message || copy.toasts.saveFailed });
+          showToast({ tone: 'error', description: describeApiError(error, 'products') });
         },
       }
     );
@@ -316,7 +317,7 @@ export function CostPricesPage(): ReactElement {
           setSelected(new Set());
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message || copy.toasts.bulkSaveFailed });
+          showToast({ tone: 'error', description: describeApiError(error, 'products') });
         },
       }
     );
@@ -464,7 +465,7 @@ export function CostPricesPage(): ReactElement {
       return (
         <ErrorState
           title={copy.loadError}
-          message={rowsQuery.error.message}
+          message={describeApiError(rowsQuery.error, 'products')}
           action={<Button onClick={() => void rowsQuery.refetch()}>{copy.retry}</Button>}
         />
       );

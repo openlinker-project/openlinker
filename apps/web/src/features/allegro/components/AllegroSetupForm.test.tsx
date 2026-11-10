@@ -2,6 +2,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { AllegroSetupForm } from './AllegroSetupForm';
+import { getMessages } from '../../../shared/i18n';
 
 // Allegro tests use an empty connection list so no ProductMaster auto-select
 // fires — auto-selecting the default sampleConnection (id="conn_1") would make
@@ -136,7 +137,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
-    expect(await screen.findByText('Invalid client credentials')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('calls startOAuth with correct input on valid submission', async () => {

@@ -26,22 +26,17 @@
  */
 
 import {
-  BadGatewayException,
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
   InternalServerErrorException,
-  NotFoundException,
   Param,
   Post,
   Query,
   Res,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -100,11 +95,13 @@ import { DispatchResultResponseDto } from './dto/dispatch-result-response.dto';
 import { GenerateLabelDto } from './dto/generate-label.dto';
 import { GenerateProtocolDto } from './dto/generate-protocol.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
+import { ShipmentSummaryQueryDto, ShipmentSummaryResponseDto } from './dto/shipment-summary.dto';
 import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
 import { CancelShipmentResponseDto } from './dto/cancel-shipment-response.dto';
 import { REDACTED_ERROR_MESSAGE, ShipmentResponseDto } from './dto/shipment-response.dto';
 import { resolveWaybillRelayThresholdFromEnv } from './waybill-relay-threshold';
+import { codedErrorBody, codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('shipments')
@@ -144,22 +141,7 @@ export class ShipmentController {
     // every row's `stuck` flag, so the rows returned and the badges rendered on
     // them cannot be computed from two different thresholds.
     const waybillRelayAlertThreshold = resolveWaybillRelayThresholdFromEnv();
-    const filters: ShipmentFilters = {
-      orderId: query.orderId,
-      status: query.status,
-      direction: query.direction,
-      connectionId: query.connectionId,
-      shippingMethod: query.shippingMethod,
-      hasTracking: query.hasTracking,
-      // The boolean is translated to the numeric floor HERE, at the HTTP
-      // boundary — which is also where `createdFrom`/`createdTo` are coerced
-      // from strings. `false` deliberately applies no filter rather than
-      // selecting the complement: see the query DTO's description.
-      waybillRelayFailureCountAtLeast:
-        query.waybillRelayStuck === true ? waybillRelayAlertThreshold : undefined,
-      createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
-      createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
-    };
+    const filters = this.toFilters(query, waybillRelayAlertThreshold);
 
     const canWrite = this.hasShipmentsWrite(user);
     const page = await this.query.list(filters, { limit, offset });
@@ -182,6 +164,30 @@ export class ShipmentController {
   }
 
   // Declared BEFORE `:id` — Express matches in order, so `:id` would otherwise
+  // capture the literal segment `summary`.
+  // Not `@AnyRole()`: the pack bench never shows these counts, so a packer
+  // has no reason to reach them (#2413).
+  @Roles('admin', 'operator', 'viewer')
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Counts for the shipments list: per status, processor, method and connection, plus what needs a look (#4043)',
+  })
+  @ApiResponse({ status: 200, type: ShipmentSummaryResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async summary(
+    @Query() query: ShipmentSummaryQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ShipmentSummaryResponseDto> {
+    // Resolved once, as in `list`, so the stuck count and the list's stuck
+    // filter can never use two different thresholds.
+    const waybillRelayAlertThreshold = resolveWaybillRelayThresholdFromEnv();
+    const summary = await this.query.summarize(this.toFilters(query, waybillRelayAlertThreshold), {
+      waybillRelayStuckFloor: waybillRelayAlertThreshold,
+    });
+    return ShipmentSummaryResponseDto.fromDomain(summary, this.hasShipmentsWrite(user));
+  }
+
+  // Declared BEFORE `:id` — Express matches in order, so `:id` would otherwise
   // capture the literal segment `active`.
   @AnyRole()
   @Get('active')
@@ -194,11 +200,22 @@ export class ShipmentController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ShipmentResponseDto> {
     if (!orderId) {
-      throw new BadRequestException('orderId query parameter is required');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'VALIDATION_FAILED',
+        'orderId query parameter is required',
+        undefined,
+        { fields: [{ path: 'orderId', code: 'isNotEmpty' }] },
+      );
     }
     const shipment = await this.query.getActiveByOrderId(orderId);
     if (!shipment) {
-      throw new NotFoundException(`No active shipment for order: ${orderId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_HAS_NO_ACTIVE_SHIPMENT',
+        `No active shipment for order: ${orderId}`,
+        { orderId },
+      );
     }
     return ShipmentResponseDto.fromDomain(
       shipment,
@@ -220,7 +237,9 @@ export class ShipmentController {
   ): Promise<ShipmentResponseDto> {
     const shipment = await this.query.getById(id);
     if (!shipment) {
-      throw new NotFoundException(`Shipment not found: ${id}`);
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'SHIPMENT_NOT_FOUND', `Shipment not found: ${id}`, {
+        shipmentId: id,
+      });
     }
     return ShipmentResponseDto.fromDomain(
       shipment,
@@ -435,7 +454,9 @@ export class ShipmentController {
   async notifyDispatched(@Param('id') id: string): Promise<NotifyDispatchedResponseDto> {
     const result = await this.notification.notifyDispatched({ shipmentId: id });
     if (result.outcome === 'shipment-not-found') {
-      throw new NotFoundException(`Shipment not found: ${id}`);
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'SHIPMENT_NOT_FOUND', `Shipment not found: ${id}`, {
+        shipmentId: id,
+      });
     }
     return NotifyDispatchedResponseDto.fromResult(result);
   }
@@ -472,6 +493,27 @@ export class ShipmentController {
    * read via `IOrderRecordService` (host-layer composition — orders is reached
    * through its `I*Service`, not its repository).
    */
+  /** The list's filters from its query, shared by `list` and `summary` so their counts agree. */
+  private toFilters(query: ShipmentSummaryQueryDto, waybillRelayAlertThreshold: number): ShipmentFilters {
+    return {
+      orderId: query.orderId,
+      status: query.status,
+      direction: query.direction,
+      connectionId: query.connectionId,
+      shippingMethod: query.shippingMethod,
+      hasTracking: query.hasTracking,
+      hasProviderShipmentId: query.hasProviderShipmentId,
+      // The boolean is translated to the numeric floor HERE, at the HTTP
+      // boundary — which is also where `createdFrom`/`createdTo` are coerced
+      // from strings. `false` deliberately applies no filter rather than
+      // selecting the complement: see the query DTO's description.
+      waybillRelayFailureCountAtLeast:
+        query.waybillRelayStuck === true ? waybillRelayAlertThreshold : undefined,
+      createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
+      createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
+    };
+  }
+
   private async resolveCustomerId(orderId: string): Promise<string | null> {
     // The customer column is a secondary enrichment — a failed order lookup must
     // NOT take down the primary shipments read. Degrade to null on error
@@ -547,10 +589,12 @@ export class ShipmentController {
    */
   private toHttpException(error: unknown, canWrite: boolean): Error {
     if (error instanceof ShipmentNotFoundException) {
-      return new NotFoundException(error.message);
+      return codedHttpError(HttpStatus.NOT_FOUND, 'SHIPMENT_NOT_FOUND', error.message);
     }
     if (error instanceof ShipmentNotCancellableException) {
-      return new ConflictException(error.message);
+      return codedHttpError(HttpStatus.CONFLICT, 'SHIPMENT_NOT_CANCELLABLE', error.message, {
+        shipmentId: error.shipmentId,
+      });
     }
     if (error instanceof ShipmentDispatchContendedException) {
       // A concurrent dispatch holds the per-order lock and has not persisted a
@@ -558,25 +602,71 @@ export class ShipmentController {
       // this attempt never reached the carrier. 409 rather than the
       // unclassified 500 path so the operator is told that, instead of being
       // left to guess whether a label was bought.
-      return new ConflictException(error.message);
+      return codedHttpError(HttpStatus.CONFLICT, 'SHIPMENT_DISPATCH_CONTENDED', error.message, {
+        orderId: error.orderId,
+      });
     }
     if (error instanceof InvalidProtocolBatchException) {
       // Client-input problem (empty set / no labels / mixed carriers) → 400.
-      return new BadRequestException(error.message);
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'HANDOVER_PROTOCOL_BATCH_INVALID', error.message);
     }
-    if (
-      error instanceof ShipmentCancellationNotSupportedException ||
-      error instanceof UndispatchableResolutionException ||
-      error instanceof OrderNotDispatchablePaymentStatusException ||
-      // #2339 — the hold gate. 422 like its payment-status sibling: the request
-      // is well-formed, the order's persisted state refuses it, and the remedy
-      // (release the hold) is the operator's, not the client's.
-      error instanceof OrderNotDispatchableHeldException ||
-      error instanceof LabelDocumentNotSupportedException ||
-      error instanceof LabelNotAvailableException ||
-      error instanceof DispatchProtocolNotSupportedException
-    ) {
-      return new UnprocessableEntityException(error.message);
+    if (error instanceof ShipmentCancellationNotSupportedException) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'SHIPMENT_CANCELLATION_UNSUPPORTED',
+        error.message,
+        { shipmentId: error.shipmentId, connectionId: error.connectionId },
+      );
+    }
+    if (error instanceof UndispatchableResolutionException) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'SHIPMENT_ROUTING_UNDISPATCHABLE',
+        error.message,
+      );
+    }
+    if (error instanceof OrderNotDispatchablePaymentStatusException) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'ORDER_NOT_DISPATCHABLE_PAYMENT_STATUS',
+        error.message,
+        { orderId: error.orderId, paymentStatus: error.paymentStatus },
+      );
+    }
+    // #2339 — the hold gate. 422 like its payment-status sibling: the request
+    // is well-formed, the order's persisted state refuses it, and the remedy
+    // (release the hold) is the operator's, not the client's.
+    if (error instanceof OrderNotDispatchableHeldException) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'ORDER_NOT_DISPATCHABLE_HELD',
+        error.message,
+        { orderId: error.orderId, holdId: error.holdId, holdReason: error.holdReason },
+      );
+    }
+    if (error instanceof LabelDocumentNotSupportedException) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'SHIPMENT_LABEL_DOCUMENT_UNSUPPORTED',
+        error.message,
+        { shipmentId: error.shipmentId, connectionId: error.connectionId },
+      );
+    }
+    if (error instanceof LabelNotAvailableException) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'SHIPMENT_LABEL_NOT_GENERATED',
+        error.message,
+        { shipmentId: error.shipmentId },
+      );
+    }
+    if (error instanceof DispatchProtocolNotSupportedException) {
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'HANDOVER_PROTOCOL_UNSUPPORTED',
+        error.message,
+        { connectionId: error.connectionId },
+      );
     }
     if (error instanceof ShippingProviderAuthException) {
       // The carrier rejected OUR stored credentials (401/403) — an upstream
@@ -585,7 +675,10 @@ export class ShipmentController {
       // operators see "carrier rejected us" rather than "OpenLinker crashed".
       // Flipping the connection to `needs_reauth` via the #819 auth-failure
       // classifier registry is a tracked follow-up.
-      return new BadGatewayException(error.message);
+      return codedHttpError(HttpStatus.BAD_GATEWAY, 'SHIPPING_PROVIDER_AUTH_FAILED', error.message, {
+        provider: error.providerName,
+        ...(error.connectionId !== undefined ? { connectionId: error.connectionId } : {}),
+      });
     }
     if (error instanceof ShippingProviderRejectionException) {
       // Surface the carrier's structured rejection so the client sees WHICH
@@ -594,20 +687,32 @@ export class ShipmentController {
       // credentials, but it CAN echo the rejected address fragment, which is
       // exactly what `errorMessage` withholds from a viewer (#1826). Keep
       // `providerCode` either way: it is a stable, non-PII support reference.
-      return new BadGatewayException({
-        message: canWrite ? error.message : REDACTED_ERROR_MESSAGE,
-        providerCode: error.providerCode,
-        details: canWrite ? error.providerDetails : undefined,
-      });
+      return codedHttpError(
+        HttpStatus.BAD_GATEWAY,
+        'SHIPPING_PROVIDER_REJECTED',
+        canWrite ? error.message : REDACTED_ERROR_MESSAGE,
+        {
+          provider: error.providerName,
+          ...(error.providerCode !== null ? { providerCode: error.providerCode } : {}),
+        },
+        {
+          providerCode: error.providerCode,
+          details: canWrite ? error.providerDetails : undefined,
+        },
+      );
     }
     if (error instanceof Error) {
       this.logger.error(
         `Unclassified shipping-command error: ${error.message}`,
         error.stack,
       );
-      return new InternalServerErrorException(error.message);
+      return new InternalServerErrorException(
+        codedErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, 'SHIPPING_COMMAND_FAILED', error.message),
+      );
     }
-    return new InternalServerErrorException(String(error));
+    return new InternalServerErrorException(
+      codedErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, 'SHIPPING_COMMAND_FAILED', String(error)),
+    );
   }
 }
 

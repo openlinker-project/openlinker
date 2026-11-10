@@ -36,6 +36,7 @@ interface WebhookDeliveryRow {
   downstreamJobType: string | null;
   downstreamJobId: string | null;
   dlqReason: string | null;
+  dlqCode: string | null;
 }
 
 interface SyncJobRow {
@@ -57,7 +58,7 @@ async function readDeliveryRow(
   eventId: string,
 ): Promise<WebhookDeliveryRow | undefined> {
   const rows = (await harness.getDataSource().query(
-    `SELECT status, "downstreamJobType", "downstreamJobId", "dlqReason"
+    `SELECT status, "downstreamJobType", "downstreamJobId", "dlqReason", "dlqCode"
        FROM webhook_deliveries
       WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
     ['prestashop', connectionId, eventId],
@@ -306,6 +307,7 @@ describe('Webhook Ingestion Integration', () => {
       expect(delivery).toBeDefined();
       expect(delivery!.status).toBe('deadlettered');
       expect(delivery!.dlqReason).toContain('ungated');
+      expect(delivery!.dlqCode).toBe('ungated');
       const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
       expect(jobs).toHaveLength(0);
     });

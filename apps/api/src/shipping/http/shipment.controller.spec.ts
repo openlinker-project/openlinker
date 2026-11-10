@@ -116,6 +116,7 @@ describe('ShipmentController', () => {
   beforeEach(() => {
     query = {
       list: jest.fn(),
+      summarize: jest.fn(),
       getById: jest.fn(),
       getActiveByOrderId: jest.fn(),
       getOutboundByOrderId: jest.fn(),
@@ -180,7 +181,61 @@ describe('ShipmentController', () => {
     );
   });
 
+  describe('summary (#4043)', () => {
+    const summary = {
+      total: 5,
+      byStatus: { draft: 1, generated: 1, dispatched: 0, 'in-transit': 0, delivered: 1, failed: 2, cancelled: 0 },
+      byProcessor: { omp: 1, carrier: 3 },
+      byMethod: { paczkomat: 3, pickup: 0, kurier: 1, omp: 1 },
+      byConnection: { 'conn-inpost': 5 },
+      waybillRelayStuck: 1,
+      toSend: 2,
+      failedCauseGroups: [
+        { connectionId: 'conn-inpost', cause: 'x', providerCode: null, sampleReason: 'Receiver phone 600100200 invalid', count: 2 },
+      ],
+    };
+
+    it('should pass the list filters, the processor filter and the stuck threshold through', async () => {
+      query.summarize.mockResolvedValue(summary);
+
+      await controller.summary({ status: 'failed', hasProviderShipmentId: true, waybillRelayStuck: true }, ADMIN_USER);
+
+      expect(query.summarize).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'failed',
+          hasProviderShipmentId: true,
+          waybillRelayFailureCountAtLeast: expect.any(Number),
+        }),
+        { waybillRelayStuckFloor: expect.any(Number) },
+      );
+    });
+
+    it('should show the carrier message to an admin and redact it for a viewer', async () => {
+      query.summarize.mockResolvedValue(summary);
+
+      const admin = await controller.summary({}, ADMIN_USER);
+      const viewer = await controller.summary({}, VIEWER_USER);
+
+      expect(admin.failedCauseGroups[0]?.sampleReason).toBe('Receiver phone 600100200 invalid');
+      expect(viewer.failedCauseGroups[0]?.sampleReason).toBe(REDACTED_ERROR_MESSAGE);
+      // Counts and the provider code are not carrier prose and stay visible.
+      expect(viewer.failedCauseGroups[0]).toMatchObject({ count: 2, connectionId: 'conn-inpost' });
+      expect(viewer.toSend).toBe(2);
+    });
+  });
+
   describe('list', () => {
+    it('should pass the processor filter through (#4043: it used to be refused)', async () => {
+      query.list.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.list({ hasProviderShipmentId: true }, ADMIN_USER);
+
+      expect(query.list).toHaveBeenCalledWith(
+        expect.objectContaining({ hasProviderShipmentId: true }),
+        expect.anything(),
+      );
+    });
+
     it('should map filters (with date coercion + hasTracking) and echo pagination', async () => {
       query.list.mockResolvedValue({ items: [makeShipment()], total: 1 });
       const dto: ListShipmentsQueryDto = {
@@ -587,6 +642,9 @@ describe('ShipmentController', () => {
 
       expect(err).toBeInstanceOf(BadGatewayException);
       expect((err as BadGatewayException).getResponse()).toEqual({
+        statusCode: 502,
+        code: 'SHIPPING_PROVIDER_REJECTED',
+        params: { provider: 'inpost', providerCode: 'target_point' },
         message: 'validation errors',
         providerCode: 'target_point',
         details: { fieldErrors: { custom_attributes: [{ target_point: ['does_not_exist'] }] } },
@@ -943,6 +1001,9 @@ describe('ShipmentController', () => {
         .catch((e: unknown) => e);
 
       expect((err as BadGatewayException).getResponse()).toEqual({
+        statusCode: 502,
+        code: 'SHIPPING_PROVIDER_REJECTED',
+        params: { provider: 'dpd', providerCode: 'sender_postcode' },
         message: 'postcode 22-213 invalid',
         providerCode: 'sender_postcode',
         details: { fieldErrors: { sender: ['postcode 22-213 invalid'] } },
@@ -967,6 +1028,9 @@ describe('ShipmentController', () => {
         .catch((e: unknown) => e);
 
       expect((err as BadGatewayException).getResponse()).toEqual({
+        statusCode: 502,
+        code: 'SHIPPING_PROVIDER_REJECTED',
+        params: { provider: 'dpd', providerCode: 'sender_postcode' },
         message: REDACTED_ERROR_MESSAGE,
         providerCode: 'sender_postcode',
         details: undefined,

@@ -8,6 +8,7 @@
  * @module libs/core/src/webhooks/domain/entities
  */
 import type { WebhookDedupResult, WebhookDeliveryStatus } from '../types/webhook-delivery.types';
+import type { WebhookDlqCode } from '../types/webhook-dlq-code.types';
 
 export class WebhookDelivery {
   constructor(
@@ -27,6 +28,8 @@ export class WebhookDelivery {
     public readonly downstreamJobId: string | null,
     public readonly downstreamJobType: string | null,
     public readonly dlqReason: string | null,
+    /** Why it was dead-lettered, as a code (#3866); `null` when not dead-lettered or unknown. */
+    public readonly dlqCode: WebhookDlqCode | null,
     public readonly payload: Record<string, unknown> | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date

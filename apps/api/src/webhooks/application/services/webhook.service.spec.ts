@@ -262,13 +262,18 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
     it('records a deterministically unroutable event as a deadlettered row with the reason', async () => {
       inboundRouting.resolveEvent.mockResolvedValue({
         kind: 'unroutable',
+        code: 'no-translator',
         reason: 'no-translator: foo.v1',
       });
 
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
       expect(jobGate.insertDeliveryWithJobs).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'deadlettered', dlqReason: 'no-translator: foo.v1' }),
+        expect.objectContaining({
+          status: 'deadlettered',
+          dlqReason: 'no-translator: foo.v1',
+          dlqCode: 'no-translator',
+        }),
         []
       );
     });

@@ -15,6 +15,7 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../../test/test-utils';
+import { getMessages } from '../../../shared/i18n';
 import type { PosthogSettingsView } from '../api/posthog-settings.types';
 import { PosthogSettingsTile } from './posthog-settings-tile';
 
@@ -93,7 +94,9 @@ describe('PosthogSettingsTile', () => {
     renderWithProviders(<PosthogSettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(
-      await screen.findByText(/Could not load analytics settings: Network down/),
+      await screen.findByText(
+        `${getMessages('posthog-settings').posthogSettingsTile.loadError} ${getMessages('errors').status.other}`,
+      ),
     ).toBeInTheDocument();
   });
 

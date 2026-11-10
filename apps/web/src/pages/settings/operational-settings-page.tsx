@@ -25,6 +25,7 @@
  * @module apps/web/src/pages/settings
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
@@ -388,7 +389,7 @@ export function OperationalSettingsPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error instanceof Error ? query.error.message : copy.error.unknown}
+          message={describeApiError(query.error, 'settings')}
           action={
             <Button tone="secondary" onClick={() => void query.refetch()}>
               {copy.error.retry}

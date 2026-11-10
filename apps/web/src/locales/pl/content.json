@@ -1,4 +1,7 @@
 {
+  "apiErrors": {
+    "PROMPT_TEMPLATE_NOT_FOUND": "Dla tego kanału nie ma jeszcze opublikowanego szablonu promptu."
+  },
   "contentEditor": {
     "channel": {
       "connectionStatus": {
@@ -49,8 +52,7 @@
       "draftDiscarded": "Odrzucono szkic",
       "draftSaved": "Zapisano szkic",
       "published": "Opublikowano"
-    },
-    "unknownError": "Nieznany błąd"
+    }
   },
   "contentPanel": {
     "actions": {

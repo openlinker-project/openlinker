@@ -107,6 +107,7 @@ import {
   discountRefundTargetRef,
   effectiveDiscountAmount,
   effectiveLineQuantity,
+  orderEditLockKey,
   evaluateRefundCeiling,
   goodsGrossValue,
   isDecimalAmountText,
@@ -171,16 +172,16 @@ import {
   buildOrderEditHistory,
   buildOrderEditsView,
 } from './order-edits-view';
+import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 
 /**
  * Covers read-gates -> overlay write. Once the overlay is written a peer's own
  * gates see it, and the follow-up effects are idempotent, so no longer is needed.
  */
 const ORDER_EDIT_LOCK_TTL_MS = 30_000;
-
-function orderEditLockKey(internalOrderId: string): string {
-  return `order:edit:${internalOrderId}`;
-}
 
 /** A label exists (bought) but the parcel has not left: the address is baked into it. */
 const LABEL_BOUGHT_STATUSES: readonly string[] = [SHIPMENT_STATUS.Generated, SHIPMENT_STATUS.Dispatched];
@@ -272,7 +273,9 @@ export class OrderEditService implements IOrderEditService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly lock: SyncLockPort,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
-    private readonly refunds: IOrderRefundService
+    private readonly refunds: IOrderRefundService,
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
   ) {}
 
   editAddress(input: EditOrderAddressInput): Promise<OrderEditResult> {
@@ -322,17 +325,23 @@ export class OrderEditService implements IOrderEditService {
       const seen = new Set<string>();
       for (const line of input.lines) {
         if (seen.has(line.orderLineId)) {
-          throw new OrderEditInvalidError(`Order line ${line.orderLineId} appears more than once.`);
+          throw new OrderEditInvalidError(
+            `Order line ${line.orderLineId} appears more than once.`,
+            'line-repeated',
+            { orderLineId: line.orderLineId }
+          );
         }
         seen.add(line.orderLineId);
         if (!Number.isInteger(line.quantity) || line.quantity < 0) {
           throw new OrderEditInvalidError(
-            `The quantity of line ${line.orderLineId} must be a whole number, zero or more.`
+            `The quantity of line ${line.orderLineId} must be a whole number, zero or more.`,
+            'quantity-invalid',
+            { orderLineId: line.orderLineId }
           );
         }
       }
       if (input.lines.length === 0) {
-        throw new OrderEditInvalidError('Name at least one line to lower.');
+        throw new OrderEditInvalidError('Name at least one line to lower.', 'no-lines');
       }
       if (latestInvoiceBlocks) {
         throw new OrderEditRefusedError(
@@ -352,7 +361,10 @@ export class OrderEditService implements IOrderEditService {
       for (const line of input.lines) {
         const channelQuantity = channelItems.get(line.orderLineId);
         if (channelQuantity === undefined) {
-          throw new OrderEditNotFoundError(`Order line not found: ${line.orderLineId}`);
+          throw new OrderEditNotFoundError(`Order line not found: ${line.orderLineId}`, {
+            orderId: input.internalOrderId,
+            orderLineId: line.orderLineId,
+          });
         }
         const effective = effectiveLineQuantity(channelQuantity, currentEdits?.lines?.[line.orderLineId]);
         if (line.quantity > effective) {
@@ -433,7 +445,7 @@ export class OrderEditService implements IOrderEditService {
   editDeliveryMethod(input: EditOrderDeliveryMethodInput): Promise<OrderEditResult> {
     return this.run(input, async (record, assessment, shipments) => {
       if (input.methodId.trim() === '') {
-        throw new OrderEditInvalidError('A delivery method is required.');
+        throw new OrderEditInvalidError('A delivery method is required.', 'delivery-method-required');
       }
       this.assertLabelNotBought(shipments);
       await this.assertNotHandedOff(assessment);
@@ -581,7 +593,9 @@ export class OrderEditService implements IOrderEditService {
   ): Promise<OrderEditResult> {
     const record = await this.orderRecords.getOrderRecord(input.internalOrderId);
     if (!record) {
-      throw new OrderEditNotFoundError(`Order not found: ${input.internalOrderId}`);
+      throw new OrderEditNotFoundError(`Order not found: ${input.internalOrderId}`, {
+        orderId: input.internalOrderId,
+      });
     }
 
     const shipments = await this.shipmentQuery.getOutboundByOrderId(input.internalOrderId);
@@ -912,13 +926,15 @@ export class OrderEditService implements IOrderEditService {
     if (prepared.loweredLines.length === 0) return { stock: [], workNarrowingFailures: [] };
 
     const workNarrowingFailures: OrderEditWorkNarrowingFailure[] = [];
+    const closedWorkIds: string[] = [];
     for (const line of prepared.loweredLines) {
       try {
-        await this.fulfillmentEdit.lowerLineQuantity({
+        const lowered = await this.fulfillmentEdit.lowerLineQuantity({
           orderId: written.internalOrderId,
           orderLineId: line.orderLineId,
           newQuantity: line.newQuantity,
         });
+        closedWorkIds.push(...lowered.closedParcels.map((closed) => closed.workId));
       } catch (error) {
         // The overlay is already written and the order IS edited; a work that
         // refuses (units already fulfilled raced in) is reported, never swallowed.
@@ -931,6 +947,13 @@ export class OrderEditService implements IOrderEditService {
           reason: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    // #3961 - a box the lowered quantity left exactly full was closed and
+    // recorded as shipped by core; tell the order's channel now rather than at
+    // the next relay sweep. Best-effort: the notifier never throws.
+    for (const workId of closedWorkIds) {
+      await this.parcelClosureNotifier.relayRecordedClose(workId);
     }
 
     try {
@@ -1033,7 +1056,10 @@ export class OrderEditService implements IOrderEditService {
     shipments: readonly Shipment[]
   ): Promise<PreparedEdit> {
     if ((input.amount === null) === (input.percent === null)) {
-      throw new OrderEditInvalidError('Give either an amount or a percent, not both and not neither.');
+      throw new OrderEditInvalidError(
+        'Give either an amount or a percent, not both and not neither.',
+        'discount-amount-or-percent'
+      );
     }
     const currency = this.readCurrency(record);
     const exponent = minorUnitExponentFor(currency);
@@ -1163,18 +1189,26 @@ export class OrderEditService implements IOrderEditService {
   ): number {
     if (input.amount !== null) {
       if (!isDecimalAmountText(input.amount)) {
-        throw new OrderEditInvalidError('The discount amount must be a plain decimal number such as 12.50.');
+        throw new OrderEditInvalidError(
+          'The discount amount must be a plain decimal number such as 12.50.',
+          'discount-amount-format'
+        );
       }
       if (decimalPlaces(input.amount) > exponent) {
         throw new OrderEditInvalidError(
-          `${currency} has ${String(exponent)} decimal place(s); the discount amount has more.`
+          `${currency} has ${String(exponent)} decimal place(s); the discount amount has more.`,
+          'discount-amount-precision',
+          { currency, decimalPlaces: exponent }
         );
       }
       return Number(Number(input.amount).toFixed(exponent));
     }
     const percent = input.percent as number;
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-      throw new OrderEditInvalidError('The discount percent must be between 0 and 100.');
+      throw new OrderEditInvalidError(
+        'The discount percent must be between 0 and 100.',
+        'discount-percent-range'
+      );
     }
     return Number(((goodsValue * percent) / 100).toFixed(exponent));
   }
@@ -1601,7 +1635,10 @@ export class OrderEditService implements IOrderEditService {
         : undefined;
     const currency = (typeof fromSnapshot === 'string' ? fromSnapshot : (record.currency ?? '')).trim();
     if (currency === '') {
-      throw new OrderEditInvalidError('This order has no currency, so a discount amount cannot be sized.');
+      throw new OrderEditInvalidError(
+        'This order has no currency, so a discount amount cannot be sized.',
+        'currency-missing'
+      );
     }
     return currency.toUpperCase();
   }

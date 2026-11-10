@@ -29,12 +29,7 @@
  * @module apps/api/src/fulfillment-authority/application/services
  * @see docs/plans/implementation-plan-authority-status-api.md
  */
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   AUTHORITY_ATTENTION_REASON_DESCRIPTORS,
   attentionReasonForAuthorityQuestion,
@@ -50,6 +45,7 @@ import { IIntegrationsService } from '@openlinker/core/integrations';
 import { ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { IOrderRecordService } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
 import {
   CONNECTION_SERVICE_TOKEN,
   type IConnectionService,
@@ -139,13 +135,14 @@ export class AuthorityStatusService implements IAuthorityStatusService {
     // The guard is over the RESULT, never over the delta — see the class docblock.
     const ambiguities = AuthorityStatusService.deriveAmbiguities(after);
     if (ambiguities.length > 0) {
-      throw new UnprocessableEntityException({
-        message:
-          'Applying this arrangement would leave OpenLinker unable to tell which system decides. ' +
+      throw codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'AUTHORITY_PRESET_AMBIGUOUS',
+        'Applying this arrangement would leave OpenLinker unable to tell which system decides. ' +
           'Nothing was changed.',
-        presetId,
-        ambiguities,
-      });
+        { presetId, ambiguityCount: ambiguities.length },
+        { presetId, ambiguities }
+      );
     }
 
     // The write is N independent full-row saves across what may be several
@@ -191,11 +188,15 @@ export class AuthorityStatusService implements IAuthorityStatusService {
   private requireAvailable(presetId: AuthorityPresetId): AuthorityPresetDefinition {
     const preset = AUTHORITY_PRESETS[presetId];
     if (!preset.available) {
-      throw new BadRequestException({
-        message: `Preset ${presetId} is not available on this installation.`,
-        presetId,
-        unavailableReason: preset.unavailableReason,
-      });
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'AUTHORITY_PRESET_UNAVAILABLE',
+        `Preset ${presetId} is not available on this installation.`,
+        preset.unavailableReason === null
+          ? { presetId }
+          : { presetId, unavailableReason: preset.unavailableReason },
+        { presetId, unavailableReason: preset.unavailableReason }
+      );
     }
     return preset;
   }

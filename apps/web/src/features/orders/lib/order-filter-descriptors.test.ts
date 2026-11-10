@@ -42,6 +42,8 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
     expect([...ORDER_FILTER_PARAMS].sort()).toEqual(
       [
         'attention',
+        // #3961 - the "Changed by the shop" filter.
+        'attentionReason',
         'createdFrom',
         'createdTo',
         'due',
@@ -53,6 +55,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'openReturn',
         'packBench',
         'packed',
+        'paymentNotSent',
         'phase',
         'routing',
         'search',
@@ -91,11 +94,13 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       waitingInOpenLinker: 'waiting=true',
       onPackBench: 'packBench=true',
       attention: 'attention=true',
+      attentionReason: 'attentionReason=source-change-unapplied',
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
       hasBuyerNote: 'hasBuyerNote=true',
       tag: 'tag=tag-vip',
       untagged: 'untagged=true',
+      paymentNotSent: 'paymentNotSent=true',
     };
     for (const key of NARROWING_ORDER_FILTER_KEYS) {
       const qs = qsByKey[key];

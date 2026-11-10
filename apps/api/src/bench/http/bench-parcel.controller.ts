@@ -41,16 +41,7 @@
  *
  * @module apps/api/src/bench/http
  */
-import {
-  Body,
-  Controller,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Post,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FulfillmentWorkNotFoundError } from '@openlinker/core/fulfillment';
 
@@ -80,10 +71,12 @@ import type {
 import { CompleteParcelDto } from './dto/complete-parcel.dto';
 import { ReopenParcelDto } from './dto/reopen-parcel.dto';
 import { VerifyUnitDto } from './dto/verify-unit.dto';
+import { SourceChangeTakenOutDto } from './dto/source-change-taken-out.dto';
 import { toParcelResponseDto } from './dto/bench-parcel.mapper';
 import {
   BenchActivityEntryResponseDto,
   BenchBuyerNoteAcknowledgementResultResponseDto,
+  BenchSourceChangeTakenOutResultResponseDto,
   BenchClaimResultResponseDto,
   BenchCompleteResultResponseDto,
   BenchUndoCompletionResultResponseDto,
@@ -93,6 +86,7 @@ import {
   BenchUndoResultResponseDto,
   BenchVerificationResultResponseDto,
 } from './dto/bench-parcel-response.dto';
+import { benchPackerUnidentified, benchParcelNotFound } from './bench-errors';
 
 @ApiBearerAuth()
 @ApiTags('bench')
@@ -157,7 +151,7 @@ export class BenchParcelController {
     // decorator returns `request.user` unchecked, so the TYPE is an assertion
     // about the guard rather than about the request. Do not delete it.
     if (!user?.id) {
-      throw new UnauthorizedException('A verification must name the packer');
+      throw benchPackerUnidentified('A verification must name the packer');
     }
 
     const result = await this.run(() =>
@@ -224,7 +218,7 @@ export class BenchParcelController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchClaimResultResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('A claim must name the packer');
+      throw benchPackerUnidentified('A claim must name the packer');
     }
     const result = await this.run(() => this.parcels.claimParcel(workId, user.id));
     return this.toClaimDto(result);
@@ -249,7 +243,7 @@ export class BenchParcelController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchBuyerNoteAcknowledgementResultResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('An acknowledgement must name the packer');
+      throw benchPackerUnidentified('An acknowledgement must name the packer');
     }
     const result = await this.run(() => this.parcels.acknowledgeBuyerNote(workId, user.id));
     return this.toBuyerNoteAcknowledgementDto(result);
@@ -278,7 +272,7 @@ export class BenchParcelController {
     // The #2890 F1 discipline verbatim: this write records who finished the
     // parcel, so it must not be reachable without a principal.
     if (!user?.id) {
-      throw new UnauthorizedException('A completion must name the packer');
+      throw benchPackerUnidentified('A completion must name the packer');
     }
 
     const result = await this.run(() =>
@@ -318,7 +312,7 @@ export class BenchParcelController {
     // took the completion back, so it must not be reachable without a
     // principal.
     if (!user?.id) {
-      throw new UnauthorizedException('Taking back a completion must name the packer');
+      throw benchPackerUnidentified('Taking back a completion must name the packer');
     }
 
     const result = await this.run(() =>
@@ -348,6 +342,33 @@ export class BenchParcelController {
     return entries.map((entry) => this.toActivityDto(entry));
   }
 
+  @Post(':workId/source-change/taken-out')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Confirm the extra units of a changed item are out of the box',
+    description:
+      'For a box held because the shop lowered an item after packing started (#3961). Voids the ' +
+      'scans of that ONE line beyond what the order now asks for, then re-checks the order: when the ' +
+      'box now matches, the change is applied and the hold released. Answers the parcel as it now ' +
+      'stands; a parcel that is not held for a source change is refused and returned unchanged.',
+  })
+  @ApiResponse({ status: 201, type: BenchSourceChangeTakenOutResultResponseDto })
+  @ApiResponse({ status: 401, description: 'The confirmation must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async confirmSourceChangeTakenOut(
+    @Param('workId') workId: string,
+    @Body() body: SourceChangeTakenOutDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchSourceChangeTakenOutResultResponseDto> {
+    if (!user?.id) {
+      throw benchPackerUnidentified('The confirmation must name the packer');
+    }
+    const result = await this.run(() =>
+      this.parcels.confirmSourceChangeTakenOut({ workId, workLineId: body.workLineId, actorUserId: user.id })
+    );
+    return { outcome: result.outcome, reason: result.reason, parcel: this.toParcelDto(result.parcel) };
+  }
+
   @Post(':workId/verifications/undo')
   @Roles('admin', 'operator', 'packer')
   @ApiOperation({
@@ -368,7 +389,7 @@ export class BenchParcelController {
     // Same discipline as `verifyUnit` (#2890 F1): an undo records who reversed
     // the scan, so it must not be reachable without a principal.
     if (!user?.id) {
-      throw new UnauthorizedException('An undo must name the packer');
+      throw benchPackerUnidentified('An undo must name the packer');
     }
 
     const result = await this.run(() =>
@@ -396,7 +417,7 @@ export class BenchParcelController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchPresenceResponseDto> {
     if (!user?.id) {
-      throw new UnauthorizedException('A presence ping must name the packer');
+      throw benchPackerUnidentified('A presence ping must name the packer');
     }
     // Scoping check only — the result is discarded. Presence must never be
     // readable for a work id outside this bench's own eligibility, exactly as
@@ -432,7 +453,7 @@ export class BenchParcelController {
         error instanceof FulfillmentWorkNotFoundError ||
         error instanceof BenchParcelNotAtThisBenchError
       ) {
-        throw new NotFoundException('No such parcel at this bench');
+        throw benchParcelNotFound();
       }
       throw error;
     }

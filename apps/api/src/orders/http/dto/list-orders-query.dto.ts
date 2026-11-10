@@ -15,6 +15,7 @@ import {
   Max,
   IsDateString,
   IsBoolean,
+  IsIn,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -41,6 +42,10 @@ import {
   OrderLifecyclePhaseValues,
   type OrderLifecyclePhase,
 } from '@openlinker/core/order-lifecycle';
+import {
+  AuthorityAttentionReasonValues,
+  type AuthorityAttentionReason,
+} from '@openlinker/core/fulfillment-authority';
 import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
 export class ListOrdersQueryDto extends PaginatedReadQueryDto {
@@ -295,6 +300,29 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   attention?: boolean;
+
+  @ApiPropertyOptional({
+    enum: AuthorityAttentionReasonValues,
+    name: 'attentionReason',
+    description:
+      'Keep only orders carrying an attention entry with exactly this reason (#3961). ' +
+      '`source-change-unapplied` lists the orders the shop changed after packing started that wait for a decision.',
+  })
+  @IsOptional()
+  @IsIn(AuthorityAttentionReasonValues)
+  attentionReason?: AuthorityAttentionReason;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Orders where a shop still shows the order unpaid and OpenLinker gave up sending the payment ' +
+      '(#3963). Composes with `health` like `attention`. true keeps only those, false keeps the ' +
+      'rest, omitted does not filter.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  paymentNotSent?: boolean;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

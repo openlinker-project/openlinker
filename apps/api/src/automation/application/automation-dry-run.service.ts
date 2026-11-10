@@ -50,7 +50,7 @@
  * @module apps/api/src/automation/application
  * @implements {IAutomationDryRunService}
  */
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   AUTOMATION_RULES_SERVICE_TOKEN,
   AutomationRule,
@@ -75,6 +75,8 @@ import type {
   IAutomationDryRunService,
 } from './automation-dry-run.service.interface';
 import { AUTOMATION_DRAFT_RULE_ID } from './automation-dry-run.service.interface';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { automationRuleNotFound } from '../automation-errors';
 
 @Injectable()
 export class AutomationDryRunService implements IAutomationDryRunService {
@@ -88,7 +90,9 @@ export class AutomationDryRunService implements IAutomationDryRunService {
   async evaluate(input: AutomationDryRunInput): Promise<AutomationDryRunResult> {
     const record = await this.orders.getOrderRecord(input.orderId);
     if (record === null) {
-      throw new NotFoundException(`Order "${input.orderId}" not found.`);
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_NOT_FOUND', `Order "${input.orderId}" not found.`, {
+        orderId: input.orderId,
+      });
     }
 
     const now = new Date();
@@ -190,13 +194,18 @@ export class AutomationDryRunService implements IAutomationDryRunService {
     if (input.ruleId !== undefined) {
       const rule = await this.rules.getRule(input.ruleId);
       if (rule === null) {
-        throw new NotFoundException(`Automation rule "${input.ruleId}" not found.`);
+        throw automationRuleNotFound(input.ruleId);
       }
       return rule;
     }
     if (input.draft === undefined) {
       // Unreachable through the DTO, whose validator requires exactly one.
-      throw new NotFoundException('No automation rule was named to evaluate.');
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'AUTOMATION_DRY_RUN_RULE_MISSING',
+        'No automation rule was named to evaluate.'
+      );
+
     }
 
     const validated = this.rules.validateRule(input.draft);

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
@@ -18,6 +19,7 @@ import { useConnectionQuery } from '../../features/connections/hooks/use-connect
 import { useSyncJobLookupQuery } from '../../features/sync-jobs/hooks/use-sync-job-lookup-query';
 import { jobTypeLabel } from '../../features/sync-jobs/lib/job-type-label';
 import { webhookDeliveryStatusLabel } from '../../features/webhook-deliveries/lib/webhook-delivery-status-label';
+import { webhookDlqCodeLabel } from '../../features/webhook-deliveries/lib/webhook-dlq-code-label';
 import { useMessages, type Messages } from '../../shared/i18n';
 
 type DeliveryDetailCopy = Messages['webhook-deliveries']['webhookDeliveryDetailPage'];
@@ -77,6 +79,10 @@ function buildWebhookDeliveryItems(
       value: <ConnectionEntityLabel connectionId={d.connectionId} />,
     },
   ];
+  const dlqLabel = webhookDlqCodeLabel(d.dlqCode);
+  if (dlqLabel) {
+    items.push({ id: 'dlqCode', label: copy.dlqCode, value: dlqLabel });
+  }
   if (d.objectType) {
     items.push({ id: 'objectType', label: copy.objectType, value: d.objectType, mono: true });
   }
@@ -157,7 +163,7 @@ export function WebhookDeliveryDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
           title={copy.error.title}
-          message={query.error?.message ?? copy.error.notFound}
+          message={query.error ? describeApiError(query.error, 'webhook-deliveries') : copy.error.notFound}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       </PageLayout>

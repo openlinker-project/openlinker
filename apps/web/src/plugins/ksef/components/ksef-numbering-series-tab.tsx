@@ -25,6 +25,7 @@ import { KsefNumberingRoutingCard, type RoutingSeriesPrefill } from './ksef-numb
 import { KSEF_TIME_ZONE, documentTypeLabel, RESET_POLICY_LABELS } from './ksef-numbering.lib';
 import { captureDemoEvent } from '../../../features/demo';
 import { useKsefMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface KsefNumberingSeriesTabProps {
   connectionId: string;
@@ -101,7 +102,7 @@ export function KsefNumberingSeriesTab({
     return (
       <ErrorState
         title={copy.loadError}
-        message={seriesQuery.error.message}
+        message={describeApiError(seriesQuery.error, 'ksef')}
         action={
           <Button tone="secondary" onClick={() => void seriesQuery.refetch()}>
             {copy.retry}

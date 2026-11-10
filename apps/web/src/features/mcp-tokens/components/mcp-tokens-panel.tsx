@@ -15,6 +15,7 @@
  * @module apps/web/src/features/mcp-tokens/components
  */
 import { useState, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { useMessages } from '../../../shared/i18n';
@@ -54,7 +55,7 @@ export function McpTokensPanel(): ReactElement {
           <span className="panel__meta">{copy.adminOnly}</span>
         </div>
         {createMutation.isError ? (
-          <Alert tone="error">{createMutation.error.message}</Alert>
+          <Alert tone="error">{describeApiError(createMutation.error, 'mcp-tokens')}</Alert>
         ) : null}
         <McpTokenCreateForm
           isSubmitting={createMutation.isPending}
@@ -78,7 +79,7 @@ export function McpTokensPanel(): ReactElement {
 
         {tokensQuery.isLoading ? <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} /> : null}
         {tokensQuery.isError ? (
-          <ErrorState title={copy.loadErrorTitle} message={tokensQuery.error.message} />
+          <ErrorState title={copy.loadErrorTitle} message={describeApiError(tokensQuery.error, 'mcp-tokens')} />
         ) : null}
         {tokensQuery.data ? (
           <McpTokenList
@@ -93,7 +94,7 @@ export function McpTokensPanel(): ReactElement {
                     description: copy.revokedToastDescription,
                   }),
                 onError: (error) =>
-                  showToast({ tone: 'error', title: copy.revokeErrorTitle, description: error.message }),
+                  showToast({ tone: 'error', title: copy.revokeErrorTitle, description: describeApiError(error, 'mcp-tokens') }),
               });
             }}
           />

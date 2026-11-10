@@ -12,7 +12,7 @@
  *
  * @module apps/api/src/orders/http
  */
-import { BadRequestException, Body, Controller, HttpCode, HttpStatus, Inject, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Inject, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Logger } from '@openlinker/shared/logging';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
@@ -39,6 +39,7 @@ import {
   BulkCancelOrdersResponseDto,
   BulkOrderIdsRequestDto,
 } from './dto/bulk-order-actions.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 /**
  * Machine codes for side effects that a plain `cancelled` outcome would hide.
@@ -109,7 +110,11 @@ export class OrderBulkActionsController {
     const note = dto.note?.trim() ? dto.note.trim() : null;
     // Batch-level, so refuse once instead of repeating the same 400 as N rows.
     if (dto.reason === 'other' && note === null) {
-      throw new BadRequestException(new OrderCancellationNoteRequiredError().message);
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_CANCEL_NOTE_REQUIRED',
+        new OrderCancellationNoteRequiredError().message
+      );
     }
 
     const results: BulkCancelOrderResultDto[] = [];

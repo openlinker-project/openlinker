@@ -10,6 +10,7 @@ import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
 import type { HoldReason, OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import type { AuthorityAttentionReason } from '@openlinker/core/fulfillment-authority';
 
 /**
  * Per-destination sync status values (#2284).
@@ -179,6 +180,12 @@ export interface OrderHealthSummary {
    */
   omsAttention: number;
   /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never a health bucket - the
+   * same shape as `salesDocumentBlocked`.
+   */
+  paymentNotSent: number;
+  /**
    * When the OLDEST still-held order was held (#2254), or `null` when nothing
    * is held. Lets the blocked chip carry an age inside its label rather than
    * adding a third dotted badge to a row that already has two SLA badges.
@@ -195,6 +202,46 @@ export interface OrderHealthSummary {
    * queue without reading it as a problem.
    */
   salesDocumentIssuedOnRequest: number;
+  /**
+   * #4025 - orders with an open return. Built from the SAME id list the
+   * `hasOpenReturn` list filter uses (`OrderHealthSummaryFilters.openReturnOrderIds`,
+   * resolved by the caller because `orders` may not import `returns`), so the
+   * count and the rows it reveals cannot disagree. 0 when no list was supplied.
+   */
+  openReturn: number;
+  /** #4025 - orders with a buyer note an operator can act on (the `hasBuyerNote` filter's predicate). */
+  hasBuyerNote: number;
+  /**
+   * #4025 - orders with a ship-by deadline inside the next 24 hours or already
+   * past (the `dueBefore` list filter's predicate, evaluated at now + 24 h).
+   */
+  dueWithin24h: number;
+  /**
+   * #4025 - order count per source connection id. Counted with every summary
+   * scope applied EXCEPT `sourceConnectionId` itself, so the Source filter can
+   * show a number beside each option while one of them is selected.
+   * Connections with no orders in scope are absent, never `0`.
+   */
+  bySource: Record<string, number>;
+  /** #4025 - the three "Needs a look" group totals. */
+  attention: OrderAttentionSummary;
+}
+
+/**
+ * The three "Needs a look" group totals on the orders list (#4025, #4026).
+ *
+ * Each is the number of DISTINCT orders matching ANY filter in its group - a
+ * union, which is why it lives here and not in the browser: summing the
+ * per-filter counts would count an order that is both overdue and due within
+ * 24 h twice. Every member predicate is the one its own list filter uses.
+ */
+export interface OrderAttentionSummary {
+  /** SLA overdue OR SLA at risk OR ship-by within 24 h (`dueBefore`). */
+  lateToShip: number;
+  /** Sales document blocked OR OpenLinker stopped OR routing blocked OR waiting in OpenLinker OR tax rate conflict. */
+  stuck: number;
+  /** On pack bench OR buyer note OR open return. */
+  toHandle: number;
 }
 
 /**
@@ -237,6 +284,14 @@ export interface OrderHealthSummaryFilters {
    * silently re-scoping it would move numbers on surfaces not in scope here.
    */
   cancelled?: boolean;
+  /**
+   * #4025 - internal ids of orders with an open return, resolved by the caller
+   * from the `returns` context exactly as for `OrderRecordFilters.openReturnOrderIds`.
+   * NOT a scope: it only feeds `countByHealth`'s `openReturn` and
+   * `attention.toHandle` counts, so omitting it reports both without the open
+   * returns rather than narrowing anything.
+   */
+  openReturnOrderIds?: string[];
 }
 
 /**
@@ -415,6 +470,18 @@ export interface OrderRecordFilters {
    */
   omsAttention?: boolean;
   /**
+   * Restrict to orders carrying an attention entry with exactly this reason
+   * (#3961 - the "Changed by the shop" filter). Composes with `omsAttention`;
+   * `undefined` means "don't filter".
+   */
+  omsAttentionReason?: AuthorityAttentionReason;
+  /**
+   * Restrict to orders where a shop still shows the order unpaid and
+   * OpenLinker gave up sending the payment (#3963). ANDed with `health`, never
+   * folded into it. Reads the denormalised `paymentWritebackProblem` flag.
+   */
+  paymentNotSent?: boolean;
+  /**
    * Restrict to orders whose OPEN hold carries this reason (#2342).
    * `undefined` means "don't filter".
    *
@@ -519,12 +586,19 @@ export interface OrderRecordFilters {
  * Sort fields for order-record list queries (#927, extended #944).
  *
  * - `createdAt` / `dispatchBy` — top-level timestamp columns.
+ * - `placedAt` (#4025) — when the BUYER placed the order, as the source reports
+ *   it. Distinct from `createdAt`, which is when OpenLinker first stored the
+ *   record: after an import of older orders the two differ by days, so "newest
+ *   first" by `createdAt` puts the import on top. A source that reports no
+ *   placement time (WooCommerce) leaves it NULL, and NULLs sort LAST in both
+ *   directions so an unknown date never jumps to the top of the list.
  * - `customer` / `items` / `status` / `total` / `payment` — derived from
  *   `orderSnapshot` JSONB (and the health `CASE` for `status`); back the
  *   sortable table columns.
  */
 export const OrderRecordSortValues = [
   'createdAt',
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',

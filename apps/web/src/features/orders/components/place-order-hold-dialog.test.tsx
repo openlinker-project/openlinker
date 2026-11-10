@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PlaceOrderHoldDialog } from './place-order-hold-dialog';
+import { getMessages } from '../../../shared/i18n';
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders, findToastDescription } from '../../../test/test-utils';
 
@@ -120,14 +121,13 @@ describe('PlaceOrderHoldDialog (#2342)', () => {
     await user.click(await screen.findByRole('button', { name: 'Put on hold' }));
 
     expect(
-      await screen.findByText('This order is already on hold. The open hold is being loaded now.'),
+      await screen.findByText(getMessages('errors').codes.ORDER_ALREADY_ON_HOLD),
     ).toBeInTheDocument();
     // The dialog stays open: the operator is still in the form.
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
-  it('should surface the server message for a failure it does not recognise', async () => {
-    // A 400 naming a missing field must not be hidden behind a generic sentence.
+  it('should say a failure it has no copy for in the status-family copy, never the server text', async () => {
     const { onOpenChange } = renderDialog(
       vi.fn().mockRejectedValue(new ApiError('Unknown hold reason', 400, {})),
     );
@@ -135,7 +135,7 @@ describe('PlaceOrderHoldDialog (#2342)', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Put on hold' }));
 
-    expect(await screen.findByText('Unknown hold reason')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status['400'])).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });

@@ -46,6 +46,7 @@ import type {
   CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
+import type { PaymentWritebackEntry } from '../types/payment-writeback.types';
 import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
@@ -546,6 +547,36 @@ export interface OrderRecordRepositoryPort {
    * is not shipped (or no longer exists) gets `false`.
    */
   claimShippedNotification(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Claim the payment writeback for ONE destination (#3963). A single guarded
+   * UPDATE that moves the entry to `sending` only when it is absent,
+   * `awaiting`, `retrying`, or a `sending` claim older than `staleBefore`
+   * (a crashed attempt). Of any number of racing callers for the same
+   * (order, destination) exactly one gets `true`.
+   */
+  claimPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    staleBefore: Date
+  ): Promise<boolean>;
+
+  /**
+   * Overwrite ONE destination's writeback entry (#3963), leaving every other
+   * destination's entry untouched, and recompute `paymentWritebackProblem` in
+   * the same statement.
+   */
+  recordPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    entry: PaymentWritebackEntry
+  ): Promise<void>;
+
+  /**
+   * Mark every problem entry on these orders as `handled` (#3963) - the
+   * operator dealt with it in the shop. Returns how many orders changed.
+   */
+  markPaymentWritebackHandled(internalOrderIds: readonly string[]): Promise<number>;
 
   /**
    * Push the honest item-resolution-failure state onto the order record

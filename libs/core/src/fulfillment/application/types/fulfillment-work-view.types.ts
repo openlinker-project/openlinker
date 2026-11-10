@@ -59,6 +59,12 @@ export interface FulfillmentHoldView {
   readonly reason: HoldReason;
   readonly note: string | null;
   readonly placedAt: Date;
+  /**
+   * The hold was placed because the order source changed a line after routing
+   * (#3961), not by a person. Derived from the withheld actor so a surface can
+   * name it without learning service identifiers.
+   */
+  readonly fromSourceChange: boolean;
 }
 
 /** A work object as an operator surface sees it. */

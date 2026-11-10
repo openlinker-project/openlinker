@@ -24,7 +24,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -38,6 +37,7 @@ import {
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { resolveMcpResourceUrl } from '../mcp-resource';
 import { CreateMcpTokenDto } from './dto/create-mcp-token.dto';
 import { McpTokenCreatedResponseDto, McpTokenResponseDto } from './dto/mcp-token-response.dto';
@@ -103,7 +103,9 @@ export class McpTokensController {
   async revoke(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     const revoked = await this.mcpTokens.revoke(id, 'revoked_by_admin');
     if (!revoked) {
-      throw new NotFoundException(`MCP token not found: ${id}`);
+      throw codedHttpError(HttpStatus.NOT_FOUND, 'MCP_TOKEN_NOT_FOUND', `MCP token not found: ${id}`, {
+        tokenId: id,
+      });
     }
   }
 
