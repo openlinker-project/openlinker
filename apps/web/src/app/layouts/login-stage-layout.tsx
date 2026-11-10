@@ -40,7 +40,6 @@ import { BENCH_PATH, resolveSessionSurface } from '../../shared/auth/session-sur
 import { useSession } from '../../shared/auth/use-session';
 import { useLocale, useMessages } from '../../shared/i18n';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
-import { resetEntrance } from '../../shared/lib/entrance';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { useToast } from '../../shared/ui/toast-provider';
 import { LoginBackdrop } from './login-backdrop';
@@ -167,8 +166,6 @@ export function LoginStageScreen({ mode }: LoginStageScreenProps): ReactElement 
       signingIn.current = true;
       try {
         await login.mutateAsync(values);
-        // A fresh sign-in plays the content entrance again, even in this tab.
-        resetEntrance();
         return { ok: true };
       } catch (error) {
         signingIn.current = false;

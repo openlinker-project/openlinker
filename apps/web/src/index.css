@@ -1831,25 +1831,30 @@ textarea,
    checked the shell's placeholder stays invisible for a moment, so a quick
    check shows the calm page background instead of a loader flashing past; a
    slow one shows the placeholder after 400 ms. `.shell--app` / `--pending`
-   keep this off the login page's blurred preview, which reuses the markup. */
+   keep this off the login page's blurred preview, which reuses the markup.
+   Every entrance here fills `backwards` only: a `both`/`forwards` fill keeps
+   the animation in effect after it ends, so the element would stay a stacking
+   context (and, for `transform`, the containing block of its fixed
+   descendants) for good, trapping a dropdown under the next block. */
 .shell--app {
-  animation: page-fade-in 320ms var(--ease-out) both;
+  animation: page-fade-in 320ms var(--ease-out) backwards;
 }
 
 .shell--pending,
 .guest-layout--pending {
-  animation: page-fade-in 240ms var(--ease-out) 400ms both;
+  animation: page-fade-in 240ms var(--ease-out) 400ms backwards;
 }
 
 .login-stage {
-  animation: page-fade-in 320ms var(--ease-out) both;
+  animation: page-fade-in 320ms var(--ease-out) backwards;
 }
 
 /* ── Content entrance (#4029) ──────────────────────────────────────────
  * One small, repeatable reveal: each block rises 8 px into place while it
- * fades in, one after another, 50 ms apart. It plays on the first page after
- * signing in or in a new tab (`.shell--intro`, set by app-shell.tsx through
- * shared/lib/entrance.ts) for a page's blocks (`.page-section > *`) and the
+ * fades in, one after another, 50 ms apart, on EVERY page: the shell re-keys
+ * its content per route (`key={location.pathname}`), so each page mounts fresh
+ * and plays it once, while a filter or a search param change does not. It
+ * covers a page's blocks (the outermost `.page-section`'s children) and the
  * cards of a KPI row. `.reveal-stagger` gives any container the same reveal
  * for its children, every time it mounts. Transform and opacity only, and no
  * transform is left behind once it ends (the keyframes set only `from`).
@@ -1899,15 +1904,21 @@ textarea,
   --rise-i: 7;
 }
 
-.shell--intro .shell-content > .page-section > *,
+/* `:not(.page-section .page-section)` keeps the outermost section only, so a
+ * nested section's children do not rise a second time inside a rising block. */
+.shell--app .shell-content .page-section:not(.page-section .page-section) > *,
 .reveal-stagger > * {
-  animation: content-rise 520ms var(--ease-out) both;
+  animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(60ms + var(--rise-i) * 50ms);
 }
 
-/* Cards in a row start once their row has begun, then follow one another. */
-.shell--intro .shell-content :is(.status-strip, .ds-grid) > * {
-  animation: content-rise 520ms var(--ease-out) both;
+/* Cards in a row start once their row has begun, then follow one another.
+ * The scope is the whole content, not the route's first paint, on purpose: an
+ * animation plays once per mount, so a filter or search change (the KPI rows
+ * stay mounted, keyed by segment) replays nothing, while content that really
+ * arrives later, a tab panel or a loaded section, rises in like the rest. */
+.shell--app .shell-content :is(.status-strip, .ds-grid) > * {
+  animation: content-rise 520ms var(--ease-out) backwards;
   animation-delay: calc(160ms + var(--rise-i) * 50ms);
 }
 
@@ -1919,8 +1930,8 @@ textarea,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shell--intro .shell-content > .page-section > *,
-  .shell--intro .shell-content :is(.status-strip, .ds-grid) > *,
+  .shell--app .shell-content .page-section:not(.page-section .page-section) > *,
+  .shell--app .shell-content :is(.status-strip, .ds-grid) > *,
   .reveal-stagger > * {
     animation: none;
   }
