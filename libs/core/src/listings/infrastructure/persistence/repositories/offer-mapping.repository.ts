@@ -27,7 +27,10 @@ import {
   readValidationMessages,
   resolveOfferLifecycle,
 } from '../../../domain/types/offer-lifecycle.types';
-import { readValidationProblems } from '../../../domain/types/offer-validation-problem.types';
+import {
+  OFFER_VALIDATION_PROBLEMS_KEY,
+  readValidationProblems,
+} from '../../../domain/types/offer-validation-problem.types';
 import {
   OFFER_CREATION_STATUS,
   OFFER_CREATION_UNKNOWN_OUTCOME_ERROR_CODES,
@@ -38,6 +41,8 @@ import type {
 } from '../../../domain/types/offer-lifecycle.types';
 import { deriveVariantLabel } from '../../../domain/types/offer-mapping.types';
 import type {
+  OfferAccountProblemSummary,
+  OfferAttentionCounts,
   OfferMappingChannelStatus,
   OfferMappingCommercial,
   OfferMappingCountFilters,
@@ -208,6 +213,36 @@ const HAS_VALIDATION_MESSAGES_SQL =
   `(CASE WHEN jsonb_typeof(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') = 'array' ` +
   `THEN jsonb_array_length(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') > 0 ` +
   `ELSE false END)`;
+
+/**
+ * A live offer still selling a product deleted in the shop (#4045): the variant
+ * is stale at the master and the channel last reported stock above zero - the
+ * frontend's `isOverselling` rule, so the count and the row badge agree.
+ */
+const SELLING_DELETED_SQL = '(pv."isStale" = true AND ocs."availableQuantity" > 0)';
+
+/**
+ * The listing's account-scoped problems as a row set (#4045). `CASE` keeps
+ * `jsonb_array_elements` away from a non-array (it raises, which would 500 the
+ * page over one malformed snapshot); a missing snapshot reads as no problems.
+ * Only entries with a string message count, matching `readValidationProblems`.
+ */
+function accountProblemsFromSql(problemsExpr: string): string {
+  return (
+    `jsonb_array_elements(CASE WHEN jsonb_typeof(${problemsExpr}) = 'array' ` +
+    `THEN ${problemsExpr} ELSE '[]'::jsonb END) AS vp`
+  );
+}
+const ACCOUNT_PROBLEMS_FROM_SQL = accountProblemsFromSql(
+  `oss."statusDetails" -> '${OFFER_VALIDATION_PROBLEMS_KEY}'`,
+);
+const ACCOUNT_PROBLEM_WHERE_SQL = `vp ->> 'scope' = 'account' AND jsonb_typeof(vp -> 'message') = 'string'`;
+
+/** The listing carries at least one account-scoped problem (#4045). */
+const SHOP_BLOCKED_SQL = `EXISTS (SELECT 1 FROM ${ACCOUNT_PROBLEMS_FROM_SQL} WHERE ${ACCOUNT_PROBLEM_WHERE_SQL})`;
+
+/** Distinct problems kept per connection in the attention counts (#4045). */
+const SHOP_BLOCKED_PROBLEMS_PER_CONNECTION = 5;
 
 /** Raw shape of one `countByLifecycle` group (#2026). */
 interface OfferLifecycleCountRawRow {
@@ -429,6 +464,76 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     return counts;
   }
 
+  async countAttention(filters: OfferMappingCountFilters): Promise<OfferAttentionCounts> {
+    // Each number drops its own filter, so "3 blocked by shop" stays readable
+    // while that filter is the one applied (the orders summary rule, #4025).
+    const withoutStale: OfferMappingCountFilters = { ...filters, staleSignal: undefined };
+    const withoutBlocked: OfferMappingCountFilters = { ...filters, shopBlocked: undefined };
+
+    // The per-problem breakdown needs a lateral over the problems array, which
+    // TypeORM's join API cannot express; the filtered builder becomes a derived
+    // table so the membership predicates stay the one shared definition.
+    const [blockedSql, blockedParams] = this.buildFilteredQuery({ ...withoutBlocked, shopBlocked: true })
+      .select('mapping.id', 'id')
+      .addSelect('mapping.connectionId', 'connectionId')
+      .addSelect(`oss."statusDetails" -> '${OFFER_VALIDATION_PROBLEMS_KEY}'`, 'problems')
+      .getQueryAndParameters();
+
+    const [sellingRow, blockedRows, problemRows] = await Promise.all([
+      this.buildFilteredQuery(withoutStale)
+        .select('COUNT(DISTINCT mapping.id)', 'count')
+        .andWhere(SELLING_DELETED_SQL)
+        .getRawOne<{ count: string }>(),
+      this.buildFilteredQuery({ ...withoutBlocked, shopBlocked: true })
+        .select('mapping.connectionId', 'connectionId')
+        .addSelect('COUNT(DISTINCT mapping.id)', 'count')
+        .groupBy('mapping.connectionId')
+        .getRawMany<{ connectionId: string; count: string }>(),
+      this.repository.manager.query<
+        { connectionId: string; code: string | null; message: string; count: string }[]
+      >(
+        // The guard is repeated even though the inner builder already keeps
+        // only array-shaped problems, so a later change to that predicate
+        // cannot turn one malformed snapshot into a 500. The cap is applied
+        // here rather than after the read so a connection with many distinct
+        // problems does not ship every group to the app; code and message
+        // break count ties so the kept five do not vary between reads.
+        `SELECT "connectionId", "code", "message", "count" FROM (` +
+          `SELECT g.*, ROW_NUMBER() OVER (PARTITION BY g."connectionId" ` +
+          `ORDER BY g."count" DESC, g."code" ASC NULLS LAST, g."message" ASC) AS rn FROM (` +
+          `SELECT t."connectionId" AS "connectionId", vp ->> 'code' AS "code", vp ->> 'message' AS "message", ` +
+          `COUNT(DISTINCT t."id") AS "count" FROM (${blockedSql}) t, ${accountProblemsFromSql('t."problems"')} ` +
+          `WHERE ${ACCOUNT_PROBLEM_WHERE_SQL} GROUP BY 1, 2, 3) g) ranked ` +
+          `WHERE rn <= ${SHOP_BLOCKED_PROBLEMS_PER_CONNECTION} ORDER BY "connectionId", rn`,
+        blockedParams,
+      ),
+    ]);
+
+    const problemsByConnection = new Map<string, OfferAccountProblemSummary[]>();
+    for (const row of problemRows) {
+      const code = row.code?.trim();
+      const list = problemsByConnection.get(row.connectionId) ?? [];
+      list.push({ ...(code ? { code } : {}), message: row.message });
+      problemsByConnection.set(row.connectionId, list);
+    }
+
+    const shopBlockedByConnection = blockedRows
+      .map((row) => ({
+        connectionId: row.connectionId,
+        count: Number(row.count),
+        // Already ranked and capped in SQL; rows arrive in rank order.
+        problems: problemsByConnection.get(row.connectionId) ?? [],
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      sellingDeletedProduct: Number(sellingRow?.count ?? 0),
+      // Summing is exact only because a mapping belongs to exactly one connection.
+      shopBlocked: shopBlockedByConnection.reduce((sum, c) => sum + c.count, 0),
+      shopBlockedByConnection,
+    };
+  }
+
   /**
    * Narrow a persisted `publicationStatus` onto the closed neutral union.
    *
@@ -559,6 +664,14 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
           'WHERE attr.value ILIKE :search)))',
         { search: `%${escapedSearch}%` }
       );
+    }
+
+    if (filters.staleSignal === 'selling') {
+      qb.andWhere(SELLING_DELETED_SQL);
+    }
+
+    if (filters.shopBlocked === true) {
+      qb.andWhere(SHOP_BLOCKED_SQL);
     }
 
     return qb;

@@ -111,8 +111,12 @@ export type {
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
+  OfferAttentionCounts,
+  OfferShopBlockedConnection,
+  OfferAccountProblemSummary,
+  OfferStaleSignalFilter,
 } from './domain/types/offer-mapping.types';
-export { deriveVariantLabel } from './domain/types/offer-mapping.types';
+export { deriveVariantLabel, OfferStaleSignalFilterValues } from './domain/types/offer-mapping.types';
 
 // Offer lifecycle (#2025) — the five disjoint buckets the redesigned listings
 // page partitions on, plus the pure derivation off a status snapshot.

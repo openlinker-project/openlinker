@@ -648,6 +648,120 @@ describe('OfferMappingRepository', () => {
     });
   });
 
+  describe('needs-a-look filters and counts (#4045)', () => {
+    type AttentionQb = {
+      leftJoin: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      select: jest.Mock;
+      addSelect: jest.Mock;
+      groupBy: jest.Mock;
+      getRawOne: jest.Mock;
+      getRawMany: jest.Mock;
+      getQueryAndParameters: jest.Mock;
+      getCount: jest.Mock;
+    };
+
+    function buildQb(results: { one?: unknown; many?: unknown[] } = {}): AttentionQb {
+      const qb: AttentionQb = {
+        leftJoin: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        select: jest.fn(),
+        addSelect: jest.fn(),
+        groupBy: jest.fn(),
+        getRawOne: jest.fn().mockResolvedValue(results.one ?? { count: '0' }),
+        getRawMany: jest.fn().mockResolvedValue(results.many ?? []),
+        getQueryAndParameters: jest.fn().mockReturnValue(['SELECT inner', { entityType: 'Offer' }]),
+        getCount: jest.fn().mockResolvedValue(0),
+      };
+      for (const key of ['leftJoin', 'where', 'andWhere', 'select', 'addSelect', 'groupBy'] as const) {
+        qb[key].mockReturnValue(qb);
+      }
+      return qb;
+    }
+
+    const whereClauses = (qb: AttentionQb): string[] =>
+      (qb.andWhere.mock.calls as unknown[][]).map((call) => String(call[0]));
+
+    it('should keep only stale variants the channel still sells for staleSignal=selling', async () => {
+      const qb = buildQb();
+      ormRepository.createQueryBuilder.mockReturnValue(qb as never);
+
+      await repository.countMany({ staleSignal: 'selling' });
+
+      expect(whereClauses(qb)).toContain('(pv."isStale" = true AND ocs."availableQuantity" > 0)');
+    });
+
+    it('should keep only listings with an account-scoped problem for shopBlocked, guarding non-arrays', async () => {
+      const qb = buildQb();
+      ormRepository.createQueryBuilder.mockReturnValue(qb as never);
+
+      await repository.countMany({ shopBlocked: true });
+
+      const clause = whereClauses(qb).find((c) => c.includes('validationProblems'));
+      expect(clause).toContain("vp ->> 'scope' = 'account'");
+      expect(clause).toContain("jsonb_typeof(oss.\"statusDetails\" -> 'validationProblems') = 'array'");
+    });
+
+    it('should not emit either predicate when neither filter is set', async () => {
+      const qb = buildQb();
+      ormRepository.createQueryBuilder.mockReturnValue(qb as never);
+
+      await repository.countMany({});
+
+      expect(whereClauses(qb).some((c) => c.includes('isStale') || c.includes('validationProblems'))).toBe(false);
+    });
+
+    it('should count each number with its own filter removed and group problems per connection', async () => {
+      const sellingQb = buildQb({ one: { count: '2' } });
+      const innerQb = buildQb();
+      const blockedQb = buildQb({
+        many: [
+          { connectionId: 'conn-a', count: '1' },
+          { connectionId: 'conn-b', count: '4' },
+        ],
+      });
+      // The derived-table query is built first, then the two counts.
+      ormRepository.createQueryBuilder
+        .mockReturnValueOnce(innerQb as never)
+        .mockReturnValueOnce(sellingQb as never)
+        .mockReturnValueOnce(blockedQb as never);
+      const query = jest.fn().mockResolvedValue([
+        { connectionId: 'conn-b', code: 'shopKyc', message: 'Verify the shop.', count: '4' },
+        { connectionId: 'conn-b', code: null, message: 'Shop paused.', count: '1' },
+        { connectionId: 'conn-a', code: ' ', message: 'Shop blocked.', count: '1' },
+      ]);
+      (ormRepository as unknown as { manager: { query: jest.Mock } }).manager = { query };
+
+      const counts = await repository.countAttention({ staleSignal: 'selling', shopBlocked: true, search: 'x' });
+
+      expect(counts).toEqual({
+        sellingDeletedProduct: 2,
+        shopBlocked: 5,
+        shopBlockedByConnection: [
+          {
+            connectionId: 'conn-b',
+            count: 4,
+            problems: [{ code: 'shopKyc', message: 'Verify the shop.' }, { message: 'Shop paused.' }],
+          },
+          { connectionId: 'conn-a', count: 1, problems: [{ message: 'Shop blocked.' }] },
+        ],
+      });
+      // The selling count drops staleSignal; the blocked count keeps
+      // shopBlocked as its own predicate exactly once, and both keep search.
+      expect(whereClauses(sellingQb).filter((c) => c.includes('isStale'))).toHaveLength(1);
+      expect(whereClauses(blockedQb).filter((c) => c.includes('validationProblems'))).toHaveLength(1);
+      expect(whereClauses(blockedQb).some((c) => c.includes('isStale'))).toBe(true);
+      const problemSql = String((query.mock.calls as unknown[][])[0]?.[0]);
+      expect(problemSql).toContain('FROM (SELECT inner) t');
+      // Same non-array guard as the shopBlocked predicate, and the cap in SQL.
+      expect(problemSql).toContain(`jsonb_typeof(t."problems") = 'array'`);
+      expect(problemSql).toContain('ROW_NUMBER() OVER (PARTITION BY g."connectionId"');
+      expect(problemSql).toContain('WHERE rn <= 5');
+    });
+  });
+
   describe('countByLifecycle (#2026)', () => {
     type CountsQb = {
       leftJoin: jest.Mock;
