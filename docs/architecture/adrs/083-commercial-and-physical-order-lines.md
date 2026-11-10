@@ -40,7 +40,7 @@ Two other designs also fell apart on inspection. Asking adapters to send `role` 
 - **Recompute the expansion at each read.** Rejected for the same reason plus drift: a definition edited between two reads gives two answers for one order.
 - **Adapter-set `role` / `parentLineId`.** Rejected: every adapter changes for nothing, and core's definition is the second source of truth that could disagree.
 - **Explode the bundle into the commercial list.** Rejected: documents, margin and returns would show lines the buyer never bought.
-- **A new promotion engine for gifts.** Rejected: the automation engine already has storage, AND-only conditions, dry run, run history and at-most-once firing.
+- **A new promotion engine for gifts.** Rejected: the automation engine already has storage, AND-only conditions, dry run, run history and at-most-once firing. *Superseded for gifts by [ADR-084](./084-promotions-context.md) (#3935): gifts now live in a small `promotions` context, not as automation rules; see the amendment below.*
 
 ## Consequences
 
@@ -74,6 +74,10 @@ Decision 12 keeps the gift presentation in one core helper. Three product decisi
 3. **Placement:** the OpenLinker-wide default on Settings > Sales documents; the per-connection override as a "Gifts on documents" tab on Connection > Mappings; per gift a field "On the document" in the rule composer, the bundle gift-slot menu and the manual add-gift dialog.
 
 Research basis, not legal advice: a gift tied to a purchase is part of the paid sale, not a free transfer; a gift left off the documents was treated by a court (WSA Krakow) as a free transfer; fiscal software refuses a 0,00 line; BaseLinker and IdoSell POS use a 0,01 gift price; IdoSell offers 1,00 / 0,00 / merged / not on documents; Sellasist shows the gift at full price with a cancelling discount line or hides it. Amendment B in the section above is superseded by this one. See [product-spec-oms-gifts](../../specs/product-spec-oms-gifts.md).
+
+## Amendment: promotions replace gift rules (#3935)
+
+The sentence "a new promotion engine for gifts is rejected" held while a gift was cheap to express as an automation rule. It stopped holding once gifts needed an ordered list, stacking, limits and their own history, none of which the automation model has. [ADR-084](./084-promotions-context.md) moves gift rules into a `promotions` context with a typed benefit (`free-gift` only) and a policy per benefit kind. This is not a generic rule engine: automation keeps its own model, and price-changing benefits stay out until a channel-side design exists (ADR-014). Nothing in decisions 1 to 12 changes: the gift is still a line of the overlay with `gift.source = 'ol-rule'`, and `ruleRef` now holds the promotion id (the migration kept every id).
 
 ## References
 
