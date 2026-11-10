@@ -123,13 +123,15 @@ export function PromotionRail({
         riseIndex={riseIndex}
         data-testid="promotion-readback"
         footer={
-          saved && covered.length > 0 ? (
+          saved ? (
             <div className="pm-chanline">
               <span className="pm-hint">{messages.rb.channelsLabel}</span>
               <span className="pm-chans">
-                {covered.map((channel) => (
-                  <PromotionChannelChip key={channel.id} connection={channel} link />
-                ))}
+                {values.channelIds.length === 0 ? (
+                  <span className="chip">{messages.row.allChannels}</span>
+                ) : (
+                  covered.map((channel) => <PromotionChannelChip key={channel.id} connection={channel} link />)
+                )}
               </span>
             </div>
           ) : undefined

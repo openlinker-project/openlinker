@@ -54,6 +54,8 @@ export function usePromotionFormState(options: {
   // never wipe typed values.
   const { reset, getValues } = form;
   const initialKey = JSON.stringify(initial);
+  const latestInitial = useRef(initial);
+  latestInitial.current = initial;
   const lastEditedKey = useRef(editedKey);
   const appliedKey = useRef<string | null>(null);
   useEffect(() => {
@@ -62,10 +64,10 @@ export function usePromotionFormState(options: {
     const touched = appliedKey.current !== null && JSON.stringify(getValues()) !== appliedKey.current;
     if (!switched && touched) return;
     appliedKey.current = initialKey;
-    reset(initial);
-    setNameTouched(initial.name !== '');
+    reset(latestInitial.current);
+    setNameTouched(latestInitial.current.name !== '');
     setAttempted(false);
-  }, [editedKey, initialKey, reset, getValues, initial]);
+  }, [editedKey, initialKey, reset, getValues]);
 
   const problems = validatePromotionForm(values);
   const draft = problems.length === 0 ? formToWriteInput(values, true) : null;

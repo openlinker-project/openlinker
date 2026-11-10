@@ -17,6 +17,8 @@ export interface PromotionFieldProps {
   hint?: ReactNode;
   required?: boolean;
   description?: ReactNode;
+  /** Draw the description between the label and the control instead of under it. */
+  descriptionFirst?: boolean;
   error?: string;
   invalid?: boolean;
   children: ReactNode;
@@ -30,6 +32,7 @@ export function PromotionField({
   hint,
   required = false,
   description,
+  descriptionFirst = false,
   error,
   invalid = false,
   children,
@@ -53,8 +56,9 @@ export function PromotionField({
         )}
         {hint}
       </span>
+      {descriptionFirst && description !== undefined ? <p className="form-field__description">{description}</p> : null}
       {children}
-      {description !== undefined ? <p className="form-field__description">{description}</p> : null}
+      {!descriptionFirst && description !== undefined ? <p className="form-field__description">{description}</p> : null}
       {error !== undefined ? <p className="pm-err">{error}</p> : null}
     </div>
   );

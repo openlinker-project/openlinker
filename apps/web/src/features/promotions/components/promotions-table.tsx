@@ -206,9 +206,15 @@ export function PromotionsTable({
 
   const channelsCell = (promotion: Promotion): ReactElement => (
     <span className="pm-chans">
-      {channelsOf(promotion).map((channel) => (
-        <PromotionChannelChip key={channel.id} connection={channel} link loading={connectionsLoading} />
-      ))}
+      {promotionChannelIds(promotion).length === 0 ? (
+        <span className="chip" data-testid="promotion-all-channels">
+          {copy.row.allChannels}
+        </span>
+      ) : (
+        channelsOf(promotion).map((channel) => (
+          <PromotionChannelChip key={channel.id} connection={channel} link loading={connectionsLoading} />
+        ))
+      )}
     </span>
   );
 
@@ -270,13 +276,13 @@ export function PromotionsTable({
         );
       },
     },
-    { id: 'promotion', width: '22%', lines: 2, header: copy.columns.promotion, cell: nameCell },
-    { id: 'benefit', width: '17%', lines: 2, header: copy.columns.benefit, cell: benefitCell },
-    { id: 'channels', width: '17%', header: copy.columns.channels, cell: channelsCell, hideBelow: 1024 },
-    { id: 'state', width: '12%', lines: 2, header: copy.columns.state, cell: stateCell },
+    { id: 'promotion', width: '20%', lines: 2, header: copy.columns.promotion, cell: nameCell },
+    { id: 'benefit', width: '16%', lines: 2, header: copy.columns.benefit, cell: benefitCell },
+    { id: 'channels', width: '14%', header: copy.columns.channels, cell: channelsCell, hideBelow: 1024 },
+    { id: 'state', width: '11%', lines: 2, header: copy.columns.state, cell: stateCell },
     {
       id: 'usage',
-      width: '12%',
+      width: '15%',
       lines: 2,
       header: (
         <span className="pm-th">
@@ -352,7 +358,7 @@ export function PromotionsTable({
         columns={columns}
         rows={rows}
         rowKey={(promotion) => promotion.id}
-        className="orders-table pm-table list-table--fixed list-table--peek"
+        className="orders-table pm-dt list-table--fixed list-table--peek"
         onRowClick={onPeek}
         rowClassName={(promotion) =>
           ['pm-row', promotion.id === peekId ? 'list-row--peek' : '', !promotion.isActive ? 'pm-row--off' : '', promotion.status === 'ended' ? 'pm-row--ended' : '']

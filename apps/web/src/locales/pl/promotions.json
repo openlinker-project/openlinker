@@ -326,6 +326,7 @@
     "usage": "Wykorzystanie limitu"
   },
   "row": {
+    "allChannels": "Wszystkie kanały",
     "basket": "Koszyk od {amount}",
     "contains": "Zawiera {product}",
     "gift": "Gratis × {n}",

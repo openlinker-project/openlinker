@@ -284,25 +284,25 @@ export function PromotionComposer({
           </StatusBadge>
         </span>
       }
-      description={isDraft ? copy.detail.draftNote : copy.detail.editNote}
-      summary={
-        <div className="pm-meta">
-          {covered.length > 0 ? (
-            <>
-              <span className="pm-hint">{copy.detail.channelsLabel}</span>
-              <span className="pm-chans">
-                {covered.map((channel) => (
-                  <PromotionChannelChip key={channel.id} connection={channel} link />
-                ))}
-              </span>
-            </>
-          ) : null}
-          {index >= 0 ? (
-            <span className="pm-hint pm-meta__pos">
-              {interpolate(copy.detail.position, { n: String(index + 1), total: String(all.length) })}
+      description={
+        <>
+          {isDraft ? copy.detail.draftNote : copy.detail.editNote}
+          <span className="pm-meta pm-meta--head">
+            <span className="pm-hint">{copy.detail.channelsLabel}</span>
+            <span className="pm-chans">
+              {values.channelIds.length === 0 ? (
+                <span className="chip">{copy.row.allChannels}</span>
+              ) : (
+                covered.map((channel) => <PromotionChannelChip key={channel.id} connection={channel} link />)
+              )}
             </span>
-          ) : null}
-        </div>
+            {index >= 0 ? (
+              <span className="pm-hint pm-meta__pos">
+                {interpolate(copy.detail.position, { n: String(index + 1), total: String(all.length) })}
+              </span>
+            ) : null}
+          </span>
+        </>
       }
       actions={actions}
     >

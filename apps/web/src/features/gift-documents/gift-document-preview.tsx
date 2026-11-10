@@ -19,10 +19,10 @@ import {
   type GiftPresentationLine,
 } from './lib/gift-lines';
 
-/** The sample order: two paid lines and one gift worth 25.00 on its own. */
+/** The sample order: two paid lines and one gift worth 24.90 on its own. */
 const COFFEE = 149.99;
 const TEA = 53.99;
-const GIFT_REFERENCE = 25;
+const GIFT_REFERENCE = 24.9;
 
 interface SampleLine extends GiftPresentationLine {
   key: 'coffee' | 'tea' | 'gift';

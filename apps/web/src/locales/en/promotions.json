@@ -329,6 +329,7 @@
     "usage": "Limit usage"
   },
   "row": {
+    "allChannels": "All channels",
     "basket": "Cart from {amount}",
     "contains": "Contains {product}",
     "gift": "Gift × {n}",

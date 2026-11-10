@@ -70,6 +70,7 @@ export function PromotionTestPanel({ promotionId, draft, ready }: PromotionTestP
   const [customer, setCustomer] = useState<CustomerProjection | null>(null);
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState<PromotionDryRunResult | null>(null);
+  const [asked, setAsked] = useState(false);
   const evaluate = useEvaluatePromotionsMutation();
   const search = useDebouncedValue(customerText.trim(), 250);
 
@@ -80,6 +81,7 @@ export function PromotionTestPanel({ promotionId, draft, ready }: PromotionTestP
   });
 
   const run = (): void => {
+    setAsked(true);
     if (!ready) {
       setShown(null);
       return;
@@ -96,6 +98,7 @@ export function PromotionTestPanel({ promotionId, draft, ready }: PromotionTestP
 
   const rows = (): Row[] => {
     if (!ready) {
+      if (!asked) return [];
       return [{ key: 'not-ready', title: copy.thisPromotion, sub: copy.notReady, tone: 'neutral', badge: copy.notReadyBadge }];
     }
     if (shown === null) return [];

@@ -46,11 +46,9 @@ export function PromotionSentence({
   const placeholder = (text: string): ReactElement => <span className="pm-ph">{text}</span>;
   const bold = (text: string): ReactElement => <b>{text}</b>;
 
-  const chosen =
-    values.channelIds.length === 0
-      ? channels
-      : channels.filter((channel) => values.channelIds.includes(channel.id));
+  // An empty choice means every channel: said in words, not as a row of chips.
   const allSelected = values.channelIds.length === 0;
+  const chosen = allSelected ? [] : channels.filter((channel) => values.channelIds.includes(channel.id));
   const channelNodes: ReactNode =
     chosen.length === 0
       ? allSelected

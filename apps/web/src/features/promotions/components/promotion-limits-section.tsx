@@ -95,6 +95,7 @@ export function PromotionLimitsSection({
           label={copy.doc}
           hint={<HelpHint guide="g-doc" label={copy.docLabel} />}
           description={copy.docHelp}
+          descriptionFirst
           invalid={invalid?.has('doc-price') === true}
           error={copy.docPriceError}
         >
@@ -104,6 +105,10 @@ export function PromotionLimitsSection({
             value={cardValue}
             onChange={(next) => {
               form.setValue('documentForm', next === 'inherit' ? '' : next, { shouldDirty: true });
+              // A starting price, so the example document reads like a document at once.
+              if (next === 'custom-price' && values.documentUnitPrice.trim() === '') {
+                form.setValue('documentUnitPrice', '2.50', { shouldDirty: true });
+              }
             }}
             customPrice={values.documentUnitPrice}
             onCustomPriceChange={(next) => {
