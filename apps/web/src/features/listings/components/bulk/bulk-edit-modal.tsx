@@ -1289,13 +1289,20 @@ function BulkEditModalForm({
   return (
     <>
       <div className="bulk-editor__head">
-        <DialogTitle className="bulk-editor__title">
-          {renderRich(
-            copy.header.titleOffer,
-            { name: (text) => <span>{text}</span> },
-            { name: row.product?.name ?? row.productId },
-          )}
-        </DialogTitle>
+        <div className="bulk-editor__headtext">
+          {bundle ? (
+            <p className="eyebrow" data-testid="bundle-editor-eyebrow">
+              {productTypeLabel}
+            </p>
+          ) : null}
+          <DialogTitle className="bulk-editor__title">
+            {renderRich(
+              copy.header.titleOffer,
+              { name: (text) => <span>{text}</span> },
+              { name: row.product?.name ?? row.productId }
+            )}
+          </DialogTitle>
+        </div>
         <Button
           tone="ghost"
           type="button"
@@ -1350,7 +1357,7 @@ function BulkEditModalForm({
         ) : null}
       </div>
 
-      <div className="bulk-editor__ptype">{productTypeLabel}</div>
+      {bundle ? null : <div className="bulk-editor__ptype">{productTypeLabel}</div>}
 
       <div className={['bulk-editor__body', isMultiVariant ? '' : 'bulk-editor__body--simple'].filter(Boolean).join(' ')}>
         {isMultiVariant ? (

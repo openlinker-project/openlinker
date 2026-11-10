@@ -1204,6 +1204,7 @@
     "categoryMismatch": "The category differs from the first component's product card, and the marketplace requires the two to match.",
     "collapse": "Hide set contents of {name}",
     "compositionHeading": "Set contents on {destination}",
+    "compositionHint": "{n} products · the mode shows how a component enters the offer",
     "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
     "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
     "expand": "Show set contents of {name}",

@@ -38660,3 +38660,45 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .joined-filters__field .control { height: 1.625rem; border: none; background: none; padding: 0 var(--space-1); }
 .joined-filters__field:last-child { border-right: none; }
+
+/* ---- Product overview (#3935): the "More" disclosure keeps wide stock panels inside the column ---- */
+.pm-col{min-width:0}
+.pm-more{min-width:0;overflow-x:auto;display:grid;gap:var(--space-4)}
+.pm-disc__body>div{min-width:0}
+
+/* ---- Offer wizard review in the catalog mockup's column order and set layout (#3935) ---- */
+@media (min-width:1024px){.bulk-review__table--with-category .bulk-review__grid{grid-template-columns:4.75rem minmax(0,2.1fr) minmax(0,1.5fr) minmax(0,.75fr) minmax(0,1fr) minmax(0,1.3fr) 4rem}
+.bulk-review__table--with-category .bulk-review__c-stock{text-align:left;padding-left:var(--space-4)}}
+.bulk-review__table--with-category .bulk-review__c-status{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.bulk-review__lead{gap:var(--space-2)}
+.bulk-review__toggle-spacer{display:inline-block;width:1.25rem;flex:none}
+.bulk-review__chk{margin-right:var(--space-1)}
+.bulk-review__table--with-category .bulk-chip--warning:is(button){background:var(--status-warning-soft)}
+.bulk-review__c-stock .bundle-stock{display:grid;gap:2px;justify-items:start}
+.bulk-review__c-stock .bundle-stock b,.bulk-review__c-stock .bundle-stock>span:first-child{font-family:var(--font-mono);font-weight:600}
+.bundle-comp-panel{padding:var(--space-3) var(--space-4) var(--space-4) 4.75rem;background:var(--bg-shell)}
+.bundle-comp .bundle-comp__list>li{grid-template-columns:auto minmax(0,1fr) auto}
+.bundle-comp .bundle-comp__ean{margin:var(--space-2) 0 0}
+.bundle-comp__problem{display:block;font-size:.75rem;color:var(--status-error-fg)}
+@media (width<=720px){.bundle-comp-panel{padding-left:var(--space-4)}}
+.bulk-review__name .t{display:grid;gap:2px;justify-items:start}
+.bulk-review__name .t small{white-space:normal}
+.bulk-review__name .cx-mosaic{flex:none}
+.bulk-review__table--with-category .bulk-review__c-status .bulk-chip:not(.bulk-chip--head){font-family:var(--font-sans);text-transform:none;letter-spacing:0;font-weight:500;font-size:.75rem}
+.bulk-editor__headtext{display:grid;gap:2px;min-width:0}
+.bulk-editor__headtext .eyebrow{margin:0}
+@media (width<=720px){
+  .bulk-review__table--with-category .bulk-review__grid{grid-template-columns:2.75rem minmax(0,1fr) auto;grid-template-areas:"lead name name" "lead cat cat" "lead status status" "lead stock price" "lead action action"}
+  .bulk-review__table--with-category .bulk-review__c-status{grid-area:status;flex-direction:row;flex-wrap:wrap;justify-self:start;align-self:start}
+  .bulk-review__table--with-category .bulk-review__c-stock{padding-left:0;align-self:center}
+  .bulk-review__table--with-category .bulk-review__c-price{justify-self:end;align-self:center}
+  .bulk-review__table--with-category .bulk-review__c-action{justify-self:start}
+  .bundle-comp-panel{padding-right:var(--space-4);min-width:0;overflow:hidden}
+  .bundle-comp .bundle-comp__list>li{grid-template-columns:auto minmax(0,1fr)}
+  .bundle-comp .bundle-comp__list .cx-wm{grid-column:1/-1;justify-content:flex-start}
+  .bundle-comp__category{flex-wrap:wrap}
+}
+.pm-facts dd{min-width:0;margin:0;overflow-wrap:anywhere}
+.pm-kpi[data-tone=error] .pm-kpi__n{color:var(--status-error-fg)}
+.pm-kpi[data-tone=warning] .pm-kpi__n{color:var(--status-warning-fg)}
+.pm-kpi[data-tone=success] .pm-kpi__n{color:var(--status-success-fg)}
