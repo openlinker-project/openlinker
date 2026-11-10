@@ -71,7 +71,9 @@ export function PromotionPeek({
     () => (promotion === null || report.data === undefined ? null : summarisePromotionResults(report.data.groups, promotion.id)),
     [promotion, report.data],
   );
-  const covered = promotion === null ? [] : values?.channelIds.length === 0 ? connections.filter((c) => c.enabledCapabilities.includes('OrderSource')) : connections.filter((c) => values?.channelIds.includes(c.id));
+  // An empty choice means every channel: one chip, as in the list row and the rail, never a roll call of every connection.
+  const allChannels = values?.channelIds.length === 0;
+  const covered = promotion === null || allChannels ? [] : connections.filter((c) => values?.channelIds.includes(c.id));
   const recent = (history.data?.items ?? []).slice(0, 3);
 
   return (
@@ -146,9 +148,13 @@ export function PromotionPeek({
           <div>
             <h3 className="orders-peek__h">{copy.peek.channels}</h3>
             <span className="pm-chans">
-              {covered.map((channel) => (
-                <PromotionChannelChip key={channel.id} connection={channel} link />
-              ))}
+              {allChannels ? (
+                <span className="chip" data-testid="promotion-peek-all-channels">
+                  {copy.row.allChannels}
+                </span>
+              ) : (
+                covered.map((channel) => <PromotionChannelChip key={channel.id} connection={channel} link />)
+              )}
             </span>
           </div>
           <div>

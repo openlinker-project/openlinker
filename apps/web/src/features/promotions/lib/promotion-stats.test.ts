@@ -7,7 +7,7 @@ import { averageUnitCost, summarisePromotionResults } from './promotion-stats';
 
 const group = (over: Partial<GiftReportGroup>): GiftReportGroup => ({
   key: 'k',
-  giftSource: 'rule',
+  giftSource: 'ol-rule',
   ruleRef: 'r1',
   ruleName: 'n',
   productId: 'p',
@@ -47,6 +47,15 @@ describe('summarisePromotionResults', () => {
       { currency: 'PLN', costNet: 40 },
       { currency: 'EUR', costNet: 3 },
     ]);
+  });
+
+  it('should count the groups the API labels with the line source ol-rule and leave channel and cart-rule gifts out', () => {
+    const results = summarisePromotionResults(
+      [group({}), group({ giftSource: 'channel', ruleRef: null, units: 50 }), group({ giftSource: 'cart-rule', units: 60 })],
+      null,
+    );
+
+    expect(results.units).toBe(10);
   });
 
   it('should carry the pieces that have no purchase cost', () => {

@@ -33,7 +33,8 @@ export function summarisePromotionResults(
   const costs = new Map<string | null, number>();
   const results: PromotionResults = { units: 0, orders: 0, costs: [], unknownCostUnits: 0 };
   for (const group of groups) {
-    if (group.giftSource !== 'rule') continue;
+    // The group carries the line's own source (`ol-rule`); `rule` is only the report's coarse filter value.
+    if (group.giftSource !== 'ol-rule') continue;
     if (promotionId !== null && group.ruleRef !== promotionId) continue;
     results.units += group.units;
     results.orders += group.orders;
