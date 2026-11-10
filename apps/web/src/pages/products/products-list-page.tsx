@@ -35,6 +35,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { BundleGuide } from '../../features/bundles/components/bundle-guide';
+import { GuideButton } from '../../shared/ui/guide-drawer';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -150,6 +152,14 @@ const DEFAULT_DIR: Record<ProductListSortField, ProductListSortDir> = {
 
 
 export function ProductsListPage(): ReactElement {
+  return (
+    <BundleGuide>
+      <ProductsListPageBody />
+    </BundleGuide>
+  );
+}
+
+function ProductsListPageBody(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const platforms = usePlatforms();
@@ -919,7 +929,8 @@ export function ProductsListPage(): ReactElement {
       title={copy.title}
       description={interpolate(copy.description, { max: format.number(BULK_SELECTION_CAP) })}
       actions={
-        <>
+        <span className="page-header__actions--row">
+          <GuideButton label={bundleCopy.guide.trigger} />
           {bundleWrite.canWrite ? (
             <Link
               className="button button--primary"
@@ -947,7 +958,7 @@ export function ProductsListPage(): ReactElement {
           >
             {copy.costPrices}
           </Link>
-        </>
+        </span>
       }
     >
       {!bundleWrite.canWrite ? (

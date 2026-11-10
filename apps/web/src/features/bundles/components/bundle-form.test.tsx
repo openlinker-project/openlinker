@@ -114,11 +114,10 @@ describe('BundleForm (#3624)', () => {
     await ready();
 
     await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
-    expect(screen.getByTestId('bundle-form-sku')).toHaveValue('ZES-PORANNY');
+    expect(screen.getByTestId('bundle-form-sku')).toHaveTextContent('ZES-PORANNY');
 
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await pick(user, 'bundle-form-component-search', 'Lyz', 'LYZ-KAW');
-    await user.click(screen.getByTestId('bundle-form-component-more-LYZ-KAW'));
     await user.click(await screen.findByTestId('bundle-form-component-toggle-gift-LYZ-KAW'));
     expect(screen.getByTestId('bundle-form-component-gift-LYZ-KAW')).toBeInTheDocument();
 
@@ -280,7 +279,7 @@ describe('BundleForm (#3624)', () => {
     await pick(user, 'bundle-form-component-search', 'Kawa', 'KAW-250-ETI');
     expect(screen.queryByTestId('bundle-form-price-split')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Show price split' }));
+    await user.click(screen.getByRole('button', { name: /Show price split/ }));
     const split = screen.getByTestId('bundle-form-price-split');
     expect(within(split).getByTestId('bundle-form-price-split-line-KAW-250-ETI')).toHaveTextContent('65');
 
@@ -414,12 +413,10 @@ describe('BundleForm (#3624)', () => {
         ]),
       },
     });
-    const user = userEvent.setup();
     renderWithProviders(<BundleForm bundleVariantId="set" />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
-    await user.click(await screen.findByTestId('bundle-form-tab-history'));
     const first = await screen.findByTestId('bundle-form-history-entry-1');
     expect(first).toHaveTextContent('3 open orders have this composition');
     expect(screen.getByTestId('bundle-form-history-entry-2')).toBeInTheDocument();

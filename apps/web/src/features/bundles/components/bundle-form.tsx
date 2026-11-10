@@ -12,7 +12,7 @@
  *
  * @module apps/web/src/features/bundles/components
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,17 +22,13 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
-import { GiftDocumentFormField, GiftFormPickerValues, type GiftDocumentFormChoice } from '../../gift-documents';
 import { Button } from '../../../shared/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../../shared/ui/dropdown-menu';
 import { Input } from '../../../shared/ui/input';
-import { StatusBadge } from '../../../shared/ui/status-badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../shared/ui/tabs';
+import { ComposerSection } from '../../../shared/ui/composer-section';
+import { GuideButton } from '../../../shared/ui/guide-drawer';
+import { ReadbackSentence } from '../../../shared/ui/readback-sentence';
+import { SaveButton, type SaveButtonState } from '../../../shared/ui/save-button';
+import { StickyActionBar } from '../../../shared/ui/sticky-action-bar';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDemoMode } from '../../system';
 import type { ApiError } from '../../../shared/api/api-error';
@@ -43,12 +39,9 @@ import { useSaveBundleMutation } from '../hooks/use-save-bundle-mutation';
 import { computeBundleAvailability } from '../lib/bundle-availability';
 import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
 import { splitBundlePrice } from '../lib/bundle-price-split';
+import { BundleGuide } from './bundle-guide';
 import { BundleHistory } from './bundle-history';
 import { BundleProductPicker } from './bundle-product-picker';
-
-function isGiftDocumentFormChoice(value: string): value is GiftDocumentFormChoice {
-  return (GiftFormPickerValues as readonly string[]).includes(value);
-}
 
 export interface BundleFormSeedComponent {
   /** The exact variant, when the caller knows it (the multipack hold does). */
@@ -80,7 +73,6 @@ const formSchema = z.object({
         isBundle: z.boolean(),
         quantity: quantitySchema,
         gift: z.boolean(),
-        documentForm: z.string(),
       }),
     )
     .min(1),
@@ -115,9 +107,16 @@ function readErrorCode(error: ApiError | null): { code: string | null; reason: s
   return { code: null, reason: null };
 }
 
-export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps): ReactElement {
+export function BundleForm(props: BundleFormProps): ReactElement {
+  return (
+    <BundleGuide>
+      <BundleFormBody {...props} />
+    </BundleGuide>
+  );
+}
+
+function BundleFormBody({ bundleVariantId, seedComponent }: BundleFormProps): ReactElement {
   const copy = useMessages('bundles');
-  const giftDocumentsCopy = useMessages('gift-documents');
   const { locale } = useLocale();
   const format = useFormat();
   const apiClient = useApiClient();
@@ -132,8 +131,10 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const handedOver = readHandedOverSave(location.state);
 
   const detail = useBundleQuery(bundleVariantId);
-  const [tab, setTab] = useState<'composition' | 'history'>('composition');
-  const history = useBundleHistoryQuery(bundleVariantId, tab === 'history');
+  const history = useBundleHistoryQuery(bundleVariantId, editing);
+  const [showErrors, setShowErrors] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
+  const [saveFlash, setSaveFlash] = useState(false);
   const save = useSaveBundleMutation();
   const syncFromMaster = useSyncBundleFromMasterMutation();
 
@@ -214,13 +215,12 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
           isBundle: false,
           quantity: String(component.quantity),
           gift: component.giftSlot === true,
-          documentForm: component.documentForm ?? '',
         })),
       });
     } else if (seed.data && seedComponent) {
       form.reset({
         components: [
-          { ...seed.data, quantity: String(seedComponent.quantity), gift: false, documentForm: '' },
+          { ...seed.data, quantity: String(seedComponent.quantity), gift: false },
         ],
       });
     }
@@ -269,7 +269,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
       return;
     }
     setNestedError(null);
-    components.append({ ...choice, quantity: '1', gift: false, documentForm: '' });
+    components.append({ ...choice, quantity: '1', gift: false });
   };
 
   const pickBundleProduct = (choice: BundleProductChoice): void => {
@@ -314,6 +314,12 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     });
   };
 
+  useEffect(() => {
+    if (!saveFlash) return undefined;
+    const timer = window.setTimeout(() => { setSaveFlash(false); }, 1800);
+    return () => { window.clearTimeout(timer); };
+  }, [saveFlash]);
+
   const submit = form.handleSubmit((values) => {
     if (!bundleProduct) return;
     save.mutate(
@@ -324,15 +330,13 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
           variantId: row.variantId,
           quantity: Number(row.quantity),
           ...(row.gift ? { giftSlot: true } : {}),
-          ...(row.gift && isGiftDocumentFormChoice(row.documentForm)
-            ? { documentForm: row.documentForm }
-            : {}),
         })),
       },
       {
         onSuccess: (result) => {
           setNestedError(null);
           setSaveError(null);
+          setSaveFlash(true);
           const available = availability.kind === 'known' ? availability.bundles : null;
           showToast({ tone: 'success', description: copy.form.saved });
           setSavedAs({
@@ -383,328 +387,571 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     return <Alert tone="error" title={copy.form.loadFailed}>{copy.form.loadFailed}</Alert>;
   }
 
-  const saveBlocked = readOnly || bundleProduct === null || rows.length === 0 || save.isPending;
+  const missing: string[] = [];
+  if (bundleProduct === null) missing.push(copy.form.missingProduct);
+  if (rows.length === 0) missing.push(copy.form.missingComponent);
+  else if (parsedRows.some((row) => row.qty === 0)) missing.push(copy.form.missingQuantities);
+  const ready = missing.length === 0;
+  const saveBlocked = readOnly || save.isPending;
   const unknownReason =
     availability.kind === 'unknown' && availability.component !== null
       ? interpolate(copy.form.availabilityUnknown, { name: availability.component })
       : copy.form.availabilityUnknownGeneric;
+  const saveState: SaveButtonState = save.isPending ? 'saving' : saveFlash ? 'saved' : 'idle';
+  const openOrders = detail.data?.openOrdersOnOlderComposition ?? 0;
+
+  const pressSave = (): void => {
+    if (!ready) {
+      setShowErrors(true);
+      setShakeKey((key) => key + 1);
+      return;
+    }
+    void submit();
+  };
+
+  // Component rows, as the readback sentence and the availability bars use them.
+  const valid = parsedRows.filter((row) => row.qty > 0);
+  const partsText = valid
+    .map((row) => `${row.name} ×${String(row.qty)}${row.gift ? ` (${copy.form.giftLower})` : ''}`)
+    .join('|');
+  const tailText =
+    availability.kind === 'known'
+      ? availability.limitedBy === null
+        ? interpolate(copy.form.readbackTail, { n: availability.bundles })
+        : interpolate(copy.form.readbackTailLimited, { n: availability.bundles, name: availability.limitedBy })
+      : availability.kind === 'unknown'
+        ? copy.form.readbackUnknown
+        : '';
+  const supported = valid
+    .filter((row) => row.availableToPromise !== null)
+    .map((row) => ({
+      key: row.variantId,
+      name: row.name,
+      sets: Math.floor((row.availableToPromise ?? 0) / row.qty),
+    }));
+  const barMax = Math.max(1, ...supported.map((entry) => entry.sets));
+  const limitedName = availability.kind === 'known' ? availability.limitedBy : null;
 
   return (
-    <div className="bundle-form" data-testid="bundle-form">
-      <div className="page-header page-header--split">
-        <div className="page-header__content">
-          <Link to="/products?bundles=only" className="back-link">
-            {copy.form.backToProducts}
-          </Link>
-          <h2 className="page-title" data-testid="bundle-form-title">
-            {title}
-          </h2>
-          <p className="page-description">{copy.form.intro}</p>
-        </div>
-        <div className="page-header__actions">
-          {editing && master !== null ? (
-            <Button
-              tone="secondary"
-              data-testid="bundle-form-sync-from-master"
-              disabled={readOnly || syncFromMaster.isPending}
-              title={readOnly ? copy.form.viewOnlyReason : undefined}
-              onClick={runMasterSync}
-            >
-              {syncFromMaster.isPending
-                ? copy.form.syncing
-                : interpolate(copy.form.syncFromMaster, { name: master.connectionName })}
-            </Button>
-          ) : null}
-          <Button
-            tone="primary"
-            data-testid="bundle-form-save"
-            disabled={saveBlocked}
-            title={readOnly ? copy.form.viewOnlyReason : undefined}
-            onClick={() => {
-              void submit();
-            }}
-          >
-            {save.isPending ? copy.form.saving : copy.form.save}
-          </Button>
-        </div>
-      </div>
-
-      {readOnly ? (
-        <Alert tone="info" title={copy.list.readonlyTitle} data-testid="bundle-form-readonly-notice">
-          {copy.form.viewOnlyReason}
-        </Alert>
-      ) : null}
-
-      {saveError !== null ? (
-        <Alert tone="error" title={copy.form.saveFailed} data-testid="bundle-form-save-error">
-          {saveError}
-        </Alert>
-      ) : null}
-
-      {savedAs !== null ? (
-        <Alert tone="success" title={copy.form.saved} data-testid="bundle-form-saved-alert">
-          <p>
-            {savedAs.available === null
-              ? copy.form.savedBodyUnknown
-              : interpolate(copy.form.savedBody, { n: savedAs.available })}
-          </p>
-          {savedAs.released > 0 ? (
-            <p data-testid="bundle-form-released-orders">
-              {formatPlural(savedAs.released, copy.form.releasedOrders, locale)}
-            </p>
-          ) : null}
-          {(savedAs.productId || detail.data?.productId) ? (
-          <Link
-            className="button button--secondary"
-            data-testid="bundle-form-list-offer"
-            to={`/listings/bulk-create/wizard?${new URLSearchParams({
-              productIds: savedAs.productId || (detail.data?.productId ?? ''),
-              variantIds: savedAs.variantId,
-            }).toString()}`}
-          >
-            {copy.form.listOffer}
-          </Link>
-          ) : null}
-        </Alert>
-      ) : null}
-
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          setTab(value === 'history' ? 'history' : 'composition');
-        }}
-      >
-        <TabsList aria-label={copy.form.composition}>
-          <TabsTrigger value="composition" data-testid="bundle-form-tab-composition">
-            {copy.form.composition}
-          </TabsTrigger>
-          {editing ? (
-            <TabsTrigger value="history" data-testid="bundle-form-tab-history">
-              {copy.form.history}
-            </TabsTrigger>
-          ) : null}
-        </TabsList>
-
-        <TabsContent value="composition">
-          <section className="detail-card">
-            <div className="detail-card__head">
-              <h3 className="detail-card__title">{copy.form.productSection}</h3>
-            </div>
-            {bundleProduct === null ? (
-              <BundleProductPicker
-                label={copy.form.bundleProductHelp}
-                placeholder={copy.form.searchProduct}
-                disabled={readOnly}
-                excludeVariantIds={rows.map((row) => row.variantId)}
-                onPick={pickBundleProduct}
-                testIdPrefix="bundle-form-product-search"
-              />
-            ) : null}
-            <div className="mk-form-grid bundle-form__product-grid">
-              <div className="form-field">
-                <label className="form-field__label" htmlFor="bf-name">{copy.form.bundleName}</label>
-                <Input id="bf-name" data-testid="bundle-form-name" readOnly value={bundleProduct?.name ?? ''} />
-              </div>
-              <div className="form-field">
-                <label className="form-field__label" htmlFor="bf-sku">{copy.form.sku}</label>
-                <Input id="bf-sku" data-testid="bundle-form-sku" readOnly value={bundleProduct?.sku ?? ''} />
-              </div>
-              <div className="form-field">
-                <label className="form-field__label" htmlFor="bf-price">{copy.form.price}</label>
-                <Input
-                  id="bf-price"
-                  data-testid="bundle-form-price"
-                  readOnly
-                  value={bundleProduct?.price === null || bundleProduct === null ? '' : format.money(bundleProduct.price, currency)}
-                />
-              </div>
-            </div>
-            {!editing && bundleProduct !== null ? (
-              <Button tone="ghost" disabled={readOnly} onClick={() => { setBundleProduct(null); }}>
-                {copy.form.changeProduct}
+    <div className="bundle-form screen" data-testid="bundle-form">
+      <div className="page-section pm-reveal">
+        <header className="page-header page-header--split">
+          <div className="page-header__content">
+            <Link to="/products?bundles=only" className="pm-back">
+              <span aria-hidden="true">‹</span>
+              {copy.form.backToProducts}
+            </Link>
+            <p className="eyebrow">{copy.form.eyebrow}</p>
+            <h1 className="page-title" data-testid="bundle-form-title">
+              {title}
+            </h1>
+            <p className="page-description">{copy.form.intro}</p>
+          </div>
+          <div className="page-header__actions">
+            <GuideButton label={copy.guide.trigger} />
+            {editing && master !== null ? (
+              <Button
+                tone="secondary"
+                data-testid="bundle-form-sync-from-master"
+                disabled={readOnly || syncFromMaster.isPending}
+                title={readOnly ? copy.form.viewOnlyReason : undefined}
+                onClick={runMasterSync}
+              >
+                {syncFromMaster.isPending
+                  ? copy.form.syncing
+                  : interpolate(copy.form.syncFromMaster, { name: master.connectionName })}
               </Button>
             ) : null}
-          </section>
+          </div>
+        </header>
 
-          <section className="detail-card">
-            <div className="detail-card__head">
-              <h3 className="detail-card__title">{copy.form.componentsSection}</h3>
+        {readOnly ? (
+          <Alert tone="info" title={copy.list.readonlyTitle} data-testid="bundle-form-readonly-notice">
+            {copy.form.viewOnlyReason}
+          </Alert>
+        ) : null}
+
+        {saveError !== null ? (
+          <Alert tone="error" title={copy.form.saveFailed} data-testid="bundle-form-save-error">
+            {saveError}
+          </Alert>
+        ) : null}
+
+        {savedAs !== null ? (
+          <div className="cx-note cx-note--ok" role="status" data-testid="bundle-form-saved-alert">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M8 12.5l3 3 5-6" />
+            </svg>
+            <div>
+              <p>
+                <b>{copy.form.saved}</b>{' '}
+                {savedAs.available === null
+                  ? copy.form.savedBodyUnknown
+                  : interpolate(copy.form.savedBody, { n: savedAs.available })}
+              </p>
+              {savedAs.released > 0 ? (
+                <p data-testid="bundle-form-released-orders">
+                  {formatPlural(savedAs.released, copy.form.releasedOrders, locale)}
+                </p>
+              ) : null}
             </div>
-            <ul className="mk-complist" data-testid="bundle-form-components" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {components.fields.map((field, index) => {
-                const row = rows[index];
-                const key = row?.sku ?? row?.variantId ?? field.id;
-                const invalidQuantity = form.formState.errors.components?.[index]?.quantity !== undefined;
-                return (
-                  <li
-                    key={field.id}
-                    className="bundle-component"
-                    data-testid={`bundle-form-component-row-${key}`}
-                    style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', padding: 'var(--space-2) 0' }}
-                  >
-                    <span style={{ flex: 1 }}>
-                      {row?.name}{' '}
-                      <span className="mono-text text-muted">{row?.sku ?? ''}</span>{' '}
-                      {row?.gift ? (
-                        <StatusBadge tone="success" compact data-testid={`bundle-form-component-gift-${key}`}>
-                          {copy.form.gift}
-                        </StatusBadge>
-                      ) : null}
-                      {row?.gift ? (
-                        <span className="bundle-component__doc-form" style={{ display: 'block', marginTop: 'var(--space-1)' }}>
-                          <label className="form-field__label" htmlFor={`bf-doc-form-${key}`}>
-                            {giftDocumentsCopy.perGift.label}
-                          </label>
-                          <GiftDocumentFormField
-                            id={`bf-doc-form-${key}`}
-                            data-testid={`bundle-form-component-doc-form-${key}`}
-                            value={isGiftDocumentFormChoice(row.documentForm) ? row.documentForm : ''}
+            {savedAs.productId || detail.data?.productId ? (
+              <span className="cx-note__a">
+                <Link
+                  className="button button--secondary button--sm"
+                  to={`/products/${encodeURIComponent(savedAs.productId || (detail.data?.productId ?? ''))}`}
+                >
+                  {copy.form.seeBundle}
+                </Link>
+                <Link
+                  className="button button--sm"
+                  data-testid="bundle-form-list-offer"
+                  to={`/listings/bulk-create/wizard?${new URLSearchParams({
+                    productIds: savedAs.productId || (detail.data?.productId ?? ''),
+                    variantIds: savedAs.variantId,
+                  }).toString()}`}
+                >
+                  {copy.form.listOffer}
+                </Link>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="pm-grid">
+          <div className="pm-col">
+            <ComposerSection step="01" title={copy.form.productSection} aside={copy.form.productAside} riseIndex={2}>
+              <p className="pm-help">{copy.form.bundleProductHelp}</p>
+              {bundleProduct === null ? (
+                <>
+                  <div className={`pm-picker is-empty${showErrors ? ' is-invalid' : ''}`}>
+                    <span className="pm-picker__e">
+                      <span className="pm-thumb pm-thumb--lg" aria-hidden="true">
+                        <svg className="pm-ico" viewBox="0 0 24 24">
+                          <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                        </svg>
+                      </span>
+                      <span>
+                        <span className="pm-picker__n">{copy.form.noProduct}</span>
+                        <br />
+                        <span className="pm-picker__s">{copy.form.noProductHint}</span>
+                      </span>
+                    </span>
+                  </div>
+                  {showErrors ? <p className="pm-err">{copy.form.noProductHint}</p> : null}
+                  <BundleProductPicker
+                    label={copy.form.pickProduct}
+                    placeholder={copy.form.searchProduct}
+                    disabled={readOnly}
+                    excludeVariantIds={rows.map((row) => row.variantId)}
+                    onPick={pickBundleProduct}
+                    testIdPrefix="bundle-form-product-search"
+                  />
+                </>
+              ) : (
+                <div className="pm-picker">
+                  <span className="pm-picker__f">
+                    <span className="cx-mosaic cx-mosaic--lg" aria-hidden="true">
+                      <i className="t-a" />
+                      <i className="t-d" />
+                      <i className="t-b" />
+                      <i className="t-c" />
+                    </span>
+                    <span>
+                      <span className="pm-picker__n" data-testid="bundle-form-name">
+                        {bundleProduct.name}
+                      </span>
+                      <br />
+                      <span className="pm-picker__s">
+                        <span data-testid="bundle-form-sku">{bundleProduct.sku ?? ''}</span>
+                        {bundleProduct.price !== null
+                          ? ` · ${copy.form.price.toLowerCase()} ${format.money(bundleProduct.price, currency)}`
+                          : ''}
+                      </span>
+                    </span>
+                    {!editing ? (
+                      <Button
+                        tone="secondary"
+                        className="button--sm"
+                        disabled={readOnly}
+                        onClick={() => {
+                          setBundleProduct(null);
+                        }}
+                      >
+                        {copy.form.changeProduct}
+                      </Button>
+                    ) : (
+                      <span />
+                    )}
+                  </span>
+                </div>
+              )}
+              <span hidden data-testid="bundle-form-price">
+                {bundleProduct?.price === null || bundleProduct === null ? '' : format.money(bundleProduct.price, currency)}
+              </span>
+            </ComposerSection>
+
+            <ComposerSection
+              step="02"
+              title={copy.form.componentsSection}
+              aside={formatPlural(rows.length, copy.form.componentsCount, locale)}
+              riseIndex={3}
+            >
+              <div className="form-field pm-combo">
+                <BundleProductPicker
+                  label={copy.form.addComponent}
+                  placeholder={copy.form.searchComponent}
+                  disabled={readOnly}
+                  excludeVariantIds={rows.map((row) => row.variantId)}
+                  onPick={addComponent}
+                  testIdPrefix="bundle-form-component-search"
+                />
+              </div>
+              {nestedError !== null ? (
+                <Alert tone="error" data-testid="bundle-form-nested-error">
+                  {nestedError}
+                </Alert>
+              ) : null}
+
+              <ul className="cx-rows" data-testid="bundle-form-components">
+                {components.fields.map((field, index) => {
+                  const row = rows[index];
+                  const parsed = parsedRows[index];
+                  const key = row?.sku ?? row?.variantId ?? field.id;
+                  const invalidQuantity = form.formState.errors.components?.[index]?.quantity !== undefined;
+                  const isLimiting = limitedName !== null && row?.name === limitedName;
+                  const sets =
+                    parsed && parsed.qty > 0 && row?.availableToPromise !== null && row !== undefined
+                      ? Math.floor((row.availableToPromise ?? 0) / parsed.qty)
+                      : null;
+                  return (
+                    <li
+                      key={field.id}
+                      className={`cx-row${row?.gift ? ' is-gift' : ''}${isLimiting ? ' is-lim' : ''}${
+                        invalidQuantity ? ' is-invalid' : ''
+                      }`}
+                      data-testid={`bundle-form-component-row-${key}`}
+                    >
+                      <div className="cx-row__m">
+                        <span className="cx-ord">
+                          <button
+                            type="button"
+                            className="pm-mv"
+                            disabled={readOnly || index === 0}
+                            aria-label={interpolate(copy.form.moveUp, { name: row?.name ?? '' })}
+                            onClick={() => {
+                              components.move(index, index - 1);
+                            }}
+                          >
+                            <svg viewBox="0 0 12 12" aria-hidden="true">
+                              <path d="M2.5 7.5 6 4l3.5 3.5" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            className="pm-mv"
+                            disabled={readOnly || index === components.fields.length - 1}
+                            aria-label={interpolate(copy.form.moveDown, { name: row?.name ?? '' })}
+                            onClick={() => {
+                              components.move(index, index + 1);
+                            }}
+                          >
+                            <svg viewBox="0 0 12 12" aria-hidden="true">
+                              <path d="M2.5 4.5 6 8l3.5-3.5" />
+                            </svg>
+                          </button>
+                        </span>
+                        <span className="pm-thumb pm-thumb--a" aria-hidden="true">
+                          <svg className="pm-ico" viewBox="0 0 24 24">
+                            <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                          </svg>
+                        </span>
+                        <span className="cx-row__n">
+                          <span style={{ fontWeight: 600, fontSize: '.8125rem' }}>{row?.name}</span>
+                          <span className="cx-sub mono" data-testid={`bundle-form-component-sku-${key}`}>
+                            {row?.sku ?? ''}
+                          </span>
+                          <span className="cx-row__av">
+                            {row?.availableToPromise === null || row === undefined ? (
+                              copy.form.stockUnknown
+                            ) : (
+                              <>
+                                <b>{interpolate(copy.form.pcs, { n: row.availableToPromise })}</b>
+                                {sets !== null ? (
+                                  <>
+                                    {' · '}
+                                    {interpolate(copy.form.enoughFor, { n: sets })}
+                                  </>
+                                ) : null}
+                              </>
+                            )}
+                            {isLimiting ? (
+                              <>
+                                {' · '}
+                                <b>{copy.form.limits}</b>
+                              </>
+                            ) : null}
+                          </span>
+                        </span>
+                        <span className="cx-qty">
+                          <span>×</span>
+                          <Input
+                            type="number"
+                            min={1}
+                            step={1}
+                            inputMode="numeric"
+                            aria-label={interpolate(copy.form.componentQuantity, { name: row?.name ?? '' })}
+                            data-testid={`bundle-form-component-qty-${key}`}
                             disabled={readOnly}
-                            onChange={(next) =>
-                              form.setValue(`components.${index}.documentForm`, next, { shouldDirty: true })
-                            }
+                            invalid={invalidQuantity}
+                            {...form.register(`components.${index}.quantity`)}
                           />
                         </span>
+                        <span className="cx-row__t">
+                          <label className="ol-toggle">
+                            <input
+                              type="checkbox"
+                              checked={row?.gift ?? false}
+                              disabled={readOnly}
+                              data-testid={`bundle-form-component-toggle-gift-${key}`}
+                              aria-label={interpolate(copy.form.markGiftFor, { name: row?.name ?? '' })}
+                              onChange={(event) => {
+                                form.setValue(`components.${index}.gift`, event.target.checked, {
+                                  shouldDirty: true,
+                                });
+                              }}
+                            />
+                            <span>{copy.form.gift}</span>
+                          </label>
+                          <Button
+                            tone="ghost"
+                            className="button--sm"
+                            disabled={readOnly}
+                            title={readOnly ? copy.form.viewOnlyReason : undefined}
+                            aria-label={interpolate(copy.form.removeFor, { name: row?.name ?? '' })}
+                            data-testid={`bundle-form-component-remove-${key}`}
+                            onClick={() => {
+                              components.remove(index);
+                            }}
+                          >
+                            {copy.form.remove}
+                          </Button>
+                        </span>
+                      </div>
+                      {row?.gift ? (
+                        <>
+                          <span hidden data-testid={`bundle-form-component-gift-${key}`} />
+                          <div className="cx-gift" style={{ gridTemplateRows: '1fr' }}>
+                            <div>
+                              <div className="cx-gift__in" style={{ opacity: 1 }}>
+                                <div className="cx-gift__h">
+                                  <b>{copy.form.giftOnDocument}</b>
+                                  <span>{copy.form.giftDefault}</span>
+                                </div>
+                                <p className="cx-gift__f">
+                                  {copy.form.giftDecision}{' '}
+                                  <Link to="/settings/sales-documents">{copy.form.giftSettingsLink}</Link>
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </>
                       ) : null}
-                    </span>
-                    <Input
-                      type="number"
-                      min={1}
-                      step={1}
-                      inputMode="numeric"
-                      style={{ width: '5rem' }}
-                      aria-label={interpolate(copy.form.componentQuantity, { name: row?.name ?? '' })}
-                      data-testid={`bundle-form-component-qty-${key}`}
-                      disabled={readOnly}
-                      invalid={invalidQuantity}
-                      {...form.register(`components.${index}.quantity`)}
-                    />
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          tone="ghost"
-                          disabled={readOnly}
-                          title={readOnly ? copy.form.viewOnlyReason : undefined}
-                          aria-label={interpolate(copy.form.componentMenuLabel, { name: row?.name ?? '' })}
-                          data-testid={`bundle-form-component-more-${key}`}
-                        >
-                          {copy.form.componentMenu}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent data-testid={`bundle-form-component-menu-${key}`}>
-                        <DropdownMenuItem
-                          data-testid={`bundle-form-component-toggle-gift-${key}`}
-                          onSelect={() => {
-                            form.setValue(`components.${index}.gift`, !row?.gift, { shouldDirty: true });
-                          }}
-                        >
-                          {row?.gift ? copy.form.unmarkGift : copy.form.markGift}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          data-testid={`bundle-form-component-remove-${key}`}
-                          onSelect={() => {
-                            components.remove(index);
-                          }}
-                        >
-                          {copy.form.remove}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </li>
-                );
-              })}
-            </ul>
-            {rows.length === 0 ? <p className="text-muted">{copy.form.emptyComponents}</p> : null}
-            {form.formState.errors.components !== undefined && rows.length > 0 ? (
-              <p className="form-field__error" role="alert">{copy.form.quantityInvalid}</p>
-            ) : null}
+                      <p className="pm-err">{copy.form.quantityInvalid}</p>
+                    </li>
+                  );
+                })}
+              </ul>
+              {rows.length === 0 ? (
+                <div className="cx-empty">
+                  <p className="pm-empty__t">{copy.form.emptyTitle}</p>
+                  <p className="pm-empty__d">{copy.form.emptyComponents}</p>
+                </div>
+              ) : null}
+              {showErrors && rows.length === 0 ? <p className="pm-err" style={{ display: 'block' }}>{copy.form.emptyComponents}</p> : null}
+              {form.formState.errors.components !== undefined && rows.length > 0 ? (
+                <p className="form-field__error" role="alert">{copy.form.quantityInvalid}</p>
+              ) : null}
 
-            <div className="mk-add">
-              <BundleProductPicker
-                label={copy.form.addComponent}
-                placeholder={copy.form.searchComponent}
-                disabled={readOnly}
-                excludeVariantIds={rows.map((row) => row.variantId)}
-                onPick={addComponent}
-                testIdPrefix="bundle-form-component-search"
-              />
-            </div>
-            {nestedError !== null ? (
-              <Alert tone="error" data-testid="bundle-form-nested-error">
-                {nestedError}
-              </Alert>
-            ) : null}
+              <div className="pm-disc">
+                <button
+                  type="button"
+                  className="pm-disc__btn"
+                  aria-expanded={showSplit}
+                  onClick={() => {
+                    setShowSplit((value) => !value);
+                  }}
+                >
+                  <span className="pm-disc__caret" aria-hidden="true" />
+                  <span>{showSplit ? copy.form.priceSplitHide : copy.form.priceSplitShow}</span>
+                  <span className="pm-disc__sum">{copy.form.priceSplitInfoOnly}</span>
+                </button>
+                <div className={`pm-disc__body${showSplit ? ' is-open' : ''}`}>
+                  <div>
+                    <div className="pm-disc__inner" data-testid={showSplit ? 'bundle-form-price-split' : undefined}>
+                      {showSplit ? (
+                        <>
+                          <p className="pm-help">{copy.form.priceSplitIntro}</p>
+                          {split.kind === 'ok' ? (
+                            <div className="pm-doc">
+                              {split.lines.map((line) => {
+                                const row = rows.find((r) => r.variantId === line.variantId);
+                                return (
+                                  <span
+                                    key={line.variantId}
+                                    className={`pm-doc__l${row?.gift ? ' is-gift' : ''}`}
+                                    data-testid={`bundle-form-price-split-line-${row?.sku ?? line.variantId}`}
+                                  >
+                                    {interpolate(copy.form.priceSplitLine, {
+                                      name: row?.name ?? line.variantId,
+                                      amount: format.money(line.amount, currency),
+                                    })}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : split.kind === 'unknown-component-price' ? (
+                            <Alert tone="warning" data-testid="bundle-form-price-share-alert">
+                              {interpolate(copy.form.priceSplitMissingPrice, {
+                                name:
+                                  rows.find((r) => r.variantId === split.variantIds[0])?.name ??
+                                  split.variantIds[0],
+                              })}
+                            </Alert>
+                          ) : split.kind === 'no-paid-component' ? (
+                            <p className="pm-help">{copy.form.priceSplitNoPaid}</p>
+                          ) : (
+                            <p className="pm-help">{copy.form.priceSplitNoPrice}</p>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ComposerSection>
+          </div>
 
-            <p className="mk-availability" data-testid="bundle-form-availability">
-              {availability.kind === 'known'
-                ? availability.limitedBy === null
-                  ? interpolate(copy.form.availabilityOk, { n: availability.bundles })
-                  : interpolate(copy.form.availabilityLimited, { n: availability.bundles, name: availability.limitedBy })
-                : availability.kind === 'unknown'
-                  ? unknownReason
-                  : ''}
-            </p>
-
-            {editing && detail.data && detail.data.openOrdersOnOlderComposition > 0 ? (
-              <p className="text-muted" data-testid="bundle-form-open-orders-note">
-                {formatPlural(detail.data.openOrdersOnOlderComposition, copy.form.openOrdersNote, locale)}
-              </p>
-            ) : null}
-          </section>
-
-          <section className="detail-card">
-            <Button
-              tone="ghost"
-              aria-expanded={showSplit}
-              onClick={() => { setShowSplit((value) => !value); }}
+          <aside className="pm-col pm-rail">
+            <ReadbackSentence
+              eyebrow={copy.form.readbackEyebrow}
+              name={bundleProduct?.name ?? copy.form.readbackNoProduct}
+              sentenceKey={`${partsText}#${tailText}`}
+              data-testid="bundle-form-readback"
             >
-              {showSplit ? copy.form.priceSplitHide : copy.form.priceSplitShow}
-            </Button>
-            {showSplit ? (
-              <div data-testid="bundle-form-price-split">
-                <p className="text-muted">{copy.form.priceSplitIntro}</p>
-                {split.kind === 'ok' ? (
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                    {split.lines.map((line) => {
-                      const row = rows.find((r) => r.variantId === line.variantId);
-                      return (
-                        <li key={line.variantId} data-testid={`bundle-form-price-split-line-${row?.sku ?? line.variantId}`}>
-                          {interpolate(copy.form.priceSplitLine, {
-                            name: row?.name ?? line.variantId,
-                            amount: format.money(line.amount, currency),
-                          })}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : split.kind === 'unknown-component-price' ? (
-                  <Alert tone="warning" data-testid="bundle-form-price-share-alert">
-                    {interpolate(copy.form.priceSplitMissingPrice, {
-                      name:
-                        rows.find((r) => r.variantId === split.variantIds[0])?.name ?? split.variantIds[0],
-                    })}
-                  </Alert>
-                ) : split.kind === 'no-paid-component' ? (
-                  <p className="text-muted">{copy.form.priceSplitNoPaid}</p>
+              {valid.length === 0 ? (
+                copy.form.readbackEmpty
+              ) : (
+                <>
+                  {valid.map((row, index) => (
+                    <span key={row.variantId}>
+                      {index > 0 ? (index === valid.length - 1 ? ` ${copy.form.and} ` : ', ') : ''}
+                      <b>{row.name}</b> ×{row.qty}
+                      {row.gift ? ` (${copy.form.giftLower})` : ''}
+                    </span>
+                  ))}{' '}
+                  {copy.form.inOnePackage} {tailText}
+                </>
+              )}
+            </ReadbackSentence>
+
+            <ComposerSection title={copy.form.availabilityTitle} aside={copy.form.liveAside} riseIndex={4}>
+              <div
+                className={`cx-avail ${
+                  availability.kind === 'known'
+                    ? availability.bundles === 0
+                      ? 'is-zero'
+                      : 'is-warn'
+                    : 'is-unk'
+                }`}
+                data-testid="bundle-form-availability"
+              >
+                {availability.kind === 'known' ? (
+                  <span>
+                    <span className="cx-big mono tabular">
+                      {availability.bundles} <small>{copy.form.bundlesWord}</small>
+                    </span>
+                    <br />
+                    {availability.limitedBy === null
+                      ? interpolate(copy.form.availabilityOk, { n: availability.bundles })
+                      : interpolate(copy.form.availabilityLimited, {
+                          n: availability.bundles,
+                          name: availability.limitedBy,
+                        })}
+                  </span>
+                ) : availability.kind === 'unknown' ? (
+                  <span>{unknownReason}</span>
                 ) : (
-                  <p className="text-muted">{copy.form.priceSplitNoPrice}</p>
+                  <span>{copy.form.availabilityEmpty}</span>
                 )}
               </div>
-            ) : null}
-          </section>
-        </TabsContent>
+              <div className="cx-bars">
+                {supported.map((entry) => (
+                  <div key={entry.key} className={`cx-bar${entry.name === limitedName ? ' is-lim' : ''}`}>
+                    <span>{entry.name}</span>
+                    <b className="mono tabular">{entry.sets}</b>
+                    <span className="pm-bar">
+                      <i style={{ width: `${String(Math.max(3, (100 * entry.sets) / barMax))}%`, animation: 'none' }} />
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="pm-help">{copy.form.channelsGetNumber}</p>
+            </ComposerSection>
 
-        {editing ? (
-          <TabsContent value="history">
-            <BundleHistory
-              entries={history.data}
-              isLoading={history.isLoading}
-              isError={history.isError}
-              currency={currency}
-            />
-          </TabsContent>
-        ) : null}
-      </Tabs>
+            {editing ? (
+              <ComposerSection
+                title={copy.form.historyTitle}
+                aside={history.data ? formatPlural(history.data.length, copy.form.versionsCount, locale) : undefined}
+                riseIndex={5}
+              >
+                <BundleHistory
+                  entries={history.data}
+                  isLoading={history.isLoading}
+                  isError={history.isError}
+                  currency={currency}
+                />
+              </ComposerSection>
+            ) : null}
+          </aside>
+        </div>
+
+        <StickyActionBar
+          statusLabel={ready ? copy.form.ready : copy.form.missingLabel}
+          statusText={
+            ready
+              ? `${formatPlural(rows.length, copy.form.componentsCount, locale)}, ${
+                  availability.kind === 'known'
+                    ? interpolate(copy.form.readyAvailable, { n: availability.bundles })
+                    : copy.form.readyUnknown
+                }`
+              : missing.join(' · ')
+          }
+          ready={ready}
+          shakeKey={shakeKey}
+          data-testid="bundle-form-actionbar"
+        >
+          {editing && openOrders > 0 ? (
+            <span className="cx-opennote" data-testid="bundle-form-open-orders-note">
+              {formatPlural(openOrders, copy.form.openOrdersNote, locale)}
+            </span>
+          ) : null}
+          <Link className="button button--secondary button--sm" to="/products?bundles=only">
+            {copy.form.cancel}
+          </Link>
+          <SaveButton
+            state={saveState}
+            idleLabel={copy.form.save}
+            savingLabel={copy.form.saving}
+            savedLabel={copy.form.savedShort}
+            disabled={saveBlocked}
+            title={readOnly ? copy.form.viewOnlyReason : undefined}
+            onClick={pressSave}
+            data-testid="bundle-form-save"
+          />
+        </StickyActionBar>
+      </div>
     </div>
   );
 }

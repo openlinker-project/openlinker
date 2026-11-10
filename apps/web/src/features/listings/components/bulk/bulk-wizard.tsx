@@ -17,6 +17,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
+import { GuideButton } from '../../../../shared/ui/guide-drawer';
+import { BundleGuide } from '../../../bundles/components/bundle-guide';
 import type { StatusBadgeTone } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
@@ -331,6 +333,8 @@ export function BulkWizard({
     return items;
   }, [rows, step, isShop]);
   const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
+  const bundleGuideCopy = useMessages('bundles');
+  const hasBundles = bundlePreview.bundles.size > 0;
 
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
@@ -944,10 +948,15 @@ export function BulkWizard({
   const productCount = plural(rows.length, copy.description.productCount);
   const variantCount = plural(counts.totalVariants, copy.description.variantCount);
 
-  return (
+  const page = (
     <PageLayout
       eyebrow={copy.eyebrow}
       title={pageTitle}
+      actions={
+        hasBundles ? (
+          <GuideButton label={bundleGuideCopy.guide.trigger} />
+        ) : undefined
+      }
       description={
         interpolate(isShop ? copy.description.shop : copy.description.marketplace, {
           products: productCount,
@@ -1143,6 +1152,7 @@ export function BulkWizard({
       </div>
     </PageLayout>
   );
+  return hasBundles ? <BundleGuide>{page}</BundleGuide> : page;
 }
 
 /** Order-sensitive blocker-list equality. */

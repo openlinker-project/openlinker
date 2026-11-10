@@ -1212,6 +1212,7 @@
       "ownOffer": "own offer",
       "ownOfferWithId": "own offer {id}"
     },
+    "noOwnEan": "no own EAN",
     "publishComponent": "Publish component",
     "quantity": "×{n}",
     "useFirstComponentCategory": "Use first component's category"

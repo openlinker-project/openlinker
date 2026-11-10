@@ -49,8 +49,8 @@ describe('BundleComposition', () => {
     mount(() => Promise.resolve(detail));
     expect(await screen.findByRole('link', { name: 'Mug' })).toHaveAttribute('href', '/products/p-mug');
     expect(screen.getByRole('link', { name: 'Card' })).toHaveAttribute('href', '/products/p-card');
-    expect(screen.getByTestId('comp-line-v-mug')).toHaveTextContent('× 2');
-    expect(screen.getByTestId('comp-line-v-card')).toHaveTextContent('Gift');
+    expect(screen.getByTestId('comp-line-v-mug')).toHaveTextContent('×2');
+    expect(screen.getByTestId('comp-line-v-card')).toHaveTextContent('Free gift');
     expect(screen.getByRole('heading', { name: 'Bundle contents' })).toBeInTheDocument();
   });
 
