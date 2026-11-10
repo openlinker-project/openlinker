@@ -28,7 +28,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
-import { withApiErrorCode } from '@openlinker/shared/errors';
+import { codedErrorBody } from '../errors/coded-http.exception';
 import { AvailabilityUnknownError } from '@openlinker/core/listings';
 
 @Catch(AvailabilityUnknownError)
@@ -36,13 +36,12 @@ export class AvailabilityUnknownFilter implements ExceptionFilter {
   catch(exception: AvailabilityUnknownError, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     response.status(HttpStatus.SERVICE_UNAVAILABLE).json(
-      withApiErrorCode(
-        {
-          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
-          error: exception.name,
-          message: `${exception.message} Nothing was published; retry once the read recovers.`,
-        },
-        HttpStatus.SERVICE_UNAVAILABLE
+      codedErrorBody(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'AVAILABILITY_UNKNOWN',
+        `${exception.message} Nothing was published; retry once the read recovers.`,
+        { connectionId: exception.connectionId, internalVariantId: exception.internalVariantId },
+        { error: exception.name }
       )
     );
   }

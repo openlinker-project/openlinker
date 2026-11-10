@@ -27,9 +27,10 @@
  *
  * @module apps/api/src/integrations/http
  */
-import { Controller, Get, Param, BadRequestException, Inject } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Param, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { InvoicingPort } from '@openlinker/core/invoicing';
@@ -127,8 +128,11 @@ export class SubiektController {
       'Invoicing',
     );
     if (!isSubiektInvoicingAdapter(adapter)) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CONNECTION_NOT_SUBIEKT_INVOICING',
         `Connection ${connectionId} is not a Subiekt Invoicing connection`,
+        { connectionId },
       );
     }
     return adapter;

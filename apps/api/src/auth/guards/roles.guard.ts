@@ -36,7 +36,7 @@
  * @module apps/api/src/auth/guards
  */
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Logger } from '@openlinker/shared/logging';
 import type { UserRole } from '@openlinker/core/users';
@@ -44,6 +44,7 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 import { ANY_ROLE_KEY } from '../decorators/any-role.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import type { AuthenticatedUser } from '../auth.types';
+import { insufficientPermissions } from '../auth-errors';
 
 /**
  * What one decoration target (a handler, or a controller class) declares.
@@ -89,7 +90,7 @@ export class RolesGuard implements CanActivate {
         `route_authorization_missing_decorator ${this.describeRoute(context)} carries neither ` +
           '@Roles() nor @AnyRole(); denying. Every route must declare its audience (#2079).'
       );
-      throw new ForbiddenException('Insufficient permissions');
+      throw insufficientPermissions();
     }
 
     if (declaration.kind === 'contradiction') {
@@ -97,18 +98,18 @@ export class RolesGuard implements CanActivate {
         `route_authorization_missing_decorator ${this.describeRoute(context)} carries BOTH ` +
           '@Roles() and @AnyRole() on the same target; denying (#2079).'
       );
-      throw new ForbiddenException('Insufficient permissions');
+      throw insufficientPermissions();
     }
 
     const { user } = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>();
     if (!user) {
-      throw new ForbiddenException('Insufficient permissions');
+      throw insufficientPermissions();
     }
 
     if (declaration.kind === 'any-role') return true;
 
     if (!declaration.roles.includes(user.role)) {
-      throw new ForbiddenException('Insufficient permissions');
+      throw insufficientPermissions();
     }
     return true;
   }

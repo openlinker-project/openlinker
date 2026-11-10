@@ -1076,6 +1076,19 @@ describe('ListingsController', () => {
       );
     });
 
+    it('names the missing category by code, category and connection (#3865)', async () => {
+      const fetch = jest.fn().mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryParameters('conn-1', '999999')).rejects.toMatchObject({
+        response: {
+          statusCode: 404,
+          code: 'MARKETPLACE_CATEGORY_NOT_FOUND',
+          params: { categoryId: '999999', connectionId: 'conn-1' },
+        },
+      });
+    });
+
     it('propagates upstream errors that are not CategoryNotFoundException', async () => {
       const fetch = jest.fn().mockRejectedValue(new Error('upstream-503'));
       integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
@@ -1352,7 +1365,24 @@ describe('ListingsController', () => {
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
+    it('sends PROVIDER_CAPABILITY_UNSUPPORTED naming the missing capability (#3865)', async () => {
+      categoryResolution.resolveCategoriesBatch.mockRejectedValue(
+        new AdapterCapabilityNotSupportedException('conn-1', 'EanCategoryMatcher')
+      );
+
+      await expect(
+        controller.resolveCategoriesBatch('conn-1', { items: [{ variantId: 'v1', ean: '590' }] })
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 422,
+          code: 'PROVIDER_CAPABILITY_UNSUPPORTED',
+          params: { capability: 'EanCategoryMatcher', connectionId: 'conn-1' },
+        },
+      });
+    });
+
     it('propagates non-capability errors (e.g. connection not found) untouched', async () => {
+
       categoryResolution.resolveCategoriesBatch.mockRejectedValue(
         new ConnectionNotFoundException('conn-missing')
       );

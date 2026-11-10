@@ -19,6 +19,7 @@ import {
   CONTENT_STATE_READER_SERVICE_TOKEN,
   CONTENT_SUGGESTION_SERVICE_TOKEN,
   NoProductMasterAdapterException,
+  ContentFieldNotFoundException,
   type IContentDraftService,
   type IContentStateReaderService,
   type IContentSuggestionService,
@@ -162,6 +163,45 @@ describe('ContentController', () => {
       await expect(
         controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
       ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('sends PROVIDER_REJECTED with the Allegro text as providerMessage (#3865)', async () => {
+      drafts.publishDraft.mockRejectedValueOnce(
+        new AllegroApiException(
+          'Allegro API error (422)',
+          422,
+          '<html>not-json</html>',
+          undefined,
+          undefined
+        )
+      );
+
+      await expect(
+        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 502,
+          code: 'PROVIDER_REJECTED',
+          params: { provider: 'allegro' },
+          providerMessage: 'Allegro API error (422)',
+        },
+      });
+    });
+
+    it('names a missing content field by code and ids (#3865)', async () => {
+      drafts.publishDraft.mockRejectedValueOnce(
+        new ContentFieldNotFoundException('product-1', 'conn-1', 'description')
+      );
+
+      await expect(
+        controller.publish('product-1', { connectionId: 'conn-1', fieldKey: 'description' })
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 404,
+          code: 'CONTENT_FIELD_NOT_FOUND',
+          params: { productId: 'product-1', connectionId: 'conn-1', fieldKey: 'description' },
+        },
+      });
     });
 
     it('passes non-Allegro errors through unchanged', async () => {

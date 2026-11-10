@@ -42,7 +42,7 @@ describe('API error code (integration)', () => {
     expect(res.body).toMatchObject({ statusCode: 401, code: 'HTTP_401' });
   });
 
-  it('should add a code to a NotFoundException thrown by a service', async () => {
+  it('should send the service\'s own code for an unknown connection (#3864)', async () => {
     const http = harness.getHttp();
     const token = await loginAsAdmin(http, harness.getDataSource());
 
@@ -51,10 +51,14 @@ describe('API error code (integration)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
 
-    expect(res.body).toMatchObject({ statusCode: 404, error: 'Not Found', code: 'HTTP_404' });
+    expect(res.body).toMatchObject({
+      statusCode: 404,
+      code: 'CONNECTION_NOT_FOUND',
+      params: { connectionId: expect.any(String) as unknown },
+    });
   });
 
-  it('should add a code to a domain-filter answer and keep its exception name', async () => {
+  it('should send the domain filter\'s own code and keep its exception name (#3863)', async () => {
     // `getCapabilityAdapter` throws ConnectionNotFoundException for an unknown
     // connection; ConnectionExceptionFilter answers it (#1087), not the catch-all.
     const http = harness.getHttp();
@@ -73,7 +77,7 @@ describe('API error code (integration)', () => {
     expect(res.body).toMatchObject({
       statusCode: 404,
       error: 'ConnectionNotFoundException',
-      code: 'HTTP_404',
+      code: 'CONNECTION_NOT_FOUND',
     });
   });
 

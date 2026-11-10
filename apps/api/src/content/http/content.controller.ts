@@ -15,20 +15,17 @@
  * @module apps/api/src/content/http
  */
 import {
-  BadRequestException,
-  BadGatewayException,
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import type { ApiErrorParams } from '@openlinker/shared/errors';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AiCompletionError } from '@openlinker/core/ai';
 import {
@@ -57,6 +54,12 @@ import { AllegroApiException } from '@openlinker/integrations-allegro';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import {
+  promptTemplateNotFound,
+  promptTemplateStateInvalid,
+  promptTemplateVariableMissing,
+} from '../../ai/http/prompt-template-errors';
 import {
   ContentChannelStateDto,
   ContentMasterStateDto,
@@ -187,21 +190,49 @@ export class ContentController {
       return await fn();
     } catch (error) {
       if (error instanceof ContentConflictException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'CONTENT_CONFLICT',
+          error.message,
+          contentParams(error.productId, error.connectionId, error.fieldKey)
+        );
       }
       if (error instanceof ContentFieldNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(
+          HttpStatus.NOT_FOUND,
+          'CONTENT_FIELD_NOT_FOUND',
+          error.message,
+          contentParams(error.productId, error.connectionId, error.fieldKey)
+        );
       }
       if (error instanceof ChannelAdapterLacksFieldUpdaterException) {
-        throw new UnprocessableEntityException(error.message);
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'PROVIDER_CAPABILITY_UNSUPPORTED',
+          error.message,
+          {
+            capability: 'OfferFieldUpdater',
+            ...contentParams(error.productId, error.connectionId, error.fieldKey),
+          }
+        );
       }
       if (error instanceof EmptyAfterDescriptionFormatException) {
         // 422, same class as NoLinkedOffers: the request is well-formed and the
         // precondition (a description the destination can represent) is not met.
-        throw new UnprocessableEntityException(error.message);
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'CONTENT_EMPTY_AFTER_DESCRIPTION_FORMAT',
+          error.message,
+          contentParams(error.productId, error.connectionId)
+        );
       }
       if (error instanceof NoLinkedOffersException) {
-        throw new UnprocessableEntityException(error.message);
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'CONTENT_NO_LINKED_OFFERS',
+          error.message,
+          contentParams(error.productId, error.connectionId)
+        );
       }
       // #4068: no master, or two masters, claiming the product is a connection
       // configuration the operator can fix - never a 500.
@@ -212,16 +243,22 @@ export class ContentController {
         throw new UnprocessableEntityException(error.message);
       }
       if (error instanceof PromptTemplateNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw promptTemplateNotFound(error);
       }
       if (error instanceof PromptTemplateRenderException) {
-        throw new UnprocessableEntityException(error.message);
+        throw promptTemplateVariableMissing(error);
       }
       if (error instanceof PromptTemplateStateException) {
-        throw new BadRequestException(error.message);
+        throw promptTemplateStateInvalid(error);
       }
       if (error instanceof AiCompletionError) {
-        throw new BadGatewayException(error.message);
+        throw codedHttpError(
+          HttpStatus.BAD_GATEWAY,
+          'AI_COMPLETION_FAILED',
+          error.message,
+          undefined,
+          { providerMessage: error.message }
+        );
       }
       // #486: surface Allegro 4xx with structured `errors[]` as an
       // operator-actionable 422 body. Single-platform scope today (Allegro is
@@ -247,11 +284,29 @@ export class ContentController {
         // Non-422 (5xx, auth-shaped 4xx, ...) or 422 with no parseable body:
         // not the operator's problem to fix. Surface as bad-gateway so the
         // FE doesn't render an empty error list under a 422 header.
-        throw new BadGatewayException(error.message);
+        throw codedHttpError(
+          HttpStatus.BAD_GATEWAY,
+          'PROVIDER_REJECTED',
+          error.message,
+          { provider: 'allegro' },
+          { providerMessage: error.message }
+        );
       }
       throw error;
     }
   }
+}
+
+function contentParams(
+  productId: string,
+  connectionId: string | null,
+  fieldKey?: string
+): ApiErrorParams {
+  return {
+    productId,
+    ...(connectionId !== null ? { connectionId } : {}),
+    ...(fieldKey !== undefined ? { fieldKey } : {}),
+  };
 }
 
 function toMasterStateDto(state: ContentMasterState): ContentMasterStateDto {
