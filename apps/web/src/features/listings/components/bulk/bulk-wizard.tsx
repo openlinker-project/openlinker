@@ -17,7 +17,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
-import type { StatusBadgeTone } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -58,7 +57,7 @@ import {
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
-import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
+import { gatingBlockers, resolveBlockerChips, type ChipDescriptor } from './bulk-blockers';
 import { describeBulkSubmitOutcome } from './bulk-submit-summary';
 import {
   computeResolvedPrice,
@@ -321,18 +320,10 @@ export function BulkWizard({
   // Same merge the Review step builds (#1741 review #11's "never drift" rule) -
   // readiness here must agree with the banner's readiness, or a row the banner
   // calls ready gets excluded at submit for an advisory-only chip (#2243/#3492).
-  const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
-    const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
-    for (const chip of platformBlockerChips) {
-      merged[chip.id] = {
-        tone: chip.tone as StatusBadgeTone,
-        label: chip.label,
-        fixable: true,
-        advisory: chip.advisory === true,
-      };
-    }
-    return merged;
-  }, [platformBlockerChips]);
+  const blockerChips = useMemo<Record<string, ChipDescriptor>>(
+    () => resolveBlockerChips(platformBlockerChips),
+    [platformBlockerChips],
+  );
 
   const destinationBrowsesCategories =
     (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||

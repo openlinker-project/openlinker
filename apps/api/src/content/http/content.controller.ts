@@ -35,11 +35,13 @@ import {
   CONTENT_DRAFT_SERVICE_TOKEN,
   CONTENT_STATE_READER_SERVICE_TOKEN,
   CONTENT_SUGGESTION_SERVICE_TOKEN,
+  AmbiguousProductMasterException,
   ChannelAdapterLacksFieldUpdaterException,
   ContentConflictException,
   ContentFieldNotFoundException,
   EmptyAfterDescriptionFormatException,
   NoLinkedOffersException,
+  NoProductMasterAdapterException,
   type ContentChannelState,
   type ContentMasterState,
   type IContentDraftService,
@@ -199,6 +201,14 @@ export class ContentController {
         throw new UnprocessableEntityException(error.message);
       }
       if (error instanceof NoLinkedOffersException) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      // #4068: no master, or two masters, claiming the product is a connection
+      // configuration the operator can fix - never a 500.
+      if (
+        error instanceof NoProductMasterAdapterException ||
+        error instanceof AmbiguousProductMasterException
+      ) {
         throw new UnprocessableEntityException(error.message);
       }
       if (error instanceof PromptTemplateNotFoundException) {

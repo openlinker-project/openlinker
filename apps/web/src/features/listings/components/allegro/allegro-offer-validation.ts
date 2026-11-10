@@ -41,6 +41,7 @@
  * @module features/listings/components/allegro
  */
 import {
+  formatPlural,
   getBcp47Locale,
   getLocale,
   getMessages,
@@ -48,7 +49,11 @@ import {
   type Messages,
   type ResolvedCopy,
 } from '../../../../shared/i18n';
-import type { OfferValidationContribution } from '../../../../shared/plugins';
+import type {
+  OfferBlockerCopy,
+  OfferBlockerDescribeContext,
+  OfferValidationContribution,
+} from '../../../../shared/plugins';
 import { isRestrictedCirculationGtin } from '../../lib/gtin-classification';
 import { checkRowParameterRestrictions } from '../../lib/parameter-restrictions';
 import { isAllegroTitleTooLong, isAllegroTitleTooShort } from './allegro-title';
@@ -174,6 +179,37 @@ function blockerLabels(): ResolvedCopy<Messages['listings']>['allegroOfferValida
   return getMessages('listings').allegroOfferValidation.blockers;
 }
 
+/** The copy for every Allegro blocker sentence (#4003), in the active language. */
+function allegroCopy(): ReturnType<typeof getMessages<'listings'>>['bulkBlockers']['allegro'] {
+  return getMessages('listings').bulkBlockers.allegro;
+}
+
+/** A sentence pair with no list - most Allegro blockers. */
+function plainCopy(entry: { title: string; detail: string }): OfferBlockerCopy {
+  return { title: entry.title, detail: entry.detail };
+}
+
+/**
+ * The missing-product-parameter sentence (#4003). Each of the three states of
+ * `missingParameterNames` gets its own words: a list nobody computed, a list
+ * that could not be loaded, and an actual list must never read alike - an
+ * empty list in particular is only "nothing missing" when it was checked.
+ */
+export function describeNeedsProductParameters(
+  context: OfferBlockerDescribeContext,
+): OfferBlockerCopy {
+  const copy = allegroCopy().needsProductParameters;
+  const names = context.missingParameterNames;
+  if (names === undefined) return { title: copy.notCheckedTitle, detail: copy.notCheckedDetail };
+  if (names === null) return { title: copy.notLoadedTitle, detail: copy.notLoadedDetail };
+  if (names.length === 0) return { title: copy.allFilledTitle, detail: copy.allFilledDetail };
+  return {
+    title: formatPlural(names.length, copy.listTitle, getLocale()),
+    detail: copy.listDetail,
+    items: names,
+  };
+}
+
 export const allegroOfferValidation: OfferValidationContribution = {
   blockers: [
     {
@@ -183,6 +219,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().addProductParams;
       },
+      describe: describeNeedsProductParameters,
     },
     {
       id: ALLEGRO_TITLE_TOO_LONG_BLOCKER,
@@ -191,6 +228,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().titleTooLong;
       },
+      describe: () => plainCopy(allegroCopy().titleTooLong),
     },
     {
       id: ALLEGRO_TITLE_TOO_SHORT_BLOCKER,
@@ -199,6 +237,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().titleTooShort;
       },
+      describe: () => plainCopy(allegroCopy().titleTooShort),
     },
     {
       id: ALLEGRO_PARAM_VALUE_INVALID_BLOCKER,
@@ -207,6 +246,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().paramValueRejected;
       },
+      describe: () => plainCopy(allegroCopy().paramValueInvalid),
     },
     {
       id: ALLEGRO_NO_PHOTO_BLOCKER,
@@ -215,6 +255,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().noPhoto;
       },
+      describe: () => plainCopy(allegroCopy().noPhoto),
     },
     {
       id: ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER,
@@ -223,6 +264,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().siblingsShareOneCard;
       },
+      describe: () => plainCopy(allegroCopy().siblingsWithoutCard),
     },
     {
       id: ALLEGRO_EAN_UNVERIFIED_BLOCKER,
@@ -231,6 +273,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().eanNotInCatalogue;
       },
+      describe: () => plainCopy(allegroCopy().eanUnverified),
       advisory: true,
     },
     {
@@ -240,6 +283,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
       get label(): string {
         return blockerLabels().inStoreBarcode;
       },
+      describe: () => plainCopy(allegroCopy().inStoreBarcode),
       advisory: true,
     },
   ],

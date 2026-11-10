@@ -2985,6 +2985,7 @@
     "panel": {
       "fixRouting": "Popraw ustawienia wyboru dokumentu",
       "manualOverride": "Wystaw lub zarejestruj ręcznie",
+      "technicalDetails": "Szczegóły techniczne ({count})",
       "title": "Dokument sprzedaży",
       "whyThisKind": "Dlaczego ten rodzaj?"
     }
@@ -2993,9 +2994,9 @@
     "failed": "Nie udało się wysłać dokumentu e-mailem do kupującego.",
     "language": "Język e-maila",
     "lastSentVia": "{when} · {via}",
+    "noBuyerEmail": "To zamówienie nie ma adresu e-mail kupującego.",
+    "otherAddressHint": "Na inny adres wysyła OpenLinker, a nie dostawca fakturowania.",
     "recipient": "Odbiorca",
-    "recipientHint": "Zostaw puste, aby użyć adresu kupującego z zamówienia. Na inny adres wysyła OpenLinker, a nie dostawca fakturowania.",
-    "recipientPlaceholder": "Adres kupującego z zamówienia",
     "send": "Wyślij e-mail",
     "sendAgain": "Wyślij ponownie",
     "sending": "Wysyłanie…",
@@ -3007,6 +3008,8 @@
     "statusNone": "Jeszcze nie wysłano",
     "statusSent": "Wysłano",
     "title": "E-mail do kupującego",
+    "useBuyerAddress": "Wyślij na adres kupującego z zamówienia ({email})",
+    "useBuyerAddressNone": "Wyślij na adres kupującego z zamówienia",
     "viaOpenLinker": "przez OpenLinker",
     "viaProvider": "przez dostawcę fakturowania"
   },
