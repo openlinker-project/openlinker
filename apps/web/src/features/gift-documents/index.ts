@@ -8,7 +8,7 @@
  * `scripts/check-gift-lines-mirror.mjs`.
  */
 export { GiftDocumentsDefaultPanel } from './components/gift-documents-default-panel';
-export { GiftsOnDocumentsPanel } from './components/gifts-on-documents-panel';
+export { GiftsOnDocumentsPanel, type OverridingGift } from './components/gifts-on-documents-panel';
 export { useGiftFormLabels, type GiftFormLabels } from './lib/use-gift-form-labels';
 export { resolveGiftDocumentForm, type GiftFormSource, type ResolvedGiftForm } from './lib/gift-lines';
 export { GiftDocumentFormField } from './components/gift-document-form-field';
@@ -21,3 +21,5 @@ export {
 } from './lib/gift-lines';
 export { useGiftDocumentSettingsQuery } from './hooks/use-gift-documents-queries';
 export { readGiftConnectionOverride } from './lib/gift-on-documents-config';
+export { useDocumentProvidersQuery } from './hooks/use-gift-documents-queries';
+export { useGiftDocumentsGuide } from './lib/use-gift-documents-guide';

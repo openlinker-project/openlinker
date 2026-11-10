@@ -88,11 +88,11 @@ function renderConnection(
 describe('GiftsOnDocumentsPanel', () => {
   afterEach(cleanup);
 
-  it('should default to "as in OpenLinker" naming the OpenLinker default form', async () => {
+  it('should default to "as in settings" naming the OpenLinker default form', async () => {
     renderConnection(buildApi({}));
-    const inherit = await screen.findByTestId('doc-gift-set-option-inherit');
+    const inherit = await screen.findByTestId('gift-form-card-inherit');
     expect(inherit).toBeChecked();
-    expect(screen.getByText(/As in OpenLinker \(0\.01, from the most expensive\)/)).toBeInTheDocument();
+    expect(screen.getByText(/As in settings \(default: 0\.01, from the most expensive\)/)).toBeInTheDocument();
   });
 
   it('should not name the default form while the OpenLinker-wide setting could not be read', async () => {
@@ -100,35 +100,33 @@ describe('GiftsOnDocumentsPanel', () => {
     (api.giftDocuments.getSettings as Mock).mockRejectedValue(new Error('403'));
     renderConnection(api);
 
-    const inherit = await screen.findByTestId('doc-gift-set-option-inherit');
+    const inherit = await screen.findByTestId('gift-form-card-inherit');
     expect(inherit).toBeChecked();
-    expect(screen.getByText(/As in OpenLinker \(not known yet\)/)).toBeInTheDocument();
-    expect(screen.queryByText(/As in OpenLinker \(0\.01/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/default: 0\.01/)).not.toBeInTheDocument();
   });
 
-  it('should show the receipt total equal to what was paid', async () => {
+  it('should show a document whose total equals what was paid on every card', async () => {
     renderConnection(buildApi({}));
-    expect(await screen.findByTestId('doc-gift-set-preview-sum')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-gift-set-receipt')).toHaveTextContent('100.00 PLN');
+    await screen.findByTestId('gift-form-card-inherit');
+    expect(screen.getAllByText('Sum unchanged').length).toBeGreaterThanOrEqual(5);
   });
 
   it('should disable "Shown at 0.00" with a reason when no provider accepts a zero line', async () => {
     renderConnection(buildApi({ providers: RECEIPT_ONLY }));
-    const zero = await screen.findByTestId('doc-gift-set-option-zero');
+    const zero = await screen.findByTestId('gift-form-card-show-zero');
     expect(zero).toBeDisabled();
-    expect(screen.getByTestId('doc-gift-set-option-zero-badge')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-gift-set-zero-note')).toHaveTextContent('eparagony.pl');
+    expect(screen.getAllByText(/eparagony\.pl does not accept a 0\.00 line/).length).toBeGreaterThan(0);
   });
 
   it('should offer "Shown at 0.00" where a provider accepts it', async () => {
     renderConnection(buildApi({}));
-    expect(await screen.findByTestId('doc-gift-set-option-zero')).toBeEnabled();
+    expect(await screen.findByTestId('gift-form-card-show-zero')).toBeEnabled();
   });
 
   it('should keep other config keys and write only the form when an override is saved', async () => {
     const update = vi.fn().mockResolvedValue(connectionWith({}));
     renderConnection(buildApi({ config: { rateLimit: { maxConcurrent: 2 } }, update }));
-    fireEvent.click(await screen.findByTestId('doc-gift-set-option-priced-in'));
+    fireEvent.click(await screen.findByTestId('gift-form-card-priced-in'));
     fireEvent.click(screen.getByTestId('doc-gift-set-save'));
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls[0][1]).toEqual({
@@ -136,36 +134,69 @@ describe('GiftsOnDocumentsPanel', () => {
     });
   });
 
+  it('should write the typed amount with an own-price override and refuse an unusable one', async () => {
+    const update = vi.fn().mockResolvedValue(connectionWith({}));
+    renderConnection(buildApi({ update }));
+    fireEvent.click(await screen.findByTestId('gift-form-card-custom-price'));
+    const amount = screen.getByTestId('gift-form-amount');
+    fireEvent.change(amount, { target: { value: 'abc' } });
+    expect(screen.getByTestId('gift-form-amount-error')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-gift-set-save')).toBeDisabled();
+    fireEvent.change(amount, { target: { value: '3,10' } });
+    fireEvent.click(screen.getByTestId('doc-gift-set-save'));
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1]).toEqual({
+      config: { giftOnDocuments: { form: 'custom-price', unitPrice: '3.10' } },
+    });
+  });
+
   it('should drop the key when the channel goes back to inheriting', async () => {
     const update = vi.fn().mockResolvedValue(connectionWith({}));
     renderConnection(buildApi({ config: { giftOnDocuments: { form: 'omit' } }, update }));
-    fireEvent.click(await screen.findByTestId('doc-gift-set-option-inherit'));
+    fireEvent.click(await screen.findByTestId('gift-form-card-inherit'));
     fireEvent.click(screen.getByTestId('doc-gift-set-save'));
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls[0][1]).toEqual({ config: {} });
   });
 
+  it('should list a promotion that sets its own form above the channel', async () => {
+    renderWithProviders(
+      <GiftsOnDocumentsPanel
+        connectionId="alg_1"
+        overridingGifts={[{ id: 'r', name: 'Spoon promo', form: 'custom-price', unitPrice: '0.50' }]}
+      />,
+      { apiClient: buildApi({}), sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+    expect(await screen.findByTestId('gift-conn-above')).toHaveTextContent('Spoon promo has its own form');
+  });
+
   it('should be read-only for a role without connection write access', async () => {
     renderConnection(buildApi({}), []);
     expect(await screen.findByTestId('doc-gift-set-readonly-notice')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-gift-set-option-priced-in')).toBeDisabled();
+    expect(screen.getByTestId('gift-form-card-priced-in')).toBeDisabled();
     expect(screen.queryByTestId('doc-gift-set-save')).not.toBeInTheDocument();
   });
 });
 
 describe('GiftDocumentsDefaultPanel', () => {
   afterEach(cleanup);
-
-  it('should show technical-cent as the default and the bundle info line', async () => {
-    renderWithProviders(<GiftDocumentsDefaultPanel />, {
-      apiClient: buildApi({}),
-      sessionAdapter: createAuthenticatedSessionAdapter(),
+  const renderDefault = (api: ReturnType<typeof buildApi>, session = createAuthenticatedSessionAdapter()) =>
+    renderWithProviders(<GiftDocumentsDefaultPanel onHelp={vi.fn()} />, {
+      apiClient: api,
+      sessionAdapter: session,
     });
-    expect(await screen.findByTestId('doc-gift-set-option-grosz')).toBeChecked();
+
+  it('should show technical-cent as the default and the bundle info', async () => {
+    renderDefault(buildApi({}));
+    expect(await screen.findByTestId('gift-form-card-technical-cent')).toBeChecked();
     expect(screen.getByTestId('doc-gift-set-bundle-info')).toHaveTextContent(
-      'one line when all items share a VAT rate',
+      'one line when all its components have the same VAT rate',
     );
-    expect(screen.getByTestId('doc-gift-set-example')).toBeInTheDocument();
+  });
+
+  it('should name the provider that refuses a zero line in a note', async () => {
+    renderDefault(buildApi({ providers: [...ACCEPTS_ZERO, ...RECEIPT_ONLY] }));
+    expect(await screen.findByTestId('gift-provider-note')).toHaveTextContent('eparagony.pl does not accept it');
   });
 
   it('should save the chosen default', async () => {
@@ -174,19 +205,29 @@ describe('GiftDocumentsDefaultPanel', () => {
       giftDocumentFormSource: 'setting',
       updatedAt: null,
     });
-    renderWithProviders(<GiftDocumentsDefaultPanel />, {
-      apiClient: buildApi({ saveSettings }),
-      sessionAdapter: createAuthenticatedSessionAdapter(),
-    });
-    fireEvent.click(await screen.findByTestId('doc-gift-set-option-omit'));
+    renderDefault(buildApi({ saveSettings }));
+    fireEvent.click(await screen.findByTestId('gift-form-card-omit'));
     fireEvent.click(screen.getByTestId('doc-gift-set-save'));
-    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith('omit'));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith('omit', undefined));
+  });
+
+  it('should send the amount with an own-price default', async () => {
+    const saveSettings = vi.fn().mockResolvedValue({
+      giftDocumentForm: 'custom-price',
+      giftDocumentUnitPrice: '2.50',
+      giftDocumentFormSource: 'setting',
+      updatedAt: null,
+    });
+    renderDefault(buildApi({ saveSettings }));
+    fireEvent.click(await screen.findByTestId('gift-form-card-custom-price'));
+    fireEvent.click(screen.getByTestId('doc-gift-set-save'));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith('custom-price', '2.50'));
   });
 
   it('should be read-only for a viewer', async () => {
-    renderWithProviders(<GiftDocumentsDefaultPanel />, {
-      apiClient: buildApi({}),
-      sessionAdapter: createAuthenticatedSessionAdapter({
+    renderDefault(
+      buildApi({}),
+      createAuthenticatedSessionAdapter({
         id: 'u',
         username: 'v',
         email: 'v@example.com',
@@ -194,8 +235,8 @@ describe('GiftDocumentsDefaultPanel', () => {
         permissions: [],
         analyticsConsent: true,
       }),
-    });
+    );
     expect(await screen.findByTestId('doc-gift-set-readonly-notice')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-gift-set-save')).toBeDisabled();
+    expect(screen.getByTestId('gift-form-card-omit')).toBeDisabled();
   });
 });

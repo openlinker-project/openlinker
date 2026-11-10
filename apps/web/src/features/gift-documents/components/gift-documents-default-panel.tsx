@@ -1,137 +1,250 @@
 /**
- * GiftDocumentsDefaultPanel (#3941)
+ * GiftDocumentsDefaultPanel
  *
- * The OpenLinker-wide gift form on documents, on Settings > Sales documents:
- * the lowest of three levels (the gift, the channel, this default). Saves
- * through `PUT /sales-documents/settings`. A read-only role sees the same card
- * with a notice and no save.
+ * The OpenLinker-wide gift form on documents, as the "Gifts on documents"
+ * section of Settings > Sales documents: five cards with a live document each,
+ * the note on what providers accept, the order of settings drawn as a diagram,
+ * and a sticky bar that offers undo and save while there is something to save.
+ * Saves through `PUT /sales-documents/settings`. A read-only role sees the same
+ * cards, greyed, with a notice and no bar.
  *
  * @module apps/web/src/features/gift-documents/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
-import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { interpolate, useMessages } from '../../../shared/i18n';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
-import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { HelpHint } from '../../../shared/ui/help-hint';
+import { SaveButton, type SaveButtonState } from '../../../shared/ui/save-button';
+import { StickyActionBar } from '../../../shared/ui/sticky-action-bar';
+import { useToast } from '../../../shared/ui/toast-provider';
 import { useDemoMode } from '../../system';
 import {
   useDocumentProvidersQuery,
   useGiftDocumentSettingsQuery,
 } from '../hooks/use-gift-documents-queries';
 import { useSaveGiftDocumentDefault } from '../hooks/use-save-gift-documents';
-import type { GiftDocumentFormChoice } from '../lib/gift-lines';
+import type { DocumentProviderZeroSupport } from '../api/gift-documents.types';
+import { parseGiftUnitPrice } from '../lib/gift-form-preview';
+import { isGiftUnitPriceAmount, type GiftDocumentFormChoice } from '../lib/gift-lines';
 import { zeroAvailability } from '../lib/zero-availability';
-import { GiftFormExampleTable } from './gift-form-example-table';
-import { GiftFormOptions, type GiftFormOptionValue } from './gift-form-options';
-import { GiftFormPreview } from './gift-form-preview';
+import { GiftFormCards, type GiftFormCardValue } from './gift-form-cards';
+import { GiftPrecedence } from './gift-precedence';
 
-export function GiftDocumentsDefaultPanel(): ReactElement {
+const SAVED_HOLD_MS = 1600;
+
+export interface GiftDocumentsDefaultPanelProps {
+  /** Opens the page guide, on one item when given. */
+  onHelp: (itemId?: string) => void;
+}
+
+function ProviderNote({
+  providers,
+}: {
+  providers: readonly DocumentProviderZeroSupport[];
+}): ReactElement | null {
+  const copy = useMessages('gift-documents').settings;
+  const format = useFormat();
+  const accepting = providers.filter((p) => p.acceptsZeroValueLine === true).map((p) => p.name);
+  const refusing = providers.filter((p) => p.acceptsZeroValueLine === false);
+  if (refusing.length === 0) return null;
+  const kinds = new Set(refusing.map((p) => p.kind));
+  const documents =
+    kinds.size > 1
+      ? copy.documentsMixed
+      : kinds.has('fiscal-receipt')
+        ? copy.documentsReceipts
+        : copy.documentsInvoices;
+  const refusingNames = refusing.map((p) => p.name);
+  return (
+    <div className="gift-note gift-note--warn" data-testid="gift-provider-note">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="6.2" />
+        <path d="M8 7.2V11M8 5v.1" />
+      </svg>
+      <span>
+        <b>{copy.providerNoteLead}</b>{' '}
+        {accepting.length === 0
+          ? null
+          : accepting.length === 1
+            ? interpolate(copy.acceptingOne, { provider: accepting[0] })
+            : interpolate(copy.acceptingMany, { providers: format.list(accepting) })}{' '}
+        {refusingNames.length === 1
+          ? interpolate(copy.refusingOne, { provider: refusingNames[0], documents })
+          : interpolate(copy.refusingMany, { providers: format.list(refusingNames), documents })}
+      </span>
+    </div>
+  );
+}
+
+export function GiftDocumentsDefaultPanel({ onHelp }: GiftDocumentsDefaultPanelProps): ReactElement {
   const copy = useMessages('gift-documents');
+  const format = useFormat();
   const settingsQuery = useGiftDocumentSettingsQuery();
   const providersQuery = useDocumentProvidersQuery();
   const save = useSaveGiftDocumentDefault();
+  const { showToast } = useToast();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const canEdit = write.canWrite;
-  const [draft, setDraft] = useState<GiftDocumentFormChoice | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (draft === null && settingsQuery.data) setDraft(settingsQuery.data.giftDocumentForm);
-  }, [draft, settingsQuery.data]);
+  const [draftForm, setDraftForm] = useState<GiftDocumentFormChoice | null>(null);
+  const [draftAmount, setDraftAmount] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveButtonState>('idle');
+  const [live, setLive] = useState('');
+  const resetTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+    },
+    [],
+  );
 
   if (settingsQuery.isLoading) {
     return (
-      <div className="panel panel--dense" aria-busy="true">
+      <div className="gift-settings__card" aria-busy="true">
         <LoadingState liveRegion="off" title={copy.default.loading} message="" />
       </div>
     );
   }
-  if (settingsQuery.error || !settingsQuery.data || draft === null) {
+  if (settingsQuery.error || !settingsQuery.data) {
     return (
-      <div className="panel panel--dense">
-        <ErrorState
-          title={copy.default.loadFailed}
-          message={settingsQuery.error?.message ?? ''}
-        />
+      <div className="gift-settings__card">
+        <ErrorState title={copy.default.loadFailed} message={settingsQuery.error?.message ?? ''} />
       </div>
     );
   }
 
-  const saved = settingsQuery.data.giftDocumentForm;
-  const zero = zeroAvailability(providersQuery.data?.providers);
+  const savedForm = settingsQuery.data.giftDocumentForm;
+  const savedAmount = settingsQuery.data.giftDocumentUnitPrice ?? null;
+  const two = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  const savedAmountText = savedAmount === null ? null : format.number(Number(savedAmount), two);
+  const form = draftForm ?? savedForm;
+  const amount = draftAmount ?? savedAmountText ?? format.number(2.5, two);
+  const parsedAmount = parseGiftUnitPrice(amount);
+  const amountInvalid = form === 'custom-price' && parsedAmount === null;
+  const amountChanged =
+    form === 'custom-price' &&
+    parsedAmount !== null &&
+    (savedAmount === null || Number(savedAmount) !== parsedAmount);
+  const dirty = form !== savedForm || amountChanged;
+  const providers = providersQuery.data?.providers;
+  const zero = zeroAvailability(providers);
   const zeroReason = zero.available
     ? null
     : zero.refusingProviderName
       ? interpolate(copy.connection.zeroNotOffered, { provider: zero.refusingProviderName })
       : copy.connection.zeroNoProvider;
 
+  function discard(): void {
+    setDraftForm(null);
+    setDraftAmount(null);
+  }
+
   async function handleSave(): Promise<void> {
-    if (draft === null) return;
-    setError(null);
-    setNotice(null);
+    if (amountInvalid || !dirty) return;
+    const unitPrice =
+      form === 'custom-price' && parsedAmount !== null ? parsedAmount.toFixed(2) : undefined;
+    if (unitPrice !== undefined && !isGiftUnitPriceAmount(unitPrice)) return;
+    setSaveState('saving');
+    setLive(copy.settings.saving);
     try {
-      await save.mutateAsync(draft);
-      setNotice(copy.default.saved);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : copy.default.saveFailed);
+      await save.mutateAsync({ form, unitPrice });
+      setSaveState('saved');
+      setLive(copy.settings.savedLive);
+      discard();
+      resetTimer.current = window.setTimeout(() => setSaveState('idle'), SAVED_HOLD_MS);
+    } catch (error) {
+      setSaveState('idle');
+      setLive('');
+      showToast({
+        tone: 'error',
+        title: copy.default.saveFailed,
+        description: error instanceof Error ? error.message : '',
+      });
     }
   }
 
   return (
-    <div className="panel panel--dense gift-form-panel" data-testid="doc-gift-set-card">
-      <h3 className="section-title" data-testid="doc-gift-set-title">
-        {copy.default.title}
-      </h3>
-      {!canEdit ? (
-        <Alert tone="info" data-testid="doc-gift-set-readonly-notice">
-          {copy.default.readOnlyNotice}
-        </Alert>
-      ) : null}
-      <p className="muted-text" data-testid="doc-gift-set-bundle-info">
-        {copy.default.bundleInfo}
-      </p>
-      <div className="form-field" data-testid="doc-gift-set-default-field">
-        <span className="form-field__label">{copy.default.fieldLabel}</span>
-        <GiftFormOptions
-          name="gift-form-default"
-          value={draft}
-          onChange={(next: GiftFormOptionValue) => {
-            if (next !== 'inherit') setDraft(next);
-          }}
-          zeroAvailable={zero.available}
-          zeroReason={zeroReason}
-          disabled={!canEdit}
-        />
-        <p className="form-field__description">{copy.default.fieldHelp}</p>
+    <section className="gift-settings" id="s-gifts" aria-labelledby="gift-settings-title">
+      <div className="gift-section__head">
+        <h2 id="gift-settings-title" data-testid="doc-gift-set-title">
+          {copy.settings.sectionTitle}
+        </h2>
+        <p>{copy.settings.sectionLead}</p>
       </div>
-      <p className="muted-text" data-testid="doc-gift-set-levels">
-        {copy.default.levels}
-      </p>
-      <p className="muted-text">{copy.default.taxNote}</p>
-      {notice ? <Alert tone="success">{notice}</Alert> : null}
-      {error ? (
-        <Alert tone="error" title={copy.default.saveFailed}>
-          {error}
-        </Alert>
-      ) : null}
-      <div>
-        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
+      <div className="gift-settings__card" data-testid="doc-gift-set-card">
+        {!canEdit ? (
+          <Alert tone="info" data-testid="doc-gift-set-readonly-notice">
+            {copy.default.readOnlyNotice}
+          </Alert>
+        ) : null}
+        <div className="form-field" data-testid="doc-gift-set-default-field">
+          <span className="gift-label-row">
+            <span className="form-field__label">{copy.settings.fieldLabel}</span>
+            <HelpHint label={copy.settings.helpForm} onClick={() => onHelp('g-form')} />
+          </span>
+          <p className="form-field__description">{copy.settings.fieldHelp}</p>
+          <GiftFormCards
+            name="gift-form-default"
+            aria-label={copy.settings.fieldLabel}
+            value={form}
+            onChange={(next: GiftFormCardValue) => {
+              if (next !== 'inherit') setDraftForm(next);
+            }}
+            amount={amount}
+            onAmountChange={setDraftAmount}
+            zeroAvailable={zero.available}
+            zeroReason={zeroReason}
+            disabled={!canEdit}
+          />
+        </div>
+
+        {providers === undefined ? null : <ProviderNote providers={providers} />}
+
+        <GiftPrecedence onHelp={onHelp} />
+
+        <div className="gift-card" data-testid="doc-gift-set-bundle-info">
+          <h3>{copy.settings.bundleTitle}</h3>
+          <p>{copy.settings.bundleText}</p>
+        </div>
+        <p className="form-field__description" data-testid="doc-gift-set-tax-note">
+          {copy.settings.taxNote}
+        </p>
+      </div>
+
+      {write.visible ? (
+        <StickyActionBar
+          visible={dirty || saveState !== 'idle'}
+          message={copy.settings.barMessage}
+          aria-label={copy.settings.barAria}
+        >
           <Button
-            disabled={!canEdit || save.isPending || draft === saved}
+            tone="secondary"
+            className="button--sm"
+            disabled={saveState !== 'idle'}
+            onClick={discard}
+            data-testid="doc-gift-set-undo"
+          >
+            {copy.settings.undo}
+          </Button>
+          <SaveButton
+            state={saveState}
+            labels={{
+              idle: copy.settings.save,
+              saving: copy.settings.saving,
+              saved: copy.settings.saved,
+            }}
+            disabled={!canEdit || amountInvalid || (!dirty && saveState === 'idle')}
             onClick={() => void handleSave()}
             data-testid="doc-gift-set-save"
-          >
-            {copy.default.save}
-          </Button>
-        </ReadOnlyLock>
-      </div>
-      <GiftFormExampleTable />
-      <GiftFormPreview form={draft} zeroAccepted={zero.available} />
-    </div>
+          />
+        </StickyActionBar>
+      ) : null}
+      <span className="sr-only" role="status">
+        {live}
+      </span>
+    </section>
   );
 }

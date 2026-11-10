@@ -62,3 +62,42 @@ export function previewGiftForm(
 export function formatMoney(value: number): string {
   return value.toFixed(2);
 }
+
+/**
+ * The sample of the redesigned cards: coffee and tea paid for, a mug given as a
+ * gift. The mug's own price (24.90) is the weight "priced in" shares by, and
+ * the cap on a custom price: more than that would be worth more than the gift.
+ * What the customer paid is 203.98 whatever the form.
+ */
+export const CARD_SAMPLE_PAID_TOTAL = 203.98;
+export const CARD_SAMPLE_GIFT_REFERENCE_PRICE = 24.9;
+
+export interface CardSampleNames {
+  coffee: string;
+  tea: string;
+  mug: string;
+}
+
+export function cardSampleLines(names: CardSampleNames, giftUnitPrice?: number): SampleLine[] {
+  return [
+    { name: names.coffee, quantity: 1, unitPriceGross: 149.99, taxRate: '23' },
+    { name: names.tea, quantity: 1, unitPriceGross: 53.99, taxRate: '23' },
+    {
+      name: names.mug,
+      quantity: 1,
+      unitPriceGross: 0,
+      taxRate: '23',
+      isGift: true,
+      referenceUnitPriceGross: CARD_SAMPLE_GIFT_REFERENCE_PRICE,
+      ...(giftUnitPrice === undefined ? {} : { giftUnitPriceGross: giftUnitPrice }),
+    },
+  ];
+}
+
+/** Parses an operator-typed amount ("2,50" or "2.50"); `null` when it is not a usable one. */
+export function parseGiftUnitPrice(text: string): number | null {
+  const normalised = text.trim().replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(normalised)) return null;
+  const value = Number(normalised);
+  return value > 0 ? value : null;
+}

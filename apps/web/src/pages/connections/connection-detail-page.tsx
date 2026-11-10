@@ -29,6 +29,14 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { describeConnectionStatus, OMS_PLATFORM_TYPE } from '../oms/oms-connection';
 import { interpolate, renderRich, useMessages } from '../../shared/i18n';
+import { GuideButton, GuideDrawer, useGuideDrawer } from '../../shared/ui/guide-drawer';
+import {
+  GiftsOnDocumentsPanel,
+  useGiftDocumentsGuide,
+  type OverridingGift,
+} from '../../features/gift-documents';
+import { useGiftRulesQuery } from '../../features/gifts';
+import type { GiftDocumentFormChoice } from '../../features/gift-documents';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -190,7 +198,7 @@ function ArchivedBanner({ connection }: { connection: Connection }): ReactElemen
   );
 }
 
-const TAB_VALUES = ['overview', 'health', 'actions', 'config'] as const;
+const TAB_VALUES = ['overview', 'health', 'actions', 'config', 'gifts'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(value: string | null): value is TabValue {
@@ -280,8 +288,39 @@ function ConnectionStatusBadge({ connection }: { connection: Connection }): Reac
 /** The OMS connection is configured by the packing setup, never by the generic edit form. */
 const PACKING_SETTINGS_PATH = '/settings/packing';
 
+/**
+ * The promotions that set their own gift form for this channel, i.e. the ones
+ * above the connection in the order of settings. A promotion with no channel
+ * condition applies to every channel.
+ */
+function overridingGiftsFor(
+  rules: ReturnType<typeof useGiftRulesQuery>['data'],
+  connectionId: string,
+): OverridingGift[] {
+  return (rules ?? []).flatMap((rule) => {
+    const form = rule.gift?.documentForm;
+    if (!rule.isActive || rule.gift === null || form === undefined) return [];
+    const channels = rule.conditions.flatMap((c) =>
+      c.field === 'sourceConnection' ? [[c.value]] : c.field === 'sourceConnectionIn' ? [c.values] : [],
+    );
+    if (channels.length > 0 && !channels.every((ids) => ids.includes(connectionId))) return [];
+    const unitPrice = (rule.gift as { documentUnitPrice?: string }).documentUnitPrice;
+    return [
+      {
+        id: rule.id,
+        name: rule.name,
+        form: form as GiftDocumentFormChoice,
+        ...(unitPrice === undefined ? {} : { unitPrice }),
+      },
+    ];
+  });
+}
+
 export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
+  const guide = useGuideDrawer();
+  const guideCopy = useGiftDocumentsGuide();
+  const giftRules = useGiftRulesQuery();
   const connectionQuery = useConnectionQuery(connectionId);
   // The plugin registry is what turns a `platformType` slug into the product
   // name an operator recognises. Rendering the raw slug was tolerable while
@@ -319,6 +358,8 @@ export function ConnectionDetailPage(): ReactElement {
   // The OMS connection is a by-product of the packing setup: no credentials, no
   // adapter choice, no config to edit. It is managed from /settings/packing.
   const isOms = connection?.platformType === OMS_PLATFORM_TYPE;
+  const giftTabCopy = useMessages('gift-documents').settings;
+  const supportsGifts = connection?.enabledCapabilities.includes('OrderSource') === true;
 
   return (
     <PageLayout
@@ -436,6 +477,7 @@ export function ConnectionDetailPage(): ReactElement {
             <TabsTrigger value="health">{copy.tabs.health}</TabsTrigger>
             {isOms ? null : <TabsTrigger value="actions">{copy.tabs.actions}</TabsTrigger>}
             {isOms ? null : <TabsTrigger value="config">{copy.tabs.config}</TabsTrigger>}
+            {supportsGifts ? <TabsTrigger value="gifts">{copy.tabs.gifts}</TabsTrigger> : null}
           </TabsList>
 
           <TabsContent value="overview">
@@ -524,6 +566,27 @@ export function ConnectionDetailPage(): ReactElement {
           <TabsContent value="config">
             <ConnectionConfigPanel config={connection.config} />
           </TabsContent>
+
+          {supportsGifts ? (
+            <TabsContent value="gifts">
+              <div className="gift-tab-actions">
+                <GuideButton label={giftTabCopy.guideButton} onClick={() => guide.show()} />
+              </div>
+              <GiftsOnDocumentsPanel
+                connectionId={connection.id}
+                onHelp={(itemId) => guide.show(itemId)}
+                overridingGifts={overridingGiftsFor(giftRules.data, connection.id)}
+              />
+              <GuideDrawer
+                open={guide.open}
+                onOpenChange={guide.onOpenChange}
+                focusItemId={guide.itemId}
+                title={guideCopy.title}
+                lede={guideCopy.lede}
+                sections={guideCopy.sections}
+              />
+            </TabsContent>
+          ) : null}
         </Tabs>
       ) : null}
     </PageLayout>

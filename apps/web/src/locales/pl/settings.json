@@ -180,8 +180,14 @@
       "title": "Wymagana rola administratora"
     },
     "backLabel": "Ustawienia",
-    "description": "Wybierz, co wystawia każdy rynek, osobno dla każdego kraju, i co może wystawiać każdy połączony dostawca. OpenLinker nigdy nie decyduje, jakiego dokumentu zamówienie wymaga prawnie.",
+    "description": "Które połączenie wystawia fakturę albo paragon i jak gratisy wyglądają na dokumencie.",
     "eyebrow": "Ustawienia",
+    "sections": {
+      "gifts": "Gratisy na dokumentach",
+      "markets": "Rynki",
+      "providers": "Dostawcy dokumentów"
+    },
+    "sectionsLabel": "Sekcje strony",
     "title": "Kierowanie dokumentów sprzedaży"
   },
   "settingsPage": {

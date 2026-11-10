@@ -569,11 +569,17 @@
       "primary": "Primary",
       "provider": "Provider",
       "status": "Status",
-      "trigger": "Trigger"
+      "trigger": "Trigger",
+      "zeroLine": "0.00 line"
     },
     "title": "Connected providers",
     "triggerHint": "Trigger is greyed out for a non-primary row since the timing choice does not matter until a connection is actually the one issuing.",
-    "triggerLabel": "When {name} issues"
+    "triggerLabel": "When {name} issues",
+    "zeroLine": {
+      "accepts": "Accepts",
+      "refuses": "Does not accept",
+      "unknown": "No declaration"
+    }
   },
   "salesDocumentsTile": {
     "adminOnly": "Admin only",

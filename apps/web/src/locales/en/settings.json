@@ -174,8 +174,14 @@
       "title": "Admin role required"
     },
     "backLabel": "Settings",
-    "description": "Choose what each market issues, per country, and what each connected provider may issue. OpenLinker never decides which document an order legally needs.",
+    "description": "Which connection issues an invoice or receipt, and how gifts look on the document.",
     "eyebrow": "Settings",
+    "sections": {
+      "gifts": "Gifts on documents",
+      "markets": "Markets",
+      "providers": "Document providers"
+    },
+    "sectionsLabel": "Page sections",
     "title": "Sales documents routing"
   },
   "settingsPage": {

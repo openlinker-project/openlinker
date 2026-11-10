@@ -29,6 +29,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { useDocumentProvidersQuery } from '../../gift-documents';
 import { INVOICE_TRIGGER_MODEL_VALUES, INVOICE_TRIGGER_MODEL_LABELS } from '../../connections';
 import { useSalesDocumentRows } from '../hooks/use-sales-document-rows';
 import { useUpdateSalesDocumentMutation } from '../hooks/use-update-sales-document-mutation';
@@ -59,6 +60,29 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   }
 }
 
+function ZeroLineBadge({ support }: { support: boolean | null | undefined }): ReactElement {
+  const copy = useMessages('sales-documents').salesDocumentsPanel.zeroLine;
+  if (support === true) {
+    return (
+      <StatusBadge tone="success" compact>
+        {copy.accepts}
+      </StatusBadge>
+    );
+  }
+  if (support === false) {
+    return (
+      <StatusBadge tone="warning" compact>
+        {copy.refuses}
+      </StatusBadge>
+    );
+  }
+  return (
+    <StatusBadge tone="neutral" compact>
+      {copy.unknown}
+    </StatusBadge>
+  );
+}
+
 const CONFLICT_KEY = {
   'multiple-primaries': 'multiplePrimaries',
   'ambiguous-no-primary': 'ambiguousNoPrimary',
@@ -74,6 +98,10 @@ export function SalesDocumentsPanel(): ReactElement {
 
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
+  // Enrichment only: while it loads or fails the column reads "no declaration".
+  const providersQuery = useDocumentProvidersQuery();
+  const zeroSupportFor = (connectionId: string): boolean | null | undefined =>
+    providersQuery.data?.providers.find((p) => p.connectionId === connectionId)?.acceptsZeroValueLine;
 
   if (connectionsQuery.isLoading) {
     return (
@@ -173,6 +201,7 @@ export function SalesDocumentsPanel(): ReactElement {
               <th scope="col">{copy.table.issues}</th>
               <th scope="col">{copy.table.primary}</th>
               <th scope="col">{copy.table.trigger}</th>
+              <th scope="col">{copy.table.zeroLine}</th>
             </tr>
           </thead>
           <tbody>
@@ -248,6 +277,9 @@ export function SalesDocumentsPanel(): ReactElement {
                         ))}
                       </Select>
                     </ReadOnlyLock>
+                  </td>
+                  <td>
+                    <ZeroLineBadge support={zeroSupportFor(row.connectionId)} />
                   </td>
                 </tr>
               );

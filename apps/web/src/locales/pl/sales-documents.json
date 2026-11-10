@@ -599,11 +599,17 @@
       "primary": "Główne",
       "provider": "Dostawca",
       "status": "Status",
-      "trigger": "Wyzwalacz"
+      "trigger": "Wyzwalacz",
+      "zeroLine": "Pozycja 0,00"
     },
     "title": "Podłączeni dostawcy",
     "triggerHint": "Wyzwalacz jest wyszarzony w wierszu, który nie jest główny, bo wybór momentu nie ma znaczenia, dopóki połączenie faktycznie nie wystawia dokumentów.",
-    "triggerLabel": "Kiedy wystawia {name}"
+    "triggerLabel": "Kiedy wystawia {name}",
+    "zeroLine": {
+      "accepts": "Przyjmuje",
+      "refuses": "Nie przyjmuje",
+      "unknown": "Brak deklaracji"
+    }
   },
   "salesDocumentsTile": {
     "adminOnly": "Tylko administratorzy",
