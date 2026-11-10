@@ -2985,6 +2985,7 @@
     "panel": {
       "fixRouting": "Popraw ustawienia wyboru dokumentu",
       "manualOverride": "Wystaw lub zarejestruj ręcznie",
+      "technicalDetails": "Szczegóły techniczne ({count})",
       "title": "Dokument sprzedaży",
       "whyThisKind": "Dlaczego ten rodzaj?"
     }
