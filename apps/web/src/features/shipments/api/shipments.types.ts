@@ -383,3 +383,28 @@ export interface PaginatedShipments {
   limit: number;
   offset: number;
 }
+
+/** One shared cause among failed shipments, across every page (#4043). */
+export interface ShipmentFailedCauseGroupSummary {
+  connectionId: string;
+  providerCode: string | null;
+  /** One member's carrier message; `REDACTED_ERROR_MESSAGE` for a viewer. */
+  sampleReason: string;
+  count: number;
+}
+
+/**
+ * `GET /shipments/summary` (#4043): the list's counts for the same filters,
+ * each axis counted with its own filter removed.
+ */
+export interface ShipmentSummary {
+  total: number;
+  byStatus: Record<ShipmentStatus, number>;
+  byProcessor: { omp: number; carrier: number };
+  byMethod: Record<ShippingMethod, number>;
+  /** Connections with no shipments are left out, not reported as 0. */
+  byConnection: Record<string, number>;
+  waybillRelayStuck: number;
+  toSend: number;
+  failedCauseGroups: ShipmentFailedCauseGroupSummary[];
+}

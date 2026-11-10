@@ -275,7 +275,7 @@ export function ProductDetailPage(): ReactElement {
 
         <TabsContent value={VIEW_OVERVIEW}>
           <section className="product-detail-hero" aria-label={copy.hero.label}>
-            <ProductGallery images={product.images ?? []} name={product.name} />
+            <ProductGallery images={product.images ?? []} name={product.name} productId={product.id} />
             <div className="product-detail-hero__body">
               <div className="product-detail-hero__badges">
                 {stockStatus !== null ? (

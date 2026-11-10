@@ -953,15 +953,82 @@
     "status": "Status"
   },
   "listFilters": {
+    "allFiltersTitle": "All filters",
     "allSources": "All sources",
     "anyFulfilment": "Any fulfilment",
     "anyHold": "Any hold reason",
     "anyPacking": "Any packing",
     "anyPhase": "Any stage",
     "anySla": "Any",
+    "anyStatus": "All orders",
     "atRisk": {
       "one": "{n} at risk",
       "other": "{n} at risk"
+    },
+    "attention": {
+      "activeCount": {
+        "one": "{n} filter on",
+        "other": "{n} filters on"
+      },
+      "items": {
+        "atRisk": {
+          "desc": "The ship-by date is close.",
+          "label": "At risk"
+        },
+        "breaching": {
+          "desc": "Not shipped yet and due within a day, or already late.",
+          "label": "Ships within 24 h"
+        },
+        "buyerNote": {
+          "desc": "Read it before you pack.",
+          "label": "Buyer left a note"
+        },
+        "omsStopped": {
+          "desc": "OpenLinker could not decide something and needs you.",
+          "label": "OpenLinker stopped"
+        },
+        "openReturn": {
+          "desc": "The buyer started a return.",
+          "label": "Open return"
+        },
+        "overdue": {
+          "desc": "The ship-by date has passed.",
+          "label": "Overdue"
+        },
+        "packBench": {
+          "desc": "Waiting to be packed, or being packed.",
+          "label": "On pack bench"
+        },
+        "rateConflict": {
+          "desc": "The shop and the channel report different VAT rates.",
+          "label": "Tax rate conflict"
+        },
+        "routing": {
+          "desc": "No destination could be chosen for this order.",
+          "label": "Routing blocked"
+        },
+        "salesDocs": {
+          "desc": "No invoice or receipt could be issued.",
+          "label": "Sales document blocked"
+        },
+        "waiting": {
+          "desc": "Held in OpenLinker before it goes on to the shop.",
+          "label": "Waiting in OpenLinker"
+        }
+      },
+      "late": {
+        "label": "Late to ship",
+        "short": "late to ship"
+      },
+      "riskHint": "ranked by deadline",
+      "stuck": {
+        "label": "Stuck",
+        "short": "stuck"
+      },
+      "toHandle": {
+        "label": "To handle",
+        "short": "to handle"
+      }
     },
     "checks": {
       "buyerNote": "With buyer note",
@@ -1012,6 +1079,7 @@
       "waitingValue": "Waiting"
     },
     "clearAll": "Clear all",
+    "closeFilters": "Close filters",
     "dispatchRiskOverview": "Dispatch risk",
     "fields": {
       "created": "Created",
@@ -1025,6 +1093,7 @@
       "shipBy": "Ship-by",
       "source": "Source"
     },
+    "filterGroupAria": "Filters",
     "fulfilmentOptions": {
       "delivered": "Delivered",
       "dispatched": "Dispatched",
@@ -1045,7 +1114,8 @@
       "source_deleted": "Source deleted",
       "synced": "Synced"
     },
-    "hideFilters": "Hide filters",
+    "moreFilters": "Filters",
+    "moreFiltersTitle": "All filters (F)",
     "noFilterResults": {
       "clearFilters": "Clear filters",
       "message": "No orders match {summary}. Clear the filters to see everything.",
@@ -1101,7 +1171,6 @@
     },
     "sectionAny": "Any",
     "sectionNone": "None",
-    "sheetTitle": "Filters",
     "showOrders": {
       "one": "Show {n} order",
       "other": "Show {n} orders"
@@ -1116,17 +1185,27 @@
       "on_track": "On track",
       "overdue": "Overdue"
     },
+    "sortMenuAria": "Sort orders",
+    "sortOptions": {
+      "createdAt": "Recently synced",
+      "customer": "Customer, A to Z",
+      "dispatchBy": "Ship-by, soonest",
+      "fulfillment": "Shipment state",
+      "payment": "Payment state",
+      "placedAt": "Newest first",
+      "status": "Status",
+      "total": "Highest total"
+    },
+    "statusTabsAria": "Orders by sync health",
     "tags": {
       "any": "Any tag",
       "find": "Find a tag",
       "groupAria": "Tag",
       "none": "No tags",
       "noneYet": "No tags yet."
-    },
-    "toggleTitle": "Show or hide filters (F)"
+    }
   },
   "listPage": {
-    "allOrders": "All orders",
     "bulk": {
       "clear": "Clear",
       "dispatch": "Dispatch {count}",
@@ -1159,6 +1238,7 @@
       "customer": "Customer",
       "order": "Order",
       "payment": "Payment",
+      "placed": "Placed",
       "shipBy": "Ship-by",
       "shipment": "Shipment",
       "status": "Status",
@@ -1222,8 +1302,6 @@
       "retrying": "Retrying…"
     },
     "row": {
-      "collapseDetails": "Collapse details for order {id}",
-      "expandDetails": "Expand details for order {id}",
       "select": "Select {id}",
       "selectAll": "Select all visible orders",
       "unselect": "Unselect {id}",
@@ -2542,6 +2620,37 @@
       "unknown": "Unknown state"
     },
     "shopsLabel": "Payment in each shop"
+  },
+  "peek": {
+    "billing": "Billing",
+    "columns": {
+      "open": "Open product",
+      "price": "Price",
+      "product": "Product",
+      "quantity": "Qty",
+      "total": "Total"
+    },
+    "copyReference": "Copy order number",
+    "customer": "Customer",
+    "description": "Order summary. Use the arrow keys or J and K to move between orders.",
+    "details": "Details",
+    "detailsAria": "Open details for order {ref}",
+    "generateLabel": "Generate label",
+    "invoice": "Invoice",
+    "itemPrice": "{quantity} × {price}",
+    "itemUnmapped": "Not linked to a catalogue product yet",
+    "items": "Items",
+    "kicker": "Order",
+    "money": "Money",
+    "openOrder": "Open order",
+    "openProduct": "Open product {name}",
+    "reference": "Order reference",
+    "shipBy": "Ship-by",
+    "shipment": "Shipment",
+    "stateAria": "Order state",
+    "status": "Status",
+    "synced": "Synced to OpenLinker",
+    "viewOn": "View on {channel}"
   },
   "refundConfirmation": {
     "amountHint": "What you actually sent back. OpenLinker does not calculate this for you.",

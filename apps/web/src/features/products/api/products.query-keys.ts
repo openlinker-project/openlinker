@@ -15,6 +15,7 @@ function productFilterKey(filters?: ProductFilters): readonly unknown[] {
     filters?.connectionId ?? 'all',
     filters?.hideFullyStale ?? false,
     filters?.bundles ?? 'any',
+    filters?.productId ?? '',
   ];
 }
 

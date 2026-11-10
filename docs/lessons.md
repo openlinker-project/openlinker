@@ -2955,3 +2955,15 @@ including the zero-row case.
 repositories.
 
 **Source**: #3542, fixed in 20362a600.
+
+## Keep the API's keep-alive longer than the browser's, or a reused socket fails with no response
+
+**Context**: `/orders`, `/products` and `/listings` on a local stack, the browser on the Windows host and the API in Docker under WSL2. Firefox logged "Cross-Origin Request Blocked … CORS request did not succeed. Status code: (null)" when switching pages after a pause.
+
+**Problem**: it is not a CORS header problem. "Did not succeed" with a null status means the request got no response at all. Node's `http.Server` closes an idle keep-alive socket after 5 s, while a browser keeps one for reuse much longer. A request sent on a socket the server just closed fails at the transport level, and Firefox files every such cross-origin failure under CORS. It did not reproduce from a headless browser inside WSL, so the transport hop is part of it. Cancelling superseded queries is not a fix: an aborted cross-origin request produces the same console line.
+
+**Rule**: set `server.keepAliveTimeout` above the browser's idle window (65 s) and `headersTimeout` above that, in `apps/api/src/main.ts`. Before chasing CORS config, check the status: a real CORS refusal has one, a transport failure has none.
+
+**Applies to**: `apps/api/src/main.ts`, any reverse proxy in front of the API, CORS bug reports.
+
+**Source**: #4058

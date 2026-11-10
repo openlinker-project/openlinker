@@ -1,0 +1,1178 @@
+<title>Shipments list filters</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: comparison strip, then the OpenLinker shipments page rendered twice
+   from ONE shared filter state: "Today" (main @ 6 Nov 2026) and "Proposed". */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80); --bg-surface: #ffffff;
+  --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(52% 0.008 80);
+  --text-on-primary: oklch(18% 0.012 50); --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-review-soft: oklch(96% 0.04 290); --status-review-border: oklch(85% 0.08 290); --status-review-fg: oklch(42% 0.14 290);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --channel-allegro: oklch(70% 0.18 35); --channel-prestashop: oklch(60% 0.18 250); --channel-erli: oklch(66% 0.17 320); --channel-woocommerce: oklch(64% 0.16 150);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-pill: 9999px;
+  --duration-fast: 120ms; --duration-normal: 180ms; --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-caps: 0.08em;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-review-soft: oklch(28% 0.07 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(86% 0.12 290);
+  --status-disabled-soft: oklch(24% 0.009 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(78% 0.010 270);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.5), 0 8px 16px rgb(0 0 0 / 0.3);
+} }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-review-soft: oklch(28% 0.07 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(86% 0.12 290);
+  --status-disabled-soft: oklch(24% 0.009 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(78% 0.010 270);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.5), 0 8px 16px rgb(0 0 0 / 0.3);
+}
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg-canvas); color: var(--text-primary); }
+body { font-family: var(--font-sans); font-size: 13px; line-height: 1.45; }
+button, input, select { font: inherit; color: inherit; }
+.mono { font-family: var(--font-mono); }
+.tabular { font-variant-numeric: tabular-nums; }
+.muted { color: var(--text-muted); }
+:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+a { color: var(--text-link); }
+
+/* ── Comparison chrome (not product UI) ── */
+.chrome { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); align-items: center;
+  padding-block: var(--space-2); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 31; background: var(--bg-shell); }
+.chrome__note { color: var(--text-muted); font-size: .75rem; }
+.chrome__spacer { flex: 1; }
+
+/* ── existing primitives (class names as in index.css) ── */
+.segmented-control { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.segmented-control__option { padding: 4px var(--space-3); border: none; border-right: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); font-size: .8125rem; cursor: pointer; flex: 1; white-space: nowrap; }
+.segmented-control__option:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.segmented-control__option:last-child { border-right: none; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.segmented-control__option[aria-pressed="true"] { background: var(--accent-primary); color: var(--text-on-primary); font-weight: 500; }
+.segmented-control--soft .segmented-control__option[aria-pressed="true"] { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+
+.page { max-width: 1440px; margin: 0 auto; padding-block: var(--space-4) var(--space-7);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: var(--space-3); }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.page-eyebrow { font-family: var(--font-mono); font-size: .6875rem; font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--accent-primary); }
+.page-title { margin: 2px 0 0; font-size: 1.375rem; font-weight: 600; letter-spacing: -0.012em; }
+.button-group { display: inline-flex; gap: var(--space-2); align-items: center; }
+
+.button { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-3); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md);
+  background: var(--accent-primary); color: var(--text-on-primary); font-size: .8125rem; font-weight: 500; cursor: pointer; white-space: nowrap; box-shadow: var(--shadow-xs);
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); }
+.button:active { transform: translateY(1px); }
+.button--sm { height: 1.75rem; padding: 0 var(--space-2); font-size: .75rem; }
+.button--secondary { background: var(--bg-surface-muted); border-color: var(--border-default); color: var(--text-primary); }
+.button--ghost { background: transparent; border-color: transparent; color: var(--text-secondary); box-shadow: none; }
+.button--ghost:hover, .button--secondary:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.button--outline { background: var(--bg-surface); border-color: var(--border-default); color: var(--text-primary); }
+.button--outline:hover { background: var(--bg-surface-hover); }
+.button--outline[aria-expanded="true"] { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.button--danger { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.button__shortcut { font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); border: 1px solid var(--border-default); border-radius: 4px; padding: 0 4px; line-height: 1.5; }
+.button__count { min-width: 1.125rem; height: 1.125rem; padding: 0 4px; border-radius: var(--radius-pill); display: inline-grid; place-items: center; font-family: var(--font-mono); font-size: .625rem; background: var(--accent-primary); color: var(--text-on-primary); }
+
+.status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 1px 6px; border: 1px solid var(--status-disabled-border); border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft); color: var(--status-disabled-fg); font-family: var(--font-mono); font-size: .625rem; font-weight: 500; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; line-height: 1.6; }
+.status-badge__dot { width: .375rem; height: .375rem; border-radius: 999px; background: currentColor; }
+.status-badge--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.status-badge--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.status-badge--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.status-badge--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.status-badge--review { background: var(--status-review-soft); border-color: var(--status-review-border); color: var(--status-review-fg); }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 1.375rem; padding: 0 .5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted); color: var(--text-secondary); font-size: .75rem; font-weight: 500; cursor: pointer; white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); }
+.chip:hover { border-color: var(--border-default); color: var(--text-primary); }
+.chip--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.chip--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.chip--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.chip--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.chip[aria-pressed="true"] { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--text-on-primary); }
+.chip__count { font-family: var(--font-mono); font-size: .6875rem; font-variant-numeric: tabular-nums; }
+.chip__age { font-family: var(--font-mono); font-size: .625rem; opacity: .75; }
+
+.control { height: 1.875rem; padding: 0 var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font-size: .8125rem; width: 100%; min-width: 0; }
+.control:focus-visible { border-color: var(--accent-primary); }
+.check { display: flex; align-items: center; gap: var(--space-2); padding: 3px 0; cursor: pointer; font-size: .8125rem; }
+.check input { accent-color: var(--accent-primary); margin: 0; }
+.check__count { margin-left: auto; font-family: var(--font-mono); font-size: .6875rem; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.check__count--error { color: var(--status-error-fg); }
+.check__count--warning { color: var(--status-warning-fg); }
+.eyebrow { font-family: var(--font-mono); font-size: .625rem; font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field__label { font-size: .75rem; color: var(--text-secondary); font-weight: 500; }
+.range-row { display: grid; grid-template-columns: 2.5rem 1fr; gap: var(--space-2); align-items: center; }
+
+/* ── TODAY: health tiles (orders-segments) ── */
+.segments { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: var(--space-3); overflow-x: auto; }
+.segment { text-align: left; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); padding: var(--space-2) var(--space-3); cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 3.25rem; }
+.segment--error { background: var(--status-error-soft); border-color: var(--status-error-border); }
+.segment--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+.segment--info { background: var(--status-info-soft); border-color: var(--status-info-border); }
+.segment--success { background: var(--status-success-soft); border-color: var(--status-success-border); }
+.segment[aria-pressed="true"] { border-color: var(--accent-primary); box-shadow: 0 0 0 1px var(--accent-primary); }
+.segment__label { font-family: var(--font-mono); font-size: .625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.segment--error .segment__label { color: var(--status-error-fg); } .segment--warning .segment__label { color: var(--status-warning-fg); }
+.segment--info .segment__label { color: var(--status-info-fg); } .segment--success .segment__label { color: var(--status-success-fg); }
+.segment__value { font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.segment--error .segment__value { color: var(--status-error-fg); } .segment--warning .segment__value { color: var(--status-warning-fg); }
+.segment--info .segment__value { color: var(--status-info-fg); } .segment--success .segment__value { color: var(--status-success-fg); }
+
+/* ── TODAY: filter bar + accordion panel ── */
+.filterbar { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.search { position: relative; flex: 0 1 420px; min-width: 200px; }
+.search input { width: 100%; height: 1.875rem; padding: 0 2rem 0 1.75rem; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); font-size: .8125rem; }
+.search input:focus-visible { border-color: var(--accent-primary); }
+.search__glyph { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: .875rem; }
+.search__kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.results { margin-left: auto; font-family: var(--font-mono); font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.panel { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface-muted); animation: drop var(--duration-normal) var(--ease-out); }
+.panel__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.panel__group { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.panel__group + .panel__group { border-left: 1px solid var(--border-subtle); }
+.panel__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-subtle); font-size: .75rem; color: var(--text-muted); }
+@keyframes drop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.quick__sep { width: 1px; height: 1rem; background: var(--border-default); margin: 0 4px; }
+.quick__end { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.applied { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 1.5rem; padding: 0 2px 0 var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-pill); background: var(--bg-surface); font-size: .75rem; animation: pop var(--duration-normal) var(--ease-out); }
+.pill__key { color: var(--text-muted); }
+.pill button { width: 1.25rem; height: 1.25rem; border: none; background: none; border-radius: 999px; cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }
+.pill button:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+@keyframes pop { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }
+.linkbtn { border: none; background: none; cursor: pointer; color: var(--text-muted); font-size: .75rem; text-decoration: underline; text-underline-offset: 2px; padding: 2px 4px; }
+.linkbtn:hover { color: var(--text-primary); }
+
+/* ── PROPOSED: status tabs ── */
+.tabs-scroll { overflow-x: auto; scrollbar-width: none; }
+.tabs-scroll::-webkit-scrollbar { display: none; }
+.tabs { position: relative; display: flex; gap: 2px; border-bottom: 1px solid var(--border-subtle); min-width: max-content; }
+.tab { display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-3) 9px; border: none; background: none; cursor: pointer; color: var(--text-secondary); font-size: .8125rem; white-space: nowrap; border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.tab:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.tab[aria-selected="true"] { color: var(--text-primary); font-weight: 600; }
+.tab__dot { width: .4375rem; height: .4375rem; border-radius: 999px; }
+.tab__count { font-family: var(--font-mono); font-size: .75rem; font-weight: 500; font-variant-numeric: tabular-nums; padding: 0 6px; border-radius: var(--radius-pill); background: var(--bg-surface-muted); color: var(--text-secondary); min-width: 1.5rem; text-align: center; }
+.tab__count--error { background: var(--status-error-soft); color: var(--status-error-fg); }
+.tab__count--warning { background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.tab__count--zero { color: var(--text-muted); background: transparent; }
+.tabs__ind { position: absolute; bottom: -1px; left: 0; height: 2px; border-radius: 2px; background: var(--accent-primary); transition: transform var(--duration-slow) var(--ease-out), width var(--duration-slow) var(--ease-out); }
+
+/* PROPOSED toolbar: search, 3 pinned filters, all filters, count, sort */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.anchor { position: relative; }
+.dd-btn { display: inline-flex; align-items: center; gap: 6px; height: 1.875rem; padding: 0 var(--space-2) 0 var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-pill); background: transparent; cursor: pointer; font-size: .8125rem; color: var(--text-secondary); white-space: nowrap; }
+.dd-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.dd-btn--on { border-style: solid; border-color: var(--accent-primary-border); background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.dd-btn__val { font-weight: 500; }
+.caret { font-size: .625rem; opacity: .7; }
+.pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 25; min-width: 240px; max-width: calc(100vw - 32px); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); padding: 6px; transform-origin: top left; animation: popin var(--duration-normal) var(--ease-out); }
+.pop--right { left: auto; right: 0; transform-origin: top right; }
+@keyframes popin { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.opt { width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-2); border: none; background: none; border-radius: var(--radius-sm); cursor: pointer; text-align: left; font-size: .8125rem; }
+.opt:hover, .opt:focus-visible { background: var(--bg-surface-hover); }
+.opt__mark { width: 14px; height: 14px; border-radius: 999px; border: 1px solid var(--border-strong); display: inline-grid; place-items: center; flex-shrink: 0; }
+.opt[aria-checked="true"] .opt__mark { border-color: var(--accent-primary); box-shadow: inset 0 0 0 3px var(--bg-surface); background: var(--accent-primary); }
+.opt__meta { margin-left: auto; font-family: var(--font-mono); font-size: .6875rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pop__title { padding: 4px var(--space-2) 6px; font-size: .6875rem; color: var(--text-muted); }
+
+/* PROPOSED "needs a look" queue row */
+.queue { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.queue__label { font-size: .75rem; color: var(--text-muted); margin-right: 2px; }
+.qchip { display: inline-flex; align-items: center; gap: 6px; height: 1.625rem; padding: 0 var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; font-size: .75rem; white-space: nowrap; color: var(--text-primary); }
+.qchip:hover { background: var(--bg-surface-hover); }
+.qchip__n { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.qchip--error .qchip__n { color: var(--status-error-fg); } .qchip--warning .qchip__n { color: var(--status-warning-fg); }
+.qchip__age { font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); }
+.qchip__bar { width: 3px; align-self: stretch; margin: 5px 0; border-radius: 2px; }
+.qchip[aria-pressed="true"] { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.queue__end { margin-left: auto; }
+
+/* PROPOSED side sheets (filters + peek): dimmed, blurred list behind; spring-ish slide */
+.scrim { position: fixed; inset: 0; z-index: 40; background: rgb(12 14 20 / .38); backdrop-filter: blur(3px) saturate(.85); -webkit-backdrop-filter: blur(3px) saturate(.85); animation: fade 220ms var(--ease-out); }
+.scrim--out { animation: fadeout 190ms ease-in forwards; }
+@media (prefers-reduced-transparency: reduce) { .scrim { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(12 14 20 / .55); } }
+.sheet { position: fixed; top: 8px; right: 8px; bottom: 8px; z-index: 41; display: flex; flex-direction: column; background: var(--bg-surface);
+  border: 1px solid var(--border-default); border-radius: 14px; box-shadow: var(--shadow-overlay); overflow: hidden;
+  margin-top: env(safe-area-inset-top, 0px); margin-bottom: env(safe-area-inset-bottom, 0px); margin-right: env(safe-area-inset-right, 0px);
+  animation: sheet-in 360ms cubic-bezier(.32,.72,0,1); }
+.sheet--out { animation: sheet-out 190ms cubic-bezier(.4,0,1,1) forwards; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeout { to { opacity: 0; } }
+@keyframes sheet-in { from { transform: translateX(calc(100% + 16px)); } to { transform: none; } }
+@keyframes sheet-out { to { transform: translateX(calc(100% + 16px)); opacity: .6; } }
+.drawer { width: min(420px, calc(100vw - 16px)); }
+.peek { width: min(560px, calc(100vw - 16px)); }
+.icon-btn { width: 2rem; height: 2rem; border: none; border-radius: var(--radius-md); background: none; color: var(--text-muted); cursor: pointer; display: inline-grid; place-items: center; font-size: .875rem; }
+.icon-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.drawer__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.drawer__head h2 { margin: 0; font-size: .9375rem; }
+
+/* Peek */
+.peek-head { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); padding: var(--space-4) var(--space-6) var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface-muted); }
+.peek-ref { font-family: var(--font-mono); font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.peek-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 6px; font-size: .75rem; color: var(--text-muted); }
+.peek-head__money { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.peek-total { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; }
+.peek-close { position: absolute; top: 8px; right: 8px; }
+.peek-body { flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); animation: peek-swap 240ms var(--ease-out); }
+@keyframes peek-swap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.peek-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.state-card { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.state-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: var(--space-3); align-items: start; padding: 10px var(--space-3); }
+.state-row + .state-row { border-top: 1px solid var(--border-subtle); }
+.state-row .eyebrow { padding-top: 3px; }
+.note { border-left: 3px solid var(--accent-primary); background: var(--accent-primary-soft); border-radius: 0 var(--radius-md) var(--radius-md) 0; padding: var(--space-2) var(--space-3); }
+.note p { margin: 2px 0 0; font-size: .8125rem; }
+.note--empty { border-left-color: var(--border-strong); background: var(--bg-surface-muted); }
+.note--empty p { color: var(--text-muted); }
+.peek-h { margin: 0 0 var(--space-2); font-size: .8125rem; font-weight: 600; display: flex; gap: 6px; }
+.items { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-3); font-size: .8125rem; }
+.item + .item { border-top: 1px solid var(--border-subtle); }
+.item__name { display: flex; flex-direction: column; min-width: 0; }
+.kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3) var(--space-4); }
+.kv-grid p { margin: 2px 0 0; font-size: .8125rem; overflow-wrap: anywhere; }
+.peek-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-5); border-top: 1px solid var(--border-subtle); font-size: .75rem; }
+
+/* Attention groups (Needs a look) */
+.attn-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.attn { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-2) 0 var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; font-size: .8125rem; white-space: nowrap;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
+.attn:hover { background: var(--bg-surface-hover); }
+.attn__n { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.attn--error .attn__n { color: var(--status-error-fg); }
+.attn--error { box-shadow: inset 3px 0 0 var(--status-error); }
+.attn--on, .attn[aria-expanded="true"] { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); }
+.attn__active { font-size: .6875rem; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--accent-primary); color: var(--text-on-primary); }
+.attn-pop { width: 360px; padding: 4px; }
+.attn-item { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; padding: 8px 10px; border: none; background: none; border-radius: var(--radius-md); cursor: pointer; text-align: left; }
+.attn-item:hover, .attn-item:focus-visible { background: var(--bg-surface-hover); }
+.attn-item__box { width: 16px; height: 16px; margin-top: 1px; border-radius: 4px; border: 1px solid var(--border-strong); display: grid; place-items: center; font-size: .625rem; color: var(--text-on-primary); }
+.attn-item[aria-checked="true"] .attn-item__box { background: var(--accent-primary); border-color: var(--accent-primary); }
+.attn-item__text { display: flex; flex-direction: column; gap: 1px; }
+.attn-item__title { font-size: .8125rem; font-weight: 500; }
+.attn-item__desc { font-size: .75rem; color: var(--text-muted); }
+.attn-item__meta { display: flex; flex-direction: column; align-items: flex-end; }
+.attn-item__n { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.attn-item__n--error { color: var(--status-error-fg); } .attn-item__n--warning { color: var(--status-warning-fg); }
+.attn-item__age { font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); white-space: nowrap; }
+.attn-pop__foot { display: flex; justify-content: space-between; gap: var(--space-2); padding: 8px 10px 6px; margin-top: 4px; border-top: 1px solid var(--border-subtle); font-size: .75rem; }
+
+/* Proposed table: stacked headers kept, sort marks clearer */
+.th-stack { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.th-stack--right { align-items: flex-end; }
+.ptable .sortbtn { display: inline-flex; gap: 4px; align-items: center; padding: 1px 4px; margin: 0 -4px; border-radius: 4px; }
+.ptable .sortbtn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.ptable .sortbtn__ind { color: var(--text-muted); opacity: 0; transition: opacity var(--duration-fast); }
+.ptable th:hover .sortbtn__ind { opacity: .7; }
+.ptable .sortbtn--on { color: var(--text-primary); background: var(--accent-primary-soft); }
+.ptable .sortbtn--on .sortbtn__ind { color: var(--accent-primary-soft-strong); opacity: 1; }
+.ptable tbody tr.row { cursor: pointer; }
+.ptable tbody tr.row--peek > td { background: var(--accent-primary-soft); box-shadow: inset 0 1px 0 var(--accent-primary-border), inset 0 -1px 0 var(--accent-primary-border); }
+.ptable tbody tr.row--peek > td:first-child { box-shadow: inset 3px 0 0 var(--accent-primary), inset 0 1px 0 var(--accent-primary-border), inset 0 -1px 0 var(--accent-primary-border); }
+
+.drawer__body { flex: 1; overflow-y: auto; }
+.drawer__foot { display: flex; gap: var(--space-2); justify-content: space-between; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); }
+.section { border-bottom: 1px solid var(--border-subtle); }
+.section__head { width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: none; background: none; cursor: pointer; text-align: left; }
+.section__title { font-weight: 600; font-size: .8125rem; }
+.section__sum { margin-left: auto; font-size: .75rem; color: var(--text-muted); max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.section__sum--on { color: var(--accent-primary-soft-strong); }
+.section__body { padding: 0 var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.section__chev { transition: transform var(--duration-normal) var(--ease-out); color: var(--text-muted); }
+.section__head[aria-expanded="true"] .section__chev { transform: rotate(90deg); }
+
+/* ── TABLE (shared) ── */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+table { width: 100%; border-collapse: collapse; min-width: 1080px; }
+th { text-align: left; vertical-align: bottom; font-family: var(--font-mono); font-size: .625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 500; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
+td { padding: var(--space-3); border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+tbody tr.row:hover > td { background: var(--bg-surface-hover); }
+tbody tr.row--sel > td { background: var(--accent-primary-soft); }
+.sortbtn { display: block; border: none; background: none; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
+.sortbtn--on { color: var(--text-primary); }
+.sortbtn__ind { color: var(--accent-primary); }
+.th-right { text-align: right; } .th-right .sortbtn { margin-left: auto; }
+.col-check { width: 2.25rem; } .col-exp { width: 1.75rem; }
+.stack { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.stack--right { align-items: flex-end; text-align: right; }
+.wrap { display: flex; flex-wrap: wrap; gap: 4px; }
+.idcell { display: flex; gap: var(--space-2); align-items: flex-start; }
+.thumb { width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); display: grid; place-items: center; font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); flex-shrink: 0; }
+.ref { font-family: var(--font-mono); font-weight: 500; font-size: .8125rem; }
+.copy { border: none; background: none; color: var(--text-muted); font-size: .6875rem; cursor: pointer; padding: 0 2px; }
+.sub { font-size: .75rem; color: var(--text-muted); }
+.more { font-family: var(--font-mono); font-size: .625rem; padding: 0 4px; border-radius: 4px; background: var(--bg-surface-muted); color: var(--text-muted); }
+.conn { display: inline-flex; align-items: center; gap: 6px; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--bg-surface-muted); font-family: var(--font-mono); font-size: .6875rem; white-space: nowrap; }
+.conn__dot { width: .375rem; height: .375rem; border-radius: 999px; }
+.money { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.packed { font-size: .75rem; color: var(--text-muted); white-space: nowrap; }
+.packed b { color: var(--text-primary); font-weight: 500; }
+.exp { width: 1.25rem; height: 1.25rem; border: none; background: none; cursor: pointer; color: var(--text-muted); border-radius: 4px; display: inline-grid; place-items: center; transition: transform var(--duration-normal) var(--ease-out); }
+.exp[aria-expanded="true"] { transform: rotate(90deg); }
+.exp:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.cb { accent-color: var(--accent-primary); margin: 2px 0 0; }
+.cta-link { font-size: .75rem; }
+.detail { background: var(--bg-surface-muted); padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.detail__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.kv dt { font-family: var(--font-mono); font-size: .625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.kv dd { margin: 2px 0 0; font-size: .75rem; overflow-wrap: anywhere; }
+.lineitem { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--bg-surface); font-size: .75rem; }
+.empty { padding: var(--space-7) var(--space-4); text-align: center; }
+.empty h3 { margin: 0 0 4px; font-size: .9375rem; }
+.empty p { margin: 0 auto var(--space-3); color: var(--text-muted); max-width: 52ch; }
+.pager { display: flex; justify-content: space-between; align-items: center; font-size: .75rem; color: var(--text-muted); padding: var(--space-2) 0; }
+
+/* PROPOSED table refinements: grouped header line + 2-line badge cap + peek */
+th .th-group { display: flex; gap: var(--space-3); align-items: baseline; }
+th .th-group--right { justify-content: flex-end; }
+.th-sep { color: var(--border-strong); }
+.overflow { font-family: var(--font-mono); font-size: .625rem; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 0 5px; background: none; color: var(--text-secondary); cursor: pointer; line-height: 1.6; }
+.peek-btn { align-self: flex-start; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); font-size: .6875rem; border-radius: var(--radius-sm); padding: 0 6px; height: 1.375rem; cursor: pointer; }
+.peek-btn:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+
+/* Bulk bar (existing BulkActionBar) */
+.bulk { position: sticky; bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); z-index: 20; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-overlay); animation: drop var(--duration-normal) var(--ease-out); }
+.bulk__count { font-weight: 600; }
+.bulk__hint { color: var(--text-muted); font-size: .75rem; flex: 1; min-width: 160px; }
+
+/* Changes ledger */
+.ledger { border-top: 1px solid var(--border-subtle); padding-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-4) var(--space-6); }
+.ledger h3 { margin: 0 0 var(--space-2); font-size: .875rem; }
+.ledger table { min-width: 0; font-size: .75rem; }
+.ledger td { padding: 6px var(--space-2); vertical-align: top; }
+.ledger td:first-child { color: var(--text-secondary); width: 42%; }
+.ledger p { margin: 0 0 var(--space-2); color: var(--text-secondary); font-size: .8125rem; max-width: 62ch; }
+.ledger ul { margin: 0; padding-left: 1.1rem; color: var(--text-secondary); font-size: .8125rem; display: flex; flex-direction: column; gap: 4px; }
+
+@media (max-width: 900px) {
+  .panel__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panel__group:nth-child(3) { border-left: none; }
+  .panel__group:nth-child(n+3) { border-top: 1px solid var(--border-subtle); }
+  .quick__end, .queue__end { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  .panel__grid { grid-template-columns: 1fr; }
+  .panel__group + .panel__group { border-left: none; border-top: 1px solid var(--border-subtle); }
+  .search { flex-basis: 100%; }
+  .results { margin-left: 0; }
+}
+
+/* v4: calmer toolbar - status row carries "Needs a look", filters are one joined group */
+.statusbar { display: flex; align-items: flex-end; gap: var(--space-2) var(--space-4); flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); }
+.statusbar .tabs { border-bottom: 0; }
+.statusbar .tabs-scroll { flex: 1 1 auto; min-width: 0; }
+.attn-sum { display: flex; align-items: center; gap: 2px; padding-bottom: 6px; font-size: .8125rem; color: var(--text-muted); white-space: nowrap; }
+.attn-sum__label { margin-right: 6px; }
+.attn-sum__sep { color: var(--border-strong); }
+.attn-link { position: relative; display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 6px; border: none; border-radius: var(--radius-sm); background: none; cursor: pointer; color: var(--text-secondary); font-size: .8125rem;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); }
+.attn-link:hover, .attn-link[aria-expanded="true"] { background: var(--bg-surface-hover); color: var(--text-primary); }
+.attn-link__n { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.attn-link--error .attn-link__n { color: var(--status-error-fg); }
+.attn-link__label { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; }
+.attn-link--on { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.attn-link__on { width: 6px; height: 6px; border-radius: 999px; background: var(--accent-primary); align-self: center; }
+.attn-pop__head { padding: 6px 10px 4px; font-size: .75rem; font-weight: 600; color: var(--text-secondary); }
+.fgroup { display: inline-flex; align-items: stretch; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); }
+.fgroup > .anchor { display: flex; }
+.fg-btn { display: inline-flex; align-items: center; gap: 6px; height: 1.875rem; padding: 0 var(--space-3); border: none; border-right: 1px solid var(--border-subtle); background: none; cursor: pointer; font-size: .8125rem; color: var(--text-secondary); white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out); }
+.fgroup > .anchor:first-child .fg-btn { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.fgroup > .fg-btn:last-child { border-right: none; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.fg-btn:hover, .fg-btn[aria-expanded="true"] { background: var(--bg-surface-hover); color: var(--text-primary); }
+.fg-btn--on { color: var(--accent-primary-soft-strong); background: var(--accent-primary-soft); }
+.fg-btn__key { color: var(--text-muted); }
+.fg-btn__val { font-weight: 500; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
+.fg-btn .caret { font-size: .75rem; margin-top: -3px; }
+.toolbar__spacer { flex: 1; }
+.toolbar .results { margin-left: 0; }
+@media (max-width: 760px) { .attn-sum { padding: 6px 0; } .fgroup { width: 100%; overflow-x: auto; } }
+
+/* Columns + presets */
+.cols-pop { width: 300px; }
+.cols-pop__row { padding: 4px 8px; }
+.cols-pop__sep { border-top: 1px solid var(--border-subtle); margin-top: 6px; padding-top: 8px; }
+.preset { display: flex; align-items: center; gap: 2px; }
+.icon-btn--sm { width: 1.5rem; height: 1.5rem; font-size: .6875rem; }
+.preset-save { display: flex; gap: 6px; padding: 6px 8px; }
+.cols-pop__foot { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 4px 2px; border-top: 1px solid var(--border-subtle); margin-top: 4px; }
+.linkbtn:disabled { opacity: .45; cursor: default; text-decoration: none; }
+/* Export dialog */
+.dialog { position: fixed; z-index: 41; left: 50%; top: 50%; width: min(440px, calc(100vw - 32px)); transform: translate(-50%, -50%); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 14px; box-shadow: var(--shadow-overlay);
+  padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); animation: dialog-in 260ms cubic-bezier(.32,.72,0,1); }
+.dialog--out { animation: dialog-out 170ms ease-in forwards; }
+.dialog h2 { margin: 0; font-size: 1rem; }
+.dialog__set { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.dialog__set legend { margin-bottom: 4px; }
+.dialog__foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+@keyframes dialog-in { from { opacity: 0; transform: translate(-50%, -48%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes dialog-out { to { opacity: 0; transform: translate(-50%, -49%) scale(.98); } }
+/* Toasts + refresh spinner */
+.toasts { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 10px 14px; border-radius: var(--radius-md); background: var(--text-primary); color: var(--bg-surface); font-size: .8125rem; box-shadow: var(--shadow-overlay); max-width: 360px; animation: toast-in 260ms cubic-bezier(.32,.72,0,1); }
+.toast--warn { border-left: 3px solid var(--status-warning); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.spin { display: inline-block; }
+.spin--on { animation: spin 700ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* v5: bottom sheet on phones (vaul-style) + scaled-back page */
+.app-wrap { min-height: 100dvh; background: var(--bg-canvas); transform-origin: 50% 0; transition: transform 480ms cubic-bezier(.32,.72,0,1), border-radius 480ms cubic-bezier(.32,.72,0,1); }
+.sheet__handle { display: none; }
+@media (max-width: 640px) {
+  body.sheet-open { background: rgb(6 7 10); }
+  body.sheet-open .app-wrap { transform: scale(.93) translateY(calc(env(safe-area-inset-top, 0px) + 12px)); border-radius: 14px; overflow: hidden; }
+  .sheet { top: auto; left: 0; right: 0; bottom: 0; width: 100% !important; max-height: calc(100dvh - 44px - env(safe-area-inset-top, 0px));
+    margin: 0; border-radius: 18px 18px 0 0; border-width: 1px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: sheet-up 480ms cubic-bezier(.32,.72,0,1); }
+  .sheet--out { animation: sheet-down 220ms cubic-bezier(.32,.72,0,1) forwards; }
+  .sheet__handle { display: flex; justify-content: center; padding: 10px 0 6px; touch-action: none; cursor: grab; flex-shrink: 0; }
+  .sheet__handle span { width: 40px; height: 5px; border-radius: 999px; background: var(--border-strong); }
+  .drawer__head, .peek-head { touch-action: none; }
+  .peek-head { background: none; padding-top: 0; }
+  .peek-close { top: 0; }
+  .drawer__foot, .peek-foot { padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); }
+  .drawer__foot .button { flex: 1; justify-content: center; height: 2.5rem; }
+  .scrim { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(6 7 10 / .45); }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-down { to { transform: translateY(100%); } }
+
+/* v6: fixed column widths - switching tabs or filters never resizes columns */
+.ptable { table-layout: fixed; }
+.ptable td { overflow-wrap: anywhere; }
+.ptable .col-check { width: 2.5rem; }
+.ptable .listing-cell { min-width: 0; }
+.ptable .listing-cell__name { max-width: 100%; }
+.ptable .w-status { width: 15%; } .ptable .w-order { width: 24%; } .ptable .w-action { width: 7%; } .ptable .w-processor { width: 15%; } .ptable .w-customer { width: 14%; } .ptable .w-conn { width: 13%; } .ptable .w-created { width: 12%; }
+.ptable { min-width: 960px; }
+
+/* v7: the drawer title is the way into the full record */
+.peek-link { color: inherit; text-decoration: none; border-radius: 4px; }
+.peek-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.peek-link__arrow { font-size: .75em; color: var(--text-muted); margin-left: 4px; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* ── Products-specific (product-row, coverage pills, variant rows, banners) ── */
+.page-eyebrow--muted { color: var(--text-muted); }
+.page-desc { margin: 4px 0 0; color: var(--text-muted); font-size: .8125rem; max-width: 70ch; }
+.segments--5 { grid-template-columns: repeat(5, minmax(130px, 1fr)); }
+.banner { display: flex; gap: var(--space-3); align-items: center; justify-content: space-between; flex-wrap: wrap; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); font-size: .8125rem; }
+.alert { display: flex; gap: var(--space-3); justify-content: space-between; align-items: flex-start; padding: var(--space-3); border: 1px solid var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-fg); border-radius: var(--radius-lg); font-size: .8125rem; }
+.alert p { margin: 2px 0 0; color: var(--text-secondary); }
+.search--plain input { padding-left: var(--space-3); padding-right: var(--space-3); }
+.control--auto { width: auto; }
+.ptoggle { display: inline-flex; align-items: center; gap: 6px; height: 1.875rem; padding: 0 var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; font-size: .8125rem; }
+.ptoggle--on { border-color: var(--accent-primary-border); }
+.ppanel { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface-muted); }
+.ppanel__group { display: flex; flex-direction: column; gap: 6px; }
+.ppanel__label { font-size: .75rem; font-weight: 500; color: var(--text-secondary); }
+.prow { display: flex; gap: var(--space-3); align-items: flex-start; }
+.prow__line { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.prow__name { color: var(--text-primary); font-weight: 500; text-decoration: none; }
+.prow__name:hover { text-decoration: underline; text-underline-offset: 2px; }
+.pthumb { width: 2.25rem; height: 2.25rem; flex-shrink: 0; border-radius: var(--radius-md); display: grid; place-items: center; font-weight: 600; font-size: .875rem;
+  background: oklch(92% 0.04 var(--h)); color: oklch(38% 0.08 var(--h)); border: 1px solid oklch(86% 0.05 var(--h)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pthumb { background: oklch(30% 0.05 var(--h)); color: oklch(86% 0.08 var(--h)); border-color: oklch(36% 0.06 var(--h)); } }
+:root[data-theme="dark"] .pthumb { background: oklch(30% 0.05 var(--h)); color: oklch(86% 0.08 var(--h)); border-color: oklch(36% 0.06 var(--h)); }
+.pstock { font-family: var(--font-mono); font-weight: 600; }
+.coverage-pills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.coverage-pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 6px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); font-size: .6875rem; white-space: nowrap; color: var(--text-secondary); }
+.coverage-pill__count { font-family: var(--font-mono); font-size: .625rem; }
+.coverage-pill--full { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.coverage-pill--partial { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.coverage-pill--none { border-style: dashed; color: var(--text-muted); }
+.row-cta, .row-cta-btn { align-self: flex-start; }
+.row-cta { border: none; background: none; color: var(--accent-primary-soft-strong); font-size: .75rem; cursor: pointer; padding: 0; }
+.vlist { display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+.vrow { display: grid; grid-template-columns: minmax(0, 1.6fr) auto auto minmax(0, 1.4fr); gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-3); font-size: .8125rem; }
+.vrow + .vrow { border-top: 1px solid var(--border-subtle); }
+.vrow__listings { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: flex-end; }
+@media (max-width: 640px) { .vrow { grid-template-columns: 1fr auto; } .vrow__listings { grid-column: 1 / -1; justify-content: flex-start; } }
+.live-row { display: inline-flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.ppeek-id { display: flex; gap: var(--space-3); align-items: flex-start; }
+.peek-title { font-weight: 600; font-size: 1rem; line-height: 1.3; }
+.attn-note { padding: 6px 10px 8px; display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.attn-note p { margin: 0; font-size: .8125rem; color: var(--text-secondary); }
+.attn-link--warning .attn-link__n { color: var(--status-warning-fg); }
+@media (max-width: 1023px) { .hide-1024 { display: none; } }
+.alert--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); flex-wrap: wrap; }
+.alert--warning strong { font-weight: 600; }
+.sev { display: inline-block; font-weight: 600; font-size: .8125rem; }
+.sev--fix { color: var(--status-error-fg); } .sev--finish { color: var(--status-warning-fg); } .sev--send { color: var(--accent-primary-soft-strong); } .sev--view { color: var(--text-muted); font-weight: 400; }
+.status-badge--pulse .status-badge__dot { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.ref { color: var(--text-primary); text-decoration: none; }
+.ref:hover { text-decoration: underline; }
+.note--error { border-left-color: var(--status-error); background: var(--status-error-soft); }
+.note--error p { color: var(--status-error-fg); }
+.pop__note { padding: 6px var(--space-2); font-size: .75rem; color: var(--text-muted); max-width: 240px; }
+.opt:disabled { opacity: .45; cursor: not-allowed; }
+.attn-pop__sub { padding: 8px 10px 2px; font-size: .6875rem; color: var(--text-muted); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
+.attn-group { display: flex; justify-content: space-between; gap: var(--space-2); align-items: center; padding: 6px 10px; }
+.attn-group__text { display: flex; flex-direction: column; min-width: 0; font-size: .8125rem; }
+.attn-group__text .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 767px) { .hide-768 { display: none; } }
+</style>
+
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useEffect, useLayoutEffect } = React;
+
+/* ═════════════════════════════════════════════════════════════
+   COPY - verbatim from main (shipments-page.tsx, shipments.types.ts,
+   processor.ts, shipment-severity.ts, shipment-row-detail.tsx,
+   shipment-triage-strip.tsx, waybill-relay-stuck-badge.tsx)
+   ═════════════════════════════════════════════════════════════ */
+const DESCRIPTION = 'Cross-order rollup of every shipment — filter by status, method, connection, or date.';
+const STATUSES = ['draft', 'generated', 'dispatched', 'in-transit', 'delivered', 'failed', 'cancelled'];
+const STATUS_TONE = { draft: 'review', generated: 'info', dispatched: 'info', 'in-transit': 'info', delivered: 'success', failed: 'error', cancelled: 'neutral' };
+const PULSE = new Set(['dispatched', 'in-transit']);
+const METHOD_LABEL = { paczkomat: 'Paczkomat', kurier: 'Kurier', pickup: 'Pickup point', omp: 'OMP-fulfilled' };
+const PROCESSOR_LABEL = { omp: 'OMP-fulfilled', carrier: 'Carrier', pending: 'Pending' };
+const PROCESSOR_TONE = { omp: 'info', carrier: 'success', pending: 'neutral' };
+const CONNS = [
+  { id: 'inpost', name: 'InPost ShipX', color: 'var(--channel-woocommerce)' },
+  { id: 'dpd', name: 'DPD Polska', color: 'var(--channel-erli)' },
+  { id: 'alg', name: 'Allegro sandbox', color: 'var(--channel-allegro)' },
+];
+const conn = (id) => CONNS.find((c) => c.id === id);
+
+/* Sample data (illustrative) */
+const NOW = new Date('2026-11-06T17:27:00');
+const hAgo = (h) => new Date(NOW.getTime() - h * 3600e3);
+const S_ = (s) => ({ tracking: null, failedAt: null, error: null, code: null, relayStuck: 0, providerId: null, paczkomat: null, ...s });
+const SHIPMENTS = [
+  S_({ id: 'shp_9f21', order: 'ALG-7C21F0', item: 'Kubek emaliowany 350 ml', customer: 'Agnieszka Wróblewska', status: 'draft', method: 'paczkomat', paczkomat: 'WAW12M', conn: 'inpost', created: hAgo(0.3) }),
+  S_({ id: 'shp_9f1c', order: 'PS-004812', item: 'Deska do krojenia, dąb', customer: 'Tomasz Kędzierski', status: 'failed', method: 'kurier', conn: 'dpd', created: hAgo(1.2), failedAt: hAgo(1), error: 'Receiver postcode 00-950 does not match city Kraków', code: 'ADDR_POSTCODE_MISMATCH' }),
+  S_({ id: 'shp_9f0a', order: 'ERL-91333', item: 'Koc wełniany 150×200', customer: 'Marta Ostrowska', status: 'generated', method: 'paczkomat', paczkomat: 'POZ08A', conn: 'inpost', created: hAgo(2.5), tracking: '520000012345678901234567', providerId: 'sx_771' }),
+  S_({ id: 'shp_9ef4', order: 'ALG-7C1E88', item: 'Lampka biurkowa LED', customer: 'Paweł Szymczak', status: 'failed', method: 'kurier', conn: 'dpd', created: hAgo(3.8), failedAt: hAgo(3.6), error: 'Receiver postcode 90-001 does not match city Łódź', code: 'ADDR_POSTCODE_MISMATCH' }),
+  S_({ id: 'shp_9ee0', order: 'WC-23107', item: 'Nóż szefa kuchni 20 cm', customer: 'Joanna Kubiak', status: 'delivered', method: 'kurier', conn: 'inpost', created: hAgo(74), tracking: '520000011122233344455566', providerId: 'sx_702' }),
+  S_({ id: 'shp_9ed3', order: 'ALG-7C1B02', item: 'Słuchawki bezprzewodowe ANC', customer: 'Krzysztof Lis', status: 'dispatched', method: 'paczkomat', paczkomat: 'LUB04N', conn: 'inpost', created: hAgo(7), tracking: '520000019988776655443322', providerId: 'sx_745', relayStuck: 3 }),
+  S_({ id: 'shp_9ec1', order: 'PS-004809', item: 'Wazon ceramiczny 25 cm', customer: 'Ewa Pawlak', status: 'in-transit', method: 'kurier', conn: 'dpd', created: hAgo(10), tracking: '0000452189331U', providerId: 'dpd_5521' }),
+  S_({ id: 'shp_9eb8', order: '1188cd04…5a9e10', item: 'Skarpety FALKE RU Compression', customer: 'Natalia Górecka', status: 'delivered', method: 'omp', conn: 'alg', created: hAgo(96) }),
+  S_({ id: 'shp_9ea2', order: 'ERL-91310', item: 'Zestaw przypraw, 12 słoików', customer: 'Michał Jabłoński', status: 'failed', method: 'paczkomat', paczkomat: 'RZE02M', conn: 'inpost', created: hAgo(18), failedAt: hAgo(17), error: 'Target point RZE02M is temporarily unavailable', code: 'POINT_UNAVAILABLE' }),
+  S_({ id: 'shp_9e91', order: 'e5d2f310…c04b88', item: 'Plecak miejski 22 l', customer: 'Adam Wieczorek', status: 'cancelled', method: 'kurier', conn: 'dpd', created: hAgo(50) }),
+  S_({ id: 'shp_9e80', order: 'PS-004791', item: 'Filiżanka porcelanowa, 2 szt.', customer: 'Zofia Malinowska', status: 'dispatched', method: 'kurier', conn: 'dpd', created: hAgo(5), tracking: '0000452189355U', providerId: 'dpd_5530', relayStuck: 1 }),
+  S_({ id: 'shp_9e72', order: '9b0c1d2e…f3a4b5', item: 'Ładowarka USB-C 65 W', customer: 'Grzegorz Wojciechowski', status: 'in-transit', method: 'omp', conn: 'alg', created: hAgo(26) }),
+];
+const processorOf = (s) => (s.method === 'omp' ? 'omp' : s.providerId ? 'carrier' : 'pending');
+const preWaybill = (s) => !s.tracking;
+const severity = (s) => {
+  if (s.method === 'omp') return 'View';
+  switch (s.status) {
+    case 'failed': return s.error ? 'Fix' : preWaybill(s) ? 'Finish' : 'View';
+    case 'draft': case 'cancelled': return 'Finish';
+    case 'generated': return 'Send';
+    default: return 'View';
+  }
+};
+const plDT = (d) => d.toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/* Filter state = URL params on main: status, processor, shippingMethod, hasTracking, waybillRelayStuck, connectionId, createdFrom, createdTo */
+const EMPTY = { status: null, processor: null, method: null, tracking: null, relay: false, conn: null, from: '', to: '' };
+function matches(s, f, skip = []) {
+  const on = (k) => !skip.includes(k);
+  if (on('status') && f.status && s.status !== f.status) return false;
+  if (on('processor') && f.processor && processorOf(s) !== f.processor) return false;
+  if (on('method') && f.method && s.method !== f.method) return false;
+  if (on('tracking') && f.tracking !== null && !!s.tracking !== f.tracking) return false;
+  if (on('relay') && f.relay && !s.relayStuck) return false;
+  if (on('conn') && f.conn && s.conn !== f.conn) return false;
+  if (f.from && s.created < new Date(f.from)) return false;
+  if (f.to && s.created > new Date(f.to + 'T23:59:59')) return false;
+  return true;
+}
+function useCounts(f) {
+  return useMemo(() => {
+    const base = (skip) => SHIPMENTS.filter((s) => matches(s, f, skip));
+    const st = base(['status']); const status = { all: st.length }; STATUSES.forEach((x) => { status[x] = st.filter((s) => s.status === x).length; });
+    const failedFix = base(['status']).filter((s) => s.status === 'failed');
+    return {
+      status, fix: failedFix.length, relay: base(['relay']).filter((s) => s.relayStuck).length,
+      send: base(['status']).filter((s) => s.status === 'generated' && s.method !== 'omp').length,
+      draft: base(['status']).filter((s) => s.status === 'draft').length,
+      conn: Object.fromEntries(CONNS.map((c) => [c.id, base(['conn']).filter((s) => s.conn === c.id).length])),
+      processor: { omp: base(['processor']).filter((s) => processorOf(s) === 'omp').length, carrier: base(['processor']).filter((s) => processorOf(s) === 'carrier').length },
+      method: Object.fromEntries(Object.keys(METHOD_LABEL).map((m) => [m, base(['method']).filter((s) => s.method === m).length])),
+    };
+  }, [f]);
+}
+/* groupFailedShipmentsByCause: same connection + same code/message, 2+ rows */
+function causeGroups(rows) {
+  const m = new Map();
+  rows.filter((s) => s.status === 'failed' && s.error).forEach((s) => { const k = `${s.conn}::${s.code ?? s.error}`; m.set(k, [...(m.get(k) ?? []), s]); });
+  return [...m.values()].filter((g) => g.length >= 2).map((g) => ({ conn: g[0].conn, code: g[0].code, reason: g[0].error, count: g.length }));
+}
+const SORT_OPTIONS = [
+  { value: 'created', dir: 'desc', menu: 'Newest first' },
+  { value: 'created-asc', dir: 'asc', menu: 'Oldest first' },
+  { value: 'status', dir: 'asc', menu: 'Status' },
+  { value: 'method', dir: 'asc', menu: 'Method' },
+];
+const sortRows = (rows, sort) => {
+  const r = rows.slice();
+  if (sort.key === 'status') r.sort((a, b) => STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status));
+  else if (sort.key === 'method') r.sort((a, b) => a.method.localeCompare(b.method));
+  else r.sort((a, b) => b.created - a.created);
+  return sort.key === 'created-asc' ? r.reverse() : sort.dir === 'desc' && sort.key !== 'created' ? r.reverse() : r;
+};
+function chipSpecs(f, { includeStatus = true } = {}) {
+  const c = [];
+  if (includeStatus && f.status) c.push({ k: 'status', label: 'Status', value: f.status, clear: { status: null } });
+  if (f.processor) c.push({ k: 'processor', label: 'Processor', value: PROCESSOR_LABEL[f.processor], clear: { processor: null } });
+  if (f.method) c.push({ k: 'method', label: 'Method', value: METHOD_LABEL[f.method], clear: { method: null } });
+  if (f.tracking !== null) c.push({ k: 'tracking', label: 'Tracking', value: f.tracking ? 'With tracking' : 'Without tracking', clear: { tracking: null } });
+  if (f.relay) c.push({ k: 'relay', label: 'Tracking relay', value: 'Not sent to channel', clear: { relay: false } });
+  if (f.conn) c.push({ k: 'conn', label: 'Connection', value: conn(f.conn).name, clear: { conn: null } });
+  if (f.from || f.to) c.push({ k: 'created', label: 'Created', value: [f.from && `from ${f.from}`, f.to && `until ${f.to}`].filter(Boolean).join(' '), clear: { from: '', to: '' } });
+  return c;
+}
+
+const cls = (...a) => a.filter(Boolean).join(' ');
+function Badge({ tone, dot = true, children, title }) {
+  return <span className={cls('status-badge', tone && tone !== 'neutral' && `status-badge--${tone}`)} title={title}>{dot ? <span className="status-badge__dot" aria-hidden="true" /> : null}{children}</span>;
+}
+function Btn({ tone, sm, className, children, ...rest }) {
+  return <button type="button" className={cls('button', tone && `button--${tone}`, sm && 'button--sm', className)} {...rest}>{children}</button>;
+}
+function useDismiss(open, setOpen, ref) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const d = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const k = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', d); document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('mousedown', d); document.removeEventListener('keydown', k); };
+  }, [open, setOpen, ref]);
+}
+function useShortcuts(map) {
+  useEffect(() => {
+    const h = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+      const fn = map[e.key.toLowerCase()]; if (fn) { e.preventDefault(); fn(); }
+    };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  });
+}
+
+
+/* ─── Toasts (ToastProvider on main) ─── */
+const toast = (text, tone) => window.dispatchEvent(new CustomEvent('ol-toast', { detail: { text, tone, id: Math.random() } }));
+function Toaster() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const h = (e) => { const t = e.detail; setItems((x) => [...x, t]); setTimeout(() => setItems((x) => x.filter((i) => i.id !== t.id)), 3200); };
+    window.addEventListener('ol-toast', h); return () => window.removeEventListener('ol-toast', h);
+  }, []);
+  return <div className="toasts" aria-live="polite">{items.map((t) => <div key={t.id} className={cls('toast', t.tone && `toast--${t.tone}`)}>{t.text}</div>)}</div>;
+}
+
+
+/* Exit animation for side sheets: play the out keyframes, then unmount. */
+function useClosable(onClose) {
+  const [closing, setClosing] = useState(false);
+  const close = () => {
+    if (closing) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setClosing(true); setTimeout(onClose, reduce ? 0 : 190);
+  };
+  return { closing, close };
+}
+
+/* NEW · shared/ui/sheet.tsx
+   Desktop: side sheet. Phone (≤ 640px): bottom sheet in the vaul style -
+   handle, drag down to dismiss (distance or flick velocity), rubber-band
+   when dragged up, and the page behind scales back. Drag writes styles
+   straight to the DOM (no React state per frame). */
+const SHEET_EASE = 'cubic-bezier(.32,.72,0,1)';
+const isPhone = () => window.matchMedia('(max-width: 640px)').matches;
+function Sheet({ className, label, onClose, children }) {
+  const { closing, close } = useClosable(onClose);
+  const sheetRef = useRef(null);
+  const scrimRef = useRef(null);
+  const drag = useRef(null);
+  useEffect(() => { document.body.classList.add('sheet-open'); return () => document.body.classList.remove('sheet-open'); }, []);
+  useEffect(() => { if (closing) document.body.classList.remove('sheet-open'); }, [closing]);
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); });
+  const handlers = {
+    onPointerDown: (e) => {
+      if (!isPhone() || e.button !== 0 || e.target.closest('button, a, input, select, label')) return;
+      drag.current = { y: e.clientY, t: performance.now(), dy: 0, h: sheetRef.current.offsetHeight };
+      sheetRef.current.style.transition = 'none';
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e) => {
+      const d = drag.current; if (!d) return;
+      d.dy = e.clientY - d.y;
+      const y = d.dy > 0 ? d.dy : d.dy * 0.12;
+      sheetRef.current.style.transform = `translateY(${y}px)`;
+      if (scrimRef.current) scrimRef.current.style.opacity = String(1 - Math.min(1, Math.max(0, y) / d.h) * 0.9);
+    },
+    onPointerUp: () => {
+      const d = drag.current; if (!d) return; drag.current = null;
+      const v = d.dy / Math.max(1, performance.now() - d.t);
+      const el = sheetRef.current;
+      if (d.dy > d.h * 0.3 || (d.dy > 24 && v > 0.45)) {
+        el.style.transition = `transform 240ms ${SHEET_EASE}`; el.style.transform = 'translateY(100%)';
+        if (scrimRef.current) { scrimRef.current.style.transition = 'opacity 240ms ease-out'; scrimRef.current.style.opacity = '0'; }
+        document.body.classList.remove('sheet-open');
+        setTimeout(onClose, 240);
+      } else {
+        el.style.transition = `transform 420ms ${SHEET_EASE}`; el.style.transform = '';
+        if (scrimRef.current) { scrimRef.current.style.transition = 'opacity 300ms ease-out'; scrimRef.current.style.opacity = ''; }
+      }
+    },
+  };
+  handlers.onPointerCancel = handlers.onPointerUp;
+  return ReactDOM.createPortal(
+    <>
+      <div ref={scrimRef} className={cls('scrim', closing && 'scrim--out')} onClick={close} aria-hidden="true" />
+      <aside ref={sheetRef} className={cls('sheet', className, closing && 'sheet--out')} role="dialog" aria-modal="true" aria-label={label}>
+        <div className="sheet__handle" {...handlers} aria-hidden="true"><span /></div>
+        {children(close, handlers)}
+      </aside>
+    </>,
+    document.body,
+  );
+}
+
+
+function Section({ title, summary, active, defaultOpen, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="section">
+      <button type="button" className="section__head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="section__chev" aria-hidden="true">▸</span><span className="section__title">{title}</span>
+        <span className={cls('section__sum', active && 'section__sum--on')}>{summary}</span>
+      </button>
+      {open ? <div className="section__body">{children}</div> : null}
+    </div>
+  );
+}
+
+
+function StatusBadge({ s }) { return <span className={cls('status-badge', STATUS_TONE[s.status] !== 'neutral' && `status-badge--${STATUS_TONE[s.status]}`, PULSE.has(s.status) && 'status-badge--pulse')}><span className="status-badge__dot" aria-hidden="true" />{s.status}</span>; }
+function RelayBadge({ s }) {
+  if (!s.relayStuck) return null;
+  const d = `The tracking number has not reached the sales channel after ${s.relayStuck} attempt${s.relayStuck === 1 ? '' : 's'}. The buyer has not been notified.`;
+  return <span title={d}><Badge tone="error">Tracking not sent</Badge></span>;
+}
+function StatusCell({ s }) {
+  return <span className="stack"><StatusBadge s={s} /><RelayBadge s={s} />{s.failedAt ? <span className="sub tabular">{plDT(s.failedAt)}</span> : null}</span>;
+}
+function Severity({ s }) { const v = severity(s); return <span className={cls('sev', `sev--${v.toLowerCase()}`)}><span className="sr-only">Suggested action: </span>{v}</span>; }
+function ConnChip({ id }) { const c = conn(id); return <span className="conn"><span className="conn__dot" style={{ background: c.color }} aria-hidden="true" />{c.name}</span>; }
+function OrderCell({ s }) {
+  return <span className="idcell"><span className="thumb" aria-hidden="true">{s.item.slice(0, 1)}</span><span className="stack"><a href="#" className="ref" onClick={(e) => { e.preventDefault(); toast(`Opens /orders/${s.order}`); }}>{s.order}</a><span className="sub">{s.item}</span></span></span>;
+}
+function TriageStrip({ g, onShow }) {
+  return (
+    <div className="alert alert--warning" role="status">
+      <div><strong>{g.count} failed shipments on {conn(g.conn).name} report the same {g.code ? 'rejection code' : 'carrier message'}</strong> - <span className="mono">{g.code ?? g.reason}</span></div>
+      <span className="button-group"><Btn tone="secondary" sm onClick={() => toast(`Opens /connections/${g.conn}`)}>Review connection settings</Btn><Btn sm onClick={onShow}>Show all failed on this connection</Btn></span>
+    </div>
+  );
+}
+function DetailActions({ s }) {
+  const out = [];
+  if (s.method === 'omp') return <p className="sub" style={{ margin: 0 }}>Fulfilled by the destination — no tracking yet.</p>;
+  if (s.status === 'draft' || (s.status === 'failed' && preWaybill(s))) out.push(<Btn key="g" sm onClick={() => toast('Generating label')}>Generate label</Btn>);
+  if (s.status === 'failed' && !preWaybill(s)) out.push(<Btn key="r" sm tone="outline" onClick={() => toast('Regenerating label')}>Regenerate label</Btn>);
+  if (s.tracking) out.push(<Btn key="d" sm tone="outline" onClick={() => toast('Downloading label')}>Download label</Btn>);
+  if (s.status === 'generated') out.push(<Btn key="m" sm onClick={() => toast('Marked dispatched')}>Mark dispatched</Btn>);
+  if (['draft', 'generated', 'failed'].includes(s.status)) out.push(<Btn key="c" sm tone="danger" onClick={() => toast('Cancel shipment: confirm dialog opens here', 'warn')}>Cancel shipment</Btn>);
+  return out.length ? <div className="detail__actions">{out}</div> : <p className="sub" style={{ margin: 0 }}>No actions available for this shipment yet — check back once the carrier status sync catches up.</p>;
+}
+function DetailFacts({ s }) {
+  return (
+    <dl className="kv" style={{ margin: 0 }}>
+      <div><dt>Order</dt><dd className="mono">{s.order}</dd></div>
+      <div><dt>Requested as</dt><dd>{METHOD_LABEL[s.method]}{s.paczkomat ? ` · ${s.paczkomat}` : ''}</dd></div>
+      <div><dt>Tracking</dt><dd className="mono">{s.tracking ?? '-'}</dd></div>
+      {s.failedAt ? <div><dt>Failed</dt><dd>{plDT(s.failedAt)}</dd></div> : null}
+      {s.code ? <div><dt>Rejection code</dt><dd className="mono">{s.code}</dd></div> : null}
+    </dl>
+  );
+}
+function FailureCallout({ s }) {
+  if (s.status !== 'failed' || !s.error) return null;
+  return <div className="note note--error"><span className="eyebrow">Carrier rejection</span><p>{s.error}</p></div>;
+}
+function Pager({ n }) { return <div className="pager"><span className="tabular">Showing 1–{n} of {n}</span><span className="button-group"><Btn tone="outline" sm disabled>Previous</Btn><Btn tone="outline" sm disabled>Next</Btn></span></div>; }
+
+/* ═════════ TODAY ═════════ */
+function TodayPage({ f, set, rows, sort, setSort }) {
+  const [open, setOpen] = useState({});
+  const groups = causeGroups(rows);
+  const any = chipSpecs(f).length > 0;
+  return (
+    <main className="page">
+      <header className="page-head"><div><div className="page-eyebrow page-eyebrow--muted">Operations</div><h1 className="page-title">Shipments</h1><p className="page-desc">{DESCRIPTION}</p></div></header>
+      <div className="filterbar">
+        <select className="control control--auto" aria-label="Filter by status" value={f.status ?? ''} onChange={(e) => set({ status: e.target.value || null })}><option value="">All statuses</option>{STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        <select className="control control--auto" aria-label="Filter by processor" value={f.processor ?? ''} onChange={(e) => set({ processor: e.target.value || null, method: e.target.value ? null : f.method })}><option value="">All processors</option><option value="omp">OMP-fulfilled</option><option value="carrier">Carrier</option></select>
+        {!f.processor ? <select className="control control--auto" aria-label="Filter by shipping method" value={f.method ?? ''} onChange={(e) => set({ method: e.target.value || null })}><option value="">All methods</option>{Object.entries(METHOD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select> : null}
+        <select className="control control--auto" aria-label="Filter by tracking" value={f.tracking === null ? '' : String(f.tracking)} onChange={(e) => set({ tracking: e.target.value === '' ? null : e.target.value === 'true' })}><option value="">Any tracking</option><option value="true">With tracking</option><option value="false">Without tracking</option></select>
+        <select className="control control--auto" aria-label="Filter by tracking relay" value={f.relay ? 'true' : ''} onChange={(e) => set({ relay: e.target.value === 'true' })}><option value="">Any relay state</option><option value="true">Tracking not sent to channel</option></select>
+        <select className="control control--auto" aria-label="Filter by connection" value={f.conn ?? ''} onChange={(e) => set({ conn: e.target.value || null })}><option value="">All connections</option>{CONNS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <input className="control control--auto" type="date" aria-label="Created from" value={f.from} onChange={(e) => set({ from: e.target.value })} />
+        <input className="control control--auto" type="date" aria-label="Created to" value={f.to} onChange={(e) => set({ to: e.target.value })} />
+      </div>
+      {rows.length ? (
+        <>
+          {groups.slice(0, 2).map((g) => <TriageStrip key={g.conn + g.code} g={g} onShow={() => set({ ...EMPTY, status: 'failed', conn: g.conn })} />)}
+          {groups.length > 2 ? <p className="sub">+{groups.length - 2} more groups with a shared carrier message.</p> : null}
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th className="col-exp" />
+                <th><button type="button" className={cls('sortbtn', sort.key === 'status' && 'sortbtn--on')} onClick={() => setSort({ key: 'status', dir: 'asc' })}>Status {sort.key === 'status' ? '▲' : '↕'}</button></th>
+                <th>Order</th><th>Action</th><th>Processor</th>
+                <th><button type="button" className={cls('sortbtn', sort.key.startsWith('created') && 'sortbtn--on')} onClick={() => setSort(sort.key === 'created' ? { key: 'created-asc', dir: 'asc' } : { key: 'created', dir: 'desc' })}>Created {sort.key === 'created' ? '▼' : sort.key === 'created-asc' ? '▲' : '↕'}</button></th>
+                <th className="hide-768">Customer</th><th>Connection</th>
+                <th><button type="button" className={cls('sortbtn', sort.key === 'method' && 'sortbtn--on')} onClick={() => setSort({ key: 'method', dir: 'asc' })}>Method {sort.key === 'method' ? '▲' : '↕'}</button></th>
+                <th className="hide-1024">Paczkomat</th>
+              </tr></thead>
+              <tbody>
+                {rows.map((s) => (
+                  <React.Fragment key={s.id}>
+                    <tr className="row">
+                      <td><button type="button" className="exp" aria-expanded={!!open[s.id]} aria-label={`${open[s.id] ? 'Collapse' : 'Expand'} details for shipment ${s.id}`} onClick={() => setOpen({ ...open, [s.id]: !open[s.id] })}>▸</button></td>
+                      <td><StatusCell s={s} /></td><td><OrderCell s={s} /></td><td><Severity s={s} /></td>
+                      <td><span className="stack"><Badge tone={PROCESSOR_TONE[processorOf(s)]}>{PROCESSOR_LABEL[processorOf(s)]}</Badge></span></td>
+                      <td className="tabular sub">{plDT(s.created)}</td><td className="hide-768">{s.customer}</td><td><ConnChip id={s.conn} /></td>
+                      <td>{METHOD_LABEL[s.method]}</td><td className="hide-1024 mono">{s.paczkomat ?? '-'}</td>
+                    </tr>
+                    {open[s.id] ? <tr><td colSpan={10} style={{ padding: '0 var(--space-3) var(--space-3)' }}><div className="detail"><FailureCallout s={s} /><DetailFacts s={s} /><DetailActions s={s} /></div></td></tr> : null}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pager n={rows.length} />
+        </>
+      ) : <Empty any={any} onClear={() => set(EMPTY)} />}
+    </main>
+  );
+}
+function Empty({ any, onClear }) {
+  return <div className="table-wrap"><div className="empty"><h3>No shipments found</h3><p>{any ? 'No shipments match the current filters.' : 'No shipments have been created yet.'}</p>{any ? <Btn onClick={onClear}>Clear filters</Btn> : null}</div></div>;
+}
+
+/* ═════════ PROPOSED ═════════ */
+function StatusTabs({ value, counts, onChange }) {
+  const ref = useRef(null);
+  const [ind, setInd] = useState({ x: 0, w: 0 });
+  const items = [{ key: null, label: 'All shipments', n: counts.all }, ...STATUSES.map((x) => ({ key: x, label: x[0].toUpperCase() + x.slice(1).replace('-', ' '), tone: STATUS_TONE[x], n: counts[x] }))];
+  useLayoutEffect(() => { const el = ref.current?.querySelector('[aria-selected="true"]'); if (el) setInd({ x: el.offsetLeft, w: el.offsetWidth }); }, [value, counts]);
+  const onKey = (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const i = items.findIndex((t) => t.key === value);
+    onChange(items[(i + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length].key);
+    requestAnimationFrame(() => ref.current?.querySelector('[aria-selected="true"]')?.focus());
+  };
+  return (
+    <div className="tabs-scroll"><div className="tabs" role="tablist" aria-label="Shipments by status" ref={ref} onKeyDown={onKey}>
+      {items.map((t) => (
+        <button key={t.label} type="button" role="tab" aria-selected={value === t.key} tabIndex={value === t.key ? 0 : -1} className="tab" onClick={() => onChange(t.key)}>
+          {t.tone && t.tone !== 'neutral' ? <span className="tab__dot" style={{ background: `var(--status-${t.tone})` }} aria-hidden="true" /> : null}
+          {t.label}<span className={cls('tab__count', t.n === 0 ? 'tab__count--zero' : t.tone === 'error' && 'tab__count--error')}>{t.n}</span>
+        </button>
+      ))}
+      <span className="tabs__ind" style={{ width: ind.w, transform: `translateX(${ind.x}px)` }} aria-hidden="true" />
+    </div></div>
+  );
+}
+function FilterDropdown({ label, value, options, onChange, anyLabel, disabledNote }) {
+  const [open, setOpen] = useState(false); const ref = useRef(null); useDismiss(open, setOpen, ref);
+  const cur = options.find((o) => o.value === value);
+  return (
+    <div className="anchor" ref={ref}>
+      <button type="button" className={cls('fg-btn', cur && 'fg-btn--on')} aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen(!open)}>
+        {cur ? <><span className="fg-btn__key">{label}</span><span className="fg-btn__val">{cur.label}</span></> : label}<span className="caret" aria-hidden="true">⌄</span>
+      </button>
+      {open ? (
+        <div className="pop" role="listbox" aria-label={label}>
+          {disabledNote ? <div className="pop__note">{disabledNote}</div> : null}
+          {[{ value: null, label: anyLabel }, ...options].map((o) => (
+            <button key={o.label} type="button" role="option" className="opt" disabled={!!disabledNote && o.value !== null} aria-checked={value === o.value} aria-selected={value === o.value} onClick={() => { onChange(o.value); setOpen(false); }}>
+              <span className="opt__mark" aria-hidden="true" />{o.dot ? <span className="tab__dot" style={{ background: o.dot }} aria-hidden="true" /> : null}{o.label}{o.count !== undefined ? <span className="opt__meta">{o.count}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+function SortMenu({ sort, setSort }) {
+  const [open, setOpen] = useState(false); const ref = useRef(null); useDismiss(open, setOpen, ref);
+  const cur = SORT_OPTIONS.find((o) => o.value === sort.key);
+  return (
+    <div className="anchor" ref={ref}>
+      <Btn tone="ghost" sm aria-expanded={open} onClick={() => setOpen(!open)}>Sort: {cur.menu} <span className="caret" aria-hidden="true">▼</span></Btn>
+      {open ? <div className="pop pop--right" role="menu" style={{ minWidth: 200 }}>{SORT_OPTIONS.map((o) => <button key={o.value} type="button" role="menuitemradio" className="opt" aria-checked={sort.key === o.value} onClick={() => { setSort({ key: o.value, dir: o.dir }); setOpen(false); }}><span className="opt__mark" aria-hidden="true" />{o.menu}{o.value === 'created' ? <span className="opt__meta">default</span> : null}</button>)}</div> : null}
+    </div>
+  );
+}
+function AttentionGroup({ label, short, tone, n, active, children }) {
+  const [open, setOpen] = useState(false); const ref = useRef(null); useDismiss(open, setOpen, ref);
+  return (
+    <div className="anchor" ref={ref}>
+      <button type="button" className={cls('attn-link', n > 0 && tone && `attn-link--${tone}`, active && 'attn-link--on')} aria-expanded={open} onClick={() => setOpen(!open)}><span className="attn-link__n">{n}</span><span className="attn-link__label">{short}</span>{active ? <span className="attn-link__on" /> : null}</button>
+      {open ? <div className="pop pop--right attn-pop" role="dialog" aria-label={label}><div className="attn-pop__head">{label}</div>{children(() => setOpen(false))}</div> : null}
+    </div>
+  );
+}
+function AttnItem({ on, title, desc, n, tone, onClick }) {
+  return <button type="button" role="menuitemcheckbox" aria-checked={on} className="attn-item" onClick={onClick}><span className="attn-item__box" aria-hidden="true">{on ? '✓' : ''}</span><span className="attn-item__text"><span className="attn-item__title">{title}</span><span className="attn-item__desc">{desc}</span></span><span className="attn-item__meta"><span className={cls('attn-item__n', n > 0 && tone && `attn-item__n--${tone}`)}>{n}</span></span></button>;
+}
+function AttentionSummary({ f, set, counts, groups }) {
+  return (
+    <div className="attn-sum" role="group" aria-label="Needs a look">
+      <span className="attn-sum__label">Needs a look</span>
+      <AttentionGroup label="Failed - needs fixing" short="to fix" tone="error" n={counts.fix} active={f.status === 'failed'}>
+        {(close) => (
+          <>
+            <AttnItem on={f.status === 'failed'} title="Failed shipments" desc="The carrier rejected the label. The row says why." n={counts.fix} tone="error" onClick={() => set({ status: f.status === 'failed' ? null : 'failed' })} />
+            {groups.length ? <div className="attn-pop__sub">Same problem on one connection</div> : null}
+            {groups.map((g) => (
+              <div key={g.conn + g.code} className="attn-group">
+                <div className="attn-group__text"><strong>{g.count} on {conn(g.conn).name}</strong><span className="mono sub">{g.code ?? g.reason}</span></div>
+                <span className="button-group"><Btn tone="ghost" sm onClick={() => { close(); toast(`Opens /connections/${g.conn}`); }}>Settings</Btn><Btn tone="outline" sm onClick={() => { close(); set({ ...EMPTY, status: 'failed', conn: g.conn }); }}>Show</Btn></span>
+              </div>
+            ))}
+          </>
+        )}
+      </AttentionGroup>
+      <span className="attn-sum__sep" aria-hidden="true">·</span>
+      <AttentionGroup label="Tracking not sent" short="tracking not sent" tone="error" n={counts.relay} active={f.relay}>
+        {() => <AttnItem on={f.relay} title="Tracking not sent to channel" desc="The tracking number has not reached the sales channel. The buyer has not been notified." n={counts.relay} tone="error" onClick={() => set({ relay: !f.relay })} />}
+      </AttentionGroup>
+      <span className="attn-sum__sep" aria-hidden="true">·</span>
+      <AttentionGroup label="Waiting for you" short="to send" tone={null} n={counts.send + counts.draft} active={f.status === 'generated' || f.status === 'draft'}>
+        {() => (
+          <>
+            <AttnItem on={f.status === 'draft'} title="Drafts" desc="No label yet. Generate one to ship." n={counts.draft} onClick={() => set({ status: f.status === 'draft' ? null : 'draft' })} />
+            <AttnItem on={f.status === 'generated'} title="Label ready" desc="Label printed, parcel not marked as sent." n={counts.send} onClick={() => set({ status: f.status === 'generated' ? null : 'generated' })} />
+          </>
+        )}
+      </AttentionGroup>
+    </div>
+  );
+}
+function MoreSheet({ f, set, onClose, n }) {
+  const specs = chipSpecs(f, { includeStatus: false });
+  const sum = (k, none = 'Any') => { const v = specs.filter((c) => k.includes(c.k)).map((c) => c.value); return [v.length ? v.join(', ') : none, v.length > 0]; };
+  const tr = sum(['tracking', 'relay']); const dt = sum(['created']);
+  return (
+    <Sheet className="drawer" label="All filters" onClose={onClose}>{(close, drag) => (<>
+      <div className="drawer__head" {...drag}><h2>All filters</h2><button type="button" className="icon-btn" onClick={close} aria-label="Close filters">✕</button></div>
+      <div className="drawer__body">
+        <Section title="Tracking" summary={tr[0]} active={tr[1]} defaultOpen>
+          <div role="radiogroup" aria-label="Tracking">
+            {[[null, 'Any tracking'], [true, 'With tracking'], [false, 'Without tracking']].map(([v, l]) => <label key={l} className="check"><input type="radio" name="m-tr" checked={f.tracking === v} onChange={() => set({ tracking: v })} />{l}</label>)}
+          </div>
+          <label className="check"><input type="checkbox" checked={f.relay} onChange={() => set({ relay: !f.relay })} />Tracking not sent to channel</label>
+        </Section>
+        <Section title="Created" summary={dt[0]} active={dt[1]} defaultOpen={dt[1]}>
+          <div className="range-row"><span className="eyebrow">From</span><input type="date" className="control" aria-label="Created from" value={f.from} onChange={(e) => set({ from: e.target.value })} /></div>
+          <div className="range-row"><span className="eyebrow">To</span><input type="date" className="control" aria-label="Created to" value={f.to} onChange={(e) => set({ to: e.target.value })} /></div>
+        </Section>
+      </div>
+      <div className="drawer__foot"><Btn tone="secondary" onClick={() => set({ ...EMPTY, status: f.status })}>Clear all</Btn><Btn onClick={close}>Show {n} shipments</Btn></div>
+    </>)}</Sheet>
+  );
+}
+function Peek({ id, rows, onNav, onClose }) {
+  const s = SHIPMENTS.find((x) => x.id === id); const idx = rows.findIndex((x) => x.id === id);
+  useEffect(() => { const k = (e) => { if ((e.key === 'ArrowDown' || e.key === 'j') && idx < rows.length - 1) { e.preventDefault(); onNav(rows[idx + 1].id); } if ((e.key === 'ArrowUp' || e.key === 'k') && idx > 0) { e.preventDefault(); onNav(rows[idx - 1].id); } }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); });
+  return (
+    <Sheet className="peek" label={`Shipment ${s.id}`} onClose={onClose}>{(close, drag) => (<>
+      <header className="peek-head" {...drag}>
+        <div className="peek-head__id"><div className="peek-ref"><a href="#" className="peek-link" onClick={(e) => { e.preventDefault(); toast(`Opens /orders/${s.order}`); }}>{s.order}<span className="peek-link__arrow" aria-hidden="true">↗</span></a></div><div className="peek-meta"><span>{s.item}</span><span>{s.customer}</span><ConnChip id={s.conn} /></div></div>
+        <div className="peek-head__money"><StatusBadge s={s} /><Severity s={s} /></div>
+        <button type="button" className="icon-btn peek-close" onClick={close} aria-label="Close details">✕</button>
+      </header>
+      <div className="peek-body" key={s.id}>
+        <div className="peek-actions"><Btn sm onClick={() => toast(`Opens /orders/${s.order}#shipment`)}>Open order</Btn></div>
+        <DetailActions s={s} />
+        <FailureCallout s={s} />
+        <section className="state-card">
+          <div className="state-row"><span className="eyebrow">Status</span><div className="wrap"><StatusBadge s={s} /><RelayBadge s={s} /></div></div>
+          <div className="state-row"><span className="eyebrow">Processor</span><div className="wrap"><Badge tone={PROCESSOR_TONE[processorOf(s)]}>{PROCESSOR_LABEL[processorOf(s)]}</Badge><span className="sub">{METHOD_LABEL[s.method]}{s.paczkomat ? ` · ${s.paczkomat}` : ''}</span></div></div>
+          <div className="state-row"><span className="eyebrow">Tracking</span><div className="wrap"><span className="mono">{s.tracking ?? '-'}</span></div></div>
+        </section>
+        <DetailFacts s={s} />
+        <section className="kv-grid"><div><span className="eyebrow">Created</span><p>{plDT(s.created)}</p></div><div><span className="eyebrow">Shipment ID</span><p className="mono">{s.id}</p></div></section>
+      </div>
+      <footer className="peek-foot"><span className="tabular muted">{idx + 1} of {rows.length}</span><span className="button-group"><Btn tone="outline" sm disabled={idx <= 0} onClick={() => onNav(rows[idx - 1].id)}>↑ Previous</Btn><Btn tone="outline" sm disabled={idx >= rows.length - 1} onClick={() => onNav(rows[idx + 1].id)}>Next ↓</Btn></span></footer>
+    </>)}</Sheet>
+  );
+}
+function PSort({ k, label, sort, setSort, alt }) {
+  const on = sort.key === k || sort.key === alt;
+  return <button type="button" className={cls('sortbtn', on && 'sortbtn--on')} onClick={() => setSort(alt && sort.key === k ? { key: alt, dir: 'asc' } : { key: k, dir: SORT_OPTIONS.find((o) => o.value === k).dir })}>{label}<span className="sortbtn__ind" aria-hidden="true">{on ? (sort.key === alt ? '↑' : sort.key === 'created' ? '↓' : '↑') : '↕'}</span></button>;
+}
+function ProposedPage({ f, set, rows, counts, sort, setSort, allRows }) {
+  const [more, setMore] = useState(false); const [peek, setPeek] = useState(null);
+  useShortcuts({ f: () => setMore((v) => !v) });
+  const specs = chipSpecs(f, { includeStatus: false });
+  const moreCount = specs.filter((c) => ['tracking', 'relay', 'created'].includes(c.k)).length;
+  const groups = causeGroups(allRows);
+  return (
+    <main className="page">
+      <header className="page-head"><div><div className="page-eyebrow page-eyebrow--muted">Operations</div><h1 className="page-title">Shipments</h1><p className="page-desc">{DESCRIPTION}</p></div></header>
+      <div className="statusbar"><StatusTabs value={f.status} counts={counts.status} onChange={(v) => set({ status: v })} /><AttentionSummary f={f} set={set} counts={counts} groups={groups} /></div>
+      <div className="toolbar">
+        <div className="fgroup" role="group" aria-label="Filters">
+          <FilterDropdown label="Processor" anyLabel="All processors" value={f.processor} onChange={(v) => set({ processor: v, method: v ? null : f.method })} options={[{ value: 'omp', label: 'OMP-fulfilled', count: counts.processor.omp }, { value: 'carrier', label: 'Carrier', count: counts.processor.carrier }]} />
+          <FilterDropdown label="Method" anyLabel="All methods" value={f.method} onChange={(v) => set({ method: v })} disabledNote={f.processor ? 'A processor already picks the method. Clear Processor to choose one.' : null} options={Object.entries(METHOD_LABEL).map(([k, v]) => ({ value: k, label: v, count: counts.method[k] }))} />
+          <FilterDropdown label="Connection" anyLabel="All connections" value={f.conn} onChange={(v) => set({ conn: v })} options={CONNS.map((c) => ({ value: c.id, label: c.name, dot: c.color, count: counts.conn[c.id] }))} />
+          <button type="button" className={cls('fg-btn', moreCount && 'fg-btn--on')} aria-expanded={more} title="All filters (F)" onClick={() => setMore(true)}><span aria-hidden="true">≡</span> More{moreCount ? <span className="button__count">{moreCount}</span> : null}<span className="button__shortcut">F</span></button>
+        </div>
+        <span className="toolbar__spacer" /><span className="results">{rows.length} results</span><SortMenu sort={sort} setSort={setSort} />
+      </div>
+      {specs.length ? <div className="applied" aria-label="Applied filters">{specs.map((c) => <span key={c.k} className="pill"><span className="pill__key">{c.label}</span>{c.value}<button type="button" aria-label={`Remove ${c.label} filter`} onClick={() => set(c.clear)}>✕</button></span>)}<button type="button" className="linkbtn" onClick={() => set({ ...EMPTY, status: f.status })}>Clear all</button></div> : null}
+      {f.status === 'failed' ? causeGroups(rows).slice(0, 2).map((g) => <TriageStrip key={g.conn + g.code} g={g} onShow={() => set({ ...EMPTY, status: 'failed', conn: g.conn })} />) : null}
+      {rows.length ? (
+        <div className="table-wrap">
+          <table className="ptable">
+            <thead><tr>
+              <th className="w-status"><span className="th-stack"><PSort k="status" label="Status" sort={sort} setSort={setSort} /></span></th>
+              <th className="w-order">Order</th><th className="w-action">Action</th>
+              <th className="w-processor"><span className="th-stack"><span>Processor</span><PSort k="method" label="Method" sort={sort} setSort={setSort} /></span></th>
+              <th className="hide-768 w-customer">Customer</th><th className="w-conn">Connection</th>
+              <th className="th-right w-created"><span className="th-stack th-stack--right"><PSort k="created" alt="created-asc" label="Created" sort={sort} setSort={setSort} /></span></th>
+            </tr></thead>
+            <tbody>
+              {rows.map((s) => (
+                <tr key={s.id} className={cls('row', peek === s.id && 'row--peek')} onClick={(e) => { if (!e.target.closest('button, a, input')) setPeek(s.id); }}>
+                  <td><StatusCell s={s} /></td>
+                  <td><div className="stack"><OrderCell s={s} /><button type="button" className="peek-btn" onClick={() => setPeek(s.id)}>Details <span aria-hidden="true">›</span></button></div></td>
+                  <td><Severity s={s} /></td>
+                  <td><span className="stack"><Badge tone={PROCESSOR_TONE[processorOf(s)]}>{PROCESSOR_LABEL[processorOf(s)]}</Badge><span className="sub">{METHOD_LABEL[s.method]}{s.paczkomat ? ` · ${s.paczkomat}` : ''}</span></span></td>
+                  <td className="hide-768">{s.customer}</td><td><ConnChip id={s.conn} /></td>
+                  <td className="tabular sub" style={{ textAlign: 'right' }}>{plDT(s.created)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <Empty any={chipSpecs(f).length > 0} onClear={() => set(EMPTY)} />}
+      <Pager n={rows.length} />
+      {more ? <MoreSheet f={f} set={set} onClose={() => setMore(false)} n={rows.length} /> : null}
+      {peek ? <Peek id={peek} rows={rows} onNav={setPeek} onClose={() => setPeek(null)} /> : null}
+    </main>
+  );
+}
+
+const MOVES = [
+  ['Status select (raw values: draft, generated, ...)', 'Status tabs with counts, readable labels'],
+  ['Processor select (OMP-fulfilled / Carrier), hides Method when set', 'Joined group: Processor; Method stays visible but explains why it is locked'],
+  ['Method select (Paczkomat, Kurier, Pickup point, OMP-fulfilled)', 'Joined group: Method, with counts'],
+  ['Tracking select (any / with / without)', 'More sheet: Tracking'],
+  ['Relay select: Tracking not sent to channel', '"tracking not sent" in Needs a look + More sheet'],
+  ['Connection select', 'Joined group: Connection, with counts'],
+  ['Created from / to date inputs', 'More sheet: Created'],
+  ['Triage strips (same failure on one connection, max 2 + overflow line)', 'Inside "to fix", one row per group with Settings + Show; still shown above the table on the Failed tab'],
+  ['Columns: Status, Order, Action, Processor, Created, Customer, Connection, Method, Paczkomat', 'Same facts; Method and Paczkomat fold under Processor so the row is shorter'],
+  ['Action word: Fix / Finish / Send / View', 'Unchanged, also in the peek header'],
+  ['Expandable row: rejection, facts, Generate / Regenerate / Download label, Mark dispatched, Cancel shipment', 'Row click or Details opens a side peek (bottom sheet on phones), same actions; ↑ ↓ walks shipments'],
+  ['Sort by Status, Created, Method', 'Header buttons + Sort menu, Newest first default (unchanged)'],
+  ['Pagination: Showing X-Y of N, Previous / Next', 'Unchanged'],
+];
+
+function App() {
+  const [mode, setMode] = useState('proposed');
+  const [f, setF] = useState(EMPTY);
+  const [sortT, setSortT] = useState({ key: 'created', dir: 'desc' });
+  const [sortP, setSortP] = useState({ key: 'created', dir: 'desc' });
+  const set = (p) => setF((c) => ({ ...c, ...p }));
+  const counts = useCounts(f);
+  const sort = mode === 'today' ? sortT : sortP; const setSort = mode === 'today' ? setSortT : setSortP;
+  const rows = useMemo(() => sortRows(SHIPMENTS.filter((s) => matches(s, f)), sort), [f, sort]);
+  const allRows = useMemo(() => SHIPMENTS.filter((s) => matches(s, f, ['status'])), [f]);
+  return (
+    <>
+      <div className="app-wrap">
+        <div className="chrome">
+          <div className="segmented-control segmented-control--soft" role="group" aria-label="Version">
+            <button type="button" className="segmented-control__option" aria-pressed={mode === 'today'} onClick={() => setMode('today')}>Today (main, 6 Nov)</button>
+            <button type="button" className="segmented-control__option" aria-pressed={mode === 'proposed'} onClick={() => setMode('proposed')}>Proposed</button>
+          </div>
+          <span className="chrome__note">Filters are shared, so switching keeps them. Sample data, 12 shipments.</span>
+          <span className="chrome__spacer" /><span className="chrome__note">On a phone the panels open from the bottom. Keys: F filters · ↑ ↓ in details · Esc close</span>
+        </div>
+        {mode === 'today' ? <TodayPage f={f} set={set} rows={rows} sort={sort} setSort={setSort} /> : <ProposedPage f={f} set={set} rows={rows} counts={counts} sort={sort} setSort={setSort} allRows={allRows} />}
+        <div className="page" style={{ paddingTop: 0 }}>
+          <section className="ledger">
+            <div><h3>Every control on main, and where it went</h3><div className="table-wrap" style={{ border: 'none' }}><table><tbody>{MOVES.map(([a, b]) => <tr key={a}><td>{a}</td><td>{b}</td></tr>)}</tbody></table></div></div>
+            <div><h3>Same rules as orders and products</h3><ul>
+              <li>Status is the one tab row. Today it is the first of nine equal dropdowns.</li>
+              <li>Work that needs you sits in one quiet line: shipments to fix, tracking that never reached the channel, and labels waiting to be sent.</li>
+              <li>The failure strips stop pushing the table down. They live in "to fix" and come back above the table when you look at failed shipments.</li>
+              <li>Three filters pinned in one joined group, tracking and dates in More.</li>
+              <li>Details open beside the list, so you can walk shipments without losing your place.</li>
+              <li>Counts on tabs and filters need a shipments summary endpoint, which does not exist today.</li>
+            </ul></div>
+          </section>
+        </div>
+      </div>
+      <Toaster />
+    </>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>

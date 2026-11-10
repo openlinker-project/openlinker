@@ -568,6 +568,7 @@ export class ProductsController {
       sourceConnectionId: query.connectionId,
       hideFullyStale: query.hideFullyStale,
       bundleFilter: query.bundles,
+      productId: query.productId,
     };
   }
 

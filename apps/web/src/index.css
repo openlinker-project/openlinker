@@ -357,6 +357,15 @@
    * `min-height`.
    */
   --shell-topbar-height: 52px;
+  /* The widest the app's layout block gets on an ultrawide screen: from the
+     left edge of the floating sidebar box to the right edge of the page
+     content. The one knob for "how wide"; the content cap, the sidebar column
+     and the top bar's padding are all derived from it. */
+  --layout-max-width: 2560px;
+  /* The floating layout switches on at the same width: the
+     `@media (min-width: 2560px)` block below must follow this value by hand.
+     (Panels become a centred modal earlier, from 1920px - WIDE_QUERY in
+     shared/ui/side-panel.tsx.) */
   --demo-banner-height: 48px;
 
   --space-1: 0.25rem; /* 4px */
@@ -1271,6 +1280,81 @@ textarea,
   }
 }
 
+/* Ultrawide (>= 2560px): the sidebar and the content move together as one
+   centred block (#4026 follow-up). The sidebar floats in a box at the right
+   edge of its own column, right beside the content, and the column absorbs
+   the left half of the spare width:
+
+     block = --layout-max-width = 240px (box) + 32px (content padding) + content
+     side  = (100vw - block) / 2 + 240px   so that the outer gaps are equal:
+     left  = side - 240px
+     right = 100vw - side - (block - 240px)
+
+   The top bar keeps its full width, but its content is padded to line up
+   with the content block's edges. */
+/* Keep this media query equal to --layout-max-width (a media query cannot
+   read a custom property). */
+@media (min-width: 2560px) {
+  .shell {
+    --shell-side: max(264px, calc((100vw - var(--layout-max-width)) / 2 + 240px));
+    grid-template-columns: var(--shell-side) minmax(0, 1fr);
+  }
+
+  .shell .page-layout {
+    margin-inline: 0 auto;
+  }
+
+  .shell .shell-topbar {
+    padding-left: 32px;
+    padding-right: max(16px, calc(100vw - var(--shell-side) - var(--layout-max-width) + 240px));
+  }
+
+  /* The brand sits in the bar above the sidebar box: the box starts 240px
+     left of the main column, and 16px is the box's own inner padding. */
+  .shell .shell-topbar > .shell-brand--wide {
+    display: flex;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -240px;
+    z-index: 1;
+    align-items: center;
+    padding: 0 0 0 16px;
+  }
+
+  .shell-sidebar > .shell-brand {
+    display: none;
+  }
+
+  /* The bar lives in the main column; with the sidebar now below it, its
+     background and bottom rule continue over the sidebar column so the bar
+     reads as one full-width strip. */
+  .shell .shell-topbar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: -1px;
+    left: calc(-1 * var(--shell-side));
+    width: var(--shell-side);
+    background: var(--bg-shell);
+    border-bottom: 1px solid var(--border-subtle);
+    pointer-events: none;
+  }
+
+  .shell-sidebar {
+    justify-self: end;
+    width: 240px;
+    /* Below the top bar, not beside it; the menu inside (`.shell-nav`)
+       scrolls on its own when it outgrows the box. */
+    top: calc(var(--shell-topbar-height) + 12px);
+    height: calc(100vh - var(--shell-topbar-height) - 24px);
+    margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+  }
+}
+
 .shell-brand {
   display: flex;
   align-items: center;
@@ -1306,6 +1390,11 @@ textarea,
 .shell-topbar .shell-brand {
   padding: 0;
   flex-shrink: 0;
+}
+
+/* The ultrawide copy of the brand (#4026 follow-up) shows only from 2560px. */
+.shell-brand--wide {
+  display: none;
 }
 
 /* On a phone the rest of the app's topbar opens with a 36 px menu button and
@@ -3344,6 +3433,15 @@ textarea,
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* A page's own content on a very wide screen (#4026 follow-up): capped so an
+   ultrawide monitor does not stretch a list edge to edge. The cap is the
+   layout block minus the sidebar box (240px) and the content padding (32px). */
+.page-layout {
+  width: 100%;
+  max-width: calc(var(--layout-max-width) - 272px);
+  margin-inline: auto;
+}
+
 .page-header {
   gap: 0.45rem;
 }
@@ -4490,7 +4588,8 @@ a.delivery-rider-banner__button:focus-visible {
   background: var(--bg-shell);
 }
 .data-table__row--linked:hover .data-table__sticky-col,
-.data-table__row--expandable:hover .data-table__sticky-col {
+.data-table__row--expandable:hover .data-table__sticky-col,
+.data-table__row--activatable:hover .data-table__sticky-col {
   background: color-mix(in oklab, var(--bg-shell) 60%, var(--bg-surface));
 }
 .data-table__row--expanded .data-table__sticky-col {
@@ -4510,6 +4609,18 @@ a.delivery-rider-banner__button:focus-visible {
 }
 @media (prefers-reduced-motion: no-preference) {
   .data-table__sticky-col--last {
+    transition: box-shadow var(--duration-normal) var(--ease-out);
+  }
+}
+/* Trailing pinned columns (#4026) mirror the leading boundary: no edge at rest,
+   a soft edge + leftward shadow while content scrolls beneath them. */
+.data-table--sticky-right-hidden .data-table__sticky-col--first-right {
+  box-shadow:
+    inset 1px 0 0 color-mix(in oklab, var(--accent-primary) 42%, transparent),
+    -6px 0 12px -6px color-mix(in oklab, var(--accent-primary) 22%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .data-table__sticky-col--first-right {
     transition: box-shadow var(--duration-normal) var(--ease-out);
   }
 }
@@ -4773,12 +4884,14 @@ a.delivery-rider-banner__button:focus-visible {
   line-height: 1;
 }
 
-.data-table__row--expandable {
+.data-table__row--expandable,
+.data-table__row--activatable {
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out);
 }
 
-.data-table__row--expandable:hover {
+.data-table__row--expandable:hover,
+.data-table__row--activatable:hover {
   background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
 }
 
@@ -9057,6 +9170,245 @@ a.kpi-card:focus-visible {
 @keyframes sheet-slide-up {
   from { transform: translateY(16px); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
+}
+
+/* ── SidePanel (#4026) ─────────────────────────────────────────────
+ * A drawer docked to the right edge (floating by default: inset 8px with
+ * rounded corners over a blurred scrim). On a phone it becomes a vaul-style
+ * bottom sheet with a grab handle, and the app shell scales back behind it. */
+.side-panel__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.side-panel__overlay-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay-scrim);
+}
+
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  width: min(var(--side-panel-width, 480px), 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface-elevated);
+  border-left: 1px solid var(--border-default);
+  box-shadow: var(--shadow-overlay);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.side-panel__overlay--elevated { z-index: 60; }
+
+/* Wide screens (>= 1920px): the panel opens as a centred modal (#4026 follow-up).
+   Centred with auto margins rather than a translate, because Motion owns the
+   transform for the open/close scale. `fit-content` lets the auto margins
+   centre it vertically while the body still scrolls inside the cap. */
+.side-panel.side-panel--modal {
+  inset: 0;
+  margin: auto;
+  width: min(calc(var(--side-panel-width, 480px) + 120px), calc(100vw - 64px));
+  height: fit-content;
+  max-height: min(880px, calc(100vh - 96px));
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transform-origin: 50% 60%;
+}
+.side-panel__overlay--modal .side-panel__overlay-fill {
+  backdrop-filter: blur(6px) saturate(0.8);
+  -webkit-backdrop-filter: blur(6px) saturate(0.8);
+}
+.side-panel--elevated { z-index: 61; }
+/* A panel stacked on another adds no second scrim: the one below already
+   dims the page. The overlay stays, transparent, so a click beside the top
+   panel still closes it. */
+.side-panel__overlay--elevated .side-panel__overlay-fill,
+.side-panel__overlay--elevated.side-panel__overlay--modal .side-panel__overlay-fill {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.side-panel__head {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.side-panel__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 2rem;
+}
+
+.side-panel__kicker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.side-panel__kicker .mono-text { font-size: 0.75rem; color: var(--text-secondary); }
+
+.side-panel__title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.side-panel__title-main { display: grid; gap: var(--space-2); min-width: 0; }
+.side-panel__aside { display: grid; justify-items: end; gap: var(--space-1); }
+
+.side-panel__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+  color: var(--text-primary);
+}
+.side-panel__title-row--with-close { display: flex; align-items: flex-start; }
+.side-panel__title-row--with-close .side-panel__title-main { flex: 1 1 auto; }
+.side-panel__close--icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1) 0 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.side-panel__close--icon:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.side-panel__close--icon:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+.side-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.side-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5);
+}
+
+.side-panel__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.side-panel__handle { display: none; }
+
+.shell {
+  transform-origin: 50% 0;
+  transition:
+    transform 340ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 340ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 641px) {
+  .side-panel.side-panel--floating {
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: min(var(--side-panel-width, 480px), calc(100vw - 16px));
+    margin-top: env(safe-area-inset-top, 0px);
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+    margin-right: env(safe-area-inset-right, 0px);
+    padding: 0;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+  }
+
+  .side-panel__overlay-fill {
+    backdrop-filter: blur(3px) saturate(0.85);
+    -webkit-backdrop-filter: blur(3px) saturate(0.85);
+  }
+}
+
+@media (max-width: 640px) {
+  .side-panel.side-panel--sheet {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: calc(100dvh - 44px - env(safe-area-inset-top, 0px));
+    border-left: 0;
+    border-top: 1px solid var(--border-default);
+    border-radius: 18px 18px 0 0;
+    padding-top: 0;
+    padding-right: 0;
+  }
+
+  .side-panel__handle {
+    display: flex;
+    flex: none;
+    justify-content: center;
+    padding: 10px 0 4px;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .side-panel__handle span {
+    width: 40px;
+    height: 5px;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong);
+  }
+
+  .side-panel--sheet .side-panel__head { touch-action: none; padding-top: var(--space-2); }
+  .side-panel--sheet .side-panel__foot { padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); }
+  .side-panel--sheet .side-panel__foot > .button { flex: 1 1 0; min-height: 44px; }
+
+  /* The shell recedes like an iOS sheet. The backdrop behind it is near-black
+     in both themes on purpose, so it reads as depth rather than as a surface. */
+  body.side-panel-sheet-open { background: oklch(10% 0.005 270); }
+  body.side-panel-sheet-open .shell {
+    transform: scale(0.97) translateY(calc(env(safe-area-inset-top, 0px) + 6px));
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg-canvas);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell { transition: none; }
+  body.side-panel-sheet-open .shell { transform: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .side-panel__overlay-fill { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 
 .dialog__title {
@@ -13523,14 +13875,14 @@ a.kpi-card:focus-visible {
   gap: var(--space-2);
   margin-bottom: var(--space-2);
 }
-.orders-filterbar__search { position: relative; flex: 1 1 auto; min-width: 0; max-width: 40rem; }
-.orders-filterbar__search .control {
+.list-search { position: relative; flex: 1 1 auto; min-width: 0; max-width: 40rem; }
+.list-search .control {
   width: 100%;
   max-width: none;
   padding-left: 2rem;
   padding-right: 2rem;
 }
-.orders-filterbar__search-glyph {
+.list-search__glyph {
   position: absolute;
   left: 0.7rem;
   top: 50%;
@@ -13539,7 +13891,7 @@ a.kpi-card:focus-visible {
   font-size: 0.8125rem;
   pointer-events: none;
 }
-.orders-filterbar__kbd {
+.list-search__kbd {
   position: absolute;
   right: 0.5rem;
   top: 50%;
@@ -13549,7 +13901,7 @@ a.kpi-card:focus-visible {
   color: var(--text-muted);
   pointer-events: none;
 }
-.orders-filterbar__count { margin-left: auto; font-size: 0.75rem; white-space: nowrap; }
+.list-results { margin-left: auto; font-size: 0.75rem; white-space: nowrap; }
 
 /* KPI strip: the six partition cards on ONE row on a desktop (the 6th used to
    wrap alone onto a second row), 3×2 on a tablet, and a horizontally scrolling
@@ -13572,6 +13924,704 @@ a.kpi-card:focus-visible {
 @media (max-width: 1279.98px) {
   .orders-segments.orders-segments--6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* ── Orders list: one filter system (#4026) ─────────────────────────
+ * Status tabs + "Needs a look" on one line, a toolbar with ONE joined filter
+ * group, applied pills, the badge cap and the order peek. */
+.list-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.status-tabs-scroll { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.status-tabs-scroll::-webkit-scrollbar { display: none; }
+.status-tabs { position: relative; display: flex; gap: 2px; min-width: max-content; }
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: auto;
+  padding: 6px var(--space-3) 9px;
+  border: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.status-tab:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.status-tab:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.status-tab[aria-selected='true'] { color: var(--text-primary); font-weight: 600; }
+.status-tab__dot { width: 0.4375rem; height: 0.4375rem; border-radius: var(--radius-pill); }
+.status-tab__dot--error { background: var(--status-error); }
+.status-tab__dot--warning { background: var(--status-warning); }
+.status-tab__dot--info { background: var(--status-info); }
+.status-tab__dot--success { background: var(--status-success); }
+.status-tab__count {
+  min-width: 1.5rem;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.status-tab__count--error { background: var(--status-error-soft); color: var(--status-error-fg); }
+.status-tab__count--warning { background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.status-tab__count--zero { background: transparent; color: var(--text-muted); }
+.status-tabs__indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-primary);
+  transition: transform var(--duration-slow) var(--ease-out), width var(--duration-slow) var(--ease-out);
+}
+/* Scroll cues for the status tabs: a fade on the edge that still hides tabs,
+   with a small chevron button over it. Both appear only while there is
+   something to scroll to, and slide in from their own edge. */
+.status-tabs-frame { position: relative; flex: 1 1 auto; min-width: 0; }
+.status-tabs-frame .status-tabs-scroll { flex: none; }
+.status-tabs-frame[data-scroll-right] .status-tabs-scroll {
+  mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent);
+}
+.status-tabs-frame[data-scroll-left] .status-tabs-scroll {
+  mask-image: linear-gradient(to left, #000 calc(100% - 3.5rem), transparent);
+}
+.status-tabs-frame[data-scroll-left][data-scroll-right] .status-tabs-scroll {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 3.5rem,
+    #000 calc(100% - 3.5rem),
+    transparent
+  );
+}
+.status-tabs__nudge {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  /* The tap target; the visible control is the dot inside it. */
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-top: calc(-1.125rem - 2px);
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary);
+  opacity: 0;
+  pointer-events: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color var(--duration-fast) var(--ease-out);
+}
+.status-tabs__nudge:focus,
+.status-tabs__nudge:active { background: transparent; color: var(--text-primary); outline: none; }
+.status-tabs__nudge-dot {
+  display: grid;
+  place-items: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--duration-fast) var(--ease-out), transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.status-tabs__nudge:hover .status-tabs__nudge-dot { border-color: var(--border-strong); }
+.status-tabs__nudge:active .status-tabs__nudge-dot { transform: scale(0.9); }
+.status-tabs__nudge--left { left: 0; transform: translateX(-4px); }
+.status-tabs__nudge--right { right: 0; transform: translateX(4px); }
+.status-tabs-frame[data-scroll-left] .status-tabs__nudge--left,
+.status-tabs-frame[data-scroll-right] .status-tabs__nudge--right {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.status-tabs__chevron {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  border-radius: 1px;
+}
+.status-tabs__nudge--right .status-tabs__chevron { margin-left: -2px; transform: rotate(45deg); }
+.status-tabs__nudge--left .status-tabs__chevron { margin-right: -2px; transform: rotate(-135deg); }
+@media (prefers-reduced-motion: reduce) {
+  .status-tabs__nudge { transition: opacity var(--duration-fast) linear; transform: none; }
+}
+
+.attention-summary {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.attention-summary__label { margin-right: 6px; }
+.attention-summary__sep { color: var(--border-strong); }
+.attention-summary__link {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  height: auto;
+  padding: 3px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.attention-summary__link:hover,
+.attention-summary__link[aria-expanded='true'] { background: var(--bg-surface-hover); color: var(--text-primary); }
+.attention-summary__link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.attention-summary__n { font-weight: 600; color: var(--text-primary); }
+.attention-summary__link--error .attention-summary__n { color: var(--status-error-fg); }
+.attention-summary__short { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; }
+.attention-summary__link--on { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.attention-summary__on {
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+}
+.popover__content.attention-pop { width: 360px; max-width: calc(100vw - 32px); padding: 4px; }
+.attention-pop__head { padding: 6px 10px 4px; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.attention-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+  width: 100%;
+  height: auto;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+}
+.attention-item:hover,
+.attention-item:focus-visible { outline: none; background: var(--bg-surface-hover); }
+.attention-item__box {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+}
+.attention-item[aria-pressed='true'] .attention-item__box {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  box-shadow: inset 0 0 0 3px var(--bg-surface-elevated);
+}
+.attention-item__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; white-space: normal; }
+.attention-item__title { font-size: 0.8125rem; font-weight: 500; }
+.attention-item__desc { font-size: 0.75rem; color: var(--text-muted); }
+.attention-item__meta { display: flex; flex-direction: column; align-items: flex-end; }
+.attention-item__n { font-weight: 600; color: var(--text-muted); }
+.attention-item__n--error { color: var(--status-error-fg); }
+.attention-item__n--warning { color: var(--status-warning-fg); }
+.attention-item__age { font-size: 0.625rem; color: var(--text-muted); white-space: nowrap; }
+/* A group that explains rather than filters (#4027, "no cost price"). */
+.attention-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 6px 10px 8px;
+  max-width: 22rem;
+}
+.attention-note p { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); white-space: normal; }
+/* Related groups under a filter item (#4044, shipments "to fix"). */
+.attention-pop__sub {
+  margin-top: 4px;
+  padding: 8px 10px 2px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+.attention-cause {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px 10px;
+}
+.attention-cause__text { display: flex; flex-direction: column; min-width: 0; font-size: 0.8125rem; }
+.attention-cause__text .mono-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; color: var(--text-muted); }
+.attention-pop__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: 4px;
+  padding: 8px 10px 6px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+}
+
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.list-toolbar .list-search { flex: 0 1 420px; min-width: 200px; }
+.list-toolbar__spacer { flex: 1; }
+.list-toolbar .list-results { margin-left: 0; }
+.joined-filters {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.joined-filters__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 1.875rem;
+  padding: 0 var(--space-3);
+  border: none;
+  border-right: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.joined-filters__btn:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.joined-filters__btn:last-child { border-right: none; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.joined-filters__btn:hover,
+.joined-filters__btn[aria-expanded='true'] { background: var(--bg-surface-hover); color: var(--text-primary); }
+.joined-filters__btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); position: relative; }
+.joined-filters__btn--on { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.joined-filters__key { color: var(--text-muted); }
+.joined-filters__val { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.joined-filters__caret { margin-top: -3px; font-size: 0.75rem; opacity: 0.7; }
+.button__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+.popover__content.choice-pop { min-width: 240px; padding: 6px; }
+.popover__content.choice-pop--sort { min-width: 220px; }
+.choice-pop__opt {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  height: auto;
+  padding: 6px var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  text-align: left;
+}
+.choice-pop__opt:hover,
+.choice-pop__opt:focus-visible { outline: none; background: var(--bg-surface-hover); }
+.choice-pop__mark {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+.choice-pop__opt[aria-pressed='true'] .choice-pop__mark {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  box-shadow: inset 0 0 0 3px var(--bg-surface-elevated);
+}
+.choice-pop__dot { width: 0.4375rem; height: 0.4375rem; border-radius: var(--radius-pill); background: var(--border-strong); }
+.choice-pop__dot--error { background: var(--status-error); }
+.choice-pop__dot--warning { background: var(--status-warning); }
+.choice-pop__dot--info { background: var(--status-info); }
+.choice-pop__dot--success { background: var(--status-success); }
+.choice-pop__meta { margin-left: auto; font-size: 0.6875rem; color: var(--text-muted); }
+.choice-pop__note { margin: 0; padding: 6px var(--space-2); max-width: 240px; font-size: 0.75rem; color: var(--text-muted); }
+.choice-pop__opt:disabled { cursor: not-allowed; color: var(--text-muted); }
+.choice-pop__opt:disabled:hover { background: none; }
+
+.filter-sections { display: flex; flex-direction: column; }
+.filter-sections .filter-section__body { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* Fixed column widths: switching a tab, a filter or a page never resizes a
+   column. Widths come from each column's `width`. */
+.list-table--fixed .data-table { width: 100%; table-layout: fixed; min-width: 1120px; }
+.list-table--fixed .data-table td { overflow-wrap: anywhere; }
+.orders-sortbtn--active {
+  margin: 0 -4px;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-primary-soft);
+  color: var(--text-primary);
+}
+/* A fixed column must contain its content: long item names and status reasons
+   truncate inside the column instead of painting over the next one. */
+.list-table--fixed .data-table td { overflow: hidden; }
+/* A connection chip reveals its name to the right on hover, past the cell's
+   edge; the clip above would cut it off mid-word, so a chip's cell does not
+   clip and the hovered one paints above the next column. */
+.list-table--fixed .data-table td:has(.connection-chip) { overflow: visible; }
+.list-table--fixed .data-table td:has(.connection-chip:hover),
+.list-table--fixed .data-table td:has(.connection-chip:focus-visible) { position: relative; z-index: 2; }
+.list-table--fixed .orders-items-line,
+.list-table--fixed .orders-status-reason { max-width: 100%; }
+.list-table--fixed .orders-status-reason { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-table--fixed thead th { vertical-align: bottom; }
+.list-table--fixed .orders-sortstack--right .orders-sortbtn { min-width: 0; }
+.list-table--fixed .orders-cell-stack--end { min-width: 0; }
+.orders-sortbtn--active .orders-sortbtn__ind { color: var(--accent-primary-soft-strong); }
+.orders-sortbtn:not(.orders-sortbtn--active) .orders-sortbtn__ind { opacity: 0; transition: opacity var(--duration-fast); }
+.orders-table th:hover .orders-sortbtn__ind { opacity: 0.7; }
+.list-row--peek > td {
+  background: var(--accent-primary-soft);
+  box-shadow: inset 0 1px 0 var(--accent-primary-border), inset 0 -1px 0 var(--accent-primary-border);
+}
+.list-row--peek > td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent-primary), inset 0 1px 0 var(--accent-primary-border), inset 0 -1px 0 var(--accent-primary-border);
+}
+/* The peek arrow (#4026): a pinned, centered control whose chevron points at
+   where the panel comes from. At rest it is quiet; hovering the row draws its
+   ring and nudges the chevron toward the panel; the open order's arrow is
+   filled. The easing is the side panel's own, so the nudge reads as the first
+   frame of the slide. */
+.list-table--fixed .data-table td:last-child,
+.list-table--fixed .data-table th:last-child {
+  padding-left: 0;
+  padding-right: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+.peek-arrow {
+  --peek-arrow-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.peek-arrow__chevron {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  /* Optical centre: a rotated corner's mass sits left of its box. */
+  margin-left: -2px;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  transition: transform 260ms var(--peek-arrow-ease);
+}
+.list-table--fixed tr:hover .peek-arrow,
+.peek-arrow:focus-visible {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.list-table--fixed tr:hover .peek-arrow__chevron,
+.peek-arrow:focus-visible .peek-arrow__chevron {
+  transform: translateX(2px) rotate(45deg);
+}
+.peek-arrow:active { transform: scale(0.94); }
+.list-row--peek .peek-arrow,
+.list-table--fixed tr.list-row--peek:hover .peek-arrow {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+}
+.peek-arrow:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (prefers-reduced-motion: reduce) {
+  .peek-arrow,
+  .peek-arrow__chevron { transition: none; }
+  .list-table--fixed tr:hover .peek-arrow__chevron { transform: rotate(45deg); }
+  .peek-arrow:active { transform: none; }
+}
+
+/* Phone cards: the whole card opens the peek, so the chevron is a cue, not a
+   control, and sits beside the order reference. */
+.list-table--peek .data-table__card { position: relative; }
+.list-table--peek .data-table__card-head { padding-right: var(--space-6); }
+.list-table--peek .data-table__card::after {
+  content: '';
+  position: absolute;
+  top: 23px;
+  right: 16px;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-top: 1.5px solid var(--text-muted);
+  border-right: 1.5px solid var(--text-muted);
+  border-radius: 1px;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+/* Cards open the peek, so they answer a touch: a slight press, a tinted
+   surface and the chevron nudging toward the sheet. Hover only where a
+   pointer can hover. */
+.list-table--peek .data-table__card {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.list-table--peek .data-table__card::after { transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1); }
+.list-table--peek .data-table__card:active {
+  transform: scale(0.985);
+  border-color: var(--border-strong);
+  background: var(--bg-surface-hover);
+}
+.list-table--peek .data-table__card:active::after { transform: translateX(2px) rotate(45deg); }
+@media (hover: hover) and (pointer: fine) {
+  .list-table--peek .data-table__card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+  .list-table--peek .data-table__card:hover::after { transform: translateX(2px) rotate(45deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .list-table--peek .data-table__card,
+  .list-table--peek .data-table__card::after { transition: none; }
+  .list-table--peek .data-table__card:active { transform: none; }
+}
+
+.capped-badges { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.capped-badges--end { align-items: flex-end; }
+.capped-badges[data-capped] > :nth-child(n + 3):not(.capped-badges__more) { display: none; }
+.capped-badges__more {
+  height: auto;
+  padding: 0 5px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1.6;
+}
+.capped-badges__more:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+
+/* Order peek */
+.peek-panel__title-link { color: inherit; text-decoration: none; font-family: var(--font-mono); }
+.peek-panel__title-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* A product peek (#4027) is titled by name, not by a reference. */
+.product-peek__id { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.product-peek__id .peek-panel__title-link { font-family: var(--font-sans); }
+.peek-panel__title-arrow { margin-left: 4px; font-size: 0.75em; color: var(--text-muted); }
+.peek-panel__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 0.75rem; color: var(--text-muted); }
+.peek-panel__total { font-size: 1.25rem; font-weight: 600; letter-spacing: var(--tracking-tight); white-space: nowrap; }
+.peek-panel__body { display: flex; flex-direction: column; gap: var(--space-4); animation: orders-peek-swap 240ms var(--ease-out); }
+@keyframes orders-peek-swap {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.peek-panel__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.peek-panel__state { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.peek-panel__state-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding: 10px var(--space-3);
+}
+.peek-panel__state-row + .peek-panel__state-row { border-top: 1px solid var(--border-subtle); }
+.peek-panel__state-row .eyebrow { padding-top: 3px; }
+.peek-panel__state-value { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.peek-panel__body .orders-detail { margin: 0; }
+.peek-panel__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; }
+
+@media (max-width: 760px) {
+  .attention-summary { padding: 6px 0; }
+  .joined-filters { width: 100%; overflow-x: auto; }
+  .list-toolbar .list-search { flex-basis: 100%; }
+}
+.attention-summary { margin-left: auto; }
+@media (max-width: 760px) { .attention-summary { margin-left: 0; } }
+
+/* The order peek, as in the mockup: muted header, reference + Copy, a note
+   callout, an item list and a field grid. */
+.peek-panel .side-panel__head { background: var(--bg-surface-muted); }
+.peek-panel .side-panel__title { font-size: 1rem; }
+.peek-panel__ref { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.peek-panel__copy {
+  height: auto;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+.peek-panel__copy:hover { color: var(--text-primary); }
+.peek-panel .side-panel__body { padding: var(--space-4) var(--space-5); }
+.peek-panel__note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--accent-primary-soft);
+}
+.peek-panel__note p { margin: 2px 0 0; font-size: 0.8125rem; }
+.peek-panel__note .orders-detail__field { display: flex; flex-direction: column; gap: 2px; }
+.peek-panel__note .orders-detail__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.peek-panel__note .orders-detail__value { margin: 0; font-size: 0.8125rem; }
+.peek-panel__note--empty { border-left-color: var(--border-strong); background: var(--bg-surface-muted); }
+.peek-panel__note--empty p { color: var(--text-muted); }
+.peek-panel__h { display: flex; gap: 6px; margin: 0 0 var(--space-2); font-size: 0.8125rem; font-weight: 600; }
+.peek-panel__items { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.peek-panel__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+}
+.peek-panel__items > li + li { border-top: 1px solid var(--border-subtle); }
+/* A mapped line opens its product: the row is the link, with a quiet chevron
+   that nudges right on hover like the list's peek arrow. */
+.peek-panel__item--link {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  color: inherit;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.peek-panel__items > li:first-child .peek-panel__item--link { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.peek-panel__items > li:last-child .peek-panel__item--link { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.peek-panel__items > li:only-child .peek-panel__item--link { border-radius: var(--radius-lg); }
+.peek-panel__item--link:hover { background: var(--bg-surface-hover); color: inherit; }
+.peek-panel__item--link:hover .text-muted { color: var(--text-muted); }
+.peek-panel__item--link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.peek-panel__item--link:hover .peek-panel__item-title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border-strong);
+}
+.peek-panel__item-go {
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-right: 2px;
+  border-top: 1.5px solid var(--text-muted);
+  border-right: 1.5px solid var(--text-muted);
+  border-radius: 1px;
+  transform: rotate(45deg);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color var(--duration-fast) var(--ease-out);
+}
+.peek-panel__item--link:hover .peek-panel__item-go {
+  border-color: var(--text-primary);
+  transform: translateX(2px) rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .peek-panel__item-go { transition: none; }
+  .peek-panel__item--link:hover .peek-panel__item-go { transform: rotate(45deg); }
+}
+.peek-panel__item-name { display: flex; flex-direction: column; min-width: 0; }
+/* An order line OpenLinker has not matched to a catalogue product: says why it
+   does not open, instead of looking like a link that is broken. */
+.peek-panel__item-unmapped { font-size: 0.6875rem; color: var(--status-warning-fg); }
+.peek-panel__thumb {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+.peek-panel__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3) var(--space-4); }
+.peek-panel__grid p { margin: 2px 0 0; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.peek-panel__line { display: block; }
+
+/* The "More" panel, as in the mockup: compact head, full-bleed sections with
+   the chevron first. On a phone the sheet keeps the 44px touch targets. */
+.filters-panel .side-panel__head { padding: var(--space-3) var(--space-4); }
+.filters-panel .side-panel__title { font-size: 0.9375rem; }
+.filters-panel .side-panel__body { padding: 0; }
+.filters-panel .filter-section > summary { min-height: 0; padding: var(--space-3) var(--space-4); }
+.filters-panel .filter-section__chev { order: -1; font-size: 0.625rem; }
+.filters-panel .filter-section__title { font-size: 0.8125rem; }
+.filters-panel .filter-section__body { padding: 0 var(--space-4) var(--space-4); }
+.filters-panel .side-panel__foot { justify-content: space-between; padding: var(--space-3) var(--space-4); }
+@media (min-width: 641px) {
+  .filters-panel .filter-section .control,
+  .filters-panel .filter-section select { min-height: 1.875rem; }
+  .filters-panel .filter-section .filter-check { min-height: 0; }
+  .filters-panel .filter-section .segmented-control__option { min-height: 0; }
+}
+/* The app's `.eyebrow` is the accent; the peek's field labels are the quiet
+   mono caps the mockup draws. */
+.peek-panel .eyebrow {
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+}
+.peek-panel__foot { font-size: 0.75rem; }
+.peek-panel__foot .mono { font-family: var(--font-sans); }
+@media (prefers-reduced-motion: reduce) {
+  .status-tabs__indicator,
+  .status-tab { transition: none; }
+  .peek-panel__body { animation: none; }
+}
 @media (max-width: 767.98px) {
   .orders-segments.orders-segments--6 {
     display: flex;
@@ -13585,8 +14635,8 @@ a.kpi-card:focus-visible {
   }
   .orders-segments--6 > * { flex: 0 0 9.5rem; scroll-snap-align: start; }
   .orders-filterbar { flex-wrap: wrap; }
-  .orders-filterbar__search { flex: 1 1 100%; max-width: none; }
-  .orders-filterbar__kbd { display: none; }
+  .list-search { flex: 1 1 100%; max-width: none; }
+  .list-search__kbd { display: none; }
 }
 
 /* ── Surface card used for grouping demos ────────────────────────── */
@@ -14444,6 +15494,18 @@ a.kpi-card:focus-visible {
 .shipments-processor-cell > * {
   max-width: 100%;
 }
+
+/* Method and Paczkomat folded under the Processor badge (#4044). */
+.shipments-processor-cell__method { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shipments-processor-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* A plain label stacked over a sort button in one header (#4044, Processor over Method). */
+.sortstack__label { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.list-table--fixed .shipment-status-cell__error { max-width: 100%; min-width: 0; }
+.shipments-created { font-size: 0.75rem; white-space: nowrap; }
+.shipments-peek-status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.shipment-peek__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.shipment-peek__facts dd { margin: 4px 0 0; }
+.peek-panel__body .shipment-row-detail { padding: 0; }
 
 /* Invoices' Document type cell becomes the tallest thing on the row at tablet
  * width — Regulatory, Clearance ref. AND Connection are all `hideBelow: 1024`,
@@ -23288,25 +24350,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* ── Products cockpit (#1720) ─────────────────────────────────────── */
-/* KPI tiles double as clickable stock/coverage filters - mirrors the orders
-   `.orders-segment` mechanic (a reset button wraps a MetricCard; the active
-   segment gets the chip-active accent treatment). Kept page-namespaced like
-   the orders section; generalizing the pattern is out of scope for #1720. */
-.products-segments { margin-bottom: var(--space-4); grid-auto-rows: minmax(5.5rem, auto); }
-/* Layout only — see `.card-button-reset`, which this element also carries. */
-.products-segment {
-  border-radius: var(--radius-lg);
-}
-.products-segment > .metric-card { height: 100%; }
-.products-segment:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.products-segment--active .metric-card {
-  border-color: var(--accent-primary-border);
-  box-shadow: var(--shadow-focus);
-}
-
 /* Two-line table cells (product identity / source / stock). */
 /* `min-width: 0` + a child cap so the fold's ellipsis can fire: the two prior
    children were bounded in practice (the name has its own ellipsis, the SKU line
@@ -23376,6 +24419,9 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .sortbtn--active { color: var(--text-secondary); }
 .sortbtn__ind { color: var(--text-disabled); font-size: 0.625rem; }
 .sortbtn--active .sortbtn__ind { color: var(--accent-primary); }
+/* Left-aligned stacks (#4027): Product + SKU, Stock. */
+.sortstack--left { align-items: flex-start; }
+.sortstack--left .sortbtn { justify-content: flex-start; min-width: 0; }
 
 /* Per-row "+ Create offers" mini-CTA in the Listings column. */
 /* Re-skinned as a filled mono-caps pill (the mockup's `.row-cta`) instead of
@@ -23450,30 +24496,156 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    mirror the orders-drawer `.ext-link` silhouette (bordered pill, leading
    dot, trailing arrow) - the internal links get the accent-outlined
    treatment, same as "Open order" on the orders cockpit. */
-/* Inset "drawer" panel matching the orders cockpit's `.orders-detail`
-   recessed treatment (#1720 review) - a muted-surface box set apart from
-   the row above, instead of sitting flush against the shared
-   `.data-table__detail` background with no boundary of its own. */
+/* ── Product peek body (#4027 follow-up) ──
+ * Three titled sections, each on a shared primitive: the variants and the
+ * marketplace offers as bordered DataTables, the identifiers as a
+ * KeyValueList. The peek body is already the surface, so this block is not a
+ * second inset box. */
 .products-row-detail {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  background: var(--bg-surface-muted);
+  gap: var(--space-5);
+  min-width: 0;
+}
+.peek-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.peek-section__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.peek-section__count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.peek-section__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+/* A DataTable inside a peek: the bordered surface of `.table-shell`, a notch
+   tighter, and no sticky header (the peek body is the scroller). */
+.peek-table.data-table__container {
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
+.peek-table .data-table th,
+.peek-table .data-table td {
+  padding: var(--space-2) var(--space-3);
+}
+.peek-table .data-table thead th {
+  position: static;
+}
+.peek-table .data-table tbody tr:first-child td {
+  border-top: 0;
+}
 
-/* 4-up field grid (Internal ID / Source external ID / Currency / Stock
-   synced) - same shape as the orders drawer's detail field grid. */
-.products-detail-fields {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-3) var(--space-5);
+/* Order peek items (#4026 follow-up): the product cell carries the thumbnail,
+   name and SKU; a mapped line is a row link to the product's peek. */
+.order-peek-items__product {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
 }
-@media (max-width: 1023.98px) {
-  .products-detail-fields { grid-template-columns: repeat(2, 1fr); }
+.order-peek-items__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
+.order-peek-items__title { font-weight: 550; color: var(--text-primary); }
+.order-peek-items .mono-text { font-size: 0.6875rem; }
+.order-peek-items__total { font-weight: 600; }
+/* A line that opens its product reads as a link before it is hovered: the
+   name in the link colour and a chevron button at the end. Hover adds the
+   underline, an accent ring on the chevron and nudges it right - the same
+   arrow the list rows use to open a peek. */
+.order-peek-items__row--open .order-peek-items__title {
+  color: var(--text-link);
+}
+.order-peek-items__row--open:hover .order-peek-items__title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.order-peek-items__row--open .order-peek-items__go {
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+.order-peek-items__row--open:hover .order-peek-items__go {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+}
+.order-peek-items__row--open:hover .peek-arrow__chevron {
+  transform: translateX(2px) rotate(45deg);
+}
+/* A line with no product to open is not interactive at all. */
+.order-peek-items .order-peek-items__row--static {
+  cursor: default;
+}
+.order-peek-items .order-peek-items__row--static:hover {
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .order-peek-items__row--open:hover .peek-arrow__chevron { transform: rotate(45deg); }
+}
+
+/* Order peek facts: the shared KeyValueList, label column sized to its labels. */
+.peek-facts.key-value-list {
+  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+}
+.peek-facts .key-value-list__label,
+.peek-facts .key-value-list__value {
+  padding: var(--space-2) var(--space-3);
+}
+.peek-facts__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Identifiers: the shared KeyValueList, label column sized to its labels at
+   every width (the peek is narrow even on a wide viewport). */
+.products-detail-fields.key-value-list {
+  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+}
+.products-detail-fields .key-value-list__label,
+.products-detail-fields .key-value-list__value {
+  padding: var(--space-2) var(--space-3);
+}
+.products-detail-fields .key-value-list__label,
+.products-detail-fields .key-value-list__value {
+  display: flex;
+  align-items: center;
+}
+/* The full id, wrapping, rather than a second ellipsis: there is room for it
+   here, and the peek is where an operator goes to read it. */
+.products-detail-fields .copyable-id,
+.peek-facts .copyable-id {
+  max-width: 100%;
+}
+.products-detail-fields .copyable-id__value,
+.peek-facts .copyable-id__value {
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+/* Still used by the analytics variant/channel matrix (#2765). */
+.products-detail-variants { display: flex; flex-direction: column; gap: var(--space-2); }
 .products-detail-field__label {
   font-family: var(--font-mono);
   font-size: 0.625rem;
@@ -23482,25 +24654,46 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
   margin-bottom: 3px;
 }
-.products-detail-field__value { font-size: 0.8125rem; color: var(--text-secondary); }
 
-.products-detail-variants { display: flex; flex-direction: column; gap: var(--space-2); }
-
-/* ── Live marketplace publication status (#1760) ── */
-.products-detail-publication-status { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
-.offer-publication-status__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.offer-publication-status__row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.offer-publication-status__id { font-size: 12px; color: var(--text-muted); }
+/* Marketplace offers (#1760): no offers yet is one quiet line with the next
+   step, not a full empty-state card. */
+.offer-publication-status__empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+.offer-publication-status__empty-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.offer-publication-status__empty-text strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.offer-publication-status__offer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.offer-publication-status__id { font-size: 0.75rem; color: var(--text-secondary); }
 
 /* Every reason an offer cannot sell (#2231): the sentence for the seller, the
-   channel's own code for whoever checks it against the channel's docs. Takes a
-   full row of its own inside the flex-wrapped offer row, so it sits under the
-   badge/id/refresh line rather than squeezing between them. */
+   channel's own code for whoever checks it against the channel's docs. Sits
+   under the offer id inside the Offer cell. */
 .offer-publication-status__problems {
-  flex: 1 1 100%;
   list-style: none;
   margin: 0;
-  padding: var(--space-2) 0 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -23529,45 +24722,24 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   flex: 0 0 auto;
 }
 
-/* Compact per-variant row - attrs/EAN left, stock badge, available/reserved,
-   listings count right. Deliberately NOT the dense VariantStockTable grid
-   (kept for the product-detail page's own accordion); the cockpit's
-   expandable drawer and mobile card need a lighter, flatter row. */
-.products-variant-list { display: flex; flex-direction: column; gap: 6px; }
-.products-variant-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto auto auto;
-  align-items: center;
-  column-gap: var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-}
-@media (max-width: 767.98px) {
-  /* A 2-column grid with 4 DOM children (id / badge / stock / listings)
-     auto-wraps unpredictably - badge and stock ended up squeezed against a
-     wrapping id/meta line. Stack every field as its own full-width line
-     instead - more vertical space, but nothing overlaps or wraps oddly
-     (#1720 review). */
-  .products-variant-row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-  .products-variant-row__id { width: 100%; }
-  .products-variant-row__listings { width: 100%; justify-content: flex-start; }
-}
+/* Variant cells inside the peek's variants table. */
 .products-variant-row__id { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-secondary); }
+.products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-primary); }
 .products-variant-row__meta { font-size: 0.6875rem; color: var(--text-muted); }
-.products-variant-row__stock { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
-.products-variant-row__stock-reserved { margin-left: 4px; font-size: 0.6875rem; color: var(--text-muted); }
+.peek-table td .products-variant-row__meta { max-width: none; overflow: visible; white-space: normal; }
+.products-variant-row__stock-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.products-variant-row__stock { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+.products-variant-row__stock-reserved { margin-left: 4px; font-size: 0.6875rem; font-weight: 400; color: var(--text-muted); }
 .products-variant-row__listings {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
   gap: var(--space-1);
 }
 .products-detail-links {
@@ -23629,93 +24801,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   background: var(--bg-shell);
   font-weight: 600;
   color: var(--text-primary);
-}
-
-/* Mobile card disclosure toggle (#1720) - the heavy per-variant detail (its
-   own queries + the wide variant-stock table) stays collapsed by default;
-   only the tapped card mounts it, mirroring the orders card's chevron. */
-.products-card-disclosure {
-  /* Full reset - the global `button, .button {}` base (height, box-shadow,
-     border, background) otherwise survives and reads as a boxed pill
-     instead of plain disclosure text (#1720 review). */
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: auto;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-}
-.products-card-disclosure:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.products-card-disclosure__chev { color: var(--accent-primary); }
-.products-card-disclosure[aria-expanded='true'] + .products-row-detail {
-  margin-top: var(--space-3);
-}
-
-/* Narrow-viewport (<1024px) filter collapse: a "Filters" toggle in the
-   toolbar opens a stacked panel with Stock / Listings / Source / Sort
-   groups (the chip rail would otherwise wrap into a tall block above the
-   table, and the hidden sortable columns lose their headers). */
-.products-filter-toggle {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-  cursor: pointer;
-}
-.products-filter-toggle:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-.products-filter-toggle--active {
-  border-color: var(--accent-primary-border);
-  color: var(--text-primary);
-}
-.products-filter-toggle__count {
-  min-width: 1.25rem;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
-  color: var(--text-inverse);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  text-align: center;
-}
-.products-filter-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
-  margin-bottom: var(--space-3);
-}
-.products-filter-panel__group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-items: flex-start;
-}
-.products-filter-panel__label {
-  font-size: 0.6875rem;
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
 }
 
 /* ── RoutingSplitBar (#1739) ──────────────────────────────────────────
@@ -24290,32 +25375,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
-/* ── Listings toolbar wrap opt-in (#2030) ────────────────────────────────────
-   `.toolbar` / `.toolbar__group` stay `nowrap` by default (see the comment on
-   `.orders-toolbar` below) because most toolbars fit their controls on one
-   row. This page's toolbar (search + channel select + Clear) doesn't at
-   tablet/phone widths, so it opts in the same way `.orders-toolbar` does:
-   wrap the toolbar itself, and wrap its `.toolbar__group` child so the
-   search/select pair inside it can also drop onto their own lines rather
-   than being squeezed into a single nowrap row. */
-.listings-toolbar {
-  flex-wrap: wrap;
-}
-.listings-toolbar .toolbar__group {
-  flex-wrap: wrap;
-}
-/* `.toolbar`'s base `justify-content: space-between` only right-anchors Clear
-   while it shares a line with `.toolbar__group`. The moment the row above
-   wraps, Clear becomes the lone item on its own line, and `space-between`
-   degrades to `flex-start` per the flexbox spec - stranding it at the LEFT
-   edge instead. `.orders-toolbar` never hit this because it has no separate
-   Clear sibling (all its controls sit inside one `.toolbar__group`). `margin
-   -left: auto` absorbs the leftover space itself, so Clear stays right-
-   anchored whether it's sharing a line or wrapped onto its own. */
-.listings-toolbar > .button {
-  margin-left: auto;
-}
-
 /* ── Listings table row anatomy (#2028) ──────────────────────────────────────
    Transcribed from the #1965 mockup: a listing row leads with the catalog
    product name, groups its three identifiers on a second line, and keeps the
@@ -24457,23 +25516,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
-/* Shop-level channel problems, carried once per connection above the table
-   (#2231) instead of on every row that repeats them. */
-.listings-connection-notice {
-  margin-bottom: var(--space-3);
-}
-.listings-connection-notice__problems {
-  list-style: none;
-  margin: var(--space-1) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.listings-connection-notice__code {
-  margin-left: var(--space-2);
-  font-size: 0.625rem;
-  color: var(--text-disabled);
+/* ── Listings on the list filter system (#4046) ── */
+.listings-head-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.seg-count { margin-left: 4px; font-size: 0.6875rem; color: var(--text-muted); }
+.segmented-control__option--active .seg-count { color: inherit; opacity: 0.8; }
+.price-changes-queue .list-filters { margin-top: var(--space-2); }
+.attention-note__block { display: flex; flex-direction: column; gap: var(--space-2); }
+.attention-note__block + .attention-note__block { padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.attention-note__problems { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 0.8125rem; color: var(--text-secondary); }
+.attention-note__problems .problem-line__code { margin-left: var(--space-2); font-size: 0.6875rem; color: var(--text-muted); }
+.listing-peek__id { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.listing-peek__id .peek-panel__title-link { font-family: var(--font-sans); }
+.listing-peek__price { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 0.75rem; }
+.listing-peek__badges,
+.listing-peek__on-channel { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.listing-peek__reason { padding: var(--space-3); border-left: 3px solid var(--status-error); border-radius: var(--radius-sm); background: var(--status-error-soft); }
+.listing-peek__reason p { margin: 4px 0 0; font-size: 0.8125rem; color: var(--text-primary); }
+.listing-peek__reason--muted { border-left-color: var(--border-strong); background: var(--bg-surface-muted); }
+.listing-peek__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.listing-peek__facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+/* Product photos beside the state card in a peek (#4046 follow-up). */
+.peek-panel__media { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.peek-panel__media .product-gallery { width: 100%; }
+@media (max-width: 640px) {
+  .peek-panel__media { grid-template-columns: minmax(0, 1fr); }
+  .peek-panel__media .product-gallery { width: 12rem; }
 }
 
 /* Mobile card head (#1965 frame 05): at 360px the name is what the card is

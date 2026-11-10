@@ -1045,6 +1045,7 @@ describe('ProductsController', () => {
         taxRateState: 'missing',
         hideFullyStale: true,
         bundleFilter: 'only',
+        productId: undefined,
         unlistedOnConnectionIds: ['22222222-2222-4222-8222-222222222222'],
       });
       expect(counted).toEqual({ total: 42 });

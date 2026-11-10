@@ -411,6 +411,19 @@ export const ORDER_FILTER_PARAMS: readonly string[] = NARROWING_ORDER_FILTER_KEY
   (key) => ORDER_FILTER_DESCRIPTORS[key].param,
 );
 
+/**
+ * Filters with a pinned control in the orders toolbar (#4026): search, the
+ * Source / Ship-by dropdowns and Stage. The "Filters (n)" badge counts the rest.
+ * Kept here, in a `.ts` module, because the UI-vocabulary scan reads generic
+ * angle brackets in a `.tsx` as JSX text.
+ */
+export const ORDER_TOOLBAR_PINNED_FILTER_KEYS: ReadonlySet<NarrowingOrderFilterKey> = new Set<NarrowingOrderFilterKey>([
+  'search',
+  'sourceConnectionId',
+  'slaState',
+  'phase',
+]);
+
 /** Is this key counted in "Filters (n)" and shown as a removable chip? */
 export function isCountedFilter(key: NarrowingOrderFilterKey): boolean {
   return !UNCOUNTED_GROUPS.has(ORDER_FILTER_DESCRIPTORS[key].group);

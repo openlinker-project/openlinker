@@ -72,6 +72,17 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_paymentWritebackProblem', ['paymentWritebackProblem'], {
   where: '"paymentWritebackProblem" = true',
 })
+// #4025: the orders list's "newest first" sort is `placedAt DESC NULLS LAST`.
+// The plain `placedAt` index above is ASC NULLS LAST, whose backward scan yields
+// DESC NULLS FIRST - the wrong null position, so the planner cannot use it for a
+// LIMIT and sorts the whole scope instead. The migration builds this index as
+// `("placedAt" DESC NULLS LAST)`. TypeORM's `@Index` cannot express a sort order
+// and does not compare one, so the declaration here carries only the name and
+// column: it keeps a future `migration:generate` from dropping the index, and
+// gives the `synchronize`-built test schema an index of the same name. That
+// schema's index is therefore ASCENDING under this name: a migration-parity spec
+// on `order_records` must compare this index by name, not by definition.
+@Index('IDX_order_records_placedAt_desc', ['placedAt'])
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;

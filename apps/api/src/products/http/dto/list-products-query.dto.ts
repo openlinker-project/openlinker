@@ -122,6 +122,16 @@ export class ListProductsQueryDto extends PaginatedReadQueryDto {
   @IsIn(ProductBundleFilterValues)
   bundles?: ProductBundleFilter;
 
+  @ApiPropertyOptional({
+    description:
+      'Exactly this product (internal id, ol_product_...). Opens one product with the list-shaped ' +
+      'row (stock aggregates, listings coverage) the single-product detail read does not carry.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  productId?: string;
+
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()
   @Type(() => Number)
