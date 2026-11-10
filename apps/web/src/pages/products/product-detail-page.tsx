@@ -31,6 +31,10 @@ import { useConnectionsQuery, type Connection } from '../../features/connections
 import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { useBundleQuery } from '../../features/bundles/hooks/use-bundle-queries';
+import { BundleGuide } from '../../features/bundles/components/bundle-guide';
+import { BundleProductView } from '../../features/bundles/components/bundle-product-view';
+import { GuideTrigger } from '../../shared/ui/help-hint';
+import { useGuideShortcut } from '../../shared/ui/guide-drawer';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
 import {
@@ -113,6 +117,8 @@ export function ProductDetailPage(): ReactElement {
   // bundle still offers the action.
   const bundleProbe = useBundleQuery(query.data?.variants?.[0]?.id);
   const isBundle = bundleProbe.isSuccess;
+  const [guideOpen, setGuideOpen] = useState(false);
+  useGuideShortcut(() => { setGuideOpen(true); }, isBundle);
   const [adjustTarget, setAdjustTarget] = useState<StockAdjustTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const offerCreatorConnections = useMemo<Connection[]>(
@@ -241,11 +247,48 @@ export function ProductDetailPage(): ReactElement {
 
   return (
     <PageLayout
-      backTo={{ to: '/products', label: copy.backToProducts, 'data-testid': 'stock-back-to-products' }}
-      eyebrow={copy.eyebrow}
-      title={<EntityLabel id={product.id} name={product.name} />}
+      backTo={{ to: '/products', label: isBundle ? bundleCopy.view.back : copy.backToProducts, 'data-testid': 'stock-back-to-products' }}
+      eyebrow={isBundle ? bundleCopy.view.eyebrow : copy.eyebrow}
+      title={
+        isBundle ? (
+          <span className="pm-title">
+            {product.name}
+            {stockStatus !== null ? (
+              <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
+                {STOCK_STATUS_LABEL[stockStatus]}
+              </StatusBadge>
+            ) : null}
+            <span className="cx-tag">{bundleCopy.view.bundleTag}</span>
+          </span>
+        ) : (
+          <EntityLabel id={product.id} name={product.name} />
+        )
+      }
+      description={
+        isBundle ? (
+          <>
+            {bundleCopy.view.description}
+            <span className="pm-meta">
+              <span className="pm-hint">{bundleCopy.view.sku}</span>
+              <span className="mono">{product.sku ?? '—'}</span>
+            </span>
+          </>
+        ) : undefined
+      }
       actions={
-        isBundle ? undefined : bundleWrite.canWrite ? (
+        isBundle ? (
+          <span className="page-header__actions--row">
+            <GuideTrigger label={bundleCopy.guide.trigger} onClick={() => { setGuideOpen(true); }} />
+            <Link className="button button--secondary button--sm" to={`/listings/bulk-create/wizard?${new URLSearchParams({ productIds: product.id, variantIds: variants[0]?.id ?? '' }).toString()}`} data-testid="bundle-view-list-offer">
+              {bundleCopy.view.listOffer}
+            </Link>
+            {bundleWrite.canWrite ? (
+              <Link className="button button--sm" to={`/products/bundles/${encodeURIComponent(variants[0]?.id ?? '')}`} data-testid="bundle-view-edit">
+                {bundleCopy.view.editComposition}
+              </Link>
+            ) : null}
+          </span>
+        ) : bundleWrite.canWrite ? (
           <Link
             className="button button--secondary"
             to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
@@ -274,6 +317,10 @@ export function ProductDetailPage(): ReactElement {
         </TabsList>
 
         <TabsContent value={VIEW_OVERVIEW}>
+          {isBundle && variants[0] ? (
+            <BundleProductView bundleVariantId={variants[0].id} productId={product.id} />
+          ) : (
+          <>
           <section className="product-detail-hero" aria-label={copy.hero.label}>
             <ProductGallery images={product.images ?? []} name={product.name} productId={product.id} />
             <div className="product-detail-hero__body">
@@ -530,6 +577,8 @@ export function ProductDetailPage(): ReactElement {
             selectedVariantId={historyVariantId}
             onSelectedVariantChange={setHistoryVariantId}
           />
+          </>
+          )}
         </TabsContent>
 
         <TabsContent value={VIEW_CONTENT}>
@@ -552,6 +601,7 @@ export function ProductDetailPage(): ReactElement {
           goToWizard(connectionId);
         }}
       />
+      {isBundle ? <BundleGuide open={guideOpen} onOpenChange={setGuideOpen} /> : null}
     </PageLayout>
   );
 }
