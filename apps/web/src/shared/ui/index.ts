@@ -164,6 +164,8 @@ export { MotionPopover, useAnchoredPopover, anchoredPosition } from './motion-po
 export type { MotionPopoverProps, AnchoredPopover, PopoverPlacement } from './motion-popover';
 export { OptionList } from './option-list';
 export type { OptionListItem, OptionListProps } from './option-list';
+export { DescribedSelect } from './described-select';
+export type { DescribedSelectOption, DescribedSelectProps } from './described-select';
 export { SegmentedSwitch } from './segmented-switch';
 export type {
   SegmentedSwitchLabels,

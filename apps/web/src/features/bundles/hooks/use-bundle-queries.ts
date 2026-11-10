@@ -5,7 +5,7 @@
  */
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { bundlesQueryKeys } from '../api/bundles.query-keys';
-import type { BundleDetail, BundleHistoryEntry, BundleUsedIn } from '../api/bundles.types';
+import type { BundleCreationTarget, BundleDetail, BundleHistoryEntry, BundleUsedIn } from '../api/bundles.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { ApiError } from '../../../shared/api/api-error';
 
@@ -58,5 +58,16 @@ export function useBundleUsedInManyQuery(
     enabled: variantIds.length > 0,
     retry: false,
     staleTime: 30_000,
+  });
+}
+
+/** The product masters and whether each can create a bundle product (#3935). */
+export function useBundleCreationTargetsQuery(): UseQueryResult<BundleCreationTarget[], ApiError> {
+  const apiClient = useApiClient();
+  return useQuery<BundleCreationTarget[], ApiError>({
+    queryKey: bundlesQueryKeys.creationTargets,
+    queryFn: () => apiClient.bundles.creationTargets(),
+    retry: false,
+    staleTime: 60_000,
   });
 }
