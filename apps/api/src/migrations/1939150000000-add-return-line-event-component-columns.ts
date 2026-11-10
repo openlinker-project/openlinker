@@ -12,8 +12,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddReturnLineEventComponentColumns1938650000000 implements MigrationInterface {
-  name = 'AddReturnLineEventComponentColumns1938650000000';
+export class AddReturnLineEventComponentColumns1939150000000 implements MigrationInterface {
+  name = 'AddReturnLineEventComponentColumns1939150000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "return_line_events" ADD "componentVariantId" text`);

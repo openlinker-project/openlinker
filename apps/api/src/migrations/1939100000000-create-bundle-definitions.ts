@@ -22,8 +22,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateBundleDefinitions1938600000000 implements MigrationInterface {
-  name = 'CreateBundleDefinitions1938600000000';
+export class CreateBundleDefinitions1939100000000 implements MigrationInterface {
+  name = 'CreateBundleDefinitions1939100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
