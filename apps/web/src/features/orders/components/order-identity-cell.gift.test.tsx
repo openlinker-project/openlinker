@@ -20,4 +20,16 @@ describe('OrderIdentityCell gift mark', () => {
 
     expect(screen.queryByTestId('orders-gift-row-icon-ol_order_1')).not.toBeInTheDocument();
   });
+
+  it('should keep the marks off the order-number line so they never squeeze it', () => {
+    const { container } = renderWithProviders(
+      <OrderIdentityCell orderId="ol_order_1" orderNumber="NSSHROGZY" firstItemName="Coffee" hasGift hasBundle />,
+    );
+
+    const headline = container.querySelector('.order-cell__headline');
+    const marks = container.querySelector('.orders-marks-line');
+    expect(headline).toHaveTextContent('NSSHROGZY');
+    expect(headline?.querySelector('.orders-mark')).toBeNull();
+    expect(marks?.querySelectorAll('.orders-mark')).toHaveLength(2);
+  });
 });

@@ -36947,6 +36947,8 @@ legend.analytics-settings-dialog__label {
 
 /* ── Orders list: gift / bundle quick filter and row marks (#3935) ───────── */
 .order-cell__headline { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
+/* The marks sit on their own line so the order number is never squeezed or overlapped (#3935). */
+.orders-marks-line { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .orders-mark {
   flex: none;
   padding: 1px var(--space-2);

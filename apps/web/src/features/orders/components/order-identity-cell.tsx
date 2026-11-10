@@ -210,9 +210,13 @@ export function OrderIdentityCell({
             to={`/orders/${orderId}`}
             onNavigate={onNavigate}
           />
-          {hasBundle ? <MarkChip kind="bundle" text={bundleCopy.order.bundleMark} label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
-          {hasGift ? <MarkChip kind="gift" text={bundleCopy.order.giftMark} label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
         </span>
+        {hasBundle || hasGift ? (
+          <span className="orders-marks-line">
+            {hasBundle ? <MarkChip kind="bundle" text={bundleCopy.order.bundleMark} label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
+            {hasGift ? <MarkChip kind="gift" text={bundleCopy.order.giftMark} label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
+          </span>
+        ) : null}
         {itemName ? (
           <span className="orders-items-line">
             <span className="text-muted orders-cell-sub orders-items-preview" title={itemName}>
