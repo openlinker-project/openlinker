@@ -211,6 +211,7 @@ import {
   parseTriggerModel,
 } from '../../domain/types/invoice-trigger.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
+import { invoiceIdempotencyKey } from '../../domain/types/invoice-idempotency-key.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { toSalesDocumentOrderFacts } from '../mappers/order-to-sales-document-order-facts.mapper';
 import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
@@ -1054,7 +1055,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
       // F4: compose the deterministic key ONCE and thread it into BOTH the
       // job-row idempotencyKey AND payload.idempotencyKey.
-      const idempotencyKey = `invoice:${connection.id}:${order.id}`;
+      const idempotencyKey = invoiceIdempotencyKey(connection.id, order.id);
       // #1694: resolve the source connection's neutral platformType for the
       // per-source numbering axis. Best-effort — a lookup failure leaves it
       // absent (routing falls back past the source axis), never aborting issuance.

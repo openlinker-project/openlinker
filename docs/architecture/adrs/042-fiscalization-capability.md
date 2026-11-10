@@ -343,6 +343,21 @@ Designing the operator surfaces for a fiscal receipt (#2513) found four places w
 
 **What this amendment does not touch.** Exactly-once registration is the constraint all four decisions are bounded by: none of them may create a second path that crosses the provider boundary, and the artefact projection added alongside them carries no content and asserts no delivery - it exposes what an artefact IS (its medium, its label, its content type) and what the adapter INTENDS for it (its disposition hint), never the payload and never the fact of arrival. The distinction is the load-bearing one: a `send` disposition records that the adapter meant the artefact to be sent, and no shipped adapter reports whether a document reached a buyer, so nothing built on this projection may claim it did.
 
+## Amendment (#3960, 2026-11-05): a refusal is final under its key; asking again is a new attempt
+
+Decision 6 said a terminal `rejected` failure "is re-attemptable under the same key". In practice that re-attempt could not happen, and where it could it did nothing useful.
+
+- **The job never ran again.** A manual request schedules `fiscalization.register` under the permanent key `fiscal:{connectionId}:{orderId}`, and scheduling is create-or-return. A rejection is a terminal RECORD state, so the job that recorded it ended `succeeded`; only a `dead` job was re-driven. The request answered `202` with the old job id and nothing reached the provider.
+- **The provider would have refused it again.** A provider may keep one document per key: eparagony allows one document per `documentToken`, ever (its error 118), and derives the token from `(connectionId, idempotencyKey)`. A same-key retry meets the document it already refused.
+
+**Decision.** A refused record is **final under its key**. Asking again starts a **new attempt**: its own record under its own key, `{root}:r{n}` (`withAttemptSuffix`, `@openlinker/core/sales-documents`). Attempt 0 is the bare root key, so every key, record and provider token written before this amendment is unchanged. The records carry `attempt` and `previousAttemptId`; a partial unique index on `previousAttemptId` lets a refused attempt have at most one successor.
+
+**Exactly-once is unchanged in substance.** A new attempt starts only after a terminal refusal, which by definition created nothing at the provider; `registered`, an in-flight lease and `in-doubt` never get one. The claim no longer matches a `failed` row at all, which also closes a hazard the old rule had: a stale re-run of an old attempt crossing the boundary after a newer attempt registered the sale. Reconcile and locate keep using the key stored on each attempt's own record, so an in-doubt attempt is looked up under the token it was actually sent with. A job still queued under a refused attempt's key (enqueued before this amendment) sends nothing: `register` raises `FiscalRegistrationAttemptClosedException` and the worker ends the job as a terminal `business_failure`, never a retry and never a plain `ok`. The order is not stranded by it, because a new request derives the next attempt's key from the refused record and neither joins nor waits on the stale job.
+
+**A request never answers success for nothing.** `POST /fiscal-registrations` reports what it did (`outcome`: `new-attempt` | `joined` | `redriven` | `resumed`, plus `attempt` and `previousAttemptId`). A request that would change nothing, an unfinished attempt whose job already finished, is refused with 409.
+
+The same rule applies to an operator retry of a refused invoice; see the #3960 note on [ADR-026](./026-country-agnostic-invoicing-domain.md).
+
 ## References
 
 - Related issues: #1902 (parent), #1908 (capability + adapter), #1910 (device sub-capability),

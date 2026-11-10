@@ -45,6 +45,11 @@ import type { FiscalProviderFailureDetails } from '../../../domain/types/fiscal-
   ['connectionId', 'idempotencyKey'],
   { unique: true },
 )
+// One successor per refused attempt (#3960). Partial: a first attempt has none.
+@Index('UQ_fiscal_registration_records_previous_attempt', ['previousAttemptId'], {
+  unique: true,
+  where: '"previousAttemptId" IS NOT NULL',
+})
 export class FiscalRegistrationRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -122,6 +127,18 @@ export class FiscalRegistrationRecordOrmEntity {
    */
   @Column({ type: 'timestamptz', nullable: true })
   leaseExpiresAt!: Date | null;
+
+  /** 0-based attempt number at this (connection, order) document (#3960). */
+  @Column({ type: 'int', default: 0 })
+  attempt!: number;
+
+  /**
+   * The refused attempt this one follows (#3960). Unique when set, so a refused
+   * attempt has at most one successor even if two requests raced past the
+   * per-order lock.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  previousAttemptId!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

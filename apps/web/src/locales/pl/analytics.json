@@ -734,6 +734,76 @@
       "status": "Status",
       "updated": "Zmieniono"
     },
+    "connectionHealth": {
+      "caption": "Stan połączeń",
+      "columns": {
+        "connection": "Połączenie",
+        "failedJobs": "Nieudane zadania w tle",
+        "platform": "Platforma",
+        "status": "Status"
+      },
+      "failedJobs": {
+        "few": "{n} nieudane zadania w tle",
+        "many": "{n} nieudanych zadań w tle",
+        "one": "{n} nieudane zadanie w tle",
+        "other": "{n} nieudanego zadania w tle"
+      },
+      "failedJobsOn": {
+        "few": "{n} nieudane zadania w tle w połączeniu {name}",
+        "many": "{n} nieudanych zadań w tle w połączeniu {name}",
+        "one": "{n} nieudane zadanie w tle w połączeniu {name}",
+        "other": "{n} nieudanego zadania w tle w połączeniu {name}"
+      },
+      "legend": {
+        "attention": {
+          "few": "{n} wymagają uwagi",
+          "many": "{n} wymaga uwagi",
+          "one": "{n} wymaga uwagi",
+          "other": "{n} wymaga uwagi"
+        },
+        "disabled": {
+          "few": "{n} wyłączone",
+          "many": "{n} wyłączonych",
+          "one": "{n} wyłączone",
+          "other": "{n} wyłączonego"
+        },
+        "healthy": {
+          "few": "{n} sprawne",
+          "many": "{n} sprawnych",
+          "one": "{n} sprawne",
+          "other": "{n} sprawnego"
+        }
+      },
+      "none": "Brak",
+      "status": {
+        "active": "Aktywne",
+        "archived": "Zarchiwizowane",
+        "disabled": "Wyłączone",
+        "error": "Błąd",
+        "needsReauth": "Wymaga autoryzacji"
+      },
+      "summary": {
+        "cannotReach": {
+          "few": "Brak nieudanych zadań w tle, ale {attention} z {n} połączeń nie ma dostępu do swojej platformy.",
+          "many": "Brak nieudanych zadań w tle, ale {attention} z {n} połączeń nie ma dostępu do swojej platformy.",
+          "one": "Brak nieudanych zadań w tle, ale {attention} z {n} połączenia nie ma dostępu do swojej platformy.",
+          "other": "Brak nieudanych zadań w tle, ale {attention} z {n} połączenia nie ma dostępu do swojej platformy."
+        },
+        "noFailedJobs": {
+          "few": "Żadne z {n} połączeń nie ma nieudanych zadań w tle.",
+          "many": "Żadne z {n} połączeń nie ma nieudanych zadań w tle.",
+          "one": "{n} połączenie nie ma nieudanych zadań w tle.",
+          "other": "Żadne z {n} połączenia nie ma nieudanych zadań w tle."
+        },
+        "onlyConnectionFailed": "Jedyne połączenie ma zadania w tle, które przestały być ponawiane.",
+        "withFailedJobs": {
+          "few": "{n} z {total} połączeń mają zadania w tle, które przestały być ponawiane.",
+          "many": "{n} z {total} połączeń ma zadania w tle, które przestały być ponawiane.",
+          "one": "{n} z {total} połączeń ma zadania w tle, które przestały być ponawiane.",
+          "other": "{n} z {total} połączeń ma zadania w tle, które przestały być ponawiane."
+        }
+      }
+    },
     "connections": {
       "configured": "Skonfigurowane: {n}",
       "errorTitle": "Nie udało się wczytać połączeń",
@@ -756,12 +826,6 @@
     },
     "description": "Monitoruj kondycję integracji, stan zależności i aktywność połączeń w jednym miejscu.",
     "eyebrow": "Przegląd",
-    "failingJobs": {
-      "few": "{n} nieudane zadania w tle",
-      "many": "{n} nieudanych zadań w tle",
-      "one": "{n} nieudane zadanie w tle",
-      "other": "{n} nieudanego zadania w tle"
-    },
     "health": {
       "degraded": "Obniżona sprawność",
       "error": "Błąd",
@@ -798,6 +862,7 @@
     },
     "infraNodeWithName": "{platform} ({name})",
     "infrastructure": {
+      "checked": "Sprawdzono",
       "errorTitle": "Kontrola kondycji nie powiodła się",
       "eyebrow": "Infrastruktura",
       "loadingMessage": "Sprawdzanie zależności…",
@@ -832,7 +897,6 @@
     "retry": "Ponów",
     "retryAria": "Ponów - {signature}",
     "retrying": "Ponawianie…",
-    "serviceWithName": "{platform} - {name}",
     "setup": {
       "addCostPrices": "Dodaj ceny zakupu",
       "eyebrow": "Konfiguracja",
@@ -862,6 +926,61 @@
       "running": "w toku",
       "succeeded": "zakończone",
       "warning": "ostrzeżenie"
+    },
+    "systemHealth": {
+      "connectedSystems": "Połączone systemy",
+      "coreServices": "Usługi podstawowe",
+      "legend": {
+        "failing": {
+          "few": "{n} z błędem",
+          "many": "{n} z błędem",
+          "one": "{n} z błędem",
+          "other": "{n} z błędem"
+        },
+        "ok": {
+          "few": "{n} OK",
+          "many": "{n} OK",
+          "one": "{n} OK",
+          "other": "{n} OK"
+        },
+        "warning": {
+          "few": "{n} z ostrzeżeniem",
+          "many": "{n} z ostrzeżeniem",
+          "one": "{n} z ostrzeżeniem",
+          "other": "{n} z ostrzeżeniem"
+        }
+      },
+      "status": {
+        "error": "Błąd",
+        "ok": "OK",
+        "warning": "Ostrzeżenie"
+      },
+      "summary": {
+        "allPassing": {
+          "few": "Wszystkie kontrole ({n}) przechodzą pomyślnie.",
+          "many": "Wszystkie kontrole ({n}) przechodzą pomyślnie.",
+          "one": "Kontrola ({n}) przechodzi pomyślnie.",
+          "other": "Wszystkie kontrole ({n}) przechodzą pomyślnie."
+        },
+        "failing": {
+          "few": "Błędy: {failing} z {n} kontroli.",
+          "many": "Błędy: {failing} z {n} kontroli.",
+          "one": "Błąd: {failing} z {n} kontroli.",
+          "other": "Błędy: {failing} z {n} kontroli."
+        },
+        "failingWithWarnings": {
+          "few": "Błędy: {failing} z {n} kontroli, ostrzeżenia: {warning}.",
+          "many": "Błędy: {failing} z {n} kontroli, ostrzeżenia: {warning}.",
+          "one": "Błędy: {failing} z {n} kontroli, ostrzeżenia: {warning}.",
+          "other": "Błędy: {failing} z {n} kontroli, ostrzeżenia: {warning}."
+        },
+        "warnings": {
+          "few": "Ostrzeżenia: {warning} z {n} kontroli.",
+          "many": "Ostrzeżenia: {warning} z {n} kontroli.",
+          "one": "Ostrzeżenia: {warning} z {n} kontroli.",
+          "other": "Ostrzeżenia: {warning} z {n} kontroli."
+        }
+      }
     },
     "title": "Przegląd operacji",
     "toast": {

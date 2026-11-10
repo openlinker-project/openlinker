@@ -1105,6 +1105,9 @@ export function createMockApiClient(
       undoLastScan: vi
         .fn<BenchApi['undoLastScan']>()
         .mockRejectedValue(new Error('bench.undoLastScan not stubbed')),
+      confirmSourceChangeTakenOut: vi
+        .fn<BenchApi['confirmSourceChangeTakenOut']>()
+        .mockRejectedValue(new Error('bench.confirmSourceChangeTakenOut not stubbed')),
       pingPresence: vi
         .fn<BenchApi['pingPresence']>()
         .mockRejectedValue(new Error('bench.pingPresence not stubbed')),

@@ -97,7 +97,7 @@ export {
   toIssueInvoiceCommand,
   OrderToIssueInvoiceCommandInput,
 } from './application/mappers/order-to-issue-invoice-command.mapper';
-export { IInvoiceService } from './application/services/invoice.service.interface';
+export { IInvoiceService, IssueInvoiceOptions } from './application/services/invoice.service.interface';
 export { InvoiceService } from './application/services/invoice.service';
 // Per-order issuance lock key + TTL (#2047), reused verbatim by
 // FiscalRegistrationService (#2157) so both write paths serialize under the
@@ -142,3 +142,5 @@ export type { INumberingSeriesService } from './application/services/numbering-s
 export { NumberingSeriesService } from './application/services/numbering-series.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';
+// #3960 - one derivation of the invoice exactly-once key and its retry root.
+export * from './domain/types/invoice-idempotency-key.types';

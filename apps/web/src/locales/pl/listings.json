@@ -30,6 +30,96 @@
   "alreadyListedChip": {
     "label": "już w {destination}"
   },
+  "attributeRules": {
+    "chip": {
+      "fromRules": {
+        "few": "{n} z reguł",
+        "many": "{n} z reguł",
+        "one": "{n} z reguł",
+        "other": "{n} z reguł"
+      },
+      "notOnList": "„{value}” spoza listy wartości {destination}",
+      "rejectedCount": {
+        "few": "Odrzucono {n} wartości z reguł",
+        "many": "Odrzucono {n} wartości z reguł",
+        "one": "Odrzucono {n} wartość z reguł",
+        "other": "Odrzucono {n} wartości z reguł"
+      },
+      "rejectedOne": "Odrzucono: {parameter}"
+    },
+    "coverageLabel": "Parametry uzupełniane przez reguły",
+    "editor": {
+      "badgeRejected": "wartość z reguły odrzucona",
+      "badgeRule": "z reguły",
+      "baseNote": "Pozostawione puste wypełnią twoje reguły atrybutów: {names}.",
+      "baseNotePerVariant": "Pozostawione puste wypełnią twoje reguły atrybutów dla każdego wariantu: {names}.",
+      "context": "Parametry z twoich reguł atrybutów: {filled} z {total}.",
+      "inheritFromRule": "Z reguły ({value})",
+      "partial": {
+        "few": "Reguły wypełniają to pole dla {filled} z {n} wariantów.",
+        "many": "Reguły wypełniają to pole dla {filled} z {n} wariantów.",
+        "one": "Reguły wypełniają to pole dla {filled} z {n} wariantu.",
+        "other": "Reguły wypełniają to pole dla {filled} z {n} wariantu."
+      },
+      "rejectedHint": "{destination} nie akceptuje wartości „{value}” z twoich reguł. Wybierz wartość.",
+      "rejectedSome": {
+        "few": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantów.",
+        "many": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantów.",
+        "one": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantu.",
+        "other": "{destination} nie akceptuje wartości z reguł dla {rejected} z {n} wariantu."
+      },
+      "replacesHint": "Zastępuje wartość z reguły „{value}”",
+      "ruleValue": "Wartość z reguły: {value}"
+    },
+    "failed": {
+      "few": "Nie udało się sprawdzić reguł dla {n} wariantów. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste.",
+      "many": "Nie udało się sprawdzić reguł dla {n} wariantów. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste.",
+      "one": "Nie udało się sprawdzić reguł dla {n} wariantu. Do czasu udanego sprawdzenia jego wymagane parametry są traktowane jako puste.",
+      "other": "Nie udało się sprawdzić reguł dla {n} wariantu. Do czasu udanego sprawdzenia ich wymagane parametry są traktowane jako puste."
+    },
+    "fix": "Popraw",
+    "fixLabel": "Popraw parametr {parameter} dla wariantu {variant}",
+    "lede": "Uzupełniane przy tworzeniu ofert. Wartość ustawiona ręcznie ma pierwszeństwo.",
+    "ledePerVariant": "Uzupełniane przy tworzeniu ofert, osobno dla każdego wariantu. Wartość ustawiona ręcznie ma pierwszeństwo.",
+    "manage": "Zarządzaj regułami",
+    "more": {
+      "few": "i jeszcze {n} wartości",
+      "many": "i jeszcze {n} wartości",
+      "one": "i jeszcze {n} wartość",
+      "other": "i jeszcze {n} wartości"
+    },
+    "notChecked": "Jeszcze nie sprawdzono.",
+    "origin": {
+      "copied": "Skopiowano z atrybutu „{attribute}” przez twoje reguły atrybutów",
+      "copiedTranslated": "Skopiowano z atrybutu „{attribute}” i przetłumaczono przez twoje reguły atrybutów",
+      "fixed": "Stała wartość z twoich reguł atrybutów",
+      "mapping": "Z twojego mapowania atrybutów",
+      "placeSource": {
+        "ean": "EAN",
+        "manufacturer": "producent",
+        "name": "nazwa produktu",
+        "sku": "SKU",
+        "variant": "nazwa wariantu",
+        "weight": "waga"
+      },
+      "placed": "Pole produktu ({field}) wstawione przez twoje reguły atrybutów",
+      "placedUnknown": "Pole produktu wstawione przez twoje reguły atrybutów",
+      "rule": "Z twoich reguł atrybutów"
+    },
+    "parameterList": {
+      "few": "{names} i jeszcze {n}",
+      "many": "{names} i jeszcze {n}",
+      "one": "{names} i jeszcze {n}",
+      "other": "{names} i jeszcze {n}"
+    },
+    "pill": "{name}: uzupełniono {filled} z {total}",
+    "pillRejected": "{name}: uzupełniono {filled} z {total}, niezaakceptowane: {rejected}",
+    "rejectedLabel": "Wartości, których {destination} nie akceptuje",
+    "rejectedRowLabel": "Popraw: {destination} nie akceptuje: {names}",
+    "rejectedValue": "{destination} nie akceptuje wartości „{value}”",
+    "retry": "Spróbuj ponownie",
+    "title": "Reguły atrybutów"
+  },
   "autoPrefillParameters": {
     "unmatchedBrand": "Marka wariantu \"{brand}\" - brak dokładnego dopasowania na liście marek marketplace; wybierz ręcznie."
   },
@@ -175,8 +265,54 @@
     "validating": "Walidacja w marketplace…"
   },
   "bulkBlockers": {
+    "allegro": {
+      "eanUnverified": {
+        "detail": "Kod może być poprawny. Możesz opublikować mimo to; sprawdź kod, jeśli to niespodziewane.",
+        "title": "Tego kodu kreskowego nie ma w katalogu Allegro."
+      },
+      "inStoreBarcode": {
+        "detail": "Takie kody służą do użytku wewnątrz jednego sklepu. Możesz opublikować mimo to.",
+        "title": "Ten kod wygląda na kod wewnętrzny sklepu, a nie kod produktu."
+      },
+      "needsProductParameters": {
+        "allFilledDetail": "Zapisz, żeby zdjąć tę blokadę.",
+        "allFilledTitle": "Każdy wymagany parametr produktu ma już wartość.",
+        "listDetail": "Wybierz parametr, żeby przejść do jego pola.",
+        "listTitle": {
+          "few": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "many": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "one": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:",
+          "other": "Allegro potrzebuje {n} parametru produktu, żeby utworzyć kartę produktu dla tego wariantu:"
+        },
+        "notCheckedDetail": "Lista pojawi się w edytorze, gdy wczytają się parametry kategorii.",
+        "notCheckedTitle": "Allegro potrzebuje parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu.",
+        "notLoadedDetail": "Dlatego OpenLinker nie wie, których brakuje. Wczytaj parametry ponownie albo wybierz kategorię jeszcze raz.",
+        "notLoadedTitle": "Allegro wymaga parametrów produktu w tej kategorii, ale nie udało się wczytać ich listy."
+      },
+      "noPhoto": {
+        "detail": "Allegro wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      },
+      "paramValueInvalid": {
+        "detail": "Sprawdź parametry poniżej z limitami podanymi obok nich.",
+        "title": "Wartość parametru przekracza limit tej kategorii Allegro."
+      },
+      "siblingsWithoutCard": {
+        "detail": "Allegro wiąże nową kartę produktu z pierwszym przyjętym wariantem i odrzuca pozostałe. Daj każdemu wariantowi kod kreskowy pasujący do produktu z katalogu.",
+        "title": "Wszystkie te warianty utworzyłyby jedną nową kartę produktu."
+      },
+      "titleTooLong": {
+        "detail": "Skróć go w polu tytułu.",
+        "title": "Tytuł oferty jest dłuższy, niż pozwala Allegro."
+      },
+      "titleTooShort": {
+        "detail": "Allegro wymaga co najmniej 12 znaków i 3 słów.",
+        "title": "Tytuł oferty jest za krótki dla Allegro."
+      }
+    },
     "chips": {
       "alreadyListed": "Już wystawiony",
+      "cardCategoryDiffers": "katalog ≠ mapowanie",
       "categoryNotSet": "Brak kategorii",
       "currencyMismatch": "Niezgodna waluta",
       "invalidBarcode": "Błędny kod kreskowy",
@@ -194,6 +330,10 @@
       "unknownCategoryResult": "Nieznany wynik"
     },
     "describe": {
+      "cardCategoryDiffers": {
+        "detail": "Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany. Otwórz, aby porównać obie kategorie.",
+        "title": "Kod kreskowy {ean} pasuje do produktu z katalogu {destination} w innej kategorii niż Twoje mapowanie kategorii."
+      },
       "currencyMismatch": {
         "detail": "Ustaw jawną cenę w {currency} dla tego wariantu lub zmień walutę partii.",
         "title": "Cena główna nie jest w {currency}."
@@ -245,7 +385,38 @@
         "detail": "Wybierz kategorię, aby kontynuować. Wynik wyszukiwania nie był pusty - nie udało się go odczytać, więc niczego nie wykluczono.",
         "title": "{destination} zwrócił wynik kategorii, którego ta wersja nie rozpoznaje."
       }
+    },
+    "erli": {
+      "missingImage": {
+        "detail": "Erli wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
+        "title": "Ta oferta nie ma zdjęcia."
+      }
+    },
+    "panel": {
+      "advisoryNote": "Można opublikować",
+      "ariaLabel": "Co blokuje ten wariant",
+      "consequence": "Wynika z przyczyny powyżej",
+      "jumpTo": "Przejdź do pola {name}"
     }
+  },
+  "bulkCardCategoryDialog": {
+    "adoptNote": "Zmień tylko wtedy, gdy ten kod kreskowy naprawdę należy do tego produktu. Oferta zostanie wtedy powiązana z produktem z katalogu i przejmie jego nazwę, parametry i zdjęcia.",
+    "barcodeMatch": "Z kodu kreskowego",
+    "catalogProduct": "Produkt z katalogu {destination}",
+    "categoryFallback": "Kategoria {id}",
+    "editProduct": "Edytuj produkt",
+    "inUse": "W użyciu",
+    "keepMapping": "Zostaw moje mapowanie",
+    "leafId": "ID {id}",
+    "lede": "<subject>{subject}</subject> (kod kreskowy <ean>{ean}</ean>) pasuje do produktu z katalogu {destination}, który jest w innej kategorii. Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany.",
+    "ledeNoEan": "<subject>{subject}</subject> pasuje do produktu z katalogu {destination}, który jest w innej kategorii. Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany.",
+    "loading": "Ładowanie kategorii…",
+    "noSharedBranch": "Brak wspólnej gałęzi: to różne części katalogu",
+    "notSynced": "Ścieżki kategorii nie są jeszcze zsynchronizowane",
+    "siblingNote": "Wszystkie warianty tego produktu są wystawiane w jednej kategorii, więc ten wariant nie może zmienić jej osobno. Aby przenieść cały produkt, zmień jego kategorię w edytorze.",
+    "title": "Twoje mapowanie i kod kreskowy wskazują różne kategorie",
+    "useCard": "Użyj kategorii z katalogu",
+    "yourMapping": "Twoje mapowanie kategorii"
   },
   "bulkCategoryChooseModal": {
     "browse": "Przeglądaj ›",
@@ -804,6 +975,36 @@
     "retry": "Ponów ustalanie",
     "stopAndReview": "Zatrzymaj i przejrzyj {n}"
   },
+  "bulkReviewCategoryCell": {
+    "barcodeMatched": "Kod kreskowy wskazuje: {category}",
+    "barcodeMatchedUnknown": "Kod kreskowy wskazuje inną kategorię",
+    "categoryFallback": "Kategoria {id}",
+    "compareAria": "{label}. Porównaj z Twoim mapowaniem",
+    "loading": "Ładowanie…",
+    "notSet": "Nie ustawiono",
+    "pathNotSynced": "Ścieżka nie jest jeszcze zsynchronizowana",
+    "resolvedAtSubmit": "Ustalana przy tworzeniu ofert",
+    "siblingConflicts": {
+      "few": "Kod kreskowy nie zgadza się w {n} wariantach",
+      "many": "Kod kreskowy nie zgadza się w {n} wariantach",
+      "one": "Kod kreskowy nie zgadza się w {n} wariancie",
+      "other": "Kod kreskowy nie zgadza się w {n} wariantu"
+    },
+    "sourceHint": {
+      "card": "Dopasowana przez kod kreskowy do produktu z katalogu. Żadne mapowanie kategorii nie obejmuje tego produktu.",
+      "cardAgrees": "Dopasowana przez kod kreskowy do produktu z katalogu, który jest w kategorii wskazanej przez Twoje mapowanie.",
+      "mapping": "Ustalona na podstawie Twojego mapowania kategorii.",
+      "picked": "Ta kategoria została wybrana w tym kreatorze.",
+      "shared": "Wszystkie warianty produktu są wystawiane w jednej kategorii, więc ten wariant używa kategorii produktu."
+    },
+    "sourceLabel": {
+      "card": "Katalog",
+      "cardAgrees": "Katalog + mapowanie",
+      "mapping": "Mapowanie",
+      "picked": "Wybrana tutaj",
+      "shared": "Wspólna"
+    }
+  },
   "bulkReviewStep": {
     "alreadyOn": "już w {destination}",
     "backToConfig": "Wróć do konfiguracji",
@@ -877,6 +1078,7 @@
       }
     },
     "columns": {
+      "category": "Kategoria",
       "priceGross": "Cena (brutto)",
       "product": "Produkt",
       "status": "Status",

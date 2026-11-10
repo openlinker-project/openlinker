@@ -72,6 +72,7 @@ interface Harness {
       | 'claimParcelClose'
       | 'reopenParcel'
       | 'findLatestActiveVerification'
+      | 'findLatestActiveVerificationForLine'
       | 'voidVerificationById'
       | 'markInvoicePrinted'
       | 'markLabelPrinted'
@@ -114,6 +115,9 @@ function harness(options: {
     claimParcelClose: jest.fn().mockResolvedValue(options.closed ?? true),
     reopenParcel: jest.fn().mockResolvedValue(options.reopened ?? true),
     findLatestActiveVerification: jest
+      .fn()
+      .mockResolvedValue(options.latestActive === undefined ? null : options.latestActive),
+    findLatestActiveVerificationForLine: jest
       .fn()
       .mockResolvedValue(options.latestActive === undefined ? null : options.latestActive),
     voidVerificationById: jest.fn().mockResolvedValue(options.voided ?? true),
@@ -449,6 +453,67 @@ describe('FulfillmentVerificationService (#2418)', () => {
         hasShipped: false,
       });
       expect(result).toMatchObject({ outcome: 'refused', reason: 'not-closed' });
+    });
+  });
+
+  describe('#3961 - void the extra units of one line', () => {
+    it('voids that line\'s units beyond keep, newest first, and only that line', async () => {
+      const { service, repo } = harness({
+        latestActive: { id: 'verification-7', workLineId: 'line-1' },
+        counts: [
+          [{ workLineId: 'line-1', verifiedQuantity: 2 }],
+          [{ workLineId: 'line-1', verifiedQuantity: 1 }],
+        ],
+      });
+
+      const result = await service.voidSurplusOnLine({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'voided', voided: 1 });
+      expect(repo.findLatestActiveVerificationForLine).toHaveBeenCalledWith(
+        'work-1',
+        'line-1',
+        expect.anything()
+      );
+      expect(repo.findLatestActiveVerification).not.toHaveBeenCalled();
+      expect(repo.voidVerificationById).toHaveBeenCalledTimes(1);
+    });
+
+    it('voids nothing when the line is already at or below keep', async () => {
+      const { service, repo } = harness({
+        counts: [[{ workLineId: 'line-1', verifiedQuantity: 1 }]],
+      });
+
+      const result = await service.voidSurplusOnLine({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'voided', voided: 0 });
+      expect(repo.voidVerificationById).not.toHaveBeenCalled();
+    });
+
+    it('refuses a closed parcel rather than reopening it as a side effect', async () => {
+      const { service, repo } = harness({
+        work: work({ parcelClosedAt: new Date() }),
+        counts: [[{ workLineId: 'line-1', verifiedQuantity: 2 }]],
+      });
+
+      const result = await service.voidSurplusOnLine({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'parcel-closed' });
+      expect(repo.voidVerificationById).not.toHaveBeenCalled();
     });
   });
 
