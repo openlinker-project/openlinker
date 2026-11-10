@@ -53,6 +53,10 @@ export function useBundleOfferPreview(
 ): BundleOfferPreview {
   const apiClient = useApiClient();
 
+  // Keyed by content: callers derive `items` from state that this answer is
+  // itself written back into, so a new array identity with the same content
+  // must not produce a new result (that looped the wizard: #185).
+  const itemsKey = [...items].map(itemKey).sort().join(',');
   const chunks = useMemo(() => {
     const sorted = [...items].sort((a, b) => itemKey(a).localeCompare(itemKey(b)));
     const out: BundleOfferPreviewItem[][] = [];
@@ -60,7 +64,8 @@ export function useBundleOfferPreview(
       out.push(sorted.slice(i, i + BUNDLE_OFFER_PREVIEW_CHUNK));
     }
     return out;
-  }, [items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `itemsKey` is the content of `items`.
+  }, [itemsKey]);
 
   const queries = useQueries({
     queries: chunks.map((chunk) => ({
