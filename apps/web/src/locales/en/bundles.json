@@ -244,6 +244,7 @@
   },
   "view": {
     "active": "Active",
+    "asComponent": "as a component",
     "asInShop": "as in the shop",
     "availabilityTitle": "Availability",
     "availableLine": "Available: {n} pcs, limited by {name}",
@@ -267,6 +268,7 @@
     "giftCount": "{n} free",
     "glanceTitle": "At a glance",
     "historyTitle": "Composition history",
+    "inBundles": "In bundles",
     "limits": "limits",
     "listHere": "+ List an offer",
     "listOffer": "List an offer",
@@ -291,6 +293,8 @@
     "priceSplitShow": "Show price split",
     "since": "since {date}",
     "sku": "SKU",
+    "sold": "Sold",
+    "soldHint": "last 30 days",
     "status": {
       "Active": "Active",
       "Draft": "Draft",

@@ -44,3 +44,17 @@ export function useBundleUsedInQuery(
     staleTime: 30_000,
   });
 }
+
+/** The bundles any of these variants is a component of; one request, cached by the variant list. */
+export function useBundleUsedInManyQuery(
+  variantIds: readonly string[],
+): UseQueryResult<BundleUsedIn[], ApiError> {
+  const apiClient = useApiClient();
+  return useQuery<BundleUsedIn[], ApiError>({
+    queryKey: bundlesQueryKeys.usedInMany(variantIds),
+    queryFn: () => apiClient.bundles.usedInMany(variantIds),
+    enabled: variantIds.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}

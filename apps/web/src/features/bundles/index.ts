@@ -12,3 +12,4 @@ export { splitBundlePrice } from './lib/bundle-price-split';
 export { bundlesQueryKeys } from './api/bundles.query-keys';
 export { BundleProductPicker } from './components/bundle-product-picker';
 export type { BundleProductChoice } from './lib/bundle-choice';
+export { useBundleUsedInManyQuery } from './hooks/use-bundle-queries';

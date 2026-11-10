@@ -11,11 +11,12 @@
  *
  * @module apps/web/src/features/bundles/components
  */
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useMessages, formatPlural, interpolate, useFormat, useLocale } from '../../../shared/i18n';
 import { ComposerSection } from '../../../shared/ui/composer-section';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { useTopProductVariantSalesQuery } from '../../analytics';
 import { useConnectionsQuery } from '../../connections';
 import { useListingsQuery, type OfferLifecycle } from '../../listings';
 import { computeBundleAvailability } from '../lib/bundle-availability';
@@ -45,6 +46,13 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
   const listings = useListingsQuery({ internalId: bundleVariantId }, { limit: 50, offset: 0 });
   const connections = useConnectionsQuery();
   const [showSplit, setShowSplit] = useState(false);
+  const soldRange = useMemo(() => {
+    const day = 24 * 60 * 60 * 1000;
+    const iso = (d: Date): string => d.toISOString().slice(0, 10);
+    const now = Date.now();
+    return { from: iso(new Date(now - 29 * day)), to: iso(new Date(now)) };
+  }, []);
+  const sold = useTopProductVariantSalesQuery(productId, soldRange, { enabled: true });
 
   if (detail.isLoading) return <p className="text-muted">{copy.loading}</p>;
   if (detail.isError || !detail.data) return <p role="alert">{copy.loadFailed}</p>;
@@ -249,7 +257,7 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
           <p className="pm-help">{copy.channelsGetNumber}</p>
         </ComposerSection>
         <ComposerSection title={copy.glanceTitle} riseIndex={4}>
-          <div className="pm-kpis" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
+          <div className="pm-kpis" style={{ gridTemplateColumns: 'repeat(2,minmax(0,1fr))' }}>
             <div className="pm-kpi">
               <span className="pm-kpi__l">{copy.priceGross}</span>
               <span className="pm-kpi__n mono tabular">
@@ -257,6 +265,19 @@ export function BundleProductView({ bundleVariantId, productId }: BundleProductV
               </span>
               <span className="pm-kpi__s">{copy.asInShop}</span>
             </div>
+            {sold.data ? (
+              <div className="pm-kpi" data-testid="bundle-view-sold">
+                <span className="pm-kpi__l">{copy.sold}</span>
+                <span className="pm-kpi__n mono tabular">
+                  {format.number(
+                    sold.data.variants
+                      .filter((v) => v.variantId === bundleVariantId)
+                      .reduce((sum, v) => sum + v.units, 0),
+                  )}
+                </span>
+                <span className="pm-kpi__s">{copy.soldHint}</span>
+              </div>
+            ) : null}
           </div>
         </ComposerSection>
         <ComposerSection title={copy.whoTitle} riseIndex={5}>

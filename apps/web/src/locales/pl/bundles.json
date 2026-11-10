@@ -256,6 +256,7 @@
   },
   "view": {
     "active": "Aktywna",
+    "asComponent": "jako składnik",
     "asInShop": "jak w sklepie",
     "availabilityTitle": "Dostępność",
     "availableLine": "Dostępne: {n} szt., ogranicza {name}",
@@ -279,6 +280,7 @@
     "giftCount": "gratis {n}",
     "glanceTitle": "W skrócie",
     "historyTitle": "Historia składu",
+    "inBundles": "W zestawach",
     "limits": "ogranicza",
     "listHere": "+ Wystaw ofertę",
     "listOffer": "Wystaw ofertę",
@@ -305,6 +307,8 @@
     "priceSplitShow": "Pokaż podział ceny",
     "since": "od {date}",
     "sku": "SKU",
+    "sold": "Sprzedano",
+    "soldHint": "ostatnie 30 dni",
     "status": {
       "Active": "Aktywna",
       "Draft": "Szkic",

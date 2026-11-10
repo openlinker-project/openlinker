@@ -32,6 +32,8 @@ import { usePermission, useWriteAccess } from '../../shared/auth/use-permission'
 import { useDemoMode } from '../../features/system';
 import { useBundleQuery } from '../../features/bundles/hooks/use-bundle-queries';
 import { BundleGuide } from '../../features/bundles/components/bundle-guide';
+import { ProductUsedInBundles } from '../../features/bundles/components/product-used-in-bundles';
+import { useBundleUsedInManyQuery } from '../../features/bundles/hooks/use-bundle-queries';
 import { BundleProductView } from '../../features/bundles/components/bundle-product-view';
 import { GuideButton } from '../../shared/ui/guide-drawer';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
@@ -116,6 +118,9 @@ export function ProductDetailPage(): ReactElement {
   // bundle still offers the action.
   const bundleProbe = useBundleQuery(query.data?.variants?.[0]?.id);
   const isBundle = bundleProbe.isSuccess;
+  const usedInVariantIds = (query.data?.variants ?? []).map((variant) => variant.id);
+  const usedIn = useBundleUsedInManyQuery(isBundle ? [] : usedInVariantIds);
+  const bundleCount = new Set((usedIn.data ?? []).map((entry) => entry.bundleVariantId)).size;
   const [adjustTarget, setAdjustTarget] = useState<StockAdjustTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const offerCreatorConnections = useMemo<Connection[]>(
@@ -285,24 +290,29 @@ export function ProductDetailPage(): ReactElement {
               </Link>
             ) : null}
           </span>
-        ) : bundleWrite.canWrite ? (
-          <Link
-            className="button button--secondary"
-            to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
-            data-testid="product-detail-make-bundle"
-          >
-            {bundleCopy.list.makeBundle}
-          </Link>
         ) : (
-          <span
-            className="button button--secondary"
-            role="button"
-            aria-disabled="true"
-            tabIndex={0}
-            title={bundleCopy.form.viewOnlyReason}
-            data-testid="product-detail-make-bundle"
-          >
-            {bundleCopy.list.makeBundle}
+          <span className="page-header__actions--row">
+            <GuideButton label={bundleCopy.guide.trigger} />
+            {bundleWrite.canWrite ? (
+              <Link
+                className="button button--primary button--sm"
+                to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
+                data-testid="product-detail-make-bundle"
+              >
+                {bundleCopy.list.makeBundle}
+              </Link>
+            ) : (
+              <span
+                className="button button--primary button--sm"
+                role="button"
+                aria-disabled="true"
+                tabIndex={0}
+                title={bundleCopy.form.viewOnlyReason}
+                data-testid="product-detail-make-bundle"
+              >
+                {bundleCopy.list.makeBundle}
+              </span>
+            )}
           </span>
         )
       }
@@ -431,10 +441,12 @@ export function ProductDetailPage(): ReactElement {
                   )
                 }
               />
-              <KpiCard label={copy.kpis.variants} value={format.number(variants.length)} />
+              <KpiCard label={bundleCopy.view.inBundles} value={format.number(bundleCount)} description={bundleCopy.view.asComponent} />
               <KpiCard label={copy.kpis.listings} value={format.number(totalListings)} />
             </div>
           </section>
+
+          <ProductUsedInBundles card variantIds={usedInVariantIds} />
 
           <div className="product-detail__primary-grid--split">
             <div className="product-detail__stack">
@@ -600,5 +612,5 @@ export function ProductDetailPage(): ReactElement {
       />
     </PageLayout>
   );
-  return isBundle ? <BundleGuide>{page}</BundleGuide> : page;
+  return <BundleGuide>{page}</BundleGuide>;
 }

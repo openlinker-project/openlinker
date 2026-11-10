@@ -677,7 +677,16 @@ function ProductsListPageBody(): ReactElement {
           const origin = product.externalIds?.[0];
           return (
             <span className="product-row">
-              <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              {product.bundle && !product.images?.[0] ? (
+                <span className="cx-mosaic" aria-hidden="true">
+                  <i className="t-a" />
+                  <i className="t-d" />
+                  <i className="t-b" />
+                  <i className="t-c" />
+                </span>
+              ) : (
+                <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              )}
               <span className="products-cell-stack">
                 <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
                   <Link
@@ -688,9 +697,12 @@ function ProductsListPageBody(): ReactElement {
                     {product.name}
                   </Link>
                   {product.bundle ? (
-                    <StatusBadge tone="info" compact>
+                    <span className="cx-tag">
+                      <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                      </svg>
                       {bundleCopy.list.bundleMark}
-                    </StatusBadge>
+                    </span>
                   ) : null}
                   {(product.variantCount ?? 0) > 1 ? (
                     <StatusBadge tone="neutral" compact>

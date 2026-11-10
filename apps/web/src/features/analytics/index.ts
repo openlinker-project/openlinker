@@ -93,3 +93,4 @@ export { useAnalyticsCsvExport } from './hooks/use-analytics-csv-export';
 // #4029 - the login page's background preview renders the real KPI card.
 export { AnalyticsKpiCard } from './components/analytics-kpi-card';
 export type { AnalyticsKpiDelta, AnalyticsKpiTrend } from './components/analytics-kpi-card';
+export { useTopProductVariantSalesQuery } from './hooks/use-top-product-variant-sales-query';
