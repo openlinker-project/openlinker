@@ -38510,3 +38510,4 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .bundle-stock small{color:var(--status-warning-fg);font-weight:600}
 .bulk-review__c-cat{min-width:0;overflow:hidden}
 .bundle-stock small{max-width:none;white-space:normal;text-align:right}
+.pm-rail .pm-log li{grid-template-columns:minmax(0,1fr)}.pm-log .cx-tag{white-space:normal;height:auto;justify-self:start;padding-block:2px}
