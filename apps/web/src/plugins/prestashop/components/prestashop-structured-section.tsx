@@ -18,10 +18,13 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useMappingOptions } from '../../../features/mappings';
-import type { MappingOption } from '../../../features/mappings';
+import type { MappingOption, MappingOptions } from '../../../features/mappings';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { interpolate } from '../../../shared/i18n';
 import { usePrestashopMessages } from '../messages';
+
+/** Only the carrier list is read here; asking for the rest sends source-side requests this connection answers with a 400. */
+const CARRIER_ONLY: ReadonlySet<keyof MappingOptions> = new Set(['prestashopCarriers']);
 
 function carrierOptionLabel(option: MappingOption, dynamicTemplate: string): string {
   return option.kind === 'dynamic'
@@ -157,7 +160,7 @@ function PrestashopFallbackCarrierField({
   onChange,
 }: PrestashopFallbackCarrierFieldProps): ReactElement {
   const copy = usePrestashopMessages().prestashopStructuredSection.fallbackCarrier;
-  const { options, isLoading, errors } = useMappingOptions(connectionId);
+  const { options, isLoading, errors } = useMappingOptions(connectionId, CARRIER_ONLY);
   const carriersError = errors.prestashopCarriers ?? null;
   const carriers = options.prestashopCarriers;
   const hasDynamicOption = carriers.some((c) => c.kind === 'dynamic');
