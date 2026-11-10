@@ -57,7 +57,7 @@ describe('StockMovementPeek', () => {
     );
     expect(screen.getByRole('link', { name: 'See promotion' })).toHaveAttribute(
       'href',
-      '/automations/gifts/p1'
+      '/promotions/p1'
     );
     expect(screen.getByTestId('stock-movement-peek-source')).toHaveTextContent(
       'Promotion: Cup promo'

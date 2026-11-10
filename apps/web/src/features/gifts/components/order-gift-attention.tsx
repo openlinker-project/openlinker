@@ -90,7 +90,7 @@ export function OrderGiftAttention({
                 {copy.attention.addAnother}
               </Button>
             ) : null}
-            <Link to={`/automations/gifts/${encodeURIComponent(item.ruleId)}`} data-testid="order-gift-open-rule">
+            <Link to={`/promotions/${encodeURIComponent(item.ruleId)}`} data-testid="order-gift-open-rule">
               {item.kind === 'out-of-stock' ? copy.attention.seePromotion : copy.attention.openRule}
             </Link>
           </>

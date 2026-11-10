@@ -58,6 +58,14 @@ describe('AddGiftDialog', () => {
     );
   });
 
+  it('should name the form the settings resolve to on the first card', async () => {
+    open(api({}));
+
+    // The install default is the technical cent unless settings say otherwise.
+    expect(await screen.findByTestId('doc-gift-set-option-inherit')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-gift-set-option-inherit').closest('label')).toHaveTextContent(/As in OpenLinker \(.+\)/);
+  });
+
   it('should send the amount with an own price and refuse an invalid amount', async () => {
     const addGiftToOrder = vi.fn().mockResolvedValue({ dryRun: false, changeId: 'c1', gift: { lineKey: 'op-gift:c1', salesDocumentExists: false, reserved: true, onPickList: true } });
     open(api({ addGiftToOrder }));

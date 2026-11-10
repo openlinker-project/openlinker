@@ -135,7 +135,7 @@ export function StockMovementPeek({
             {gift?.promotionId ? (
               <Link
                 className="button button--secondary button--sm"
-                to={`/automations/gifts/${encodeURIComponent(gift.promotionId)}`}
+                to={`/promotions/${encodeURIComponent(gift.promotionId)}`}
               >
                 {copy.seePromotion}
               </Link>

@@ -217,27 +217,27 @@ function InventoryMovementsContent(): ReactElement {
             options={connections.map((c) => ({ value: c.id, label: c.name }))}
             onChange={(next) => update({ master: next ?? '' })}
           />
+          <label className="joined-filters__field">
+            {copy.from}
+            <Input
+              type="date"
+              aria-label={copy.dateFrom}
+              data-testid="stock-movements-filter-from"
+              value={state.from}
+              onChange={(event) => update({ from: event.target.value })}
+            />
+          </label>
+          <label className="joined-filters__field">
+            {copy.to}
+            <Input
+              type="date"
+              aria-label={copy.dateTo}
+              data-testid="stock-movements-filter-to"
+              value={state.to}
+              onChange={(event) => update({ to: event.target.value })}
+            />
+          </label>
         </FilterGroup>
-        <label className="stock-movements-field">
-          {copy.from}
-          <Input
-            type="date"
-            aria-label={copy.dateFrom}
-            data-testid="stock-movements-filter-from"
-            value={state.from}
-            onChange={(event) => update({ from: event.target.value })}
-          />
-        </label>
-        <label className="stock-movements-field">
-          {copy.to}
-          <Input
-            type="date"
-            aria-label={copy.dateTo}
-            data-testid="stock-movements-filter-to"
-            value={state.to}
-            onChange={(event) => update({ to: event.target.value })}
-          />
-        </label>
         <span className="list-toolbar__spacer" />
         <span className="text-muted mono tabular list-results" data-testid="stock-movements-count" aria-live="polite">
           {totalStage.total !== null

@@ -1287,6 +1287,25 @@ export function OrdersListPage(): ReactElement {
           order={order}
           thumbLabel={(sourceShort ?? sourceLabel ?? '').slice(0, 1)}
           onOpenProduct={setProductPeekId}
+          glance={{
+            channel: sourceLabel ? (
+              <ConnectionChip
+                connectionId={order.sourceConnectionId}
+                name={connectionNames.get(order.sourceConnectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                channel={sourceChipChannel(order.sourceConnectionId, sourceLabel)}
+              />
+            ) : null,
+            document: (
+              <SalesDocumentCell
+                internalOrderId={order.internalOrderId}
+                view={order.salesDocument}
+                layout="row"
+                hasIssuingCapability={hasIssuingCapability}
+                connectionNames={connectionNames}
+              />
+            ),
+          }}
         />
       ),
     };

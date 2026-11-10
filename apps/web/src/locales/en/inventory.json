@@ -277,6 +277,7 @@
       "description": "Stock movement details",
       "giftBody": "The customer pays 0.00 for it and its stock is reserved like an ordinary line.",
       "giftFrom": {
+        "bundle-slot": "It is the free gift of a bundle.",
         "cart-rule": "A shop cart rule added it.",
         "channel": "The sales channel flagged it.",
         "ol-rule": "A promotion in OpenLinker added it.",
@@ -648,6 +649,7 @@
       "type": "Type"
     },
     "giftSource": {
+      "bundleSlot": "Gift in a bundle: {name}",
       "cartRule": "Shop cart rule",
       "channel": "Gift from the sales channel",
       "operator": "Added by hand",

@@ -62,9 +62,15 @@ export interface OrderPeekDetailProps {
    * top of the order peek, and a feature may not import a page.
    */
   onOpenProduct?: (productId: string) => void;
+  /**
+   * The mockup's first block: who, where, by when, and the document (#3935).
+   * The page supplies the channel chip and the document cell, the same
+   * renderers the row uses, so the peek and the row cannot disagree.
+   */
+  glance?: { channel: ReactNode; document: ReactNode };
 }
 
-export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekDetailProps): ReactElement {
+export function OrderPeekDetail({ order, thumbLabel, onOpenProduct, glance }: OrderPeekDetailProps): ReactElement {
   const COPY = useMessages('orders').peek;
   const buyerNote = useMessages('orders').buyerNote;
   const parsed = parseOrderSnapshot(order.orderSnapshot);
@@ -76,6 +82,8 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
       : amount.toFixed(2);
 
   const bundleCopy = useBundleMessages('bundles');
+  const buyerName =
+    [parsed.shippingAddress?.firstName, parsed.shippingAddress?.lastName].filter(Boolean).join(' ') || null;
   // The bundle components are frozen on the order and arrive with the detail read
   // only; the list row says whether there is anything to fetch (#3935).
   const detail = useOrderQuery(order.hasBundle === true ? order.internalOrderId : '');
@@ -207,6 +215,27 @@ export function OrderPeekDetail({ order, thumbLabel, onOpenProduct }: OrderPeekD
           <span className="eyebrow">{buyerNote.rowFieldLabel}</span>
           <p>{buyerNote.listUnknownHint}</p>
         </section>
+      ) : null}
+
+      {glance ? (
+        <dl className="peek-glance" data-testid="order-peek-glance">
+          <div>
+            <dt className="peek-section__title">{COPY.glance.customer}</dt>
+            <dd>{buyerName ?? EMPTY}</dd>
+          </div>
+          <div>
+            <dt className="peek-section__title">{COPY.glance.channel}</dt>
+            <dd>{glance.channel ?? EMPTY}</dd>
+          </div>
+          <div>
+            <dt className="peek-section__title">{COPY.glance.shipTo}</dt>
+            <dd>{order.dispatchByAt ? <TimeDisplay iso={order.dispatchByAt} format="datetime" /> : EMPTY}</dd>
+          </div>
+          <div>
+            <dt className="peek-section__title">{COPY.glance.document}</dt>
+            <dd>{glance.document}</dd>
+          </div>
+        </dl>
       ) : null}
 
       <section className="peek-section" aria-labelledby={`${order.internalOrderId}-items`}>

@@ -109,44 +109,27 @@ export interface OrderIdentityCellProps {
   hasBundle?: boolean;
 }
 
-function GiftMark({ label, testId }: { label: string; testId: string }): ReactElement {
+function MarkChip({
+  kind,
+  text,
+  label,
+  testId,
+}: {
+  kind: 'gift' | 'bundle';
+  text: string;
+  label: string;
+  testId: string;
+}): ReactElement {
   return (
-    <svg
-      className="orders-mark orders-mark--gift"
+    <span
+      className={`orders-mark orders-mark--${kind}`}
       role="img"
       aria-label={label}
+      title={label}
       data-testid={testId}
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
     >
-      <title>{label}</title>
-      <rect x="2" y="6" width="12" height="8" rx="1" />
-      <path d="M1.5 4h13v2h-13zM8 4v10M8 4C6 4 4.5 3 5.5 2s2.5 1 2.5 2zM8 4c2 0 3.5-1 2.5-2S8 3 8 4z" />
-    </svg>
-  );
-}
-
-function BundleMark({ label, testId }: { label: string; testId: string }): ReactElement {
-  return (
-    <svg
-      className="orders-mark orders-mark--bundle"
-      role="img"
-      aria-label={label}
-      data-testid={testId}
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <title>{label}</title>
-      <path d="M8 1.5l6 3v7l-6 3-6-3v-7l6-3zM2 4.5l6 3 6-3M8 7.5v7" />
-    </svg>
+      {text}
+    </span>
   );
 }
 
@@ -163,6 +146,7 @@ export function OrderIdentityCell({
   hasBundle = false,
 }: OrderIdentityCellProps): ReactElement {
   const giftCopy = useMessages('gifts');
+  const bundleCopy = useMessages('bundles');
   const copy = useMessages('orders').identityCell;
   const plural = usePlural();
   const tagsCopy = useMessages('orders').orderTags;
@@ -226,8 +210,8 @@ export function OrderIdentityCell({
             to={`/orders/${orderId}`}
             onNavigate={onNavigate}
           />
-          {hasBundle ? <BundleMark label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
-          {hasGift ? <GiftMark label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
+          {hasBundle ? <MarkChip kind="bundle" text={bundleCopy.order.bundleMark} label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
+          {hasGift ? <MarkChip kind="gift" text={bundleCopy.order.giftMark} label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
         </span>
         {itemName ? (
           <span className="orders-items-line">

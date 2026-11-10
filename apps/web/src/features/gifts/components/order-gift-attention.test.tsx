@@ -63,7 +63,7 @@ describe('OrderGiftAttention', () => {
     expect(await screen.findByTestId('order-gift-attention-out-of-stock')).toHaveTextContent('Coffee sample from 150');
     fireEvent.click(screen.getByTestId('order-gift-choice-substitute'));
     expect(onAddGift).toHaveBeenCalled();
-    expect(screen.getByTestId('order-gift-open-rule')).toHaveAttribute('href', '/automations/gifts/rule-9');
+    expect(screen.getByTestId('order-gift-open-rule')).toHaveAttribute('href', '/promotions/rule-9');
   });
 
   it('should explain a rule that did what it was set to as a quiet notice, not a warning', async () => {

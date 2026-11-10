@@ -47,6 +47,7 @@ import { ConnectionEntityLabel, useConnectionsQuery } from '../../features/conne
 // #3285, SUGGESTION).
 import { useDemoMode } from '../../features/system';
 import { GiftsGuide } from '../../features/gifts';
+import { parseOrderSnapshot, useOrderQuery } from '../../features/orders';
 import { shortenId } from '../../shared/ui/entity-label';
 import { useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
 import {
@@ -74,6 +75,7 @@ function buildHeaderItems(
   detail: ReturnDetail,
   connectionName: string | null,
   returnsCopy: ReturnsCopy,
+  orderNumber: string | null = null,
 ): KeyValueItem[] {
   const headerCopy = returnsCopy.detail.header;
   const orphanCopy = returnsCopy.list.orphan;
@@ -112,7 +114,7 @@ function buildHeaderItems(
       value:
         detail.internalOrderId !== null ? (
           <Link to={`/orders/${detail.internalOrderId}`} className="link mono-text">
-            {shortenId(detail.internalOrderId)}
+            {orderNumber ?? shortenId(detail.internalOrderId)}
           </Link>
         ) : (
           // Never a blank: the orphan banner above carries the explanation, and
@@ -195,6 +197,7 @@ export function ReturnDetailPage(): ReactElement {
   // only this return's own orphan banner can ever open it.
   const [isMatchDialogOpen, setIsMatchDialogOpen] = useState(false);
 
+  const [declineNotes, setDeclineNotes] = useState<HTMLElement | null>(null);
   const query = useReturnQuery(returnId);
   // Gated on attribution: the proposal route answers 409 for an orphan, and the
   // page already explains that state with its own banner.
@@ -203,6 +206,12 @@ export function ReturnDetailPage(): ReactElement {
     query.data !== undefined && query.data.bucket !== 'orphan'
   );
   const connectionsQuery = useConnectionsQuery();
+  // The order number, not its internal id: the return already knows the order (#3935).
+  const orderQuery = useOrderQuery(query.data?.internalOrderId ?? '');
+  const orderNumber =
+    orderQuery.data === undefined || orderQuery.data === null
+      ? null
+      : (parseOrderSnapshot(orderQuery.data.orderSnapshot).orderNumber?.trim() || null);
   const detail = query.data ?? null;
 
   const connection =
@@ -293,6 +302,7 @@ export function ReturnDetailPage(): ReactElement {
       actions={
         <>
           <GiftsGuide variant="returns" />
+          <ReturnDeclineAction detail={detail} writeAccess={writeAccess} placement="header" notesTarget={declineNotes} />
           {detail.declinedAt !== null ? (
             <StatusBadge tone="warning" compact>
               {rowCopy.declined}
@@ -342,7 +352,7 @@ export function ReturnDetailPage(): ReactElement {
       ) : null}
 
       <dl className="returns-detail__strip">
-        {buildHeaderItems(detail, connection?.name ?? null, returnsCopy)
+        {buildHeaderItems(detail, connection?.name ?? null, returnsCopy, orderNumber)
           .filter((item) => item.id !== 'openLinkerId' && item.id !== 'updated')
           .map((item) => (
             <div key={item.id} className="returns-detail__fact">
@@ -351,6 +361,8 @@ export function ReturnDetailPage(): ReactElement {
             </div>
           ))}
       </dl>
+
+      <div className="returns-detail__notes" ref={setDeclineNotes} data-testid="returns-decline-notes" />
 
       <div className="returns-detail__cols">
       <div className="returns-detail__main">
@@ -406,15 +418,13 @@ export function ReturnDetailPage(): ReactElement {
         />
       ) : null}
 
-      <ReturnDeclineAction detail={detail} writeAccess={writeAccess} />
-
       {/* #2646 — returns spec § 5's activity panel, last in the panel order:
           the record, then what came back, then the money, then the channel's
           own word, then the action, and finally what has actually happened.
           Works for an orphan, which is why it is keyed on the return. */}
       <ReturnActivityTimeline returnId={detail.id} />
-      <section className="returns-detail__source">
-        <h2 className="section-title">{sourcePanelCopy.sectionTitle}</h2>
+      <details className="returns-detail__source returns-detail__disclosure" data-testid="returns-source-disclosure">
+        <summary className="returns-detail__disclosure-summary">{sourcePanelCopy.sectionTitle}</summary>
         <p className="text-muted">{sourcePanelCopy.explainer}</p>
         <KeyValueList
           items={[
@@ -430,7 +440,7 @@ export function ReturnDetailPage(): ReactElement {
             },
           ]}
         />
-      </section>
+      </details>
 
       </div>
       </div>

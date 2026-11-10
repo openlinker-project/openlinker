@@ -471,6 +471,7 @@ export function OrderListFilterBar({
           }}
         />
         <FilterCheck
+          data-testid="orders-filter-buyer-note"
           label={COPY.checks.buyerNote}
           checked={state.hasBuyerNote}
           count={summary?.hasBuyerNote}

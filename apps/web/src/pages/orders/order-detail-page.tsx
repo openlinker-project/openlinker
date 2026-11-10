@@ -617,6 +617,7 @@ export function OrderDetailPage(): ReactElement {
             )
           }
           hasSalesDocument={order.salesDocument?.document != null}
+          documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
           notReady={order.recordStatus !== 'ready'}
           open={giftDialogOpen}
           onOpenChange={setGiftDialogOpen}

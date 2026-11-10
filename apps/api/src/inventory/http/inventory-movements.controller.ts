@@ -71,8 +71,13 @@ export class InventoryMovementsController {
     rows: readonly InventoryHistoryRow[]
   ): Promise<Map<string, InventoryMovementGiftResponseDto>> {
     const result = new Map<string, InventoryMovementGiftResponseDto>();
+    // Movements that decrement a gift, and the reservations that set a gift aside
+    // for an order (#3935): both read the same gift line of the same order.
     const giftRows = rows.filter(
-      (row) => row.kind === 'movement' && row.reason === 'gift' && row.sourceKind === 'order' && row.sourceRef !== null
+      (row) =>
+        row.sourceKind === 'order' &&
+        row.sourceRef !== null &&
+        (row.kind === 'reservation' || row.reason === 'gift' || row.reason === 'sale')
     );
     if (giftRows.length === 0) {
       return result;
@@ -86,19 +91,44 @@ export class InventoryMovementsController {
       const orderById = new Map(orders.map((order) => [order.internalOrderId, order]));
       const nameById = new Map(promotions.map((view) => [view.promotion.id, view.promotion.name]));
       for (const row of giftRows) {
-        const items = orderById.get(row.sourceRef as string)?.orderItems ?? [];
-        const gifts = items.filter((item) => item.gift !== undefined);
+        const order = orderById.get(row.sourceRef as string);
+        const items = order?.orderItems ?? [];
+        const sameVariant = items.filter((item) => item.variantId === row.productVariantId);
+        const gifts = sameVariant.filter((item) => item.gift !== undefined);
+        // A reservation or a plain sale carries no gift reason: it is a gift only
+        // when every line of that variant on the order is one, so a paid line is
+        // never mislabelled.
+        const declaredGift = row.reason === 'gift';
+        const allGift = gifts.length > 0 && gifts.length === sameVariant.length;
         const line =
-          gifts.find((item) => item.variantId === row.productVariantId) ?? gifts[0];
-        if (line?.gift === undefined) {
+          declaredGift || allGift
+            ? (gifts[0] ?? items.find((item) => item.gift !== undefined))
+            : undefined;
+        if (line?.gift !== undefined) {
+          const ruleRef = line.gift.ruleRef ?? null;
+          const dto = new InventoryMovementGiftResponseDto();
+          dto.source = line.gift.source;
+          dto.promotionId = line.gift.source === 'ol-rule' ? ruleRef : null;
+          dto.promotionName = ruleRef === null ? null : (nameById.get(ruleRef) ?? null);
+          dto.bundleName = null;
+          result.set(row.id, dto);
           continue;
         }
-        const ruleRef = line.gift.ruleRef ?? null;
-        const dto = new InventoryMovementGiftResponseDto();
-        dto.source = line.gift.source;
-        dto.promotionId = line.gift.source === 'ol-rule' ? ruleRef : null;
-        dto.promotionName = ruleRef === null ? null : (nameById.get(ruleRef) ?? null);
-        result.set(row.id, dto);
+        // The free gift of a bundle is a component, not a gift line of its own.
+        for (const bundle of order?.bundleLines ?? []) {
+          const slot = bundle.components.find(
+            (component) => component.giftSlot === true && component.variantId === row.productVariantId
+          );
+          if (slot !== undefined && (declaredGift || sameVariant.length === 0)) {
+            const dto = new InventoryMovementGiftResponseDto();
+            dto.source = 'bundle-slot';
+            dto.promotionId = null;
+            dto.promotionName = null;
+            dto.bundleName = items.find((item) => item.id === bundle.lineId)?.name ?? null;
+            result.set(row.id, dto);
+            break;
+          }
+        }
       }
     } catch {
       // Evidence only; see the method note.

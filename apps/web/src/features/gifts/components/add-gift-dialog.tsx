@@ -28,7 +28,17 @@ import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { BundleProductPicker, type BundleProductChoice } from '../../bundles';
 import { GiftFormOptions, type GiftFormOptionValue } from '../../gift-documents/components/gift-form-options';
-import { isGiftUnitPriceAmount } from '../../gift-documents/lib/gift-lines';
+import {
+  GiftDocumentFormChoiceValues,
+  isGiftUnitPriceAmount,
+  type GiftDocumentFormChoice,
+} from '../../gift-documents/lib/gift-lines';
+import {
+  readGiftConnectionOverride,
+  resolveGiftDocumentForm,
+  useGiftDocumentSettingsQuery,
+} from '../../gift-documents';
+import { useConnectionsQuery } from '../../connections';
 import { useDocumentProvidersQuery } from '../../gift-documents/hooks/use-gift-documents-queries';
 import { zeroAvailability } from '../../gift-documents/lib/zero-availability';
 import { useAddGiftMutation } from '../hooks/use-gift-rules';
@@ -48,6 +58,8 @@ export interface AddGiftDialogProps {
   notReady?: boolean;
   /** A sales document already exists for the order. */
   hasSalesDocument: boolean;
+  /** The connection issuing the order's sales document, once there is one (#3935). */
+  documentConnectionId?: string | null;
 }
 
 export function AddGiftDialog({
@@ -59,6 +71,7 @@ export function AddGiftDialog({
   parcelClosed,
   notReady = false,
   hasSalesDocument,
+  documentConnectionId = null,
 }: AddGiftDialogProps): ReactElement {
   const copy = useMessages('gifts');
   const apiClient = useApiClient();
@@ -69,6 +82,19 @@ export function AddGiftDialog({
   const [form, setForm] = useState<GiftFormOptionValue>('inherit');
   const [customAmount, setCustomAmount] = useState('');
   const providers = useDocumentProvidersQuery();
+  // The card "as in settings" names the form the settings actually resolve to for
+  // this order: the issuing channel's own choice, else the install default.
+  const documentSettings = useGiftDocumentSettingsQuery();
+  const connections = useConnectionsQuery(undefined, { enabled: documentConnectionId !== null });
+  const documentConnection = connections.data?.find((c) => c.id === documentConnectionId);
+  const resolvedForm = resolveGiftDocumentForm(
+    undefined,
+    readGiftConnectionOverride(documentConnection?.config),
+    documentSettings.data?.giftDocumentForm,
+  ).form;
+  const inheritedForm = (GiftDocumentFormChoiceValues as readonly string[]).includes(resolvedForm)
+    ? (resolvedForm as GiftDocumentFormChoice)
+    : undefined;
   const zero = zeroAvailability(providers.data?.providers);
   const documentsCopy = useMessages('gift-documents');
   const zeroReason = zero.available
@@ -205,7 +231,8 @@ export function AddGiftDialog({
               name="order-gift-dialog-doc-form"
               value={form}
               disabled={closed}
-              inheritedForm="technical-cent"
+              inheritedForm={inheritedForm}
+              inheritedUnknown={inheritedForm === undefined}
               zeroAvailable={zero.available}
               zeroReason={zeroReason}
               onChange={setForm}

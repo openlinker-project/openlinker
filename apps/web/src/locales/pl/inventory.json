@@ -295,6 +295,7 @@
       "description": "Szczegóły ruchu magazynowego",
       "giftBody": "Klient płaci za niego 0,00 zł, a stan jest rezerwowany jak przy zwykłej pozycji.",
       "giftFrom": {
+        "bundle-slot": "To gratis w zestawie.",
         "cart-rule": "Dodała go reguła koszyka w sklepie.",
         "channel": "Oznaczył go kanał sprzedaży.",
         "ol-rule": "Dodała go promocja w OpenLinkerze.",
@@ -674,6 +675,7 @@
       "type": "Typ"
     },
     "giftSource": {
+      "bundleSlot": "Gratis w zestawie: {name}",
       "cartRule": "Reguła koszyka w sklepie",
       "channel": "Gratis z kanału sprzedaży",
       "operator": "Dodany ręcznie",

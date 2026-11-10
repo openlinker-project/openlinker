@@ -121,7 +121,9 @@ function BeforeAfterCell({ row }: { row: InventoryMovementRow }): ReactElement {
 
 function TypeCell({ row }: { row: InventoryMovementRow }): ReactElement {
   const copy = useMessages('inventory').stockMovementsTable;
-  const type = presentMovementType(row);
+  // A gift reads as "Gratis" whether it is the sale itself or the reservation that
+  // sets it aside; the reservation keeps its own badge below (#3935).
+  const type = presentMovementType(row.gift ? { ...row, kind: 'movement', reason: 'gift' } : row);
   const note = row.kind === 'movement' && row.reason === 'manual_correction' ? operatorReasonText(row) : null;
   return (
     <>
@@ -170,10 +172,13 @@ function StatusCell({
 /** Who decided a movement's line is a gift, one line under the order (#3935). */
 export function giftSourceText(
   gift: NonNullable<InventoryMovementRow['gift']>,
-  copy: { promotion: string; cartRule: string; channel: string; operator: string },
+  copy: { promotion: string; cartRule: string; channel: string; operator: string; bundleSlot: string },
 ): string {
   if (gift.source === 'ol-rule') {
     return gift.promotionName !== null ? interpolate(copy.promotion, { name: gift.promotionName }) : copy.promotion.replace(': {name}', '');
+  }
+  if (gift.source === 'bundle-slot') {
+    return gift.bundleName ? interpolate(copy.bundleSlot, { name: gift.bundleName }) : copy.bundleSlot.replace(': {name}', '');
   }
   if (gift.source === 'cart-rule') return copy.cartRule;
   if (gift.source === 'channel') return copy.channel;

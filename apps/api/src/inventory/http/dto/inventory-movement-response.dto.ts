@@ -21,8 +21,11 @@ import {
 } from '@openlinker/core/inventory';
 
 export class InventoryMovementGiftResponseDto {
-  @ApiProperty({ enum: ['channel', 'cart-rule', 'ol-rule', 'operator'] })
-  source!: 'channel' | 'cart-rule' | 'ol-rule' | 'operator';
+  @ApiProperty({ enum: ['channel', 'cart-rule', 'ol-rule', 'operator', 'bundle-slot'] })
+  source!: 'channel' | 'cart-rule' | 'ol-rule' | 'operator' | 'bundle-slot';
+
+  @ApiProperty({ nullable: true, type: String, description: 'For `bundle-slot`: the name of the bundle whose gift slot this is' })
+  bundleName!: string | null;
 
   @ApiProperty({ nullable: true, type: String, description: 'The OpenLinker promotion that gave the gift, when one did' })
   promotionId!: string | null;

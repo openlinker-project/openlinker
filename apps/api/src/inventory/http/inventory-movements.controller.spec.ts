@@ -104,7 +104,7 @@ describe('InventoryMovementsController', () => {
     it('should name where a gift movement came from, from the order gift line and the promotion list', async () => {
       service.listMovements.mockResolvedValue([
         row({ id: 'g', reason: 'gift', sourceKind: 'order', sourceRef: 'ol_order_1', productVariantId: 'v1' } as never),
-        row({ id: 's' }),
+        row({ id: 's', productVariantId: 'v9' } as never),
       ]);
       orders.findByIds.mockResolvedValue([
         { internalOrderId: 'ol_order_1', orderItems: [{ id: 'l', variantId: 'v1', gift: { source: 'ol-rule', ruleRef: 'p1' } }] },
@@ -113,8 +113,33 @@ describe('InventoryMovementsController', () => {
 
       const result = await controller.listMovements(parse({}));
 
-      expect(result.items[0].gift).toEqual({ source: 'ol-rule', promotionId: 'p1', promotionName: 'Kubek przy zakupach' });
+      expect(result.items[0].gift).toEqual({ source: 'ol-rule', promotionId: 'p1', promotionName: 'Kubek przy zakupach', bundleName: null });
       expect(result.items[1].gift).toBeNull();
+    });
+
+    it('should mark a reservation of a gift line and name the bundle of a bundle gift slot', async () => {
+      service.listMovements.mockResolvedValue([
+        row({ id: 'r', kind: 'reservation', reason: null, sourceKind: 'order', sourceRef: 'ol_order_1', productVariantId: 'v1' } as never),
+        row({ id: 'b', kind: 'reservation', reason: null, sourceKind: 'order', sourceRef: 'ol_order_1', productVariantId: 'v2' } as never),
+        row({ id: 'p', kind: 'reservation', reason: null, sourceKind: 'order', sourceRef: 'ol_order_1', productVariantId: 'v3' } as never),
+      ]);
+      orders.findByIds.mockResolvedValue([
+        {
+          internalOrderId: 'ol_order_1',
+          orderItems: [
+            { id: 'g', variantId: 'v1', gift: { source: 'cart-rule' } },
+            { id: 'z1', variantId: 'bundle', name: 'Morning set' },
+            { id: 'paid', variantId: 'v3' },
+          ],
+          bundleLines: [{ lineId: 'z1', components: [{ lineId: 'c', variantId: 'v2', giftSlot: true }] }],
+        },
+      ]);
+
+      const result = await controller.listMovements(parse({}));
+
+      expect(result.items[0].gift).toMatchObject({ source: 'cart-rule' });
+      expect(result.items[1].gift).toMatchObject({ source: 'bundle-slot', bundleName: 'Morning set' });
+      expect(result.items[2].gift).toBeNull();
     });
 
     it('should still list the history when the gift source cannot be read', async () => {

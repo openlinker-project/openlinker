@@ -2644,6 +2644,12 @@
     "details": "Details",
     "detailsAria": "Open details for order {ref}",
     "generateLabel": "Generate label",
+    "glance": {
+      "channel": "Channel",
+      "customer": "Customer",
+      "document": "Document",
+      "shipTo": "Ship by"
+    },
     "invoice": "Invoice",
     "itemPrice": "{quantity} × {price}",
     "itemUnmapped": "Not linked to a catalogue product yet",
