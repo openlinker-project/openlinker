@@ -17,6 +17,7 @@ export const BULK_LISTING_BATCH_REPOSITORY_TOKEN = Symbol('BulkListingBatchRepos
 export const BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN = Symbol('BulkBatchAdvancementRepositoryPort');
 export const BULK_LISTING_PROGRESS_SERVICE_TOKEN = Symbol('IBulkListingProgressService');
 export const CATEGORY_RESOLUTION_SERVICE_TOKEN = Symbol('ICategoryResolutionService');
+export const BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN = Symbol('IBundleOfferPreviewService');
 export const OFFER_BUILDER_SERVICE_TOKEN = Symbol('IOfferBuilderService');
 export const OFFER_CREATION_EXECUTION_SERVICE_TOKEN = Symbol('IOfferCreationExecutionService');
 export const OFFER_CREATION_ENQUEUE_SERVICE_TOKEN = Symbol('IOfferCreationEnqueueService');

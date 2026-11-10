@@ -161,6 +161,12 @@ export interface BlockerCopyContext {
   variantCount: number;
   /** Batch currency, for the currency-mismatch sentence. */
   batchCurrency: string;
+  /**
+   * Set for a bundle row (#3520): the components the destination reported a
+   * problem for, so the sentence can name them. `codes` are the destination's
+   * own refusal codes.
+   */
+  bundle?: { componentsWithProblem: readonly { name: string; codes: readonly string[] }[] };
 }
 
 export interface BlockerCopy {
@@ -256,10 +262,63 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
       };
     case 'no-variant':
       return { title: copy.noVariant.title, detail: copy.noVariant.detail };
-    default:
+    default: {
+      const bundleKind = bundleBlockerKind(blocker);
+      if (bundleKind !== null) {
+        return describeBundleBlocker(bundleKind, ctx);
+      }
       return {
         title: interpolate(copy.fallback.title, { label: blockerLabel(blocker) }),
         detail: copy.fallback.detail,
+      };
+    }
+  }
+}
+
+type BundleBlockerKind = 'component-missing' | 'component-gpsr-missing' | 'category-mismatch';
+
+/**
+ * The bundle blockers a destination plugin declares are namespaced
+ * (`allegro:bundle-component-missing`), so they are recognised by their suffix:
+ * the sentences are the same for every destination that publishes a set, and a
+ * new one adds no host id.
+ */
+function bundleBlockerKind(blocker: string): BundleBlockerKind | null {
+  for (const kind of ['component-missing', 'component-gpsr-missing', 'category-mismatch'] as const) {
+    if (blocker.endsWith(`:bundle-${kind}`)) return kind;
+  }
+  return null;
+}
+
+function describeBundleBlocker(kind: BundleBlockerKind, ctx: BlockerCopyContext): BlockerCopy {
+  const copy = blockerCopy().describe;
+  const named = (match: (code: string) => boolean): string =>
+    (ctx.bundle?.componentsWithProblem ?? [])
+      .filter((component) => component.codes.some(match))
+      .map((component) => component.name)
+      .join(', ');
+  const params = { destination: ctx.destinationName };
+  switch (kind) {
+    case 'component-missing':
+      return {
+        title: interpolate(copy.bundleComponentMissing.title, {
+          ...params,
+          names: named((code) => !code.endsWith('GPSR_MISSING')),
+        }),
+        detail: copy.bundleComponentMissing.detail,
+      };
+    case 'component-gpsr-missing':
+      return {
+        title: interpolate(copy.bundleComponentGpsrMissing.title, {
+          ...params,
+          names: named((code) => code.endsWith('GPSR_MISSING')),
+        }),
+        detail: copy.bundleComponentGpsrMissing.detail,
+      };
+    case 'category-mismatch':
+      return {
+        title: interpolate(copy.bundleCategoryMismatch.title, params),
+        detail: copy.bundleCategoryMismatch.detail,
       };
   }
 }

@@ -37031,3 +37031,47 @@ legend.analytics-settings-dialog__label {
 }
 .sys-health__row--warning .sys-health__status { color: var(--status-warning-fg); }
 .sys-health__row--error .sys-health__status { color: var(--status-error-fg); }
+
+/* ── Bundle offer: set contents on Review and in the editor (#3520) ── */
+.bundle-comp { display: grid; gap: var(--space-2); }
+.bundle-comp__heading { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.02em; }
+.bundle-comp__list { list-style: none; margin: 0; padding: 0; display: grid; }
+.bundle-comp__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.bundle-comp__item:last-child { border-bottom: none; }
+.bundle-comp__text { display: grid; gap: 1px; min-width: 0; }
+.bundle-comp__name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bundle-comp__meta { color: var(--text-muted); font-size: 12px; }
+.bundle-comp__problem { color: var(--status-error-text, var(--text-primary)); font-size: 12px; line-height: 1.4; }
+.bundle-comp__chips { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.bundle-comp__link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent-text, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.bundle-comp__category {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12.5px;
+}
+.bundle-row__marker { display: inline-flex; align-items: center; gap: 6px; }
+.bundle-stock { display: grid; gap: 1px; justify-items: end; }
+.bundle-stock small { color: var(--text-muted); font-size: 11px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bundle-comp-panel { padding: var(--space-3) var(--space-4) var(--space-4) calc(var(--space-4) + 36px); background: var(--bg-shell); border-top: 1px solid var(--border-subtle); }

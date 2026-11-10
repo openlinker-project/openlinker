@@ -48,7 +48,11 @@ import {
   type Messages,
   type ResolvedCopy,
 } from '../../../../shared/i18n';
-import type { OfferValidationContribution } from '../../../../shared/plugins';
+import type {
+  OfferRowBundleInput,
+  OfferRowValidationInput,
+  OfferValidationContribution,
+} from '../../../../shared/plugins';
 import { isRestrictedCirculationGtin } from '../../lib/gtin-classification';
 import { checkRowParameterRestrictions } from '../../lib/parameter-restrictions';
 import { isAllegroTitleTooLong, isAllegroTitleTooShort } from './allegro-title';
@@ -61,6 +65,17 @@ export const ALLEGRO_NO_PHOTO_BLOCKER = 'allegro:no-photo';
 export const ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER = 'allegro:siblings-without-card';
 export const ALLEGRO_EAN_UNVERIFIED_BLOCKER = 'allegro:ean-unverified';
 export const ALLEGRO_IN_STORE_BARCODE_BLOCKER = 'allegro:in-store-barcode';
+export const ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER = 'allegro:bundle-component-missing';
+export const ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER =
+  'allegro:bundle-component-gpsr-missing';
+export const ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER = 'allegro:bundle-category-mismatch';
+/**
+ * The refusal codes the adapter's product-set planning raises per component
+ * (`planProductSet`, #3520), as the bundle preview reports them. Mirrored here
+ * because the browser cannot import the adapter.
+ */
+export const ALLEGRO_PRODUCT_SET_UNPUBLISHABLE_CODE = 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE';
+export const ALLEGRO_PRODUCT_SET_GPSR_MISSING_CODE = 'PRODUCT_SET_COMPONENT_GPSR_MISSING';
 export const ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE = 'allegro:missing-seller-details';
 
 /**
@@ -174,6 +189,45 @@ function blockerLabels(): ResolvedCopy<Messages['listings']>['allegroOfferValida
   return getMessages('listings').allegroOfferValidation.blockers;
 }
 
+/**
+ * A bundle publishes as one product-set offer, so the checks about a single
+ * product (its own barcode, its own catalogue card, offer-level product
+ * parameters, sibling grouping) do not apply to it and are skipped rather than
+ * reported falsely. What can stop it is each component, and the category: Allegro
+ * requires the offer's category to equal that of the FIRST component's card.
+ */
+function validateBundleRow(
+  input: OfferRowValidationInput,
+  bundle: OfferRowBundleInput,
+): string[] {
+  const blockers: string[] = [];
+  if (isAllegroTitleTooLong(input.title)) {
+    blockers.push(ALLEGRO_TITLE_TOO_LONG_BLOCKER);
+  } else if (isAllegroTitleTooShort(input.title)) {
+    blockers.push(ALLEGRO_TITLE_TOO_SHORT_BLOCKER);
+  }
+  if (input.imageCount === 0) blockers.push(ALLEGRO_NO_PHOTO_BLOCKER);
+
+  const hasProblem = (code: string): boolean =>
+    bundle.components.some((component) =>
+      component.problems.some((problem) => problem.code === code),
+    );
+  if (hasProblem(ALLEGRO_PRODUCT_SET_UNPUBLISHABLE_CODE)) {
+    blockers.push(ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER);
+  }
+  if (hasProblem(ALLEGRO_PRODUCT_SET_GPSR_MISSING_CODE)) {
+    blockers.push(ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER);
+  }
+  if (
+    bundle.suggestedCategoryId !== null &&
+    bundle.chosenCategoryId !== null &&
+    bundle.suggestedCategoryId !== bundle.chosenCategoryId
+  ) {
+    blockers.push(ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER);
+  }
+  return blockers;
+}
+
 export const allegroOfferValidation: OfferValidationContribution = {
   blockers: [
     {
@@ -225,6 +279,30 @@ export const allegroOfferValidation: OfferValidationContribution = {
       },
     },
     {
+      id: ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
+      field: 'bundle',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().bundleComponentMissing;
+      },
+    },
+    {
+      id: ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER,
+      field: 'bundle',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().bundleComponentGpsrMissing;
+      },
+    },
+    {
+      id: ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER,
+      field: 'bundle',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().bundleCategoryMismatch;
+      },
+    },
+    {
       id: ALLEGRO_EAN_UNVERIFIED_BLOCKER,
       field: 'ean',
       tone: 'warning',
@@ -245,6 +323,9 @@ export const allegroOfferValidation: OfferValidationContribution = {
   ],
   validateRow: (input) => {
     const blockers: string[] = [];
+    if (input.bundle) {
+      return validateBundleRow(input, input.bundle);
+    }
     if (input.needsProductParameters && !input.willLinkProductCard) {
       blockers.push(ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER);
     }

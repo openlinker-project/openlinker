@@ -9,6 +9,9 @@
   "allegroOfferValidation": {
     "blockers": {
       "addProductParams": "add product params",
+      "bundleCategoryMismatch": "category differs from first component",
+      "bundleComponentGpsrMissing": "component safety data missing",
+      "bundleComponentMissing": "component cannot be listed",
       "eanNotInCatalogue": "EAN not in catalogue",
       "inStoreBarcode": "in-store barcode",
       "noPhoto": "no photo",
@@ -257,6 +260,18 @@
       "unknownCategoryResult": "Unknown result"
     },
     "describe": {
+      "bundleCategoryMismatch": {
+        "detail": "Use the category of the first component, or reorder the components.",
+        "title": "The offer category must match the first component's product card on {destination}."
+      },
+      "bundleComponentGpsrMissing": {
+        "detail": "Add them to that product, or set connection defaults for the marketplace.",
+        "title": "{names} has no responsible producer or safety information."
+      },
+      "bundleComponentMissing": {
+        "detail": "Give that product a barcode that matches a catalogue card, a picture and a category mapping, or publish it on its own first, then come back.",
+        "title": "{names} cannot be listed on {destination}."
+      },
       "cardCategoryDiffers": {
         "detail": "Your mapping is used and the catalog product is not linked. Open it to compare the two.",
         "title": "Barcode {ean} matched a {destination} catalog product in a different category than your category mapping."
@@ -866,6 +881,7 @@
     "sourceHint": {
       "card": "Matched by barcode to a catalog product. No category mapping covers this product.",
       "cardAgrees": "Matched by barcode to a catalog product that sits in the category your mapping names.",
+      "firstComponent": "Taken from the product card of the set's first component. The marketplace requires the offer to match it.",
       "mapping": "Resolved from your category mapping.",
       "picked": "You picked this category in this wizard.",
       "shared": "All variants of a product list under one category, so this variant uses the product category."
@@ -873,6 +889,7 @@
     "sourceLabel": {
       "card": "Catalog",
       "cardAgrees": "Catalog + mapping",
+      "firstComponent": "First component",
       "mapping": "Mapping",
       "picked": "Set here",
       "shared": "Shared"
@@ -1174,6 +1191,30 @@
     "discardAndLeave": "Discard and leave",
     "keepEditing": "Keep editing",
     "title": "Leave this batch?"
+  },
+  "bundleOffer": {
+    "categoryMismatch": "The category differs from the first component's product card, and the marketplace requires the two to match.",
+    "collapse": "Hide set contents of {name}",
+    "compositionHeading": "Set contents on {destination}",
+    "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
+    "expand": "Show set contents of {name}",
+    "gift": "gift",
+    "insertComponentList": "Insert component list",
+    "limitedBy": "limited by {name}",
+    "marker": {
+      "one": "Set · {n} product",
+      "other": "Set · {n} products"
+    },
+    "modes": {
+      "catalogCard": "catalogue card",
+      "missing": "cannot be listed",
+      "newProduct": "new product",
+      "ownOffer": "own offer",
+      "ownOfferWithId": "own offer {id}"
+    },
+    "publishComponent": "Publish component",
+    "quantity": "×{n}",
+    "useFirstComponentCategory": "Use first component's category"
   },
   "categoryLookup": {
     "idleTimeout": "No response from the category lookup for {seconds}s."

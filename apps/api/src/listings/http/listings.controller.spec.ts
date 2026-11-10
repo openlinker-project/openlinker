@@ -34,6 +34,7 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import {
   ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
   MasterCatalogConnectionNotConfiguredException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -87,6 +88,7 @@ describe('ListingsController', () => {
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
   let offerStatusRead: jest.Mocked<IOfferStatusReadService>;
   let attributeProjectionPreview: jest.Mocked<IAttributeProjectionPreviewService>;
+  let bundleOfferPreview: { preview: jest.Mock };
   let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'refreshOne'>>;
   let publishedVariants: jest.Mocked<IPublishedVariantsService>;
 
@@ -238,6 +240,7 @@ describe('ListingsController', () => {
       getPublishedVariantIds: jest.fn(),
     };
     attributeProjectionPreview = { preview: jest.fn() };
+    bundleOfferPreview = { preview: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -255,6 +258,7 @@ describe('ListingsController', () => {
         { provide: OFFER_STATUS_READ_SERVICE_TOKEN, useValue: offerStatusRead },
         { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
         { provide: PUBLISHED_VARIANTS_SERVICE_TOKEN, useValue: publishedVariants },
+        { provide: BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN, useValue: bundleOfferPreview },
         {
           provide: ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
           useValue: attributeProjectionPreview,
@@ -1330,6 +1334,40 @@ describe('ListingsController', () => {
         controller.previewAttributeProjection('conn-1', {
           items: [{ variantId: 'v1', categoryId: 'cat-1' }],
         })
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+  });
+
+  describe('previewBundleOffers (#3520)', () => {
+    it('should pass items through and key entries by variantId', async () => {
+      bundleOfferPreview.preview.mockResolvedValue({
+        entries: [
+          { internalVariantId: 'b1', status: 'not-a-bundle' },
+          { internalVariantId: 'b2', status: 'failed', reason: 'preview-failed' },
+        ],
+      });
+
+      const result = await controller.previewBundleOffers('conn-1', {
+        items: [{ variantId: 'b1', categoryId: 'cat-1' }, { variantId: 'b2' }],
+      });
+
+      expect(bundleOfferPreview.preview).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        items: [{ internalVariantId: 'b1', categoryId: 'cat-1' }, { internalVariantId: 'b2' }],
+      });
+      expect(result.entries.map((e) => [e.variantId, e.status])).toEqual([
+        ['b1', 'not-a-bundle'],
+        ['b2', 'failed'],
+      ]);
+      expect(result.entries[0]).not.toHaveProperty('internalVariantId');
+    });
+
+    it('should answer 422 when the connection has no master catalogue', async () => {
+      bundleOfferPreview.preview.mockRejectedValue(
+        new MasterCatalogConnectionNotConfiguredException('conn-1')
+      );
+      await expect(
+        controller.previewBundleOffers('conn-1', { items: [{ variantId: 'b1' }] })
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
