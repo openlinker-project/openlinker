@@ -205,7 +205,7 @@ export function GuideDrawer({
           <div className="guide-drawer__foot">
             <span>
               {copy.footPress} <kbd className="guide-drawer__kbd">?</kbd> {copy.footOpen}{' '}
-              <kbd className="guide-drawer__kbd">Esc</kbd> {copy.footClose}
+              <kbd className="guide-drawer__kbd">{copy.escKey}</kbd> {copy.footClose}
             </span>
             {footer}
           </div>

@@ -209,6 +209,7 @@
   "guideDrawer": {
     "close": "Zamknij",
     "closeLabel": "Zamknij przewodnik",
+    "escKey": "Esc",
     "eyebrow": "Przewodnik",
     "footClose": "zamyka.",
     "footOpen": "na tej stronie, aby otworzyć przewodnik,",

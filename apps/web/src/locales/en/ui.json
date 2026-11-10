@@ -193,6 +193,7 @@
   "guideDrawer": {
     "close": "Close",
     "closeLabel": "Close the guide",
+    "escKey": "Esc",
     "eyebrow": "Guide",
     "footClose": "closes it.",
     "footOpen": "on this page to open the guide,",

@@ -29,19 +29,53 @@ export interface GiftReportGroup {
   paidGross: number;
   costNet: number;
   unknownCostUnits: number;
+  /** Channels (source connection ids) that sent the orders carrying this gift. */
+  sourceConnectionIds: string[];
 }
 
 export interface GiftReportTotals {
   currency: string | null;
+  /** Distinct orders carrying at least one gift. */
+  orders: number;
   units: number;
   paidGross: number;
   costNet: number;
   unknownCostUnits: number;
 }
 
+export type GiftCostGranularity = 'day' | 'week';
+
+export interface GiftCostPoint {
+  /** Start of the bucket, ISO 8601. */
+  start: string;
+  costNet: number;
+  units: number;
+  unknownCostUnits: number;
+  /** The bucket runs past the end of the range (a week in progress). */
+  partial: boolean;
+}
+
+export interface GiftCostSeries {
+  currency: string | null;
+  granularity: GiftCostGranularity;
+  points: GiftCostPoint[];
+}
+
 export interface GiftReport {
   groups: GiftReportGroup[];
   totals: GiftReportTotals[];
+  series: GiftCostSeries[];
+}
+
+export interface GiftBundleComponent {
+  variantId: string;
+  productId: string;
+  sku: string | null;
+  name: string | null;
+  units: number;
+  unitCostNet: number | null;
+  costNet: number | null;
+  giftSlot: boolean;
 }
 
 export interface GiftBundleRow {
@@ -55,6 +89,8 @@ export interface GiftBundleRow {
   componentCostMissing: boolean;
   hasGiftSlot: boolean;
   marginNet: number | null;
+  giftCostNet: number;
+  components: GiftBundleComponent[];
 }
 
 export interface GiftBundleDemandRow {
