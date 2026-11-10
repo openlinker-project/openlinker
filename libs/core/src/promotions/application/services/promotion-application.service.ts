@@ -203,12 +203,18 @@ export class PromotionApplicationService implements IPromotionApplicationService
         stock: stock.get(draft.benefit.variantId) ?? { kind: 'unknown' },
       });
     }
+    // A benefit the ledger already granted to this order is reported as such
+    // ("already added"), never as one the dry run would add again. Only saved
+    // promotions have ledger rows; an unsaved draft plans against an empty one.
+    const granted = new Set(
+      (await this.ledger.findGrantsForOrder(input.facts.orderId))
+        .map((g) => g.promotionId)
+        .filter((id) => savedIds.has(id)),
+    );
     const outcomes = planPromotions({
       promotions: all,
       evaluations: evaluation.evaluations,
-      // A preview asks "would this give", so a benefit the order already carries
-      // from a real run does not answer it.
-      alreadyAppliedPromotionIds: new Set(),
+      alreadyAppliedPromotionIds: granted,
       lines: input.lines,
       ...(input.componentProductIds !== undefined && {
         componentProductIds: input.componentProductIds,

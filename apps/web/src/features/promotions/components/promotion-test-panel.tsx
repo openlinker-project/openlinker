@@ -39,6 +39,7 @@ const REASON_KEYS = {
   'paused-unit-cap': 'limit',
   'unit-cap-reached': 'limit',
   'below-per-unit-threshold': 'belowThreshold',
+  'already-granted': 'alreadyGranted',
   'gift-already-in-order': 'alreadyInOrder',
   'customer-limit-reached': 'customerLimit',
   'customer-unknown': 'customerUnknown',
@@ -113,8 +114,12 @@ export function PromotionTestPanel({ promotionId, draft, ready }: PromotionTestP
       key: v.promotionId,
       title,
       sub: v.wouldApply ? copy.conditionsMet : reasonOf(v),
-      tone: v.wouldApply ? 'success' : 'neutral',
-      badge: v.wouldApply ? interpolate(copy.wouldAdd, { count: String(v.quantity) }) : copy.skipped,
+      tone: v.wouldApply ? 'success' : v.reason === 'already-granted' ? 'info' : 'neutral',
+      badge: v.wouldApply
+        ? interpolate(copy.wouldAdd, { count: String(v.quantity) })
+        : v.reason === 'already-granted'
+          ? copy.alreadyAddedBadge
+          : copy.skipped,
     });
     if (subject !== undefined) {
       out.push(verdictRow(subject, copy.thisPromotion));

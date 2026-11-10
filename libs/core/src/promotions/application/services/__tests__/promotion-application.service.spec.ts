@@ -212,6 +212,17 @@ describe('PromotionApplicationService', () => {
     expect(log.append).not.toHaveBeenCalled();
   });
 
+  it('should report a promotion the ledger already granted to the order as already applied, not as one it would add', async () => {
+    ledger.findGrantsForOrder.mockResolvedValue([
+      { promotionId: 'p1', internalOrderId: 'o1', customerId: 'cust-1', quantity: 1, productId: 'p-gift', variantId: 'v-gift', documentForm: null, createdAt: CREATED },
+    ]);
+
+    const preview = await service.preview({ ...baseInput() });
+
+    expect(preview.outcomes[0]).toMatchObject({ promotionId: 'p1', applied: true, alreadyApplied: true });
+    expect(ledger.recordGrant).not.toHaveBeenCalled();
+  });
+
   it('should record a failed application for every promotion in play', async () => {
     await service.recordFailure([{ id: 'p1', name: 'Free mug' }], 'o1', 'boom');
 

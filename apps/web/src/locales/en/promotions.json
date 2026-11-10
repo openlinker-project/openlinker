@@ -502,6 +502,7 @@
     "scheduled": "Scheduled"
   },
   "test": {
+    "alreadyAddedBadge": "Already added",
     "aside": "nothing is saved",
     "conditionsMet": "The conditions are met.",
     "customer": "Customer (optional)",
@@ -529,6 +530,7 @@
     "orderNotFound": "There is no such order.",
     "orderPlaceholder": "Order id (ol_order_...)",
     "reasons": {
+      "alreadyGranted": "The gift was already added to this order.",
       "alreadyInOrder": "The gift is already in the order.",
       "belowThreshold": "Not enough units of the product in the order.",
       "customerLimit": "This customer already got the most allowed.",

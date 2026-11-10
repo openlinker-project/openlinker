@@ -499,6 +499,7 @@
     "scheduled": "Zaplanowane"
   },
   "test": {
+    "alreadyAddedBadge": "Już dodano",
     "aside": "nic się nie zapisuje",
     "conditionsMet": "Warunki są spełnione.",
     "customer": "Klient (opcjonalnie)",
@@ -526,6 +527,7 @@
     "orderNotFound": "Nie ma takiego zamówienia.",
     "orderPlaceholder": "Id zamówienia (ol_order_...)",
     "reasons": {
+      "alreadyGranted": "Gratis został już dodany do zamówienia.",
       "alreadyInOrder": "Gratis jest już w zamówieniu.",
       "belowThreshold": "W zamówieniu jest za mało sztuk produktu.",
       "customerLimit": "Ten klient dostał już najwięcej, ile wolno.",

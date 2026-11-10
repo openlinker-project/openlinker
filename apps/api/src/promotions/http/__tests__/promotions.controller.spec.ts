@@ -165,6 +165,30 @@ describe('PromotionsController', () => {
     expect(result.verdicts[0]).toMatchObject({ promotionId: 'draft', isSubject: true, wouldApply: false });
   });
 
+  it('should report a promotion the ledger already granted as already-granted, not as one it would add', async () => {
+    orderGifts.previewForOrder.mockResolvedValue({
+      evaluatedAt: NOW,
+      evaluations: [],
+      outcomes: [
+        {
+          promotionId: 'p1',
+          promotionName: 'Free mug',
+          applied: true,
+          alreadyApplied: true,
+          quantity: 0,
+          reason: null,
+          nonFiringReason: null,
+          supersededByPromotionId: null,
+          stateChange: null,
+        },
+      ],
+    });
+
+    const result = await controller.evaluate({ orderId: 'o1', promotionId: 'p1' });
+
+    expect(result.verdicts[0]).toMatchObject({ wouldApply: false, reason: 'already-granted' });
+  });
+
   it('should answer 404 for a dry run with an unknown customer and preview nothing', async () => {
     customers.getProjection.mockResolvedValue(null);
 

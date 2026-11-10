@@ -422,9 +422,10 @@ export class PromotionDryRunResponseDto {
       verdict.promotionId = outcome.promotionId;
       verdict.promotionName = outcome.promotionName;
       verdict.isSubject = outcome.promotionId === subjectPromotionId;
-      verdict.wouldApply = outcome.applied;
+      // The ledger already granted it to this order: not something a run would add again.
+      verdict.wouldApply = outcome.applied && !outcome.alreadyApplied;
       verdict.quantity = outcome.quantity;
-      verdict.reason = outcome.reason;
+      verdict.reason = outcome.alreadyApplied ? 'already-granted' : outcome.reason;
       verdict.nonFiringReason = outcome.nonFiringReason;
       verdict.supersededByPromotionId = outcome.supersededByPromotionId;
       const limit = customerLimits.get(outcome.promotionId);
