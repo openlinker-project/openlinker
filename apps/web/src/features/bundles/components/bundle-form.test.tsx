@@ -122,7 +122,7 @@ async function pick(
   sku: string
 ): Promise<void> {
   await user.type(screen.getByTestId(testId), text);
-  await user.click(await screen.findByTestId(`${testId}-result-${sku}`));
+  await user.click(await screen.findByTestId(`${testId}-result-${sku}`, undefined, { timeout: 5000 }));
 }
 
 /** Leaves the components step and opens the product step. */

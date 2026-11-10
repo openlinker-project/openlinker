@@ -17,6 +17,7 @@
 import { useCallback, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -76,7 +77,7 @@ export function ProductPeekById({ productId, onClose }: ProductPeekByIdProps): R
   ) : query.error ? (
     <ErrorState
       title={copy.loadError}
-      message={query.error.message}
+      message={describeApiError(query.error, 'products')}
       action={<Button onClick={() => void query.refetch()}>{copy.retry}</Button>}
     />
   ) : (

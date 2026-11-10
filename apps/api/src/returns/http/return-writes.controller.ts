@@ -99,9 +99,7 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { codedHttpError } from '../../common/errors/coded-http.exception';
-import type {
-  RestockBlockedResponseDto,
-  ReturnLineCountersDto} from '../dto/return-custody.dto';
+import type { RestockBlockedResponseDto, ReturnLineCountersDto } from '../dto/return-custody.dto';
 import {
   BundleRefundHintResponseDto,
   BundleReturnPreviewQueryDto,
@@ -116,7 +114,7 @@ import {
   MarkReturnLineNotReturnedDto,
   MarkReturnLineNotReturnedResponseDto,
   ReceiveReturnLineDto,
-  ReceiveReturnLineResponseDto
+  ReceiveReturnLineResponseDto,
 } from '../dto/return-custody.dto';
 import {
   AuthorizeReturnResponseDto,
@@ -190,7 +188,8 @@ export class ReturnWritesController {
     const order = await this.orderRecords.getOrderRecord(dto.internalOrderId);
     const record = await this.returns.recordReturn({
       internalOrderId: dto.internalOrderId,
-      orderLines: order === null || order === undefined ? undefined : toRecordReturnOrderLines(order),
+      orderLines:
+        order === null || order === undefined ? undefined : toRecordReturnOrderLines(order),
       sourceConnectionId: dto.sourceConnectionId,
       lines: dto.lines.map((line) => ({
         sku: line.sku ?? null,
@@ -314,7 +313,7 @@ export class ReturnWritesController {
   @Post(':returnId/lines/:lineId/mark-not-returned')
   @Roles('admin', 'operator')
   @ApiOperation({
-    summary: 'Record that this line\'s parcel is not coming',
+    summary: "Record that this line's parcel is not coming",
     description:
       '**Always an operator act, never a timeout and never a sweep** (spec § 5.2) — a parcel that ' +
       'has not arrived is not the same fact as a parcel that is not coming, and only a human is in ' +
@@ -412,10 +411,10 @@ export class ReturnWritesController {
   @ApiOperation({
     summary: 'Price a (partial) return of a bundle line',
     description:
-      'A read - nothing is written. For a bundle line: the components, each one\'s share of the set ' +
+      "A read - nothing is written. For a bundle line: the components, each one's share of the set " +
       'price computed NOW from standalone prices (cost as the fallback), and the Allegro-formula ' +
       'refund HINT (paid for the set minus the full price of what the buyer keeps, minimum 0). The ' +
-      'hint is never applied by default; the refund amount remains the operator\'s field.',
+      "hint is never applied by default; the refund amount remains the operator's field.",
   })
   @ApiResponse({ status: 200, type: BundleReturnPreviewResponseDto })
   async previewBundleReturn(
@@ -461,7 +460,7 @@ export class ReturnWritesController {
   @ApiOperation({
     summary: 'The Allegro-formula refund hint for partially returned bundles',
     description:
-      'A read. Sums, over the return\'s partially returned bundle lines, what was paid for the set ' +
+      "A read. Sums, over the return's partially returned bundle lines, what was paid for the set " +
       'minus the full price of what the buyer keeps (minimum 0 per line). A hint only: it is ' +
       'never applied, and OpenLinker records a refund, it does not execute one.',
   })
@@ -471,7 +470,12 @@ export class ReturnWritesController {
   ): Promise<BundleRefundHintResponseDto> {
     const sets = await this.custody.listReturnedBundleComponents(returnId);
     if (sets.length === 0) {
-      return { applicable: false, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
+      return {
+        applicable: false,
+        hintGross: null,
+        paidForSetGross: null,
+        keptStandaloneGross: null,
+      };
     }
     let hint = 0;
     let paid = 0;
@@ -485,11 +489,21 @@ export class ReturnWritesController {
         context
       );
       if (bundle === undefined) {
-        return { applicable: true, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
+        return {
+          applicable: true,
+          hintGross: null,
+          paidForSetGross: null,
+          keptStandaloneGross: null,
+        };
       }
       const preview = await this.custody.previewBundleReturn(bundle, set.units);
       if (preview.keptAtStandaloneRefundHintGross === null || preview.hintInputs === null) {
-        return { applicable: true, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
+        return {
+          applicable: true,
+          hintGross: null,
+          paidForSetGross: null,
+          keptStandaloneGross: null,
+        };
       }
       hint += preview.keptAtStandaloneRefundHintGross;
       paid += preview.hintInputs.paidForSetGross;
@@ -538,11 +552,11 @@ export class ReturnWritesController {
   @ApiOperation({
     summary: 'Confirm the order line a return line belongs to',
     description:
-      'The operator\'s confirmation of a suggestion. Goes through the same fill-in-when-empty claim ' +
+      "The operator's confirmation of a suggestion. Goes through the same fill-in-when-empty claim " +
       'as automatic resolution, so it can never overwrite an answer.',
   })
   @ApiResponse({ status: 201, type: ConfirmReturnLineOrderLineResponseDto })
-  @ApiResponse({ status: 400, description: 'The order line is not one of the order\'s lines' })
+  @ApiResponse({ status: 400, description: "The order line is not one of the order's lines" })
   async confirmOrderLine(
     @Param('returnId') returnId: string,
     @Param('lineId') lineId: string,
@@ -723,31 +737,34 @@ export class ReturnWritesController {
     }
 
     try {
-      const record = await this.orderRefunds.recordRefund({
-        internalOrderId: intent.internalOrderId,
-        amount: intent.amount,
-        currency: intent.currency,
-        reason: intent.reason,
-        note: intent.note,
-        recordedAt: intent.recordedAt,
-        executedBy: intent.executedBy,
-        // NOTE: `intent.providerRefundId` is deliberately NOT forwarded —
-        // `CreateRefundRecordInput` has no field for it. That is a real gap, not
-        // an omission here: the intent carries the value because a future
-        // `RefundExecutor` capability would report one, and `orders` will need a
-        // column before it can be stored. Today every shipped path is
-        // `operator_out_of_band`, where it is always null, so nothing is lost.
-        returnId: intent.returnId,
-        // Repeated here because the money state has already settled: a record
-        // write that re-refused an excess the operator just acknowledged would
-        // leave a refunded line with no RefundRecord (#3289).
-        acknowledgeAboveCeiling,
-        // Deterministic per ATTEMPT, so one attempt cannot insert twice and
-        // inflate `RefundSummary.totalAmount`. A second attempt claims different
-        // lines (the first attempt's are no longer attemptable), so a legitimate
-        // partial refund still gets its own key.
-        idempotencyKey: `return:${intent.returnId}:${[...result.claimedLineIds].sort().join('+')}`,
-      }, { orderLockHeld });
+      const record = await this.orderRefunds.recordRefund(
+        {
+          internalOrderId: intent.internalOrderId,
+          amount: intent.amount,
+          currency: intent.currency,
+          reason: intent.reason,
+          note: intent.note,
+          recordedAt: intent.recordedAt,
+          executedBy: intent.executedBy,
+          // NOTE: `intent.providerRefundId` is deliberately NOT forwarded —
+          // `CreateRefundRecordInput` has no field for it. That is a real gap, not
+          // an omission here: the intent carries the value because a future
+          // `RefundExecutor` capability would report one, and `orders` will need a
+          // column before it can be stored. Today every shipped path is
+          // `operator_out_of_band`, where it is always null, so nothing is lost.
+          returnId: intent.returnId,
+          // Repeated here because the money state has already settled: a record
+          // write that re-refused an excess the operator just acknowledged would
+          // leave a refunded line with no RefundRecord (#3289).
+          acknowledgeAboveCeiling,
+          // Deterministic per ATTEMPT, so one attempt cannot insert twice and
+          // inflate `RefundSummary.totalAmount`. A second attempt claims different
+          // lines (the first attempt's are no longer attemptable), so a legitimate
+          // partial refund still gets its own key.
+          idempotencyKey: `return:${intent.returnId}:${[...result.claimedLineIds].sort().join('+')}`,
+        },
+        { orderLockHeld }
+      );
 
       return {
         ...base,
@@ -850,18 +867,23 @@ export class ReturnWritesController {
   }
 
   /** The order's commercial lines, for the resolution routes. */
-  private async loadOrderLines(
-    returnId: string,
-    lineId: string
-  ): Promise<ResolvableOrderLine[]> {
+  private async loadOrderLines(returnId: string, lineId: string): Promise<ResolvableOrderLine[]> {
     await this.assertLineBelongsToReturn(returnId, lineId);
     const record = await this.returns.getReturn(returnId);
     if (record === null || record.internalOrderId === null) {
-      throw new ConflictException('The return is not attributed to an order');
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'RETURN_NOT_ATTRIBUTED',
+        'The return is not attributed to an order'
+      );
     }
     const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
     if (order === null) {
-      throw new ConflictException('The order of this return could not be read');
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'ORDER_NOT_FOUND',
+        'The order of this return could not be read'
+      );
     }
     return order.orderItems;
   }
@@ -910,7 +932,8 @@ export class ReturnWritesController {
     const components: BundleReturnInput['components'] = [];
     for (const ref of refs) {
       const variantId = ref.componentLineId.slice(
-        ref.componentLineId.indexOf(COMPONENT_LINE_ID_SEPARATOR) + COMPONENT_LINE_ID_SEPARATOR.length
+        ref.componentLineId.indexOf(COMPONENT_LINE_ID_SEPARATOR) +
+          COMPONENT_LINE_ID_SEPARATOR.length
       );
       const known = catalogue.get(variantId);
       if (known === undefined) {
@@ -922,7 +945,7 @@ export class ReturnWritesController {
     const paid =
       item === undefined
         ? null
-        : (item.unitPriceGross ?? (order.taxTreatment === 'exclusive' ? null : item.price));
+        : item.unitPriceGross ?? (order.taxTreatment === 'exclusive' ? null : item.price);
     return {
       paidPerUnitGross: paid,
       components,
@@ -1035,7 +1058,9 @@ export class ReturnWritesController {
    * genuinely unknown ceiling (missing total or currency) is the service's
    * `unknown` verdict and still proceeds.
    */
-  private async resolveRefundCeilingContext(returnId: string): Promise<RefundCeilingContext | null> {
+  private async resolveRefundCeilingContext(
+    returnId: string
+  ): Promise<RefundCeilingContext | null> {
     try {
       const record = await this.returns.getReturn(returnId);
       const orderId = record?.internalOrderId ?? null;
@@ -1073,7 +1098,9 @@ function toRecordReturnOrderLines(order: {
   orderSnapshot: Record<string, unknown>;
   channelSnapshot: Record<string, unknown>;
 }): RecordReturnOrderLines {
-  const read = (snapshot: Record<string, unknown>): Array<{
+  const read = (
+    snapshot: Record<string, unknown>
+  ): Array<{
     id: string;
     sku: string | null;
     name: string | null;
