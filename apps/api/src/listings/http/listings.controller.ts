@@ -48,6 +48,7 @@ import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import {
   AdapterCapabilityNotSupportedException,
   ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
   CatalogProductNotFoundException,
   CategoryNotFoundException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -66,6 +67,7 @@ import {
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
   IAttributeProjectionPreviewService,
+  IBundleOfferPreviewService,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
   MasterCatalogConnectionNotConfiguredException,
@@ -140,6 +142,11 @@ import {
   ResolveCategoryBatchRequestDto,
   ResolveCategoryBatchResponseDto,
 } from './dto/resolve-category-batch.dto';
+import {
+  BundleOfferPreviewRequestDto,
+  BundleOfferPreviewResponseDto,
+  type BundleOfferPreviewEntryView,
+} from './dto/bundle-offer-preview.dto';
 import {
   AttributeProjectionPreviewRequestDto,
   AttributeProjectionPreviewResponseDto,
@@ -238,6 +245,8 @@ export class ListingsController {
     private readonly productVariantRepository: ProductVariantRepositoryPort,
     @Inject(ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN)
     private readonly attributeProjectionPreview: IAttributeProjectionPreviewService,
+    @Inject(BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN)
+    private readonly bundleOfferPreview: IBundleOfferPreviewService,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
     private readonly categoryResolution: ICategoryResolutionService,
     @Inject(OFFER_STATUS_READ_SERVICE_TOKEN)
@@ -1041,6 +1050,56 @@ export class ListingsController {
       return {
         entries: entries.map(
           ({ internalVariantId, ...rest }): AttributeProjectionPreviewEntryView => ({
+            variantId: internalVariantId,
+            ...rest,
+          })
+        ),
+      };
+    } catch (error) {
+      if (
+        error instanceof AdapterCapabilityNotSupportedException ||
+        error instanceof MasterCatalogConnectionNotConfiguredException
+      ) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Post('connections/:connectionId/bundle-offer-preview')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Preview how bundles would be published as product-set offers (#3520)',
+    description:
+      'For each bundle variant, reports its components in order with how each would enter the ' +
+      'set offer (own live offer, catalogue card, new product, or missing), what blocks it, ' +
+      'the category the destination will require (that of the first component\'s card) and ' +
+      'how many whole sets are sellable now. Read-only: the marketplace is only read.',
+  })
+  @ApiResponse({ status: 200, type: BundleOfferPreviewResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Connection is not an OfferManager marketplace, or has no master catalogue connection.',
+  })
+  async previewBundleOffers(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: BundleOfferPreviewRequestDto
+  ): Promise<BundleOfferPreviewResponseDto> {
+    try {
+      const { entries } = await this.bundleOfferPreview.preview({
+        connectionId,
+        items: dto.items.map((item) => ({
+          internalVariantId: item.variantId,
+          ...(item.categoryId ? { categoryId: item.categoryId } : {}),
+        })),
+      });
+      return {
+        entries: entries.map(
+          ({ internalVariantId, ...rest }): BundleOfferPreviewEntryView => ({
             variantId: internalVariantId,
             ...rest,
           })

@@ -69,6 +69,9 @@ import type {
   MarketplaceOfferProductSetItem,
   SellerPolicies,
   SafetyAttachmentUploader,
+  ProductSetPlanner,
+  ProductSetPlanRequest,
+  ProductSetComponentPlan,
   SafetyAttachmentUploadInput,
   SafetyAttachmentUploadResult,
   TaxonomyIdentityProvider,
@@ -402,6 +405,7 @@ export class AllegroOfferManagerAdapter
     SellerPoliciesReader,
     ResponsibleProducerReader,
     SafetyAttachmentUploader,
+    ProductSetPlanner,
     TaxonomyIdentityProvider,
     OfferCurrencyDeclarer
 {
@@ -2598,48 +2602,135 @@ export class AllegroOfferManagerAdapter
     cmd: CreateOfferCommand,
     components: readonly OfferProductSetComponent[]
   ): Promise<PlannedProductSetEntry[]> {
-    const categoryId = cmd.overrides?.categoryId;
     const refusals: CreateOfferValidationError[] = [];
     const planned: PlannedProductSetEntry[] = [];
 
     for (const [index, component] of components.entries()) {
-      // Preferred: the component's own live offer already owns a product card.
-      const cardFromOffer = component.existingOfferExternalId
-        ? await this.readProductCardIdFromOffer(component.existingOfferExternalId)
-        : null;
-      const card = cardFromOffer
-        ? ({ kind: 'unique', productId: cardFromOffer } as const)
-        : component.barcode && categoryId
-          ? await resolveAllegroProductCardByEan(this.httpClient, this.cache, {
-              ean: component.barcode,
-              categoryId,
-            })
-          : ({ kind: 'no_match' } as const);
+      const outcome = await this.evaluateProductSetComponent(
+        cmd.overrides?.categoryId,
+        component,
+        index
+      );
+      if (outcome.kind === 'refused') {
+        refusals.push(outcome.refusal);
+      } else {
+        planned.push(outcome.planned);
+      }
+    }
 
-      const declaration = await this.resolveProductGpsrDeclaration({
-        gpsr: component.gpsr,
-        internalVariantId: component.variantId,
-      });
-      const responsibleProducerId =
-        declaration.responsibleProducerId ?? this.sellerDefaults?.responsibleProducerId;
-      const safetyInformation =
-        declaration.safetyInformation ?? this.sellerDefaults?.safetyInformation;
-      if (!responsibleProducerId || !safetyInformation) {
-        refusals.push({
-          field: `productSet[${index}]`,
-          code: 'PRODUCT_SET_COMPONENT_GPSR_MISSING',
-          message: `Bundle component "${component.name}" has no responsible producer or safety information, and the connection has no default for them.`,
+    if (refusals.length > 0) {
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, refusals);
+    }
+    this.logger.debug(
+      `Allegro product set for variant=${cmd.internalVariantId}: ${JSON.stringify(
+        planned.map((p) => ({
+          index: p.index,
+          variantId: p.variantId,
+          mode: p.mode,
+          quantity: p.quantity,
+        }))
+      )}`
+    );
+    return planned;
+  }
+
+  /**
+   * Read-only product-set preview (#3520): the same per-component decision
+   * `planProductSet` makes at publish time, reported per component instead of
+   * thrown. Only GETs are issued; nothing is created or uploaded.
+   */
+  async previewProductSet(request: ProductSetPlanRequest): Promise<ProductSetComponentPlan[]> {
+    const plans: ProductSetComponentPlan[] = [];
+    for (const [index, component] of request.components.entries()) {
+      const outcome = await this.evaluateProductSetComponent(request.categoryId, component, index);
+      const base = { variantId: component.variantId };
+      if (outcome.kind === 'refused') {
+        plans.push({
+          ...base,
+          mode: 'missing',
+          ...(outcome.cardCategoryId ? { cardCategoryId: outcome.cardCategoryId } : {}),
+          problems: [{ code: outcome.refusal.code, message: outcome.refusal.message }],
         });
         continue;
       }
-      const common = {
-        quantity: { value: component.quantity },
-        responsibleProducer: { id: responsibleProducerId },
-        safetyInformation,
-      };
+      const { planned } = outcome;
+      plans.push({
+        ...base,
+        mode:
+          planned.mode === 'card-from-offer'
+            ? 'own-offer'
+            : planned.mode === 'card-by-ean'
+              ? 'catalog-card'
+              : 'new-product',
+        ...(component.existingOfferExternalId
+          ? { externalOfferId: component.existingOfferExternalId }
+          : {}),
+        ...(outcome.cardCategoryId ? { cardCategoryId: outcome.cardCategoryId } : {}),
+        problems: [],
+      });
+    }
+    return plans;
+  }
 
-      if (card.kind === 'unique') {
-        planned.push({
+  /**
+   * One component's plan or refusal. Card order: its own live offer's card, then
+   * the barcode lookup within the offer's category, then an inline product.
+   */
+  private async evaluateProductSetComponent(
+    categoryId: string | undefined,
+    component: OfferProductSetComponent,
+    index: number
+  ): Promise<
+    | { kind: 'planned'; planned: PlannedProductSetEntry; cardCategoryId?: string }
+    | { kind: 'refused'; refusal: CreateOfferValidationError; cardCategoryId?: string }
+  > {
+    // Preferred: the component's own live offer already owns a product card.
+    const fromOffer = component.existingOfferExternalId
+      ? await this.readProductCardFromOffer(component.existingOfferExternalId)
+      : null;
+    const cardFromOffer = fromOffer?.cardId ?? null;
+    const card = cardFromOffer
+      ? ({ kind: 'unique', productId: cardFromOffer } as const)
+      : component.barcode && categoryId
+        ? await resolveAllegroProductCardByEan(this.httpClient, this.cache, {
+            ean: component.barcode,
+            categoryId,
+          })
+        : ({ kind: 'no_match' } as const);
+    const cardCategoryId =
+      fromOffer?.categoryId ?? (card.kind === 'unique' ? categoryId : undefined);
+    const withCategory = cardCategoryId ? { cardCategoryId } : {};
+
+    const declaration = await this.resolveProductGpsrDeclaration({
+      gpsr: component.gpsr,
+      internalVariantId: component.variantId,
+    });
+    const responsibleProducerId =
+      declaration.responsibleProducerId ?? this.sellerDefaults?.responsibleProducerId;
+    const safetyInformation =
+      declaration.safetyInformation ?? this.sellerDefaults?.safetyInformation;
+    if (!responsibleProducerId || !safetyInformation) {
+      return {
+        kind: 'refused',
+        ...withCategory,
+        refusal: {
+          field: `productSet[${index}]`,
+          code: 'PRODUCT_SET_COMPONENT_GPSR_MISSING',
+          message: `Bundle component "${component.name}" has no responsible producer or safety information, and the connection has no default for them.`,
+        },
+      };
+    }
+    const common = {
+      quantity: { value: component.quantity },
+      responsibleProducer: { id: responsibleProducerId },
+      safetyInformation,
+    };
+
+    if (card.kind === 'unique') {
+      return {
+        kind: 'planned',
+        ...withCategory,
+        planned: {
           index,
           name: component.name,
           imageUrls: [],
@@ -2647,13 +2738,16 @@ export class AllegroOfferManagerAdapter
           variantId: component.variantId,
           quantity: component.quantity,
           entry: { product: { id: card.productId }, ...common },
-        });
-        continue;
-      }
+        },
+      };
+    }
 
-      const name = sanitizeAllegroName(component.name);
-      if (!name || component.imageUrls.length === 0 || !component.categoryId) {
-        refusals.push({
+    const name = sanitizeAllegroName(component.name);
+    if (!name || component.imageUrls.length === 0 || !component.categoryId) {
+      return {
+        kind: 'refused',
+        ...withCategory,
+        refusal: {
           field: `productSet[${index}]`,
           code: 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE',
           message:
@@ -2662,10 +2756,12 @@ export class AllegroOfferManagerAdapter
             `listed as an inline product without ${
               !name ? 'a name' : component.imageUrls.length === 0 ? 'a picture' : 'a resolvable category'
             }. Add a barcode that matches an Allegro product card, a picture, or a category mapping, to that product.`,
-        });
-        continue;
-      }
-      planned.push({
+        },
+      };
+    }
+    return {
+      kind: 'planned',
+      planned: {
         index,
         name: component.name,
         imageUrls: component.imageUrls,
@@ -2686,30 +2782,20 @@ export class AllegroOfferManagerAdapter
           },
           ...common,
         },
-      });
-    }
-
-    if (refusals.length > 0) {
-      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, refusals);
-    }
-    this.logger.debug(
-      `Allegro product set for variant=${cmd.internalVariantId}: ${JSON.stringify(
-        planned.map((p) => ({
-          index: p.index,
-          variantId: p.variantId,
-          mode: p.mode,
-          quantity: p.quantity,
-        }))
-      )}`
-    );
-    return planned;
+      },
+    };
   }
 
-  /** The product card id of a component's own offer, or null when it cannot be read. */
-  private async readProductCardIdFromOffer(offerId: string): Promise<string | null> {
+  /** The product card id and category of a component's own offer, or null when unreadable. */
+  private async readProductCardFromOffer(
+    offerId: string
+  ): Promise<{ cardId: string | null; categoryId?: string } | null> {
     try {
       const offer = await this.fetchProductOfferById(offerId);
-      return offer.productSet?.[0]?.product?.id ?? null;
+      return {
+        cardId: offer.productSet?.[0]?.product?.id ?? null,
+        ...(offer.category?.id ? { categoryId: offer.category.id } : {}),
+      };
     } catch (error) {
       this.logger.warn(
         `Could not read bundle component offer ${offerId} for its product card (${(error as Error).message}); falling back`

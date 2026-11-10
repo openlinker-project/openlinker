@@ -3775,6 +3775,49 @@ describe('AllegroOfferManagerAdapter', () => {
         });
       });
 
+      describe('previewProductSet (read-only)', () => {
+        it('should report the mode and card category per component without posting', async () => {
+          httpClient.get.mockResolvedValueOnce({
+            data: {
+              id: 'offer-mug',
+              category: { id: '74035' },
+              productSet: [{ product: { id: 'card-from-offer' } }],
+            },
+            status: 200,
+            headers: {},
+          });
+
+          const plans = await adapter.previewProductSet({
+            categoryId: '110886',
+            components: [
+              { ...setCmd.productSet![0], existingOfferExternalId: 'offer-mug' },
+              { ...setCmd.productSet![1] },
+            ],
+          });
+
+          expect(plans[0]).toEqual({
+            variantId: 'v-1',
+            mode: 'own-offer',
+            externalOfferId: 'offer-mug',
+            cardCategoryId: '74035',
+            problems: [],
+          });
+          expect(plans[1]).toMatchObject({ variantId: 'v-2', mode: 'new-product', problems: [] });
+          expect(httpClient.post).not.toHaveBeenCalled();
+        });
+
+        it('should report an unpublishable component as missing with its refusal code', async () => {
+          const plans = await adapter.previewProductSet({
+            categoryId: '110886',
+            components: [{ ...setCmd.productSet![1], imageUrls: [], categoryId: undefined }],
+          });
+
+          expect(plans[0].mode).toBe('missing');
+          expect(plans[0].problems[0].code).toBe('PRODUCT_SET_COMPONENT_UNPUBLISHABLE');
+          expect(httpClient.post).not.toHaveBeenCalled();
+        });
+      });
+
       it('falls back to the barcode lookup when the component offer cannot be read', async () => {
         httpClient.post.mockResolvedValue(
           mockHttpResponse({ id: 'allegro-offer-set', publication: { status: 'INACTIVE' } })

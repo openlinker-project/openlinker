@@ -29,6 +29,7 @@ import { OfferMappingSyncService } from './application/services/offer-mapping-sy
 import { OfferMappingsService } from './application/services/offer-mappings.service';
 import { CategoryResolutionService } from './application/services/category-resolution.service';
 import { AttributeProjectionService } from './application/services/attribute-projection.service';
+import { BundleOfferPreviewService } from './application/services/bundle-offer-preview.service';
 import { AttributeProjectionPreviewService } from './application/services/attribute-projection-preview.service';
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { ShopProductMappingRepository } from './infrastructure/persistence/repositories/shop-product-mapping.repository';
@@ -101,6 +102,7 @@ import {
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
   ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -232,6 +234,7 @@ export {
     CategoryResolutionService,
     AttributeProjectionService,
     AttributeProjectionPreviewService,
+    BundleOfferPreviewService,
     OfferMappingRepository,
     OfferCreationRecordRepository,
     BulkListingBatchRepository,
@@ -359,6 +362,10 @@ export {
     {
       provide: ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
       useExisting: AttributeProjectionPreviewService,
+    },
+    {
+      provide: BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
+      useExisting: BundleOfferPreviewService,
     },
     {
       provide: OFFER_BUILDER_SERVICE_TOKEN,
@@ -513,6 +520,7 @@ export {
     ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
     // #3995 - the offer wizard's per-variant rule preview.
     ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
     OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,

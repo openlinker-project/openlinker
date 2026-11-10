@@ -388,6 +388,43 @@ export class OfferBuilderService implements IOfferBuilderService {
     return command;
   }
 
+  async resolveBundleComponents(input: {
+    connectionId: string;
+    internalVariantId: string;
+    categoryId?: string;
+  }): Promise<OfferProductSetComponent[] | undefined> {
+    const connection = await this.connectionPort.get(input.connectionId);
+    const masterConnectionId = readMasterCatalogConnectionId(connection.config);
+    if (!masterConnectionId) {
+      throw new MasterCatalogConnectionNotConfiguredException(input.connectionId);
+    }
+    const [productMaster, destination] = await Promise.all([
+      this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
+        masterConnectionId,
+        'ProductMaster'
+      ),
+      this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+        input.connectionId,
+        'OfferManager'
+      ),
+    ]);
+    return this.resolveProductSet(
+      {
+        internalVariantId: input.internalVariantId,
+        connectionId: input.connectionId,
+        stock: 0,
+        ...(input.categoryId ? { overrides: { categoryId: input.categoryId } } : {}),
+      },
+      {
+        masterConnectionId,
+        productMaster,
+        borrowedTaxonomy: isTaxonomyBorrower(destination)
+          ? destination.getBorrowedTaxonomy()
+          : undefined,
+      }
+    );
+  }
+
   /**
    * The components of a bundle variant, resolved from the catalogue (#3520).
    * `undefined` for an ordinary variant, so its command is byte-identical to
