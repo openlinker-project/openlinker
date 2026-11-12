@@ -7,11 +7,21 @@
  *
  * @module libs/integrations/shopify/src/domain/policies
  */
-import { SHOPIFY_REQUIRED_SCOPES } from '../../shopify.constants';
+import { SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '../../shopify.constants';
+
+function missingFrom(scopes: readonly string[], granted: ReadonlySet<string>): string[] {
+  return scopes.filter((scope) => !granted.has(scope) && !granted.has(scope.replace(/^read_/, 'write_')));
+}
 
 /** Required scopes not granted; a granted `write_*` scope implies its `read_*` scope on Shopify. */
 export function findMissingShopifyScopes(granted: ReadonlySet<string>): string[] {
-  return SHOPIFY_REQUIRED_SCOPES.filter(
-    (scope) => !granted.has(scope) && !granted.has(scope.replace(/^read_/, 'write_')),
-  );
+  return missingFrom(SHOPIFY_REQUIRED_SCOPES, granted);
 }
+
+/** Optional scopes not granted: each switches off one optional ability, nothing more. */
+export function findMissingOptionalShopifyScopes(granted: ReadonlySet<string>): string[] {
+  return missingFrom(SHOPIFY_OPTIONAL_SCOPES, granted);
+}
+
+/** What an install asks the merchant for: the required scopes, then the optional ones. */
+export const SHOPIFY_REQUESTED_SCOPES: readonly string[] = [...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES];

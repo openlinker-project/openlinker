@@ -22,6 +22,7 @@ import { toShopifyGid } from './shopify-gid.policy';
 /** Anchored at both ends, as Shopify's own guidance requires, so a lookalike host cannot pass. */
 export const SHOPIFY_STORE_DOMAIN_PATTERN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
 const LOCATION_ID = /^(gid:\/\/shopify\/Location\/)?\d+$/;
+const ISO2_COUNTRY = /^[A-Z]{2}$/;
 
 export interface ShopifyConfigIssue {
   readonly path: string;
@@ -106,7 +107,23 @@ export function parseShopifyConfig(
     }
   }
 
+  let salesCountryIso2: string | null = null;
+  if (present(config.salesCountryIso2)) {
+    const value = config.salesCountryIso2;
+    if (typeof value !== 'string' || !ISO2_COUNTRY.test(value.trim())) {
+      issues.push({
+        path: 'salesCountryIso2',
+        message: 'must be a 2-letter uppercase ISO 3166-1 country code, e.g. PL',
+      });
+    } else {
+      salesCountryIso2 = value.trim();
+    }
+  }
+
   return issues.length > 0
     ? { ok: false, issues }
-    : { ok: true, config: { storeDomain, apiVersion, locationGid, unmanagedStockQuantity } };
+    : {
+        ok: true,
+        config: { storeDomain, apiVersion, locationGid, unmanagedStockQuantity, salesCountryIso2 },
+      };
 }

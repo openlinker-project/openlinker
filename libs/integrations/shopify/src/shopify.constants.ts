@@ -61,3 +61,16 @@ export const SHOPIFY_REQUIRED_SCOPES = [
   'read_publications',
   'write_publications',
 ] as const;
+
+/**
+ * Scopes asked for at install that the integration works without. Missing
+ * one is a warning on the connection test, never a refusal: it only switches
+ * off the optional ability that needs it.
+ *
+ * `write_draft_orders` - the tax rate read (`ProductTaxRateReader`, #3975,
+ * L-T4): `draftOrderCalculate` computes the rate without creating anything,
+ * but Shopify gates it behind this scope. Without it the catalogue syncs and
+ * every product's rate stays "not checked", and a store whose prices exclude
+ * tax reports no prices (they cannot be stated gross, ADR-077).
+ */
+export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders'] as const;

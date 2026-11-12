@@ -11,10 +11,13 @@
  *     error "Too many attempts" rather than a 429 (L-X1, ~5 per minute);
  *   - HTTP 429 and 503.
  *
- * Deterministic: a config exception, a malformed cursor (`RangeError`), any
- * user error other than the two below (the mutation wrote nothing and would
- * be refused the same way), `ACCESS_DENIED` (a scope missing on the app), a
- * refused token request, and any other 4xx except 408 / 429.
+ * Deterministic: a config exception, an operation the integration does not
+ * support, an internal id with no Shopify id on the connection (a mapping
+ * gap), a malformed cursor (`RangeError`), any user error other than the two
+ * below (the mutation wrote nothing and would be refused the same way),
+ * `ACCESS_DENIED` (a scope missing on the app), `MAX_COST_EXCEEDED` (the query
+ * itself is too expensive), a refused token request, and any other 4xx except
+ * 408 / 429.
  *
  * Retried normally: a stale compare-and-set on a stock write
  * (`CHANGE_FROM_QUANTITY_STALE`, G05 - the level moved between read and
@@ -29,6 +32,8 @@ import type { RetryClassifierPort, RetryDeferral } from '@openlinker/core/sync';
 import { ShopifyApiError } from '../../domain/exceptions/shopify-api.error';
 import { ShopifyConfigException } from '../../domain/exceptions/shopify-config.exception';
 import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.error';
+import { ShopifyNotMappedException } from '../../domain/exceptions/shopify-not-mapped.exception';
+import { ShopifyNotSupportedException } from '../../domain/exceptions/shopify-not-supported.exception';
 import { ShopifyUserErrorsException } from '../../domain/exceptions/shopify-user-errors.exception';
 
 const RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
@@ -82,14 +87,18 @@ function firstInCauseChain<T>(cause: unknown, pick: (error: unknown) => T | null
 
 /** True terminal, false retryable, null when the error is not a Shopify error. */
 function terminalityOf(cause: unknown): boolean | null {
-  if (cause instanceof ShopifyConfigException) {
+  if (
+    cause instanceof ShopifyConfigException ||
+    cause instanceof ShopifyNotSupportedException ||
+    cause instanceof ShopifyNotMappedException
+  ) {
     return true;
   }
   if (cause instanceof ShopifyUserErrorsException) {
     return !cause.isRateLimited() && !cause.isStaleCompareAndSet();
   }
   if (cause instanceof ShopifyGraphqlError) {
-    return cause.isAccessDenied();
+    return cause.isAccessDenied() || cause.isMaxCostExceeded();
   }
   if (cause instanceof ShopifyApiError) {
     return (

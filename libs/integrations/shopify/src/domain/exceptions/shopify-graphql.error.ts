@@ -23,6 +23,14 @@ export class ShopifyGraphqlError extends Error {
     return this.codes.includes('THROTTLED');
   }
 
+  /**
+   * The document asks for more than one query may cost (1000 points, Admin
+   * API 2026-10). Deterministic for the document: only a smaller one passes.
+   */
+  isMaxCostExceeded(): boolean {
+    return this.codes.includes('MAX_COST_EXCEEDED');
+  }
+
   isAccessDenied(): boolean {
     return this.codes.includes('ACCESS_DENIED');
   }

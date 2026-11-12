@@ -5,7 +5,8 @@ import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import { ShopifyShopContextProvider } from '../shopify-shop-context.provider';
 
 const DATA = {
-  shop: { id: 'gid://shopify/Shop/1', name: 'Dev', myshopifyDomain: 'd.myshopify.com', currencyCode: 'PLN', taxesIncluded: true },
+  shop: { id: 'gid://shopify/Shop/1', name: 'Dev', myshopifyDomain: 'd.myshopify.com', currencyCode: 'PLN', taxesIncluded: true,
+    billingAddress: { countryCodeV2: 'PL', provinceCode: null, zip: '00-001' } },
   location: { id: 'gid://shopify/Location/1', name: 'Main', isActive: true },
   locations: {
     nodes: [
@@ -27,6 +28,7 @@ describe('ShopifyShopContextProvider', () => {
       taxesIncluded: true,
       locationGid: 'gid://shopify/Location/1',
       locationName: 'Main',
+      shopAddress: { countryCodeV2: 'PL', provinceCode: null, zip: '00-001' },
     });
   });
 
@@ -59,5 +61,26 @@ describe('ShopifyShopContextProvider', () => {
       new ShopifyShopContextProvider(graphql, 'c1', 'gid://shopify/Location/9', cache).get(),
     ).rejects.toBeInstanceOf(ShopifyConfigException);
     expect(graphql.query).toHaveBeenCalled();
+  });
+
+  it('should read the shop again when the cached context predates the shop address', async () => {
+    const cache = {
+      get: jest.fn().mockResolvedValue({
+        shopName: 'Dev',
+        currencyCode: 'PLN',
+        taxesIncluded: true,
+        locationGid: 'gid://shopify/Location/1',
+        locationName: 'Main',
+        configuredLocationGid: null,
+      }),
+      set: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn(),
+    } as unknown as CachePort;
+    const graphql = client();
+
+    const context = await new ShopifyShopContextProvider(graphql, 'c1', null, cache).get();
+
+    expect(graphql.query).toHaveBeenCalled();
+    expect(context.shopAddress).toEqual({ countryCodeV2: 'PL', provinceCode: null, zip: '00-001' });
   });
 });

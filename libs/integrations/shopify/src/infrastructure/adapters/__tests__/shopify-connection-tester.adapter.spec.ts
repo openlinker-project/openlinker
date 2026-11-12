@@ -2,7 +2,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
-import { SHOPIFY_REQUIRED_SCOPES } from '../../../shopify.constants';
+import { SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '../../../shopify.constants';
 import { createShopifyClientRuntime } from '../../http/shopify-client.builder';
 import { ShopifyConnectionTesterAdapter } from '../shopify-connection-tester.adapter';
 
@@ -55,7 +55,7 @@ describe('ShopifyConnectionTesterAdapter', () => {
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(json(SHOP_CONTEXT))
-      .mockResolvedValueOnce(json(scopes(SHOPIFY_REQUIRED_SCOPES)));
+      .mockResolvedValueOnce(json(scopes([...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES])));
     const { tester, resolver, http } = setup(fetchImpl);
     const conn = connection();
 
@@ -68,6 +68,19 @@ describe('ShopifyConnectionTesterAdapter', () => {
     expect(http.forConnection).toHaveBeenCalledWith(conn, RATE_LIMIT, {
       bucketKey: 'shopify:store:my-shop.myshopify.com',
     });
+  });
+
+  it('should pass but name a missing optional scope and what it switches off', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(SHOP_CONTEXT))
+      .mockResolvedValueOnce(json(scopes(SHOPIFY_REQUIRED_SCOPES)));
+    const { tester, resolver } = setup(fetchImpl);
+
+    const result = await tester.test(connection(), resolver);
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('optional scope write_draft_orders');
   });
 
   it('should report the configured location when one is set', async () => {
