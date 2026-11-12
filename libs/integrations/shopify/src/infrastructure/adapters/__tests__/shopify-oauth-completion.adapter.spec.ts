@@ -1,5 +1,6 @@
 import { OAuthCodeExchangeException } from '@openlinker/core/integrations';
 
+import { ShopifyNetworkError } from '../../../domain/exceptions/shopify-network.error';
 import { SHOPIFY_REQUIRED_SCOPES } from '../../../shopify.constants';
 import { ShopifyOAuthCompletionAdapter } from '../shopify-oauth-completion.adapter';
 
@@ -98,5 +99,16 @@ describe('ShopifyOAuthCompletionAdapter', () => {
         config: CONFIG,
       }),
     ).resolves.toEqual({ accountId: 'gid://shopify/Shop/7', label: 'my-shop.myshopify.com' });
+  });
+
+  it('should wrap a failed identity request in a Shopify network error', async () => {
+    const fetchImpl = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
+
+    await expect(
+      new ShopifyOAuthCompletionAdapter(fetchImpl).fetchAccountIdentity({
+        credentials: { accessToken: 'shpat_new' },
+        config: CONFIG,
+      }),
+    ).rejects.toThrow(ShopifyNetworkError);
   });
 });

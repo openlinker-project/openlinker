@@ -139,6 +139,20 @@ export class ShopifyOAuthCompletionAdapter implements OAuthCompletionPort {
         signal: controller.signal,
       });
       text = await readShopifyBody(response);
+    } catch (error) {
+      if (error instanceof ShopifyNetworkError) {
+        throw error;
+      }
+      // A bare AbortError or TypeError would reach the operator with no
+      // context and read as non-retryable; wrap it like the token call does.
+      const cause = error instanceof Error ? error : new Error(String(error));
+      throw new ShopifyNetworkError(
+        controller.signal.aborted
+          ? `Shopify account-identity check timed out after ${IDENTITY_TIMEOUT_MS}ms`
+          : `Shopify account-identity check failed: ${cause.message}`,
+        controller.signal.aborted,
+        cause,
+      );
     } finally {
       clearTimeout(timer);
     }
