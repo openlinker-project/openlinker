@@ -55,6 +55,7 @@ import { useSetPackingMutation } from '../hooks/use-set-packing-mutation';
 import { useStockLocatedProgress } from '../hooks/use-stock-located-progress';
 import { readAutoDispatch } from '../lib/config-merge';
 import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
+import { useNumberFormat } from '../../../shared/i18n';
 import { FIRST_ORDER_POLL_MS, STATUS_POLL_MS } from '../lib/oms-onboarding.constants';
 import {
   deriveDataState,
@@ -104,7 +105,6 @@ export interface OmsOnboardingProps {
   readonly omsPlatformType: string;
 }
 
-const numberFormat = new Intl.NumberFormat('en-US');
 
 function setupStepKeyAt(step: number): SetupStepKey {
   return SetupStepKeys.find((key) => SETUP_STEP_NUMBERS[key] === step) ?? 'whoDecides';
@@ -184,6 +184,7 @@ interface OnboardingFlowProps extends OmsOnboardingProps {
 
 function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
   const COPY = useOmsOnboardingCopy();
+  const numberFormat = useNumberFormat();
   const wizardSteps = useWizardSteps();
   const { packingConnection, mainLocation, standing, packers } = props;
 
