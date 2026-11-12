@@ -69,6 +69,20 @@ describe('mergeOverEnglish', () => {
     expect(tagger.calls).toEqual([]);
   });
 
+  it('should report the forms of a plural with no translated other as missing, from untagged English', () => {
+    const tagger = recorder();
+    const merged = mergeOverEnglish(
+      { count: english.count },
+      { count: { one: '{n} zamówienie' } },
+      { tagger, locale: 'pl', namespace: 'orders' },
+    ) as { count: Record<string, string> };
+
+    expect(merged.count.few).toBe('[missing:count.few]');
+    expect(merged.count.many).toBe('[missing:count.many]');
+    const forms = tagger.calls.filter((call) => call.path[1] === 'few' || call.path[1] === 'many');
+    expect(forms.map((call) => call.shown)).toEqual(['{n} orders', '{n} orders']);
+  });
+
   it('should tag every key of a namespace that has no translation at all', () => {
     const tagger = recorder();
     mergeOverEnglish({ a: 'A', b: { c: 'C' } }, undefined, { tagger, locale: 'pl', namespace: 'x' });
