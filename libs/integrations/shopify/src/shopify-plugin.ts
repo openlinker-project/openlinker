@@ -30,7 +30,7 @@
  * @module libs/integrations/shopify/src
  */
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
-import type { AdapterMetadata } from '@openlinker/core/integrations';
+import type { AdapterMetadata, WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 
@@ -82,6 +82,9 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // `OrderProcessorManager` is opt-in for the same reason in reverse: it makes
   // the store receive every marketplace order (the Shoper precedent).
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+  // Shopify signs every webhook with the app client secret, which OpenLinker
+  // can only store, never rotate (#3981).
+  acceptsCallerSuppliedWebhookSecret: true,
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   // Shopify's budget is per app and store, so connections to one store share one bucket.
   resolveRateLimitBucketKey: resolveShopifyRateLimitBucketKey,
@@ -103,6 +106,11 @@ export interface CreateShopifyPluginDeps {
    * own method names.
    */
   readonly mappingConfigService?: IMappingConfigService;
+  /**
+   * Reads the stored webhook secret, so the connection test can tell when it no
+   * longer matches the app client secret (#3981). Absent, that check is skipped.
+   */
+  readonly webhookSecrets?: WebhookSecretProviderPort;
 }
 
 export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): AdapterPlugin {
@@ -115,7 +123,7 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         SHOPIFY_ADAPTER_KEY,
-        new ShopifyConnectionTesterAdapter(host.http, SHOPIFY_DEFAULT_RATE_LIMIT, host.cache, runtime),
+        new ShopifyConnectionTesterAdapter(host.http, SHOPIFY_DEFAULT_RATE_LIMIT, host.cache, runtime, deps.webhookSecrets),
       );
       host.connectionConfigShapeValidatorRegistry.register(
         SHOPIFY_ADAPTER_KEY,

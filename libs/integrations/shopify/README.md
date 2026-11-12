@@ -220,6 +220,9 @@ Orders and products reach OpenLinker seconds after a change instead of at the ne
   stores that secret as the connection's webhook secret. A connection holding only a pre-issued access token has no
   client secret and is refused: add the client id and secret to its credentials. A wrong or missing signature
   answers 401 and writes nothing.
+- **Client secret rotation.** The stored webhook secret is a copy taken at install. Rotating the client secret in the
+  Dev Dashboard and updating the connection credentials does not update it, so every delivery then fails its
+  signature: configure webhooks again. "Test connection" warns when the two no longer match.
 - **Replays.** No timestamp window: Shopify retries a failed delivery up to eight times in four hours with the
   original timestamp, and a 401 on a valid retry would get the subscription removed. `X-Shopify-Webhook-Id` is the
   dedup key, so a replay creates no second job.

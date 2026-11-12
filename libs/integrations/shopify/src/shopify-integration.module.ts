@@ -59,6 +59,8 @@ import {
   ICredentialsService,
   WEBHOOK_SECRET_SERVICE_TOKEN,
   type IWebhookSecretService,
+  WEBHOOK_SECRET_PROVIDER_TOKEN,
+  type WebhookSecretProviderPort,
 } from '@openlinker/core/integrations';
 import {
   SyncModule,
@@ -141,6 +143,8 @@ export class ShopifyIntegrationModule implements OnModuleInit {
     private readonly connectionPort: ConnectionPort,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
     private readonly webhookSecretService: IWebhookSecretService,
+    @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
+    private readonly webhookSecrets: WebhookSecretProviderPort,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort,
   ) {}
@@ -152,7 +156,11 @@ export class ShopifyIntegrationModule implements OnModuleInit {
       credentialsWriter: new ShopifyCredentialsWriterAdapter(this.credentialsService),
       lock: this.syncLock,
     });
-    const plugin = createShopifyPlugin({ runtime, mappingConfigService: this.mappingConfigService });
+    const plugin = createShopifyPlugin({
+      runtime,
+      mappingConfigService: this.mappingConfigService,
+      webhookSecrets: this.webhookSecrets,
+    });
 
     const host: HostServices = {
       logger: (context: string) => new Logger(context),

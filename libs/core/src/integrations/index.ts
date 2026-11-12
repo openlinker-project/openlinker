@@ -109,11 +109,6 @@ export { CallerSuppliedWebhookSecretNotSupportedException } from './domain/excep
 
 // Value constants
 export {
-  CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS,
-  acceptsCallerSuppliedWebhookSecret,
-} from './domain/types/webhook-secret.types';
-export type { CallerSuppliedWebhookSecretPlatform } from './domain/types/webhook-secret.types';
-export {
   flattenValidationErrors,
   ValidationErrorLike,
   FlatValidationIssue,

@@ -54,7 +54,9 @@ Host contract: `InboundWebhookDecoderPort` (verify + extractEnvelope; no
   (needs `ConnectionPort` + `IWebhookSecretService`), sharing the plugin's
   client runtime so an OAuth refresh during install is written back.
 - `openlinkerCallbackBaseUrl` validated by the config parser (optional http(s) URL).
-- Core: `shopify` on `CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS`.
+- Core: the caller-supplied secret allowlist (`CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS`) is replaced by the
+  adapter-declared `AdapterMetadata.acceptsCallerSuppliedWebhookSecret` (the file's own stated direction once a
+  second platform needed it); inFakt and Shopify declare it.
 
 ### Changes from the prototype
 

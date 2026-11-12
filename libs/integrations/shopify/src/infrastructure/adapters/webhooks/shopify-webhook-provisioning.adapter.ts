@@ -11,9 +11,8 @@
  * THE SECRET IS SHOPIFY'S, NOT OURS: Shopify signs every delivery with the
  * app's client secret and offers no per-subscription key, so instead of
  * rotating a fresh secret (the Shoper posture) the provisioner stores the
- * client secret as the connection's webhook secret. That needs `shopify` on
- * the caller-supplied secret allowlist in core
- * (`CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS`, the inFakt precedent). A
+ * client secret as the connection's webhook secret. That needs the manifest's
+ * `acceptsCallerSuppliedWebhookSecret: true` (the inFakt precedent). A
  * connection holding only a pre-issued access token has no client secret to
  * verify with and is refused. The delivery URI carries no credential.
  *
