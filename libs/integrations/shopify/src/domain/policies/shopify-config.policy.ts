@@ -120,10 +120,31 @@ export function parseShopifyConfig(
     }
   }
 
+  let refundsThroughShopify = false;
+  if (present(config.refundsThroughShopify)) {
+    if (typeof config.refundsThroughShopify !== 'boolean') {
+      issues.push({ path: 'refundsThroughShopify', message: 'must be true or false' });
+    } else {
+      refundsThroughShopify = config.refundsThroughShopify;
+    }
+  }
+
   return issues.length > 0
     ? { ok: false, issues }
     : {
         ok: true,
-        config: { storeDomain, apiVersion, locationGid, unmanagedStockQuantity, salesCountryIso2 },
+        config: {
+          storeDomain,
+          apiVersion,
+          locationGid,
+          unmanagedStockQuantity,
+          salesCountryIso2,
+          refundsThroughShopify,
+        },
       };
+}
+
+/** The store's handle (`my-shop` of `my-shop.myshopify.com`), as the admin URLs name it. */
+export function shopifyStoreHandle(storeDomain: string): string {
+  return storeDomain.replace(/\.myshopify\.com$/, '');
 }
