@@ -22,7 +22,7 @@ import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../../connections';
 import type { InventoryLocation } from '../../inventory';
 import type { StockLocatedProgress } from '../hooks/use-stock-located-progress';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy, type OmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { OmsSetupError } from '../lib/oms-setup-error';
 import {
   MAX_PRODUCT_MASTERS,
@@ -52,12 +52,12 @@ export interface StepProductMasterProps {
 
 const numberFormat = new Intl.NumberFormat('en-US');
 
-function missingLabel(missing: readonly ProductMasterCapability[]): string {
+function missingLabel(missing: readonly ProductMasterCapability[], COPY: OmsOnboardingCopy): string {
   if (missing.length > 1) return COPY.step1.missingBoth;
   return missing[0] === 'ProductMaster' ? COPY.step1.missingProducts : COPY.step1.missingStock;
 }
 
-function describeFailure(error: Error): string {
+function describeFailure(error: Error, COPY: OmsOnboardingCopy): string {
   if (!(error instanceof OmsSetupError)) return describeApiError(error);
   switch (error.step) {
     case 'connection':
@@ -74,6 +74,7 @@ function describeFailure(error: Error): string {
 }
 
 function PartialHints({ partial }: { readonly partial: readonly PartialProductMaster[] }): ReactElement | null {
+  const COPY = useOmsOnboardingCopy();
   if (partial.length === 0) return null;
   return (
     <>
@@ -89,7 +90,7 @@ function PartialHints({ partial }: { readonly partial: readonly PartialProductMa
             </Link>
           }
         >
-          {COPY.step1.partialBody(connection.name, missingLabel(missing))}
+          {COPY.step1.partialBody(connection.name, missingLabel(missing, COPY))}
         </Alert>
       ))}
     </>
@@ -97,6 +98,7 @@ function PartialHints({ partial }: { readonly partial: readonly PartialProductMa
 }
 
 export function StepProductMaster(props: StepProductMasterProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const { masters, partial, conflicting, mainLocation, done, progress, masterNames } = props;
 
   if (masters.length === 0) {
@@ -171,7 +173,7 @@ export function StepProductMaster(props: StepProductMasterProps): ReactElement {
         <PartialHints partial={partial} />
         {props.confirmError !== null ? (
           <Alert tone="error" title={COPY.step1.failedTitle} data-testid="alert-setup-failed">
-            {describeFailure(props.confirmError)} {COPY.step1.failedHint}
+            {describeFailure(props.confirmError, COPY)} {COPY.step1.failedHint}
           </Alert>
         ) : null}
         {!props.canWrite && !props.demoReadOnly ? <Alert tone="info">{COPY.adminOnly}</Alert> : null}
@@ -226,6 +228,7 @@ export function StepProductMaster(props: StepProductMasterProps): ReactElement {
 }
 
 function MainInactiveAlert(): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   return (
     <Alert
       tone="error"
