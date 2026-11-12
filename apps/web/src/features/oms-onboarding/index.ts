@@ -11,4 +11,4 @@
 export { OmsOnboarding } from './components/oms-onboarding';
 export type { OmsOnboardingProps } from './components/oms-onboarding';
 export { readSourcingClaim } from './lib/config-merge';
-export { omsOnboardingCopy } from './lib/oms-onboarding.copy';
+export { useOmsOnboardingCopy } from './hooks/use-oms-onboarding-copy';

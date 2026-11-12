@@ -21,7 +21,7 @@ import { Link } from 'react-router-dom';
 import { formatRelativeTime } from '../../../shared/format/format-relative-time';
 import { Button } from '../../../shared/ui/button';
 import type { FulfillmentTask } from '../../fulfillment';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 
 export interface FirstOrderPanelProps {
   readonly arrivedTask: FulfillmentTask | null;
@@ -30,6 +30,7 @@ export interface FirstOrderPanelProps {
 }
 
 export function FirstOrderPanel({ arrivedTask, masterNames, onGoToStatus }: FirstOrderPanelProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   return (
     <section className="panel oms-onboarding__panel" data-testid="first-order-panel">
       <h2 className="oms-onboarding__panel-title">{COPY.status.firstOrderTitle}</h2>

@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import type { PackerSummary } from '../../users';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { PackerCreator } from './step-packers';
 
 export interface AddPackerDialogProps {
@@ -30,6 +30,7 @@ export interface AddPackerDialogProps {
 }
 
 export function AddPackerDialog({ open, onOpenChange, packers, demoReadOnly }: AddPackerDialogProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="dialog-add-packer">

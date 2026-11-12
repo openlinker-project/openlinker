@@ -15,7 +15,7 @@ import { Link } from 'react-router-dom';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import {
   SETUP_REVIEW_ONLY,
   SETUP_STEP_PATHS,
@@ -50,6 +50,7 @@ export function StepSetupPage({
   onContinue,
   onSetSkipped,
 }: StepSetupPageProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const copy = COPY.setupSteps[stepKey];
   const skipped = state === 'skipped';
   const disabledTitle = demoReadOnly ? demoReadOnlyActionMessage() : !canWrite ? COPY.adminOnly : undefined;
