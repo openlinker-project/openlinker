@@ -6,6 +6,9 @@
  * list a fallback that never reaches the page: a document title, a confirm
  * dialog, a file name, a canvas chart, a toast that is already gone.
  *
+ * A read is any property access, so spreading a section, `Object.entries` or
+ * `JSON.stringify` records every key in it, used or not.
+ *
  * Each object gets one proxy, cached, so the tree a hook returns stays the
  * same object across renders and is still safe as a dependency.
  *

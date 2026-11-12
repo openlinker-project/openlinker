@@ -93,7 +93,7 @@ function merge(
     if (!(key in result) && typeof patch[key] === 'string') result[key] = patch[key];
   }
   if (instrumentation !== undefined && isEnglishPlural(source)) {
-    tagMissingPluralForms(result, patch, path, instrumentation);
+    tagMissingPluralForms(source, patch, result, path, instrumentation);
   }
   return result;
 }
@@ -102,15 +102,21 @@ function merge(
  * A plural category the language needs but the translation lacks renders its
  * `other` form (`selectPluralForm`). Store a tagged copy under that category,
  * so the marker shows exactly when the missing form is the one on screen.
+ * When the translation has no `other` either, the category shows English and
+ * is reported as a missing key; the copy is built from the untagged English
+ * text, so it never carries a marker inside a marker.
  */
 function tagMissingPluralForms(
-  result: Record<string, unknown>,
+  source: Record<string, unknown>,
   patch: Record<string, unknown>,
+  result: Record<string, unknown>,
   path: readonly string[],
   instrumentation: MergeInstrumentation,
 ): void {
-  const other = typeof patch.other === 'string' && patch.other !== '' ? patch.other : result.other;
-  if (typeof other !== 'string') return;
+  const translatedOther = typeof patch.other === 'string' && patch.other !== '' ? patch.other : null;
+  const shown = translatedOther ?? source.other;
+  if (typeof shown !== 'string') return;
+  const kind: FallbackKind = translatedOther === null ? 'missing' : 'plural-form';
   const categories = pluralRules(getBcp47Locale(instrumentation.locale)).resolvedOptions()
     .pluralCategories;
   for (const category of categories) {
@@ -119,8 +125,8 @@ function tagMissingPluralForms(
     result[category] = instrumentation.tagger.tag({
       namespace: instrumentation.namespace,
       path: [...path, category],
-      shown: other,
-      kind: 'plural-form',
+      shown,
+      kind,
     });
   }
 }
