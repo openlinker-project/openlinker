@@ -15,13 +15,14 @@
 import type { ReactElement } from 'react';
 
 import { useConnectionsQuery } from '../../features/connections';
-import { OmsOnboarding, omsOnboardingCopy as COPY } from '../../features/oms-onboarding';
+import { OmsOnboarding, useOmsOnboardingCopy } from '../../features/oms-onboarding';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { findOmsConnections, OMS_PLATFORM_TYPE } from './oms-connection';
 
 export function OmsOnboardingPage(): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const connectionsQuery = useConnectionsQuery();
 
   if (connectionsQuery.isLoading || connectionsQuery.error) {

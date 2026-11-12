@@ -13,7 +13,7 @@ import { useEffect, useRef, type ReactElement, type ReactNode } from 'react';
 
 import { Button } from '../../../shared/ui/button';
 import { useWizardSteps } from '../hooks/use-wizard-steps';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { TOTAL_STEPS } from '../lib/onboarding-state';
 
 export interface StepPanelProps {
@@ -25,6 +25,7 @@ export interface StepPanelProps {
 }
 
 export function StepPanel({ step, why, children, next, onBack }: StepPanelProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const wizardSteps = useWizardSteps();
 

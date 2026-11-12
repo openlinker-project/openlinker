@@ -42,7 +42,7 @@ import {
   useShippingStepCopy,
   type ShippingStatusCopy,
 } from '../hooks/use-shipping-setup-copy';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import type { ShippingCoverageTotals } from '../lib/shipping-coverage';
 import { AddPackerDialog } from './add-packer-dialog';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
@@ -103,6 +103,7 @@ export interface PackingStatusProps {
 }
 
 export function PackingStatus(props: PackingStatusProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const shippingCopy = useShippingStatusCopy();
   const shippingStepCopy = useShippingStepCopy();
   const [addPackerOpen, setAddPackerOpen] = useState(false);
@@ -214,7 +215,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
     const setup = props.setup;
     for (const key of SetupStepKeys) {
       const state = setup.states[key];
-      const { title, detail } = describeSetupStep(key, state);
+      const { title, detail } = describeSetupStep(key, state, COPY);
       rows.push({
         key,
         ok: state === 'done' || state === 'skipped',

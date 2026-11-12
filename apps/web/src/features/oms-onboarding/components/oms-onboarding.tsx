@@ -54,7 +54,8 @@ import { useSetAutoDispatchMutation, type SetAutoDispatchInput } from '../hooks/
 import { useSetPackingMutation } from '../hooks/use-set-packing-mutation';
 import { useStockLocatedProgress } from '../hooks/use-stock-located-progress';
 import { readAutoDispatch } from '../lib/config-merge';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
+import { useNumberFormat } from '../../../shared/i18n';
 import { FIRST_ORDER_POLL_MS, STATUS_POLL_MS } from '../lib/oms-onboarding.constants';
 import {
   deriveDataState,
@@ -104,17 +105,17 @@ export interface OmsOnboardingProps {
   readonly omsPlatformType: string;
 }
 
-const numberFormat = new Intl.NumberFormat('en-US');
 
 function setupStepKeyAt(step: number): SetupStepKey {
   return SetupStepKeys.find((key) => SETUP_STEP_NUMBERS[key] === step) ?? 'whoDecides';
 }
 
-function joinNames(masters: readonly Connection[]): string {
-  return masters.map((master) => master.name).join(COPY.and);
+function joinNames(masters: readonly Connection[], and: string): string {
+  return masters.map((master) => master.name).join(and);
 }
 
 function Shell({ inWizard, children }: { inWizard: boolean; children: ReactElement }): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   return (
     <PageLayout
       eyebrow={COPY.page.eyebrow}
@@ -128,6 +129,7 @@ function Shell({ inWizard, children }: { inWizard: boolean; children: ReactEleme
 }
 
 export function OmsOnboarding(props: OmsOnboardingProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const mainLocationQuery = useMainLocationQuery();
   const whoDecidesQuery = useWhoDecidesStatusQuery();
   const packersQuery = usePackersQuery();
@@ -181,6 +183,8 @@ interface OnboardingFlowProps extends OmsOnboardingProps {
 }
 
 function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
+  const numberFormat = useNumberFormat();
   const wizardSteps = useWizardSteps();
   const { packingConnection, mainLocation, standing, packers } = props;
 
@@ -291,7 +295,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
   // connection's mapping page, or labels set up before, already answers it.
   const shippingDone = shippingTotals.withCarrier > 0 || savedAutoDispatch !== null;
 
-  const masterNames = joinNames(masters);
+  const masterNames = joinNames(masters, COPY.and);
   const offMasterNames = masters.length > 1 ? COPY.yourProductMasters : masterNames;
   const packerNames = packers.length > 0 ? packers.map((packer) => packer.username).join(', ') : null;
   const stockDetail = COPY.step1.progressCount(
