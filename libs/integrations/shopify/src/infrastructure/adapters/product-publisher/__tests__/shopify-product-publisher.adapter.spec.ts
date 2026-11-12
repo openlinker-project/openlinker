@@ -16,6 +16,16 @@ import { ShopifyProductPublisherAdapter } from '../shopify-product-publisher.ada
 
 const LOCATION = 'gid://shopify/Location/1';
 
+/** The reason lives in `errors[].message`; the exception message stays neutral (core contract). */
+async function expectRejected(promise: Promise<unknown>, reason: RegExp): Promise<void> {
+  const error = await promise.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(error).toBeInstanceOf(ProductPublishRejectedException);
+  expect((error as ProductPublishRejectedException).errors.map((e) => e.message).join(' | ')).toMatch(reason);
+}
+
 function cmd(overrides: Partial<PublishProductCommand> = {}): PublishProductCommand {
   return {
     internalVariantId: 'v1',
@@ -135,16 +145,14 @@ describe('ShopifyProductPublisherAdapter', () => {
     it('should refuse a tax-exclusive shop when the catalogue holds no rate', async () => {
       const h = build();
 
-      await expect(h.adapter.publishProduct(cmd({ taxRate: undefined }))).rejects.toThrow(/VAT rate/);
+      await expectRejected(h.adapter.publishProduct(cmd({ taxRate: undefined })), /VAT rate/);
       expect(h.mutate).not.toHaveBeenCalled();
     });
 
     it('should refuse a price in another currency', async () => {
       const h = build();
 
-      await expect(h.adapter.publishProduct(cmd({ price: { amount: 10, currency: 'EUR' } }))).rejects.toThrow(
-        /currency/,
-      );
+      await expectRejected(h.adapter.publishProduct(cmd({ price: { amount: 10, currency: 'EUR' } })), /currency/);
     });
 
     it('should refuse to update a product that no longer has exactly one variant', async () => {
@@ -153,7 +161,7 @@ describe('ShopifyProductPublisherAdapter', () => {
         product: { ...product(), variants: { nodes: [{ id: 'a' }, { id: 'b' }] } },
       });
 
-      await expect(h.adapter.publishProduct(cmd({ externalProductId: '5' }))).rejects.toThrow(/2 variants/);
+      await expectRejected(h.adapter.publishProduct(cmd({ externalProductId: '5' })), /2 variants/);
       expect(h.mutate).not.toHaveBeenCalled();
     });
   });
@@ -182,13 +190,14 @@ describe('ShopifyProductPublisherAdapter', () => {
         nodes: [{ __typename: 'ProductVariant', id: 'gid://shopify/ProductVariant/9', product: { id: 'gid://shopify/Product/5' } }],
       });
 
-      await expect(
+      await expectRejected(
         h.adapter.updateShopProductPrice({
           externalProductId: '9',
           externalParentProductId: '5',
           price: { amount: '123.00', currency: 'PLN' },
         } as never),
-      ).rejects.toThrow(/VAT rate/);
+        /VAT rate/,
+      );
       expect(h.mutate).not.toHaveBeenCalled();
     });
   });
