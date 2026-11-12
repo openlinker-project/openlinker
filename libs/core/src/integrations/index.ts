@@ -22,6 +22,7 @@ export { EmailNormalizerRegistryService } from './infrastructure/adapters/email-
 export { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
 export { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
 export { ConnectionCredentialsRewriterRegistryService } from './infrastructure/adapters/connection-credentials-rewriter-registry.service';
+export { ConnectionArchiveHookRegistryService } from './infrastructure/adapters/connection-archive-hook-registry.service';
 export { OAuthCompletionRegistryService } from './infrastructure/adapters/oauth-completion-registry.service';
 
 // Ports
@@ -39,6 +40,7 @@ export {
 } from './domain/ports/connection-config-shape-validator.port';
 export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
 export { ConnectionCredentialsRewriterPort } from './domain/ports/connection-credentials-rewriter.port';
+export { ConnectionArchiveHookPort } from './domain/ports/connection-archive-hook.port';
 export { OAuthCompletionPort } from './domain/ports/oauth-completion.port';
 export {
   WebhookSecretProviderPort,
@@ -106,11 +108,6 @@ export { OAuthCodeExchangeException } from './domain/exceptions/oauth-code-excha
 export { CallerSuppliedWebhookSecretNotSupportedException } from './domain/exceptions/caller-supplied-webhook-secret-not-supported.exception';
 
 // Value constants
-export {
-  CALLER_SUPPLIED_WEBHOOK_SECRET_PLATFORMS,
-  acceptsCallerSuppliedWebhookSecret,
-} from './domain/types/webhook-secret.types';
-export type { CallerSuppliedWebhookSecretPlatform } from './domain/types/webhook-secret.types';
 export {
   flattenValidationErrors,
   ValidationErrorLike,

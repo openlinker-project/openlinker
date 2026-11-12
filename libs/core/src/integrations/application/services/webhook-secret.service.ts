@@ -12,6 +12,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Logger } from '@openlinker/shared';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   WebhookSecretProviderPort,
   webhookSecretRef,
@@ -19,8 +20,10 @@ import {
 import { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
 import { CallerSuppliedWebhookSecretNotSupportedException } from '../../domain/exceptions/caller-supplied-webhook-secret-not-supported.exception';
-import { acceptsCallerSuppliedWebhookSecret } from '../../domain/types/webhook-secret.types';
+import { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
+import { resolveAcceptsCallerSuppliedWebhookSecret } from '../../domain/types/adapter.types';
 import {
+  ADAPTER_REGISTRY_TOKEN,
   INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
 } from '../../integrations.tokens';
@@ -41,7 +44,9 @@ export class WebhookSecretService implements IWebhookSecretService {
     @Inject(INTEGRATION_CREDENTIAL_REPOSITORY_TOKEN)
     private readonly credentialRepository: IntegrationCredentialRepositoryPort,
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
-    private readonly secretProvider: WebhookSecretProviderPort
+    private readonly secretProvider: WebhookSecretProviderPort,
+    @Inject(ADAPTER_REGISTRY_TOKEN)
+    private readonly adapterRegistry: AdapterRegistryPort
   ) {}
 
   async rotate(
@@ -73,11 +78,11 @@ export class WebhookSecretService implements IWebhookSecretService {
     const connection = await this.connectionPort.get(connectionId);
 
     // Guard (#1770 review): `set` accepts an arbitrary caller-supplied value,
-    // so it's only safe for platforms that mint their own secret externally.
-    // Any other connection's secret is server-rotated only - accepting a
-    // pasted value here would silently desync it from what that platform
-    // actually signs with.
-    if (!acceptsCallerSuppliedWebhookSecret(connection.platformType)) {
+    // so it's only safe for an adapter that declares its secret is minted
+    // externally (`acceptsCallerSuppliedWebhookSecret`, #3981). Any other
+    // connection's secret is server-rotated only - accepting a pasted value
+    // here would silently desync it from what that platform actually signs with.
+    if (!(await this.acceptsCallerSuppliedSecret(connection))) {
       throw new CallerSuppliedWebhookSecretNotSupportedException(connection.platformType);
     }
 
@@ -89,6 +94,26 @@ export class WebhookSecretService implements IWebhookSecretService {
       provider,
       actor: actorUserId ?? 'system',
     });
+  }
+
+  /**
+   * The adapter's own declaration; an adapter that cannot be resolved (not
+   * registered on this host) accepts nothing, the safe answer for a write guard.
+   */
+  private async acceptsCallerSuppliedSecret(connection: Connection): Promise<boolean> {
+    try {
+      const adapterKey =
+        connection.adapterKey ?? (await this.adapterRegistry.getDefaultAdapterKey(connection.platformType));
+      return resolveAcceptsCallerSuppliedWebhookSecret(
+        await this.adapterRegistry.getAdapterMetadata(adapterKey)
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Adapter metadata for connection ${connection.id} could not be resolved; refusing a caller-supplied ` +
+          `webhook secret: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
   }
 
   /**

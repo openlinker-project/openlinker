@@ -544,6 +544,11 @@ export const ApiErrorCodeValues = [
   'OAUTH_ADAPTER_NOT_REGISTERED',
   /** Re-authorizing a connection of another platform. params: `connectionId`, `expectedPlatformType`, `platformType`. */
   'OAUTH_CONNECTION_PLATFORM_MISMATCH',
+  /**
+   * The platform's OAuth redirect failed its signature or store check, so its
+   * code was not exchanged. params: `platformType`, `reason`.
+   */
+  'OAUTH_CALLBACK_UNVERIFIED',
   /** The OAuth credentials could not be stored. */
   'CREDENTIALS_STORE_FAILED',
   /** The connection is not a Subiekt Invoicing connection. params: `connectionId`. */

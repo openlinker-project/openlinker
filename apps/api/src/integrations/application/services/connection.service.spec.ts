@@ -48,6 +48,8 @@ import {
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsRewriterRegistryService,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  ConnectionArchiveHookRegistryService,
+  CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
   ConnectionCredentialsRewriteException,
 } from '@openlinker/core/integrations';
 import type { ConnectionCredentialsRewriterPort } from '@openlinker/core/integrations';
@@ -80,6 +82,7 @@ describe('ConnectionService', () => {
   let configValidatorRegistry: ConnectionConfigShapeValidatorRegistryService;
   let credentialsValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
   let credentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService;
+  let archiveHookRegistry: ConnectionArchiveHookRegistryService;
   let mockHttpTransportFactory: jest.Mocked<HttpTransportFactoryPort>;
 
   const mockConnection = new Connection(
@@ -207,6 +210,7 @@ describe('ConnectionService', () => {
     // test; individual tests register a stub rewriter to exercise the
     // delegation path.
     credentialsRewriterRegistry = new ConnectionCredentialsRewriterRegistryService();
+    archiveHookRegistry = new ConnectionArchiveHookRegistryService();
 
     const mockCredentialsResolver: CredentialsResolverPort = {
       get: jest.fn(),
@@ -251,6 +255,7 @@ describe('ConnectionService', () => {
           provide: CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
           useValue: credentialsRewriterRegistry,
         },
+        { provide: CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN, useValue: archiveHookRegistry },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
         { provide: HTTP_TRANSPORT_FACTORY_TOKEN, useValue: mockHttpTransportFactory },
         { provide: LOCATION_SERVICE_TOKEN, useValue: mockLocations },
@@ -2788,6 +2793,30 @@ describe('ConnectionService', () => {
         });
         expect(mockHttpTransportFactory.evict).toHaveBeenCalledWith('connection-123');
         expect(result.status).toBe('archived');
+      });
+
+      it('should call the plugin archive hook with the archived connection (#3974)', async () => {
+        const archived = withState('archived', '');
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.update.mockResolvedValue(archived);
+        const onArchived = jest.fn().mockResolvedValue(undefined);
+        archiveHookRegistry.register('prestashop.webservice.v1', { onArchived });
+
+        await service.archive('connection-123');
+
+        expect(onArchived).toHaveBeenCalledWith(archived);
+      });
+
+      it('should still archive when the plugin archive hook fails (#3974)', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+        archiveHookRegistry.register('prestashop.webservice.v1', {
+          onArchived: jest.fn().mockRejectedValue(new Error('cache down')),
+        });
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
       });
 
       it('should remove the credential before archiving the row when both are written', async () => {
