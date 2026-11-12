@@ -238,6 +238,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Run web tests
         run: pnpm test:ci:web
+      # The development-only missing-translation inspector (#4017) must never
+      # reach a production bundle, even with its variable set.
+      - name: Check the translation inspector is not in a build
+        run: pnpm --filter @openlinker/web check:i18n-inspector-build
 
   test-integration:
     name: Integration Tests

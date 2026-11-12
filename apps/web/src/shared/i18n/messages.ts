@@ -19,7 +19,7 @@
  * @module shared/i18n
  */
 import { en } from '../../locales/en';
-import { mergeOverEnglish } from './merge';
+import { mergeOverEnglish, type FallbackTagger } from './merge';
 import { pseudoTree } from './pseudo';
 import { SOURCE_LOCALE, type SupportedLocale } from './i18n.types';
 import type { ResolvedCopy } from './copy.types';
@@ -36,6 +36,18 @@ export interface NamespaceEntry {
   readonly base: Readonly<Record<string, unknown>>;
   readonly loaders: Partial<Record<SupportedLocale, MessagesLoader>>;
 }
+
+/**
+ * Development-only hook for the missing-translation inspector (#4017): tags
+ * every string that fell back to the base language and wraps each merged tree
+ * so reads can be recorded. Never installed in a production build.
+ */
+export interface MessagesInstrumentation {
+  readonly tagger: FallbackTagger;
+  readonly wrap: (tree: unknown) => unknown;
+}
+
+let instrumentation: MessagesInstrumentation | null = null;
 
 const registry = new Map<string, NamespaceEntry>();
 const loaded = new Map<string, unknown>();
@@ -86,6 +98,17 @@ export async function loadMessages(locale: SupportedLocale): Promise<void> {
       const key = cacheKey(locale, namespace);
       if (locale === entry.baseLocale || loaded.has(key)) return;
       const load = entry.loaders[locale];
+      if (instrumentation !== null) {
+        // A namespace with no file for the language shows its base for every key.
+        const translated = load ? await load() : undefined;
+        const tagged = mergeOverEnglish(entry.base, translated, {
+          tagger: instrumentation.tagger,
+          locale,
+          namespace,
+        });
+        loaded.set(key, instrumentation.wrap(tagged));
+        return;
+      }
       if (!load) return;
       loaded.set(key, mergeOverEnglish(entry.base, await load()));
     }),
@@ -100,7 +123,8 @@ export async function loadMessages(locale: SupportedLocale): Promise<void> {
  */
 export function isMessagesLoaded(locale: SupportedLocale): boolean {
   for (const [namespace, entry] of registry) {
-    if (locale !== entry.baseLocale && entry.loaders[locale] && !loaded.has(cacheKey(locale, namespace))) {
+    const hasLoad = entry.loaders[locale] !== undefined || instrumentation !== null;
+    if (locale !== entry.baseLocale && hasLoad && !loaded.has(cacheKey(locale, namespace))) {
       return false;
     }
   }
@@ -145,6 +169,17 @@ export function pseudoNamespaceFor(namespace: string): unknown {
     pseudo.set(namespace, tree);
   }
   return tree;
+}
+
+/**
+ * Install the inspector's instrumentation and drop every merged translation,
+ * so the next `loadMessages` merges again with fallbacks tagged. Called once,
+ * before the first load, from the development-only inspector entry.
+ */
+export function installMessagesInstrumentation(next: MessagesInstrumentation): void {
+  instrumentation = next;
+  loaded.clear();
+  loadedLocales.clear();
 }
 
 export function registeredNamespaces(): readonly string[] {
