@@ -3,10 +3,9 @@
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
 **Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
-with returns (#3977), **OrderProcessorManager** (#3978) and **inbound webhooks** (#3981). The plugin registers the connection, the
-token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. Further
-capabilities (ProductPublisher, ...) enter
-`supportedCapabilities` together with the adapter that delivers them, in the follow-up issues of the
+with returns (#3977), **OrderProcessorManager** (#3978), **inbound webhooks** (#3981) and **ProductPublisher** (#3979). The plugin registers the connection, the
+token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. A capability
+enters `supportedCapabilities` together with the adapter that delivers it, in the issues of the
 "Shopify integration" milestone. Evidence base: spike #3928 (`SPIKE-3928-shopify-capabilities.md`) and the first
 spike #2879 (`docs/plans/analysis/SPIKE-2879-shopify-admin-api.md`).
 
@@ -230,11 +229,38 @@ Orders and products reach OpenLinker seconds after a change instead of at the ne
   the API. `products/update` also re-reads the stock (when InventoryMaster is enabled), because a stock edit in the
   admin arrives as that topic. The orders poll stays on as the backstop for a lost delivery.
 
+## ProductPublisher and CategoryProvisioner (#3979)
+
+Publishes products from another master (PrestaShop, WooCommerce, ...) to the store. Opt-in, and refused on a
+connection that also has Product master enabled: the sweep would read every published product back as a new master
+product (#3985, a core issue that also affects Shoper and WooCommerce). Use a separate connection for publishing.
+
+- **Simple product**: one `productSet`, Shopify's default option, one variant with its stock at the configured
+  location. A re-publish reads the mapped product first and refuses one that no longer has exactly one variant
+  (`productSet` would delete the others).
+- **Variants**: one Shopify product per group, one variant per OpenLinker variant (at most three options). Siblings
+  publish concurrently and Shopify does not serialise creates by handle, so every group product gets the same
+  handle plus an `openlinker.variant_group` metafield; a sibling refused with `HANDLE_NOT_UNIQUE` joins the product
+  holding it, and a suffixed duplicate (`-1`, `-2`) is merged into the winner and deleted.
+- **Prices**: gross in (ADR-077). A store entering prices with tax gets them as they are; one entering them without
+  gets them net, divided by the catalogue's VAT rate, and a product with an exempt rate is published not taxable.
+  A missing rate on such a store is refused. A price-only update uses the variant's own rate as Shopify computes it
+  (needs `write_draft_orders`). A scheduled sale is not applied.
+- **Images**: only public URLs; a host Shopify cannot reach (docker name, private address) is a warning. Images go
+  only to a product with none, so a re-publish does not duplicate them.
+- **Visibility**: `published` sets `ACTIVE` and publishes to the Online Store channel; `draft` sets `DRAFT`.
+- **Categories**: collections. The picker lists the manual collections (flat); provisioning makes one collection per
+  category path, handle from the whole path, and adds the product to it.
+- **Parameters**: product metafields - linked to the store's metafield definition when the id is `namespace.key`,
+  otherwise text in the `openlinker` namespace. Reference-typed definitions (taxonomy attributes) are not written.
+- **Description**: Shopify keeps HTML as sent and sanitises nothing; the declared format allows the usual rich-text
+  tags, links and images.
+
 ## Known gaps
 
-- `defaultEnabledCapabilities` turns ProductMaster on for every new connection. One Shopify store is a master or a
-  publish target, never both (L-S2f): when ProductPublisher arrives, a publish-only connection must not get
-  ProductMaster by default, or the sweep imports the store's catalogue back.
+- `defaultEnabledCapabilities` turns ProductMaster on for every new connection, so a publish-only connection must
+  have it turned off by hand before publishing (the publisher refuses otherwise).
+- No `ShopProductStatusReader`: the publish status reconcile does not run for Shopify yet.
 
 - Delivery and payment mappings are keyed by the SOURCE connection only, so one source sending orders to Shopify and
   to another shop shares one mapping for both destinations.

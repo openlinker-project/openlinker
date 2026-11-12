@@ -16,6 +16,7 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InventoryMasterPort } from '@openlinker/core/inventory';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
+import type { ShopProductManagerPort } from '@openlinker/core/listings';
 import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
@@ -31,6 +32,7 @@ import { ShopifyOrderProcessorAdapter } from '../infrastructure/adapters/order-p
 import { ShopifyOrderStatusWriteback } from '../infrastructure/adapters/order-status/shopify-order-status-writeback';
 import { ShopifyInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shopify-inventory-master.adapter';
 import { ShopifyProductMasterAdapter } from '../infrastructure/adapters/product-master/shopify-product-master.adapter';
+import { ShopifyProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shopify-product-publisher.adapter';
 import { buildShopifyClient, type ShopifyClientRuntime } from '../infrastructure/http/shopify-client.builder';
 import { ShopifyInventoryReader } from '../infrastructure/readers/shopify-inventory.reader';
 import { ShopifyProductReader } from '../infrastructure/readers/shopify-product.reader';
@@ -127,6 +129,16 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
       connection,
       new ShopifyOrderStatusWriteback(client, shopContext, connection),
       mappingConfig,
+    );
+  }
+
+  createProductPublisher(resolution: ShopifyResolution, cache?: CachePort): ShopProductManagerPort {
+    const { client, connection, config, shopContext } = resolution;
+    return new ShopifyProductPublisherAdapter(
+      client,
+      shopContext,
+      connection,
+      new ShopifyTaxRateReader(client, shopContext, connection.id, config.salesCountryIso2, cache),
     );
   }
 }
