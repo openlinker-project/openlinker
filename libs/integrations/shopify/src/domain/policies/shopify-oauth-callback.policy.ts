@@ -4,8 +4,13 @@
  * Checks the query Shopify appends to the OAuth redirect before its `code` is
  * used (authorization-code grant, Admin API 2026-10):
  *   - `hmac` is HMAC-SHA256, hex, over every OTHER query parameter sorted by
- *     name and joined as `name=value&...`, keyed by the app's client secret;
- *     compared in constant time;
+ *     name and form-encoded as `name=value&...` (the encoding Shopify's own
+ *     libraries sign with: `URLSearchParams` in `@shopify/shopify-api`,
+ *     `URI.encode_www_form` in the Ruby gem), keyed by the app's client
+ *     secret; compared in constant time. The values are re-encoded on
+ *     purpose: `URLSearchParams` hands them back decoded, and the `host`
+ *     parameter is base64 that may end in `=` - signed decoded, a valid
+ *     redirect would be refused as `bad-hmac`;
  *   - `shop` must be a permanent `*.myshopify.com` host and must be the store
  *     the operator started the install for.
  *
@@ -32,11 +37,11 @@ export type ShopifyOAuthCallbackCheck =
   | { readonly ok: false; readonly refusal: ShopifyOAuthCallbackRefusal };
 
 export function computeShopifyCallbackHmac(params: URLSearchParams, clientSecret: string): string {
-  const message = [...params.entries()]
-    .filter(([name]) => name !== 'hmac' && name !== 'signature')
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([name, value]) => `${name}=${value}`)
-    .join('&');
+  const message = new URLSearchParams(
+    [...params.entries()]
+      .filter(([name]) => name !== 'hmac' && name !== 'signature')
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  ).toString();
   return createHmac('sha256', clientSecret).update(message).digest('hex');
 }
 

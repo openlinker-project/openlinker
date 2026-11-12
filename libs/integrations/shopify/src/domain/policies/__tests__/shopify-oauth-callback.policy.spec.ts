@@ -4,11 +4,13 @@ import { checkShopifyOAuthCallback } from '../shopify-oauth-callback.policy';
 
 const SECRET = 'app-secret';
 
+/** Signs the way Shopify does: sorted, form-encoded, `hmac` excluded. */
 function signed(params: Record<string, string>, secret = SECRET): string {
-  const message = Object.keys(params)
-    .sort()
-    .map((k) => `${k}=${params[k]}`)
-    .join('&');
+  const message = new URLSearchParams(
+    Object.keys(params)
+      .sort()
+      .map((k): [string, string] => [k, params[k]]),
+  ).toString();
   const hmac = createHmac('sha256', secret).update(message).digest('hex');
   return new URLSearchParams({ ...params, hmac }).toString();
 }
@@ -22,6 +24,27 @@ describe('checkShopifyOAuthCallback', () => {
       code: 'c0de',
       state: 'st',
       shop: 'my-shop.myshopify.com',
+    });
+  });
+
+  it('should accept a redirect whose host parameter carries base64 padding', () => {
+    const params = { ...BASE, host: 'YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvbXktc2hvcA==' };
+    expect(checkShopifyOAuthCallback(signed(params), SECRET, 'my-shop.myshopify.com')).toMatchObject({
+      ok: true,
+      code: 'c0de',
+    });
+  });
+
+  it('should refuse a redirect signed over the decoded values', () => {
+    const params = { ...BASE, host: 'YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvbXktc2hvcA==' };
+    const decodedMessage = Object.keys(params)
+      .sort()
+      .map((k) => `${k}=${params[k as keyof typeof params]}`)
+      .join('&');
+    const hmac = createHmac('sha256', SECRET).update(decodedMessage).digest('hex');
+    const query = new URLSearchParams({ ...params, hmac }).toString();
+    expect(checkShopifyOAuthCallback(query, SECRET, 'my-shop.myshopify.com')).toMatchObject({
+      refusal: 'bad-hmac',
     });
   });
 

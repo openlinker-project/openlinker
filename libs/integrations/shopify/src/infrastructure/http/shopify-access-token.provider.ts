@@ -231,8 +231,17 @@ export class ShopifyAccessTokenProvider {
         'the OAuth token expired and this process cannot store a refreshed one',
       );
     }
+    // Shopify rotates the refresh token, so an unserialised refresh in two
+    // processes spends it twice and the loser drops the store to needs_reauth.
+    // Refused like a missing writer rather than refreshed without a lock.
+    if (deps.lock === undefined) {
+      throw new ShopifyConfigException(
+        this.connectionId,
+        'the OAuth token expired and this process has no lock to refresh it under',
+      );
+    }
     const lockKey = `shopify:token-refresh:${this.connectionId}`;
-    const lockToken = deps.lock !== undefined ? await deps.lock.acquire(lockKey, REFRESH_LOCK_TTL_MS) : 'local';
+    const lockToken = await deps.lock.acquire(lockKey, REFRESH_LOCK_TTL_MS);
     if (lockToken === null) {
       for (let step = 0; step < REFRESH_WAIT_STEPS; step += 1) {
         await sleep(REFRESH_WAIT_STEP_MS);
@@ -281,9 +290,7 @@ export class ShopifyAccessTokenProvider {
       this.credentials = next;
       await this.writeBack(deps.writer, deps.credentialsRef, next);
     } finally {
-      if (deps.lock !== undefined && lockToken !== 'local') {
-        await deps.lock.release(lockKey, lockToken).catch(() => false);
-      }
+      await deps.lock.release(lockKey, lockToken).catch(() => false);
     }
   }
 

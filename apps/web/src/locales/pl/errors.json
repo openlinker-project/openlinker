@@ -194,6 +194,7 @@
     "OAUTH_ACCOUNT_IDENTITY_FAILED": "Nie udało się rozpoznać autoryzowanego konta. Spróbuj ponownie.",
     "OAUTH_ACCOUNT_MISMATCH": "Autoryzowano inne konto niż to, którego używa to połączenie. Zaloguj się na właściwe konto i spróbuj ponownie.",
     "OAUTH_ADAPTER_NOT_REGISTERED": "Ta integracja nie może dokończyć autoryzacji.",
+    "OAUTH_CALLBACK_UNVERIFIED": "Nie udało się zweryfikować przekierowania z platformy, więc nic nie zostało połączone. Zacznij łączenie od nowa.",
     "OAUTH_CODE_EXCHANGE_FAILED": "Nie udało się dokończyć autoryzacji. Spróbuj ponownie później.",
     "OAUTH_CODE_EXCHANGE_REJECTED": "Platforma odrzuciła autoryzację. Rozpocznij ją ponownie.",
     "OAUTH_CONNECTION_PLATFORM_MISMATCH": "To połączenie należy do innej platformy. Autoryzuj je z jego własnej strony.",

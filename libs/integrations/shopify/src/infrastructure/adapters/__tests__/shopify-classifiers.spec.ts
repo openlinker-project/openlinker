@@ -40,6 +40,30 @@ describe('ShopifyRetryClassifierAdapter', () => {
     expect(classifier.getRetryDeferral(wrapped)).toMatchObject({ delaySeconds: 30 });
   });
 
+  it('should find a terminal Shopify error wrapped as the cause of another error', () => {
+    const wrapped = Object.assign(new Error('adapter failed'), {
+      cause: new ShopifyGraphqlError(['ACCESS_DENIED'], ['denied']),
+    });
+    expect(classifier.isNonRetryable(wrapped)).toBe(true);
+  });
+
+  it('should treat a RangeError as terminal only when it is the failure itself', () => {
+    expect(classifier.isNonRetryable(new RangeError('bad cursor'))).toBe(true);
+    // The registry asks every classifier about every platform's jobs, so a
+    // RangeError buried in another plugin's error chain must not kill that job.
+    const otherPluginFailure = Object.assign(new Error('allegro job failed'), {
+      cause: new RangeError('Invalid time value'),
+    });
+    expect(classifier.isNonRetryable(otherPluginFailure)).toBe(false);
+  });
+
+  it('should let the outermost Shopify error decide when two are chained', () => {
+    const retryableOuter = Object.assign(new ShopifyApiError(500), {
+      cause: new ShopifyConfigException('c', 'bad'),
+    });
+    expect(classifier.isNonRetryable(retryableOuter)).toBe(false);
+  });
+
   it.each([
     ['a stale compare-and-set on a stock write (G05)', staleStock],
     ['a network error (G07)', new ShopifyNetworkError('socket hang up')],

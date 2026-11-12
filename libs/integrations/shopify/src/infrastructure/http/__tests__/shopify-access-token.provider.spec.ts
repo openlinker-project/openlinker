@@ -327,5 +327,19 @@ describe('ShopifyAccessTokenProvider', () => {
 
       await expect(provider.get()).rejects.toBeInstanceOf(ShopifyConfigException);
     });
+
+    it('should refuse to refresh without a lock rather than spend the refresh token unserialised', async () => {
+      const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
+      const fetchImpl = jest.fn();
+      const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, fetchImpl, undefined, new Map(), {
+        credentialsRef: 'db:ref',
+        reload: jest.fn(),
+        writer: { replace: jest.fn() },
+        refreshFetch: fetchImpl,
+      });
+
+      await expect(provider.get()).rejects.toBeInstanceOf(ShopifyConfigException);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
   });
 });

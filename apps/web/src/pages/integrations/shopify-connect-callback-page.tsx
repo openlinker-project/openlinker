@@ -15,13 +15,7 @@ import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 function errorCode(error: unknown): string | null {
-  if (!(error instanceof ApiError)) return null;
-  const details = error.details;
-  if (typeof details === 'object' && details !== null && 'code' in details) {
-    const code = (details as { code?: unknown }).code;
-    return typeof code === 'string' ? code : null;
-  }
-  return null;
+  return error instanceof ApiError ? (error.code ?? null) : null;
 }
 
 /** The query to forward, or null when the redirect lacks the code or the state. */
@@ -65,7 +59,7 @@ export function ShopifyConnectCallbackPage(): ReactElement {
           );
         }
         const message =
-          code !== null && code.startsWith('SHOPIFY_OAUTH_')
+          code === 'OAUTH_CALLBACK_UNVERIFIED'
             ? copy.unverified
             : interpolate(copy.failedPrefix, {
                 message: describeApiError(state.error, 'shopify'),

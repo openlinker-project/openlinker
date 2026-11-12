@@ -38,41 +38,67 @@ const HTTP_THROTTLE_DEFERRAL_SECONDS = 60;
 const UNAVAILABLE_DEFERRAL_SECONDS = 300;
 const MAX_CAUSE_DEPTH = 5;
 
+/**
+ * Both questions walk the same `cause` chain: the runner unwraps one
+ * `SyncJobExecutionError` itself, but a capability adapter may wrap a Shopify
+ * error once more, and a classifier that looked deeper for one answer than
+ * for the other would defer a failure it could not call terminal (or the
+ * reverse). The first Shopify error found decides; anything else is walked past.
+ *
+ * Only Shopify's own errors are looked for down the chain. The registry asks
+ * EVERY classifier about EVERY job's failure, whatever its platform, so a
+ * generic `RangeError` is answered only when it is the failure itself (as
+ * before, and as the Shoper classifier does): walking for it would make
+ * another plugin's job dead because something deep in its chain was a
+ * `RangeError`.
+ */
 export class ShopifyRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
-    if (cause instanceof ShopifyConfigException || cause instanceof RangeError) {
+    if (cause instanceof RangeError) {
       return true;
     }
-    if (cause instanceof ShopifyUserErrorsException) {
-      return !cause.isRateLimited() && !cause.isStaleCompareAndSet();
-    }
-    if (cause instanceof ShopifyGraphqlError) {
-      return cause.isAccessDenied();
-    }
-    if (cause instanceof ShopifyApiError) {
-      return (
-        cause.statusCode >= 400 &&
-        cause.statusCode < 500 &&
-        !RETRYABLE_CLIENT_ERRORS.has(cause.statusCode)
-      );
-    }
-    return false;
+    return firstInCauseChain(cause, terminalityOf) ?? false;
   }
 
   getRetryDeferral(cause: unknown): RetryDeferral | null {
-    let current: unknown = cause;
-    for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
-      const deferral = deferralFor(current);
-      if (deferral !== null) {
-        return deferral;
-      }
-      if (!(current instanceof Error)) {
-        return null;
-      }
-      current = current.cause;
-    }
-    return null;
+    return firstInCauseChain(cause, deferralFor);
   }
+}
+
+function firstInCauseChain<T>(cause: unknown, pick: (error: unknown) => T | null): T | null {
+  let current: unknown = cause;
+  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+    const answer = pick(current);
+    if (answer !== null) {
+      return answer;
+    }
+    if (!(current instanceof Error)) {
+      return null;
+    }
+    current = current.cause;
+  }
+  return null;
+}
+
+/** True terminal, false retryable, null when the error is not a Shopify error. */
+function terminalityOf(cause: unknown): boolean | null {
+  if (cause instanceof ShopifyConfigException) {
+    return true;
+  }
+  if (cause instanceof ShopifyUserErrorsException) {
+    return !cause.isRateLimited() && !cause.isStaleCompareAndSet();
+  }
+  if (cause instanceof ShopifyGraphqlError) {
+    return cause.isAccessDenied();
+  }
+  if (cause instanceof ShopifyApiError) {
+    return (
+      cause.statusCode >= 400 &&
+      cause.statusCode < 500 &&
+      !RETRYABLE_CLIENT_ERRORS.has(cause.statusCode)
+    );
+  }
+  return null;
 }
 
 function deferralFor(cause: unknown): RetryDeferral | null {

@@ -18,11 +18,13 @@ import { ShopifyController } from './shopify.controller';
 const SECRET = 'app-secret';
 const STORE = 'my-shop.myshopify.com';
 
+/** Signs the way Shopify does: sorted, form-encoded, `hmac` excluded. */
 function signedQuery(params: Record<string, string>, secret = SECRET): string {
-  const message = Object.keys(params)
-    .sort()
-    .map((k) => `${k}=${params[k]}`)
-    .join('&');
+  const message = new URLSearchParams(
+    Object.keys(params)
+      .sort()
+      .map((k): [string, string] => [k, params[k]]),
+  ).toString();
   const hmac = createHmac('sha256', secret).update(message).digest('hex');
   return `?${new URLSearchParams({ ...params, hmac }).toString()}`;
 }
@@ -87,7 +89,9 @@ describe('ShopifyController', () => {
           clientSecret: SECRET,
           redirectUri: STATE_DATA.redirectUri,
         }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toMatchObject({
+        response: { code: 'VALIDATION_FAILED', fields: [{ path: 'storeDomain', code: 'invalid' }] },
+      });
       expect(oauth.generateAuthorizationUrl).not.toHaveBeenCalled();
     });
   });
@@ -111,7 +115,10 @@ describe('ShopifyController', () => {
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(BadRequestException);
-      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'SHOPIFY_OAUTH_BAD_HMAC' });
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: 'OAUTH_CALLBACK_UNVERIFIED',
+        params: { platformType: 'shopify', reason: 'bad-hmac' },
+      });
       expect(oauth.completeAuthorization).not.toHaveBeenCalled();
     });
 
@@ -120,7 +127,10 @@ describe('ShopifyController', () => {
         .callback({ rawQuery: signedQuery({ ...params, shop: 'other.myshopify.com' }) })
         .catch((e: unknown) => e);
 
-      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'SHOPIFY_OAUTH_SHOP_MISMATCH' });
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: 'OAUTH_CALLBACK_UNVERIFIED',
+        params: { platformType: 'shopify', reason: 'shop-mismatch' },
+      });
       expect(oauth.completeAuthorization).not.toHaveBeenCalled();
     });
 
@@ -137,9 +147,24 @@ describe('ShopifyController', () => {
     it('should refuse a state that belongs to another platform', async () => {
       oauth.validateState.mockResolvedValue({ ...STATE_DATA, adapterKey: 'allegro.publicapi.v1' });
 
-      await expect(controller.callback({ rawQuery: signedQuery(params) })).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(controller.callback({ rawQuery: signedQuery(params) })).rejects.toMatchObject({
+        response: { code: 'OAUTH_STATE_INVALID' },
+      });
+    });
+
+    it('should refuse a redirect with no state before reading any state', async () => {
+      const withoutState = { code: params.code, shop: params.shop, timestamp: params.timestamp };
+      await expect(controller.callback({ rawQuery: signedQuery(withoutState) })).rejects.toMatchObject({
+        response: { code: 'OAUTH_STATE_MISSING' },
+      });
+      expect(oauth.validateState).not.toHaveBeenCalled();
+    });
+
+    it('should accept a redirect whose host parameter carries base64 padding', async () => {
+      const query = signedQuery({ ...params, host: 'YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvbXktc2hvcA==' });
+      await expect(controller.callback({ rawQuery: query })).resolves.toMatchObject({
+        connectionId: 'conn-1',
+      });
     });
   });
 });

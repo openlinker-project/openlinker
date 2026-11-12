@@ -29,14 +29,17 @@ import {
   checkShopifyOAuthCallback,
   parseShopifyConfig,
 } from '@openlinker/integrations-shopify';
+import { InvalidConnectionConfigException } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
 import { Public } from '../../auth/decorators/public.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   IOAuthConnectionService,
   OAUTH_CONNECTION_SERVICE_TOKEN,
 } from '../application/interfaces/oauth-connection.service.interface';
+import { toConfigShapeErrorBody } from '../application/services/connection-shape-error-body';
 import { ShopifyOAuthCallbackDto } from './dto/shopify-oauth-callback.dto';
 import { ShopifyOAuthConnectDto } from './dto/shopify-oauth-connect.dto';
 
@@ -73,12 +76,15 @@ export class ShopifyController {
     };
     const parsed = parseShopifyConfig(seed);
     if (!parsed.ok) {
-      throw new BadRequestException({
-        message: `Invalid Shopify connection config: ${parsed.issues
-          .map((issue) => `${issue.path} ${issue.message}`)
-          .join('; ')}`,
-        errors: parsed.issues,
-      });
+      // Same envelope a config save answers with (VALIDATION_FAILED + fields).
+      throw new BadRequestException(
+        toConfigShapeErrorBody(
+          new InvalidConnectionConfigException(
+            'Shopify',
+            parsed.issues.map(({ path, message }) => ({ path, message })),
+          ),
+        ),
+      );
     }
     const storeDomain = parsed.config.storeDomain;
     return this.oauthService.generateAuthorizationUrl({
@@ -104,7 +110,11 @@ export class ShopifyController {
   async callback(@Body() dto: ShopifyOAuthCallbackDto): Promise<ShopifyOAuthCallbackResponse> {
     const state = new URLSearchParams(dto.rawQuery.replace(/^\?/, '')).get('state');
     if (!state) {
-      throw new BadRequestException('Missing state parameter (required for CSRF protection)');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'OAUTH_STATE_MISSING',
+        'Missing state parameter (required for CSRF protection)',
+      );
     }
 
     const stateData = await this.oauthService.validateState(state);
@@ -117,13 +127,18 @@ export class ShopifyController {
           connectionName: completed.connectionName,
         };
       }
-      throw new BadRequestException({
-        message: 'Invalid or expired OAuth state parameter',
-        code: 'OAUTH_STATE_INVALID',
-      });
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'OAUTH_STATE_INVALID',
+        'Invalid or expired OAuth state parameter',
+      );
     }
     if (stateData.adapterKey !== SHOPIFY_ADAPTER_KEY) {
-      throw new BadRequestException({ message: 'OAuth state belongs to another platform', code: 'OAUTH_STATE_INVALID' });
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'OAUTH_STATE_INVALID',
+        'OAuth state belongs to another platform',
+      );
     }
 
     const expectedStore = stateData.initialConfig?.storeDomain;
@@ -134,10 +149,12 @@ export class ShopifyController {
     );
     if (!check.ok) {
       this.logger.warn(`Shopify OAuth callback refused: ${check.refusal}`);
-      throw new BadRequestException({
-        message: 'The Shopify redirect could not be verified',
-        code: `SHOPIFY_OAUTH_${check.refusal.toUpperCase().replace(/-/g, '_')}`,
-      });
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'OAUTH_CALLBACK_UNVERIFIED',
+        'The Shopify redirect could not be verified',
+        { platformType: SHOPIFY_PLATFORM_TYPE, reason: check.refusal },
+      );
     }
 
     const connection = await this.oauthService.completeAuthorization(check.code, stateData);
