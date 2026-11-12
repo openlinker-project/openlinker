@@ -52,6 +52,20 @@ describe('categoryParametersToOfferParameters', () => {
     ]);
   });
 
+  it('sends a custom-values entry stored by its id as valuesIds, not as text (#4038)', () => {
+    const meta = [
+      param({
+        id: '201017',
+        section: 'product',
+        restrictions: { customValuesEnabled: true },
+        dictionary: [{ id: '201017_2317', value: 'bawełna' }],
+      }),
+    ];
+    expect(categoryParametersToOfferParameters({ '201017': '201017_2317' }, meta)).toEqual([
+      { id: '201017', valuesIds: ['201017_2317'], section: 'product' },
+    ]);
+  });
+
   it('drops a single dictionary id that is not in the current dictionary', () => {
     // A category switch keeps `values[param.id]`; "Stan" keeps its id while the
     // new category's dictionary has no "Po zwrocie" entry.

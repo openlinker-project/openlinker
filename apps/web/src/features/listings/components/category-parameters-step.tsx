@@ -418,6 +418,13 @@ export function fromComboboxValue(
   }
   if (value.kind === 'dictionary') {
     if (parameter.restrictions.multipleChoices) return value.ids;
+    // A custom-values field stores TEXT (submit resolves it back to an entry
+    // by its spelling); storing the picked id there sent the id as free text,
+    // which the marketplace reads as the parameter being missing (#4038).
+    if (parameter.restrictions.customValuesEnabled) {
+      const entry = parameter.dictionary?.find((e) => e.id === value.ids[0]);
+      return entry?.value ?? value.ids[0];
+    }
     return value.ids[0];
   }
   // custom-text — only meaningful when customValuesEnabled
