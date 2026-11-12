@@ -42,6 +42,8 @@ export const infaktAdapterManifest: AdapterMetadata = {
   displayName: 'Infakt Accounting API v3',
   version: '1.0.0',
   isDefault: true,
+  // inFakt generates the webhook secret itself and the operator pastes it in.
+  acceptsCallerSuppliedWebhookSecret: true,
   // No `defaultRateLimit` (#1810 §1), and this adapter is the one where that
   // matters most. A manifest default is for MERCHANT-HOSTED platforms, where the
   // remote is the operator's own often-shared-hosting box (the #1772 incident

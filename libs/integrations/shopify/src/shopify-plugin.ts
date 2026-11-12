@@ -10,7 +10,8 @@
  * that delivers them (the #980 rule); ProductMaster arrived with #3975,
  * InventoryMaster with #3976, OrderSource with #3977 (with its scheduler
  * tasks: the orders poll, and the two returns passes, off by default) and
- * OrderProcessorManager with #3978. Their rungs (`ModifiedProductLister`,
+ * OrderProcessorManager with #3978. Inbound webhooks (#3981) register a
+ * decoder and a translator here and a provisioner in the module. Their rungs (`ModifiedProductLister`,
  * `BulkProductReader`, `ProductTaxRateReader`, `BulkInventoryReader`) are
  * guard-only (never in the manifest), narrowed off the dispatched adapter.
  *
@@ -23,12 +24,13 @@
  * `ShopifyIntegrationModule` supplies them: the OAuth token write-back
  * (credentials service + lock) and the mapping config service the order
  * processor resolves a source's delivery and payment mappings with, both
- * passed in through `CreateShopifyPluginDeps`, and the archive hook (registered on the core registry directly).
+ * passed in through `CreateShopifyPluginDeps`, the archive hook and the webhook
+ * provisioner (both registered on the core registries directly).
  *
  * @module libs/integrations/shopify/src
  */
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
-import type { AdapterMetadata } from '@openlinker/core/integrations';
+import type { AdapterMetadata, WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 
@@ -40,6 +42,8 @@ import {
 } from './shopify.constants';
 import { ShopifyAdapterFactory, type ShopifyResolution } from './application/shopify-adapter.factory';
 import { resolveShopifyRateLimitBucketKey } from './domain/policies/shopify-rate-limit-bucket.policy';
+import { ShopifyInboundWebhookDecoderAdapter } from './infrastructure/adapters/webhooks/shopify-inbound-webhook-decoder.adapter';
+import { ShopifyWebhookEventTranslatorAdapter } from './infrastructure/adapters/webhooks/shopify-webhook-event-translator.adapter';
 import {
   createShopifyClientRuntime,
   type ShopifyClientRuntime,
@@ -78,6 +82,9 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // `OrderProcessorManager` is opt-in for the same reason in reverse: it makes
   // the store receive every marketplace order (the Shoper precedent).
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+  // Shopify signs every webhook with the app client secret, which OpenLinker
+  // can only store, never rotate (#3981).
+  acceptsCallerSuppliedWebhookSecret: true,
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   // Shopify's budget is per app and store, so connections to one store share one bucket.
   resolveRateLimitBucketKey: resolveShopifyRateLimitBucketKey,
@@ -99,6 +106,11 @@ export interface CreateShopifyPluginDeps {
    * own method names.
    */
   readonly mappingConfigService?: IMappingConfigService;
+  /**
+   * Reads the stored webhook secret, so the connection test can tell when it no
+   * longer matches the app client secret (#3981). Absent, that check is skipped.
+   */
+  readonly webhookSecrets?: WebhookSecretProviderPort;
 }
 
 export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): AdapterPlugin {
@@ -111,7 +123,7 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         SHOPIFY_ADAPTER_KEY,
-        new ShopifyConnectionTesterAdapter(host.http, SHOPIFY_DEFAULT_RATE_LIMIT, host.cache, runtime),
+        new ShopifyConnectionTesterAdapter(host.http, SHOPIFY_DEFAULT_RATE_LIMIT, host.cache, runtime, deps.webhookSecrets),
       );
       host.connectionConfigShapeValidatorRegistry.register(
         SHOPIFY_ADAPTER_KEY,
@@ -127,6 +139,18 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
       );
       host.retryClassifierRegistry.register(SHOPIFY_ADAPTER_KEY, new ShopifyRetryClassifierAdapter());
       host.oauthCompletionRegistry.register(SHOPIFY_ADAPTER_KEY, new ShopifyOAuthCompletionAdapter());
+      // Inbound webhooks (#3981). The decoder is keyed by PLATFORM TYPE (the
+      // `:provider` segment of the delivery route), the translator by adapter
+      // key. The provisioner is registered by `ShopifyIntegrationModule`: it
+      // needs `ConnectionPort` and `IWebhookSecretService`.
+      host.inboundWebhookDecoderRegistry.register(
+        SHOPIFY_PLATFORM_TYPE,
+        new ShopifyInboundWebhookDecoderAdapter(),
+      );
+      host.webhookEventTranslatorRegistry.register(
+        SHOPIFY_ADAPTER_KEY,
+        new ShopifyWebhookEventTranslatorAdapter(),
+      );
       for (const task of buildShopifySchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
       }

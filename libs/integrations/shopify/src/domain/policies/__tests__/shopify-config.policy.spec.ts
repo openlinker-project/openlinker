@@ -76,6 +76,16 @@ describe('parseShopifyConfig', () => {
     expect(!refused.ok && refused.issues.map((i) => i.path)).toEqual(['refundsThroughShopify']);
   });
 
+  it('should accept an https callback URL and refuse an http or malformed one', () => {
+    expect(
+      parseShopifyConfig({ storeDomain: 'a.myshopify.com', openlinkerCallbackBaseUrl: 'https://ol.example.com' }).ok,
+    ).toBe(true);
+    for (const value of ['http://ol.example.com', 'not a url', 42]) {
+      const refused = parseShopifyConfig({ storeDomain: 'a.myshopify.com', openlinkerCallbackBaseUrl: value });
+      expect(!refused.ok && refused.issues.map((i) => i.path)).toEqual(['openlinkerCallbackBaseUrl']);
+    }
+  });
+
   it('should report every bad field at once when several are wrong', () => {
     const result = parseShopifyConfig({ storeDomain: 'x', apiVersion: 'y', locationId: 'z' });
 

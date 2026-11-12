@@ -1,5 +1,5 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { CredentialsResolverPort, WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 import { SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '../../../shopify.constants';
@@ -67,6 +67,53 @@ describe('ShopifyConnectionTesterAdapter', () => {
     });
     expect(http.forConnection).toHaveBeenCalledWith(conn, RATE_LIMIT, {
       bucketKey: 'shopify:store:my-shop.myshopify.com',
+    });
+  });
+
+  describe('stale webhook secret (#3981)', () => {
+    const allScopes = (): jest.Mock =>
+      jest
+        .fn()
+        .mockResolvedValueOnce(json(SHOP_CONTEXT))
+        .mockResolvedValueOnce(json(scopes([...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES])));
+
+    function withSecret(stored: string | null, clientSecret = 'current-secret'): {
+      tester: ShopifyConnectionTesterAdapter;
+      resolver: CredentialsResolverPort;
+    } {
+      const fetchImpl = allScopes();
+      const http = { forConnection: jest.fn().mockReturnValue(fetchImpl) } as unknown as HttpTransportFactoryPort;
+      const resolver = {
+        get: jest.fn().mockResolvedValue({ accessToken: 'shpat_x', clientId: 'id', clientSecret }),
+      } as unknown as CredentialsResolverPort;
+      const secrets = {
+        has: jest.fn().mockResolvedValue(stored !== null),
+        getSecret: jest.fn().mockResolvedValue(stored),
+        invalidate: jest.fn(),
+      } as unknown as WebhookSecretProviderPort;
+      return {
+        tester: new ShopifyConnectionTesterAdapter(http, RATE_LIMIT, undefined, createShopifyClientRuntime(), secrets),
+        resolver,
+      };
+    }
+
+    it('should warn when the webhook secret no longer matches the app client secret', async () => {
+      const { tester, resolver } = withSecret('old-secret');
+
+      const result = await tester.test(connection({ webhooksConfigured: true }), resolver);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('Webhooks will be refused');
+    });
+
+    it('should say nothing when the secrets match or webhooks are not configured', async () => {
+      const matching = withSecret('current-secret');
+      expect((await matching.tester.test(connection({ webhooksConfigured: true }), matching.resolver)).message).not.toContain(
+        'Webhooks',
+      );
+
+      const notConfigured = withSecret('old-secret');
+      expect((await notConfigured.tester.test(connection(), notConfigured.resolver)).message).not.toContain('Webhooks');
     });
   });
 

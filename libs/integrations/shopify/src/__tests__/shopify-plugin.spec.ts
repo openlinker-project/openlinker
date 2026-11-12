@@ -10,6 +10,10 @@ import {
 
 import { isDestinationOptionsReader, type OrderProcessorManagerPort } from '@openlinker/core/orders';
 
+import type { HostServices } from '@openlinker/plugin-sdk';
+
+import { ShopifyInboundWebhookDecoderAdapter } from '../infrastructure/adapters/webhooks/shopify-inbound-webhook-decoder.adapter';
+import { ShopifyWebhookEventTranslatorAdapter } from '../infrastructure/adapters/webhooks/shopify-webhook-event-translator.adapter';
 import { createShopifyPlugin, shopifyAdapterManifest } from '../shopify-plugin';
 
 describe('createShopifyPlugin', () => {
@@ -30,6 +34,32 @@ describe('createShopifyPlugin', () => {
       defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
     });
     expect(createShopifyPlugin().manifest).toBe(shopifyAdapterManifest);
+  });
+
+  it('should register the webhook decoder by platform type and the translator by adapter key', () => {
+    const registry = (): { register: jest.Mock } => ({ register: jest.fn() });
+    const host = {
+      connectionTesterRegistry: registry(),
+      connectionConfigShapeValidatorRegistry: registry(),
+      connectionCredentialsShapeValidatorRegistry: registry(),
+      authFailureClassifierRegistry: registry(),
+      retryClassifierRegistry: registry(),
+      oauthCompletionRegistry: registry(),
+      schedulerTaskRegistry: registry(),
+      inboundWebhookDecoderRegistry: registry(),
+      webhookEventTranslatorRegistry: registry(),
+    };
+
+    createShopifyPlugin().register?.(host as unknown as HostServices);
+
+    expect(host.inboundWebhookDecoderRegistry.register).toHaveBeenCalledWith(
+      'shopify',
+      expect.any(ShopifyInboundWebhookDecoderAdapter),
+    );
+    expect(host.webhookEventTranslatorRegistry.register).toHaveBeenCalledWith(
+      'shopify.admin.v1',
+      expect.any(ShopifyWebhookEventTranslatorAdapter),
+    );
   });
 
   it('should share one rate-limit bucket per store', () => {

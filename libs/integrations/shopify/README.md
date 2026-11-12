@@ -3,7 +3,7 @@
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
 **Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
-with returns (#3977) and **OrderProcessorManager** (#3978). The plugin registers the connection, the
+with returns (#3977), **OrderProcessorManager** (#3978) and **inbound webhooks** (#3981). The plugin registers the connection, the
 token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. Further
 capabilities (ProductPublisher, ...) enter
 `supportedCapabilities` together with the adapter that delivers them, in the follow-up issues of the
@@ -204,6 +204,32 @@ required) and an offline token, which every supported credential mode gives.
   location right after. A failed move is logged and does not fail the create; the dispatch writeback moves it again.
 - **Status.** Dispatch and cancellation go through the same writeback as the order source.
 
+## Inbound webhooks (#3981)
+
+Orders and products reach OpenLinker seconds after a change instead of at the next poll.
+
+- **Configure.** Set `openlinkerCallbackBaseUrl` (a public `https://` URL of OpenLinker; Shopify delivers to https
+  only) in the connection config, then `POST /connections/:id/webhooks/install` (the "Configure webhooks" button
+  arrives with #3982). The shop is subscribed to `${base}/webhooks/shopify/{connectionId}`: `orders/create`,
+  `orders/updated`, `orders/cancelled` when OrderSource is enabled, `products/create`, `products/update`,
+  `products/delete` when ProductMaster is. Neither enabled is refused.
+- **Idempotent.** Subscriptions already pointing at the current URL stay; missing ones are created; ours on an old
+  base URL or for a topic no enabled capability needs are deleted after the new ones exist. Other subscriptions
+  are never touched.
+- **Signature.** Shopify signs every delivery with the app's client secret (`X-Shopify-Hmac-Sha256`), so install
+  stores that secret as the connection's webhook secret. A connection holding only a pre-issued access token has no
+  client secret and is refused: add the client id and secret to its credentials. A wrong or missing signature
+  answers 401 and writes nothing.
+- **Client secret rotation.** The stored webhook secret is a copy taken at install. Rotating the client secret in the
+  Dev Dashboard and updating the connection credentials does not update it, so every delivery then fails its
+  signature: configure webhooks again. "Test connection" warns when the two no longer match.
+- **Replays.** No timestamp window: Shopify retries a failed delivery up to eight times in four hours with the
+  original timestamp, and a 401 on a valid retry would get the subscription removed. `X-Shopify-Webhook-Id` is the
+  dedup key, so a replay creates no second job.
+- **Trigger only.** Only the order or product id is read from the body; the order or product is re-read through
+  the API. `products/update` also re-reads the stock (when InventoryMaster is enabled), because a stock edit in the
+  admin arrives as that topic. The orders poll stays on as the backstop for a lost delivery.
+
 ## Known gaps
 
 - `defaultEnabledCapabilities` turns ProductMaster on for every new connection. One Shopify store is a master or a
@@ -218,7 +244,10 @@ required) and an offline token, which every supported credential mode gives.
   is used until the next API version.
 - A change to a collection tax override does not touch the product, so the cached rate is re-read when its day runs
   out.
-- Product webhooks are a separate issue: today the catalogue is kept current by the sweeps and the delta pass.
+- `inventory_levels/update` is not subscribed: it is keyed by inventory item and location, not by product. A stock
+  change made outside the admin (an app, a POS sale) waits for the inventory sweep.
+- A burst of product webhooks shares the realtime lane with order syncs and can delay an order by minutes (spike
+  A16); filed as a separate core issue.
 - Whether a configured location exists is checked by the connection test and at runtime, not when the connection
   is saved (a save has no credentials to ask the shop with).
 - A return's reason is carried as Shopify's raw `returnReasonDefinition` handle; core recognises only its own words,

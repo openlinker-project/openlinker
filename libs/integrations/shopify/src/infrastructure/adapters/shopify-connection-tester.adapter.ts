@@ -13,6 +13,12 @@
  * an app not installed on the store, a store in another organization (client
  * credentials cannot reach it, OAuth is needed), or a wrong client id/secret.
  *
+ * Stale webhook secret (#3981): webhooks are verified with a COPY of the app
+ * client secret, stored when webhooks were configured. When the client secret
+ * in the connection credentials changes afterwards, every delivery fails its
+ * signature until webhooks are configured again; the test says so rather than
+ * reporting a plain OK.
+ *
  * Goes through the connection-bound transport like every other call (#1810).
  *
  * @module libs/integrations/shopify/src/infrastructure/adapters
@@ -27,6 +33,7 @@ import type { CachePort } from '@openlinker/shared';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 import type { ConnectionRateLimit } from '@openlinker/shared/rate-limit';
+import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 
 import { ShopifyApiError } from '../../domain/exceptions/shopify-api.error';
 import { ShopifyConfigException } from '../../domain/exceptions/shopify-config.exception';
@@ -40,6 +47,7 @@ import { resolveShopifyRateLimitBucketKey } from '../../domain/policies/shopify-
 import { buildShopifyClient, type ShopifyClientRuntime } from '../http/shopify-client.builder';
 import { ShopifyShopContextProvider } from '../shop-context/shopify-shop-context.provider';
 import { SHOPIFY_OPTIONAL_SCOPE_EFFECTS } from '../../shopify.constants';
+import { SHOPIFY_WEBHOOK_PROVIDER } from '../../domain/types/shopify-webhook.types';
 
 const SCOPES_QUERY = `query OlConnectionTestScopes {
   currentAppInstallation { accessScopes { handle } }
@@ -89,6 +97,7 @@ export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {
     private readonly defaultRateLimit: ConnectionRateLimit | undefined,
     private readonly cache: CachePort | undefined,
     private readonly runtime: ShopifyClientRuntime,
+    private readonly webhookSecrets?: WebhookSecretProviderPort,
   ) {}
 
   async test(connection: Connection, credentialsResolver: CredentialsResolverPort): Promise<ConnectionTestResult> {
@@ -127,11 +136,45 @@ export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {
         message:
           `OK - ${context.shopName} (${context.currencyCode}, prices ` +
           `${context.taxesIncluded ? 'include' : 'exclude'} tax, location ${context.locationName})` +
-          describeMissingOptionalScopes(findMissingOptionalShopifyScopes(granted)),
+          describeMissingOptionalScopes(findMissingOptionalShopifyScopes(granted)) +
+          (await this.describeStaleWebhookSecret(connection, credentialsResolver)),
         latencyMs: elapsed(),
       };
     } catch (error) {
       return this.toFailure(error, connection.id, elapsed());
+    }
+  }
+
+  /**
+   * A sentence when the webhook secret no longer matches the client secret, or
+   * '' when it matches, webhooks are not configured, or it cannot be checked.
+   */
+  private async describeStaleWebhookSecret(
+    connection: Connection,
+    credentialsResolver: CredentialsResolverPort,
+  ): Promise<string> {
+    if (this.webhookSecrets === undefined || connection.config?.webhooksConfigured !== true || !connection.credentialsRef) {
+      return '';
+    }
+    try {
+      const credentials = await credentialsResolver.get<{ clientSecret?: unknown }>(connection.credentialsRef);
+      const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret.trim() : '';
+      if (clientSecret.length === 0) {
+        return '';
+      }
+      const stored = (await this.webhookSecrets.has(SHOPIFY_WEBHOOK_PROVIDER, connection.id))
+        ? await this.webhookSecrets.getSecret(SHOPIFY_WEBHOOK_PROVIDER, connection.id)
+        : '';
+      return stored === clientSecret
+        ? ''
+        : '. Webhooks will be refused: the app client secret changed since they were configured - ' +
+            'configure webhooks again';
+    } catch (error) {
+      this.logger.warn('Shopify webhook secret could not be checked', {
+        connectionId: connection.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return '';
     }
   }
 

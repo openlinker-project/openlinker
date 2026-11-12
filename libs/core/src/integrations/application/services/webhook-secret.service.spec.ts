@@ -8,6 +8,7 @@ import { Connection } from '@openlinker/core/identifier-mapping';
 import { WebhookSecretService } from './webhook-secret.service';
 import type { IntegrationCredentialRepositoryPort } from '../../domain/ports/integration-credential-repository.port';
 import type { WebhookSecretProviderPort } from '../../domain/ports/webhook-secret-provider.port';
+import type { AdapterRegistryPort } from '../../domain/ports/adapter-registry.port';
 import { CredentialNotFoundException } from '../../domain/exceptions/credential-not-found.exception';
 import { CallerSuppliedWebhookSecretNotSupportedException } from '../../domain/exceptions/caller-supplied-webhook-secret-not-supported.exception';
 import { IntegrationCredential } from '../../domain/entities/integration-credential.entity';
@@ -42,6 +43,7 @@ describe('WebhookSecretService', () => {
   let connectionPort: jest.Mocked<ConnectionPort>;
   let repository: jest.Mocked<IntegrationCredentialRepositoryPort>;
   let secretProvider: jest.Mocked<WebhookSecretProviderPort>;
+  let adapterRegistry: jest.Mocked<Pick<AdapterRegistryPort, 'getAdapterMetadata' | 'getDefaultAdapterKey'>>;
   let subject: WebhookSecretService;
 
   const sampleCredential = new IntegrationCredential(
@@ -63,7 +65,27 @@ describe('WebhookSecretService', () => {
     };
     secretProvider = { getSecret: jest.fn(), invalidate: jest.fn() } as never;
 
-    subject = new WebhookSecretService(connectionPort, repository, secretProvider);
+    // Only the inFakt adapter declares that it accepts a caller-supplied secret.
+    adapterRegistry = {
+      getDefaultAdapterKey: jest.fn((platformType: string) => Promise.resolve(`${platformType}.default`)),
+      getAdapterMetadata: jest.fn((adapterKey: string) =>
+        Promise.resolve({
+          adapterKey,
+          platformType: adapterKey.split('.')[0],
+          supportedCapabilities: [],
+          displayName: adapterKey,
+          version: '1',
+          ...(adapterKey.startsWith('infakt.') ? { acceptsCallerSuppliedWebhookSecret: true } : {}),
+        })
+      ),
+    };
+
+    subject = new WebhookSecretService(
+      connectionPort,
+      repository,
+      secretProvider,
+      adapterRegistry as unknown as AdapterRegistryPort
+    );
   });
 
   it('updates existing credential with plaintext secret and returns it once', async () => {
@@ -125,6 +147,15 @@ describe('WebhookSecretService', () => {
       connectionPort.get.mockRejectedValue(new Error('nope'));
 
       await expect(subject.set('infakt', connectionId, 's')).rejects.toThrow('nope');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a connection whose adapter cannot be resolved (#3981)', async () => {
+      adapterRegistry.getAdapterMetadata.mockRejectedValueOnce(new Error('not registered'));
+
+      await expect(subject.set('infakt', connectionId, 'pasted-secret')).rejects.toThrow(
+        CallerSuppliedWebhookSecretNotSupportedException
+      );
       expect(repository.update).not.toHaveBeenCalled();
     });
 
