@@ -10,20 +10,27 @@
  */
 import { z } from 'zod';
 
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { getMessages } from '../../../shared/i18n';
+
+/** Read when a value is validated, not when the module loads, so the message follows the active language. */
+const message = (
+  key: 'nameRequired' | 'loginRequired' | 'loginNoAt' | 'emailInvalid'
+): { error: () => string } => ({
+  error: (): string => getMessages('oms-onboarding').step2[key],
+});
 
 export const addPackerFormSchema = z.object({
-  displayName: z.string().trim().min(1, COPY.step2.nameRequired).max(120),
+  displayName: z.string().trim().min(1, message('nameRequired')).max(120),
   username: z
     .string()
     .trim()
-    .min(1, COPY.step2.loginRequired)
+    .min(1, message('loginRequired'))
     .max(100)
-    .refine((value) => !value.includes('@'), COPY.step2.loginNoAt),
+    .refine((value) => !value.includes('@'), message('loginNoAt')),
   email: z
     .string()
     .trim()
-    .refine((value) => value === '' || z.string().email().safeParse(value).success, COPY.step2.emailInvalid),
+    .refine((value) => value === '' || z.string().email().safeParse(value).success, message('emailInvalid')),
 });
 
 export type AddPackerFormValues = z.input<typeof addPackerFormSchema>;
