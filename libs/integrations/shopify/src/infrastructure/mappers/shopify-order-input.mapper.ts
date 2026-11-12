@@ -16,10 +16,22 @@
  * rather than a guessed one. Tax lines sit on the line items and the shipping
  * line, never on the order: Shopify takes one or the other, not both.
  *
- * Custom line: a line whose variant this connection does not know is created
- * with its own title and SKU and `requiresShipping: true` (Shopify's default
- * for a custom line is false, which would leave the line out of every
- * fulfillment order, so nobody could ship it).
+ * Shipping: `OrderCreateLineItemInput.requiresShipping` defaults to FALSE for
+ * every line, a variant line included, and an order whose lines do not require
+ * shipping reads "shipping not required" in the admin, so nobody can buy a
+ * label for it (D1). Every line therefore states it: a variant line carries its
+ * own inventory item's `requiresShipping` (a digital product stays unshipped),
+ * read by the adapter, and a custom line - a variant this connection does not
+ * know - is created with its own title and SKU and `requiresShipping: true`.
+ *
+ * Whole-order discount: a source may report a discount it applied to the order
+ * but to none of its lines (`totals.discountTotal`, e.g. an Allegro coupon).
+ * The lines keep their listed price and the discount becomes a fixed-amount
+ * `discountCode` (`OPENLINKER`), so the Shopify order totals to what the buyer
+ * paid and the merchant sees it as a discount. The tax lines are computed on
+ * each line's share of the discounted amount (`distributeOrderDiscount`, core's
+ * one split rule). A discount that cannot be split (at least the line sum) is
+ * not sent; the adapter warns.
  *
  * Pickup point: Shopify has no pickup-point field on an order, so a locker
  * the buyer chose rides in three places a packer or an app can read:
@@ -36,14 +48,24 @@
  * @module libs/integrations/shopify/src/infrastructure/mappers
  */
 import type { Address, OrderCreate, OrderItem, OrderPickupPoint } from '@openlinker/core/orders';
-import { PAYMENT_METHOD, PAYMENT_STATUS } from '@openlinker/core/orders';
+import { distributeOrderDiscount, PAYMENT_METHOD, PAYMENT_STATUS } from '@openlinker/core/orders';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 
-import { SHOPIFY_COD_GATEWAY, SHOPIFY_ORDER_TAG } from '../../shopify.constants';
+import { SHOPIFY_COD_GATEWAY, SHOPIFY_ORDER_DISCOUNT_CODE, SHOPIFY_ORDER_TAG } from '../../shopify.constants';
 
 /** A line with the Shopify variant it resolved to, or null for a custom line. */
 export interface ShopifyResolvedLine {
   readonly item: OrderItem;
   readonly variantGid: string | null;
+  /** Whether the line ships: the variant's own inventory item, or true for a custom line. */
+  readonly requiresShipping: boolean;
+}
+
+/** A whole-order discount the Shopify order carries as a fixed-amount code. */
+export interface ShopifyOrderDiscount {
+  readonly amount: number;
+  /** Each line's total after its share of the discount, in line order. */
+  readonly lineTotalsAfterDiscount: readonly number[];
 }
 
 /**
@@ -142,12 +164,40 @@ function shippingTitle(order: OrderCreate, mappedMethod: string | undefined): st
   return pointId && !base.includes(pointId) ? `${base} (${pointId})` : base;
 }
 
+function unitPrice(item: OrderItem, taxesIncluded: boolean): number {
+  return taxesIncluded ? (item.unitPriceGross ?? item.price) : item.price;
+}
+
+/**
+ * The order's whole-order discount, split across the lines, or null when the
+ * order carries none or it cannot be split (it is at least the line sum).
+ */
+export function shopifyOrderDiscount(
+  order: OrderCreate,
+  lines: readonly ShopifyResolvedLine[],
+): ShopifyOrderDiscount | null {
+  const discount = order.totals.discountTotal;
+  if (discount === undefined || !(discount > 0)) {
+    return null;
+  }
+  const taxesIncluded = order.totals.taxTreatment !== 'exclusive';
+  const split = distributeOrderDiscount(
+    lines.map(({ item }) => unitPrice(item, taxesIncluded) * item.quantity),
+    discount,
+    minorUnitExponentFor(order.totals.currency),
+  );
+  return split === null
+    ? null
+    : { amount: discount, lineTotalsAfterDiscount: split.map((part) => part.grossTotalAfterDiscount) };
+}
+
 function lineItem(
-  { item, variantGid }: ShopifyResolvedLine,
+  { item, variantGid, requiresShipping }: ShopifyResolvedLine,
   taxesIncluded: boolean,
   currencyCode: string,
+  taxedTotal: number,
 ): Record<string, unknown> {
-  const unit = taxesIncluded ? (item.unitPriceGross ?? item.price) : item.price;
+  const unit = unitPrice(item, taxesIncluded);
   const identity =
     variantGid === null
       ? {
@@ -155,8 +205,8 @@ function lineItem(
           ...(item.sku ? { sku: item.sku } : {}),
           requiresShipping: true,
         }
-      : { variantId: variantGid };
-  const tax = taxLines(item.taxRate, unit * item.quantity, taxesIncluded, currencyCode);
+      : { variantId: variantGid, requiresShipping };
+  const tax = taxLines(item.taxRate, taxedTotal, taxesIncluded, currencyCode);
   return {
     ...identity,
     quantity: item.quantity,
@@ -213,6 +263,7 @@ export function buildShopifyOrderCreateVariables(
         ];
 
   const payment = transactions(order, mapped, currencyCode);
+  const discount = shopifyOrderDiscount(order, lines);
   const customAttributes = pickupPointAttributes(order.pickupPoint);
   const noteLines = [
     ...(order.orderNumber ? [`OpenLinker order ${order.orderNumber}`] : []),
@@ -226,7 +277,24 @@ export function buildShopifyOrderCreateVariables(
 
   return {
     order: {
-      lineItems: lines.map((line) => lineItem(line, taxesIncluded, currencyCode)),
+      lineItems: lines.map((line, index) =>
+        lineItem(
+          line,
+          taxesIncluded,
+          currencyCode,
+          discount?.lineTotalsAfterDiscount[index] ?? unitPrice(line.item, taxesIncluded) * line.item.quantity,
+        ),
+      ),
+      ...(discount === null
+        ? {}
+        : {
+            discountCode: {
+              itemFixedDiscountCode: {
+                code: SHOPIFY_ORDER_DISCOUNT_CODE,
+                amountSet: money(discount.amount, currencyCode),
+              },
+            },
+          }),
       ...(shippingLines.length === 0 ? {} : { shippingLines }),
       ...(shippingAddress === undefined ? {} : { shippingAddress }),
       ...(billingAddress === undefined ? {} : { billingAddress }),

@@ -44,9 +44,39 @@ function build(
     currency?: string;
     existing?: Array<{ id: string; name: string }>;
     mappingConfig?: IMappingConfigService;
+    /** `inventoryItem.requiresShipping` of variant 9 (the one line that resolves). */
+    variantShips?: boolean;
+    /** Delivery-method names the store's delivery profiles offer. */
+    deliveryMethods?: string[];
   } = {},
 ): Harness {
-  const query = jest.fn().mockResolvedValue({ orders: { nodes: options.existing ?? [] } });
+  // One mock for every read, answering by the operation the document names.
+  const query = jest.fn((document: string) => {
+    if (document.includes('OlVariantsRequireShipping')) {
+      return Promise.resolve({
+        nodes: [{ id: 'gid://shopify/ProductVariant/9', inventoryItem: { requiresShipping: options.variantShips ?? true } }],
+      });
+    }
+    if (document.includes('OlDeliveryProfiles')) {
+      const methods = (options.deliveryMethods ?? []).map((name, i) => ({ id: `m${i}`, name, active: true }));
+      return Promise.resolve({
+        deliveryProfiles: {
+          nodes: [
+            {
+              name: 'General',
+              profileLocationGroups: [
+                { locationGroupZones: { nodes: [{ zone: { name: 'PL' }, methodDefinitions: { nodes: methods } }] } },
+              ],
+            },
+          ],
+        },
+      });
+    }
+    if (document.includes('OlRecentOrderOptions')) {
+      return Promise.resolve({ orders: { nodes: [] } });
+    }
+    return Promise.resolve({ orders: { nodes: options.existing ?? [] } });
+  });
   const mutate = jest.fn();
   const write = jest.fn().mockResolvedValue({ outcome: 'applied' });
   const identifierMapping = {
@@ -97,9 +127,24 @@ describe('ShopifyOrderProcessorAdapter', () => {
       const [, variables, mutation] = h.mutate.mock.calls[0] as [string, { order: { lineItems: unknown[] } }, string];
       expect(mutation).toBe('orderCreate');
       expect(variables.order.lineItems).toEqual([
-        expect.objectContaining({ variantId: 'gid://shopify/ProductVariant/9' }),
+        expect.objectContaining({ variantId: 'gid://shopify/ProductVariant/9', requiresShipping: true }),
         expect.objectContaining({ title: 'Cap', requiresShipping: true }),
       ]);
+    });
+
+    it('should mark a variant line as shipping or not from the variant itself (D1)', async () => {
+      const h = build({ variantShips: false });
+      h.mutate.mockResolvedValueOnce(created());
+
+      await h.adapter.createOrder(ORDER);
+
+      expect(h.query).toHaveBeenCalledWith(expect.stringContaining('OlVariantsRequireShipping'), {
+        ids: ['gid://shopify/ProductVariant/9'],
+      });
+      const [, variables] = h.mutate.mock.calls[0] as [string, { order: { lineItems: unknown[] } }];
+      expect(variables.order.lineItems[0]).toEqual(
+        expect.objectContaining({ variantId: 'gid://shopify/ProductVariant/9', requiresShipping: false }),
+      );
     });
 
     it('should return the order Shopify already holds instead of creating a second one', async () => {
@@ -156,7 +201,7 @@ describe('ShopifyOrderProcessorAdapter', () => {
         resolveCarrierMapping: jest.fn().mockResolvedValue('Standard'),
         resolvePaymentMapping: jest.fn().mockRejectedValue(new Error('db down')),
       } as unknown as IMappingConfigService;
-      const h = build({ mappingConfig });
+      const h = build({ mappingConfig, deliveryMethods: ['Standard'] });
       h.mutate.mockResolvedValueOnce(created());
 
       await h.adapter.createOrder(ORDER);
@@ -165,6 +210,21 @@ describe('ShopifyOrderProcessorAdapter', () => {
       expect(mappingConfig.resolvePaymentMapping).toHaveBeenCalledWith('allegro-1', 'ONLINE');
       const [, variables] = h.mutate.mock.calls[0] as [string, { order: Record<string, unknown> }];
       expect(variables.order.shippingLines).toEqual([expect.objectContaining({ title: 'Standard', code: 'Standard' })]);
+      expect(variables.order.transactions).toEqual([expect.objectContaining({ gateway: 'manual' })]);
+    });
+
+    it('should ignore a mapped value that is not one of this store own (mapped for another destination, D5)', async () => {
+      const mappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue('1'),
+        resolvePaymentMapping: jest.fn().mockResolvedValue('ps_wirepayment'),
+      } as unknown as IMappingConfigService;
+      const h = build({ mappingConfig, deliveryMethods: ['Standard'] });
+      h.mutate.mockResolvedValueOnce(created());
+
+      await h.adapter.createOrder(ORDER);
+
+      const [, variables] = h.mutate.mock.calls[0] as [string, { order: Record<string, unknown> }];
+      expect(variables.order.shippingLines).toEqual([expect.objectContaining({ title: 'm1', code: 'm1' })]);
       expect(variables.order.transactions).toEqual([expect.objectContaining({ gateway: 'manual' })]);
     });
 

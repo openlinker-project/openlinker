@@ -101,3 +101,9 @@ export const SHOPIFY_ORDER_TAG = 'openlinker';
 
 /** Gateway name of Shopify's built-in bank-deposit manual method. */
 export const SHOPIFY_BANK_DEPOSIT_GATEWAY = 'Bank Deposit';
+
+/**
+ * Code of the fixed-amount discount an order created in the store carries when
+ * its source reported a whole-order discount (`totals.discountTotal`).
+ */
+export const SHOPIFY_ORDER_DISCOUNT_CODE = 'OPENLINKER';

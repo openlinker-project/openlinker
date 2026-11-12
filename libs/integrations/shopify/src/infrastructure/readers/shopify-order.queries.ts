@@ -67,6 +67,15 @@ export const ORDER_BY_SOURCE_IDENTIFIER_QUERY = `query OlOrderBySource($query: S
 }`;
 
 /**
+ * Whether each variant ships (its inventory item's `requiresShipping`), read
+ * before an order is created: `orderCreate` defaults every line to "no shipping
+ * required" (D1), so the line must say it.
+ */
+export const VARIANTS_REQUIRE_SHIPPING_QUERY = `query OlVariantsRequireShipping($ids: [ID!]!) {
+  nodes(ids: $ids) { ... on ProductVariant { id inventoryItem { requiresShipping } } }
+}`;
+
+/**
  * Creates an order (#3978). `orderCreate` has no `@idempotent` support, so the
  * caller dedupes before it (see `ORDER_BY_SOURCE_IDENTIFIER_QUERY`). The
  * created order's fulfillment orders come back so the adapter can move them

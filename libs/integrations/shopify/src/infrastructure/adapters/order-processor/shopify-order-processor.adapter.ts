@@ -63,6 +63,7 @@ import type { ShopifyConnection, ShopifyFulfillmentOrder } from '../../../domain
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import {
   buildShopifyOrderCreateVariables,
+  shopifyOrderDiscount,
   type ShopifyOrderMappedOptions,
   type ShopifyResolvedLine,
 } from '../../mappers/shopify-order-input.mapper';
@@ -72,6 +73,7 @@ import {
   FULFILLMENT_ORDER_MOVE_MUTATION,
   ORDER_BY_SOURCE_IDENTIFIER_QUERY,
   ORDER_CREATE_MUTATION,
+  VARIANTS_REQUIRE_SHIPPING_QUERY,
 } from '../../readers/shopify-order.queries';
 import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop-context.provider';
 import type { ShopifyOrderStatusWriteback } from '../order-status/shopify-order-status-writeback';
@@ -85,6 +87,13 @@ interface CreatedOrderPayload {
     readonly name: string;
     readonly fulfillmentOrders: ShopifyConnection<ShopifyFulfillmentOrder>;
   } | null;
+}
+
+interface VariantsRequireShippingQuery {
+  readonly nodes: ReadonlyArray<{
+    readonly id?: string;
+    readonly inventoryItem?: { readonly requiresShipping: boolean } | null;
+  } | null>;
 }
 
 interface OrdersBySourceQuery {
@@ -161,6 +170,14 @@ export class ShopifyOrderProcessorAdapter
 
     const lines = await this.resolveLines(order);
     const mapped = await this.resolveMappedOptions(order);
+    const discount = order.totals.discountTotal;
+    if (discount !== undefined && discount > 0 && shopifyOrderDiscount(order, lines) === null) {
+      this.logger.warn(
+        `Order ${order.orderNumber ?? sourceIdentifier ?? 'unknown'} reports a whole-order discount of ${discount} ` +
+          `that cannot be split across its lines; the Shopify order is created at the listed prices, MORE than ` +
+          `the buyer paid (connection: ${this.connection.id})`,
+      );
+    }
     const payload = await this.client.mutate<CreatedOrderPayload>(
       ORDER_CREATE_MUTATION,
       buildShopifyOrderCreateVariables(order, lines, sourceIdentifier, mapped),
@@ -234,10 +251,12 @@ export class ShopifyOrderProcessorAdapter
    * A line whose variant this connection knows is created against that variant
    * (so the create lowers its stock); any other line becomes a custom line with
    * the item's own title and price, and is warned about, because it moves no
-   * stock.
+   * stock. Whether each variant ships is read in one query (D1); a variant the
+   * read does not answer for ships, since a parcel nobody can label is the
+   * worse mistake.
    */
   private async resolveLines(order: OrderCreate): Promise<ShopifyResolvedLine[]> {
-    const lines: ShopifyResolvedLine[] = [];
+    const resolved: Array<{ item: OrderCreate['items'][number]; variantGid: string | null }> = [];
     for (const item of order.items) {
       const variantExternalId =
         item.variantId === undefined
@@ -254,18 +273,46 @@ export class ShopifyOrderProcessorAdapter
             `created as a custom line that moves no stock (connection: ${this.connection.id})`,
         );
       }
-      lines.push({
+      resolved.push({
         item,
         variantGid: variantExternalId === null ? null : toShopifyGid('ProductVariant', variantExternalId),
       });
     }
-    return lines;
+    const shipping = await this.readRequiresShipping(
+      resolved.map((line) => line.variantGid).filter((gid): gid is string => gid !== null),
+    );
+    return resolved.map((line) => ({
+      ...line,
+      requiresShipping: line.variantGid === null ? true : (shipping.get(line.variantGid) ?? true),
+    }));
+  }
+
+  private async readRequiresShipping(variantGids: readonly string[]): Promise<Map<string, boolean>> {
+    const result = new Map<string, boolean>();
+    if (variantGids.length === 0) {
+      return result;
+    }
+    const data = await this.client.query<VariantsRequireShippingQuery>(VARIANTS_REQUIRE_SHIPPING_QUERY, {
+      ids: [...new Set(variantGids)],
+    });
+    for (const node of data.nodes) {
+      if (node?.id !== undefined && node.inventoryItem) {
+        result.set(node.id, node.inventoryItem.requiresShipping);
+      }
+    }
+    return result;
   }
 
   /**
    * The source connection's delivery and payment mappings for this order. A
    * failed lookup is warned about and falls back to the source's own words:
    * the order is still worth creating with the marketplace's method name.
+   *
+   * The mappings are stored per SOURCE, not per destination, so a value mapped
+   * for another shop (a PrestaShop carrier id such as `1`) reaches this one too
+   * (D5). A mapped value is used only when it is one of this store's own
+   * delivery methods or payment gateways; anything else is warned about and the
+   * source's own words are used.
    */
   private async resolveMappedOptions(order: OrderCreate): Promise<ShopifyOrderMappedOptions> {
     const service = this.mappingConfig;
@@ -293,10 +340,36 @@ export class ShopifyOrderProcessorAdapter
     const paymentGateway = sourcePayment
       ? await lookup('payment', () => service.resolvePaymentMapping(sourceConnectionId, sourcePayment))
       : undefined;
+    const knownDelivery = deliveryMethod === undefined ? undefined : await this.ownValue('delivery', deliveryMethod);
+    const knownPayment = paymentGateway === undefined ? undefined : await this.ownValue('payment', paymentGateway);
     return {
-      ...(deliveryMethod === undefined ? {} : { deliveryMethod }),
-      ...(paymentGateway === undefined ? {} : { paymentGateway }),
+      ...(knownDelivery === undefined ? {} : { deliveryMethod: knownDelivery }),
+      ...(knownPayment === undefined ? {} : { paymentGateway: knownPayment }),
     };
+  }
+
+  /** The mapped value when this store offers it, otherwise undefined (warned). */
+  private async ownValue(kind: 'delivery' | 'payment', value: string): Promise<string | undefined> {
+    let offered: MappingOption[];
+    try {
+      offered =
+        kind === 'delivery' ? await this.options.listDeliveryMethods() : await this.options.listPaymentMethods();
+    } catch (error) {
+      this.logger.warn(
+        `Shopify ${kind} options could not be read, so the mapped value "${value}" is not used ` +
+          `(connection: ${this.connection.id}): ${errorMessage(error)}`,
+      );
+      return undefined;
+    }
+    if (offered.some((option) => option.value === value)) {
+      return value;
+    }
+    this.logger.warn(
+      `Mapped ${kind} value "${value}" is not one of this Shopify store's own; it is ignored and the source's ` +
+        `own value is used (mappings are per source, so it may belong to another destination) ` +
+        `(connection: ${this.connection.id})`,
+    );
+    return undefined;
   }
 
   private async moveToConfiguredLocation(

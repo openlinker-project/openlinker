@@ -4,6 +4,7 @@ import { SHOPIFY_COD_GATEWAY } from '../../../shopify.constants';
 import {
   buildShopifyOrderCreateVariables,
   pickupPointAttributes,
+  shopifyOrderDiscount,
   type ShopifyResolvedLine,
 } from '../shopify-order-input.mapper';
 
@@ -28,7 +29,9 @@ function order(overrides: Partial<OrderCreate> = {}): OrderCreate {
   } as OrderCreate;
 }
 
-const VARIANT_LINE = (o: OrderCreate): ShopifyResolvedLine[] => [{ item: o.items[0], variantGid: 'gid://shopify/ProductVariant/9' }];
+const VARIANT_LINE = (o: OrderCreate): ShopifyResolvedLine[] => [
+  { item: o.items[0], variantGid: 'gid://shopify/ProductVariant/9', requiresShipping: true },
+];
 
 describe('buildShopifyOrderCreateVariables', () => {
   it('should charge the buyer price gross with the tax contained in it', () => {
@@ -81,11 +84,68 @@ describe('buildShopifyOrderCreateVariables', () => {
     expect((input.lineItems as Array<Record<string, unknown>>)[0]).not.toHaveProperty('taxLines');
   });
 
+  it('should state on a variant line whether it ships, since Shopify defaults every line to no shipping (D1)', () => {
+    const o = order();
+    const shipped = buildShopifyOrderCreateVariables(o, VARIANT_LINE(o), undefined).order;
+    const digital = buildShopifyOrderCreateVariables(
+      o,
+      [{ item: o.items[0], variantGid: 'gid://shopify/ProductVariant/9', requiresShipping: false }],
+      undefined,
+    ).order;
+
+    expect((shipped.lineItems as Array<Record<string, unknown>>)[0]).toMatchObject({ requiresShipping: true });
+    expect((digital.lineItems as Array<Record<string, unknown>>)[0]).toMatchObject({ requiresShipping: false });
+  });
+
+  it('should send a whole-order discount as a fixed-amount code and tax the discounted lines', () => {
+    // Two lines of 100 gross with a 20 coupon applied to the order: the buyer paid 180 + 15 shipping.
+    const o = order({
+      items: [
+        { id: 'l1', productId: 'p1', variantId: 'v1', quantity: 1, price: 100, taxRate: '23', name: 'A' },
+        { id: 'l2', productId: 'p2', variantId: 'v2', quantity: 1, price: 100, taxRate: '23', name: 'B' },
+      ],
+      totals: { subtotal: 200, tax: 0, shipping: 15, total: 195, currency: 'PLN', discountTotal: 20 },
+    } as Partial<OrderCreate>);
+    const lines: ShopifyResolvedLine[] = o.items.map((item, i) => ({
+      item,
+      variantGid: `gid://shopify/ProductVariant/${i + 1}`,
+      requiresShipping: true,
+    }));
+
+    const { order: input } = buildShopifyOrderCreateVariables(o, lines, undefined);
+
+    expect(input.discountCode).toEqual({
+      itemFixedDiscountCode: { code: 'OPENLINKER', amountSet: { shopMoney: { amount: '20.00', currencyCode: 'PLN' } } },
+    });
+    const items = input.lineItems as Array<Record<string, unknown>>;
+    // Price stays the listed one; the tax is the tax contained in 90 (100 less its share of the 20).
+    expect(items[0]).toMatchObject({
+      priceSet: { shopMoney: { amount: '100.00' } },
+      taxLines: [{ priceSet: { shopMoney: { amount: '16.83' } } }],
+    });
+    expect(input.transactions).toEqual([expect.objectContaining({ amountSet: { shopMoney: { amount: '195.00', currencyCode: 'PLN' } } })]);
+  });
+
+  it('should send no discount code when the order carries none or it cannot be split', () => {
+    const o = order();
+    expect(buildShopifyOrderCreateVariables(o, VARIANT_LINE(o), undefined).order).not.toHaveProperty('discountCode');
+
+    const tooBig = order({ totals: { subtotal: 246, tax: 0, shipping: 15, total: 15, currency: 'PLN', discountTotal: 246 } });
+    expect(shopifyOrderDiscount(tooBig, VARIANT_LINE(tooBig))).toBeNull();
+    expect(buildShopifyOrderCreateVariables(tooBig, VARIANT_LINE(tooBig), undefined).order).not.toHaveProperty(
+      'discountCode',
+    );
+  });
+
   it('should create an unmapped line as a custom line that still ships', () => {
     const o = order();
     o.items[0] = { ...o.items[0], sku: 'SKU-1' };
 
-    const { order: input } = buildShopifyOrderCreateVariables(o, [{ item: o.items[0], variantGid: null }], undefined);
+    const { order: input } = buildShopifyOrderCreateVariables(
+      o,
+      [{ item: o.items[0], variantGid: null, requiresShipping: true }],
+      undefined,
+    );
 
     expect((input.lineItems as Array<Record<string, unknown>>)[0]).toMatchObject({
       title: 'Shirt',

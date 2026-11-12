@@ -176,7 +176,14 @@ required) and an offline token, which every supported credential mode gives.
   order is tagged `openlinker`, Shopify sends the buyer no receipt, and `inventoryBehaviour:
   DECREMENT_OBEYING_POLICY` makes Shopify lower its own stock (`lowersStockOnOrderCreate` answers `true`).
 - **Lines.** A line whose variant this connection mapped is created against that variant; any other line becomes a
-  custom line (title, SKU, price) that ships but moves no stock, and is logged.
+  custom line (title, SKU, price) that ships but moves no stock, and is logged. `requiresShipping` defaults to false
+  on EVERY `orderCreate` line, so every line states it: a variant line takes its own inventory item's
+  `requiresShipping` (read in one query; a digital product stays unshipped), a custom line `true`. Without it the
+  order reads "shipping not required" and no label can be bought for it (D1).
+- **Whole-order discount.** A discount the source applied to the order but to none of its lines
+  (`totals.discountTotal`, e.g. an Allegro coupon) is sent as a fixed-amount discount code `OPENLINKER`, so the order
+  totals to what the buyer paid and shows the discount; the tax lines are computed on each line's discounted share
+  (`distributeOrderDiscount`). A discount at least as large as the lines is not sent and is logged.
 - **Exactly once.** `orderCreate` has no `@idempotent` support and does not deduplicate on `sourceIdentifier`. Core
   serialises the create per order and destination; before creating, the adapter looks the order up by
   `source_identifier:` and returns the one it finds. The search index sees an order seconds after it was written, so
@@ -190,7 +197,9 @@ required) and an offline token, which every supported credential mode gives.
   after the order was created is not passed on (#3963).
 - **Mappings.** The order's source connection's delivery-method and payment mappings (Mappings tab) give the shipping
   line title and code and the gateway; unmapped, the source's own names are used. The options to map onto are the
-  same lists the order source shows.
+  same lists the order source shows. Because the mappings are keyed by the source only, a value mapped for another
+  destination (a PrestaShop carrier id `1`) reaches Shopify too; a mapped value is used only when it is one of this
+  store's own delivery methods or gateways, otherwise it is logged and the source's own name is used (D5).
 - **Location.** Shopify's routing picks a location on create; open work assigned elsewhere is moved to the configured
   location right after. A failed move is logged and does not fail the create; the dispatch writeback moves it again.
 - **Status.** Dispatch and cancellation go through the same writeback as the order source.
