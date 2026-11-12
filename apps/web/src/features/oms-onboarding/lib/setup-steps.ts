@@ -88,18 +88,18 @@ export function summariseSetup(states: Readonly<Record<SetupStepKey, SetupStepSt
 export function describeSetupStep(
   key: SetupStepKey,
   state: SetupStepState,
-  COPY: OmsOnboardingCopy
+  copy: OmsOnboardingCopy
 ): { readonly title: string; readonly detail: string } {
-  const copy = COPY.status.steps[key];
+  const step = copy.status.steps[key];
   const detail =
     state === 'done'
-      ? copy.done
+      ? step.done
       : state === 'skipped'
-        ? COPY.status.steps.skipped
+        ? copy.status.steps.skipped
         : state === 'unknown'
-          ? COPY.status.steps.unknown
-          : copy.pending;
-  return { title: copy.title, detail };
+          ? copy.status.steps.unknown
+          : step.pending;
+  return { title: step.title, detail };
 }
 
 // Exhaustive on purpose: a trigger model added to the mirrored union is a compile

@@ -23,6 +23,7 @@ import type { Connection } from '../../connections';
 import type { InventoryLocation } from '../../inventory';
 import type { StockLocatedProgress } from '../hooks/use-stock-located-progress';
 import { useOmsOnboardingCopy, type OmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
+import { useNumberFormat } from '../../../shared/i18n';
 import { OmsSetupError } from '../lib/oms-setup-error';
 import {
   MAX_PRODUCT_MASTERS,
@@ -50,26 +51,25 @@ export interface StepProductMasterProps {
   readonly onContinue: () => void;
 }
 
-const numberFormat = new Intl.NumberFormat('en-US');
 
-function missingLabel(missing: readonly ProductMasterCapability[], COPY: OmsOnboardingCopy): string {
-  if (missing.length > 1) return COPY.step1.missingBoth;
-  return missing[0] === 'ProductMaster' ? COPY.step1.missingProducts : COPY.step1.missingStock;
+function missingLabel(missing: readonly ProductMasterCapability[], copy: OmsOnboardingCopy): string {
+  if (missing.length > 1) return copy.step1.missingBoth;
+  return missing[0] === 'ProductMaster' ? copy.step1.missingProducts : copy.step1.missingStock;
 }
 
-function describeFailure(error: Error, COPY: OmsOnboardingCopy): string {
+function describeFailure(error: Error, copy: OmsOnboardingCopy): string {
   if (!(error instanceof OmsSetupError)) return describeApiError(error);
   switch (error.step) {
     case 'connection':
-      return COPY.step1.failedStep.connection;
+      return copy.step1.failedStep.connection;
     case 'location':
-      return COPY.step1.failedStep.location;
+      return copy.step1.failedStep.location;
     case 'location-inactive':
-      return COPY.step1.mainInactiveBody;
+      return copy.step1.mainInactiveBody;
     case 'conflict':
-      return COPY.step1.conflictBody(error.connectionName ?? '');
+      return copy.step1.conflictBody(error.connectionName ?? '');
     case 'override':
-      return COPY.step1.failedStep.override(error.connectionName ?? '');
+      return copy.step1.failedStep.override(error.connectionName ?? '');
   }
 }
 
@@ -99,6 +99,7 @@ function PartialHints({ partial }: { readonly partial: readonly PartialProductMa
 
 export function StepProductMaster(props: StepProductMasterProps): ReactElement {
   const COPY = useOmsOnboardingCopy();
+  const numberFormat = useNumberFormat();
   const { masters, partial, conflicting, mainLocation, done, progress, masterNames } = props;
 
   if (masters.length === 0) {
