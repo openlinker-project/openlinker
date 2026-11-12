@@ -1,5 +1,6 @@
 import type { ExecuteRefundCommand } from '@openlinker/core/orders';
 
+import { ShopifyRefundInDoubtException } from '../../../../domain/exceptions/shopify-refund-in-doubt.exception';
 import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopify-user-errors.exception';
 import type { ShopifyGraphqlClient } from '../../../http/shopify-graphql-client';
 import { ShopifyRefundExecutor } from '../shopify-refund-executor';
@@ -113,5 +114,22 @@ describe('ShopifyRefundExecutor', () => {
     await expect(build(jest.fn().mockResolvedValue(target()), pending).executeRefund(COMMAND)).resolves.toMatchObject({
       outcome: 'accepted',
     });
+  });
+
+  it('should report a refund in doubt when its transactions partly failed or Shopify answered without one', async () => {
+    const partly = jest.fn().mockResolvedValue({
+      refund: {
+        ...refund('SUCCESS'),
+        transactions: { nodes: [{ status: 'SUCCESS', processedAt: null }, { status: 'FAILURE', processedAt: null }] },
+      },
+    });
+    await expect(build(jest.fn().mockResolvedValue(target()), partly).executeRefund(COMMAND)).rejects.toBeInstanceOf(
+      ShopifyRefundInDoubtException,
+    );
+
+    const empty = jest.fn().mockResolvedValue({ refund: null });
+    await expect(build(jest.fn().mockResolvedValue(target()), empty).executeRefund(COMMAND)).rejects.toBeInstanceOf(
+      ShopifyRefundInDoubtException,
+    );
   });
 });

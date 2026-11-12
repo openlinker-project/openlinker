@@ -20,7 +20,7 @@ function line(overrides: Partial<ShopifyLineItem> = {}): ShopifyLineItem {
     variant: { id: 'gid://shopify/ProductVariant/11' },
     product: { id: 'gid://shopify/Product/7' },
     originalUnitPriceSet: money('38.99'),
-    discountedUnitPriceSet: money('24.90'),
+    discountedUnitPriceAfterAllDiscountsSet: money('24.90'),
     taxLines: [{ title: 'VAT', rate: 0.23, ratePercentage: 23 }],
     ...overrides,
   };
@@ -42,11 +42,12 @@ function order(overrides: Partial<ShopifyOrder> = {}): ShopifyOrder {
     note: null,
     taxesIncluded: true,
     currencyCode: 'PLN',
+    presentmentCurrencyCode: 'PLN',
     customer: { id: 'gid://shopify/Customer/5' },
     currentTotalPriceSet: money('60.75'),
     currentSubtotalPriceSet: money('49.80'),
     currentTotalTaxSet: money('11.36'),
-    totalShippingPriceSet: money('10.95'),
+    currentShippingPriceSet: money('10.95'),
     purchasingEntity: null,
     shippingAddress: {
       firstName: 'Anna',
@@ -103,6 +104,26 @@ describe('mapShopifyOrderToIncoming', () => {
         taxRate: '23',
       }),
     ]);
+  });
+
+  it('should report lines and shipping after an order-level discount so they add up to the total', () => {
+    // A 10% code on the whole order and free shipping: the line-only unit price
+    // would stay 24.90 and shipping 10.95, adding up to more than was paid.
+    const incoming = mapShopifyOrderToIncoming(
+      order({
+        lineItems: { nodes: [line({ discountedUnitPriceAfterAllDiscountsSet: money('22.41') })] },
+        currentShippingPriceSet: money('0.00'),
+        currentSubtotalPriceSet: money('44.82'),
+        currentTotalPriceSet: money('44.82'),
+      }),
+      CTX,
+    );
+
+    expect(incoming.items[0]?.price).toBe(22.41);
+    expect(incoming.totals.shipping).toBe(0);
+    const linesAndShipping = incoming.items.reduce((sum, item) => sum + item.price * item.quantity, 0) +
+      incoming.totals.shipping;
+    expect(linesAndShipping).toBeCloseTo(incoming.totals.total, 2);
   });
 
   it('should use the quantity after edits and drop a line edited down to zero', () => {

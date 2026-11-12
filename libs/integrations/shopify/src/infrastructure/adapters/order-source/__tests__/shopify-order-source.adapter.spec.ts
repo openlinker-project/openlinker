@@ -22,6 +22,12 @@ function build(query: jest.Mock): ShopifyOrderSourceAdapter {
   );
 }
 
+/** The document and variables of the first query a test made. */
+function firstQuery(query: jest.Mock): { document: string; filter: string } {
+  const [document, variables] = query.mock.calls[0] as [string, { query: string }];
+  return { document, filter: variables.query };
+}
+
 const feedRow = (id: string, updatedAt: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: `gid://shopify/Order/${id}`,
   createdAt: '2026-11-01T00:00:00Z',
@@ -90,7 +96,7 @@ describe('ShopifyOrderSourceAdapter', () => {
   });
 
   describe('returns', () => {
-    it('should list each return of the orders that carry one and resume after the last order', async () => {
+    it('should list each return of the orders that carry one, newest order first, and resume below the last order', async () => {
       const query = jest.fn().mockResolvedValue({
         orders: {
           nodes: [
@@ -108,16 +114,34 @@ describe('ShopifyOrderSourceAdapter', () => {
       expect(out.items).toEqual([
         expect.objectContaining({ externalReturnId: '77', externalOrderId: '10', eventKey: '77' }),
       ]);
-      expect(out.nextCursor).toMatch(/^rv1\|.*\|10$/);
+      expect(out.nextCursor).toMatch(/^rv2\|.*\|10$/);
+      expect(firstQuery(query).document).toContain('sortKey: ID, reverse: true');
+      expect(firstQuery(query).filter).not.toContain('id:');
+    });
+
+    it('should read the next page below the last order of the lap', async () => {
+      const query = jest.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } });
+
+      await build(query).listReturnFeed({ fromCursor: 'rv2|2026-11-05T09:00:00.000Z|10', limit: 10 });
+
+      expect(firstQuery(query).filter).toContain('AND id:<10');
+    });
+
+    it('should start a fresh lap from a cursor of the ascending walk', async () => {
+      const query = jest.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } });
+
+      await build(query).listReturnFeed({ fromCursor: 'rv1|2026-11-05T09:00:00.000Z|10', limit: 10 });
+
+      expect(firstQuery(query).filter).not.toContain('id:');
     });
 
     it('should start a new lap when no order is left', async () => {
       const query = jest.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } });
 
-      const out = await build(query).listReturnFeed({ fromCursor: 'rv1|2026-11-05T09:00:00.000Z|10', limit: 10 });
+      const out = await build(query).listReturnFeed({ fromCursor: 'rv2|2026-11-05T09:00:00.000Z|10', limit: 10 });
 
       expect(out.items).toEqual([]);
-      expect(out.nextCursor).toBe('rv1|2026-11-05T12:00:00.000Z|-');
+      expect(out.nextCursor).toBe('rv2|2026-11-05T12:00:00.000Z|-');
     });
 
     it('should raise a not-found for a return Shopify does not have', async () => {

@@ -184,7 +184,7 @@ export interface ShopifyLineItem {
   readonly variant: { readonly id: string } | null;
   readonly product: { readonly id: string } | null;
   readonly originalUnitPriceSet: ShopifyMoneyBag;
-  readonly discountedUnitPriceSet: ShopifyMoneyBag;
+  readonly discountedUnitPriceAfterAllDiscountsSet: ShopifyMoneyBag;
   readonly taxLines: readonly ShopifyTaxLine[];
 }
 
@@ -231,11 +231,13 @@ export interface ShopifyOrder {
   readonly note: string | null;
   readonly taxesIncluded: boolean;
   readonly currencyCode: string;
+  /** The currency the buyer paid in; differs from `currencyCode` on a multi-currency store. */
+  readonly presentmentCurrencyCode: string;
   readonly customer: { readonly id: string } | null;
   readonly currentTotalPriceSet: ShopifyMoneyBag;
   readonly currentSubtotalPriceSet: ShopifyMoneyBag;
   readonly currentTotalTaxSet: ShopifyMoneyBag;
-  readonly totalShippingPriceSet: ShopifyMoneyBag;
+  readonly currentShippingPriceSet: ShopifyMoneyBag;
   readonly purchasingEntity: ShopifyPurchasingEntity | null;
   readonly shippingAddress: ShopifyMailingAddress | null;
   readonly billingAddress: ShopifyMailingAddress | null;

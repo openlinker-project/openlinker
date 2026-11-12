@@ -20,7 +20,7 @@ export function parseShopifyFeedCursor(
   raw: string | null | undefined,
   connectionId: string,
 ): ShopifyOrderFeedCursor {
-  if (raw === null || raw === undefined) {
+  if (raw === null || raw === undefined || raw.trim() === '') {
     return EMPTY_SHOPIFY_FEED_CURSOR;
   }
   const parts = raw.trim().split('|');

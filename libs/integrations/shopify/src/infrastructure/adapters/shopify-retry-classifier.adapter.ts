@@ -13,7 +13,9 @@
  *
  * Deterministic: a config exception, an operation the integration does not
  * support, an internal id with no Shopify id on the connection (a mapping
- * gap), an order or return Shopify answers as absent, a malformed cursor (`RangeError`), any user error other than the two
+ * gap), an order or return Shopify answers as absent, a refund whose outcome
+ * is in doubt (resending risks paying twice), a malformed cursor (`RangeError`),
+ * any user error other than the two
  * below (the mutation wrote nothing and would be refused the same way),
  * `ACCESS_DENIED` (a scope missing on the app), `MAX_COST_EXCEEDED` (the query
  * itself is too expensive), a refused token request, and any other 4xx except
@@ -34,6 +36,7 @@ import { ShopifyConfigException } from '../../domain/exceptions/shopify-config.e
 import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.error';
 import { ShopifyNotMappedException } from '../../domain/exceptions/shopify-not-mapped.exception';
 import { ShopifyOrderNotFoundException } from '../../domain/exceptions/shopify-order-not-found.exception';
+import { ShopifyRefundInDoubtException } from '../../domain/exceptions/shopify-refund-in-doubt.exception';
 import { ShopifyReturnNotFoundException } from '../../domain/exceptions/shopify-return-not-found.exception';
 import { ShopifyNotSupportedException } from '../../domain/exceptions/shopify-not-supported.exception';
 import { ShopifyUserErrorsException } from '../../domain/exceptions/shopify-user-errors.exception';
@@ -94,7 +97,8 @@ function terminalityOf(cause: unknown): boolean | null {
     cause instanceof ShopifyNotSupportedException ||
     cause instanceof ShopifyNotMappedException ||
     cause instanceof ShopifyOrderNotFoundException ||
-    cause instanceof ShopifyReturnNotFoundException
+    cause instanceof ShopifyReturnNotFoundException ||
+    cause instanceof ShopifyRefundInDoubtException
   ) {
     return true;
   }

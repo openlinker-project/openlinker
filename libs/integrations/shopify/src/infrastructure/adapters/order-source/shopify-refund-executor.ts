@@ -48,6 +48,7 @@ import { createHash } from 'node:crypto';
 import type { ExecuteRefundCommand, RefundExecutionResult } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
+import { ShopifyRefundInDoubtException } from '../../../domain/exceptions/shopify-refund-in-doubt.exception';
 import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
 import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
 import type { ShopifyConnection } from '../../../domain/types/shopify-api.types';
@@ -161,7 +162,7 @@ export class ShopifyRefundExecutor {
         `Refund for key ${marker} already exists on Shopify order ${command.externalOrderId} ` +
           `(${previous.id}); answering from it (connection: ${this.connectionId})`,
       );
-      return this.resultOf(previous);
+      return this.resultOf(previous, command.externalOrderId);
     }
 
     const currency = command.currency.toUpperCase();
@@ -224,9 +225,13 @@ export class ShopifyRefundExecutor {
       throw error;
     }
     if (payload.refund === null) {
-      throw new Error('Shopify answered the refund without a refund; check the order before refunding again');
+      throw new ShopifyRefundInDoubtException(
+        command.externalOrderId,
+        this.connectionId,
+        'Shopify answered without a refund; check the order before refunding again',
+      );
     }
-    return this.resultOf(payload.refund);
+    return this.resultOf(payload.refund, command.externalOrderId);
   }
 
   private allFailed(refund: RefundNode): boolean {
@@ -234,15 +239,17 @@ export class ShopifyRefundExecutor {
     return nodes.length > 0 && nodes.every((t) => t.status === 'FAILURE' || t.status === 'ERROR');
   }
 
-  private resultOf(refund: RefundNode): RefundExecutionResult {
+  private resultOf(refund: RefundNode, externalOrderId: string): RefundExecutionResult {
     const statuses = refund.transactions.nodes.map((t) => t.status);
     const providerRefundId = fromShopifyGid(refund.id);
     if (this.allFailed(refund)) {
       return { outcome: 'denied', providerRefundId, refundedAt: null, providerMessage: 'Every refund transaction failed.' };
     }
     if (statuses.some((s) => s === 'FAILURE' || s === 'ERROR')) {
-      throw new Error(
-        `Shopify refund ${providerRefundId} partly failed (${statuses.join(', ')}); money may have moved in part`,
+      throw new ShopifyRefundInDoubtException(
+        externalOrderId,
+        this.connectionId,
+        `refund ${providerRefundId} partly failed (${statuses.join(', ')}); money may have moved in part`,
       );
     }
     if (statuses.length > 0 && statuses.every((s) => s === 'SUCCESS')) {

@@ -12,7 +12,7 @@
  * line by, and the Shopify order mapper writes the line's sku there too.
  * `offerId` is deliberately left unset - core compares it against the order
  * line's sku, so a variant id there could never match. The unit price is the
- * line's DISCOUNTED unit price, the figure the order mapper reports as the
+ * line's unit price after every discount, the figure the order mapper reports as the
  * order line's `price`, which core uses to break a same-sku tie.
  *
  * An `UnverifiedReturnLineItem` (a returned item not tied to a fulfilled order
@@ -40,7 +40,8 @@ function mapLine(line: ShopifyReturnLineNode): IncomingReturnLine {
   const sku = nonEmpty(orderLine?.sku);
   const name = nonEmpty(orderLine?.name);
   const reason = nonEmpty(line.returnReasonDefinition?.handle);
-  const price = orderLine === null ? NaN : Number(orderLine.discountedUnitPriceSet.shopMoney.amount);
+  const price =
+    orderLine === null ? NaN : Number(orderLine.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount);
   return {
     ...(line.id === undefined ? {} : { externalLineId: fromShopifyGid(line.id) }),
     ...(sku === undefined ? {} : { sku }),

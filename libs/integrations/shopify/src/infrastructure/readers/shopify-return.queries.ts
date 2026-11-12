@@ -31,7 +31,7 @@ export const SHOPIFY_RETURN_FEED_FILTER =
   'return_status:inspection_complete OR return_status:returned)';
 
 export const RETURN_FEED_QUERY = `query OlReturnFeed($first: Int!, $query: String!) {
-  orders(first: $first, query: $query, sortKey: ID) {
+  orders(first: $first, query: $query, sortKey: ID, reverse: true) {
     nodes {
       id
       returns(first: ${SHOPIFY_RETURNS_PER_ORDER}) {
@@ -59,7 +59,7 @@ export const RETURN_BY_ID_QUERY = `query OlReturn($id: ID!) {
               lineItem {
                 id sku name
                 variant { id }
-                discountedUnitPriceSet { shopMoney { amount currencyCode } }
+                discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount currencyCode } }
               }
             }
           }

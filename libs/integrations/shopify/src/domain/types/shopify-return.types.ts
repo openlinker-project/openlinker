@@ -48,7 +48,7 @@ export interface ShopifyReturnLineNode {
       readonly sku: string | null;
       readonly name: string | null;
       readonly variant: { readonly id: string } | null;
-      readonly discountedUnitPriceSet: ShopifyMoneyBag;
+      readonly discountedUnitPriceAfterAllDiscountsSet: ShopifyMoneyBag;
     } | null;
   } | null;
 }
@@ -62,8 +62,11 @@ export interface ShopifyReturnNode extends ShopifyReturnFeedNode {
 
 /** Decoded return feed cursor: the order-id keyset of the current lap. */
 export interface ShopifyReturnFeedCursor {
-  /** ISO time the current lap started; a new value starts a new lap from the first order. */
+  /** ISO time the current lap started; a new value starts a new lap from the newest order. */
   readonly lapStartedAt: string;
-  /** Numeric id of the last order whose returns were handed out; null at a lap's start. */
-  readonly afterOrderId: string | null;
+  /**
+   * Numeric id of the last order whose returns were handed out; null at a
+   * lap's start. A lap walks DOWN the ids, so the next page reads below it.
+   */
+  readonly belowOrderId: string | null;
 }

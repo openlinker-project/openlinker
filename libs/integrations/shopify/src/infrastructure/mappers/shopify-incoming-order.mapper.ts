@@ -6,8 +6,14 @@
  *
  * Money: amounts are the SHOP-currency figures (`shopMoney`), which is the
  * currency every other OpenLinker figure for this connection is in. Line
- * prices are what the buyer paid per unit after line discounts
- * (`discountedUnitPriceSet`), gross when the order's `taxesIncluded` is true.
+ * prices are what the buyer paid per unit after EVERY discount, the order-level
+ * and code-based ones included (`discountedUnitPriceAfterAllDiscountsSet`;
+ * `discountedUnitPriceSet` leaves those out, so the lines would not add up to
+ * the total). Shipping is `currentShippingPriceSet`, after discounts and
+ * refunds, for the same reason. Both are gross when the order's
+ * `taxesIncluded` is true. Shopify rounds the per-unit figure, so a line can
+ * differ from the exact share by a cent - the tolerance the document mappers
+ * already allow.
  *
  * Tax rate: read from the line's own `taxLines` (native on orders, L-T2 says
  * it is the ONLY place a rate exists in the Admin API) and reported as the
@@ -161,7 +167,7 @@ function lineRef(line: ShopifyLineItem): IncomingOrderItemRef {
 }
 
 function mapLine(line: ShopifyLineItem, taxesIncluded: boolean): IncomingOrderItem {
-  const unit = amount(line.discountedUnitPriceSet.shopMoney.amount);
+  const unit = amount(line.discountedUnitPriceAfterAllDiscountsSet.shopMoney.amount);
   const taxRate = shopifyTaxRateCode(line.taxLines);
   const sku = nonEmpty(line.sku);
   const name = nonEmpty(line.name);
@@ -198,7 +204,7 @@ export function mapShopifyOrderToIncoming(
 ): IncomingOrder {
   const currency = order.currentTotalPriceSet.shopMoney.currencyCode ?? order.currencyCode;
   const total = amount(order.currentTotalPriceSet.shopMoney.amount);
-  const shipping = amount(order.totalShippingPriceSet.shopMoney.amount);
+  const shipping = amount(order.currentShippingPriceSet.shopMoney.amount);
   const paymentStatus = mapShopifyPaymentStatus(order);
   const taxId = buyerTaxId(order);
   // The tax id belongs to the invoicing party; with no billing address it rides

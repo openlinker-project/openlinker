@@ -15,12 +15,12 @@ const TAX_LINE = 'rate ratePercentage title';
 export const ORDER_FIELDS = `
   id name createdAt updatedAt processedAt cancelledAt
   displayFinancialStatus displayFulfillmentStatus paymentGatewayNames
-  email phone note taxesIncluded currencyCode
+  email phone note taxesIncluded currencyCode presentmentCurrencyCode
   customer { id }
   currentTotalPriceSet { ${MONEY} }
   currentSubtotalPriceSet { ${MONEY} }
   currentTotalTaxSet { ${MONEY} }
-  totalShippingPriceSet { ${MONEY} }
+  currentShippingPriceSet { ${MONEY} }
   purchasingEntity {
     __typename
     ... on PurchasingCompany { location { taxSettings { taxRegistrationId } } }
@@ -34,7 +34,7 @@ export const ORDER_FIELDS = `
       variant { id }
       product { id }
       originalUnitPriceSet { ${MONEY} }
-      discountedUnitPriceSet { ${MONEY} }
+      discountedUnitPriceAfterAllDiscountsSet { ${MONEY} }
       taxLines { ${TAX_LINE} }
     }
     pageInfo { hasNextPage endCursor }

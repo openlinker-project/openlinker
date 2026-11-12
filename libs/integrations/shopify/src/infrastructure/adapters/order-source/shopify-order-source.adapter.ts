@@ -229,6 +229,14 @@ export class ShopifyOrderSourceAdapter
           `the rest are not ingested (connection: ${this.connection.id})`,
       );
     }
+    if (data.order.presentmentCurrencyCode !== data.order.currencyCode) {
+      // Every figure is read in the shop's currency (the one the rest of this
+      // connection uses); the buyer paid in another, so the amounts differ.
+      this.logger.warn(
+        `Shopify order ${input.externalOrderId} was paid in ${data.order.presentmentCurrencyCode}; ` +
+          `it is ingested in the shop currency ${data.order.currencyCode} (connection: ${this.connection.id})`,
+      );
+    }
     return mapShopifyOrderToIncoming(data.order, {
       adminOrderUrl:
         `https://admin.shopify.com/store/${shopifyStoreHandle(this.storeDomain)}` +
@@ -247,7 +255,8 @@ export class ShopifyOrderSourceAdapter
 
   /**
    * One page of the return feed: the orders that carry a return, walked by
-   * order id in laps (see the cursor mapper), one item per return on them.
+   * order id from the newest down, in laps (see the cursor mapper), one item
+   * per return on them.
    *
    * The feed only reports that a return EXISTS; `getReturn` is the re-read
    * that observes it moving, because nothing on the order moves when a return
@@ -268,9 +277,9 @@ export class ShopifyOrderSourceAdapter
     const cursor = parseShopifyReturnFeedCursor(input.fromCursor, this.connection.id, new Date());
     const limit = Math.max(1, input.limit);
     const query =
-      cursor.afterOrderId === null
+      cursor.belowOrderId === null
         ? SHOPIFY_RETURN_FEED_FILTER
-        : `${SHOPIFY_RETURN_FEED_FILTER} AND id:>${cursor.afterOrderId}`;
+        : `${SHOPIFY_RETURN_FEED_FILTER} AND id:<${cursor.belowOrderId}`;
 
     const data: { orders: ShopifyConnection<ShopifyReturnFeedOrderRow> } = await this.client.query(
       RETURN_FEED_QUERY,
@@ -279,15 +288,15 @@ export class ShopifyOrderSourceAdapter
 
     if (data.orders.nodes.length === 0) {
       // End of the lap. A fresh lap start changes the cursor, so core commits
-      // it and the next poll walks every returning order again from the first.
+      // it and the next poll walks every returning order again from the newest.
       return {
         items: [],
-        nextCursor: formatShopifyReturnFeedCursor({ lapStartedAt: new Date().toISOString(), afterOrderId: null }),
+        nextCursor: formatShopifyReturnFeedCursor({ lapStartedAt: new Date().toISOString(), belowOrderId: null }),
       };
     }
 
     const items: ReturnFeedItem[] = [];
-    let afterOrderId = cursor.afterOrderId;
+    let belowOrderId = cursor.belowOrderId;
     for (const order of data.orders.nodes) {
       const orderId = fromShopifyGid(order.id);
       if (order.returns.pageInfo?.hasNextPage === true) {
@@ -308,7 +317,7 @@ export class ShopifyOrderSourceAdapter
           raw: ret,
         });
       }
-      afterOrderId = orderId;
+      belowOrderId = orderId;
       if (items.length >= limit) {
         break;
       }
@@ -316,7 +325,7 @@ export class ShopifyOrderSourceAdapter
 
     return {
       items,
-      nextCursor: formatShopifyReturnFeedCursor({ lapStartedAt: cursor.lapStartedAt, afterOrderId }),
+      nextCursor: formatShopifyReturnFeedCursor({ lapStartedAt: cursor.lapStartedAt, belowOrderId }),
     };
   }
 
@@ -327,7 +336,14 @@ export class ShopifyOrderSourceAdapter
    */
   async declineReturn(command: ReturnDeclineCommand): Promise<ReturnDeclineResult> {
     const id = toShopifyGid('Return', command.externalReturnId);
-    const reason = this.declineReasonCodes.includes(command.reasonCode) ? command.reasonCode : 'OTHER';
+    const known = this.declineReasonCodes.includes(command.reasonCode);
+    if (!known) {
+      this.logger.warn(
+        `Decline reason "${command.reasonCode}" is not one Shopify knows; return ${command.externalReturnId} ` +
+          `is declined as OTHER (connection: ${this.connection.id})`,
+      );
+    }
+    const reason = known ? command.reasonCode : 'OTHER';
     const data = await this.client.query<{
       returnDeclineRequest: {
         return: { status: string } | null;
