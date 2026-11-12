@@ -9,6 +9,7 @@ import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useHandleShopifyCallback } from '../../features/shopify';
 import { ApiError } from '../../shared/api/api-error';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../shared/i18n';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -67,7 +68,7 @@ export function ShopifyConnectCallbackPage(): ReactElement {
           code !== null && code.startsWith('SHOPIFY_OAUTH_')
             ? copy.unverified
             : interpolate(copy.failedPrefix, {
-                message: state.error instanceof Error ? state.error.message : String(state.error),
+                message: describeApiError(state.error, 'shopify'),
               });
         return <ErrorState title={copy.failedTitle} message={message} action={startOver} />;
       }

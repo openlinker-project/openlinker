@@ -18,6 +18,7 @@ import {
   useTestConnectionMutation,
   type ConnectionTestResult,
 } from '../../connections';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -105,8 +106,8 @@ export function ShopifySetupForm(): ReactElement {
     }
   };
 
-  const validationMessages = Object.values(errors).flatMap((error) => {
-    const text = errorText(error?.message === undefined ? undefined : String(error.message));
+  const validationMessages = Object.values(errors).flatMap((fieldError) => {
+    const text = errorText(fieldError?.message === undefined ? undefined : String(fieldError.message));
     return text ? [text] : [];
   });
 
@@ -124,7 +125,7 @@ export function ShopifySetupForm(): ReactElement {
           ) : null}
           {testConnection.error ? (
             <Alert tone="error" title={copy.testUnavailable}>
-              {testConnection.error.message}
+              {describeApiError(testConnection.error, 'shopify')}
             </Alert>
           ) : null}
           <div className="form-actions">
@@ -140,12 +141,12 @@ export function ShopifySetupForm(): ReactElement {
         <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
           {createConnection.error ? (
             <Alert tone="error">
-              {interpolate(copy.createFailed, { message: createConnection.error.message })}
+              {interpolate(copy.createFailed, { message: describeApiError(createConnection.error, 'shopify') })}
             </Alert>
           ) : null}
           {startOAuth.error ? (
             <Alert tone="error">
-              {interpolate(copy.oauthFailed, { message: startOAuth.error.message })}
+              {interpolate(copy.oauthFailed, { message: describeApiError(startOAuth.error, 'shopify') })}
             </Alert>
           ) : null}
           {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
