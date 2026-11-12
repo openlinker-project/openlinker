@@ -3,7 +3,7 @@
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
 **Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
-with returns (#3977), **OrderProcessorManager** (#3978), **inbound webhooks** (#3981) and **ProductPublisher** (#3979). The plugin registers the connection, the
+with returns (#3977), **OrderProcessorManager** (#3978), **inbound webhooks** (#3981), **ProductPublisher** (#3979) and **OfferManager** stock write-back (#3980). The plugin registers the connection, the
 token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. A capability
 enters `supportedCapabilities` together with the adapter that delivers it, in the issues of the
 "Shopify integration" milestone. Evidence base: spike #3928 (`SPIKE-3928-shopify-capabilities.md`) and the first
@@ -255,6 +255,20 @@ product (#3985, a core issue that also affects Shoper and WooCommerce). Use a se
   otherwise text in the `openlinker` namespace. Reference-typed definitions (taxonomy attributes) are not written.
 - **Description**: Shopify keeps HTML as sent and sanitises nothing; the declared format allows the usual rich-text
   tags, links and images.
+
+## OfferManager - stock write-back (#3980)
+
+Opt-in. Keeps the stock of products this connection PUBLISHED in step with the master: a stock change in the master
+(PrestaShop, ...) reaches the published Shopify variant through the ordinary inventory propagation.
+
+- The write is an absolute set at the configured location, compare-and-set against the level just read; a level that
+  moved meanwhile is refused and retried. A write that would change nothing is skipped.
+- The target is resolved, never guessed: the variant mapping the publish wrote, else the id read as a variant or as
+  a single-variant product. A product with several variants and no variant mapping is refused.
+- A variant that does not track stock is refused (tracking is the merchant's choice); one not stocked at the
+  location is activated there first. A mapping whose product is gone is deleted, so the next publish re-creates it.
+- Not together with InventoryMaster: the propagation never writes back to the stock master, so on a connection
+  with both nothing is written back. Use a separate publish-only connection.
 
 ## Known gaps
 

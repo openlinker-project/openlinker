@@ -27,6 +27,7 @@ describe('createShopifyPlugin', () => {
         'OrderSource',
         'OrderProcessorManager',
         'ProductPublisher',
+        'OfferManager',
         'CategoryProvisioner',
         'ReturnSourceReader',
         'ReturnDecliner',
@@ -77,8 +78,8 @@ describe('createShopifyPlugin', () => {
 
   it('should refuse a capability it has no adapter for, before resolving anything', async () => {
     await expect(
-      createShopifyPlugin().createCapabilityAdapter({ id: 'c1' } as Connection, 'OfferManager', {} as never),
-    ).rejects.toThrow(/does not support capability: OfferManager/);
+      createShopifyPlugin().createCapabilityAdapter({ id: 'c1' } as Connection, 'Invoicing', {} as never),
+    ).rejects.toThrow(/does not support capability: Invoicing/);
   });
 
   it('should build the order processor', async () => {
