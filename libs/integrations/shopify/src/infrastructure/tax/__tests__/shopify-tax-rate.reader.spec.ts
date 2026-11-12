@@ -115,6 +115,48 @@ describe('ShopifyTaxRateReader', () => {
     });
   });
 
+  it('should remember a missing scope per connection so later products send no refused calculation', async () => {
+    const store = new Map<string, unknown>();
+    const cache = {
+      get: jest.fn((k: string) => Promise.resolve((store.get(k) ?? null) as never)),
+      set: jest.fn((k: string, v: unknown) => {
+        store.set(k, v);
+        return Promise.resolve();
+      }),
+      delete: jest.fn(),
+    } as unknown as CachePort & { set: jest.Mock };
+    const denied = new ShopifyGraphqlError(['ACCESS_DENIED'], ['Access denied for draftOrderCalculate field.']);
+    const graphql = client(denied);
+
+    await reader(graphql, null, shopContext(), cache).read(READ);
+    // A fresh reader, as each adapter resolution builds one: only the cache carries the answer.
+    await expect(
+      reader(graphql, null, shopContext(), cache).read({ variantId: 'gid://shopify/ProductVariant/12' }),
+    ).resolves.toMatchObject({ kind: 'unknown', reason: 'unreadable' });
+
+    expect(graphql.mutate).toHaveBeenCalledTimes(1);
+    expect(cache.set).toHaveBeenCalledWith('shopify:tax-scope-missing:c1', expect.anything(), 900);
+  });
+
+  it('should not remember a transient unreadable answer', async () => {
+    const store = new Map<string, unknown>();
+    const cache = {
+      get: jest.fn((k: string) => Promise.resolve((store.get(k) ?? null) as never)),
+      set: jest.fn((k: string, v: unknown) => {
+        store.set(k, v);
+        return Promise.resolve();
+      }),
+      delete: jest.fn(),
+    } as unknown as CachePort;
+    const graphql = client(new ShopifyUserErrorsException('draftOrderCalculate', [{ message: 'Variant is unavailable' }]));
+
+    await reader(graphql, null, shopContext(), cache).read(READ);
+    await reader(graphql, null, shopContext(), cache).read(READ);
+
+    expect(graphql.mutate).toHaveBeenCalledTimes(2);
+    expect(store.size).toBe(0);
+  });
+
   it('should serve a cached answer for the same variant and country, whatever moved on the product', async () => {
     const store = new Map<string, unknown>();
     const cache = {

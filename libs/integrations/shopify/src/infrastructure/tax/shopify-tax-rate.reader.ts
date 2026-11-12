@@ -19,7 +19,11 @@
  *     unreadable`, which core does not persist;
  *   - the app lacks the optional `write_draft_orders` scope -> `unknown /
  *     unreadable` too, warned once per resolution: the catalogue syncs and
- *     every rate stays "not checked" until the scope is granted.
+ *     every rate stays "not checked" until the scope is granted. Unlike the
+ *     other unreadable answers this one is not transient, so it is remembered
+ *     per connection for 15 minutes: without that, a tax-exclusive shop would
+ *     send a refused calculation (and spend the store's shared budget) on
+ *     every product read, and granting the scope still shows on the next sync.
  * A transport or auth failure throws, as the capability contract asks.
  *
  * Tax lines come per order, not per line item, which is why the read sends ONE
@@ -56,6 +60,12 @@ import type { ShopifyShopContextProvider } from '../shop-context/shopify-shop-co
 
 const CACHE_TTL_SECONDS = 86_400;
 const UNKNOWN_CACHE_TTL_SECONDS = 900;
+
+const SCOPE_MISSING: TaxRateResolution = {
+  kind: 'unknown',
+  reason: 'unreadable',
+  detail: 'the app lacks the write_draft_orders scope',
+};
 
 interface DraftOrderTaxPayload {
   readonly calculatedDraftOrder: {
@@ -106,6 +116,11 @@ export class ShopifyTaxRateReader {
       };
     }
 
+    const scopeKey = `shopify:tax-scope-missing:${this.connectionId}`;
+    if ((await this.readCache(scopeKey)) !== null) {
+      return SCOPE_MISSING;
+    }
+
     const key = `shopify:tax-rate:${this.connectionId}:${fromShopifyGid(input.variantId)}:${country}`;
     const cached = await this.readCache(key);
     if (cached !== null) {
@@ -118,7 +133,9 @@ export class ShopifyTaxRateReader {
       ...(ownCountry && shopAddress.provinceCode !== null ? { provinceCode: shopAddress.provinceCode } : {}),
       ...(ownCountry && shopAddress.zip !== null ? { zip: shopAddress.zip } : {}),
     });
-    if (resolution.kind !== 'unknown' || resolution.reason !== 'unreadable') {
+    if (resolution === SCOPE_MISSING) {
+      await this.writeCache(scopeKey, resolution);
+    } else if (resolution.kind !== 'unknown' || resolution.reason !== 'unreadable') {
       await this.writeCache(key, resolution);
     }
     return resolution;
@@ -152,7 +169,7 @@ export class ShopifyTaxRateReader {
               `(connection: ${this.connectionId})`,
           );
         }
-        return { kind: 'unknown', reason: 'unreadable', detail: 'the app lacks the write_draft_orders scope' };
+        return SCOPE_MISSING;
       }
       throw error;
     }
