@@ -9,8 +9,9 @@
  * Handles all submit shapes per parameter:
  *   - dictionary single → `{ id, valuesIds: [v], section }`
  *   - dictionary multi  → `{ id, valuesIds: [...vs], section }`
- *   - dictionary single + customValuesEnabled → match against the dictionary;
- *     matched entry → `valuesIds`, otherwise → `values: [text]`
+ *   - dictionary single + customValuesEnabled → match against the dictionary
+ *     (by text, then by entry id); matched entry → `valuesIds`, otherwise →
+ *     `values: [text]`
  *   - integer / float range → `{ id, rangeValue: { from, to }, section }`
  *   - integer / float / string scalar → `{ id, values: [String(v)], section }`
  *
@@ -92,8 +93,11 @@ function mapOne(
       const match = param.dictionary?.find(
         (entry) => entry.value.trim().toLowerCase() === trimmed.toLowerCase(),
       );
-      return match
-        ? { id: param.id, valuesIds: [match.id] }
+      if (match) return { id: param.id, valuesIds: [match.id] };
+      // A value saved before #4038 holds the picked entry's id, not its text.
+      const byId = param.dictionary?.find((entry) => entry.id === trimmed);
+      return byId
+        ? { id: param.id, valuesIds: [byId.id] }
         : { id: param.id, values: [trimmed] };
     }
 
