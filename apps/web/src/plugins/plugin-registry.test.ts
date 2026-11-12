@@ -22,7 +22,7 @@ import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants'
 import { definePlugin } from './define-plugin';
 import { plugins } from './index';
 
-interface ShopifyPing {
+interface FixturePing {
   ping: () => string;
 }
 
@@ -30,7 +30,7 @@ interface ShopifyPing {
 // the fixture below type-checks against the same seam real plugins use.
 declare module '../app/api/api-client' {
   interface PluginApiNamespaces {
-    shopify?: ShopifyPing;
+    fixtureShop?: FixturePing;
   }
 }
 
@@ -61,18 +61,18 @@ describe('plugin registry', () => {
       // module state. Verifying the plugin's own factory contract is the
       // right level: createApiClient just calls this contract.
       const stubRequest: ApiRequest = vi.fn();
-      const shopifyPlugin = definePlugin({
-        id: 'shopify-test-fixture',
+      const fixturePlugin = definePlugin({
+        id: 'fixture-shop-test-fixture',
         build: {
           apiNamespaces: (request): Partial<PluginApiNamespaces> => {
             expect(request).toBe(stubRequest);
-            return { shopify: { ping: () => 'pong' } };
+            return { fixtureShop: { ping: () => 'pong' } };
           },
         },
       });
 
-      const result = shopifyPlugin.build?.apiNamespaces?.(stubRequest);
-      expect(result?.shopify?.ping()).toBe('pong');
+      const result = fixturePlugin.build?.apiNamespaces?.(stubRequest);
+      expect(result?.fixtureShop?.ping()).toBe('pong');
     });
   });
 
@@ -113,10 +113,10 @@ describe('plugin registry', () => {
       // own factory list to register mock defaults without editing host code.
       const customPing = vi.fn().mockReturnValue('custom-pong');
       const client = createMockApiClient({}, [
-        (): Partial<PluginApiNamespaces> => ({ shopify: { ping: customPing } }),
+        (): Partial<PluginApiNamespaces> => ({ fixtureShop: { ping: customPing } }),
       ]);
 
-      expect(client.shopify?.ping()).toBe('custom-pong');
+      expect(client.fixtureShop?.ping()).toBe('custom-pong');
       // The in-tree Allegro mock factory is replaced by the custom list, so
       // `client.allegro` is not contributed unless the caller overrides it.
       // Runtime-only assertion: TS types `allegro` as required via declaration
@@ -132,11 +132,11 @@ describe('plugin registry', () => {
       // forward it untouched, not silently drop it.
       const stubPing = vi.fn().mockReturnValue('inline-pong');
       const client = createMockApiClient(
-        { shopify: { ping: stubPing } },
+        { fixtureShop: { ping: stubPing } },
         [], // empty mock registry — no plugin contributes defaults
       );
 
-      expect(client.shopify?.ping()).toBe('inline-pong');
+      expect(client.fixtureShop?.ping()).toBe('inline-pong');
     });
   });
 

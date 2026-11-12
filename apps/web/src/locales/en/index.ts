@@ -59,6 +59,7 @@ import returns from './returns.json';
 import salesDocuments from './sales-documents.json';
 import settings from './settings.json';
 import shipments from './shipments.json';
+import shopify from './shopify.json';
 import syncJobs from './sync-jobs.json';
 import ui from './ui.json';
 import users from './users.json';
@@ -113,6 +114,7 @@ export const en = {
   'sales-documents': salesDocuments,
   settings,
   shipments,
+  shopify,
   'sync-jobs': syncJobs,
   ui,
   users,
