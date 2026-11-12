@@ -22,6 +22,7 @@
 import { createHash } from 'node:crypto';
 
 import type { PublishProductCommand } from '@openlinker/core/listings';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 
 export const DEFAULT_OPTION_NAME = 'Title';
 export const DEFAULT_OPTION_VALUE = 'Default Title';
@@ -79,13 +80,16 @@ export function resolvePublishPriceBasis(taxesIncluded: boolean, taxRate: string
   return { ok: true, divisor: 1 + rate / 100, exempt: rate === 0 };
 }
 
-function money(amount: number): string {
-  return amount.toFixed(2);
-}
-
-/** A gross amount as the shop stores it, rounded to the cent. */
-function storeAmount(gross: number, divisor: number): string {
-  return money(Math.round((gross / divisor + Number.EPSILON) * 100) / 100);
+/**
+ * A gross amount as the shop stores it: divided by `divisor` (1 on a shop
+ * entering prices with tax) and rounded to the currency's minor unit, so a
+ * currency without cents (JPY) is not given two decimals. Shared by the
+ * publish and the price-only update, so both round the same way.
+ */
+export function toStoreAmount(gross: number, divisor: number, currency: string): string {
+  const exponent = minorUnitExponentFor(currency);
+  const scale = 10 ** exponent;
+  return (Math.round((gross / divisor + Number.EPSILON) * scale) / scale).toFixed(exponent);
 }
 
 /** Price + compare-at price, and a warning when a sale price had to be left out. */
@@ -93,7 +97,7 @@ export function buildPriceFields(
   cmd: PublishProductCommand,
   divisor = 1,
 ): { fields: PriceFields; warnings: string[] } {
-  const regular = storeAmount(cmd.price.amount, divisor);
+  const regular = toStoreAmount(cmd.price.amount, divisor, cmd.price.currency);
   const sale = cmd.commerce?.salePrice;
   if (sale === undefined) {
     return { fields: { price: regular, compareAtPrice: null }, warnings: [] };
@@ -112,7 +116,7 @@ export function buildPriceFields(
       warnings: ['The sale price was not applied: it is not lower than the price, or is in another currency.'],
     };
   }
-  return { fields: { price: storeAmount(sale.amount, divisor), compareAtPrice: regular }, warnings: [] };
+  return { fields: { price: toStoreAmount(sale.amount, divisor, cmd.price.currency), compareAtPrice: regular }, warnings: [] };
 }
 
 /**

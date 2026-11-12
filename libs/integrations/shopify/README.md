@@ -4,9 +4,8 @@ OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Ad
 
 **Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
 with returns (#3977), **OrderProcessorManager** (#3978), **inbound webhooks** (#3981) and **ProductPublisher** (#3979). The plugin registers the connection, the
-token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. Further
-capabilities (ProductPublisher, ...) enter
-`supportedCapabilities` together with the adapter that delivers them, in the follow-up issues of the
+token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. A capability
+enters `supportedCapabilities` together with the adapter that delivers it, in the issues of the
 "Shopify integration" milestone. Evidence base: spike #3928 (`SPIKE-3928-shopify-capabilities.md`) and the first
 spike #2879 (`docs/plans/analysis/SPIKE-2879-shopify-admin-api.md`).
 
@@ -234,7 +233,7 @@ Orders and products reach OpenLinker seconds after a change instead of at the ne
 
 Publishes products from another master (PrestaShop, WooCommerce, ...) to the store. Opt-in, and refused on a
 connection that also has Product master enabled: the sweep would read every published product back as a new master
-product (A20). Use a separate connection for publishing.
+product (#3985, a core issue that also affects Shoper and WooCommerce). Use a separate connection for publishing.
 
 - **Simple product**: one `productSet`, Shopify's default option, one variant with its stock at the configured
   location. A re-publish reads the mapped product first and refuses one that no longer has exactly one variant

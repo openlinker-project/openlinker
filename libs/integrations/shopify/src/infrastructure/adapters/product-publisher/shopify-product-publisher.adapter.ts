@@ -24,6 +24,9 @@
  * its own variant through `productVariantsBulkCreate` / `Update`. A sibling
  * with no mapping first looks for a variant carrying its option values and
  * adopts it, so a publish whose mapping write was lost does not duplicate it.
+ * The product-level fields (status, title, description) are shared, so the
+ * sibling published last sets them for the whole product; within one batch
+ * they are the same for every sibling.
  *
  * Sibling race (L-S2b): siblings publish concurrently, and two that both find
  * no parent mapping each create a product. Shopify does not serialise
@@ -48,8 +51,9 @@
  * (`ShopifyTaxRateReader`) and refuses when that is unknown.
  *
  * Not on a master connection: a connection that is also the ProductMaster
- * would read every product it publishes back as a new master product (A20),
- * so a publish there is refused naming the remedy.
+ * would read every product it publishes back as a new master product, so a
+ * publish there is refused naming the remedy. A stopgap for the core issue
+ * #3985 (which also covers Shoper and WooCommerce); remove it once that lands.
  *
  * Stock: the configured location only (`ShopifyShopContextProvider`). A create
  * sets it in the same call; an update sets it with `inventorySetQuantities`
@@ -113,7 +117,6 @@ import { Logger } from '@openlinker/shared/logging';
 import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
 import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
 import { SHOPIFY_ADAPTER_KEY } from '../../../shopify.constants';
-import type { ShopifyConnection } from '../../../domain/types/shopify-api.types';
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import { shopifyGrossFactor } from '../../mappers/shopify-product.mapper';
 import type { ShopifyTaxRateReader } from '../../tax/shopify-tax-rate.reader';
@@ -130,8 +133,10 @@ import {
   GROUP_MARKER_NAMESPACE,
   groupCandidatesQuery,
   INVENTORY_SET_MUTATION,
+  MANUAL_COLLECTIONS_QUERY,
   METAFIELDS_SET_MUTATION,
   PRODUCT_DELETE_MUTATION,
+  PRICE_TARGET_QUERY,
   PRODUCT_METAFIELD_DEFINITIONS_QUERY,
   PRODUCT_SET_MUTATION,
   PUBLICATIONS_QUERY,
@@ -139,10 +144,13 @@ import {
   PUBLISHABLE_PUBLISH_MUTATION,
   VARIANTS_BULK_CREATE_MUTATION,
   VARIANTS_BULK_UPDATE_MUTATION,
+  VARIANT_PRICE_UPDATE_MUTATION,
   type CollectionByHandleQuery,
   type CollectionCreatePayload,
   type GroupCandidateNode,
+  type ManualCollectionsQuery,
   type MetafieldDefinitionsQuery,
+  type PriceTargetQuery,
   type ProductSetPayload,
   type PublicationsQuery,
   type PublishablePublishPayload,
@@ -170,6 +178,7 @@ import {
   planImages,
   resolvePublishPriceBasis,
   toShopifyHandle,
+  toStoreAmount,
   unsupportedFieldWarnings,
   type OptionValueRef,
 } from './shopify-product-publish.mapper';
@@ -190,19 +199,9 @@ const DEFINITION_REF = /^[^.\s]+\.[^.\s]+$/;
 const GROUP_HANDLE_PROBES = 6;
 const COLLECTIONS_PAGE_SIZE = 250;
 
-/** The capability a publish must not share a connection with (A20). */
+/** The capability a publish must not share a connection with (#3985). */
 const PRODUCT_MASTER_CAPABILITY = 'ProductMaster';
 
-const MANUAL_COLLECTIONS_QUERY = `query OlManualCollections($first: Int!, $after: String) {
-  collections(first: $first, after: $after, query: "collection_type:custom") {
-    nodes { id title }
-    pageInfo { hasNextPage endCursor }
-  }
-}`;
-
-interface ManualCollectionsQuery {
-  readonly collections: ShopifyConnection<{ readonly id: string; readonly title: string }>;
-}
 
 type PriceBasis = { readonly divisor: number; readonly exempt: boolean };
 
@@ -278,19 +277,7 @@ export class ShopifyProductPublisherAdapter
     const ids = cmd.externalParentProductId
       ? [toShopifyGid('ProductVariant', cmd.externalProductId)]
       : [toShopifyGid('Product', cmd.externalProductId), toShopifyGid('ProductVariant', cmd.externalProductId)];
-    const data = await this.client.query<{
-      nodes: Array<
-        | { __typename: 'ProductVariant'; id: string; product: { id: string } }
-        | { __typename: 'Product'; id: string; variants: { nodes: Array<{ id: string }> } }
-        | { __typename: string }
-        | null
-      >;
-    }>(
-      `query OlPriceTarget($ids: [ID!]!) { nodes(ids: $ids) { __typename
-        ... on ProductVariant { id product { id } }
-        ... on Product { id variants(first: 2) { nodes { id } } } } }`,
-      { ids },
-    );
+    const data = await this.client.query<PriceTargetQuery>(PRICE_TARGET_QUERY, { ids });
     let productId: string | null = null;
     let variantId: string | null = null;
     for (const node of data.nodes) {
@@ -310,13 +297,12 @@ export class ShopifyProductPublisherAdapter
     if (productId === null || variantId === null) {
       throw new ProductPublishTargetNotFoundException(this.adapterKey(), cmd.externalProductId);
     }
-    const toStore = await this.priceUpdateConverter(variantId);
+    const toStore = await this.priceUpdateConverter(variantId, cmd.price.currency);
     const sale =
       cmd.salePrice && Number(cmd.salePrice.amount) < Number(cmd.price.amount) ? cmd.salePrice : undefined;
     try {
       await this.client.mutate(
-        `mutation OlPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-          productVariantsBulkUpdate(productId: $productId, variants: $variants) { userErrors { field message code } } }`,
+        VARIANT_PRICE_UPDATE_MUTATION,
         {
           productId,
           variants: [
@@ -337,7 +323,10 @@ export class ShopifyProductPublisherAdapter
    * on a tax-exclusive one, divided by the variant's own rate as Shopify
    * computes it, refused when that rate is unknown.
    */
-  private async priceUpdateConverter(variantGid: string): Promise<(amount: string) => string> {
+  private async priceUpdateConverter(
+    variantGid: string,
+    currency: string,
+  ): Promise<(amount: string) => string> {
     const context = await this.shopContext.get();
     if (context.taxesIncluded) {
       return (amount) => amount;
@@ -352,7 +341,7 @@ export class ShopifyProductPublisherAdapter
           '"All prices include tax" in Shopify.',
       );
     }
-    return (amount) => (Math.round((Number(amount) / factor + Number.EPSILON) * 100) / 100).toFixed(2);
+    return (amount) => toStoreAmount(Number(amount), factor, currency);
   }
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
@@ -1094,7 +1083,20 @@ export class ShopifyProductPublisherAdapter
         .then(({ publications }) => {
           const nodes = publications.nodes;
           const online = nodes.find((p) => (p.catalog?.title ?? '').replace(/\s+/g, '').toLowerCase().endsWith(ONLINE_STORE_PUBLICATION));
-          return online?.id ?? (nodes.length === 1 ? nodes[0].id : null);
+          if (online !== undefined) {
+            return online.id;
+          }
+          // A shop with a single channel whose catalog title does not read as the
+          // Online Store: used, but named in the log, so a product published to
+          // some other channel (POS) is visible rather than silent.
+          if (nodes.length === 1) {
+            this.logger.warn(
+              `No Online Store publication found on connection ${this.connection.id}; using the shop's only ` +
+                `publication ${nodes[0].id} (${nodes[0].catalog?.title ?? 'untitled'})`,
+            );
+            return nodes[0].id;
+          }
+          return null;
         })
         .catch((error: unknown) => {
           this.onlineStorePublication = null;

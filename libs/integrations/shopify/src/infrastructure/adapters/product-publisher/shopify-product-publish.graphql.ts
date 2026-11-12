@@ -111,6 +111,29 @@ export const PRODUCT_METAFIELD_DEFINITIONS_QUERY = `query OlProductMetafieldDefi
 }`;
 
 /** Namespace and key of the marker every variant-group product carries (its OpenLinker group id). */
+/** The product and variant a price-only update targets (a variant id, or a single-variant product id). */
+export const PRICE_TARGET_QUERY = `query OlPriceTarget($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    __typename
+    ... on ProductVariant { id product { id } }
+    ... on Product { id variants(first: 2) { nodes { id } } }
+  }
+}`;
+
+export const VARIANT_PRICE_UPDATE_MUTATION = `mutation OlPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+  productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+    userErrors { field message code }
+  }
+}`;
+
+/** Manual (custom) collections only: a product cannot be added to a smart one. */
+export const MANUAL_COLLECTIONS_QUERY = `query OlManualCollections($first: Int!, $after: String) {
+  collections(first: $first, after: $after, query: "collection_type:custom") {
+    nodes { id title }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
 export const GROUP_MARKER_NAMESPACE = 'openlinker';
 export const GROUP_MARKER_KEY = 'variant_group';
 
@@ -144,6 +167,23 @@ export const PRODUCT_DELETE_MUTATION = `mutation OlProductDelete($input: Product
     userErrors { field message }
   }
 }`;
+
+export interface PriceTargetQuery {
+  readonly nodes: ReadonlyArray<
+    | { readonly __typename: 'ProductVariant'; readonly id: string; readonly product: { readonly id: string } }
+    | {
+        readonly __typename: 'Product';
+        readonly id: string;
+        readonly variants: { readonly nodes: ReadonlyArray<{ readonly id: string }> };
+      }
+    | { readonly __typename: string }
+    | null
+  >;
+}
+
+export interface ManualCollectionsQuery {
+  readonly collections: ShopifyConnection<{ readonly id: string; readonly title: string }>;
+}
 
 export interface MetafieldDefinitionsQuery {
   readonly metafieldDefinitions: ShopifyConnection<ShopifyMetafieldDefinitionNode>;

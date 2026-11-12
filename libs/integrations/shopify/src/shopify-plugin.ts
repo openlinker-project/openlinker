@@ -90,7 +90,7 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // the store receive every marketplace order (the Shoper precedent).
   // `ProductPublisher` and `CategoryProvisioner` WRITE to the store, and a
   // connection that is also the master would read its own publications back
-  // (A20), so they are opt-in and the publisher refuses a master connection.
+  // (#3985), so they are opt-in and the publisher refuses a master connection.
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   // Shopify signs every webhook with the app client secret, which OpenLinker
   // can only store, never rotate (#3981).
