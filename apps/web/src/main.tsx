@@ -30,4 +30,20 @@ function render(): void {
 // flashes English while its files are on their way. The provider resolves the
 // same language: a `?lang=` override is saved here and read back from storage.
 // Plugin namespaces are registered by the imports above, before this runs.
-void loadMessages(resolveInitialLocale(env.VITE_DEFAULT_UI_LOCALE)).then(render, render);
+const openingLocale = resolveInitialLocale(env.VITE_DEFAULT_UI_LOCALE);
+function start(): void {
+  void loadMessages(openingLocale).then(render, render);
+}
+
+// Development-only missing-translation inspector (#4017). `import.meta.env.DEV`
+// is a literal `false` in a production build, so the branch and its chunk are
+// dropped there even with the variable set. It must install before the first
+// load so every merge is tagged; a failed import just starts the app plainly.
+if (import.meta.env.DEV && env.VITE_I18N_HIGHLIGHT_MISSING) {
+  void import('./shared/i18n/missing-inspector')
+    .then((inspector) => inspector.installMissingInspector())
+    .catch(() => undefined)
+    .then(start);
+} else {
+  start();
+}
