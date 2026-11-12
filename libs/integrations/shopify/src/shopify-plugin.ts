@@ -7,9 +7,10 @@
  * and auth-failure classifiers, and the OAuth completion adapter (a store in
  * another organization installs the app through the authorization-code
  * grant). Capabilities enter `supportedCapabilities` together with the adapter
- * that delivers them (the #980 rule); ProductMaster arrived with #3975. Its
- * rungs `ModifiedProductLister`, `BulkProductReader` and `ProductTaxRateReader`
- * are guard-only (never in the manifest), narrowed off the dispatched adapter.
+ * that delivers them (the #980 rule); ProductMaster arrived with #3975 and
+ * InventoryMaster with #3976. Their rungs (`ModifiedProductLister`,
+ * `BulkProductReader`, `ProductTaxRateReader`, `BulkInventoryReader`) are
+ * guard-only (never in the manifest), narrowed off the dispatched adapter.
  *
  * Outbound pacing: every call goes through `host.http.forConnection` with
  * `SHOPIFY_DEFAULT_RATE_LIMIT` and the STORE's shared bucket (Shopify's
@@ -54,11 +55,11 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPIFY_ADAPTER_KEY,
   platformType: SHOPIFY_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['ProductMaster'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
   // Stated rather than left to "every supported capability": each later
   // capability (publisher, order source, ...) must be an operator's choice,
   // not something every new connection starts doing.
-  defaultEnabledCapabilities: ['ProductMaster'],
+  defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   // Shopify's budget is per app and store, so connections to one store share one bucket.
   resolveRateLimitBucketKey: resolveShopifyRateLimitBucketKey,
@@ -123,6 +124,8 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
           {
             ProductMaster: async () =>
               factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,
+            InventoryMaster: async () =>
+              factory.createInventoryMaster(await resolve(), host.identifierMapping, host.cache) as T,
           },
           SHOPIFY_BRAND,
         );

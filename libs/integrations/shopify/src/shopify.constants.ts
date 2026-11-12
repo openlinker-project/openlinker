@@ -74,3 +74,11 @@ export const SHOPIFY_REQUIRED_SCOPES = [
  * tax reports no prices (they cannot be stated gross, ADR-077).
  */
 export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders'] as const;
+
+/**
+ * Quantity reported for an untracked variant when the connection sets no
+ * `unmanagedStockQuantity` - the WooCommerce `DEFAULT_UNMANAGED_STOCK_QUANTITY`.
+ * Reporting none would zero live offers; refusing would dead-letter a sweep
+ * job per such product on every tick (L-I1).
+ */
+export const SHOPIFY_DEFAULT_UNMANAGED_STOCK_QUANTITY = 1000;

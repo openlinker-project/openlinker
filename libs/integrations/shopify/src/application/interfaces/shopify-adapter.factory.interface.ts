@@ -9,6 +9,7 @@
  * @module libs/integrations/shopify/src/application/interfaces
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { InventoryMasterPort } from '@openlinker/core/inventory';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
@@ -39,4 +40,11 @@ export interface IShopifyAdapterFactory {
     identifierMapping: IdentifierMappingPort,
     cache?: CachePort,
   ): ProductMasterPort;
+
+  /** The InventoryMaster of one resolution (the connection's one location). */
+  createInventoryMaster(
+    resolution: ShopifyResolution,
+    identifierMapping: IdentifierMappingPort,
+    cache?: CachePort,
+  ): InventoryMasterPort;
 }
