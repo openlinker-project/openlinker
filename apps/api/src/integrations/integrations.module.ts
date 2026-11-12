@@ -43,6 +43,7 @@ import { ConnectionController } from './http/connection.controller';
 import { ConnectionPricingSyncController } from './http/connection-pricing-sync.controller';
 import { AdapterController } from './http/adapter.controller';
 import { AllegroController } from './http/allegro.controller';
+import { ShopifyController } from './http/shopify.controller';
 import { SubiektController } from './http/subiekt.controller';
 import { ConnectionService } from './application/services/connection.service';
 import { CONNECTION_SERVICE_TOKEN } from './application/interfaces/connection.service.interface';
@@ -84,6 +85,7 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     ConnectionPricingSyncController,
     AdapterController,
     AllegroController,
+    ShopifyController,
     SubiektController,
   ],
   providers: [

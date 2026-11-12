@@ -194,6 +194,7 @@
     "OAUTH_ACCOUNT_IDENTITY_FAILED": "The authorized account could not be identified. Try again.",
     "OAUTH_ACCOUNT_MISMATCH": "You authorized a different account than the one this connection uses. Sign in to the right account and try again.",
     "OAUTH_ADAPTER_NOT_REGISTERED": "This integration cannot complete an authorization.",
+    "OAUTH_CALLBACK_UNVERIFIED": "The platform's redirect could not be verified, so nothing was connected. Start the connection again.",
     "OAUTH_CODE_EXCHANGE_FAILED": "The authorization could not be completed. Try again later.",
     "OAUTH_CODE_EXCHANGE_REJECTED": "The platform refused the authorization. Start it again.",
     "OAUTH_CONNECTION_PLATFORM_MISMATCH": "This connection belongs to a different platform. Authorize it from its own page.",
