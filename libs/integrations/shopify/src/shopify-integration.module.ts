@@ -65,6 +65,11 @@ import {
   SYNC_LOCK_TOKEN,
   SyncLockPort,
 } from '@openlinker/core/sync';
+import {
+  MappingsModule,
+  MAPPING_CONFIG_SERVICE_TOKEN,
+  type IMappingConfigService,
+} from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
@@ -77,7 +82,7 @@ import { createShopifyClientRuntime } from './infrastructure/http/shopify-client
 import { createShopifyPlugin } from './shopify-plugin';
 
 @Module({
-  imports: [IntegrationsModule, SyncModule, IdentifierMappingModule, RateLimitModule],
+  imports: [IntegrationsModule, SyncModule, IdentifierMappingModule, MappingsModule, RateLimitModule],
 })
 export class ShopifyIntegrationModule implements OnModuleInit {
   private readonly logger = new Logger(ShopifyIntegrationModule.name);
@@ -123,6 +128,8 @@ export class ShopifyIntegrationModule implements OnModuleInit {
     private readonly syncLock: SyncLockPort,
     @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
     private readonly http: HttpTransportFactoryPort,
+    @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
+    private readonly mappingConfigService: IMappingConfigService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort,
   ) {}
@@ -134,7 +141,7 @@ export class ShopifyIntegrationModule implements OnModuleInit {
       credentialsWriter: new ShopifyCredentialsWriterAdapter(this.credentialsService),
       lock: this.syncLock,
     });
-    const plugin = createShopifyPlugin({ runtime });
+    const plugin = createShopifyPlugin({ runtime, mappingConfigService: this.mappingConfigService });
 
     const host: HostServices = {
       logger: (context: string) => new Logger(context),

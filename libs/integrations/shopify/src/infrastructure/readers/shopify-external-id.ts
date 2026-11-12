@@ -3,7 +3,9 @@
  *
  * Resolves an OpenLinker internal id to this connection's Shopify (numeric)
  * id through the identifier mapping. A missing mapping is a mapping GAP and
- * raises `ShopifyNotMappedException`, never the neutral not-found error.
+ * raises `ShopifyNotMappedException`, never the neutral not-found error;
+ * `findShopifyExternalId` reports it as `null` for a caller that has a
+ * fallback (the order processor's custom line).
  *
  * @module libs/integrations/shopify/src/infrastructure/readers
  */
@@ -17,10 +19,19 @@ export async function resolveShopifyExternalId(
   entityType: string,
   internalId: string,
 ): Promise<string> {
-  const mappings = await identifierMapping.getExternalIds(entityType, internalId);
-  const externalId = mappings.find((m) => m.connectionId === connectionId)?.externalId;
-  if (externalId === undefined) {
+  const externalId = await findShopifyExternalId(identifierMapping, connectionId, entityType, internalId);
+  if (externalId === null) {
     throw new ShopifyNotMappedException(entityType, internalId, connectionId);
   }
   return externalId;
+}
+
+export async function findShopifyExternalId(
+  identifierMapping: IdentifierMappingPort,
+  connectionId: string,
+  entityType: string,
+  internalId: string,
+): Promise<string | null> {
+  const mappings = await identifierMapping.getExternalIds(entityType, internalId);
+  return mappings.find((m) => m.connectionId === connectionId)?.externalId ?? null;
 }

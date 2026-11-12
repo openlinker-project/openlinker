@@ -2,10 +2,10 @@
 
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
-**Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976) and **OrderSource**
-with returns (#3977). The plugin registers the connection, the
+**Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
+with returns (#3977) and **OrderProcessorManager** (#3978). The plugin registers the connection, the
 token handling, the GraphQL client, the connection tester and the retry / auth-failure classifiers. Further
-capabilities (OrderProcessorManager, ProductPublisher, ...) enter
+capabilities (ProductPublisher, ...) enter
 `supportedCapabilities` together with the adapter that delivers them, in the follow-up issues of the
 "Shopify integration" milestone. Evidence base: spike #3928 (`SPIKE-3928-shopify-capabilities.md`) and the first
 spike #2879 (`docs/plans/analysis/SPIKE-2879-shopify-admin-api.md`).
@@ -165,12 +165,55 @@ Opt-in: not on by default, because ingesting a shop's orders creates them in eve
   retry after a lost answer finds the first refund. Without the flag a refund is only recorded, as made outside
   OpenLinker.
 
+## OrderProcessorManager (#3978)
+
+Opt-in: not on by default, because it brings every marketplace order into the store. Needs `write_orders` (already
+required) and an offline token, which every supported credential mode gives.
+
+- **Create.** `orderCreate` with the price the buyer paid on the source (ADR-014): gross with
+  `taxesIncluded: true` unless the source states net prices, a tax line per stated numeric rate (none for `zw`,
+  `np` or a missing rate), buyer addresses, phone and email, and `sourceIdentifier` = the OpenLinker order id. The
+  order is tagged `openlinker`, Shopify sends the buyer no receipt, and `inventoryBehaviour:
+  DECREMENT_OBEYING_POLICY` makes Shopify lower its own stock (`lowersStockOnOrderCreate` answers `true`).
+- **Lines.** A line whose variant this connection mapped is created against that variant; any other line becomes a
+  custom line (title, SKU, price) that ships but moves no stock, and is logged. `requiresShipping` defaults to false
+  on EVERY `orderCreate` line, so every line states it: a variant line takes its own inventory item's
+  `requiresShipping` (read in one query; a digital product stays unshipped), a custom line `true`. Without it the
+  order reads "shipping not required" and no label can be bought for it (D1).
+- **Whole-order discount.** A discount the source applied to the order but to none of its lines
+  (`totals.discountTotal`, e.g. an Allegro coupon) is sent as a fixed-amount discount code `OPENLINKER`, so the order
+  totals to what the buyer paid and shows the discount; the tax lines are computed on each line's discounted share
+  (`distributeOrderDiscount`). A discount at least as large as the lines is not sent and is logged.
+- **Exactly once.** `orderCreate` has no `@idempotent` support and does not deduplicate on `sourceIdentifier`. Core
+  serialises the create per order and destination; before creating, the adapter looks the order up by
+  `source_identifier:` and returns the one it finds. The search index sees an order seconds after it was written, so
+  this covers a retry after a lost answer, not two creates at once.
+- **Currency.** An order in a currency other than the store's is refused before anything is sent (presentment
+  currencies are not used).
+- **Pickup point.** Shopify has no pickup-point field: the locker id, name and address go into `customAttributes`,
+  one line of the order note, and the shipping line title (`Paczkomaty InPost (GIT01D)`).
+- **Payment.** Paid: a successful sale transaction on `manual` (or the mapped gateway). Cash on delivery: a pending
+  one on `Cash on Delivery (COD)`. Otherwise no transaction and `PENDING`. A payment that arrives at the source
+  after the order was created is not passed on (#3963).
+- **Mappings.** The order's source connection's delivery-method and payment mappings (Mappings tab) give the shipping
+  line title and code and the gateway; unmapped, the source's own names are used. The options to map onto are the
+  same lists the order source shows. Because the mappings are keyed by the source only, a value mapped for another
+  destination (a PrestaShop carrier id `1`) reaches Shopify too; a mapped value is used only when it is one of this
+  store's own delivery methods or gateways, otherwise it is logged and the source's own name is used (D5).
+- **Location.** Shopify's routing picks a location on create; open work assigned elsewhere is moved to the configured
+  location right after. A failed move is logged and does not fail the create; the dispatch writeback moves it again.
+- **Status.** Dispatch and cancellation go through the same writeback as the order source.
+
 ## Known gaps
 
 - `defaultEnabledCapabilities` turns ProductMaster on for every new connection. One Shopify store is a master or a
   publish target, never both (L-S2f): when ProductPublisher arrives, a publish-only connection must not get
   ProductMaster by default, or the sweep imports the store's catalogue back.
 
+- Delivery and payment mappings are keyed by the SOURCE connection only, so one source sending orders to Shopify and
+  to another shop shares one mapping for both destinations.
+- The order processor creates no Shopify customer: the order carries the buyer's email and addresses, and Shopify
+  links or creates the customer by email itself.
 - `barcode` is deprecated in 2026-10 in favour of the `barcodes` connection; it still answers the first barcode and
   is used until the next API version.
 - A change to a collection tax override does not touch the product, so the cached rate is re-read when its day runs

@@ -10,7 +10,8 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InventoryMasterPort } from '@openlinker/core/inventory';
-import type { OrderSourcePort } from '@openlinker/core/orders';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
+import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
@@ -54,4 +55,15 @@ export interface IShopifyAdapterFactory {
    * the status writeback, plus `RefundExecutor` when the connection opts in.
    */
   createOrderSource(resolution: ShopifyResolution): OrderSourcePort;
+
+  /**
+   * The order destination of one resolution (#3978). `mappingConfig` resolves
+   * the source connection's delivery and payment mappings; absent, the source's
+   * own words are used.
+   */
+  createOrderProcessor(
+    resolution: ShopifyResolution,
+    identifierMapping: IdentifierMappingPort,
+    mappingConfig?: IMappingConfigService,
+  ): OrderProcessorManagerPort;
 }

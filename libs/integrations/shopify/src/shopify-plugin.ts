@@ -8,8 +8,9 @@
  * another organization installs the app through the authorization-code
  * grant). Capabilities enter `supportedCapabilities` together with the adapter
  * that delivers them (the #980 rule); ProductMaster arrived with #3975,
- * InventoryMaster with #3976 and OrderSource with #3977 (with its scheduler
- * tasks: the orders poll, and the two returns passes, off by default). Their rungs (`ModifiedProductLister`,
+ * InventoryMaster with #3976, OrderSource with #3977 (with its scheduler
+ * tasks: the orders poll, and the two returns passes, off by default) and
+ * OrderProcessorManager with #3978. Their rungs (`ModifiedProductLister`,
  * `BulkProductReader`, `ProductTaxRateReader`, `BulkInventoryReader`) are
  * guard-only (never in the manifest), narrowed off the dispatched adapter.
  *
@@ -20,14 +21,16 @@
  *
  * Two pieces need collaborators `HostServices` does not carry, so
  * `ShopifyIntegrationModule` supplies them: the OAuth token write-back
- * (credentials service + lock, passed in through `CreateShopifyPluginDeps`)
- * and the archive hook (registered on the core registry directly).
+ * (credentials service + lock) and the mapping config service the order
+ * processor resolves a source's delivery and payment mappings with, both
+ * passed in through `CreateShopifyPluginDeps`, and the archive hook (registered on the core registry directly).
  *
  * @module libs/integrations/shopify/src
  */
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 
 import {
   SHOPIFY_ADAPTER_KEY,
@@ -61,6 +64,7 @@ export const shopifyAdapterManifest: AdapterMetadata = {
     'ProductMaster',
     'InventoryMaster',
     'OrderSource',
+    'OrderProcessorManager',
     // Advertised-without-dispatch sub-capabilities of the order source, for
     // host discovery only; resolved by narrowing the dispatched `OrderSource`
     // adapter with their guards, never through `getCapabilityAdapter`.
@@ -71,6 +75,8 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // opt-in, because ingesting a shop's orders is polling load against the
   // store's request budget and creates those orders in every destination - a
   // connection meant only as a catalogue and stock master must not start it.
+  // `OrderProcessorManager` is opt-in for the same reason in reverse: it makes
+  // the store receive every marketplace order (the Shoper precedent).
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   // Shopify's budget is per app and store, so connections to one store share one bucket.
@@ -87,6 +93,12 @@ export interface CreateShopifyPluginDeps {
    * a default one (no write-back) is created when absent.
    */
   readonly runtime?: ShopifyClientRuntime;
+  /**
+   * Resolves a source connection's delivery and payment mappings for the
+   * order processor (#3978). Absent, an order is created with the source's
+   * own method names.
+   */
+  readonly mappingConfigService?: IMappingConfigService;
 }
 
 export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): AdapterPlugin {
@@ -142,6 +154,12 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
             InventoryMaster: async () =>
               factory.createInventoryMaster(await resolve(), host.identifierMapping, host.cache) as T,
             OrderSource: async () => factory.createOrderSource(await resolve()) as T,
+            OrderProcessorManager: async () =>
+              factory.createOrderProcessor(
+                await resolve(),
+                host.identifierMapping,
+                deps.mappingConfigService,
+              ) as T,
           },
           SHOPIFY_BRAND,
         );
