@@ -1,4 +1,20 @@
 {
+  "actions": {
+    "configure": "Skonfiguruj webhooki",
+    "configuring": "Konfigurowanie...",
+    "currentlyConfigured": "Obecnie skonfigurowane.",
+    "description": "Subskrybuje zdarzenia zamówień i produktów ze sklepu, aby zmiany od razu trafiały do OpenLinker, a nie dopiero przy następnym odpytaniu.",
+    "needsCallbackUrl": "Najpierw zapisz adres URL zwrotny OpenLinker.",
+    "needsCapability": "Najpierw włącz możliwość Źródło zamówień lub Główny katalog produktów.",
+    "reconfigure": "Skonfiguruj ponownie",
+    "title": "Skonfiguruj webhooki",
+    "toast": {
+      "configured": "Shopify będzie teraz powiadamiać OpenLinker o zmianie zamówienia lub produktu.",
+      "configuredTitle": "Webhooki skonfigurowane",
+      "failedTitle": "Nie udało się skonfigurować webhooków",
+      "notAccepted": "Shopify nie przyjął subskrypcji."
+    }
+  },
   "callback": {
     "alreadyUsed": "Ten link autoryzacji został już użyty. Połączenie ze Shopify powinno być aktywne.",
     "alreadyUsedTitle": "Autoryzacja już zakończona",
@@ -16,6 +32,44 @@
     "title": "Autoryzacja Shopify",
     "unverified": "Nie udało się potwierdzić, że przekierowanie pochodzi ze Shopify dla tego sklepu. Połączenie nie zostało utworzone.",
     "viewAll": "Wszystkie połączenia"
+  },
+  "connectionConfig": {
+    "locationIdInvalid": "Wpisz ID lokalizacji Shopify, np. 12345678.",
+    "salesCountryInvalid": "Wpisz dwuliterowy kod kraju, np. PL.",
+    "unmanagedStockInvalid": "Wpisz liczbę całkowitą, 0 lub większą."
+  },
+  "edit": {
+    "callbackUrl": {
+      "description": "Publiczny adres https OpenLinker. Na ten adres Shopify wysyła webhooki.",
+      "label": "Adres URL zwrotny OpenLinker"
+    },
+    "location": {
+      "description": "Jedyna lokalizacja magazynowa, z której OpenLinker odczytuje i w której zapisuje stan magazynowy. Stan w innych lokalizacjach nie jest liczony.",
+      "label": "Lokalizacja magazynowa",
+      "loadFailed": "Nie udało się odczytać lokalizacji sklepu. Wpisz ID lokalizacji ręcznie.",
+      "loading": "Wczytywanie lokalizacji...",
+      "primaryOption": "Lokalizacja główna ({name})",
+      "primaryUnnamed": "Lokalizacja główna",
+      "unknownOption": "Lokalizacja {id} (nie znaleziono w sklepie)",
+      "unknownWarning": "Zapisana lokalizacja nie jest aktywną lokalizacją tego sklepu. Stanu magazynowego nie da się odczytać ani zapisać, dopóki nie wybierzesz innej."
+    },
+    "noWebhookCapability": {
+      "body": "Webhooki przenoszą zdarzenia zamówień i produktów. Włącz możliwość Źródło zamówień lub Główny katalog produktów, aby z nich korzystać.",
+      "title": "Webhooki są niedostępne"
+    },
+    "refunds": {
+      "description": "Gdy potwierdzisz zwrot pieniędzy w OpenLinker, Shopify odda pieniądze kupującemu. Gdy wyłączone, potwierdzony zwrot pieniędzy jest tylko zapisywany.",
+      "label": "Wysyłaj zwroty pieniędzy do Shopify",
+      "warning": "Potwierdzenie zwrotu pieniędzy przeleje prawdziwe pieniądze w Shopify Payments. Sprawdź każdą kwotę przed potwierdzeniem."
+    },
+    "salesCountry": {
+      "description": "Kraj, którego stawka VAT jest odczytywana dla produktów. Zostaw puste, aby użyć kraju z adresu rozliczeniowego sklepu.",
+      "label": "Kraj sprzedaży"
+    },
+    "unmanagedStock": {
+      "description": "Ilość zgłaszana dla wariantu, którego stanu magazynowego Shopify nie śledzi. Zostaw puste, aby użyć 1000.",
+      "label": "Ilość dla nieśledzonego stanu"
+    }
   },
   "plugin": {
     "callbackCrumb": "Powrót ze Shopify",

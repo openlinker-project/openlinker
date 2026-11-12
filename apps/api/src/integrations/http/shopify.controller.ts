@@ -11,23 +11,37 @@
  * the client id + secret (client-credentials grant) or a pre-issued token
  * through the ordinary connection create.
  *
+ * Also serves the location picker of the connection edit page (#3982): the
+ * shop's locations, read live, so the operator chooses one instead of typing
+ * an id. A failure to reach the shop is a 502, never an empty list - an empty
+ * picker would read as "this shop has no locations".
+ *
  * @module apps/api/src/integrations/http
  */
 import {
+  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
+  Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Inject,
+  Param,
+  ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import {
   SHOPIFY_ADAPTER_KEY,
+  SHOPIFY_LOCATION_READER_TOKEN,
   SHOPIFY_PLATFORM_TYPE,
   checkShopifyOAuthCallback,
   parseShopifyConfig,
+  type IShopifyLocationReader,
+  type ShopifyLocationSummary,
 } from '@openlinker/integrations-shopify';
 import { InvalidConnectionConfigException } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
@@ -57,7 +71,34 @@ export class ShopifyController {
   constructor(
     @Inject(OAUTH_CONNECTION_SERVICE_TOKEN)
     private readonly oauthService: IOAuthConnectionService,
+    @Inject(SHOPIFY_LOCATION_READER_TOKEN)
+    private readonly locationReader: IShopifyLocationReader,
   ) {}
+
+  @Roles('admin', 'operator')
+  @ApiBearerAuth()
+  @Get('connections/:connectionId/locations')
+  @ApiOperation({ summary: "List the Shopify store's active locations for the location picker" })
+  @ApiResponse({ status: 200, description: 'Locations, the primary one first' })
+  @ApiResponse({ status: 400, description: 'Not a Shopify connection' })
+  @ApiResponse({ status: 502, description: 'The store could not be read' })
+  async listLocations(
+    @Param('connectionId', ParseUUIDPipe) connectionId: string,
+  ): Promise<{ locations: ShopifyLocationSummary[] }> {
+    try {
+      return { locations: await this.locationReader.listLocations(connectionId) };
+    } catch (error) {
+      if (error instanceof HttpException || error instanceof ConnectionNotFoundException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Shopify locations read failed for connection ${connectionId}: ${message}`);
+      throw new BadGatewayException({
+        message: 'The Shopify store could not be read',
+        code: 'SHOPIFY_LOCATIONS_UNAVAILABLE',
+      });
+    }
+  }
 
   @Roles('admin')
   @ApiBearerAuth()
