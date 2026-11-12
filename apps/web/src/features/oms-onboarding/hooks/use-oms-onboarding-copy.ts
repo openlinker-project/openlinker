@@ -24,8 +24,6 @@
 import { useMemo } from 'react';
 import {
   formatPlural,
-  getLocale,
-  getMessages,
   interpolate,
   messagesIn,
   useActiveLocale,
@@ -143,14 +141,6 @@ export type OmsOnboardingCopy = ReturnType<typeof buildOmsOnboardingCopy>;
 /** The wording for an explicit language, outside React (tests). */
 export function omsOnboardingCopyIn(locale: SupportedLocale): OmsOnboardingCopy {
   return buildOmsOnboardingCopy(messagesIn('oms-onboarding', locale), locale);
-}
-
-/**
- * The wording in the language the provider last set, outside React: mutation
- * hooks and zod schemas that read it when they run, not when their module loads.
- */
-export function getOmsOnboardingCopy(): OmsOnboardingCopy {
-  return buildOmsOnboardingCopy(getMessages('oms-onboarding'), getLocale());
 }
 
 export function useOmsOnboardingCopy(): OmsOnboardingCopy {

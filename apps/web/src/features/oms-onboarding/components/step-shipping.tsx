@@ -38,6 +38,7 @@ import {
 } from '../../mappings';
 import type { AutoDispatchSettings } from '../lib/config-merge';
 import { useShippingStepCopy } from '../hooks/use-shipping-setup-copy';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { WIZARD_STEPS } from '../lib/onboarding-state';
 import {
@@ -458,7 +459,7 @@ export function StepShipping(props: StepShippingProps): ReactElement {
 
       {props.saveError === null ? null : (
         <Alert tone="error" title={step.saveFailedTitle}>
-          {props.saveError.message}
+          {describeApiError(props.saveError, 'oms-onboarding')}
         </Alert>
       )}
 
