@@ -135,6 +135,20 @@ describe('ShopifyTaxRateReader', () => {
     expect(graphql.mutate).toHaveBeenCalledTimes(2);
   });
 
+  it('should keep an unknown answer for minutes, not a day, so a finished tax setup shows on the next sync', async () => {
+    const cache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn(),
+    } as unknown as CachePort & { set: jest.Mock };
+
+    await reader(client(calculated([])), null, shopContext(), cache).read(READ);
+    await reader(client(calculated([{ title: 'VAT', rate: 0.23, ratePercentage: 23 }])), null, shopContext(), cache).read(READ);
+
+    expect(cache.set).toHaveBeenNthCalledWith(1, expect.any(String), expect.anything(), 900);
+    expect(cache.set).toHaveBeenNthCalledWith(2, expect.any(String), expect.anything(), 86_400);
+  });
+
   it.each([
     [{ title: 'x', rate: 0.23, ratePercentage: 23 }, '23'],
     [{ title: 'x', rate: 0.055, ratePercentage: null }, '5.5'],

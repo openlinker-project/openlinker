@@ -35,6 +35,9 @@
  * variant's `updatedAt` (L-M2), which would re-run the calculation on every
  * stock change, while the things that do change the rate - a collection tax
  * override, the variant's `taxable` flag - are seen when the day runs out.
+ * An unknown answer (no tax line, several, no rate) is kept only 15 minutes:
+ * it is usually the shop's tax setup being unfinished, and the operator who
+ * finishes it should see rates and prices on the next sync, not tomorrow.
  *
  * @module libs/integrations/shopify/src/infrastructure/tax
  */
@@ -52,6 +55,7 @@ import { DRAFT_ORDER_TAX_QUERY } from '../readers/shopify-product.queries';
 import type { ShopifyShopContextProvider } from '../shop-context/shopify-shop-context.provider';
 
 const CACHE_TTL_SECONDS = 86_400;
+const UNKNOWN_CACHE_TTL_SECONDS = 900;
 
 interface DraftOrderTaxPayload {
   readonly calculatedDraftOrder: {
@@ -193,7 +197,8 @@ export class ShopifyTaxRateReader {
 
   private async writeCache(key: string, resolution: TaxRateResolution): Promise<void> {
     if (this.cache !== undefined) {
-      await this.cache.set(key, resolution, CACHE_TTL_SECONDS).catch(() => undefined);
+      const ttl = resolution.kind === 'resolved' ? CACHE_TTL_SECONDS : UNKNOWN_CACHE_TTL_SECONDS;
+      await this.cache.set(key, resolution, ttl).catch(() => undefined);
     }
   }
 }
