@@ -136,7 +136,11 @@ Opt-in: not on by default, because ingesting a shop's orders creates them in eve
   under `shopify.orders.cursor`, polled every 5 minutes (`OL_SHOPIFY_POLL_SCHEDULER_ENABLED`). Orders updated in the
   last 30 s wait for the next poll: the search index lags writes by seconds (L-M1, L-S2j). With no cursor yet, the
   first poll reads the shop's whole order history, as every other source does.
-- **Order.** Line prices are what the buyer paid per unit after line discounts, gross on a tax-inclusive shop; the
+- **Order.** Line prices are what the buyer paid per unit after EVERY discount, the order-level and code-based ones
+  included (`discountedUnitPriceAfterAllDiscountsSet`), and shipping is the price after discounts
+  (`currentShippingPriceSet`), so lines and shipping add up to the order total and an invoice or receipt can be issued.
+  Shopify allocates the discount to the lines itself; OpenLinker does not show it as a separate amount (no
+  `discountTotal`, which in core means a discount left OUT of the lines). Gross on a tax-inclusive shop; the
   quantity is `currentQuantity` (after order edits), and a line edited down to 0 is dropped. The line's own tax line
   gives the rate. A B2B order carries the company location's tax registration id (C08); a consumer order asserts none.
   Payment method: only Shopify's built-in `Cash on Delivery (COD)` and `Bank Deposit` are recognised; a pending COD
@@ -148,8 +152,11 @@ Opt-in: not on by default, because ingesting a shop's orders creates them in eve
   tracking number, carrier and URL (the URL is always sent: without it Shopify guessed FedEx for an InPost parcel,
   L-F3). Work Shopify routed to another location is moved to the configured one first (C24). `cancelled` cancels the
   order, restocking and keeping the payment. `delivered` and `in-progress` are declined (not verified live).
-- **Returns.** The return feed walks the orders that carry a return in laps (a return does not bump the order's
-  `updatedAt`), and the re-read sweep observes status changes; both passes are off by default
+- **Returns.** The return feed walks the orders that carry a return in laps, from the newest order down (a return does
+  not bump the order's `updatedAt`, and an order keeps its `returned` status for good, so an ascending walk made a new
+  return wait behind the shop's whole return history); a cursor from the earlier ascending walk starts a fresh lap.
+  A return opened seconds before a poll can miss that lap (the search index lags) and is found on the next. The
+  re-read sweep observes status changes; both passes are off by default
   (`OL_SHOPIFY_RETURNS_POLL_SCHEDULER_ENABLED`, `OL_SHOPIFY_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED`). Reasons come from
   `returnReasonDefinition` (`returnReason` is deprecated in 2026-10, C16). A `REQUESTED` return can be declined from
   OpenLinker (`returnDeclineRequest`); an already declined one counts as done.
@@ -171,5 +178,11 @@ Opt-in: not on by default, because ingesting a shop's orders creates them in eve
 - Product webhooks are a separate issue: today the catalogue is kept current by the sweeps and the delta pass.
 - Whether a configured location exists is checked by the connection test and at runtime, not when the connection
   is saved (a save has no credentials to ask the shop with).
+- A return's reason is carried as Shopify's raw `returnReasonDefinition` handle; core recognises only its own words,
+  so every Shopify return reason is stored as `other` (the same holds for Allegro's reasons).
+- A fulfilment made in the Shopify admin (and its tracking number) does not reach OpenLinker: the order source does not
+  implement `OrderFulfillmentReadback`, which Allegro and Shoper do.
+- A discount Shopify allocated to the lines is visible only as lower line prices; OpenLinker has no field for "a
+  discount already inside the line prices" to show it as an amount.
 - Cost pacing is per process: two worker processes share the request-count bucket but each paces cost from its own
   last observation; Shopify's `THROTTLED` answer and the retry classifier cover the rest.
