@@ -333,6 +333,7 @@
     "SHIPMENT_DISPATCH_CONTENDED": "Another shipment for this order is being created. Nothing was bought; try again in a moment.",
     "SHIPMENT_LABEL_DOCUMENT_UNSUPPORTED": "This carrier connection cannot provide label documents.",
     "SHIPMENT_LABEL_NOT_GENERATED": "No label has been generated for this shipment yet.",
+    "SHIPMENT_LABEL_NOT_READY": "The carrier is still preparing this label. Try again in a moment.",
     "SHIPMENT_NOT_CANCELLABLE": "This shipment can no longer be cancelled.",
     "SHIPMENT_NOT_FOUND": "This shipment no longer exists.",
     "SHIPMENT_ROUTING_UNDISPATCHABLE": "A shipment cannot be created for this order with its current fulfilment settings.",

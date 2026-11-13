@@ -333,6 +333,7 @@
     "SHIPMENT_DISPATCH_CONTENDED": "Inna przesyłka dla tego zamówienia jest właśnie tworzona. Niczego nie zakupiono; spróbuj ponownie za chwilę.",
     "SHIPMENT_LABEL_DOCUMENT_UNSUPPORTED": "To połączenie z przewoźnikiem nie udostępnia dokumentów etykiet.",
     "SHIPMENT_LABEL_NOT_GENERATED": "Dla tej przesyłki nie wygenerowano jeszcze etykiety.",
+    "SHIPMENT_LABEL_NOT_READY": "Przewoźnik wciąż przygotowuje tę etykietę. Spróbuj ponownie za chwilę.",
     "SHIPMENT_NOT_CANCELLABLE": "Tej przesyłki nie można już anulować.",
     "SHIPMENT_NOT_FOUND": "Ta przesyłka już nie istnieje.",
     "SHIPMENT_ROUTING_UNDISPATCHABLE": "Przy obecnych ustawieniach realizacji nie można utworzyć przesyłki dla tego zamówienia.",

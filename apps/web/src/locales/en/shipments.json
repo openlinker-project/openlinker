@@ -38,6 +38,10 @@
       "description": "It may have been removed, or the link is stale. Refresh the order to see its current shipment.",
       "title": "No shipment matches this id"
     },
+    "notReady": {
+      "description": "The label was generated - the carrier just needs a moment to prepare the file. Download it again in a minute.",
+      "title": "The carrier is still preparing the label"
+    },
     "notSupported": {
       "description": "The label lives with the carrier directly - retrying here will never produce a file.",
       "title": "This carrier doesn’t provide a downloadable label"
