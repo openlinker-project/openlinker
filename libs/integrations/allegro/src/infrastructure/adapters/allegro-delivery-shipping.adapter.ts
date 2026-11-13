@@ -77,6 +77,25 @@ const LABEL_PATH = '/shipment-management/label';
  */
 const LABEL_PAGE_SIZE = 'A6';
 
+const GENERIC_BINARY_CONTENT_TYPE = 'application/octet-stream';
+const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
+
+/**
+ * The label resource is asked for (and answers with) a generic octet stream, so
+ * the reported type says nothing about the document. Name a PDF by its
+ * signature, so the caller does not save a printable label as `.bin`; any other
+ * format keeps whatever the response reported, and an absent header still
+ * defaults to PDF.
+ */
+function resolveLabelContentType(reported: string, body: Uint8Array): string {
+  if (!reported) {
+    return 'application/pdf';
+  }
+  const isGeneric = reported.toLowerCase().split(';', 1)[0]?.trim() === GENERIC_BINARY_CONTENT_TYPE;
+  const isPdf = PDF_MAGIC.every((byte, index) => body[index] === byte);
+  return isGeneric && isPdf ? 'application/pdf' : reported;
+}
+
 export class AllegroDeliveryShippingAdapter
   implements
     ShippingProviderManagerPort,
@@ -211,7 +230,7 @@ export class AllegroDeliveryShippingAdapter
         { headers: { Accept: 'application/octet-stream' } },
       );
       return {
-        contentType: response.contentType || 'application/pdf',
+        contentType: resolveLabelContentType(response.contentType, response.data),
         body: response.data,
       };
     } catch (error) {

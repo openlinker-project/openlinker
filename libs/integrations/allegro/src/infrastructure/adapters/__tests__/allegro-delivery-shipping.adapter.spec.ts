@@ -333,6 +333,34 @@ describe('AllegroDeliveryShippingAdapter', () => {
   });
 
   describe('fetchLabel', () => {
+    it('names a generic octet-stream PDF by its signature, so it is not saved as .bin', async () => {
+      const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // %PDF-1.4
+      http.postExpectingBinary.mockResolvedValue({
+        data: pdf,
+        contentType: 'application/octet-stream',
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
+
+      expect(result.contentType).toBe('application/pdf');
+    });
+
+    it('keeps a non-PDF octet stream (e.g. a ZPL label) as reported', async () => {
+      const zpl = new Uint8Array([0x5e, 0x58, 0x41]); // ^XA
+      http.postExpectingBinary.mockResolvedValue({
+        data: zpl,
+        contentType: 'application/octet-stream',
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
+
+      expect(result.contentType).toBe('application/octet-stream');
+    });
+
     it('POSTs the label request with the shipment id + page size and returns the bytes', async () => {
       const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
       http.postExpectingBinary.mockResolvedValue({
