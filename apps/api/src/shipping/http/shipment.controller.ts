@@ -67,6 +67,7 @@ import {
   InvalidProtocolBatchException,
   LabelDocumentNotSupportedException,
   LabelNotAvailableException,
+  LabelNotReadyException,
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
@@ -261,6 +262,11 @@ export class ShipmentController {
   @ApiResponse({
     status: 422,
     description: 'No label generated yet, or provider cannot return label documents',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'SHIPMENT_LABEL_NOT_READY - the carrier has not finished preparing the label yet; retry shortly',
   })
   @ApiResponse({ status: 502, description: 'Shipping provider rejected the label fetch' })
   async downloadLabel(
@@ -650,6 +656,18 @@ export class ShipmentController {
         'SHIPMENT_LABEL_DOCUMENT_UNSUPPORTED',
         error.message,
         { shipmentId: error.shipmentId, connectionId: error.connectionId },
+      );
+    }
+    if (error instanceof LabelNotReadyException) {
+      // Pending, not failed: the carrier has the shipment but cannot render the
+      // document yet. 409 (the resource is in a state that refuses this request
+      // for now) with a machine code so a client waits and retries instead of
+      // reporting an error for a label that was in fact bought.
+      return codedHttpError(
+        HttpStatus.CONFLICT,
+        'SHIPMENT_LABEL_NOT_READY',
+        error.message,
+        error.retryAfterMs === undefined ? undefined : { retryAfterMs: error.retryAfterMs },
       );
     }
     if (error instanceof LabelNotAvailableException) {

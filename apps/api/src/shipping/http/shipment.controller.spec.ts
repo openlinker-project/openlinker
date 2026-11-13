@@ -27,6 +27,7 @@ import {
   InvalidProtocolBatchException,
   LabelDocumentNotSupportedException,
   LabelNotAvailableException,
+  LabelNotReadyException,
   Shipment,
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
@@ -959,6 +960,21 @@ describe('ShipmentController', () => {
       await expect(
         controller.downloadLabel('ol_shipment_1', ADMIN_USER, res),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('should map LabelNotReadyException to a 409 SHIPMENT_LABEL_NOT_READY carrying the retry hint', async () => {
+      labelService.fetchLabel.mockRejectedValue(new LabelNotReadyException('1234', 2000));
+      const { res } = makeRes();
+
+      const error: unknown = await controller
+        .downloadLabel('ol_shipment_1', ADMIN_USER, res)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'SHIPMENT_LABEL_NOT_READY',
+        params: { retryAfterMs: 2000 },
+      });
     });
 
     it('should map LabelDocumentNotSupportedException to 422', async () => {

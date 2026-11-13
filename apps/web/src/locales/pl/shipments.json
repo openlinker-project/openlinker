@@ -38,6 +38,10 @@
       "description": "Mogła zostać usunięta albo link jest nieaktualny. Odśwież zamówienie, aby zobaczyć jego bieżącą przesyłkę.",
       "title": "Żadna przesyłka nie ma tego ID"
     },
+    "notReady": {
+      "description": "Etykieta została wygenerowana - przewoźnik potrzebuje chwili na przygotowanie pliku. Pobierz ją ponownie za minutę.",
+      "title": "Przewoźnik jeszcze przygotowuje etykietę"
+    },
     "notSupported": {
       "description": "Etykieta jest dostępna bezpośrednio u przewoźnika - ponawianie tutaj nigdy nie da pliku.",
       "title": "Ten przewoźnik nie udostępnia etykiety do pobrania"

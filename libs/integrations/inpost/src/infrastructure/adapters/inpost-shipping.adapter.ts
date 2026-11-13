@@ -15,6 +15,7 @@
  */
 import { Logger } from '@openlinker/shared/logging';
 import {
+  LabelNotReadyException,
   ShippingProviderRejectionException,
   type ShippingProviderManagerPort,
   type ShipmentCanceller,
@@ -153,12 +154,23 @@ export class InpostShippingAdapter
     // ShipX returns the label document bytes directly. We request PDF; the
     // adapter forwards whatever `Content-Type` ShipX reports (it can answer
     // PNG for some carriers) and defaults to PDF only when the header is absent.
-    const { body, contentType } = await this.http.requestBinary({
-      method: 'GET',
-      path: `/v1/shipments/${input.providerShipmentId}/label`,
-      query: { format: 'pdf' },
-    });
-    return { contentType: contentType || 'application/pdf', body };
+    try {
+      const { body, contentType } = await this.http.requestBinary({
+        method: 'GET',
+        path: `/v1/shipments/${input.providerShipmentId}/label`,
+        query: { format: 'pdf' },
+      });
+      return { contentType: contentType || 'application/pdf', body };
+    } catch (error) {
+      // ShipX confirms a freshly created shipment asynchronously and refuses
+      // the label (400 `shipx.invalid_action` / `shipment_status_incorrect`)
+      // until it leaves its initial status. That is a pending label, not a
+      // carrier refusal - surface it as such so the caller can wait and retry.
+      if (isLabelNotYetConfirmed(error)) {
+        throw new LabelNotReadyException(input.providerShipmentId, LABEL_RETRY_AFTER_MS);
+      }
+      throw error;
+    }
   }
 
   async generateProtocol(input: { providerShipmentIds: string[] }): Promise<LabelDocument> {
@@ -241,6 +253,18 @@ export class InpostShippingAdapter
       trackingNumber: match.tracking_number ?? null,
     };
   }
+}
+
+/** How soon a caller should ask again; ShipX confirms within seconds to ~a minute. */
+const LABEL_RETRY_AFTER_MS = 2000;
+
+function isLabelNotYetConfirmed(error: unknown): boolean {
+  return (
+    error instanceof ShippingProviderRejectionException &&
+    error.providerName === 'inpost' &&
+    error.providerCode === 'shipx.invalid_action' &&
+    /shipment_status_incorrect/i.test(error.message)
+  );
 }
 
 function mentionsTargetPoint(error: ShippingProviderRejectionException): boolean {

@@ -36,6 +36,9 @@
  *   2. status 404 (`ShipmentNotFoundException`) -> permanent. NestJS's
  *      default `NotFoundException(message)` body carries no exception-name
  *      field, so status alone is the only, and here unambiguous, signal.
+ *   2b. status 409, code `SHIPMENT_LABEL_NOT_READY` (`LabelNotReadyException`) -> transient.
+ *      The carrier has the shipment but is still preparing the document; the
+ *      download hook has already waited, so this is only reached on timeout.
  *   3. status 422, `error.message` contains 'generate the label first'
  *      (`LabelNotAvailableException`) -> permanent, "not yet".
  *   4. status 422, otherwise (`LabelDocumentNotSupportedException`) ->
@@ -137,6 +140,17 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
       title: copy.notFound.title,
       description: copy.notFound.description,
       retryable: 'permanent',
+    });
+  }
+
+  if (error.status === 409 && error.code === 'SHIPMENT_LABEL_NOT_READY') {
+    // Pending, not failed: the label was bought and the carrier is still
+    // rendering it. `useLabelDownload` already waited; this is what is left
+    // when the wait ran out.
+    return withTone({
+      title: copy.notReady.title,
+      description: copy.notReady.description,
+      retryable: 'transient',
     });
   }
 

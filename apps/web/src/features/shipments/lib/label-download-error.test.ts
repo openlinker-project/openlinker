@@ -37,6 +37,19 @@ describe('resolveLabelDownloadError', () => {
     expect(result.description).not.toMatch(/cancelled|replaced/i);
   });
 
+  it('maps 409 SHIPMENT_LABEL_NOT_READY to a transient "still preparing" state, not an error', () => {
+    const error = new ApiError('The carrier has not finished preparing the label', 409, {
+      statusCode: 409,
+      code: 'SHIPMENT_LABEL_NOT_READY',
+      message: 'The carrier has not finished preparing the label',
+      params: { retryAfterMs: 2000 },
+    });
+    const result = resolveLabelDownloadError(error);
+    expect(result.retryable).toBe('transient');
+    expect(result.tone).toBe('warning');
+    expect(result.title).toBe('The carrier is still preparing the label');
+  });
+
   it('maps 422 LabelNotAvailableException ("not yet") to permanent, distinct copy from the unsupported case', () => {
     const error = new ApiError(
       'No label has been generated for shipment ol_shipment_1 yet - generate the label first',

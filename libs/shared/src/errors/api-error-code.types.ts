@@ -283,6 +283,8 @@ export const ApiErrorCodeValues = [
   'SHIPMENT_LABEL_DOCUMENT_UNSUPPORTED',
   /** No label has been generated for the shipment yet. params: `shipmentId`. */
   'SHIPMENT_LABEL_NOT_GENERATED',
+  /** The carrier has the shipment but is still preparing its label; retry shortly. params: `retryAfterMs`. */
+  'SHIPMENT_LABEL_NOT_READY',
   /** The carrier connection cannot generate handover protocols. params: `connectionId`. */
   'HANDOVER_PROTOCOL_UNSUPPORTED',
   /** The carrier rejected OpenLinker's stored credentials. params: `provider`, `connectionId` where known. */

@@ -8,6 +8,7 @@
  * @module libs/integrations/inpost/src/infrastructure/adapters
  */
 import {
+  LabelNotReadyException,
   ShippingProviderRejectionException,
   type GenerateLabelCommand,
 } from '@openlinker/core/shipping';
@@ -275,6 +276,40 @@ describe('InpostShippingAdapter', () => {
       const result = await adapter.fetchLabel({ providerShipmentId: '1234' });
 
       expect(result.contentType).toBe('application/pdf');
+    });
+
+    it('should throw LabelNotReadyException when ShipX has not confirmed the shipment yet', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      requestBinary.mockRejectedValueOnce(
+        new ShippingProviderRejectionException(
+          'inpost',
+          'shipx.invalid_action',
+          'shipment_status_incorrect',
+        ),
+      );
+
+      await expect(adapter.fetchLabel({ providerShipmentId: '1234' })).rejects.toMatchObject({
+        name: 'LabelNotReadyException',
+        providerShipmentId: '1234',
+        retryAfterMs: 2000,
+      });
+    });
+
+    it('should keep any other ShipX refusal a rejection, not a pending label', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      const refusal = new ShippingProviderRejectionException(
+        'inpost',
+        'shipx.invalid_action',
+        'some_other_problem',
+      );
+      requestBinary.mockRejectedValueOnce(refusal);
+
+      const error: unknown = await adapter
+        .fetchLabel({ providerShipmentId: '1234' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBe(refusal);
+      expect(error).not.toBeInstanceOf(LabelNotReadyException);
     });
   });
 
