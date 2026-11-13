@@ -18,6 +18,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
@@ -34,7 +35,7 @@ import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/l
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
-  DropdownMenuContent,
+  DropdownMenuAnimatedContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -228,6 +229,7 @@ interface UserChipProps {
 
 function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   const copy = useMessages('app').userMenu;
+  const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   // A language picked in this menu remounts the app; focus comes back here.
   useEffect(() => {
@@ -235,7 +237,7 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   }, []);
   const themeCopy = useMessages('ui').theme;
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           ref={triggerRef}
@@ -249,7 +251,12 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           <span className="shell-user-chip__name">{username}</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={6} className="shell-user-chip__menu">
+      <DropdownMenuAnimatedContent
+        open={open}
+        align="end"
+        sideOffset={6}
+        className="shell-user-chip__menu"
+      >
         <DropdownMenuLabel>
           <div className="shell-user-chip__menu-name">{username}</div>
           {email ? <div className="shell-user-chip__menu-email">{email}</div> : null}
@@ -269,7 +276,7 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
-      </DropdownMenuContent>
+      </DropdownMenuAnimatedContent>
     </DropdownMenu>
   );
 }

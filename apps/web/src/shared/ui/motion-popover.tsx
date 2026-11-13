@@ -31,7 +31,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { SNAPPY_SPRING } from './motion-presets';
+import { popoverEntrance } from './motion-presets';
 
 const GAP = 8;
 
@@ -149,17 +149,7 @@ export const MotionPopover = forwardRef<HTMLDivElement, MotionPopoverProps>(func
           className={classes}
           // `x: '-50%'` centres the panel on the trigger; Motion owns
           // `transform`, so the CSS cannot do it with its own translate.
-          initial={{ opacity: 0, scale: 0.92, x: '-50%', y: down ? -6 : 6, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, scale: 1, x: '-50%', y: 0, filter: 'blur(0px)' }}
-          exit={{
-            opacity: 0,
-            scale: 0.96,
-            x: '-50%',
-            y: down ? -4 : 4,
-            filter: 'blur(2px)',
-            transition: { duration: 0.12 },
-          }}
-          transition={SNAPPY_SPRING}
+          {...popoverEntrance(down, '-50%')}
         >
           {title ? (
             <div className="motion-popover__head" id={titleId}>
