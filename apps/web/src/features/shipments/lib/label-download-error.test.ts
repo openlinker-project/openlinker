@@ -48,6 +48,7 @@ describe('resolveLabelDownloadError', () => {
     expect(result.retryable).toBe('transient');
     expect(result.tone).toBe('warning');
     expect(result.title).toBe('The carrier is still preparing the label');
+    expect(result.pending).toBe(true);
   });
 
   it('maps 422 LabelNotAvailableException ("not yet") to permanent, distinct copy from the unsupported case', () => {

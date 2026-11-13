@@ -85,6 +85,10 @@ export interface LabelDownloadError {
   title: string;
   description: string;
   retryable: RetryabilityClass;
+  /** True while the carrier is still preparing a label that WAS bought, so a
+   *  caller that normally words every failure as "couldn't fetch" can say the
+   *  accurate thing instead (the label is fine, it just is not ready). */
+  pending: boolean;
   /** Derived from `retryable` alone (see `TONE_BY_RETRYABLE`) - one place
    *  decides how urgent a class reads, so a call site never picks its own
    *  tone per branch and drifts from the other two call sites. */
@@ -110,10 +114,12 @@ const TONE_BY_RETRYABLE: Record<RetryabilityClass, AlertTone> = {
   unknown: 'error',
 };
 
-type UntonedLabelDownloadError = Omit<LabelDownloadError, 'tone'>;
+type UntonedLabelDownloadError = Omit<LabelDownloadError, 'tone' | 'pending'> & {
+  pending?: boolean;
+};
 
 function withTone(result: UntonedLabelDownloadError): LabelDownloadError {
-  return { ...result, tone: TONE_BY_RETRYABLE[result.retryable] };
+  return { ...result, pending: result.pending ?? false, tone: TONE_BY_RETRYABLE[result.retryable] };
 }
 
 function unknownFallback(): UntonedLabelDownloadError {
@@ -151,6 +157,7 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
       title: copy.notReady.title,
       description: copy.notReady.description,
       retryable: 'transient',
+      pending: true,
     });
   }
 
