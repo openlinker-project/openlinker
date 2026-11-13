@@ -111,6 +111,53 @@ export class AllegroSafetyInformationDto {
   attachments?: AllegroSafetyAttachmentDto[];
 }
 
+/** Street address half of {@link AllegroSenderContactDto}. */
+export class AllegroSenderAddressDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  street!: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  buildingNumber!: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  city!: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  postCode!: string;
+  @IsString()
+  @Matches(/^[A-Z]{2}$/, { message: 'countryCode must be a two-letter ISO code' })
+  countryCode!: string;
+}
+
+/** Who an Allegro Delivery shipment ships from; Allegro requires it on every create. */
+export class AllegroSenderContactDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  company?: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  email!: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(32)
+  phone!: string;
+  @ValidateNested()
+  @Type(() => AllegroSenderAddressDto)
+  @IsObject()
+  address!: AllegroSenderAddressDto;
+}
+
 export class AllegroSellerDefaultsDto {
   @ValidateNested()
   @Type(() => AllegroSellerLocationDto)
@@ -158,4 +205,11 @@ export class AllegroConnectionConfigDto {
   @IsString()
   @IsNotEmpty()
   sellerId?: string;
+
+  // Sender for Allegro Delivery shipments. Optional so connections that never
+  // generate labels keep validating; a label without it is refused pre-call.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AllegroSenderContactDto)
+  senderAddress?: AllegroSenderContactDto;
 }
