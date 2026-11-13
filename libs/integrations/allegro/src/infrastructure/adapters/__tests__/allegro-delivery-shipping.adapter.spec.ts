@@ -65,13 +65,30 @@ function makeCommand(overrides: Partial<GenerateLabelCommand> = {}): GenerateLab
   };
 }
 
+const CONNECTION_WITH_SENDER = {
+  config: {
+    senderAddress: {
+      name: 'Sklep',
+      email: 'sklep@sklep.pl',
+      phone: '+48123123123',
+      address: {
+        street: 'ul. Testowa',
+        buildingNumber: '3',
+        city: 'Warszawa',
+        postCode: '02-222',
+        countryCode: 'PL',
+      },
+    },
+  },
+} as unknown as Connection;
+
 describe('AllegroDeliveryShippingAdapter', () => {
   let http: jest.Mocked<IAllegroHttpClient>;
   let adapter: AllegroDeliveryShippingAdapter;
 
   beforeEach(() => {
     http = makeHttp();
-    adapter = new AllegroDeliveryShippingAdapter('conn-allegro', http, {} as Connection, {
+    adapter = new AllegroDeliveryShippingAdapter('conn-allegro', http, CONNECTION_WITH_SENDER, {
       initialDelayMs: 0,
       maxDelayMs: 0,
       backoffFactor: 1,

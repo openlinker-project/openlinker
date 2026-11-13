@@ -17,6 +17,7 @@ import type {
 } from '@openlinker/core/shipping';
 
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
+import type { AllegroSenderContact } from '../../domain/types/allegro-config.types';
 import type {
   AllegroCreateShipmentInput,
   AllegroShipmentCommandError,
@@ -79,11 +80,24 @@ function gramsToKg(grams: number): number {
  * Throws `ShippingProviderRejectionException` (readable) on pre-flight gaps
  * the Allegro create requires: the resolved provider delivery-method id, and
  * parcel dimensions + weight (Allegro has no locker size-template abstraction,
- * so dimensions are mandatory — see #833 Q7). `sender` is intentionally omitted
- * — Allegro brokers "Wysyłam z Allegro" and defaults the sender from the seller
- * account (#833 Q6); if a sandbox probe shows it required, add it here.
+ * so dimensions are mandatory — see #833 Q7), and the sender. `sender` IS required
+ * by Allegro's create-command (live sandbox probe: 400 `input.sender`; the
+ * original assumption that Allegro defaults it from the seller account was
+ * wrong), so it comes from the connection's `senderAddress`.
  */
-export function buildCreateShipmentInput(cmd: GenerateLabelCommand): AllegroCreateShipmentInput {
+export function buildCreateShipmentInput(
+  cmd: GenerateLabelCommand,
+  sender: AllegroSenderContact | null,
+): AllegroCreateShipmentInput {
+  if (!sender) {
+    throw new ShippingProviderRejectionException(
+      'allegro',
+      'preflight.missing-sender-address',
+      `The Allegro connection has no sender address (config.senderAddress); ` +
+        `Allegro Delivery requires one to create shipment ${cmd.shipmentId}`,
+    );
+  }
+
   if (!cmd.deliveryMethodId) {
     throw new ShippingProviderRejectionException(
       'allegro',
@@ -119,9 +133,21 @@ export function buildCreateShipmentInput(cmd: GenerateLabelCommand): AllegroCrea
     ...(cmd.paczkomatId ? { point: cmd.paczkomatId } : {}),
   };
 
+  const senderParty: AllegroShipmentParty = {
+    ...(sender.name ? { name: sender.name } : {}),
+    ...(sender.company ? { company: sender.company } : {}),
+    email: sender.email,
+    phone: sender.phone,
+    street: `${sender.address.street} ${sender.address.buildingNumber}`.trim(),
+    postalCode: sender.address.postCode,
+    city: sender.address.city,
+    countryCode: sender.address.countryCode,
+  };
+
   return {
     deliveryMethodId: cmd.deliveryMethodId,
     receiver,
+    sender: senderParty,
     referenceNumber: cmd.shipmentId,
     packages: [
       {
@@ -268,4 +294,44 @@ export function formatCommandErrors(errors: readonly AllegroShipmentCommandError
   return errors
     .map((e) => e.userMessage ?? e.message ?? e.code ?? 'unknown error')
     .join('; ');
+}
+
+/**
+ * Read the connection's sender from its untyped config blob. Returns `null`
+ * unless every field Allegro requires is present - a half-filled sender sent to
+ * Allegro would be rejected with a less useful message than the pre-call refusal.
+ */
+export function readAllegroSender(config: Record<string, unknown> | undefined): AllegroSenderContact | null {
+  const raw = config?.senderAddress;
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const sender = raw as Record<string, unknown>;
+  const address = sender.address;
+  if (typeof address !== 'object' || address === null) {
+    return null;
+  }
+  const a = address as Record<string, unknown>;
+  const text = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+
+  const email = text(sender.email);
+  const phone = text(sender.phone);
+  const street = text(a.street);
+  const buildingNumber = text(a.buildingNumber);
+  const city = text(a.city);
+  const postCode = text(a.postCode);
+  const countryCode = text(a.countryCode);
+  if (!email || !phone || !street || !buildingNumber || !city || !postCode || !countryCode) {
+    return null;
+  }
+  const name = text(sender.name);
+  const company = text(sender.company);
+  return {
+    ...(name ? { name } : {}),
+    ...(company ? { company } : {}),
+    email,
+    phone,
+    address: { street, buildingNumber, city, postCode, countryCode },
+  };
 }

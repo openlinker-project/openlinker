@@ -34,6 +34,7 @@ import {
   type ShippingProviderManagerPort,
   type TrackingSnapshot,
 } from '@openlinker/core/shipping';
+import type { AllegroSenderContact } from '../../domain/types/allegro-config.types';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
@@ -50,6 +51,7 @@ import { DEFAULT_ALLEGRO_SHIPMENT_POLL_CONFIG } from '../../domain/types/allegro
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import {
   buildCreateShipmentInput,
+  readAllegroSender,
   deriveCommandId,
   describeShipmentState,
   extractCarrierId,
@@ -84,14 +86,15 @@ export class AllegroDeliveryShippingAdapter
 {
   private readonly logger = new Logger(AllegroDeliveryShippingAdapter.name);
   private readonly pollConfig: AllegroShipmentPollConfig;
+  private readonly sender: AllegroSenderContact | null;
 
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IAllegroHttpClient,
-    _connection: Connection,
+    connection: Connection,
     pollConfig?: Partial<AllegroShipmentPollConfig>,
   ) {
-    void _connection;
+    this.sender = readAllegroSender(connection.config);
     this.pollConfig = { ...DEFAULT_ALLEGRO_SHIPMENT_POLL_CONFIG, ...pollConfig };
   }
 
@@ -119,7 +122,7 @@ export class AllegroDeliveryShippingAdapter
 
     // Throws a readable validation error if the resolved deliveryMethodId or
     // parcel dimensions/weight are missing.
-    const input = buildCreateShipmentInput(cmd);
+    const input = buildCreateShipmentInput(cmd, this.sender);
     const commandId = deriveCommandId(cmd.shipmentId);
     const body: AllegroCreateShipmentCommandRequest = { commandId, input };
 

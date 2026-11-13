@@ -6,6 +6,7 @@
 import type { GenerateLabelCommand } from '@openlinker/core/shipping';
 
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
+import type { AllegroSenderContact } from '../../../domain/types/allegro-config.types';
 import type { AllegroShipmentResource } from '../../../domain/types/allegro-shipment.types';
 import {
   buildCreateShipmentInput,
@@ -16,10 +17,24 @@ import {
   formatCommandErrors,
   mapShipmentStateToStatus,
   normalizeAllegroCarrierId,
+  readAllegroSender,
   toGenerateLabelResult,
 } from '../allegro-shipment.mapper';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+const SENDER: AllegroSenderContact = {
+  name: 'Sklep',
+  email: 'sklep@sklep.pl',
+  phone: '+48123123123',
+  address: {
+    street: 'ul. Testowa',
+    buildingNumber: '3',
+    city: 'Warszawa',
+    postCode: '02-222',
+    countryCode: 'PL',
+  },
+};
 
 function makeCommand(overrides: Partial<GenerateLabelCommand> = {}): GenerateLabelCommand {
   return {
@@ -63,7 +78,7 @@ describe('deriveCommandId', () => {
 
 describe('buildCreateShipmentInput', () => {
   it('maps a courier command: receiver address, mm→cm / g→kg packages, referenceNumber, deliveryMethodId', () => {
-    const input = buildCreateShipmentInput(makeCommand());
+    const input = buildCreateShipmentInput(makeCommand(), SENDER);
 
     expect(input.deliveryMethodId).toBe('allegro-courier-uuid');
     expect(input.referenceNumber).toBe('ol_shipment_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
@@ -100,6 +115,7 @@ describe('buildCreateShipmentInput', () => {
           phone: '+48500600700',
         },
       }),
+      SENDER,
     );
 
     expect(input.receiver.point).toBe('POZ08A');
@@ -108,7 +124,7 @@ describe('buildCreateShipmentInput', () => {
   });
 
   it('throws a typed rejection (preflight.missing-delivery-method-id) when the resolved deliveryMethodId is absent (#885)', () => {
-    const call = (): unknown => buildCreateShipmentInput(makeCommand({ deliveryMethodId: undefined }));
+    const call = (): unknown => buildCreateShipmentInput(makeCommand({ deliveryMethodId: undefined }), SENDER);
     expect(call).toThrow(ShippingProviderRejectionException);
     try {
       call();
@@ -122,7 +138,7 @@ describe('buildCreateShipmentInput', () => {
 
   it('throws a typed rejection (preflight.missing-parcel-dimensions) when parcel dimensions are missing (#885)', () => {
     const call = (): unknown =>
-      buildCreateShipmentInput(makeCommand({ parcel: { weightGrams: 1200 } }));
+      buildCreateShipmentInput(makeCommand({ parcel: { weightGrams: 1200 } }), SENDER);
     expect(call).toThrow(ShippingProviderRejectionException);
     try {
       call();
@@ -138,6 +154,7 @@ describe('buildCreateShipmentInput', () => {
     const call = (): unknown =>
       buildCreateShipmentInput(
         makeCommand({ parcel: { dimensions: { length: 200, width: 150, height: 100 } } }),
+        SENDER,
       );
     expect(call).toThrow(ShippingProviderRejectionException);
     try {
@@ -148,6 +165,63 @@ describe('buildCreateShipmentInput', () => {
         providerCode: 'preflight.missing-parcel-dimensions',
       });
     }
+  });
+});
+
+describe('buildCreateShipmentInput sender', () => {
+  it('sends the connection sender on every create (Allegro requires input.sender)', () => {
+    const input = buildCreateShipmentInput(makeCommand(), SENDER);
+
+    expect(input.sender).toEqual({
+      name: 'Sklep',
+      email: 'sklep@sklep.pl',
+      phone: '+48123123123',
+      street: 'ul. Testowa 3',
+      postalCode: '02-222',
+      city: 'Warszawa',
+      countryCode: 'PL',
+    });
+  });
+
+  it('refuses pre-call (preflight.missing-sender-address) when the connection has no sender', () => {
+    const call = (): unknown => buildCreateShipmentInput(makeCommand(), null);
+
+    expect(call).toThrow(ShippingProviderRejectionException);
+    expect(call).toThrow(/senderAddress/);
+  });
+});
+
+describe('readAllegroSender', () => {
+  const valid = {
+    senderAddress: {
+      name: 'Sklep',
+      email: 'sklep@sklep.pl',
+      phone: '+48123123123',
+      address: {
+        street: 'ul. Testowa',
+        buildingNumber: '3',
+        city: 'Warszawa',
+        postCode: '02-222',
+        countryCode: 'PL',
+      },
+    },
+  };
+
+  it('reads a complete sender from the config blob', () => {
+    expect(readAllegroSender(valid)).toEqual(valid.senderAddress);
+  });
+
+  it('returns null when the config has no sender', () => {
+    expect(readAllegroSender({})).toBeNull();
+    expect(readAllegroSender(undefined)).toBeNull();
+  });
+
+  it('returns null for a half-filled sender rather than sending a partial one', () => {
+    expect(
+      readAllegroSender({
+        senderAddress: { ...valid.senderAddress, address: { street: 'ul. Testowa' } },
+      }),
+    ).toBeNull();
   });
 });
 
