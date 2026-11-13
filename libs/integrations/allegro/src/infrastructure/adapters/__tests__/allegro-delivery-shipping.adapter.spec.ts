@@ -167,6 +167,79 @@ describe('AllegroDeliveryShippingAdapter', () => {
       });
     });
 
+    describe('when Allegro already knows the command id (COMMAND_EXISTS)', () => {
+      const commandExists = (): AllegroApiException =>
+        new AllegroApiException('exists', 400, '{"errors":[{"code":"COMMAND_EXISTS"}]}', CREATE_PATH, [
+          { code: 'COMMAND_EXISTS', message: 'An order with the submitted ID already exists' },
+        ]);
+      const sentIds = (): string[] =>
+        http.post.mock.calls.map((call) => (call[1] as { commandId: string }).commandId);
+
+      it('resumes a command that already SUCCEEDED instead of buying a second label', async () => {
+        http.post.mockRejectedValueOnce(commandExists());
+        http.get.mockResolvedValue(
+          ok<AllegroShipmentCommandResult>({
+            commandId: 'c1',
+            status: 'SUCCESS',
+            shipmentId: 'allegro-ship-9',
+          }),
+        );
+
+        const result = await adapter.generateLabel(makeCommand());
+
+        expect(result.providerShipmentId).toBe('allegro-ship-9');
+        expect(http.post).toHaveBeenCalledTimes(1);
+      });
+
+      it('retries under a NEW command id when the earlier command FAILED', async () => {
+        http.post.mockRejectedValueOnce(commandExists()).mockResolvedValueOnce(ok({}));
+        http.get
+          .mockResolvedValueOnce(ok<AllegroShipmentCommandResult>({ commandId: 'c1', status: 'ERROR' }))
+          .mockResolvedValueOnce(
+            ok<AllegroShipmentCommandResult>({
+              commandId: 'c2',
+              status: 'SUCCESS',
+              shipmentId: 'allegro-ship-2',
+            }),
+          );
+
+        const result = await adapter.generateLabel(makeCommand());
+
+        expect(result.providerShipmentId).toBe('allegro-ship-2');
+        const ids = sentIds();
+        expect(ids).toHaveLength(2);
+        expect(ids[1]).not.toBe(ids[0]);
+      });
+
+      it('keeps waiting on a command that is still IN_PROGRESS without resubmitting', async () => {
+        http.post.mockRejectedValueOnce(commandExists());
+        http.get
+          .mockResolvedValueOnce(ok<AllegroShipmentCommandResult>({ commandId: 'c1', status: 'IN_PROGRESS' }))
+          .mockResolvedValueOnce(
+            ok<AllegroShipmentCommandResult>({
+              commandId: 'c1',
+              status: 'SUCCESS',
+              shipmentId: 'allegro-ship-3',
+            }),
+          );
+
+        const result = await adapter.generateLabel(makeCommand());
+
+        expect(result.providerShipmentId).toBe('allegro-ship-3');
+        expect(http.post).toHaveBeenCalledTimes(1);
+      });
+
+      it('gives up with a readable rejection when every fresh id is also refused', async () => {
+        http.post.mockRejectedValue(commandExists());
+        http.get.mockResolvedValue(ok<AllegroShipmentCommandResult>({ commandId: 'c', status: 'ERROR' }));
+
+        await expect(adapter.generateLabel(makeCommand())).rejects.toMatchObject({
+          name: 'ShippingProviderRejectionException',
+          providerCode: 'command.retries-exhausted',
+        });
+      });
+    });
+
     it('throws AllegroShipmentPendingException when the poll budget exhausts while IN_PROGRESS', async () => {
       http.post.mockResolvedValue(ok({}));
       http.get.mockResolvedValue(ok<AllegroShipmentCommandResult>({ commandId: 'c1', status: 'IN_PROGRESS' }));

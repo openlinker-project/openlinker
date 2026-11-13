@@ -77,6 +77,19 @@ const LABEL_PATH = '/shipment-management/label';
  */
 const LABEL_PAGE_SIZE = 'A6';
 
+/** How many fresh command ids one label attempt may mint after earlier ones failed. */
+const MAX_COMMAND_GENERATIONS = 10;
+
+/** Allegro refuses a command id it has already seen, whatever became of that command. */
+function isCommandExists(error: unknown): boolean {
+  return (
+    error instanceof AllegroApiException &&
+    error.statusCode === 400 &&
+    (error.allegroErrors?.some((e) => e.code === 'COMMAND_EXISTS') === true ||
+      error.responseBody?.includes('COMMAND_EXISTS') === true)
+  );
+}
+
 const GENERIC_BINARY_CONTENT_TYPE = 'application/octet-stream';
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
 
@@ -142,28 +155,57 @@ export class AllegroDeliveryShippingAdapter
     // Throws a readable validation error if the resolved deliveryMethodId or
     // parcel dimensions/weight are missing.
     const input = buildCreateShipmentInput(cmd, this.sender);
-    const commandId = deriveCommandId(cmd.shipmentId);
-    const body: AllegroCreateShipmentCommandRequest = { commandId, input };
-
-    this.logger.debug(
-      `Creating Allegro Delivery shipment for ${cmd.shipmentId} (connection ${this.connectionId}, command ${commandId})`,
-    );
-
-    try {
-      await this.httpClient.post<unknown>(
-        CREATE_COMMANDS_PATH,
-        body as unknown as Record<string, unknown>,
+    // One command id per ATTEMPT, derived from the shipment id: a retry of the
+    // same attempt (timeout, restart) reuses the id so Allegro de-duplicates it
+    // and never buys a second label. But Allegro also remembers ids of commands
+    // that FAILED, so a later attempt on the same shipment must mint a new one -
+    // otherwise it is refused with COMMAND_EXISTS for ever.
+    let result: AllegroShipmentCommandResult | null = null;
+    for (let generation = 0; generation <= MAX_COMMAND_GENERATIONS && !result; generation++) {
+      const commandId = deriveCommandId(
+        generation === 0 ? cmd.shipmentId : `${cmd.shipmentId}:retry:${generation}`,
       );
-    } catch (error) {
-      throw this.toRejected(error, `create shipment for ${cmd.shipmentId}`);
-    }
+      const body: AllegroCreateShipmentCommandRequest = { commandId, input };
 
-    const result = await this.pollUntilTerminal(CREATE_COMMANDS_PATH, commandId);
+      this.logger.debug(
+        `Creating Allegro Delivery shipment for ${cmd.shipmentId} (connection ${this.connectionId}, command ${commandId})`,
+      );
+
+      try {
+        await this.httpClient.post<unknown>(
+          CREATE_COMMANDS_PATH,
+          body as unknown as Record<string, unknown>,
+        );
+      } catch (error) {
+        if (!isCommandExists(error)) {
+          throw this.toRejected(error, `create shipment for ${cmd.shipmentId}`);
+        }
+        // Allegro already knows this id: ask what became of it instead of
+        // submitting again. SUCCESS resumes it, IN_PROGRESS keeps waiting, and
+        // only a command that FAILED moves on to a fresh id.
+        const known = await this.readCommand(CREATE_COMMANDS_PATH, commandId);
+        if (known.status === 'ERROR') {
+          this.logger.warn(
+            `Allegro create command ${commandId} for ${cmd.shipmentId} had failed; retrying under a new command id`,
+          );
+          continue;
+        }
+      }
+
+      result = await this.pollUntilTerminal(CREATE_COMMANDS_PATH, commandId);
+    }
+    if (!result) {
+      throw new ShippingProviderRejectionException(
+        'allegro',
+        'command.retries-exhausted',
+        `Allegro refused every create attempt for shipment ${cmd.shipmentId}`,
+      );
+    }
     if (!result.shipmentId) {
       throw new ShippingProviderRejectionException(
         'allegro',
         'command.success-without-shipment-id',
-        `Allegro create-command ${commandId} succeeded without a shipmentId`,
+        `Allegro create-command succeeded without a shipmentId`,
       );
     }
     return toGenerateLabelResult(result.shipmentId);
@@ -235,6 +277,18 @@ export class AllegroDeliveryShippingAdapter
       };
     } catch (error) {
       throw this.toRejected(error, `fetch label for ${input.providerShipmentId}`);
+    }
+  }
+
+  private async readCommand(
+    basePath: string,
+    commandId: string,
+  ): Promise<AllegroShipmentCommandResult> {
+    try {
+      return (await this.httpClient.get<AllegroShipmentCommandResult>(`${basePath}/${commandId}`))
+        .data;
+    } catch (error) {
+      throw this.toRejected(error, `read command ${commandId}`);
     }
   }
 
