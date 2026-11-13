@@ -199,10 +199,17 @@ export class AllegroDeliveryShippingAdapter
     // whatever `Content-Type` Allegro reports and default to PDF only when the
     // header is absent (never overwrite a real one).
     try {
-      const response = await this.httpClient.postExpectingBinary(LABEL_PATH, {
-        shipmentIds: [input.providerShipmentId],
-        pageSize: LABEL_PAGE_SIZE,
-      });
+      // The label resource answers 406 to the client's default
+      // `application/vnd.allegro.public.v1+json` Accept (live sandbox probe);
+      // it serves the document as an octet stream.
+      const response = await this.httpClient.postExpectingBinary(
+        LABEL_PATH,
+        {
+          shipmentIds: [input.providerShipmentId],
+          pageSize: LABEL_PAGE_SIZE,
+        },
+        { headers: { Accept: 'application/octet-stream' } },
+      );
       return {
         contentType: response.contentType || 'application/pdf',
         body: response.data,

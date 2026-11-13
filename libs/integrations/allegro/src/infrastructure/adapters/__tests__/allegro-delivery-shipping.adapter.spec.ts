@@ -344,10 +344,11 @@ describe('AllegroDeliveryShippingAdapter', () => {
 
       const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
 
-      expect(http.postExpectingBinary).toHaveBeenCalledWith('/shipment-management/label', {
-        shipmentIds: ['allegro-ship-1'],
-        pageSize: 'A6',
-      });
+      expect(http.postExpectingBinary).toHaveBeenCalledWith(
+        '/shipment-management/label',
+        { shipmentIds: ['allegro-ship-1'], pageSize: 'A6' },
+        { headers: { Accept: 'application/octet-stream' } },
+      );
       expect(result).toEqual({ contentType: 'application/pdf', body: bytes });
     });
 
