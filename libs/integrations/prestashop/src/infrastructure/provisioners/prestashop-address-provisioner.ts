@@ -23,6 +23,7 @@ import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/
 import { DestinationAddressMapping } from '@openlinker/core/customers';
 import type { Address, OrderPickupPoint } from '@openlinker/core/orders';
 import type { PrestashopAddress, PrestashopAddressCreate } from './prestashop-provisioner.types';
+import { sanitizePrestashopName, toPrestashopCompanyNote } from './prestashop-name-sanitizer';
 import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 
 /**
@@ -354,18 +355,32 @@ export class PrestashopAddressProvisioner {
           );
         }
 
+        const firstNameSanitized = sanitizePrestashopName(effectiveAddress.firstName, 'Guest');
+        const lastNameSanitized = sanitizePrestashopName(effectiveAddress.lastName, 'Customer');
+
         const addressData: PrestashopAddressCreate = {
           id_customer: customerIdNum,
           id_country: countryId,
           alias,
-          firstname: effectiveAddress.firstName || 'Guest',
-          lastname: effectiveAddress.lastName || 'Customer',
+          firstname: firstNameSanitized.value,
+          lastname: lastNameSanitized.value,
           address1: effectiveAddress.address1,
           address2: effectiveAddress.address2,
           city: effectiveAddress.city,
           postcode: effectiveAddress.postalCode,
           phone: effectiveAddress.phone,
         };
+
+        // Keep the buyer's original name on the address when it had to be altered.
+        if (firstNameSanitized.changed || lastNameSanitized.changed) {
+          const original = toPrestashopCompanyNote([
+            effectiveAddress.firstName,
+            effectiveAddress.lastName,
+          ]);
+          if (original) {
+            addressData.company = original;
+          }
+        }
 
         const createdAddress = await webserviceClient.createResource<PrestashopAddress>(
           'addresses',

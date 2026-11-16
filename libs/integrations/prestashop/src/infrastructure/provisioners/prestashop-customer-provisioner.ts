@@ -16,6 +16,7 @@ import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-c
 import { PrestashopProvisioningException } from '../../domain/exceptions/prestashop-provisioning.exception';
 import type { PrestashopCustomer, PrestashopCustomerCreate } from './prestashop-provisioner.types';
 import { randomBytes } from 'crypto';
+import { sanitizePrestashopName } from './prestashop-name-sanitizer';
 
 /**
  * Password generation constants
@@ -271,8 +272,8 @@ export class PrestashopCustomerProvisioner {
         const customerData: PrestashopCustomerCreate = {
           is_guest: 1,
           passwd: generatePassword(),
-          firstname: firstName || 'Guest',
-          lastname: lastName || 'Customer',
+          firstname: sanitizePrestashopName(firstName, 'Guest').value,
+          lastname: sanitizePrestashopName(lastName, 'Customer').value,
           email: normalizedEmail,
           active: 1,
           id_default_group: groupId,
