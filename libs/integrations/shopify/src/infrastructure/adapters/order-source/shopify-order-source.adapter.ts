@@ -63,6 +63,7 @@ import type {
   ReturnFeedItem,
   ReturnFeedOutput,
 } from '@openlinker/core/returns';
+import { ReturnDeclineRejectedBySourceError } from '@openlinker/core/returns';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type {
   OrderLifecycleEvent,
@@ -367,7 +368,18 @@ export class ShopifyOrderSourceAdapter
       if (current.node?.status === 'DECLINED') {
         return { declinedAt: null, rawStatus: 'DECLINED', raw: errors };
       }
-      throw new ShopifyUserErrorsException('returnDeclineRequest', errors);
+      const refusal = new ShopifyUserErrorsException('returnDeclineRequest', errors);
+      // A throttle clears by itself, so it stays platform-native and in doubt;
+      // any other userErrors answer is Shopify deterministically refusing the
+      // request (a return not REQUESTED, a bad reason), which a retry cannot
+      // turn into a success and core must record as a refusal, not a 500.
+      if (refusal.isRateLimited()) {
+        throw refusal;
+      }
+      throw new ReturnDeclineRejectedBySourceError(
+        command.externalReturnId,
+        errors.map((e) => e.message).join('; ').slice(0, 500),
+      );
     }
     return { declinedAt: null, rawStatus: payload?.return?.status ?? null, raw: payload };
   }

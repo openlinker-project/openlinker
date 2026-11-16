@@ -1,4 +1,5 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { ReturnDeclineRejectedBySourceError } from '@openlinker/core/returns';
 import { isRefundExecutor, isReturnDecliner, isReturnSourceReader, isSourceOptionsReader } from '@openlinker/core/orders';
 
 import { ShopifyAdapterFactory } from '../../../../application/shopify-adapter.factory';
@@ -170,7 +171,17 @@ describe('ShopifyOrderSourceAdapter', () => {
       const command = { externalReturnId: '77', reasonCode: 'OTHER' } as never;
 
       await expect(build(alreadyDeclined).declineReturn(command)).resolves.toMatchObject({ rawStatus: 'DECLINED' });
-      await expect(build(open).declineReturn(command)).rejects.toBeInstanceOf(ShopifyUserErrorsException);
+      await expect(build(open).declineReturn(command)).rejects.toBeInstanceOf(ReturnDeclineRejectedBySourceError);
+    });
+
+    it('should leave a throttle platform-native so it stays in doubt', async () => {
+      const throttled = jest.fn().mockResolvedValueOnce({
+        returnDeclineRequest: { return: null, userErrors: [{ code: null, message: 'Too many attempts' }] },
+      }).mockResolvedValueOnce({ node: { status: 'REQUESTED' } });
+
+      await expect(build(throttled).declineReturn({ externalReturnId: '77', reasonCode: 'OTHER' } as never)).rejects.toBeInstanceOf(
+        ShopifyUserErrorsException,
+      );
     });
   });
 });
