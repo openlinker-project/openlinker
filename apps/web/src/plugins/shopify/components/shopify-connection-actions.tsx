@@ -16,6 +16,7 @@
 import type { ReactElement } from 'react';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import type { Connection } from '../../../features/connections';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
@@ -71,7 +72,7 @@ export function ShopifyConnectionActions({
       showToast({
         tone: 'error',
         title: copy.toast.failedTitle,
-        description: (error as Error).message,
+        description: describeApiError(error, 'shopify'),
       });
     }
   }
