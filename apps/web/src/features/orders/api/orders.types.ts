@@ -851,6 +851,12 @@ export interface OrderRecord {
    */
   openReturn?: OrderOpenReturn;
   /**
+   * Refund state derived on read from the refund records (#4130). Absent means
+   * nothing was refunded or the read failed, never "not refunded". Separate
+   * from `paymentStatus`, which the next poll rewrites.
+   */
+  refundState?: OrderRefundState;
+  /**
    * Tag ids assigned to this order (#3532, D34). Absent means "not
    * projected on this read"; an empty array is a positive "no tags".
    */
@@ -918,6 +924,13 @@ export interface OrderHandledInOpenLinker {
    */
   assignment?: 'single' | 'mixed';
   assignedToUserId?: string | null;
+}
+
+/** Refund state derived by the API from the order's refund records (#4130). */
+export interface OrderRefundState {
+  state: 'none' | 'partial' | 'full' | 'unknown';
+  refundedAmount: string | null;
+  currency: string | null;
 }
 
 /** The open-return badge payload (#2998) — count plus a stage hint. */

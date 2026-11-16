@@ -84,6 +84,7 @@ import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/un
 import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
+import { OrderRefundStateBadge } from '../../features/orders/components/order-refund-state-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { OrderBuyerNoteHint } from '../../features/orders/components/order-buyer-note-hint';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
@@ -213,6 +214,8 @@ function renderStatusBadges(order: OrderRecord): ReactElement {
       <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
       {/* #2998 — neutral: a return is routine, not a failure. */}
       <OrderOpenReturnBadge openReturn={order.openReturn} />
+      {/* #4130 - derived from refund records; the payment status is the channel's claim. */}
+      <OrderRefundStateBadge refundState={order.refundState} compact />
       {/* #2342 — a hold is an exception (style guide § order-row signals). */}
       <OrderHoldBadge reason={order.activeHoldReason} compact />
       {/* #2703 / #2704 - why routing narrowed the destination fan-out. */}

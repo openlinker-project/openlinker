@@ -2662,6 +2662,11 @@
     "withdrawal": "Buyer changed their mind",
     "wrongItem": "Wrong item was sent"
   },
+  "refundStateBadge": {
+    "full": "Refunded",
+    "partial": "Partially refunded",
+    "title": "{label}: {amount}"
+  },
   "salesDocumentBlockDetail": {
     "candidates": "Connections that could issue it: {n}.",
     "capabilities": {
