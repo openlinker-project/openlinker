@@ -40,6 +40,7 @@ import { OrderLineItemRepository } from './infrastructure/persistence/repositori
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import { OrderRefundService } from './application/services/order-refund.service';
 import { OrderRefundObservationService } from './application/services/order-refund-observation.service';
+import { OrderRefundRelayService } from './application/services/order-refund-relay.service';
 import { RefundRecordRepository } from './infrastructure/persistence/repositories/refund-record.repository';
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
@@ -93,6 +94,7 @@ import {
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
+  ORDER_REFUND_RELAY_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
@@ -244,6 +246,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderFxReadService,
     OrderRefundService,
     OrderRefundObservationService,
+    OrderRefundRelayService,
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
@@ -362,6 +365,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
       useExisting: OrderRefundObservationService,
+    },
+    {
+      provide: ORDER_REFUND_RELAY_SERVICE_TOKEN,
+      useExisting: OrderRefundRelayService,
     },
     {
       provide: ORDER_FX_READ_SERVICE_TOKEN,

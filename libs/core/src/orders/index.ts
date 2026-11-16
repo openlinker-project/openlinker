@@ -558,6 +558,11 @@ export {
   OrderRefundObservationService,
   buildObservedRefundIdempotencyKey,
 } from './application/services/order-refund-observation.service';
+export type {
+  IOrderRefundRelayService,
+  RefundRelayResult,
+} from './application/interfaces/order-refund-relay.service.interface';
+export { OrderRefundRelayService } from './application/services/order-refund-relay.service';
 export type { SourceRefundObservation } from './domain/types/source-refund-observation.types';
 export type { RefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
 export { isRefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';

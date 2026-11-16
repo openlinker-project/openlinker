@@ -3,6 +3,7 @@ import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapp
 import { DuplicateRefundRecordException } from '../../domain/exceptions/duplicate-refund-record.exception';
 import type { SourceRefundObservation } from '../../domain/types/source-refund-observation.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import type { IOrderRefundRelayService } from '../interfaces/order-refund-relay.service.interface';
 import type { IOrderRefundService } from '../interfaces/order-refund.service.interface';
 import { OrderRefundObservationService } from './order-refund-observation.service';
 
@@ -19,8 +20,9 @@ describe('OrderRefundObservationService', () => {
   let mapping: jest.Mocked<Pick<IIdentifierMappingService, 'getInternalId'>>;
   let orderRecords: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord'>>;
   let refunds: jest.Mocked<Pick<IOrderRefundService, 'recordRefund'>>;
+  let relay: { relayObservedRefunds: jest.Mock };
   let service: OrderRefundObservationService;
-  const paidRecord = { sourceConnectionId: 'c1', paymentStatus: 'paid' };
+  const paidRecord = { sourceConnectionId: 'c1', paymentStatus: 'paid', syncStatus: [] };
 
   beforeEach(() => {
     listRefunds = jest.fn().mockResolvedValue([observation('r1')]);
@@ -30,11 +32,13 @@ describe('OrderRefundObservationService', () => {
     mapping = { getInternalId: jest.fn().mockResolvedValue('ol_order_1') };
     orderRecords = { getOrderRecord: jest.fn().mockResolvedValue(paidRecord) } as never;
     refunds = { recordRefund: jest.fn().mockResolvedValue({}) };
+    relay = { relayObservedRefunds: jest.fn().mockResolvedValue({}) };
     service = new OrderRefundObservationService(
       integrations as unknown as IIntegrationsService,
       mapping as unknown as IIdentifierMappingService,
       orderRecords as unknown as IOrderRecordService,
-      refunds as unknown as IOrderRefundService
+      refunds as unknown as IOrderRefundService,
+      relay as unknown as IOrderRefundRelayService
     );
   });
 
@@ -94,5 +98,41 @@ describe('OrderRefundObservationService', () => {
 
     expect(result.observed).toBe(0);
     expect(refunds.recordRefund).not.toHaveBeenCalled();
+  });
+
+  it('should relay both newly recorded and already recorded refunds, so a missed relay is retried', async () => {
+    listRefunds.mockResolvedValue([observation('r1'), observation('r2')]);
+    refunds.recordRefund
+      .mockResolvedValueOnce({} as never)
+      .mockRejectedValueOnce(new DuplicateRefundRecordException('ol_order_1', 'k'));
+
+    await service.observeSourceRefunds('c1', 'ext-1');
+
+    expect(relay.relayObservedRefunds).toHaveBeenCalledWith(
+      expect.objectContaining({
+        internalOrderId: 'ol_order_1',
+        sourceConnectionId: 'c1',
+        observations: [
+          expect.objectContaining({ externalRefundId: 'r1' }),
+          expect.objectContaining({ externalRefundId: 'r2' }),
+        ],
+      })
+    );
+  });
+
+  it('should not relay a refund that could not be recorded', async () => {
+    refunds.recordRefund.mockRejectedValue(new Error('currency mismatch'));
+
+    await service.observeSourceRefunds('c1', 'ext-1');
+
+    expect(relay.relayObservedRefunds).not.toHaveBeenCalled();
+  });
+
+  it('should still report the observation when the relay throws', async () => {
+    relay.relayObservedRefunds.mockRejectedValue(new Error('boom'));
+
+    const result = await service.observeSourceRefunds('c1', 'ext-1');
+
+    expect(result.recorded).toBe(1);
   });
 });

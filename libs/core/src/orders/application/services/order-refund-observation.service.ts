@@ -8,7 +8,8 @@
  *
  * Idempotency is the key `observed:{connectionId}:{externalRefundId}`, enforced
  * by `OrderRefundService.recordRefund` under the per-order lock, so a re-poll
- * writes nothing. A refund OL executed itself cannot be echoed here today: no
+ * writes nothing. Each observed refund is then mirrored onto destination copies
+ * of the order by `OrderRefundRelayService`. A refund OL executed itself cannot be echoed here today: no
  * source adapter implements both `RefundSourceReader` and `RefundExecutor`
  * (Shopify executes as a destination, Allegro only observes), so the two never
  * describe one movement of money. When an adapter ever does both, its executor
@@ -31,9 +32,15 @@ import type { OrderSourcePort } from '../../domain/ports/order-source.port';
 import { isRefundSourceReader } from '../../domain/ports/capabilities/refund-source-reader.capability';
 import { PAYMENT_STATUS } from '../../domain/types/payment-status.types';
 import { DuplicateRefundRecordException } from '../../domain/exceptions/duplicate-refund-record.exception';
-import { ORDER_RECORD_SERVICE_TOKEN, ORDER_REFUND_SERVICE_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_RELAY_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '../../orders.tokens';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderRefundService } from '../interfaces/order-refund.service.interface';
+import { IOrderRefundRelayService } from '../interfaces/order-refund-relay.service.interface';
+import type { SourceRefundObservation } from '../../domain/types/source-refund-observation.types';
 import type {
   IOrderRefundObservationService,
   RefundObservationResult,
@@ -65,7 +72,9 @@ export class OrderRefundObservationService implements IOrderRefundObservationSer
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
-    private readonly refunds: IOrderRefundService
+    private readonly refunds: IOrderRefundService,
+    @Inject(ORDER_REFUND_RELAY_SERVICE_TOKEN)
+    private readonly relay: IOrderRefundRelayService
   ) {}
 
   async observeSourceRefunds(
@@ -100,6 +109,10 @@ export class OrderRefundObservationService implements IOrderRefundObservationSer
 
     const observations = await orderSource.listRefunds({ externalOrderId });
     const result: RefundObservationResult = { ...NO_OBSERVATION, observed: observations.length };
+    // Relayed whether newly recorded or already recorded: a relay that failed or
+    // never ran on an earlier poll is retried here, and the destination answers
+    // a repeat from the refund it already made (the key is deterministic).
+    const toRelay: SourceRefundObservation[] = [];
 
     for (const observation of observations) {
       try {
@@ -120,9 +133,11 @@ export class OrderRefundObservationService implements IOrderRefundObservationSer
           acknowledgeAboveCeiling: true,
         });
         result.recorded += 1;
+        toRelay.push(observation);
       } catch (error) {
         if (error instanceof DuplicateRefundRecordException) {
           result.alreadyRecorded += 1;
+          toRelay.push(observation);
           continue;
         }
         // One unrecordable refund (e.g. a currency differing from an earlier
@@ -135,6 +150,31 @@ export class OrderRefundObservationService implements IOrderRefundObservationSer
         );
       }
     }
+    await this.relayToDestinations(internalOrderId, connectionId, record.syncStatus, toRelay);
     return result;
+  }
+
+  private async relayToDestinations(
+    internalOrderId: string,
+    sourceConnectionId: string,
+    destinations: Parameters<IOrderRefundRelayService['relayObservedRefunds']>[0]['destinations'],
+    observations: SourceRefundObservation[]
+  ): Promise<void> {
+    if (observations.length === 0) return;
+    try {
+      await this.relay.relayObservedRefunds({
+        internalOrderId,
+        sourceConnectionId,
+        destinations,
+        observations,
+      });
+    } catch (error) {
+      // The observation is already recorded; a relay fault must not undo or hide it.
+      this.logger.warn(
+        `Refund relay failed for order ${internalOrderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 }
