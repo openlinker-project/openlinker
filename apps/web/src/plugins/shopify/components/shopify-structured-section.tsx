@@ -17,6 +17,7 @@
  */
 import type { ReactElement } from 'react';
 import { useShopifyLocationsQuery } from '../../../features/shopify';
+import { usePermission } from '../../../shared/auth/use-permission';
 import { interpolate } from '../../../shared/i18n';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
@@ -32,7 +33,10 @@ export function ShopifyStructuredSection({
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
   const copy = useShopifyMessages().edit;
-  const locationsQuery = useShopifyLocationsQuery(connection.id);
+  // The live location read is a write-role call; for a read-only session it
+  // would 403 and show a misleading "could not be read" alert, so it is skipped.
+  const canWrite = usePermission('connections:write');
+  const locationsQuery = useShopifyLocationsQuery(connection.id, { enabled: canWrite });
   const errors = form.formState.errors;
 
   const webhookCapabilityEnabled =
@@ -47,7 +51,7 @@ export function ShopifyStructuredSection({
     locationsQuery.isSuccess && locationId !== '' && !locations.some((l) => l.id === locationId);
 
   function renderLocationControl(): ReactElement {
-    if (locationsQuery.isError) {
+    if (locationsQuery.isError || !canWrite) {
       return (
         <Input
           value={locationId}

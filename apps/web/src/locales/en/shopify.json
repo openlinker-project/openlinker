@@ -98,6 +98,10 @@
     "modeOauth": "Install with OAuth",
     "modeOauthHint": "For a store in another organization. You approve the app on Shopify.",
     "oauthFailed": "The Shopify install could not start: {message}",
+    "readOnly": {
+      "message": "Connecting a store needs write access. Ask an administrator to set it up.",
+      "title": "Read-only access"
+    },
     "redirectUrl": "Add this URL to the app's allowed redirection URLs: {url}",
     "required": "This field is required",
     "storeDomain": "Store domain",

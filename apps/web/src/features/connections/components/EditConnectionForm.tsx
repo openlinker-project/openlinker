@@ -868,6 +868,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
   return (
     <form className="form-card form-narrow" onSubmit={(event) => void onSubmit(event)} noValidate>
+      {/* A session without the write permission gets a form it can read but not
+          change; the backend refuses the save anyway (403), so offering it only
+          produces a misleading failure. */}
+      <fieldset
+        disabled={!write.canWrite}
+        style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'contents' }}
+      >
+      {write.canWrite ? null : <Alert tone="info">{copy.readOnlyNote}</Alert>}
       <div className="panel__header">
         <div>
           <p className="eyebrow">{copy.eyebrow}</p>
@@ -1080,7 +1088,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
       <div className="form-actions">
         <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
-          <Button type="submit" disabled={updateConnection.isPending || write.demoReadOnly}>
+          <Button
+            type="submit"
+            disabled={updateConnection.isPending || write.demoReadOnly || !write.canWrite}
+          >
             {updateConnection.isPending ? copy.saving : copy.save}
           </Button>
         </ReadOnlyLock>
@@ -1088,6 +1099,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           {copy.cancel}
         </Button>
       </div>
+      </fieldset>
     </form>
   );
 }

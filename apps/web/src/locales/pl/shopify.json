@@ -98,6 +98,10 @@
     "modeOauth": "Instalacja przez OAuth",
     "modeOauthHint": "Dla sklepu w innej organizacji. Zatwierdzasz aplikację w Shopify.",
     "oauthFailed": "Nie udało się rozpocząć instalacji w Shopify: {message}",
+    "readOnly": {
+      "message": "Podłączenie sklepu wymaga uprawnień do zapisu. Poproś administratora o jego skonfigurowanie.",
+      "title": "Dostęp tylko do odczytu"
+    },
     "redirectUrl": "Dodaj ten adres do dozwolonych adresów przekierowania aplikacji: {url}",
     "required": "To pole jest wymagane",
     "storeDomain": "Domena sklepu",
