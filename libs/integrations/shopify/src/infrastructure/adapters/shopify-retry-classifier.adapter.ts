@@ -39,6 +39,7 @@ import { ShopifyOrderNotFoundException } from '../../domain/exceptions/shopify-o
 import { ShopifyRefundInDoubtException } from '../../domain/exceptions/shopify-refund-in-doubt.exception';
 import { ShopifyReturnNotFoundException } from '../../domain/exceptions/shopify-return-not-found.exception';
 import { ShopifyNotSupportedException } from '../../domain/exceptions/shopify-not-supported.exception';
+import { ShopifyStockWriteRefusedException } from '../../domain/exceptions/shopify-stock-write-refused.exception';
 import { ShopifyUserErrorsException } from '../../domain/exceptions/shopify-user-errors.exception';
 
 const RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
@@ -98,7 +99,8 @@ function terminalityOf(cause: unknown): boolean | null {
     cause instanceof ShopifyNotMappedException ||
     cause instanceof ShopifyOrderNotFoundException ||
     cause instanceof ShopifyReturnNotFoundException ||
-    cause instanceof ShopifyRefundInDoubtException
+    cause instanceof ShopifyRefundInDoubtException ||
+    cause instanceof ShopifyStockWriteRefusedException
   ) {
     return true;
   }

@@ -4,6 +4,7 @@ import { ShopifyApiError } from '../../../domain/exceptions/shopify-api.error';
 import { ShopifyConfigException } from '../../../domain/exceptions/shopify-config.exception';
 import { ShopifyGraphqlError } from '../../../domain/exceptions/shopify-graphql.error';
 import { ShopifyNetworkError } from '../../../domain/exceptions/shopify-network.error';
+import { ShopifyStockWriteRefusedException } from '../../../domain/exceptions/shopify-stock-write-refused.exception';
 import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
 import { ShopifyAuthFailureClassifierAdapter } from '../shopify-auth-failure-classifier.adapter';
 import { ShopifyRetryClassifierAdapter } from '../shopify-retry-classifier.adapter';
@@ -75,6 +76,7 @@ describe('ShopifyRetryClassifierAdapter', () => {
 
   it.each([
     ['a config exception', new ShopifyConfigException('c', 'bad')],
+    ['a refused stock write (untracked stock)', new ShopifyStockWriteRefusedException('5', 'c1', 'does not track stock')],
     ['a missing scope', new ShopifyGraphqlError(['ACCESS_DENIED'], ['denied'])],
     ['another user error', new ShopifyUserErrorsException('productSet', [{ message: 'Title is invalid' }])],
     ['a refused token request', grant('invalid_client')],

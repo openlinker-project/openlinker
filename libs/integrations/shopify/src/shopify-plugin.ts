@@ -11,7 +11,7 @@
  * InventoryMaster with #3976, OrderSource with #3977 (with its scheduler
  * tasks: the orders poll, and the two returns passes, off by default) and
  * OrderProcessorManager with #3978, ProductPublisher + CategoryProvisioner
- * with #3979. Inbound webhooks (#3981) register a
+ * with #3979, OfferManager (stock write-back) with #3980. Inbound webhooks (#3981) register a
  * decoder and a translator here and a provisioner in the module. Their rungs (`ModifiedProductLister`,
  * `BulkProductReader`, `ProductTaxRateReader`, `BulkInventoryReader`) are
  * guard-only (never in the manifest), narrowed off the dispatched adapter.
@@ -71,6 +71,8 @@ export const shopifyAdapterManifest: AdapterMetadata = {
     'OrderSource',
     'OrderProcessorManager',
     'ProductPublisher',
+    // Stock write-back to the products this connection published (#3980).
+    'OfferManager',
     // Dispatched to the same publisher instance (the Shoper shape); the publish
     // builder narrows the `ProductPublisher` adapter, so that is what gates it.
     'CategoryProvisioner',
@@ -91,6 +93,8 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // `ProductPublisher` and `CategoryProvisioner` WRITE to the store, and a
   // connection that is also the master would read its own publications back
   // (#3985), so they are opt-in and the publisher refuses a master connection.
+  // `OfferManager` writes stock to the store and is opt-in for the same reason;
+  // the propagation fan-out never writes back to an `InventoryMaster`.
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   // Shopify signs every webhook with the app client secret, which OpenLinker
   // can only store, never rotate (#3981).
@@ -196,6 +200,7 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
               ) as T,
             ProductPublisher: async () => factory.createProductPublisher(await resolve(), host.cache) as T,
             CategoryProvisioner: async () => factory.createProductPublisher(await resolve(), host.cache) as T,
+            OfferManager: async () => factory.createOfferManager(await resolve(), host.identifierMapping) as T,
           },
           SHOPIFY_BRAND,
         );

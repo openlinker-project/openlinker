@@ -11,7 +11,7 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InventoryMasterPort } from '@openlinker/core/inventory';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
-import type { ShopProductManagerPort } from '@openlinker/core/listings';
+import type { OfferManagerPort, ShopProductManagerPort } from '@openlinker/core/listings';
 import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
@@ -74,4 +74,7 @@ export interface IShopifyAdapterFactory {
    * attributes, currency, price-only updates).
    */
   createProductPublisher(resolution: ShopifyResolution, cache?: CachePort): ShopProductManagerPort;
+
+  /** Stock write-back to products this connection published (#3980). */
+  createOfferManager(resolution: ShopifyResolution, identifierMapping: IdentifierMappingPort): OfferManagerPort;
 }
