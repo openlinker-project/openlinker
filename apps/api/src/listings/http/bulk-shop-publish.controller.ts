@@ -16,6 +16,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  InternalServerErrorException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -23,18 +24,25 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import {
+  AdapterCapabilityNotSupportedException,
+  BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
   BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
+  BulkListingBatchNotFoundException,
+  BulkRetryMissingSnapshotException,
   EmptyBulkSubmissionException,
+  IBulkShopPublishRetryService,
   IBulkShopPublishSubmitService,
+  NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type { BulkShopPublishBatchSummary } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { codedHttpError } from '../../common/errors/coded-http.exception';
-import { bulkSubmissionEmpty } from './listings-errors';
+import { codedErrorBody, codedHttpError } from '../../common/errors/coded-http.exception';
+import { adapterCapabilityNotSupported, bulkSubmissionEmpty } from './listings-errors';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { BulkListingRetryResponseDto } from './dto/bulk-listing-retry-response.dto';
 import { BulkPublishProductRequestDto } from './dto/publish-product.dto';
 import {
   BulkShopPublishBatchSummaryDto,
@@ -48,6 +56,8 @@ export class BulkShopPublishController {
   constructor(
     @Inject(BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN)
     private readonly bulkSubmit: IBulkShopPublishSubmitService,
+    @Inject(BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN)
+    private readonly bulkRetry: IBulkShopPublishRetryService,
   ) {}
 
   @Roles('admin', 'operator')
@@ -122,6 +132,61 @@ export class BulkShopPublishController {
       );
     }
     return this.toSummaryDto(summary);
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':batchId/retry-failed')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiParam({ name: 'batchId', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Re-enqueue the failed children of a bulk shop-publish batch',
+    description:
+      'Shop-publish sibling of the bulk-create retry: resets each failed record to `pending`, reopens the batch counters and enqueues `shop.product.publish` again under a wave-distinct idempotency key. Succeeded / pending children are skipped.',
+  })
+  @ApiResponse({ status: 202, description: 'Retry wave dispatched', type: BulkListingRetryResponseDto })
+  @ApiResponse({ status: 404, description: 'Batch not found' })
+  @ApiResponse({ status: 409, description: 'Batch has no failed children to retry' })
+  @ApiResponse({ status: 422, description: 'Adapter no longer supports shop publishing' })
+  @ApiResponse({ status: 500, description: 'Documented invariant violation (snapshot missing)' })
+  async retryFailed(
+    @Param('batchId', new ParseUUIDPipe()) batchId: string,
+  ): Promise<BulkListingRetryResponseDto> {
+    try {
+      const result = await this.bulkRetry.retryFailed(batchId);
+      return {
+        retriedRecordIds: result.retriedRecordIds,
+        retriedCount: result.retriedCount,
+        batchStatus: result.batchStatus,
+      };
+    } catch (error) {
+      if (error instanceof BulkListingBatchNotFoundException) {
+        throw codedHttpError(
+          HttpStatus.NOT_FOUND,
+          'BULK_SHOP_PUBLISH_BATCH_NOT_FOUND',
+          error.message,
+          { batchId },
+        );
+      }
+      if (error instanceof NoFailedChildrenToRetryException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'BULK_RETRY_NOTHING_FAILED', error.message, {
+          batchId: error.batchId,
+        });
+      }
+      if (error instanceof AdapterCapabilityNotSupportedException) {
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (error instanceof BulkRetryMissingSnapshotException) {
+        throw new InternalServerErrorException(
+          codedErrorBody(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'BULK_RETRY_SNAPSHOT_MISSING',
+            error.message,
+            { recordId: error.recordId, batchId: error.batchId },
+          ),
+        );
+      }
+      throw error;
+    }
   }
 
   private toSummaryDto(summary: BulkShopPublishBatchSummary): BulkShopPublishBatchSummaryDto {
