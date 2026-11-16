@@ -116,7 +116,7 @@ const SET_QUANTITIES_MUTATION = `mutation OlSetStock($input: InventorySetQuantit
 const ACTIVATE_MUTATION = `mutation OlActivateStock($inventoryItemId: ID!, $locationId: ID!) {
   inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
     inventoryLevel { quantities(names: ["available"]) { name quantity } }
-    userErrors { field message code }
+    userErrors { field message }
   }
 }`;
 
