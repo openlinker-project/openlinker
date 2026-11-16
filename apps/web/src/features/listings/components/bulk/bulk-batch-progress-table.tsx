@@ -82,6 +82,11 @@ export function BulkBatchProgressTable({
     [records, copy.productFallback],
   );
   const hasFailedGroup = groups.some((g) => g.failedLabel !== null);
+  // The hint explains "Fix and resubmit", which the page withholds when every
+  // failure is account-level, so it must not point at a button that is absent.
+  const hasOfferLevelFailure = records.some(
+    (r) => r.status === 'failed' && accountLevelRecordIds?.has(r.id) !== true,
+  );
 
   const columns: DataTableColumn<BulkBatchRecordSummary>[] = useMemo(
     () => [
@@ -198,7 +203,7 @@ export function BulkBatchProgressTable({
               <ProductRollupRow key={group.key} group={group} />
             ))}
           </ul>
-          {hasFailedGroup ? (
+          {hasFailedGroup && hasOfferLevelFailure ? (
             <p className="dim" style={{ marginTop: 'var(--space-3)', fontSize: 12 }}>
               {copy.retryHint}
             </p>

@@ -175,7 +175,9 @@ describe('BulkBatchProgressPage', () => {
     expect(screen.getByText(/2 of 2 variants failed for this reason/)).toBeInTheDocument();
     expect(screen.getAllByText('Account cannot sell - see above')).toHaveLength(2);
     expect(screen.queryByText('Fix this one')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Fix and resubmit/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Fix and resubmit/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Fix and resubmit/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Retry re-runs the saved data/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Retry unchanged \(2\)/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open Allegro Sales Center/ })).toHaveAttribute(
       'href',

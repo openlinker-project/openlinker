@@ -140,14 +140,14 @@
         "detail": {
           "few": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
           "many": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
-          "one": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+          "one": "Z tego powodu nie przeszedł {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
           "other": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian."
         },
         "title": "Allegro odrzuciło te oferty, bo konto sprzedawcy nie może sprzedawać."
       }
     },
     "recovery": {
-      "accountOnly": "Ponów partię dokładnie tak, jak został zapisany, gdy konto znów będzie mogło sprzedawać."
+      "accountOnly": "Ponów partię dokładnie tak, jak została zapisana, gdy konto znów będzie mogło sprzedawać."
     },
     "triage": {
       "failedSoFar": {

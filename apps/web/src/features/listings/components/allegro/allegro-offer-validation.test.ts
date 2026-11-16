@@ -557,4 +557,14 @@ describe('allegroOfferValidation.accountLevelRefusal (#4004)', () => {
     const copy = refusal?.describe({ affected: 2, total: 2, connectionConfig: { environment: 'production' } });
     expect(copy?.action?.href).toBe('https://salescenter.allegro.com');
   });
+
+  it('should default to the production Sales Center when the environment is absent', () => {
+    const copy = refusal?.describe({ affected: 1, total: 1, connectionConfig: {} });
+    expect(copy?.action?.href).toBe('https://salescenter.allegro.com');
+  });
+
+  it('should omit the action when the environment is unreadable', () => {
+    const copy = refusal?.describe({ affected: 1, total: 1, connectionConfig: { environment: 42 } });
+    expect(copy?.action).toBeUndefined();
+  });
 });

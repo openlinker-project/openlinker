@@ -294,7 +294,10 @@ export function BulkBatchProgressPage(): ReactElement {
           </h2>
           <ul className="batch-triage__list">
             {showAccountRow && accountNotice ? (
-              <li className="batch-triage__row batch-triage__row--error" data-testid="bulk-batch-account-refusal">
+              <li
+                className="batch-triage__row batch-triage__row--error"
+                data-testid="bulk-batch-account-refusal"
+              >
                 <span className="batch-triage__mark" aria-hidden="true" />
                 <div className="batch-triage__body">
                   <p className="batch-triage__cause">{accountNotice.title}</p>
