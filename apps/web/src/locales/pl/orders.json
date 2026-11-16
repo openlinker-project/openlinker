@@ -503,6 +503,7 @@
       "title": "To więcej niż wartość zamówienia"
     },
     "description": "Zapisz zwrot pieniędzy, który wykonałeś dla kupującego. OpenLinker nie przesyła pieniędzy.",
+    "descriptionShopify": "Potwierdzenie wysyła zwrot do Shopify, które zwraca pieniądze kupującemu.",
     "recorded": "Zwrot pieniędzy zapisany.",
     "title": "Potwierdź zwrot pieniędzy"
   },
@@ -2804,6 +2805,7 @@
     "orderTotal": "Wartość zamówienia: {total} {currency}",
     "pending": "Zapisywanie…",
     "preamble": "OpenLinker nie przesyła pieniędzy. Potwierdź, że zwrócono pieniądze kupującemu, a OpenLinker zapisze to przy tym zwrocie i tym zamówieniu.",
+    "preambleShopify": "OpenLinker wysyła ten zwrot do Shopify, które zwraca pieniądze kupującemu. Sprawdź kwotę przed potwierdzeniem, bo stąd nie da się tego cofnąć.",
     "reasonLabel": "Powód",
     "submit": "Potwierdź zwrot pieniędzy"
   },
