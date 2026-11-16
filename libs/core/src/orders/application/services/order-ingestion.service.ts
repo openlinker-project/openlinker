@@ -671,7 +671,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     // Step 4: if any unresolved, persist the honest record state (#1689) then
-    // throw so the job runner retries with backoff. A `source_deleted` ref is
+    // throw so the job runner retries with backoff (except for unlisted offers,
+    // see below). A `source_deleted` ref is
     // a permanently unresolvable state (deleted at the master, #1599) — distinct
     // from the ordinary, self-healing `awaiting_mapping` gap; the retry itself
     // is unchanged (review #11 — routing a stale line to a terminal outcome
@@ -685,6 +686,25 @@ export class OrderIngestionService implements IOrderIngestionService {
         status: recordStatus,
         reason: (firstStaleRef ?? first).reason,
       });
+      // #4040: an offer OpenLinker never listed is not a transient gap. The offer
+      // mapping only appears when someone lists or links that offer, which a
+      // retry ladder (10 attempts in hours) cannot wait for, and on a freshly
+      // connected account every historic order is in this state, so retrying
+      // holds the connection's realtime lane for hours. The record already
+      // carries `awaiting_mapping` and its reason, which is the operator's
+      // signal; the order is re-ingested by the next event for it.
+      const onlyUnlistedOffers = unresolvedRefs.every(
+        (ref) =>
+          ref.kind === 'missing_mapping' &&
+          incoming.items.find((i) => i.id === ref.itemId)?.productRef.type === 'offer'
+      );
+      if (onlyUnlistedOffers) {
+        this.logger.warn(
+          `Order ${internalOrderId} awaits an offer mapping (connectionId=${connectionId}); ` +
+            `recorded as awaiting_mapping without retrying`
+        );
+        return [];
+      }
       throw new MissingOrderItemMappingError(
         connectionId,
         firstItem?.productRef ?? { type: 'offer', externalId: first.itemId },
