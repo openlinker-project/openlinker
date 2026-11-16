@@ -1842,13 +1842,13 @@ describe('ConnectionService', () => {
       // Create skipped the bootstrap because ProductMaster was off then, so
       // switching it on is the first moment the catalogue should be pulled.
       it('should enqueue the bootstrap when ProductMaster is switched on', async () => {
-        connectionPort.get.mockResolvedValue(withState('active', ['ProductPublisher']));
+        connectionPort.get.mockResolvedValue(withState('active', ['InventoryMaster']));
         connectionPort.update.mockResolvedValue(
-          withState('active', ['ProductPublisher', 'ProductMaster'])
+          withState('active', ['InventoryMaster', 'ProductMaster'])
         );
 
         await service.update('connection-123', {
-          enabledCapabilities: ['ProductPublisher', 'ProductMaster'],
+          enabledCapabilities: ['InventoryMaster', 'ProductMaster'],
         } as ConnectionUpdate);
 
         expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(syncAll);
@@ -1893,14 +1893,14 @@ describe('ConnectionService', () => {
       });
 
       it('should not fail the update when the bootstrap enqueue throws', async () => {
-        connectionPort.get.mockResolvedValue(withState('active', ['ProductPublisher']));
-        const enabled = withState('active', ['ProductPublisher', 'ProductMaster']);
+        connectionPort.get.mockResolvedValue(withState('active', ['InventoryMaster']));
+        const enabled = withState('active', ['InventoryMaster', 'ProductMaster']);
         connectionPort.update.mockResolvedValue(enabled);
         jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
 
         await expect(
           service.update('connection-123', {
-            enabledCapabilities: ['ProductPublisher', 'ProductMaster'],
+            enabledCapabilities: ['InventoryMaster', 'ProductMaster'],
           } as ConnectionUpdate)
         ).resolves.toEqual(enabled);
       });
