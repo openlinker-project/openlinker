@@ -332,3 +332,14 @@ The scope cap is what keeps that bounded in the meantime. Deferral is per-job an
   [ADR-051](./051-worker-topology-one-artifact-roles.md),
   [ADR-067](./067-freshness-token-write-ordering.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Sync Manager
+
+## Amendment (#3986) - a scope is a (connection, workload class) pair
+
+A burst of webhook-driven `master.product.syncByExternalId` jobs (a bulk edit in the shop fires one webhook per product) delayed the same shop's `marketplace.order.sync` from 8.5 s to about 3 minutes at 1000 webhooks. Both ran in `realtime` under one scope, the connection id, with a per-scope cap of 2, so the burst held both slots and the order waited behind it in FIFO order.
+
+**Decision 3's scope is widened, not the lane axis.** `resolveJobScope` now takes the job type as well as the connection id and returns a class-qualified scope, `{connectionId}:hook-sync`, for the two webhook-driven types (`master.product.syncByExternalId`, `master.inventory.syncByExternalId`). Every other type keeps the bare connection id. Both classes stay in `realtime` because both are waited on by someone; what changes is that one class can no longer occupy the slots of the other. **No fifth lane**: decision 1's reversal gate stands, since this is the same cost of starvation split by workload class inside a lane, which the scope was always meant to express. The sweep-triggered `...syncFromSweep` types stay in `bulk`, untouched.
+
+- The hook class has its own per-scope cap, `OL_LANE_REALTIME_HOOK_SCOPE_CAP`, default 1. Orders keep `OL_LANE_REALTIME_SCOPE_CAP`.
+- The claim SQL excludes saturated scopes by the same expression: `resolveJobScope`'s constants (`HOOK_SYNC_JOB_TYPES`, `HOOK_SCOPE_SUFFIX`) are bound into the `CASE` in `claimDueJobs`, so the runner and the query cannot disagree. A mismatch would silently stop excluding, which is why an integration spec pins both.
+- Caps remain per process, as before. Hook jobs still count toward the lane's `total`, so many connections bursting at once can still fill `total`; the per-connection isolation is what is fixed.
+- The hook cap of 1 is made cheap by drain-claim batching: when a `master.product.syncByExternalId` job starts, its handler claims up to `OL_HOOK_SYNC_DRAIN_BATCH_SIZE` (default 50, clamped 1..100) other queued jobs of the same connection with `FOR UPDATE SKIP LOCKED`, syncs them in one `syncFromMasterByExternalIds` call and settles each peer's own row. Every webhook keeps its own durable job and idempotency key (ADR-005 / ADR-049 unchanged); nothing is coalesced at enqueue. Peers are claimed under the claimer's `lockedBy` with a fresh `lockedAt`, so if the claimer dies the ordinary lock-timeout recovery requeues them with no attempt consumed.

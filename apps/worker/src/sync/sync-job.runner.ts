@@ -36,6 +36,7 @@ import {
   AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
   SyncJobLaneValues,
   resolveJobScope,
+  isHookScope,
 } from '@openlinker/core/sync';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
@@ -93,6 +94,13 @@ const LANE_CAP_DEFAULTS: LaneCaps = Object.freeze({
   'fan-out': Object.freeze({ total: 8, perScope: 4 }),
 });
 
+/**
+ * Default per-scope cap of the hook-sync class (#3986, ADR-050 amendment): one
+ * webhook-driven product/inventory sync per connection at a time. The drain in
+ * `MasterProductSyncHandler` makes that one slot-turn sync a whole burst.
+ */
+const HOOK_SCOPE_CAP_DEFAULT = 1;
+
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SyncJobRunner.name);
@@ -139,6 +147,18 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    */
   private laneCaps: LaneCaps = LANE_CAP_DEFAULTS;
 
+  /**
+   * Per-scope cap of the hook-sync workload class (#3986), i.e. webhook-driven
+   * product/inventory syncs of one connection. Their scope is class-qualified
+   * (`resolveJobScope`), so this cap bounds them without touching the slots the
+   * same connection's orders use. Env: OL_LANE_REALTIME_HOOK_SCOPE_CAP.
+   */
+  private hookScopeCap = HOOK_SCOPE_CAP_DEFAULT;
+
+  private perScopeCapFor(lane: SyncJobLane, scope: string): number {
+    return isHookScope(scope) ? this.hookScopeCap : this.laneCaps[lane].perScope;
+  }
+
   /** In-flight job counts per lane, keyed by scope. */
   private readonly inFlightByLane = new Map<SyncJobLane, Map<string, number>>(
     SyncJobLaneValues.map((lane) => [lane, new Map<string, number>()])
@@ -169,6 +189,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     this.laneCaps = this.resolveLaneCaps();
+    this.hookScopeCap = this.resolveHookScopeCap();
     this.maxDeferredTotalSeconds = this.resolveMaxDeferredTotalSeconds();
     this.logger.log(`Starting sync job runner with worker ID: ${this.WORKER_ID}`);
     this.startRunner();
@@ -181,6 +202,21 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * or non-positive value is IGNORED rather than honoured (a zero cap would
    * silently stall a whole lane — the #2229 clamp posture).
    */
+  private resolveHookScopeCap(): number {
+    const raw = this.configService.get<string>('OL_LANE_REALTIME_HOOK_SCOPE_CAP');
+    if (raw === undefined || raw === null || raw === '') {
+      return HOOK_SCOPE_CAP_DEFAULT;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      this.logger.warn(
+        `Ignoring invalid OL_LANE_REALTIME_HOOK_SCOPE_CAP=${raw} — using default ${HOOK_SCOPE_CAP_DEFAULT}`
+      );
+      return HOOK_SCOPE_CAP_DEFAULT;
+    }
+    return Math.floor(parsed);
+  }
+
   private resolveLaneCaps(): LaneCaps {
     const read = (envVar: string, fallback: number): number => {
       const raw = this.configService.get<string>(envVar);
@@ -381,7 +417,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     const excludedScopes = Array.from(laneInFlight.entries())
-      .filter(([, count]) => count >= cap.perScope)
+      .filter(([scope, count]) => count >= this.perScopeCapFor(lane, scope))
       .map(([scope]) => scope);
 
     const jobs = await this.jobRepository.findAndLockDueJobsForLane({
@@ -400,7 +436,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     for (const job of jobs) {
       const scope = resolveJobScope(job);
       const current = laneInFlight.get(scope) ?? 0;
-      if (current >= cap.perScope) {
+      if (current >= this.perScopeCapFor(lane, scope)) {
         // Intra-batch surplus: the claim's scope exclusion is pre-claim only,
         // so a same-scope burst can exceed the per-scope cap within one
         // batch. Release the surplus back with no attempt penalty.

@@ -1411,10 +1411,13 @@ describe('SyncJobRunner', () => {
   });
 
   describe('lane scheduling (ADR-050, #2278)', () => {
-    const createLaneJob = (connectionId: string): SyncJob =>
+    const createLaneJob = (
+      connectionId: string,
+      jobType: SyncJob['jobType'] = 'marketplace.order.sync'
+    ): SyncJob =>
       new SyncJob(
         randomUUID(),
-        'master.product.syncByExternalId',
+        jobType,
         connectionId,
         { externalId: '1', objectType: 'Product' },
         'running',
@@ -1490,6 +1493,45 @@ describe('SyncJobRunner', () => {
       );
     });
 
+    it('should exclude a connection hook-sync scope at its own cap without excluding its orders (#3986)', async () => {
+      laneInFlight('realtime').set('conn-1:hook-sync', 1);
+
+      await (runner as any).claimAndStartForLane('realtime');
+
+      expect(jobRepository.findAndLockDueJobsForLane).toHaveBeenCalledWith(
+        expect.objectContaining({ excludedScopes: ['conn-1:hook-sync'] })
+      );
+    });
+
+    it('should start a queued order immediately while a webhook burst holds the hook-sync slot (#3986)', async () => {
+      laneInFlight('realtime').set('conn-1:hook-sync', 1);
+      const order = createLaneJob('conn-1', 'marketplace.order.sync');
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([order]);
+      mockHandler.execute.mockReturnValue(new Promise(() => {}));
+      handlerRegistry.getHandler.mockReturnValue(mockHandler);
+
+      const started = await (runner as any).claimAndStartForLane('realtime');
+
+      expect(started).toBe(1);
+      expect(laneInFlight('realtime').get('conn-1')).toBe(1);
+      expect(laneInFlight('realtime').get('conn-1:hook-sync')).toBe(1);
+    });
+
+    it('should hold a 1000-hook burst to one running job per connection (#3986)', async () => {
+      const hooks = Array.from({ length: 1000 }, () =>
+        createLaneJob('conn-1', 'master.product.syncByExternalId')
+      );
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce(hooks.slice(0, 4));
+      mockHandler.execute.mockReturnValue(new Promise(() => {}));
+      handlerRegistry.getHandler.mockReturnValue(mockHandler);
+
+      const started = await (runner as any).claimAndStartForLane('realtime');
+
+      expect(started).toBe(1);
+      expect(laneInFlight('realtime').get('conn-1:hook-sync')).toBe(1);
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledTimes(3);
+    });
+
     it('should run two masters stock propagation concurrently in fan-out (#2609)', async () => {
       // The reported bug: one synthetic scope plus a per-scope cap of 1 meant
       // every stock write in the install queued behind every other one.
@@ -1548,14 +1590,14 @@ describe('SyncJobRunner', () => {
     });
 
     it('should release the slot when a rate-limited job requeues, in its own lane', async () => {
-      const job = createLaneJob('conn-rl');
+      const job = createLaneJob('conn-rl', 'master.product.syncByExternalId');
       jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([job]);
       handlerRegistry.getHandler.mockReturnValue(mockHandler);
       mockHandler.execute.mockRejectedValueOnce(new RateLimitTimeoutError(120_000));
 
       const started = await (runner as any).claimAndStartForLane('realtime');
       expect(started).toBe(1);
-      expect(laneInFlight('realtime').get('conn-rl')).toBe(1);
+      expect(laneInFlight('realtime').get('conn-rl:hook-sync')).toBe(1);
 
       await flushInFlight();
 
@@ -1566,7 +1608,7 @@ describe('SyncJobRunner', () => {
         expect.any(Date),
         { lastAttemptDurationMs: null }
       );
-      expect(laneInFlight('realtime').has('conn-rl')).toBe(false);
+      expect(laneInFlight('realtime').has('conn-rl:hook-sync')).toBe(false);
     });
 
     it('should sleep rather than spin when every lane is at cap with jobs in flight', async () => {

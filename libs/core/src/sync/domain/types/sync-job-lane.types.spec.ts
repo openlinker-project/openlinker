@@ -8,7 +8,13 @@
  *
  * @module libs/core/src/sync/domain/types
  */
-import { SyncJobLaneValues, resolveJobScope } from './sync-job-lane.types';
+import {
+  HOOK_SCOPE_SUFFIX,
+  HOOK_SYNC_JOB_TYPES,
+  SyncJobLaneValues,
+  isHookScope,
+  resolveJobScope,
+} from './sync-job-lane.types';
 
 describe('SyncJobLaneValues', () => {
   it('should declare exactly the four ADR-050 lanes', () => {
@@ -17,7 +23,24 @@ describe('SyncJobLaneValues', () => {
 });
 
 describe('resolveJobScope', () => {
-  it('should resolve the scope to the connection id on a single-merchant install', () => {
-    expect(resolveJobScope({ connectionId: 'conn-1' })).toBe('conn-1');
+  it('should resolve the scope to the connection id for every non-hook job type', () => {
+    expect(resolveJobScope({ connectionId: 'conn-1', jobType: 'marketplace.order.sync' })).toBe(
+      'conn-1'
+    );
+    expect(resolveJobScope({ connectionId: 'conn-1', jobType: 'master.product.syncFromSweep' })).toBe(
+      'conn-1'
+    );
+  });
+
+  it('should qualify the scope with the hook-sync class for webhook product and inventory syncs', () => {
+    for (const jobType of HOOK_SYNC_JOB_TYPES) {
+      const scope = resolveJobScope({ connectionId: 'conn-1', jobType });
+      expect(scope).toBe(`conn-1${HOOK_SCOPE_SUFFIX}`);
+      expect(isHookScope(scope)).toBe(true);
+    }
+  });
+
+  it('should not report a bare connection id as a hook scope', () => {
+    expect(isHookScope('conn-1')).toBe(false);
   });
 });

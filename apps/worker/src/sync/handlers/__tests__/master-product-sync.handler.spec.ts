@@ -14,7 +14,11 @@ import type {
   MasterProductSyncResult,
   MasterTaxRateChange,
 } from '@openlinker/core/products';
-import type { JobEnqueuePort, SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type {
+  JobEnqueuePort,
+  SyncJobEntity as SyncJob,
+  SyncJobRepositoryPort,
+} from '@openlinker/core/sync';
 import type { IdentifierMappingQueryPort } from '@openlinker/core/identifier-mapping';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 
@@ -23,6 +27,13 @@ describe('MasterProductSyncHandler', () => {
   let masterProductSync: jest.Mocked<IMasterProductSyncService>;
   let jobEnqueue: { enqueueJob: jest.Mock };
   let identifierMapping: { getExternalIds: jest.Mock };
+  let jobRepository: {
+    claimQueuedPeers: jest.Mock;
+    markSucceeded: jest.Mock;
+    markFailed: jest.Mock;
+    markDead: jest.Mock;
+    requeueWithoutPenalty: jest.Mock;
+  };
 
   beforeEach(() => {
     masterProductSync = {
@@ -32,10 +43,18 @@ describe('MasterProductSyncHandler', () => {
     };
     jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'child-1' }) };
     identifierMapping = { getExternalIds: jest.fn().mockResolvedValue([]) };
+    jobRepository = {
+      claimQueuedPeers: jest.fn().mockResolvedValue([]),
+      markSucceeded: jest.fn().mockResolvedValue(undefined),
+      markFailed: jest.fn().mockResolvedValue(undefined),
+      markDead: jest.fn().mockResolvedValue(undefined),
+      requeueWithoutPenalty: jest.fn().mockResolvedValue(undefined),
+    };
     handler = new MasterProductSyncHandler(
       masterProductSync,
       jobEnqueue as unknown as JobEnqueuePort,
       identifierMapping as unknown as IdentifierMappingQueryPort,
+      jobRepository as unknown as SyncJobRepositoryPort,
     );
   });
 
@@ -191,6 +210,103 @@ describe('MasterProductSyncHandler', () => {
       await handler.execute(createJob());
 
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('drain-claim batching (#3986)', () => {
+    const claimerJob = (): SyncJob => ({ ...createJob(), lockedBy: 'worker-1' }) as SyncJob;
+    const peer = (id: string, externalId: string, attempts = 0): SyncJob =>
+      ({
+        ...createJob(),
+        id,
+        attempts,
+        lockedBy: 'worker-1',
+        payload: { schemaVersion: 1, externalId, objectType: 'Product' },
+      }) as SyncJob;
+
+    it('should process only its own job when the peer claim finds nothing', async () => {
+      masterProductSync.syncFromMasterByExternalId.mockResolvedValueOnce(result(false));
+
+      await expect(handler.execute(claimerJob())).resolves.toEqual({ outcome: 'ok' });
+      expect(masterProductSync.syncFromMasterByExternalIds).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to its own job when the peer claim throws', async () => {
+      jobRepository.claimQueuedPeers.mockRejectedValueOnce(new Error('db down'));
+      masterProductSync.syncFromMasterByExternalId.mockResolvedValueOnce(result(false));
+
+      await expect(handler.execute(claimerJob())).resolves.toEqual({ outcome: 'ok' });
+      expect(masterProductSync.syncFromMasterByExternalIds).not.toHaveBeenCalled();
+    });
+
+    it('should de-duplicate ids, sync once and mark every claimed peer succeeded', async () => {
+      jobRepository.claimQueuedPeers.mockResolvedValueOnce([
+        peer('p1', 'ext-1'),
+        peer('p2', 'ext-1'),
+        peer('p3', 'ext-9'),
+      ]);
+      masterProductSync.syncFromMasterByExternalIds.mockResolvedValueOnce({
+        results: [result(false), result(false)],
+        failures: [],
+        prefetched: true,
+      });
+
+      await expect(handler.execute(claimerJob())).resolves.toEqual({ outcome: 'ok' });
+
+      expect(masterProductSync.syncFromMasterByExternalIds).toHaveBeenCalledWith('conn-1', [
+        'ext-9',
+        'ext-1',
+      ]);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledTimes(3);
+    });
+
+    it('should put a failed peer on its own retry ladder and not fail the claimer', async () => {
+      jobRepository.claimQueuedPeers.mockResolvedValueOnce([peer('p1', 'ext-1')]);
+      masterProductSync.syncFromMasterByExternalIds.mockResolvedValueOnce({
+        results: [result(false)],
+        failures: [{ externalId: 'ext-1', message: 'boom' }],
+        prefetched: false,
+      });
+
+      await expect(handler.execute(claimerJob())).resolves.toEqual({ outcome: 'ok' });
+      expect(jobRepository.markFailed).toHaveBeenCalledWith('p1', 'boom', expect.any(Date));
+      expect(jobRepository.markSucceeded).not.toHaveBeenCalled();
+    });
+
+    it('should mark a failed peer dead when its attempts are exhausted', async () => {
+      jobRepository.claimQueuedPeers.mockResolvedValueOnce([peer('p1', 'ext-1', 2)]);
+      masterProductSync.syncFromMasterByExternalIds.mockResolvedValueOnce({
+        results: [result(false)],
+        failures: [{ externalId: 'ext-1', message: 'boom' }],
+        prefetched: false,
+      });
+
+      await handler.execute(claimerJob());
+      expect(jobRepository.markDead).toHaveBeenCalledWith('p1', 'boom');
+    });
+
+    it('should throw for its own failed id while still settling the peers', async () => {
+      jobRepository.claimQueuedPeers.mockResolvedValueOnce([peer('p1', 'ext-1')]);
+      masterProductSync.syncFromMasterByExternalIds.mockResolvedValueOnce({
+        results: [result(false)],
+        failures: [{ externalId: 'ext-9', message: 'boom' }],
+        prefetched: false,
+      });
+
+      await expect(handler.execute(claimerJob())).rejects.toBeInstanceOf(SyncJobExecutionError);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith('p1', 'ok');
+    });
+
+    it('should release the peers without penalty when the whole batch throws', async () => {
+      jobRepository.claimQueuedPeers.mockResolvedValueOnce([peer('p1', 'ext-1')]);
+      masterProductSync.syncFromMasterByExternalIds.mockRejectedValueOnce(new Error('creds'));
+
+      await expect(handler.execute(claimerJob())).rejects.toBeInstanceOf(SyncJobExecutionError);
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        'p1',
+        expect.any(String),
+        expect.any(Date)
+      );
     });
   });
 });

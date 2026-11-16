@@ -20,6 +20,8 @@
  * @see docs/architecture/adrs/050-workload-isolation-concurrency-lanes.md
  */
 
+import type { JobType } from './sync-job.types';
+
 /**
  * Lane values (ADR-050 decision 1).
  *
@@ -45,12 +47,45 @@ export const SyncJobLaneValues = ['realtime', 'bulk', 'fiscal', 'fan-out'] as co
 export type SyncJobLane = (typeof SyncJobLaneValues)[number];
 
 /**
- * Resolve the isolation scope a job's lane slots are accounted against
- * (ADR-050 decision 3).
+ * Webhook-driven product and inventory syncs (#3986, ADR-050 amendment).
  *
- * The scope degenerates to the connection id on a single-merchant install;
- * a multi-merchant deployment changes this one body, not its callers.
+ * Only the `syncByExternalId` types: their sweep-triggered twins
+ * (`...syncFromSweep`) are `bulk` and keep the plain connection scope. A burst
+ * of these on one shop (a bulk edit firing a webhook per product) used to fill
+ * the connection's `realtime` per-scope slots ahead of a buyer's
+ * `marketplace.order.sync` on the same connection, because both shared one
+ * scope.
  */
-export function resolveJobScope(job: { connectionId: string }): string {
-  return job.connectionId;
+export const HOOK_SYNC_JOB_TYPES: readonly JobType[] = [
+  'master.product.syncByExternalId',
+  'master.inventory.syncByExternalId',
+];
+
+/**
+ * Suffix that qualifies a connection id into the hook-sync workload class.
+ * Shared by {@link resolveJobScope} (runner slot accounting) AND the repository
+ * claim's SQL exclusion, which builds the same expression from this constant: a
+ * mismatch between the two would silently stop excluding saturated scopes.
+ */
+export const HOOK_SCOPE_SUFFIX = ':hook-sync';
+
+/** True when `scope` names the hook-sync class of a connection. */
+export function isHookScope(scope: string): boolean {
+  return scope.endsWith(HOOK_SCOPE_SUFFIX);
+}
+
+/**
+ * Resolve the isolation scope a job's lane slots are accounted against
+ * (ADR-050 decision 3, amended by #3986).
+ *
+ * A scope is a (connection, workload class) pair. The class is `hook-sync` for
+ * {@link HOOK_SYNC_JOB_TYPES} and unqualified for everything else, so on a
+ * single-merchant install every other job type still resolves to the bare
+ * connection id. A multi-merchant deployment changes this one body, not its
+ * callers.
+ */
+export function resolveJobScope(job: { connectionId: string; jobType: JobType }): string {
+  return HOOK_SYNC_JOB_TYPES.includes(job.jobType)
+    ? `${job.connectionId}${HOOK_SCOPE_SUFFIX}`
+    : job.connectionId;
 }
