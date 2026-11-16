@@ -183,6 +183,13 @@ export interface ComputeBlockersInput {
    */
   cardInOtherCategory?: boolean;
   /**
+   * The variant's barcode matched a catalogue card in one category and the
+   * operator chose another (#4035). Gates the row: card-linked rows skip the
+   * product-parameter checks, so without it the row reads READY and the
+   * marketplace refuses the offer.
+   */
+  cardCategoryMismatch?: boolean;
+  /**
    * Per-variant category outcome. The Resolve step synthesizes `{ kind: 'no-ean' }`
    * for variant rows without a barcode (no BE call); `undefined` is treated
    * defensively as `no-match`.
@@ -350,6 +357,9 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   // disagreement on exactly the rows where a card was set aside (#3994).
   if (input.cardInOtherCategory) {
     blockers.push('card-category-differs');
+  }
+  if (input.cardCategoryMismatch) {
+    blockers.push('card-category-mismatch');
   }
 
   // Platform-specific blockers (#1096) - declared once per marketplace via its
@@ -693,6 +703,24 @@ export function variantProductCardIdOf(variant: BulkVariantRow): string | null {
 }
 
 /**
+ * Whether the card the resolve step linked lives in a different category than
+ * the one this sibling will submit under (#4035). A card is only linkable in its
+ * own category, so the link would be refused downstream. An explicit
+ * operator-picked card is exempt: it was chosen together with its own category.
+ * A variant listed without a barcode has no card and cannot mismatch.
+ */
+export function isCardInOtherCategoryThanChosen(
+  variant: BulkVariantRow,
+  submitCategoryId: string | null,
+): boolean {
+  if (hasExplicitNoBarcode(variant)) return false;
+  if (variant.override.overrides?.productCardId) return false;
+  if (variant.resolvedProductCardId === null || variant.resolvedCategoryId === null) return false;
+  if (variant.resolutionMethod !== 'auto_detect') return false;
+  return submitCategoryId !== null && submitCategoryId !== variant.resolvedCategoryId;
+}
+
+/**
  * Human distinguishing label for a sibling from its attributes (e.g.
  * "Rozmiar: M"). Falls back to `Variant {index+1}` when a variant has no
  * usable distinguishing attribute (never the raw variant id - plan §8).
@@ -877,6 +905,7 @@ export function recomputeVariantBlockers(
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
     cardInOtherCategory: variant.overriddenCard !== null && !operatorPickedCategory(row, variant),
+    cardCategoryMismatch: isCardInOtherCategoryThanChosen(variant, submitCategoryId),
     productCategoryId,
     // Per-product policy (on the shared-base override) wins over the batch (#1741).
     pricingPolicy: effectivePricingPolicy(row.override, config.pricingPolicy),

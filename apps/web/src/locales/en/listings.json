@@ -286,6 +286,7 @@
     "chips": {
       "alreadyListed": "Already listed",
       "cardCategoryDiffers": "catalog ≠ mapping",
+      "cardCategoryMismatch": "Card in other category",
       "categoryNotSet": "Category not set",
       "currencyMismatch": "Currency mismatch",
       "invalidBarcode": "Invalid barcode",
@@ -318,6 +319,10 @@
       "cardCategoryDiffers": {
         "detail": "Your mapping is used and the catalog product is not linked. Open it to compare the two.",
         "title": "Barcode {ean} matched a {destination} catalog product in a different category than your category mapping."
+      },
+      "cardCategoryMismatch": {
+        "detail": "Pick that category again, or clear the barcode to list this variant without a catalog product.",
+        "title": "Barcode {ean} is a {destination} catalog product in a different category than the one you chose."
       },
       "currencyMismatch": {
         "detail": "Set an explicit {currency} price for this variant, or change the batch currency.",
