@@ -227,6 +227,7 @@
     "ORDER_EXPORT_NOT_READY": "Plik eksportu nie jest jeszcze gotowy. Spróbuj ponownie za chwilę.",
     "ORDER_FILTERS_CONTRADICTORY": "Tych filtrów nie można użyć jednocześnie. Zmień jeden z nich.",
     "ORDER_FULLY_REFUNDED": "Za to zamówienie zwrócono całą kwotę. Potwierdź, że mimo to chcesz wystawić dokument.",
+    "ORDER_HANDLED_BY_ROUTING": "To zamówienie obsługuje routing OMS, więc nie jest kopiowane do miejsc docelowych i nie można go tu ponowić.",
     "ORDER_HAS_FISCAL_RECEIPT": "To zamówienie ma paragon fiskalny, którego nie można skorygować.",
     "ORDER_HAS_NO_ACTIVE_SHIPMENT": "To zamówienie nie ma aktywnej przesyłki.",
     "ORDER_HAS_NO_INVOICE": "To zamówienie nie ma jeszcze dokumentu sprzedaży.",

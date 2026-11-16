@@ -16,6 +16,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type IFulfillmentWorkQueryService,
+} from '@openlinker/core/fulfillment';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN, type SyncJobRequest } from '@openlinker/core/sync';
 import type {
   IOrderDestinationRetryService,
@@ -23,10 +27,12 @@ import type {
   OrderDestinationRetryResult,
 } from '../interfaces/order-destination-retry.service.interface';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderRecordNotFoundException } from '../../domain/exceptions/order-record-not-found.exception';
 import { OrderDestinationNotFoundException } from '../../domain/exceptions/order-destination-not-found.exception';
 import { OrderDestinationNotRetryableException } from '../../domain/exceptions/order-destination-not-retryable.exception';
+import { OrderDestinationHandledByRoutingException } from '../../domain/exceptions/order-destination-handled-by-routing.exception';
 import { MissingSourceExternalIdException } from '../../domain/exceptions/missing-source-external-id.exception';
 import { ORDER_RECORD_REPOSITORY_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 
@@ -42,7 +48,9 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort
+    private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly workQuery: IFulfillmentWorkQueryService
   ) {}
 
   async retry(input: OrderDestinationRetryInput): Promise<OrderDestinationRetryResult> {
@@ -69,6 +77,17 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
         internalOrderId,
         destinationConnectionId,
         destinationRow.status
+      );
+    }
+
+    // #3990: an order OMS routing owns is never mirrored, so re-running
+    // ingestion for it would be routed or held again and the claimed row below
+    // would stay `pending` for ever. Refused BEFORE the claim, so nothing is
+    // written. Routed = a work object exists, or the router holds it with a block.
+    if (await this.isHandledByRouting(order)) {
+      throw new OrderDestinationHandledByRoutingException(
+        internalOrderId,
+        destinationConnectionId
       );
     }
 
@@ -134,5 +153,13 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
       }
       throw error;
     }
+  }
+
+  private async isHandledByRouting(order: OrderRecord): Promise<boolean> {
+    if (order.fulfillmentBlock !== null) {
+      return true;
+    }
+    const link = await this.workQuery.resolveLinkForOrder(order.internalOrderId);
+    return link.kind !== 'none';
   }
 }

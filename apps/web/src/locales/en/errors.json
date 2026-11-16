@@ -227,6 +227,7 @@
     "ORDER_EXPORT_NOT_READY": "The export file is not ready yet. Try again in a moment.",
     "ORDER_FILTERS_CONTRADICTORY": "These filters cannot be used together. Change one of them.",
     "ORDER_FULLY_REFUNDED": "This order is fully refunded. Confirm that you still want to issue a document.",
+    "ORDER_HANDLED_BY_ROUTING": "This order is handled by OMS routing, so it is not copied to destinations and cannot be retried here.",
     "ORDER_HAS_FISCAL_RECEIPT": "This order has a fiscal receipt, which cannot be corrected.",
     "ORDER_HAS_NO_ACTIVE_SHIPMENT": "This order has no active shipment.",
     "ORDER_HAS_NO_INVOICE": "This order has no sales document yet.",
