@@ -363,6 +363,11 @@ export type {
   EvaluateRefundCeilingInput,
 } from './domain/types/refund-ceiling.types';
 
+// Refund-derived order state (#4130) - derived on read, never stored, so the
+// poll that rewrites `paymentStatus` cannot overwrite it.
+export { deriveOrderRefundState, OrderRefundStateValues } from './domain/types/refund-state.types';
+export type { OrderRefundState, OrderRefundStateView } from './domain/types/refund-state.types';
+
 // Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
 // speaks. Declared here rather than in `returns` because the vocabulary is
 // orders' own and a refund is not inherently about a return.

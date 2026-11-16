@@ -81,6 +81,7 @@ import { ORDER_EDIT_SERVICE_TOKEN } from '../application/interfaces/order-edit.s
 import {
   ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   PAYMENT_WRITEBACK_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 
 import { FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN } from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
@@ -429,6 +430,10 @@ describe('OrdersController', () => {
         {
           provide: PAYMENT_WRITEBACK_SERVICE_TOKEN,
           useValue: { retry: jest.fn().mockResolvedValue(1), markHandled: jest.fn().mockResolvedValue(1) },
+        },
+        {
+          provide: ORDER_REFUND_SERVICE_TOKEN,
+          useValue: { getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
         },
       ],
     }).compile();
