@@ -36,6 +36,7 @@ describe('ReleaseItemStateService', () => {
     listInstallation: jest.fn(),
     listForUser: jest.fn(),
     upsertUserStates: jest.fn().mockResolvedValue([]),
+    pruneInstallationConnectionStates: jest.fn(),
     upsertInstallationStates: jest.fn().mockResolvedValue([]),
   };
   const service = new ReleaseItemStateService(repo);

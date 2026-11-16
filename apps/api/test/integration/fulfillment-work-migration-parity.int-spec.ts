@@ -98,6 +98,10 @@ const TABLES = [
   // stated above: the expensive part is the migration chain, already run once.
   'shipment_lines',
   'shipment_line_events',
+  // #4141: release-center state. Two PARTIAL unique indexes, two CHECKs and
+  // three migration-only FKs (CASCADE and SET NULL) that `synchronize` never builds.
+  'user_release_state',
+  'release_item_states',
 ] as const;
 
 const COLUMNS_SQL = `
@@ -442,6 +446,8 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // schemas matching and both wrong.
       'CHK_shipment_lines_capacity',
       'CHK_shipment_line_events_quantity_positive',
+      'CHK_release_item_states_scope_user',
+      'CHK_release_item_states_done_via',
     ]));
 
     // The capacity predicate spelled out clause by clause, so a weakening
@@ -572,6 +578,11 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // deleting a shipment must take both.
       FK_shipment_lines_shipment: 'ON DELETE CASCADE',
       FK_shipment_line_events_line: 'ON DELETE CASCADE',
+      // #4141: a user's cursor and per-user rows go with the user; the acting
+      // admin on an installation row is only attribution, so it is nulled.
+      FK_user_release_state_user: 'ON DELETE CASCADE',
+      FK_release_item_states_user: 'ON DELETE CASCADE',
+      FK_release_item_states_acted_by: 'ON DELETE SET NULL',
       FK_inventory_locations_owner_connection: 'ON DELETE SET NULL',
       FK_reservations_inventory_item: 'ON DELETE RESTRICT',
     };
@@ -602,6 +613,9 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // these two is unexercisable by any other int-spec.
       'FK_shipment_lines_shipment',
       'FK_shipment_line_events_line',
+      'FK_user_release_state_user',
+      'FK_release_item_states_user',
+      'FK_release_item_states_acted_by',
     ]) {
       expect(syncForeignKeys.map((r) => r.conname)).not.toContain(name);
     }
@@ -779,6 +793,64 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       expect(byName.get('labelPrintedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
       expect(byName.get('completedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
       expect(byName.get('completedByUserId')).toMatchObject({ data_type: 'uuid' });
+    });
+  });
+
+  /**
+   * #4141: the release-center FKs and `operational_settings.release_center_enabled`,
+   * exercised on the migration-built schema (the only one that has the FKs).
+   */
+  describe('release center (#4141)', () => {
+    const USER_A = '0a000000-0000-4000-8000-00000000000a';
+    const USER_B = '0b000000-0000-4000-8000-00000000000b';
+
+    const addUser = (id: string, name: string): Promise<unknown> =>
+      migrated.query(
+        `INSERT INTO "users"("id","username","password_hash") VALUES ($1,$2,'x')`,
+        [id, name]
+      );
+
+    it('should declare the operational_settings column identically in the migration and the entity', async () => {
+      const sql = `
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'operational_settings'
+          AND column_name = 'release_center_enabled'`;
+      const [fromEntity, fromMigration] = (await Promise.all([
+        harness.getDataSource().query(sql),
+        migrated.query(sql),
+      ])) as Record<string, unknown>[][];
+      expect(fromMigration).toHaveLength(1);
+      expect(fromEntity).toEqual(fromMigration);
+      expect(fromMigration[0]).toMatchObject({ data_type: 'boolean', is_nullable: 'YES' });
+    });
+
+    it('should cascade a deleted user to their cursor and user rows and null the acting admin', async () => {
+      await addUser(USER_A, 'rc-parity-a');
+      await addUser(USER_B, 'rc-parity-b');
+      await migrated.query(`INSERT INTO "user_release_state"("userId") VALUES ($1)`, [USER_A]);
+      await migrated.query(
+        `INSERT INTO "release_item_states"("scope","userId","itemKey","status") VALUES ('user',$1,'k1','open')`,
+        [USER_A]
+      );
+      await migrated.query(
+        `INSERT INTO "release_item_states"("scope","itemKey","status","actedByUserId") VALUES ('installation','step-a','done',$1)`,
+        [USER_B]
+      );
+
+      await migrated.query(`DELETE FROM "users" WHERE "id" = $1`, [USER_A]);
+      const [{ gone }] = (await migrated.query(
+        `SELECT ((SELECT count(*) FROM "user_release_state" WHERE "userId" = $1) +
+                 (SELECT count(*) FROM "release_item_states" WHERE "userId" = $1))::int AS gone`,
+        [USER_A]
+      )) as { gone: number }[];
+      expect(gone).toBe(0);
+
+      await migrated.query(`DELETE FROM "users" WHERE "id" = $1`, [USER_B]);
+      const rows = (await migrated.query(
+        `SELECT "actedByUserId" FROM "release_item_states" WHERE "itemKey" = 'step-a'`
+      )) as { actedByUserId: string | null }[];
+      expect(rows).toEqual([{ actedByUserId: null }]);
     });
   });
 });

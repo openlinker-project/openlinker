@@ -28,4 +28,10 @@ export interface ReleaseItemStateRepositoryPort {
     changes: readonly ReleaseItemStateChange[],
     limit: number
   ): Promise<ReleaseItemState[]>;
+
+  /**
+   * Delete installation rows keyed `stepId:connectionId` whose connection is no
+   * longer in `liveConnectionIds`. Returns the number removed.
+   */
+  pruneInstallationConnectionStates(liveConnectionIds: readonly string[]): Promise<number>;
 }

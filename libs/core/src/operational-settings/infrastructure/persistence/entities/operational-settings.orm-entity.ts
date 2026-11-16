@@ -44,6 +44,10 @@ export class OperationalSettingsOrmEntity {
   @Column({ type: 'integer', name: 'stock_stale_sync_threshold_hours', nullable: true })
   stockStaleSyncThresholdHours!: number | null;
 
+  /** Release center on/off (#4141); NULL falls through to env and default. */
+  @Column({ type: 'boolean', name: 'release_center_enabled', nullable: true })
+  releaseCenterEnabled!: boolean | null;
+
   @Column({ type: 'text', name: 'deletion_audit_cadence', nullable: true })
   deletionAuditCadence!: string | null;
 

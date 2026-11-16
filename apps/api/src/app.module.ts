@@ -19,6 +19,7 @@ import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ReturnsModule } from '@openlinker/core/returns';
+import { ReleaseCenterModule } from '@openlinker/core/release-center';
 import { AutomationModule } from '@openlinker/core/automation';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { FulfillmentRouterBindingModule } from './fulfillment/fulfillment-router-binding.module';
@@ -83,6 +84,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // yet (#2334) — imported so the provider graph is proven at boot rather
     // than first exercised by whichever wave adds the first consumer.
     ReturnsModule,
+    ReleaseCenterModule, // #4141: release-center cursor and item-state persistence
     // #2358: registers the automation ORM entities + rule repository. No API
     // surface yet (#2363) — imported so the provider graph is proven at boot,
     // and so the two writer-less tables (#2360's firings, #2385's runs) are
