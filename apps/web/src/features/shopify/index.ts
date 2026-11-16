@@ -9,3 +9,5 @@ export type { ShopifyApi, ShopifyCallbackResponse } from './api/shopify.api';
 export { createShopifyApi } from './api/shopify.api';
 export { ShopifySetupForm } from './components/shopify-setup-form';
 export { useHandleShopifyCallback, type ShopifyCallbackState } from './hooks/use-handle-shopify-callback';
+export type { ShopifyLocation } from './api/shopify.api';
+export { useShopifyLocationsQuery } from './hooks/use-shopify-locations-query';
