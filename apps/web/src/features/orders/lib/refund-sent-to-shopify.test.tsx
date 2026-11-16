@@ -25,7 +25,7 @@ describe('useRefundSentToShopify', () => {
   });
 
   it('should stay false for a Shopify connection that did not opt in', async () => {
-    const getById = vi.fn().mockResolvedValue(shopify({}));
+    const getById = vi.fn<(connectionId: string) => Promise<Connection>>().mockResolvedValue(shopify({}));
     const { result } = renderHook(() => useRefundSentToShopify('c1'), { wrapper: wrapWith(getById) });
     await waitFor(() => expect(getById).toHaveBeenCalled());
     expect(result.current).toBe(false);
@@ -35,7 +35,7 @@ describe('useRefundSentToShopify', () => {
 function wrap(connection: Connection): (props: { children: ReactNode }) => ReactNode {
   return wrapWith(vi.fn().mockResolvedValue(connection));
 }
-function wrapWith(getById: ReturnType<typeof vi.fn>): (props: { children: ReactNode }) => ReactNode {
+function wrapWith(getById: (connectionId: string) => Promise<Connection>): (props: { children: ReactNode }) => ReactNode {
   const apiClient = createMockApiClient({ connections: { getById } });
   return function Wrapper({ children }) {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
