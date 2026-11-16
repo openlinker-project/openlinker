@@ -60,6 +60,8 @@ export const JOB_OUTCOME_REASON_VALUES = [
   'auto_dispatch_no_delivery_method',
   'auto_dispatch_work_not_eligible',
   'auto_dispatch_shipment_claimed_by_sibling_work',
+  'auto_dispatch_carrier_refused',
+  'auto_dispatch_preflight_failed',
 ] as const;
 export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
 

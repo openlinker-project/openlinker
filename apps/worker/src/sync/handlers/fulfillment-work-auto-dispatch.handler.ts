@@ -30,7 +30,9 @@
  * | `shipment-claimed-by-sibling-work` (`FulfillmentWorkDispatchConflictException`, #3340 follow-up) | `business_failure` — a split order's ALREADY-active shipment cannot be attributed to this work; a persisted-state fact, not a timing one |
  * | `work-not-eligible`, SETTLED state (order held / payment not cleared) | `business_failure` — the order's current state refuses dispatch; the state is durable, and blindly retrying re-crosses no boundary that would answer differently |
  * | `work-not-eligible`, TIMING state (work/order not found yet, snapshot not readable yet) | **throws** (retryable) — this is exactly the same race `FulfillmentWorkDispatchHandler.resolveShipTo` already tolerates |
- * | carrier rejection / contended dispatch / any other adapter or infra failure | **throws** (retryable) — a carrier timeout or a transient outage is not something this handler can rule out fixing itself; the per-adapter `RetryClassifierPort` (if any) gets the final say via the ordinary retry ladder |
+ * | `carrier-refused` (`ShippingProviderRejectionException` carrying the carrier's own code or a 4xx, #3987) | `business_failure` (`auto_dispatch_carrier_refused`) — the carrier answered and said no; the same order, connection and parcel get the same answer, so retrying only burns the ladder |
+ * | adapter preflight failure (`ShippingProviderRejectionException` with a `preflight.*` code, #3987) | `business_failure` (`auto_dispatch_preflight_failed`) — parcel or recipient data the adapter needs is missing; deterministic until an operator supplies it |
+ * | transient carrier error (a rejection wrapping a 5xx, 408 or 429, or `api.http-unknown`), contended dispatch, any other adapter or infra failure | **throws** (retryable) — a carrier timeout or a transient outage is not something this handler can rule out fixing itself; the per-adapter `RetryClassifierPort` (if any) gets the final say via the ordinary retry ladder |
  *
  * PII: nothing here logs the recipient projection or the order snapshot —
  * every log line names ids only, the `FulfillmentWorkDispatchHandler`
@@ -67,6 +69,7 @@ import {
   FulfillmentWorkDispatchConflictException,
   OrderNotDispatchableHeldException,
   OrderNotDispatchablePaymentStatusException,
+  ShippingProviderRejectionException,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   UndispatchableResolutionException,
@@ -91,6 +94,21 @@ import type {
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+
+/**
+ * A carrier rejection that says "try again later" rather than "no": the adapter
+ * wraps an upstream availability failure as `api.http-{status}` (5xx), and
+ * 408 / 429 are timing answers too. `api.http-unknown` carries no status, so it
+ * is treated as transient rather than guessed terminal.
+ */
+function isTransientRejection(error: ShippingProviderRejectionException): boolean {
+  const match = /^api\.http-(\w+)$/.exec(error.providerCode ?? '');
+  if (match === null) {
+    return false;
+  }
+  const status = Number(match[1]);
+  return Number.isNaN(status) || status >= 500 || status === 408 || status === 429;
+}
 
 @Injectable()
 export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
@@ -287,13 +305,30 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
           outcomeReason: 'auto_dispatch_shipment_claimed_by_sibling_work',
         };
       }
-      // `carrier-refused` and every other adapter/infra failure (a
-      // `ShippingProviderRejectionException`, a `ShipmentDispatchContendedException`,
-      // a network timeout): none of these is something this handler can rule
-      // out fixing on retry, so it re-enters the ordinary retry ladder rather
-      // than being swallowed here.
+      if (error instanceof ShippingProviderRejectionException && !isTransientRejection(error)) {
+        // #3987: the carrier answered (or the adapter refused before calling
+        // it) and nothing about the same input changes the answer. Terminal,
+        // with a reason the Jobs surface can show. A transient rejection (an
+        // upstream 5xx / 408 / 429 wrapped by the adapter) falls through.
+        const preflight = error.providerCode?.startsWith('preflight.') === true;
+        this.logger.warn(
+          `fulfillment.work.autoDispatch refused (${preflight ? 'preflight-failed' : 'carrier-refused'}): ` +
+            `workId=${payload.workId} orderId=${payload.orderId} ` +
+            `provider=${error.providerName} code=${error.providerCode ?? 'none'}`
+        );
+        return {
+          outcome: 'business_failure',
+          outcomeReason: preflight
+            ? 'auto_dispatch_preflight_failed'
+            : 'auto_dispatch_carrier_refused',
+        };
+      }
+      // Every other adapter/infra failure (a transient rejection, a
+      // `ShipmentDispatchContendedException`, a network timeout): none of these
+      // is something this handler can rule out fixing on retry, so it
+      // re-enters the ordinary retry ladder rather than being swallowed here.
       this.logger.warn(
-        `fulfillment.work.autoDispatch (carrier-refused): workId=${payload.workId} ` +
+        `fulfillment.work.autoDispatch (transient failure, retrying): workId=${payload.workId} ` +
           `orderId=${payload.orderId}: ${error instanceof Error ? error.message : String(error)}`
       );
       throw new SyncJobExecutionError(
