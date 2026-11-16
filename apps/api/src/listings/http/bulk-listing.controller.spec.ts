@@ -320,6 +320,13 @@ describe('BulkListingController', () => {
           createdAt: new Date('2026-05-17T10:01:00Z'),
           updatedAt: new Date('2026-05-17T10:03:00Z'),
           errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
+          request: {
+            schemaVersion: 1,
+            internalVariantId: 'v-b',
+            stock: 1,
+            publishImmediately: true,
+            overrides: { title: 'Edited title', categoryId: 'cat-9' },
+          },
         } as unknown as OfferCreationRecord,
       ];
       bulkSubmit.getBatch.mockResolvedValue({
@@ -359,6 +366,13 @@ describe('BulkListingController', () => {
             updatedAt: '2026-05-17T10:03:00.000Z',
             errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
             productId: null,
+            request: {
+              schemaVersion: 1,
+              internalVariantId: 'v-b',
+              stock: 1,
+              publishImmediately: true,
+              overrides: { title: 'Edited title', categoryId: 'cat-9' },
+            },
           },
         ],
       });

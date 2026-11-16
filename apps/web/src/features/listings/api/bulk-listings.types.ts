@@ -184,6 +184,19 @@ export interface BulkBatchRecordSummary {
    * Kept optional so a response from an older API still type-checks.
    */
   productId?: string | null;
+  /**
+   * The request this record was submitted with (#4037): title, category,
+   * parameters and EAN choices. Drives the "Fix and resubmit" prefill. Null for
+   * records that predate snapshots; absent from an older API.
+   */
+  request?: BulkBatchRecordRequest | null;
+}
+
+/** The slice of the persisted create-offer snapshot the wizard prefill reads. */
+export interface BulkBatchRecordRequest {
+  schemaVersion: number;
+  internalVariantId: string;
+  overrides?: BulkOfferOverrides;
 }
 
 export interface BulkBatchSummary {
