@@ -2,6 +2,7 @@ import type { Connection, IdentifierMappingPort } from '@openlinker/core/identif
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import {
   isDestinationOptionsReader,
+  isFulfillmentStatusReader,
   isOrderCreateStockEffect,
   isOrderFulfillmentUpdater,
   isOrderStatusWriteback,
@@ -110,10 +111,62 @@ describe('ShopifyOrderProcessorAdapter', () => {
     expect(isOrderFulfillmentUpdater(adapter)).toBe(true);
     expect(isDestinationOptionsReader(adapter)).toBe(true);
     expect(isOrderCreateStockEffect(adapter)).toBe(true);
+    expect(isFulfillmentStatusReader(adapter)).toBe(true);
   });
 
   it('should report that a create lowers the store stock', async () => {
     await expect(build().adapter.lowersStockOnOrderCreate()).resolves.toBe(true);
+  });
+
+  describe('getFulfillmentStatus (T10)', () => {
+    const read = async (order: unknown): Promise<unknown> => {
+      const h = build();
+      h.query.mockResolvedValueOnce({ order });
+      return h.adapter.getFulfillmentStatus({ externalOrderId: '77' });
+    };
+    const fulfillment = (displayStatus: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+      status: 'SUCCESS',
+      displayStatus,
+      deliveredAt: null,
+      trackingInfo: [{ number: 'TRK1' }],
+      ...extra,
+    });
+
+    it('should report nothing while the order is not fulfilled', async () => {
+      await expect(read({ cancelledAt: null, displayFulfillmentStatus: 'UNFULFILLED', fulfillments: [] })).resolves.toEqual({
+        status: null,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+      await expect(
+        read({ cancelledAt: null, displayFulfillmentStatus: 'PARTIALLY_FULFILLED', fulfillments: [fulfillment('IN_TRANSIT')] }),
+      ).resolves.toMatchObject({ status: null });
+    });
+
+    it('should report a fulfilled order as dispatched with its tracking number', async () => {
+      await expect(
+        read({ cancelledAt: null, displayFulfillmentStatus: 'FULFILLED', fulfillments: [fulfillment('IN_TRANSIT')] }),
+      ).resolves.toEqual({ status: 'dispatched', trackingNumber: 'TRK1', deliveredAt: null });
+    });
+
+    it('should report delivered with the latest delivery instant once every fulfillment is delivered', async () => {
+      await expect(
+        read({
+          cancelledAt: null,
+          displayFulfillmentStatus: 'FULFILLED',
+          fulfillments: [
+            fulfillment('DELIVERED', { deliveredAt: '2026-11-01T10:00:00Z' }),
+            fulfillment('DELIVERED', { deliveredAt: '2026-11-02T10:00:00Z' }),
+          ],
+        }),
+      ).resolves.toEqual({ status: 'delivered', trackingNumber: 'TRK1', deliveredAt: new Date('2026-11-02T10:00:00Z') });
+    });
+
+    it('should report a cancelled order as cancelled whatever was fulfilled', async () => {
+      await expect(
+        read({ cancelledAt: '2026-11-01T10:00:00Z', displayFulfillmentStatus: 'FULFILLED', fulfillments: [fulfillment('IN_TRANSIT')] }),
+      ).resolves.toMatchObject({ status: 'cancelled' });
+    });
   });
 
   describe('createOrder', () => {

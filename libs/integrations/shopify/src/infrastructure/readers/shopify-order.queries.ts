@@ -49,6 +49,19 @@ export const ORDER_BY_ID_QUERY = `query OlOrder($id: ID!) { order(id: $id) { ${O
  * writes by seconds (L-M1); the adapter compensates with a settle window
  * rather than trusting the index to be current.
  */
+/**
+ * What the destination copy of an order reports back (`FulfillmentStatusReader`):
+ * whether it was cancelled, how far it is fulfilled, and each fulfillment's
+ * state, delivery instant and tracking numbers.
+ */
+export const ORDER_FULFILLMENT_STATUS_QUERY = `query OlOrderFulfillmentStatus($id: ID!) {
+  order(id: $id) {
+    cancelledAt
+    displayFulfillmentStatus
+    fulfillments(first: 20) { status displayStatus deliveredAt trackingInfo(first: 5) { number } }
+  }
+}`;
+
 export const ORDER_FEED_QUERY = `query OlOrderFeed($first: Int!, $after: String, $query: String!) {
   orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT) {
     nodes { id createdAt updatedAt cancelledAt }

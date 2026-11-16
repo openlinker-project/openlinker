@@ -18,4 +18,11 @@ describe('buildShopifySchedulerTasks', () => {
       expect(byId.get(id)).toMatchObject({ requiredCapability: 'OrderSource', enabledDefault: false });
     }
   });
+
+  it('should read the copy fulfillment back on a connection that receives orders', () => {
+    expect(byId.get('shopify-fulfillment-status-sync')).toMatchObject({
+      jobType: 'marketplace.fulfillment.statusSync',
+      requiredCapability: 'OrderProcessorManager',
+    });
+  });
 });

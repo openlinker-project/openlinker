@@ -43,6 +43,8 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type {
   DestinationOptionsReader,
+  FulfillmentStatusReader,
+  FulfillmentStatusSnapshot,
   MappingOption,
   OrderCreate,
   OrderCreateStockEffect,
@@ -54,8 +56,10 @@ import type {
   OrderStatusWriteback,
   OrderWritebackResult,
 } from '@openlinker/core/orders';
+import { FULFILLMENT_STATUS } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
+import { ShopifyOrderNotFoundException } from '../../../domain/exceptions/shopify-order-not-found.exception';
 import { ShopifyNotSupportedException } from '../../../domain/exceptions/shopify-not-supported.exception';
 import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
 import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
@@ -72,6 +76,7 @@ import { ShopifyMappingOptionsReader } from '../../readers/shopify-mapping-optio
 import {
   FULFILLMENT_ORDER_MOVE_MUTATION,
   ORDER_BY_SOURCE_IDENTIFIER_QUERY,
+  ORDER_FULFILLMENT_STATUS_QUERY,
   ORDER_CREATE_MUTATION,
   VARIANTS_REQUIRE_SHIPPING_QUERY,
 } from '../../readers/shopify-order.queries';
@@ -96,6 +101,19 @@ interface VariantsRequireShippingQuery {
   } | null>;
 }
 
+interface OrderFulfillmentStatusQuery {
+  readonly order: {
+    readonly cancelledAt: string | null;
+    readonly displayFulfillmentStatus: string;
+    readonly fulfillments: ReadonlyArray<{
+      readonly status: string;
+      readonly displayStatus: string | null;
+      readonly deliveredAt: string | null;
+      readonly trackingInfo: ReadonlyArray<{ readonly number: string | null }>;
+    }>;
+  } | null;
+}
+
 interface OrdersBySourceQuery {
   readonly orders: ShopifyConnection<{ readonly id: string; readonly name: string }>;
 }
@@ -114,7 +132,8 @@ export class ShopifyOrderProcessorAdapter
     OrderFulfillmentUpdater,
     OrderStatusWriteback,
     OrderCreateStockEffect,
-    DestinationOptionsReader
+    DestinationOptionsReader,
+    FulfillmentStatusReader
 {
   private readonly logger = new Logger(ShopifyOrderProcessorAdapter.name);
   private readonly options: ShopifyMappingOptionsReader;
@@ -234,6 +253,39 @@ export class ShopifyOrderProcessorAdapter
     if (result.outcome === 'rejected') {
       throw new ShopifyUserErrorsException('updateFulfillment', [{ message: result.detail ?? 'refused' }]);
     }
+  }
+
+  // ─── FulfillmentStatusReader ───────────────────────────────────────────────
+
+  /**
+   * The copy's own view of its fulfillment, so a parcel packed in the Shopify
+   * admin reaches OpenLinker. Cancelled wins; otherwise the order must be
+   * FULFILLED (a partial fulfillment is not yet a dispatch the marketplace
+   * should be told about) and is `delivered` once every live fulfillment says
+   * so. Anything else is `null`: Shopify has not acted on it yet.
+   */
+  async getFulfillmentStatus(input: { externalOrderId: string }): Promise<FulfillmentStatusSnapshot> {
+    const data = await this.client.query<OrderFulfillmentStatusQuery>(ORDER_FULFILLMENT_STATUS_QUERY, {
+      id: toShopifyGid('Order', input.externalOrderId),
+    });
+    const order = data.order;
+    if (order === null) {
+      throw new ShopifyOrderNotFoundException(input.externalOrderId, this.connection.id);
+    }
+    if (order.cancelledAt !== null) {
+      return { status: FULFILLMENT_STATUS.Cancelled, trackingNumber: null, deliveredAt: null };
+    }
+    const live = order.fulfillments.filter((f) => f.status === 'SUCCESS');
+    if (order.displayFulfillmentStatus !== 'FULFILLED' || live.length === 0) {
+      return { status: null, trackingNumber: null, deliveredAt: null };
+    }
+    const trackingNumber = live.flatMap((f) => f.trackingInfo).find((t) => t.number)?.number ?? null;
+    if (live.every((f) => f.displayStatus === 'DELIVERED')) {
+      const instants = live.flatMap((f) => (f.deliveredAt === null ? [] : [Date.parse(f.deliveredAt)]));
+      const latest = instants.length === 0 ? null : new Date(Math.max(...instants));
+      return { status: FULFILLMENT_STATUS.Delivered, trackingNumber, deliveredAt: latest };
+    }
+    return { status: FULFILLMENT_STATUS.Dispatched, trackingNumber, deliveredAt: null };
   }
 
   // ─── Internals ─────────────────────────────────────────────────────────────

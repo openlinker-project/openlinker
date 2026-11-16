@@ -40,6 +40,24 @@ export function buildShopifySchedulerTasks(): SchedulerTaskConfig[] {
         `marketplace:${connection.id}:shopify:orders:poll:${timestamp}`,
     },
     {
+      // A Shopify copy fulfilled in the Shopify admin is read back into a
+      // branch-1 Shipment. Only a Shopify that receives orders has copies.
+      taskId: 'shopify-fulfillment-status-sync',
+      platformType: SHOPIFY_PLATFORM_TYPE,
+      requiredCapability: 'OrderProcessorManager',
+      jobType: 'marketplace.fulfillment.statusSync',
+      cronExpression: '*/15 * * * *',
+      enabledEnvVar: 'OL_SHOPIFY_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: (_connection: Connection) => ({
+        schemaVersion: 1 as const,
+        limit: 100,
+        cursorKey: 'shopify.fulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      }),
+      generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
+        `marketplace:${connection.id}:shopify:fulfillment:status:sync:${timestamp}`,
+    },
+    {
       taskId: 'shopify-returns-poll',
       platformType: SHOPIFY_PLATFORM_TYPE,
       requiredCapability: 'OrderSource',
