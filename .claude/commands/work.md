@@ -81,6 +81,7 @@ Follow the 5-phase process from `docs/implementation-plan-generator-guide.md`:
 3. **Design the solution** — map to hexagonal layers, define interfaces and data flow
 4. **Create a step-by-step implementation plan** — each step tied to a file path with acceptance criteria
 5. **Validate** — check architecture compliance, naming, testing strategy, security
+6. **Release-step question** — ask whether the feature needs a manual operator decision (a new setting, a changed default, a moved option). If yes, the plan must include a Release center catalog step in `apps/web/src/features/release-center/catalog/release-steps.ts` (types in `release-step.types.ts`): `id`, `introducedIn`, route, `data-tour`, `appliesWhen`, completion, with PL and EN texts. For a minor release also add a highlights entry in `release-highlights.ts`. If no decision is needed, state that in the plan.
 
 Save the plan to:
 ```
@@ -133,6 +134,7 @@ It greps the **live repo** for reuse collisions (a port / service / DI token / O
 1. **Self-review** all changes (architecture, standards, code quality, tests, security) following `docs/code-review-guide.md`
 2. Fix all **BLOCKING** and **IMPORTANT** issues found
 3. Re-run the quality gate after fixes
+   - **Release-step check**: if the plan called for a catalog step, confirm it exists in `apps/web/src/features/release-center/catalog/release-steps.ts` (and the highlights entry for a minor release), and that `pnpm check:release-center-catalog` (`scripts/check-release-center-catalog.mjs`) and `pnpm check:invariants` pass.
 4. **Commit** with a conventional commit message (`feat:`, `fix:`, etc.)
 
 ⏸️ **Present the review verdict and ask** if the user wants to:
