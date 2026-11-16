@@ -17,7 +17,7 @@ import { useActiveLocale, useMessages } from '../../shared/i18n';
 import { AccessGate } from '../../shared/ui/access-gate';
 import { Button } from '../../shared/ui/button';
 import { AccessDeniedState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 
 function LoginPageSettingsContent(): ReactElement {
   const copy = useMessages('login-page-settings');
@@ -43,16 +43,27 @@ function LoginPageSettingsContent(): ReactElement {
 
 export function LoginPageSettingsPage(): ReactElement {
   const copy = useMessages('login-page-settings');
+  const tpl = useMessages('settings').template.loginPage;
   return (
-    <PageLayout
+    <SettingsPageFrame
       backTo={{ to: '/settings', label: copy.back }}
       eyebrow={copy.eyebrow}
       title={copy.title}
+      short={tpl.short}
       description={copy.description}
-    >
-      <AccessGate require="users:write" fallback={<AccessDeniedState />}>
-        <LoginPageSettingsContent />
-      </AccessGate>
-    </PageLayout>
+      sections={[
+        {
+          id: 'copy',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            <AccessGate require="users:write" fallback={<AccessDeniedState />}>
+              <LoginPageSettingsContent />
+            </AccessGate>
+          ),
+        },
+      ]}
+    />
   );
 }

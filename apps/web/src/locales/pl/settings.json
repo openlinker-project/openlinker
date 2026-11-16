@@ -446,6 +446,93 @@
     "title": "Tempo synchronizacji",
     "valueWithSource": "{value} ({source})"
   },
+  "template": {
+    "aiProvider": {
+      "hint": "Klucze dla każdego dostawcy i aktywny dostawca.",
+      "short": "Dostawca AI",
+      "title": "Dostawcy AI"
+    },
+    "batch": {
+      "hint": "Kiedy i jak dokumenty są wystawiane razem dla tego połączenia.",
+      "short": "Wystawianie zbiorcze",
+      "title": "Wystawianie zbiorcze"
+    },
+    "buyerEmailEditor": {
+      "hint": "Nadawca, temat i treść tego e-maila.",
+      "short": "E-mail do kupującego",
+      "title": "Treść e-maila"
+    },
+    "buyerEmails": {
+      "hint": "Wybierz połączenie i ustaw, jakie e-maile dostają kupujący.",
+      "short": "E-maile do kupujących",
+      "title": "E-maile według połączenia"
+    },
+    "inventoryLocations": {
+      "hint": "Magazyny i inne miejsca, w których leży towar.",
+      "short": "Lokalizacje",
+      "title": "Lokalizacje magazynowe"
+    },
+    "loginPage": {
+      "hint": "Co goście widzą na ekranie logowania tej instalacji.",
+      "short": "Strona logowania",
+      "title": "Treść strony logowania"
+    },
+    "mcpTokens": {
+      "hint": "Dane dostępowe, którymi klient MCP łączy się z tą instalacją.",
+      "short": "Tokeny MCP",
+      "title": "Tokeny dostępu"
+    },
+    "orderTags": {
+      "hint": "Etykiety, które zespół nadaje zamówieniom.",
+      "short": "Tagi zamówień",
+      "title": "Tagi zamówień"
+    },
+    "salesGifts": {
+      "hint": "Jak darmowe gratisy wyglądają na wystawionych dokumentach.",
+      "short": "Gratisy",
+      "title": "Gratisy na dokumentach"
+    },
+    "salesMarkets": {
+      "hint": "Jaki dokument dostaje każdy kraj dostawy.",
+      "short": "Rynki",
+      "title": "Rynki"
+    },
+    "salesProviders": {
+      "hint": "Połączenia wystawiające dokumenty i moment ich wystawiania.",
+      "short": "Dostawcy",
+      "title": "Dostawcy dokumentów"
+    },
+    "settingsEnv": {
+      "hint": "Instalacja, do której jesteś zalogowany.",
+      "short": "Środowisko",
+      "title": "Środowisko i konto"
+    },
+    "settingsHome": {
+      "hint": "Każdy obszar, który możesz skonfigurować.",
+      "short": "Ustawienia",
+      "title": "Obszary ustawień"
+    },
+    "settingsSoon": {
+      "hint": "Obszary, które nie są jeszcze dostępne.",
+      "short": "Wkrótce",
+      "title": "Planowane"
+    },
+    "sourcingRules": {
+      "hint": "Uporządkowane reguły wybierające, skąd realizowane jest zamówienie.",
+      "short": "Reguły źródeł",
+      "title": "Reguły źródeł"
+    },
+    "syncPacing": {
+      "hint": "Jak mocno OpenLinker pracuje na katalogu sklepu.",
+      "short": "Tempo synchronizacji",
+      "title": "Tempo synchronizacji"
+    },
+    "whoDecides": {
+      "hint": "Który system odpowiada za stany, zamówienia, zwroty, zwroty pieniędzy i dokumenty.",
+      "short": "Kto decyduje",
+      "title": "Kto o czym decyduje"
+    }
+  },
   "tickBudgetBar": {
     "ariaHostLimit": "Hosting zatrzymuje procesy po {limit}.",
     "ariaHostLimitPassed": "Hosting zatrzymuje procesy po {limit}, a ten przebieg by to przekroczył.",

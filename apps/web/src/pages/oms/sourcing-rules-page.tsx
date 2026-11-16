@@ -55,12 +55,13 @@ import { interpolate, useMessages } from '../../shared/i18n';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { findOmsConnections } from './oms-connection';
 import { describeApiError } from '../../shared/api/describe-api-error';
 
 export function SourcingRulesPage(): ReactElement {
   const copy = useMessages('oms-core').sourcingRulesPage;
+  const tpl = useMessages('settings').template.sourcingRules;
   const [searchParams] = useSearchParams();
   const requestedConnectionId = searchParams.get('connectionId');
 
@@ -78,14 +79,16 @@ export function SourcingRulesPage(): ReactElement {
   const canBootstrap = write.canWrite && isAdmin;
 
   const shell = (children: ReactElement): ReactElement => (
-    <PageLayout
+    <SettingsPageFrame
       eyebrow={copy.crumbGroup}
       title={copy.crumbTitle}
+      short={tpl.short}
       description={copy.description}
       backTo={{ to: '/settings', label: copy.backToSettings }}
-    >
-      {children}
-    </PageLayout>
+      sections={[
+        { id: 'rules', label: tpl.short, title: tpl.title, hint: tpl.hint, children },
+      ]}
+    />
   );
 
   if (

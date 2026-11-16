@@ -16,7 +16,7 @@
  */
 import { useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { getMessages, interpolate, useMessages, usePlural, type PluralFn } from '../../shared/i18n';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
@@ -117,6 +117,7 @@ function renderPagination(
 
 export function InventoryLocationsPage(): ReactElement {
   const copy = useMessages('inventory').inventoryLocationsPage;
+  const tpl = useMessages('settings').template.inventoryLocations;
   const plural = usePlural();
   const [searchParams, setSearchParams] = useSearchParams();
   const demoMode = useDemoMode();
@@ -398,12 +399,13 @@ export function InventoryLocationsPage(): ReactElement {
   );
 
   return (
-    <PageLayout
+    <SettingsPageFrame
       backTo={{ to: '/settings', label: copy.back }}
       eyebrow={copy.eyebrow}
       title={copy.title}
+      short={tpl.short}
       description={copy.description}
-      actions={
+      headerExtra={
         write.visible ? (
           <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button disabled={write.demoReadOnly} onClick={() => setDialogTarget({ mode: 'create' })}>
@@ -412,7 +414,14 @@ export function InventoryLocationsPage(): ReactElement {
           </ReadOnlyLock>
         ) : null
       }
-    >
+      sections={[
+        {
+          id: 'locations',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            <>
       <div className="toolbar">
         <div className="toolbar__group">
           <Select
@@ -527,6 +536,10 @@ export function InventoryLocationsPage(): ReactElement {
 
       <LocationDialog target={dialogTarget} onClose={() => setDialogTarget(null)} />
       <LocationDeleteDialog location={deleteTarget} onClose={() => setDeleteTarget(null)} />
-    </PageLayout>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }
