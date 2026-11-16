@@ -2,9 +2,9 @@
  * Shopify Incoming Return Mapper
  *
  * Maps a Shopify `Return` onto the neutral `IncomingReturn`. Everything is
- * carried as the source reports it: the raw `ReturnStatus`, the raw
- * `returnReasonDefinition.handle` value (core maps reasons where the aggregate is
- * written), quantities, sku and name. The only derivation is the
+ * carried as the source reports it: the raw `ReturnStatus`, the reason (its
+ * handle translated onto core's refund reasons, #4125), the raw
+ * quantities, sku and name. The only derivation is the
  * `isTerminalAtSource` hint, from the same constant the adapter publishes as
  * `terminalRawStatuses`.
  *
@@ -35,6 +35,26 @@ function nonEmpty(value: string | null | undefined): string | undefined {
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 }
 
+// Shopify's reason catalogue (`returnReasonDefinitions`) is ~400 handles, almost
+// all category-specific preferences (sizes, colours, flavours). Only the handles
+// that say WHY the goods came back in terms core's closed vocabulary can express
+// are mapped; everything else is `other` rather than a guess. The original
+// handle is not lost: it stays on the line's `raw` payload.
+const SHOPIFY_REASON_HANDLE_TO_REFUND_REASON: Readonly<Record<string, string>> = {
+  'changed-my-mind': 'withdrawal',
+  'item-not-as-described': 'not_as_described',
+  'received-the-wrong-item': 'wrong_item',
+  'damaged-or-defective': 'defective',
+  'damaged-packaging': 'defective',
+  'breaks-easily': 'defective',
+};
+
+export function mapShopifyReasonHandle(handle: string): string {
+  return Object.prototype.hasOwnProperty.call(SHOPIFY_REASON_HANDLE_TO_REFUND_REASON, handle)
+    ? SHOPIFY_REASON_HANDLE_TO_REFUND_REASON[handle]
+    : 'other';
+}
+
 function mapLine(line: ShopifyReturnLineNode): IncomingReturnLine {
   const orderLine = line.fulfillmentLineItem?.lineItem ?? null;
   const sku = nonEmpty(orderLine?.sku);
@@ -48,7 +68,7 @@ function mapLine(line: ShopifyReturnLineNode): IncomingReturnLine {
     ...(name === undefined ? {} : { name }),
     quantity: line.quantity ?? 0,
     ...(Number.isFinite(price) ? { unitPrice: price } : {}),
-    ...(reason === undefined ? {} : { reasonRaw: reason }),
+    ...(reason === undefined ? {} : { reasonRaw: mapShopifyReasonHandle(reason) }),
     raw: line,
   };
 }

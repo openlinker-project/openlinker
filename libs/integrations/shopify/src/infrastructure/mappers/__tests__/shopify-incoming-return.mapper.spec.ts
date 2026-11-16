@@ -1,5 +1,5 @@
 import type { ShopifyReturnLineNode, ShopifyReturnNode } from '../../../domain/types/shopify-return.types';
-import { mapShopifyReturnToIncoming } from '../shopify-incoming-return.mapper';
+import { mapShopifyReasonHandle, mapShopifyReturnToIncoming } from '../shopify-incoming-return.mapper';
 
 function returnLine(overrides: Partial<ShopifyReturnLineNode> = {}): ShopifyReturnLineNode {
   return {
@@ -52,7 +52,7 @@ describe('mapShopifyReturnToIncoming', () => {
         name: 'T-shirt - L',
         quantity: 1,
         unitPrice: 76.49,
-        reasonRaw: 'size-too-small',
+        reasonRaw: 'other',
       }),
     ]);
   });
@@ -84,5 +84,38 @@ describe('mapShopifyReturnToIncoming', () => {
 
   it('should report a return with no order as unattributed rather than guessing one', () => {
     expect(mapShopifyReturnToIncoming(shopifyReturn({ order: null })).externalOrderId).toBeNull();
+  });
+});
+
+describe('Shopify return reason handles', () => {
+  it.each([
+    ['changed-my-mind', 'withdrawal'],
+    ['item-not-as-described', 'not_as_described'],
+    ['received-the-wrong-item', 'wrong_item'],
+    ['damaged-or-defective', 'defective'],
+    ['damaged-packaging', 'defective'],
+    ['breaks-easily', 'defective'],
+    ['size-too-small', 'other'],
+    ['other-reason', 'other'],
+    ['unknown', 'other'],
+    ['toString', 'other'],
+  ])('should map the handle %s onto %s', (handle, expected) => {
+    expect(mapShopifyReasonHandle(handle)).toBe(expected);
+  });
+
+  it('should set the mapped reason on the line and keep the original handle on the raw line', () => {
+    const line = returnLine({ returnReasonDefinition: { handle: 'damaged-or-defective', name: 'Damaged or defective' } });
+    const incoming = mapShopifyReturnToIncoming(shopifyReturn({ returnLineItems: { nodes: [line] } }));
+
+    expect(incoming.lines[0].reasonRaw).toBe('defective');
+    expect(incoming.lines[0].raw).toBe(line);
+  });
+
+  it('should leave the reason unset when the line carries no reason', () => {
+    const incoming = mapShopifyReturnToIncoming(
+      shopifyReturn({ returnLineItems: { nodes: [returnLine({ returnReasonDefinition: null })] } }),
+    );
+
+    expect(incoming.lines[0]).not.toHaveProperty('reasonRaw');
   });
 });
