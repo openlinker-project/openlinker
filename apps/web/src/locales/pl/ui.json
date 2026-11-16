@@ -294,6 +294,12 @@
   "richTextView": {
     "empty": "Brak opisu"
   },
+  "settingsTemplate": {
+    "newBadge": "Nowe",
+    "onThisPage": "Na tej stronie",
+    "readOnly": "Masz dostęp tylko do odczytu. Zmiany zapisuje administrator.",
+    "sections": "Sekcje strony"
+  },
   "setupStepper": {
     "label": "Postęp konfiguracji",
     "step": "Krok {current} z {total}"
