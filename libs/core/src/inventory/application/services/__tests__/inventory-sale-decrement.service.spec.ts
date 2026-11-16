@@ -10,6 +10,7 @@
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { SyncLockPort } from '@openlinker/core/sync';
+import { markRequestNotSent } from '@openlinker/shared/http';
 
 import { InventorySaleDecrement } from '../../../domain/entities/inventory-sale-decrement.entity';
 import type { InventoryItem } from '../../../domain/entities/inventory-item.entity';
@@ -500,6 +501,49 @@ describe('InventorySaleDecrementService', () => {
 
       expect(shop().adjustInventory).toHaveBeenCalledTimes(1);
     });
+  });
+
+  describe('when the write fails before the request left (#4041)', () => {
+    it('should mark the line retryable and keep it unsettled', async () => {
+      shop().adjustInventory.mockRejectedValueOnce(
+        markRequestNotSent(new Error('Shopify request failed: fetch failed'))
+      );
+
+      const result = await service.decrementForWork(input());
+
+      expect(result.lines[0]).toMatchObject({ status: 'retryable', reason: 'request-not-sent' });
+      expect(result.retryableLineIds).toEqual(['line-1']);
+      expect(shop().listInventory).not.toHaveBeenCalled();
+    });
+
+    it('should apply the decrement once on the retry, under the same key', async () => {
+      shop().adjustInventory.mockRejectedValueOnce(markRequestNotSent(new Error('refused')));
+      await service.decrementForWork(input());
+
+      const retry = await service.decrementForWork(input());
+
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(2);
+      const keys = shop().adjustInventory.mock.calls.map(
+        ([adjustment]) => (adjustment as { idempotencyKey?: string }).idempotencyKey
+      );
+      expect(keys[0]).toBe(keys[1]);
+      expect(retry.retryableLineIds).toEqual([]);
+      expect(retry.lines[0]).toMatchObject({ status: 'applied' });
+    });
+
+    it.each(['ETIMEDOUT', 'ECONNRESET', 'UND_ERR_SOCKET'])(
+      'should keep a %s failure in doubt, because it can happen after send',
+      async (code) => {
+        shop().adjustInventory.mockRejectedValue(
+          new TypeError('fetch failed', { cause: Object.assign(new Error(code), { code }) })
+        );
+
+        const result = await service.decrementForWork(input());
+
+        expect(result.lines[0]).toMatchObject({ status: 'in_doubt', reason: 'master-error' });
+        expect(result.retryableLineIds).toEqual([]);
+      }
+    );
   });
 
   it('should block rather than doubt when the master reports the product absent', async () => {

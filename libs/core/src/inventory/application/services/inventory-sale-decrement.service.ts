@@ -68,6 +68,7 @@ import {
 } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
+import { isRequestNotSentError } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 
 import { InventoryItem } from '../../domain/entities/inventory-item.entity';
@@ -364,6 +365,13 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         // so this is a refusal, not an unknown.
         return this.failed('blocked', 'master-product-not-found', detail);
       }
+      if (isRequestNotSentError(error)) {
+        // The adapter's HTTP client proved the request never left (DNS failure,
+        // connection refused), so the master applied nothing and the line is
+        // safe to claim again - the one `in_doubt` exception (#4041). The mark
+        // is set only when EVERY attempt the client made was provably unsent.
+        return this.failed('retryable', 'request-not-sent', detail);
+      }
       return this.failed('in_doubt', 'master-error', detail);
     }
 
@@ -416,7 +424,7 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
   }
 
   private failed(
-    status: 'blocked' | 'in_doubt',
+    status: 'blocked' | 'in_doubt' | 'retryable',
     reason: SaleDecrementSettlement['reason'],
     detail: string
   ): SaleDecrementSettlement {
