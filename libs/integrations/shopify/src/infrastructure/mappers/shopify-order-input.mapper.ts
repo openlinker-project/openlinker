@@ -112,6 +112,11 @@ function taxLines(
   return [{ title: `VAT ${rateCode}%`, rate: rate.toFixed(4), priceSet: money(tax, currencyCode) }];
 }
 
+/** `1 + rate` for a stated numeric rate, 1 for an absent or exemption code. */
+function rateFactor(rateCode: string | undefined): number {
+  return rateCode !== undefined && NUMERIC_RATE.test(rateCode) ? 1 + Number(rateCode) / 100 : 1;
+}
+
 function mailingAddress(address: Address | undefined): Record<string, string> | undefined {
   if (address === undefined) {
     return undefined;
@@ -181,14 +186,30 @@ export function shopifyOrderDiscount(
     return null;
   }
   const taxesIncluded = order.totals.taxTreatment !== 'exclusive';
+  const exponent = minorUnitExponentFor(order.totals.currency);
+  // A source states its discount gross (`totals.discountTotal`), but a
+  // net-priced order is created with net line prices and Shopify then adds the
+  // tax on top of the discounted net. Applying the gross figure against net
+  // prices over-discounts by the VAT contained in it (a 10.00 discount on 23%
+  // cost the buyer's total 2.30). So on a net order the discount is cut across
+  // the lines' GROSS totals and each share is converted back to net at its own
+  // line's rate; a line with no stated rate has no tax to peel off.
+  const factors = lines.map(({ item }) => (taxesIncluded ? 1 : rateFactor(item.taxRate)));
   const split = distributeOrderDiscount(
-    lines.map(({ item }) => unitPrice(item, taxesIncluded) * item.quantity),
+    lines.map(({ item }, index) => unitPrice(item, taxesIncluded) * item.quantity * factors[index]),
     discount,
-    minorUnitExponentFor(order.totals.currency),
+    exponent,
   );
-  return split === null
-    ? null
-    : { amount: discount, lineTotalsAfterDiscount: split.map((part) => part.grossTotalAfterDiscount) };
+  if (split === null) {
+    return null;
+  }
+  const lineTotalsAfterDiscount = split.map((part, index) => part.grossTotalAfterDiscount / factors[index]);
+  if (taxesIncluded) {
+    return { amount: discount, lineTotalsAfterDiscount };
+  }
+  const netDiscount = split.reduce((sum, part, index) => sum + (part.grossTotal - part.grossTotalAfterDiscount) / factors[index], 0);
+  const scale = 10 ** exponent;
+  return { amount: Math.round(netDiscount * scale) / scale, lineTotalsAfterDiscount };
 }
 
 function lineItem(

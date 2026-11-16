@@ -126,6 +126,46 @@ describe('buildShopifyOrderCreateVariables', () => {
     expect(input.transactions).toEqual([expect.objectContaining({ amountSet: { shopMoney: { amount: '195.00', currencyCode: 'PLN' } } })]);
   });
 
+  it('should convert a gross whole-order discount to net on a net-priced order so the copy totals what the buyer paid', () => {
+    // Lines 60 + 30 net at 23%, shipping 8.00 net / 9.84 gross, a 10.00 GROSS coupon: the buyer paid 110.54.
+    const o = order({
+      items: [
+        { id: 'l1', productId: 'p1', variantId: 'v1', quantity: 1, price: 60, taxRate: '23', name: 'A' },
+        { id: 'l2', productId: 'p2', variantId: 'v2', quantity: 1, price: 30, taxRate: '23', name: 'B' },
+      ],
+      totals: {
+        subtotal: 90,
+        tax: 0,
+        shipping: 8,
+        shippingGross: 9.84,
+        shippingTaxRate: '23',
+        total: 110.54,
+        currency: 'PLN',
+        taxTreatment: 'exclusive',
+        discountTotal: 10,
+      },
+    } as Partial<OrderCreate>);
+    const lines: ShopifyResolvedLine[] = o.items.map((item, i) => ({
+      item,
+      variantGid: `gid://shopify/ProductVariant/${i + 1}`,
+      requiresShipping: true,
+    }));
+
+    const { order: input } = buildShopifyOrderCreateVariables(o, lines, undefined);
+
+    const amount = (bag: unknown): number => Number((bag as { shopMoney: { amount: string } }).shopMoney.amount);
+    const discount = (input.discountCode as { itemFixedDiscountCode: { amountSet: unknown } }).itemFixedDiscountCode.amountSet;
+    const items = input.lineItems as Array<{ priceSet: unknown; taxLines: Array<{ priceSet: unknown }> }>;
+    const shipping = (input.shippingLines as Array<{ priceSet: unknown; taxLines: Array<{ priceSet: unknown }> }>)[0];
+    const net = items.reduce((sum, i) => sum + amount(i.priceSet), 0) - amount(discount) + amount(shipping.priceSet);
+    const tax =
+      items.reduce((sum, i) => sum + amount(i.taxLines[0].priceSet), 0) + amount(shipping.taxLines[0].priceSet);
+
+    // 10.00 gross is 8.13 net, not 10.00 off a net price.
+    expect(amount(discount)).toBe(8.13);
+    expect(Math.round((net + tax) * 100) / 100).toBe(110.54);
+  });
+
   it('should send no discount code when the order carries none or it cannot be split', () => {
     const o = order();
     expect(buildShopifyOrderCreateVariables(o, VARIANT_LINE(o), undefined).order).not.toHaveProperty('discountCode');
