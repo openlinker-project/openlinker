@@ -118,7 +118,15 @@ export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): Routing
           lineAttention: LINE_ATTENTION_UNTOUCHED,
         };
       }
-      // The #2047 guard: some route already owns this order.
+      if (outcome.reason === 'already-routed') {
+        // The order already carries live work (a re-ingestion re-drove routing,
+        // #4034): the work object IS the explanation, exactly as for `routed`.
+        // Writing a block here would read as held while it is being packed.
+        // The line attention is left untouched: nothing was decided this time.
+        return { held: true, block: null, lineAttention: LINE_ATTENTION_UNTOUCHED };
+      }
+      // `already-live-elsewhere`: the #2047 guard, a live decision belonging to
+      // a DIFFERENT router. A genuine conflict, so it keeps its block.
       return {
         held: true,
         block: {

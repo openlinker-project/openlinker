@@ -39,19 +39,24 @@ describe('deriveRoutingHoldOutcome', () => {
     });
   });
 
-  it.each(['already-routed', 'already-live-elsewhere'] as const)(
-    'should hold an order the #2047 guard refused (%s)',
-    (reason) => {
-      const result = deriveRoutingHoldOutcome({ status: 'skipped', reason });
+  it('should hold an already-routed order with no block (the live work explains it)', () => {
+    expect(deriveRoutingHoldOutcome({ status: 'skipped', reason: 'already-routed' })).toEqual({
+      held: true,
+      block: null,
+      lineAttention: { kind: 'indeterminate' },
+    });
+  });
 
-      expect(result.held).toBe(true);
-      expect(result.block).toEqual({
-        reason: 'routing-already-live-elsewhere',
-        detail: `routing refused: ${reason}`,
-      });
-      expect(result.lineAttention).toEqual({ kind: 'indeterminate' });
-    }
-  );
+  it('should hold an order whose live decision belongs to another router and keep the block', () => {
+    const result = deriveRoutingHoldOutcome({ status: 'skipped', reason: 'already-live-elsewhere' });
+
+    expect(result.held).toBe(true);
+    expect(result.block).toEqual({
+      reason: 'routing-already-live-elsewhere',
+      detail: 'routing refused: already-live-elsewhere',
+    });
+    expect(result.lineAttention).toEqual({ kind: 'indeterminate' });
+  });
 
   it('should not hold a cancelled order and should clear the line attention', () => {
     expect(deriveRoutingHoldOutcome({ status: 'skipped', reason: 'order-cancelled' })).toEqual({
