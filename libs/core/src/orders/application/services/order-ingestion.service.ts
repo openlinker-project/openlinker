@@ -849,6 +849,31 @@ export class OrderIngestionService implements IOrderIngestionService {
           (error as Error).stack,
         );
       }
+
+      // A cancel that arrives as an ordinary order UPDATE (Allegro's status
+      // change, a re-read) used to reach only the stock restore: the relay to
+      // destinations ran solely for a feed event typed `cancelled`, so a copy
+      // already created in a destination stayed live and its stock stayed
+      // consumed. Relay here too, on the same transition gate; a record already
+      // stamped cancelled was handled by the event path.
+      if (!existing?.isCancelled) {
+        try {
+          const relayed = await this.orderLifecycleRelay.relay({
+            internalOrderId,
+            originConnectionId: connectionId,
+            event: { type: 'cancelled' },
+          });
+          this.logger.log(
+            `Cancellation relayed for order ${internalOrderId} on update: ` +
+              (relayed.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') || 'no targets')
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to relay the cancellation of order ${internalOrderId} to its destinations`,
+            (error as Error).stack
+          );
+        }
+      }
     }
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
@@ -1029,6 +1054,17 @@ export class OrderIngestionService implements IOrderIngestionService {
               error: withheldOnHoldError(result.holdReason),
             }
           );
+        } else if (
+          result.status === 'skipped_cancelled' &&
+          existing?.syncStatus.some(
+            (entry) =>
+              entry.destinationConnectionId === result.destinationConnectionId && entry.status === 'synced'
+          )
+        ) {
+          // The destination already holds this order. "Cancelled before the
+          // create" would be false, and it would erase the external id the
+          // cancellation relay needs to find the copy.
+          return Promise.resolve();
         } else if (result.status === 'skipped_cancelled') {
           // #2284 — terminal, and NOT a failure: the source cancelled before the
           // destination create ran, so provisioning was withheld. `error` carries

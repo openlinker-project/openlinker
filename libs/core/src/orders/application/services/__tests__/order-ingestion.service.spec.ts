@@ -1727,6 +1727,59 @@ describe('OrderIngestionService', () => {
       });
     });
 
+    it('should relay the cancellation to destinations when an update moves an order to cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledWith({
+        internalOrderId,
+        originConnectionId: connectionId,
+        event: { type: 'cancelled' },
+      });
+    });
+
+    it('should NOT relay again when the record was already stamped cancelled by the event path', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: true,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should keep a destination that already holds the order as synced when the order is cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+        syncStatus: [{ destinationConnectionId: 'dest-1', status: 'synced', externalOrderId: 'ext-1' }],
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] } as never);
+      orderSyncService.syncOrder.mockResolvedValue([
+        { destinationConnectionId: 'dest-1', status: 'skipped_cancelled', cancelledAt: new Date() },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalledWith(
+        internalOrderId,
+        'dest-1',
+        expect.objectContaining({ status: 'skipped_cancelled' })
+      );
+    });
+
     it('should enqueue when a first-seen order is already cancelled (no prior record)', async () => {
       orderSource.getOrder.mockResolvedValue(cancelledIncoming);
       orderRecordService.getOrderRecord.mockResolvedValue(null);
