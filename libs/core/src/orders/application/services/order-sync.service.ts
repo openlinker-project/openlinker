@@ -45,7 +45,12 @@ import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
-import { SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import {
+  SyncLockPort,
+  SYNC_LOCK_TOKEN,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  RetryClassifierRegistryService,
+} from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -102,7 +107,9 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
     private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
     @Inject(MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN)
-    private readonly masterAbsorbedReservations: IMasterAbsorbedReservationService
+    private readonly masterAbsorbedReservations: IMasterAbsorbedReservationService,
+    @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
+    private readonly retryClassifierRegistry: RetryClassifierRegistryService
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
@@ -485,6 +492,27 @@ export class OrderSyncService implements IOrderSyncService {
       }
     }
 
+    // #3984: a destination that refused us for a reason its own plugin classifies
+    // as deferrable (429 / 503) is not a failure the operator should have to
+    // click through. Rethrow AFTER the successful siblings have finished their
+    // post-create steps above: the runner then requeues the job penalty-free
+    // with the plugin's delay (bounded by the deferral budget), and the rerun is
+    // safe because create is idempotent per destination via its mapping, so
+    // destinations that already succeeded hit the skip path. Permanent failures
+    // and errors no classifier calls deferrable still settle as `failed` below.
+    const transient = settled.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === 'rejected' && this.isTransientDestinationFailure(outcome.reason)
+    );
+    if (transient) {
+      this.logger.warn(
+        `Order ${order.id} hit a transient destination failure; retrying sync job: ${
+          transient.reason instanceof Error ? transient.reason.message : String(transient.reason)
+        }`
+      );
+      throw transient.reason;
+    }
+
     return settled.map((outcome, index): OrderSyncResult => {
       const destinationConnectionId = destinations[index].connectionId;
 
@@ -513,6 +541,18 @@ export class OrderSyncService implements IOrderSyncService {
         error: { message },
       };
     });
+  }
+
+  /**
+   * True when a destination plugin's own classifier says this failure is a
+   * deferrable one. A deterministic cause wins the tie, mirroring the runner,
+   * so a failure one plugin calls permanent is never re-driven for ever.
+   */
+  private isTransientDestinationFailure(cause: unknown): boolean {
+    if (this.retryClassifierRegistry.isNonRetryable(cause)) {
+      return false;
+    }
+    return this.retryClassifierRegistry.resolveRetryDeferral(cause) !== null;
   }
 
   /**
