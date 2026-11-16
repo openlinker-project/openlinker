@@ -779,6 +779,19 @@ Not a bounded context - a cross-cutting READ convention, recorded here because #
 - **API**: `/promotions` (list, `PUT /order`, `POST /evaluate`, get, create, replace, `POST /:id/resume`, delete). Reads are admin, operator and viewer; writes are admin and operator. `/gift-rules` no longer exists.
 - **Migration**: `1939500000000-create-promotions` copies each gift rule (ids kept, `doNotCombine` becomes `combinable`, definition hash recomputed), its state, grants and run history, then removes them from the automation tables and drops `automation_rules.position`. `down()` rebuilds them.
 
+### 31. Release center
+
+*See [ADR-085](./architecture/adrs/085-release-center.md) for the decision rationale. Planned (epic #4131); described as designed, not yet shipped.*
+
+- **Responsibility**: tell an operator what changed after an update and which setup steps need a decision: a post-update dialog with the English changelog, a notification center replacing the static "Alerts" button, a guided tour, and a catalog of required and optional steps with automatic or manual completion, archive, delete and undo.
+- **Location**: `libs/core/src/release-center/` (a **zero-sibling-edge leaf**, registered in `ZERO_SIBLING_EDGE_LEAVES` with an empty allow-set, not in the root barrel); HTTP in `apps/api/src/release-center/` under `release-state`; UI in `apps/web/src/features/release-center/`.
+- **State lives in the database only.** `user_release_state` (version cursor as text plus `major/minor/patch/rank`, and `skipDialog`) and `release_item_states` (scope `installation | user`, two partial unique indexes). No browser storage, which an ESLint rule and a test enforce.
+- **Roles.** Everyone with read access reads state; only an admin completes installation steps; a packer has no access. The user id comes only from the token.
+- **The catalog is code, the text is locale files.** Each step declares `introducedIn` by hand (the next minor), guarded by `scripts/check-release-center-catalog.mjs`. The dialog opens only on a minor or major increase.
+- **Completion is observed.** A keyed `useUpdateConnectionMutation` is watched through the `MutationCache`, so `features/connections` never imports the release center.
+- **Kill switch.** A nullable boolean on `operational_settings`: setting, then `OL_RELEASE_CENTER_ENABLED`, then default on, reported with its source. The leaf does not import `operational-settings`; the API layer composes `enabled`.
+- **A step points at an existing screen and never edits for you.** Carrier assignment stays in the Mappings panel; the release center only links to it.
+
 ---
 
 ## Capability Abstractions (Business Roles)

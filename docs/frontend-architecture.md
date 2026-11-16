@@ -780,6 +780,17 @@ Tests keep running in English (pinned in `src/test/setup.ts` and the Vitest conf
 
 To see where each language stands, run `pnpm i18n:report` (add `--missing` to list the missing key paths): it prints, per namespace, how many English keys the language has translated, most missing first, plus a `TOTAL` line, and it picks the new language up as soon as step 8 is done.
 
+## Release center and the settings page template (planned, epic #4131)
+
+*See [ADR-085](./architecture/adrs/085-release-center.md). Described as designed; not shipped yet.*
+
+- **Settings page template** (`shared/ui/settings-page-template.tsx`): one layout for every settings view - eyebrow, title, description, a sticky "On this page" contents, a single card of sections and actions at the bottom; the page title condenses into the sticky contents once the big title scrolls away. It must not import `features` or `pages`, uses tokens only, and respects `prefers-reduced-motion`. Wizards (they have a stepper) and the Mappings page (its own tabbed layout) are deliberately outside it.
+- **Plugin `sectionTitle`**: the plugin section contract gains an optional, already-resolved `sectionTitle` (from the plugin's own i18n namespace). A plugin without it appears in the contents as one "Platform settings" entry; a slot that renders nothing is left out. The change is additive.
+- **`features/release-center`** owns the dialog (Radix `Dialog`), the bell and panel, the guided tour and the step catalog. `ShellTopbar` takes an `alerts` prop: `AppShell` passes the bell, the pack bench layout passes `null`, so a packer never sees it. The provider mounts inside `AuthenticatedAppLayout` after the password-change and consent redirects.
+- **Step completion is observed** through the `MutationCache` by the `mutationKey` of `useUpdateConnectionMutation`; `features/connections` must not import the release center.
+- **No browser storage** for any release-center state (ESLint `no-restricted-properties` on `localStorage` and `sessionStorage`, plus a test). State comes from `GET /release-state`; a 404 or 500 is treated as "disabled".
+- **Registered viewer exceptions to the hide-write-affordance rule (§ Access Control And UI Visibility):** the read-only banner on settings pages ("You have read-only access. An administrator saves changes.", fields disabled) and the "Needs an administrator" chip on a step. A viewer is shown what exists and who can change it, as with the cost-price and stock-adjust exceptions above.
+
 ## Components And Pages
 
 Component conventions:
