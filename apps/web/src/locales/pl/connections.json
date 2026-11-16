@@ -1395,12 +1395,15 @@
   },
   "shipping": {
     "backToOmsSetup": "Wróć do konfiguracji OMS",
+    "carrierMappingsMessage": "To, dla jakich metod dostawy tworzy etykiety, ustawia się w kanale sprzedaży, a nie tutaj. Otwórz kanał i skorzystaj z zakładki routingu realizacji.",
+    "carrierMappingsNoChannels": "Nie połączono jeszcze żadnego kanału sprzedaży. Najpierw połącz kanał.",
+    "carrierMappingsOpenChannel": "Otwórz {channel}",
+    "carrierMappingsTitle": "{carrier} to konto przewoźnika, a nie kanał sprzedaży",
     "createdAction": "Wybierz metody dostawy",
     "createdBody": "Teraz wybierz, które metody dostawy wysyła {carrier}. Do tego czasu nie trafi tam żadne zamówienie.",
     "createdTitle": "Połączono {carrier}.",
-    "rowChange": "Zmień",
-    "rowChoose": "Wybierz",
     "rowLoading": "Wczytywanie metod dostawy...",
+    "rowOpenChannel": "Otwórz w kanale sprzedaży",
     "rowUnavailable": "Nie udało się wczytać, kto wysyła te metody dostawy.",
     "shippingAllLabelled": "Każda metoda dostawy dostaje etykietę z OpenLinker.",
     "shippingChange": "Zmień, kto co wysyła",
@@ -1431,7 +1434,9 @@
       "many": "{n} metod dostawy (nie wczytano nazw)",
       "one": "{n} metoda dostawy (nie wczytano nazwy)",
       "other": "{n} metody dostawy (nie wczytano nazw)"
-    }
+    },
+    "shipsForUnusedBody": "Żadna metoda dostawy nie trafia do tego konta. Przypisanie ustawia się w kanale sprzedaży: otwórz jeden z poniższych i wybierz, które jego metody dostawy wysyła ten przewoźnik.",
+    "shipsForUnusedTitle": "{carrier} nie jest jeszcze używany"
   },
   "shoperSetupForm": {
     "beforeYouStart": {
