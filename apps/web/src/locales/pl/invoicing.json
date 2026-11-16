@@ -160,7 +160,7 @@
         "label": "Filtruj według statusu"
       },
       "taxId": {
-        "all": "Wszystkie NIP kupujących",
+        "all": "Wszystkie NIP-y kupujących",
         "label": "Filtruj według NIP kupującego",
         "with": "Z NIP",
         "without": "Bez NIP"

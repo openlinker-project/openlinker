@@ -61,7 +61,7 @@
   "availability": {
     "available": "Gotowe",
     "irreversible": "Nie można cofnąć",
-    "panelIntro": "Regułę można zapisać z dowolnym z tych kroków i OpenLinker ją przyjmie. Faktycznie coś zrobią tylko kroki oznaczone jako gotowe.",
+    "panelIntro": "Regułę zapiszesz z każdym z tych kroków. Zadziałają tylko kroki oznaczone jako gotowe.",
     "panelTitle": "Co automatyzacje potrafią w tej wersji",
     "partial": "Działa w niektórych sytuacjach",
     "reasonSuffix": "- {reason}",
@@ -280,7 +280,7 @@
     "ruleCountNone": "Brak reguł",
     "ruleCountOne": "1 reguła",
     "rulesHeader": "Twoje reguły",
-    "runnableSteps": "Działa {runnable} z {legal} kroków",
+    "runnableSteps": "Działające kroki: {runnable} z {legal}",
     "triggerHeader": "Gdy to się stanie"
   },
   "mergeFields": {
@@ -311,7 +311,7 @@
     "unknown-trigger": "Ta reguła obserwuje zdarzenie, którego ta wersja nie rozpoznaje."
   },
   "page": {
-    "description": "Reguły, które działają na zamówieniach i zwrotach bez Twojego klikania. Każda obserwuje jedno zdarzenie, sprawdza ustawione warunki i wykonuje to, co ustalono.",
+    "description": "Reguły same obsługują zamówienia i zwroty. Każda reaguje na jedno zdarzenie, sprawdza ustawione warunki i wykonuje ustalone kroki.",
     "eyebrow": "Operacje",
     "runLogAction": "Dziennik",
     "tableCaption": "Wszystkie zdarzenia, które może obserwować automatyzacja",
@@ -393,11 +393,11 @@
   },
   "triggers": {
     "inventory.reservation_shortfall": {
-      "description": "Towar został obiecany zamówieniom, których nie da się zrealizować w całości.",
+      "description": "Zamówieniom obiecano więcej towaru, niż da się wydać.",
       "label": "Sprzedano więcej, niż jest na stanie"
     },
     "order.dispatch_deadline_near": {
-      "description": "Sprawdzane według zegara, aby ostrzec przed spóźnieniem.",
+      "description": "Sprawdzane okresowo, aby ostrzec przed spóźnieniem.",
       "label": "Zbliża się termin nadania"
     },
     "order.document_issued": {
@@ -417,7 +417,7 @@
       "label": "Zamówienie wpływa (promocje z prezentem)"
     },
     "order.on_hold_for": {
-      "description": "Sprawdzane według zegara, a nie w chwili zatrzymania zamówienia.",
+      "description": "Sprawdzane okresowo, nie w chwili zatrzymania zamówienia.",
       "label": "Zamówienie utknęło zbyt długo"
     },
     "order.packed": {
@@ -429,7 +429,7 @@
       "label": "Wpływa nowe zamówienie"
     },
     "order.shipped": {
-      "description": "Uruchamia się, gdy paczki zamówienia są u przewoźnika i znany jest numer przesyłki, albo 30 minut po przejęciu paczki przez przewoźnika, jeśli numer nie dotrze.",
+      "description": "Uruchamia się, gdy paczki zamówienia są u przewoźnika i znany jest numer przesyłki. Jeśli numer nie dotrze, uruchamia się 30 minut po przejęciu paczki przez przewoźnika.",
       "label": "Zamówienie zostaje wysłane"
     },
     "return.disposed": {
@@ -437,7 +437,7 @@
       "label": "Zwrócony towar zostaje obsłużony"
     },
     "return.received": {
-      "description": "Zwrócony towar dociera do magazynu, raz na każdą paczkę.",
+      "description": "Uruchamia się raz dla każdej paczki zwrotu, gdy dotrze do magazynu.",
       "label": "Dociera zwrot"
     }
   }

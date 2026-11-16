@@ -61,7 +61,14 @@
     "loading": "Wczytywanie ustawień waluty…",
     "notConfigured": "Nie skonfigurowano",
     "rateDateRule": "Reguła daty kursu",
+    "rateDateRules": {
+      "prev-business-day": "Poprzedni dzień roboczy"
+    },
     "rateSource": "Źródło kursów",
+    "rateSources": {
+      "ecb": "EBC",
+      "nbp": "NBP"
+    },
     "reportingIn": "Raportowanie w",
     "reportingValue": "{currency} ({qualifier})",
     "sourceQualifier": {
