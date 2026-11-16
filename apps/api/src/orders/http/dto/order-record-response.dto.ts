@@ -622,7 +622,8 @@ export class OrderRecordResponseDto {
       '(#2396, readable since #3485), or null. A held order is not mirrored to any destination. ' +
       'With the OMS on: `routing-refused` (the plan could not be committed, typically a line out of ' +
       'stock; re-routed automatically), `routing-no-shipping-address` (clears when the source sends ' +
-      'an address), `routing-failed` (re-routed automatically). The others are transient routing ' +
+      'an address), `routing-failed` (re-routed automatically), `awaiting-payment` (a prepaid order ' +
+      'whose payment is not reported yet; routed when a later sync reports it paid). The others are transient routing ' +
       'states. Opposite of `fulfillmentRoutingSkipReason`, which is NOT a hold.',
   })
   fulfillmentBlockReason!: FulfillmentBlockReason | null;

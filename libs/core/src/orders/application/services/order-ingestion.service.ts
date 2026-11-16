@@ -112,6 +112,7 @@ import {
 } from '@openlinker/core/fulfillment-authority';
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
+import { PAYMENT_STATUS } from '../../domain/types/payment-status.types';
 import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { orderStockRestoreDedupeKey } from '../../domain/types/order-cancel.types';
@@ -1402,6 +1403,24 @@ export class OrderIngestionService implements IOrderIngestionService {
         }
       }
       const { holder, router } = target;
+
+      // #4033 - `awaiting` only: an absent status (a source that reports no
+      // payment) and `cod` route exactly as before. Placed before the routing
+      // commit so no work, no label job and no sale decrement exists for an
+      // order that may never be paid; the advisory reservation stays, so the
+      // units are still promised.
+      if (order.paymentStatus === PAYMENT_STATUS.Awaiting) {
+        this.logger.log(
+          `Order ${order.id} is awaiting payment; holding it in OpenLinker until the source ` +
+            `reports it paid.`
+        );
+        return {
+          held: true,
+          block: { reason: 'awaiting-payment', detail: null },
+          skip: ROUTING_NOT_SKIPPED,
+          lineAttention: { kind: 'none' },
+        };
+      }
 
       const projection = this.projectOrderForRouting(order, shippingAddressHash, physicalItems);
       if (projection === null) {

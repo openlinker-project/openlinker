@@ -88,6 +88,15 @@ export const FulfillmentBlockReasonValues = [
    * only. Re-routed by `fulfillment.work.rerouteSweep`.
    */
   'routing-failed',
+  /**
+   * #4033 - a prepaid order whose source still reports the payment as
+   * `awaiting`. Routing would put the parcel on the pack bench and lower the
+   * master's stock for an order the marketplace may yet cancel. Cash on
+   * delivery is not held (the courier collects). Clears by itself: the
+   * re-ingestion that reports the payment re-enters routing, so the reroute
+   * sweep does not carry it.
+   */
+  'awaiting-payment',
 ] as const;
 
 export type FulfillmentBlockReason = (typeof FulfillmentBlockReasonValues)[number];
@@ -123,6 +132,7 @@ export const WaitingFulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
+  'awaiting-payment',
 ] as const satisfies readonly FulfillmentBlockReason[];
 
 export type WaitingFulfillmentBlockReason = (typeof WaitingFulfillmentBlockReasonValues)[number];

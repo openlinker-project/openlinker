@@ -4182,6 +4182,40 @@ describe('OrderIngestionService', () => {
         });
       });
 
+      // #4033 - an unpaid prepaid order must not reach the pack bench or lower stock.
+      it('holds a prepaid order that is awaiting payment without routing it', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          paymentStatus: 'awaiting',
+        });
+
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(results).toEqual([]);
+        expect(markBlock()).toHaveBeenCalledWith('ol_order_int', {
+          reason: 'awaiting-payment',
+          detail: null,
+        });
+      });
+
+      it('routes a cash-on-delivery order even though nothing is paid yet', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          paymentStatus: 'cod',
+        });
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-cod',
+          works: [{ workId: 'w-cod', assignedConnectionId: 'dest-1' }],
+        });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+      });
+
       describe('the line-unfulfillable attention (#3485)', () => {
         const markAttention = () =>
           orderRecordService.markOmsAttention as unknown as jest.Mock;
