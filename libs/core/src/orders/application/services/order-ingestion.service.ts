@@ -443,7 +443,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     // destination(s) via OrderStatusWriteback. OL owns no canonical status here —
     // it forwards the source's fact to the participants it already synced to.
     if (eventType === 'cancelled') {
-      return this.handleSourceCancellation(connectionId, externalOrderId);
+      return this.handleSourceCancellation(connectionId, externalOrderId, sourceEventId);
     }
 
     const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
@@ -1928,8 +1928,9 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async handleSourceCancellation(
     connectionId: string,
-    externalOrderId: string
-  ): Promise<never[]> {
+    externalOrderId: string,
+    sourceEventId?: string
+  ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
     const internalOrderId = await this.identifierMapping.getInternalId(
       CORE_ENTITY_TYPE.Order,
       externalOrderId,
@@ -1968,7 +1969,24 @@ export class OrderIngestionService implements IOrderIngestionService {
           `has no internal mapping yet — recorded as a pending cancellation signal so the later ` +
           `create is not provisioned active`
       );
-      return [];
+      // #4032: the feed keeps one event per order, so an order bought and
+      // cancelled inside one poll window only ever arrives as this cancel, and
+      // no later create exists to consume the signal. Ingest it now: the signal
+      // just written makes the ordinary path persist it as cancelled, with no
+      // holds, routing, mirror or documents (the same path a create that
+      // follows an early cancel takes). Best-effort: the signal above is the
+      // durable fact, and an order the source cannot return (genuinely
+      // unknown) must not turn a handled cancel into a failing job.
+      try {
+        return await this.syncOrderFromSource(connectionId, externalOrderId, sourceEventId);
+      } catch (error) {
+        this.logger.warn(
+          `Could not ingest the cancelled unknown order ${externalOrderId} on connection ` +
+            `${connectionId}; the cancellation signal stays recorded: ` +
+            `error=${error instanceof Error ? error.name : 'UnknownError'}`
+        );
+        return [];
+      }
     }
 
     const existing = await this.orderRecordService.getOrderRecord(internalOrderId);

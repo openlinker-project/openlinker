@@ -2646,6 +2646,38 @@ describe('OrderIngestionService', () => {
       expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
     });
 
+    it('ingests the order as cancelled after recording the signal when it was bought and cancelled between polls (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      // The hydrate is the behaviour under test; what the ordinary path then
+      // does with a cancelled order is covered by the #2069 early-signal specs.
+      orderSource.getOrder.mockResolvedValue({
+        externalOrderId,
+        status: 'cancelled',
+        items: [],
+      } as unknown as IncomingOrder);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalledTimes(1);
+      expect(orderSource.getOrder).toHaveBeenCalledWith({ externalOrderId });
+    });
+
+    it('keeps the recorded signal and creates nothing when the unknown order cannot be read from the source (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      orderSource.getOrder.mockRejectedValue(new Error('order not found'));
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.persistIncomingSnapshot).not.toHaveBeenCalled();
+    });
+
     it('propagates a failure recording the early-cancellation signal (#2069) — unlike the known-order branch, there is no relay to protect', async () => {
       identifierMapping.getInternalId.mockResolvedValue(null);
       orderRecordService.recordEarlyCancellationSignal.mockRejectedValueOnce(
