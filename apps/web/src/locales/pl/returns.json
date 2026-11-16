@@ -22,7 +22,7 @@
     "cancel": "Jeszcze nie",
     "confirm": "Zatwierdź",
     "confirming": "Zatwierdzanie…",
-    "description": "Ten zwrot został zapisany przez Ciebie. Zatwierdzenie to znacznik audytowy potwierdzający, że naprawdę się wydarzył - nie wstrzymuje przyjęcia na stan ani zwrotu pieniędzy, które działają na zwrocie niezależnie.",
+    "description": "Ten zwrot został zapisany przez Ciebie. Zatwierdzenie to ślad do audytu: potwierdza, że zwrot naprawdę był. Nie blokuje przyjęcia na stan ani zwrotu pieniędzy, które działają niezależnie.",
     "genericError": "Nie udało się zatwierdzić. Spróbuj ponownie.",
     "refusedAcknowledge": "Rozumiem",
     "refusedBody": "Ten zwrot przyszedł ze źródła, które już o nim zdecydowało. OpenLinker zatwierdza tylko zwroty zapisane tutaj przez operatora.",
@@ -290,7 +290,7 @@
       "short": "Brak pasującego zamówienia"
     },
     "page": {
-      "description": "Zwroty zgłoszone przez podłączone kanały, od najnowszych. OpenLinker zapisuje to, co podaje kanał, i tego nie reinterpretuje.",
+      "description": "Zwroty zgłoszone przez podłączone kanały, od najnowszych. OpenLinker zapisuje dane z kanału bez zmian.",
       "eyebrow": "Operacje",
       "recordActionReadOnly": "Nie masz uprawnień do zapisywania zwrotów.",
       "tableCaption": "Zwroty, od najnowszych",
@@ -410,7 +410,7 @@
     "loading": "Sprawdzanie…",
     "loadingMessage": "Odczytywanie listy zwrotów.",
     "needsApprovalAction": "Przejrzyj i zatwierdź",
-    "needsApprovalDescription": "Te zwroty zostały zapisane przez Ciebie. Zatwierdzenie to znacznik audytowy potwierdzający, że naprawdę się wydarzyły - nie wstrzymuje przyjęcia na stan ani zwrotu pieniędzy.",
+    "needsApprovalDescription": "Te zwroty zostały zapisane przez Ciebie. Zatwierdzenie to ślad do audytu: potwierdza, że zwroty naprawdę były. Nie blokuje przyjęcia na stan ani zwrotu pieniędzy.",
     "needsApprovalEmpty": "Nic nie czeka na Twoje zatwierdzenie.",
     "needsApprovalTitle": "Czeka na Twoje zatwierdzenie",
     "needsOrderAction": "Powiąż z zamówieniem",
@@ -575,7 +575,7 @@
   "returnSegments": {
     "label": {
       "all_open": "Otwarte",
-      "money_pending": "Pieniądze w toku",
+      "money_pending": "Zwrot pieniędzy w toku",
       "needs_disposition": "Do rozdysponowania",
       "needs_receiving": "Do przyjęcia",
       "orphans": "Niepowiązane"

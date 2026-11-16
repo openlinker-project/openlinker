@@ -24,7 +24,13 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms, type Platform } from '../../shared/plugins';
-import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../shared/i18n';
 import type {
   SyncJob,
   SyncJobFilters,
@@ -333,6 +339,7 @@ function buildDeadLetterColumns(
 function StreamDeadLettersSection(): ReactElement {
   const pageCopy = useMessages('sync-jobs').syncJobsPage;
   const copy = pageCopy.deadLetters;
+  const format = useFormat();
   const deadLetterColumns = useMemo(() => buildDeadLetterColumns(copy.columns), [copy.columns]);
   const [offset, setOffset] = useState(0);
   const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
@@ -402,9 +409,9 @@ function StreamDeadLettersSection(): ReactElement {
           <div className="pagination">
             <span className="text-muted">
               {interpolate(pageCopy.pagination.range, {
-                from: offset + 1,
-                to: Math.min(offset + DEAD_LETTER_PAGE_SIZE, total),
-                total,
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + DEAD_LETTER_PAGE_SIZE, total)),
+                total: format.number(total),
               })}
             </span>
             <div className="pagination__actions">
@@ -437,6 +444,7 @@ function StreamDeadLettersSection(): ReactElement {
 export function SyncJobsPage(): ReactElement {
   const copy = useMessages('sync-jobs').syncJobsPage;
   const pageCopy = copy;
+  const format = useFormat();
   const statusLabels: Record<string, string | undefined> =
     useMessages('sync-jobs').syncJobStatusBadge.statuses;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -660,9 +668,9 @@ export function SyncJobsPage(): ReactElement {
           <div className="pagination">
             <span className="text-muted">
               {interpolate(copy.pagination.range, {
-                from: offset + 1,
-                to: Math.min(offset + PAGE_SIZE, total),
-                total,
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + PAGE_SIZE, total)),
+                total: format.number(total),
               })}
             </span>
             <div className="pagination__actions">
