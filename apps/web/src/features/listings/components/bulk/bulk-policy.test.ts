@@ -364,6 +364,8 @@ import {
   distinguishingLabel,
   duplicateEanVariantIds,
   effectiveVariantEan,
+  hasExplicitNoBarcode,
+  variantProductCardIdOf,
   imageCountForVariant,
   isValidGtin,
   operatorPickedCategory,
@@ -452,6 +454,39 @@ describe('effectiveVariantEan', () => {
         makeVariant('ol_variant_1', { override: { overrides: { ean: '4006381333931' } } })
       )
     ).toBe('4006381333931');
+  });
+});
+
+describe('a cleared barcode is an explicit "no barcode" (#4036)', () => {
+  const cleared = (): BulkVariantRow =>
+    makeVariant('ol_variant_1', { override: { overrides: { ean: '' } } });
+
+  it('should read an empty ean override as no barcode, not as inherit', () => {
+    expect(hasExplicitNoBarcode(cleared())).toBe(true);
+    expect(hasExplicitNoBarcode(makeVariant('ol_variant_1'))).toBe(false);
+    expect(effectiveVariantEan(cleared())).toBeNull();
+  });
+
+  it('should drop the catalogue card together with the barcode', () => {
+    expect(variantProductCardIdOf(makeVariant('ol_variant_1'))).toBe('card-1');
+    expect(variantProductCardIdOf(cleared())).toBeNull();
+    expect(
+      variantProductCardIdOf(
+        makeVariant('ol_variant_1', { override: { overrides: { ean: '', productCardId: 'card-2' } } }),
+      ),
+    ).toBeNull();
+  });
+
+  it('should require product parameters once the card link is gone', () => {
+    const row = makeWizardRow([cleared()]);
+    const blockers = recomputeVariantBlockers(
+      row,
+      row.variants[0],
+      CONFIG,
+      new Map([['cat-1', ['p1']]]),
+      allegroValidate,
+    );
+    expect(blockers).toContain(NEEDS_PARAMS);
   });
 });
 

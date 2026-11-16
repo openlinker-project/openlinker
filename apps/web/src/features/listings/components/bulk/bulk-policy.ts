@@ -587,9 +587,7 @@ export function siblingCardCoverage(row: BulkWizardRow): {
   for (const variant of row.variants) {
     if (!variant.included) continue;
     included += 1;
-    const hasCard =
-      variant.resolvedProductCardId !== null ||
-      Boolean(variant.override.overrides?.productCardId);
+    const hasCard = variantProductCardIdOf(variant) !== null;
     if (!hasCard) withoutCard += 1;
   }
   return { included, withoutCard };
@@ -670,6 +668,28 @@ export function effectiveVariantEan(variant: BulkVariantRow): string | null {
     variant.variant.gtin ??
     null;
   return raw && raw.trim() !== '' ? raw.trim() : null;
+}
+
+/**
+ * Whether the operator cleared this sibling's barcode on purpose (#4036). An
+ * empty `ean` override is an explicit "list without a barcode", distinct from an
+ * absent one, which inherits the master barcode. The distinction has to survive
+ * because a master that carries an EAN would otherwise win back on every reopen
+ * and the offer would still be sent with it.
+ */
+export function hasExplicitNoBarcode(variant: BulkVariantRow): boolean {
+  const ean = variant.override.overrides?.ean;
+  return ean !== undefined && ean.trim() === '';
+}
+
+/**
+ * The catalogue card a sibling would be linked to (#4036). A card belongs to a
+ * barcode, so a variant listed without one has no card, whatever the resolve
+ * step found for the barcode it used to carry.
+ */
+export function variantProductCardIdOf(variant: BulkVariantRow): string | null {
+  if (hasExplicitNoBarcode(variant)) return null;
+  return variant.override.overrides?.productCardId || variant.resolvedProductCardId || null;
 }
 
 /**
@@ -866,8 +886,7 @@ export function recomputeVariantBlockers(
     masterCurrency: variant.masterCurrency,
     batchCurrency: config.currency,
     override: variant.override,
-    willLinkProductCard: variant.resolvedProductCardId !== null
-      || Boolean(variant.override.overrides?.productCardId),
+    willLinkProductCard: variantProductCardIdOf(variant) !== null,
     requiredProductParamIds: submitCategoryId
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
