@@ -230,8 +230,10 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               mapping,
               promisableQuantity,
               // Include write-event token to avoid suppressing legitimate
-              // quantity oscillations (e.g. 5->6->5).
-              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}`,
+              // quantity oscillations (e.g. 5->6->5). The offer id is part of the
+              // key: two offers mapped to one variant on a connection would
+              // otherwise share a key and the second update be deduplicated.
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:offer:${mapping.externalId}`,
               payload.inventoryUpdatedAt,
               payload.variantId
             )

@@ -576,7 +576,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotencyKey: 'inventory:connection-id:product-id:base:100:2026-01-01T12:00:00.000Z',
+          idempotencyKey: 'inventory:connection-id:product-id:base:100:2026-01-01T12:00:00.000Z:offer:offer-id',
         })
       );
     });
@@ -672,7 +672,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotencyKey: 'inventory:connection-id:product-id:base:100:legacy',
+          idempotencyKey: 'inventory:connection-id:product-id:base:100:legacy:offer:offer-id',
         })
       );
     });
@@ -689,6 +689,30 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       const job = createJob({ productId: '' as any });
 
       await expect(handler.execute(job)).rejects.toThrow(SyncJobExecutionError);
+    });
+
+    it('should enqueue one update per offer when two offers map to the same variant', async () => {
+      const job = createJob({
+        productId: 'product-id',
+        variantId: 'variant-id',
+        inventoryUpdatedAt: '2026-01-01T12:00:00.000Z',
+      });
+      mockMappings({
+        Offer: ['offer-a', 'offer-b'].map((externalId) => ({
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId,
+        })),
+      });
+
+      await handler.execute(job);
+
+      const keys = jobEnqueue.enqueueJob.mock.calls.map(
+        ([request]) => (request as { idempotencyKey: string }).idempotencyKey
+      );
+      expect(keys).toHaveLength(2);
+      expect(new Set(keys).size).toBe(2);
     });
 
     it('should handle multiple mappings across mixed platforms', async () => {
@@ -831,7 +855,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       );
       expect(new Set(keys).size).toBe(2);
       expect(keys).toContain(
-        'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z'
+        'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z:offer:123'
       );
       expect(keys).toContain(
         'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z:shop:123'
