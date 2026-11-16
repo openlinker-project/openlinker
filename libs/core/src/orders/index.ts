@@ -551,6 +551,17 @@ export { FULFILLMENT_DISPATCH_RELAY_ORIGIN } from './application/services/fulfil
 export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
 export { OrderRefundService } from './application/services/order-refund.service';
 export type {
+  IOrderRefundObservationService,
+  RefundObservationResult,
+} from './application/interfaces/order-refund-observation.service.interface';
+export {
+  OrderRefundObservationService,
+  buildObservedRefundIdempotencyKey,
+} from './application/services/order-refund-observation.service';
+export type { SourceRefundObservation } from './domain/types/source-refund-observation.types';
+export type { RefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
+export { isRefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
+export type {
   ITaxRateBackfillService,
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
