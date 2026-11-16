@@ -505,6 +505,22 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
         mapped
       );
     }
+    // The shop variant id changed (the shop product was deleted and re-created
+    // by the stale-target recovery): the old record would otherwise survive and
+    // leave the variant with two ShopProductVariant mappings on this connection.
+    const previous = await this.identifierMapping.getExternalIds(
+      entityType,
+      input.internalVariantId
+    );
+    for (const old of previous) {
+      if (
+        old.entityType === entityType &&
+        old.connectionId === input.connectionId &&
+        old.externalId !== externalVariantId
+      ) {
+        await this.identifierMapping.deleteMapping(entityType, old.externalId, input.connectionId);
+      }
+    }
     try {
       await this.identifierMapping.createMapping(
         entityType,

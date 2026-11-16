@@ -659,6 +659,27 @@ describe('ProductPublishExecutionService', () => {
       expect(result.outcome).toBe('ok');
     });
 
+    it('should replace a stale variant-grain mapping left by a deleted shop product instead of adding a second', async () => {
+      identifierMapping.getExternalIds.mockImplementation((entityType: string) =>
+        Promise.resolve(
+          entityType === 'ShopProductVariant'
+            ? [{ externalId: 'old-418', connectionId: CONN, entityType, platformType: 'shoper' }]
+            : []
+        )
+      );
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: EXT,
+        externalVariantId: STOCK,
+        status: 'published',
+      });
+
+      await service.executePublish(input);
+
+      expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProductVariant', 'old-418', CONN);
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith('ShopProductVariant', STOCK, CONN, VARIANT);
+    });
+
     it('should write no variant-grain mapping when the adapter reports no variant id', async () => {
       await service.executePublish(input);
 
