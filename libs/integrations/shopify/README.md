@@ -38,7 +38,9 @@ track; 1000 when absent, the WooCommerce convention),
 `salesCountryIso2` (optional, the country the catalogue's tax rate is computed for; the shop's own billing country
 when absent).
 
-App scopes: `SHOPIFY_REQUIRED_SCOPES` (the connection test fails when one is missing) and `SHOPIFY_OPTIONAL_SCOPES`
+App scopes: `SHOPIFY_REQUIRED_SCOPES` (the connection test fails when one is missing), `SHOPIFY_PUBLISHER_SCOPES`
+(`read_publications`, `write_publications`: required by the test only when Product publisher is enabled, a warning
+otherwise) and `SHOPIFY_OPTIONAL_SCOPES`
 (asked for at install; the connection test passes and names each missing one with what it switches off):
 `write_draft_orders` for the tax rate read (`draftOrderCalculate` computes a rate without creating anything, but Shopify
 gates it behind that scope; without it every product's rate stays "not checked"), and `read_shipping` for the
@@ -198,7 +200,9 @@ required) and an offline token, which every supported credential mode gives.
   one line of the order note, and the shipping line title (`Paczkomaty InPost (GIT01D)`).
 - **Payment.** Paid: a successful sale transaction on `manual` (or the mapped gateway). Cash on delivery: a pending
   one on `Cash on Delivery (COD)`. Otherwise no transaction and `PENDING`. A payment that arrives at the source
-  after the order was created is not passed on (#3963).
+  after the order was created is passed on (#3963): `orderMarkAsPaid` records a sale for the outstanding amount. An
+  order Shopify already shows paid answers `applied` without a write; a cancelled, refunded or voided one is refused.
+  Core never sends it for cash on delivery.
 - **Mappings.** The order's source connection's delivery-method and payment mappings (Mappings tab) give the shipping
   line title and code and the gateway; unmapped, the source's own names are used. The options to map onto are the
   same lists the order source shows. Because the mappings are keyed by the source only, a value mapped for another

@@ -125,6 +125,19 @@ export const FULFILLMENT_CREATE_MUTATION = `mutation OlFulfillmentCreate($fulfil
  * refunded (a refund is OpenLinker's own decision, made through
  * `RefundExecutor`). The cancel runs as an async job on Shopify.
  */
+/** What the `paid` writeback decides on: whether the order is cancelled and how Shopify books its money. */
+export const ORDER_PAYMENT_STATE_QUERY = `query OlOrderPaymentState($id: ID!) {
+  order(id: $id) { id cancelledAt displayFinancialStatus }
+}`;
+
+/** Records a sale for the order's outstanding amount, on Shopify's own "manual" gateway. */
+export const ORDER_MARK_AS_PAID_MUTATION = `mutation OlOrderMarkAsPaid($input: OrderMarkAsPaidInput!) {
+  orderMarkAsPaid(input: $input) {
+    order { id displayFinancialStatus }
+    userErrors { field message }
+  }
+}`;
+
 export const ORDER_CANCEL_MUTATION = `mutation OlOrderCancel($id: ID!) {
   orderCancel(orderId: $id, reason: OTHER, restock: true, notifyCustomer: false) {
     job { id }

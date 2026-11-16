@@ -2,18 +2,25 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort, WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
-import { SHOPIFY_OPTIONAL_SCOPES, SHOPIFY_REQUIRED_SCOPES } from '../../../shopify.constants';
+import {
+  SHOPIFY_OPTIONAL_SCOPES,
+  SHOPIFY_PUBLISHER_SCOPES,
+  SHOPIFY_REQUIRED_SCOPES,
+} from '../../../shopify.constants';
 import { createShopifyClientRuntime } from '../../http/shopify-client.builder';
 import { ShopifyConnectionTesterAdapter } from '../shopify-connection-tester.adapter';
 
 const RATE_LIMIT = { requestsPerMinute: 240, maxConcurrent: 4 };
 
-function connection(config: Record<string, unknown> = {}): Connection {
+const ALL_SCOPES = [...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_PUBLISHER_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES];
+
+function connection(config: Record<string, unknown> = {}, enabledCapabilities: string[] = ['ProductMaster']): Connection {
   return {
     id: 'conn-1',
     platformType: 'shopify',
     name: 'Shop',
     status: 'active',
+    enabledCapabilities,
     config: { storeDomain: 'my-shop.myshopify.com', ...config },
     credentialsRef: 'db:cred-1',
   } as unknown as Connection;
@@ -55,7 +62,7 @@ describe('ShopifyConnectionTesterAdapter', () => {
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(json(SHOP_CONTEXT))
-      .mockResolvedValueOnce(json(scopes([...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES])));
+      .mockResolvedValueOnce(json(scopes(ALL_SCOPES)));
     const { tester, resolver, http } = setup(fetchImpl);
     const conn = connection();
 
@@ -75,7 +82,7 @@ describe('ShopifyConnectionTesterAdapter', () => {
       jest
         .fn()
         .mockResolvedValueOnce(json(SHOP_CONTEXT))
-        .mockResolvedValueOnce(json(scopes([...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES])));
+        .mockResolvedValueOnce(json(scopes(ALL_SCOPES)));
 
     function withSecret(stored: string | null, clientSecret = 'current-secret'): {
       tester: ShopifyConnectionTesterAdapter;
@@ -131,6 +138,32 @@ describe('ShopifyConnectionTesterAdapter', () => {
       'write_draft_orders (product tax rates are not read, and a store whose prices exclude tax reports no prices)',
     );
     expect(result.message).toContain('read_shipping (delivery methods are offered only as seen on recent orders)');
+  });
+
+  describe('publisher scopes (#3979)', () => {
+    const withoutPublications = (): jest.Mock =>
+      jest
+        .fn()
+        .mockResolvedValueOnce(json(SHOP_CONTEXT))
+        .mockResolvedValueOnce(json(scopes([...SHOPIFY_REQUIRED_SCOPES, ...SHOPIFY_OPTIONAL_SCOPES])));
+
+    it('should pass a connection that does not publish and only warn about the publisher scopes', async () => {
+      const { tester, resolver } = setup(withoutPublications());
+
+      const result = await tester.test(connection({}, ['ProductMaster', 'InventoryMaster', 'OrderSource']), resolver);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('read_publications (products published to the store would stay off the Online Store)');
+    });
+
+    it('should fail a connection with Product publisher that lacks the publisher scopes', async () => {
+      const { tester, resolver } = setup(withoutPublications());
+
+      const result = await tester.test(connection({}, ['ProductPublisher']), resolver);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('read_publications, write_publications');
+    });
   });
 
   it('should report the configured location when one is set', async () => {

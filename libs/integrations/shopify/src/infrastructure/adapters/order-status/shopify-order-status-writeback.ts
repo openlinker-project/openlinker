@@ -17,6 +17,15 @@
  *   - `cancelled`: `orderCancel` keeping the payment (`refund: false`) and
  *     restocking; an order already cancelled answers `applied`. The cancel
  *     runs as an async job on Shopify, so it is accepted, not yet visible.
+ *   - `paid` (#3963): `orderMarkAsPaid`, which records a sale for the order's
+ *     outstanding amount, for an order OpenLinker created in the store while it
+ *     was still unpaid at the source. Core has already ruled out cash on
+ *     delivery, cancelled and refunded orders; the adapter still refuses an
+ *     order Shopify shows as cancelled, refunded or voided rather than book
+ *     money on it, and answers `applied` without a write when Shopify already
+ *     shows it paid. Shopify's own order timeline records the manual payment, so
+ *     no note is written: the order note can hold the pickup point (#3978) and
+ *     `orderUpdate` would replace it.
  *   - `delivered` and `in-progress`: `unsupported` - Shopify has fulfillment
  *     events for both, but they are not verified on a live store yet, and a
  *     platform that cannot show a state declines it rather than guessing.
@@ -46,8 +55,21 @@ import {
   FULFILLMENT_ORDER_MOVE_MUTATION,
   ORDER_CANCEL_MUTATION,
   ORDER_FULFILLMENT_ORDERS_QUERY,
+  ORDER_MARK_AS_PAID_MUTATION,
+  ORDER_PAYMENT_STATE_QUERY,
 } from '../../readers/shopify-order.queries';
 import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop-context.provider';
+
+/** Financial states a payment must not be booked on: the money already went back, or never will come. */
+const NOT_PAYABLE_FINANCIAL_STATUSES: ReadonlySet<string> = new Set(['REFUNDED', 'PARTIALLY_REFUNDED', 'VOIDED']);
+
+interface OrderPaymentStateQuery {
+  readonly order: {
+    readonly id: string;
+    readonly cancelledAt: string | null;
+    readonly displayFinancialStatus: string | null;
+  } | null;
+}
 
 /** Fulfillment-order states a fulfillment can still be created on. */
 const FULFILLABLE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'IN_PROGRESS']);
@@ -82,6 +104,8 @@ export class ShopifyOrderStatusWriteback implements OrderStatusWriteback {
         return this.fulfil(event.externalOrderId, event.trackingNumber, event.carrier?.platformType);
       case 'cancelled':
         return this.cancel(event.externalOrderId);
+      case 'paid':
+        return this.markPaid(event);
       default:
         return { outcome: 'unsupported', detail: `Shopify writeback does not handle "${event.type}"` };
     }
@@ -184,6 +208,37 @@ export class ShopifyOrderStatusWriteback implements OrderStatusWriteback {
       }
       throw error;
     }
+    return { outcome: 'applied' };
+  }
+
+  private async markPaid(event: Extract<OrderLifecycleEvent, { type: 'paid' }>): Promise<OrderWritebackResult> {
+    const id = toShopifyGid('Order', event.externalOrderId);
+    const data = await this.client.query<OrderPaymentStateQuery>(ORDER_PAYMENT_STATE_QUERY, { id });
+    if (data.order === null) {
+      throw new ShopifyOrderNotFoundException(event.externalOrderId, this.connection.id);
+    }
+    const financial = data.order.displayFinancialStatus ?? '';
+    if (data.order.cancelledAt !== null) {
+      return { outcome: 'rejected', detail: 'order is cancelled on Shopify' };
+    }
+    if (financial === 'PAID') {
+      return { outcome: 'applied', detail: 'already paid on Shopify' };
+    }
+    if (NOT_PAYABLE_FINANCIAL_STATUSES.has(financial)) {
+      return { outcome: 'rejected', detail: `order is ${financial.toLowerCase()} on Shopify` };
+    }
+    try {
+      await this.client.mutate(ORDER_MARK_AS_PAID_MUTATION, { input: { id } }, 'orderMarkAsPaid');
+    } catch (error) {
+      if (error instanceof ShopifyUserErrorsException && !error.isRateLimited()) {
+        return { outcome: 'rejected', detail: error.message };
+      }
+      throw error;
+    }
+    this.logger.log(
+      `Shopify order ${event.externalOrderId} marked paid: ${event.paidOn} payment ` +
+        `${event.amount.toFixed(2)} ${event.currency} (connection: ${this.connection.id})`,
+    );
     return { outcome: 'applied' };
   }
 

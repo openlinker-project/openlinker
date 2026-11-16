@@ -55,12 +55,17 @@ export const SHOPIFY_REQUIRED_SCOPES = [
   'write_returns',
   'read_merchant_managed_fulfillment_orders',
   'write_merchant_managed_fulfillment_orders',
-  // Publishing a product makes it visible on a sales channel
-  // (`publishablePublish`); without it a published product stays unlisted on
-  // the Online Store.
-  'read_publications',
-  'write_publications',
 ] as const;
+
+/**
+ * Scopes the product publisher needs (#3979): publishing a product makes it
+ * visible on a sales channel (`publishablePublish`), and without them a
+ * published product stays unlisted on the Online Store. Requested at install
+ * and REQUIRED by the connection test only when the connection has Product
+ * publisher enabled; on any other connection a missing one is a warning, since
+ * nothing there publishes.
+ */
+export const SHOPIFY_PUBLISHER_SCOPES = ['read_publications', 'write_publications'] as const;
 
 /**
  * Scopes asked for at install that the integration works without. Missing
@@ -79,10 +84,18 @@ export const SHOPIFY_REQUIRED_SCOPES = [
  */
 export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders', 'read_shipping'] as const;
 
-/** What each optional scope switches off when it is missing, for the connection test. */
-export const SHOPIFY_OPTIONAL_SCOPE_EFFECTS: Readonly<Record<(typeof SHOPIFY_OPTIONAL_SCOPES)[number], string>> = {
+/**
+ * What each scope that is not strictly required switches off when it is
+ * missing, for the connection test. The publisher scopes appear here for a
+ * connection without Product publisher, where they are only a warning.
+ */
+export const SHOPIFY_OPTIONAL_SCOPE_EFFECTS: Readonly<
+  Record<(typeof SHOPIFY_OPTIONAL_SCOPES)[number] | (typeof SHOPIFY_PUBLISHER_SCOPES)[number], string>
+> = {
   write_draft_orders: 'product tax rates are not read, and a store whose prices exclude tax reports no prices',
   read_shipping: 'delivery methods are offered only as seen on recent orders',
+  read_publications: 'products published to the store would stay off the Online Store',
+  write_publications: 'products published to the store would stay off the Online Store',
 };
 
 /**

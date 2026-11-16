@@ -52,12 +52,16 @@ Background: capability spike #3928, first spike #2879
    read_assigned_fulfillment_orders, write_assigned_fulfillment_orders
    read_shipping, write_shipping
    read_returns, write_returns
+   read_publications, write_publications
    read_files, write_files
    ```
 
    OpenLinker itself needs fewer: the connection test lists the ones it requires
    (`SHOPIFY_REQUIRED_SCOPES`) and names each optional one that is missing
    (`write_draft_orders` for tax rates, `read_shipping` for delivery method names).
+   `read_publications` and `write_publications` are required on a connection with
+   Product publisher enabled (a published product is otherwise left off the Online
+   Store) and only a warning elsewhere.
    The rest are for the seed (`write_locations`, `write_fulfillments`, ...) and the probes.
 
    The scope picker mixes Admin API scopes with Customer Account API scopes
@@ -70,6 +74,12 @@ Background: capability spike #3928, first spike #2879
    dev store and confirm. Until this is done the token request answers `app_not_installed`.
 
 Changing scopes later means a new version, a release, and accepting the update on the store.
+Releasing alone does not grant anything: until the store accepts, every token, including a
+freshly minted one, still carries the old scopes and the connection test keeps naming them. To
+accept, open the app in the store admin (**Apps**, then the app); Shopify shows "<app> needs
+access to: ..." with an **Update** button. Settings, Apps, the app's page, then **App history**
+shows when the store last accepted. A token OpenLinker already holds keeps its scopes until it
+expires (about 24 hours), so restart the API and worker, or wait, after accepting.
 
 ## 3. Get credentials into `.env`
 

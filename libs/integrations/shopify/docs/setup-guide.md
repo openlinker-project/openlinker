@@ -12,9 +12,12 @@ connection does. For a local test store and its seed data see
   on the store (step 2 of the dev-store README walks through it). OpenLinker uses Admin GraphQL
   API **2026-10**.
 - App scopes: everything in `SHOPIFY_REQUIRED_SCOPES` (products, inventory, locations, orders,
-  returns, merchant-managed fulfillment orders). Optional: `write_draft_orders` (product tax rates;
-  without it a store whose prices exclude tax reports no prices) and `read_shipping` (delivery
-  method names in the mapping screens).
+  returns, merchant-managed fulfillment orders). For publishing (Product publisher):
+  `read_publications` and `write_publications`; without them a published product stays off the
+  Online Store, so the connection test fails on a connection with Product publisher enabled and
+  only warns elsewhere. Optional: `write_draft_orders` (product tax rates; without it a store whose
+  prices exclude tax reports no prices) and `read_shipping` (delivery method names in the mapping
+  screens).
 
 ## 1. Choose how to connect
 
@@ -89,7 +92,7 @@ to net when publishing. A product whose rate cannot be read reports no price and
 |---|---|
 | Test: "app not installed" | Install the app on the store from the app's page in the Dev Dashboard. |
 | Test: "store in another organization" | Connect with OAuth instead of app credentials. |
-| Test: missing scopes | Add them to a new app version, release it, accept the update on the store. |
+| Test: missing scopes | Add them to a new app version and release it, then open the app in the store admin and press **Update** on the "needs access to" prompt. Releasing alone grants nothing. After accepting, restart the API and worker (or wait up to a day): a token OpenLinker already holds keeps its old scopes until it expires. |
 | Stock location shows "not found in the store" | The saved location was deleted or deactivated. Pick another one. |
 | Configure webhooks is disabled | Save a callback URL and enable Order source or Product master. |
 | Connection needs re-authentication | The token or the OAuth grant was revoked. Reconnect with the same way you used before. |

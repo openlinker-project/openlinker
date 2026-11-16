@@ -123,7 +123,10 @@ export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {
       ).get();
       const scopes = await client.query<ScopesQuery>(SCOPES_QUERY);
       const granted = new Set(scopes.currentAppInstallation.accessScopes.map((s) => s.handle));
-      const missing = findMissingShopifyScopes(granted);
+      // The publisher scopes are required only where something publishes: a
+      // catalogue or order connection must not fail its test over them.
+      const needs = { publisher: connection.enabledCapabilities.includes('ProductPublisher') };
+      const missing = findMissingShopifyScopes(granted, needs);
       if (missing.length > 0) {
         return {
           success: false,
@@ -136,7 +139,7 @@ export class ShopifyConnectionTesterAdapter implements ConnectionTesterPort {
         message:
           `OK - ${context.shopName} (${context.currencyCode}, prices ` +
           `${context.taxesIncluded ? 'include' : 'exclude'} tax, location ${context.locationName})` +
-          describeMissingOptionalScopes(findMissingOptionalShopifyScopes(granted)) +
+          describeMissingOptionalScopes(findMissingOptionalShopifyScopes(granted, needs)) +
           (await this.describeStaleWebhookSecret(connection, credentialsResolver)),
         latencyMs: elapsed(),
       };

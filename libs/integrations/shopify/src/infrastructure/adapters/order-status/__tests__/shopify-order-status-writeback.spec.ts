@@ -119,6 +119,74 @@ describe('ShopifyOrderStatusWriteback', () => {
     expect(noWrite).not.toHaveBeenCalled();
   });
 
+  describe('paid (#3963)', () => {
+    const paidEvent = {
+      type: 'paid' as const,
+      externalOrderId: '1011',
+      amount: 98.39,
+      currency: 'PLN',
+      paidOn: 'Allegro',
+    };
+    const paymentState = (displayFinancialStatus: string, cancelledAt: string | null = null): unknown => ({
+      order: { id: 'gid://shopify/Order/1011', cancelledAt, displayFinancialStatus },
+    });
+
+    it('should mark a pending order as paid', async () => {
+      const query = jest.fn().mockResolvedValue(paymentState('PENDING'));
+      const mutate = jest.fn().mockResolvedValue({ order: { id: 'gid://shopify/Order/1011' } });
+
+      await expect(build(query, mutate).write(paidEvent)).resolves.toEqual({ outcome: 'applied' });
+      expect(mutate).toHaveBeenCalledWith(
+        expect.stringContaining('orderMarkAsPaid'),
+        { input: { id: 'gid://shopify/Order/1011' } },
+        'orderMarkAsPaid',
+      );
+    });
+
+    it('should answer an order Shopify already shows paid as applied without a write', async () => {
+      const mutate = jest.fn();
+
+      await expect(build(jest.fn().mockResolvedValue(paymentState('PAID')), mutate).write(paidEvent)).resolves.toEqual({
+        outcome: 'applied',
+        detail: 'already paid on Shopify',
+      });
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['cancelled', paymentState('PENDING', '2026-11-05T00:00:00Z')],
+      ['refunded', paymentState('REFUNDED')],
+      ['partially refunded', paymentState('PARTIALLY_REFUNDED')],
+      ['voided', paymentState('VOIDED')],
+    ])('should refuse to book a payment on a %s order', async (_label, answer) => {
+      const mutate = jest.fn();
+
+      await expect(build(jest.fn().mockResolvedValue(answer), mutate).write(paidEvent)).resolves.toMatchObject({
+        outcome: 'rejected',
+      });
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it('should report a refusal Shopify states as rejected', async () => {
+      const mutate = jest
+        .fn()
+        .mockRejectedValue(new ShopifyUserErrorsException('orderMarkAsPaid', [{ message: 'Order cannot be marked as paid' }]));
+
+      await expect(
+        build(jest.fn().mockResolvedValue(paymentState('AUTHORIZED')), mutate).write(paidEvent),
+      ).resolves.toMatchObject({ outcome: 'rejected', detail: expect.stringContaining('cannot be marked as paid') });
+    });
+
+    it('should let a transport failure throw so the payment job retries', async () => {
+      const failure = new Error('socket hang up');
+      const mutate = jest.fn().mockRejectedValue(failure);
+
+      await expect(build(jest.fn().mockResolvedValue(paymentState('PENDING')), mutate).write(paidEvent)).rejects.toBe(
+        failure,
+      );
+    });
+  });
+
   it('should decline delivered as unsupported', async () => {
     await expect(
       build(jest.fn(), jest.fn()).write({ type: 'delivered', externalOrderId: '1011' }),
