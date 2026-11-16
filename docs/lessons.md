@@ -23,6 +23,18 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Verify the state of a feature against origin/main, not against the local branch
+
+**Context**: the release-center design (#4131) was reasoned from a local checkout that was behind `main`.
+
+**Problem**: the local branch did not have the packing flag `config.fulfilmentOwnedByDestination` (#2118), so the design briefly dropped a real setting as "invented", and it described the wizards and the routing panel from stale code. The mistake was only caught when the flag was searched on `origin/main`.
+
+**Rule**: before claiming that a setting, screen or code path does or does not exist, run `git fetch` and read it with `git show origin/main:<path>` or `git grep origin/main`. Treat a local branch that is behind as a source of "not found" errors, never of "does not exist".
+
+**Applies to**: design and audit work done in a long-lived local checkout; any claim of absence.
+
+**Source**: #4131
+
 ## Check that every source actually produces the key a design is keyed on
 
 **Context**: #3520 bundles expand per order line, keyed on the line's `variantId`.
