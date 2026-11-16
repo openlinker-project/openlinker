@@ -226,6 +226,8 @@ export type ShopifyPurchasingEntity =
 export interface ShopifyOrder {
   readonly id: string;
   readonly name: string;
+  /** What `orderCreate` stamped on the order; OpenLinker stamps its own internal order id. */
+  readonly sourceIdentifier?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly processedAt: string | null;

@@ -452,6 +452,18 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     const incoming = await orderSource.getOrder({ externalOrderId });
 
+    // An order the source says OpenLinker created is an echo by its own
+    // account. Checked before any id is minted: the mapping-based guard below
+    // cannot see it while the creating sync has not yet saved its external-id
+    // mapping, and minting an id here would give the echo an order of its own.
+    if (incoming.createdFromInternalOrderId !== undefined) {
+      this.logger.debug(
+        `Skipping destination-echo re-ingestion of external order ${incoming.externalOrderId} ` +
+          `on connection ${connectionId}: created from ${incoming.createdFromInternalOrderId}`
+      );
+      return [];
+    }
+
     // Step 1: resolve order + customer IDs (no item mapping yet)
     const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Order,

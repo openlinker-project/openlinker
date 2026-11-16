@@ -1628,6 +1628,17 @@ describe('OrderIngestionService', () => {
       expect(orderItemRefResolver.tryResolve).not.toHaveBeenCalled();
     });
 
+    it('should skip an order the source says OpenLinker created, before any id is minted (echo race)', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...baseIncoming, createdFromInternalOrderId: 'ol_order_original' });
+
+      const result = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(result).toEqual([]);
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+    });
+
     it('should proceed with ingestion when no existing order record is found (genuinely new order)', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue(null);
       orderSyncService.syncOrder.mockResolvedValue([]);

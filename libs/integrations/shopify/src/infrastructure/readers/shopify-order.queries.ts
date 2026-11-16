@@ -14,7 +14,7 @@ const MONEY = 'shopMoney { amount currencyCode }';
 const TAX_LINE = 'rate ratePercentage title';
 
 export const ORDER_FIELDS = `
-  id name createdAt updatedAt processedAt cancelledAt
+  id name sourceIdentifier createdAt updatedAt processedAt cancelledAt
   displayFinancialStatus displayFulfillmentStatus paymentGatewayNames
   email phone note taxesIncluded currencyCode presentmentCurrencyCode
   customer { id }

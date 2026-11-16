@@ -222,6 +222,9 @@ export function mapShopifyOrderToIncoming(
     externalOrderId: fromShopifyGid(order.id),
     orderNumber: order.name.replace(/^#/, ''),
     externalUrl: ctx.adminOrderUrl,
+    ...(typeof order.sourceIdentifier === 'string' && order.sourceIdentifier.startsWith('ol_order_')
+      ? { createdFromInternalOrderId: order.sourceIdentifier }
+      : {}),
     status: mapShopifyOrderStatus(order),
     ...(paymentStatus === undefined ? {} : { paymentStatus }),
     paymentMethod: mapShopifyPaymentMethod(order),

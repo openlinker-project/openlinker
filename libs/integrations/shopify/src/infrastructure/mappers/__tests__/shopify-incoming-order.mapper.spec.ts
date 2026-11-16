@@ -176,6 +176,14 @@ describe('mapShopifyOrderToIncoming', () => {
   it('should keep the buyer note verbatim', () => {
     expect(mapShopifyOrderToIncoming(order({ note: ' Please ring twice ' }), CTX).buyerNote).toBe('Please ring twice');
   });
+
+  it('should report the OpenLinker order an order was created from, and only that', () => {
+    expect(
+      mapShopifyOrderToIncoming(order({ sourceIdentifier: 'ol_order_abc' }), CTX).createdFromInternalOrderId,
+    ).toBe('ol_order_abc');
+    expect(mapShopifyOrderToIncoming(order({ sourceIdentifier: 'POS-77' }), CTX).createdFromInternalOrderId).toBeUndefined();
+    expect(mapShopifyOrderToIncoming(order(), CTX).createdFromInternalOrderId).toBeUndefined();
+  });
 });
 
 describe('mapShopifyOrderStatus / mapShopifyPaymentStatus', () => {
