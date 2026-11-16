@@ -39,6 +39,7 @@ import { OrderRecordRepository } from './infrastructure/persistence/repositories
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import { OrderRefundService } from './application/services/order-refund.service';
+import { OrderRefundObservationService } from './application/services/order-refund-observation.service';
 import { RefundRecordRepository } from './infrastructure/persistence/repositories/refund-record.repository';
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
@@ -91,6 +92,7 @@ import {
   ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
@@ -241,6 +243,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRecordRepository,
     OrderFxReadService,
     OrderRefundService,
+    OrderRefundObservationService,
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
@@ -355,6 +358,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_REFUND_SERVICE_TOKEN,
       useExisting: OrderRefundService,
+    },
+    {
+      provide: ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
+      useExisting: OrderRefundObservationService,
     },
     {
       provide: ORDER_FX_READ_SERVICE_TOKEN,
@@ -498,6 +505,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
     FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
+    ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,
     // Exported so the worker's `orders.taxRate.backfill` handler can inject
     // the backfill seam (#2440).
