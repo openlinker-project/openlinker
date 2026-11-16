@@ -85,4 +85,16 @@ describe('MarketplaceOfferQuantityUpdateHandler', () => {
       expect(result).toEqual({ outcome: 'ok' });
     }
   );
+
+  it('should carry the original write exception as the cause so the retry classifier can see it', async () => {
+    const refusal = new Error('stock write refused');
+    inventorySync.updateOfferQuantity.mockResolvedValue({
+      succeeded: [],
+      failed: [{ offerId: 'o1', errorCode: 'unknown', message: 'stock write refused', cause: refusal }],
+    });
+
+    await expect(
+      handler.execute(job({ schemaVersion: 1, offerId: 'o1', quantity: 4 }))
+    ).rejects.toMatchObject({ cause: refusal });
+  });
 });

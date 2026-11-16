@@ -70,6 +70,13 @@ export interface UpdateOfferQuantitiesBatchFailure {
   offerId: string;
   errorCode: string;
   message?: string;
+  /**
+   * The original exception when the write threw. Carried so the worker can
+   * hand it to the runner's per-platform retry classifier: flattening it to a
+   * code and a message made a deterministic refusal look retryable and walked
+   * the full retry ladder. Core never inspects it; only the classifier does.
+   */
+  cause?: Error;
 }
 
 /**

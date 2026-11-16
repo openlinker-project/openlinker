@@ -63,7 +63,11 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
           job.id,
           job.jobType,
           job.connectionId,
-          allContended ? new ContendedWriteError(message, failure.offerId) : undefined
+          allContended
+            ? new ContendedWriteError(message, failure.offerId)
+            : // Preserved so the platform retry classifier can recognise a
+              // deterministic refusal and end the job instead of retrying it.
+              failure.cause
         );
       }
 
