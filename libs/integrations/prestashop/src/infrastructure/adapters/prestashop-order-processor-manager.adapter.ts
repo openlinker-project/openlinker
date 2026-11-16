@@ -584,8 +584,27 @@ export class PrestashopOrderProcessorManagerAdapter
         } catch (cartError) {
           const errorMessage = cartError instanceof Error ? cartError.message : String(cartError);
           this.logger.error(`Failed to create cart in PrestaShop: ${errorMessage}`);
+          // The cause keeps the status so the retry classifier can defer a
+          // throttled or unavailable shop (#3984). A cart is a pre-order
+          // artefact (a repeat leaves at most an orphan cart, and order
+          // duplication is guarded by the reference lookup), so the client's
+          // "ambiguous write" marker is deliberately dropped here: it would
+          // otherwise veto the deferral for a write that is safe to repeat.
           throw new PrestashopProvisioningException(
-            `Failed to create cart in PrestaShop: ${errorMessage}`
+            `Failed to create cart in PrestaShop: ${errorMessage}`,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            cartError instanceof PrestashopApiException
+              ? new PrestashopApiException(
+                  cartError.message,
+                  cartError.statusCode,
+                  undefined,
+                  cartError.connectionId,
+                  cartError.retryAfterSeconds
+                )
+              : undefined
           );
         }
 
@@ -826,7 +845,10 @@ export class PrestashopOrderProcessorManagerAdapter
       throw new PrestashopApiException(
         `Failed to create PrestaShop order: ${errorMessage}`,
         undefined,
-        undefined
+        undefined,
+        undefined,
+        undefined,
+        error
       );
     }
   }
