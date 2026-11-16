@@ -233,6 +233,7 @@ describe('Fulfilment router wiring (#2408)', () => {
           router: router!,
           lock: singleUseLock(),
           isCancelled: async () => false,
+          isAwaitingPayment: async () => false,
         });
 
       // Asserted as the WHOLE outcome, so a `refused` arm cannot slip past a

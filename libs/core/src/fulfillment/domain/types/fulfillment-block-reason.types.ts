@@ -88,6 +88,14 @@ export const FulfillmentBlockReasonValues = [
    * only. Re-routed by `fulfillment.work.rerouteSweep`.
    */
   'routing-failed',
+  /**
+   * #4033 — the order is not paid yet (`awaiting` or `refunded`), so it is not
+   * routed: it does not reach the pack bench and the master's stock is not
+   * lowered. Its advisory hold stays, so the units are still promised. Clears
+   * on the re-ingestion that reports the payment; not swept, because only the
+   * source can report a payment.
+   */
+  'routing-awaiting-payment',
 ] as const;
 
 export type FulfillmentBlockReason = (typeof FulfillmentBlockReasonValues)[number];
@@ -123,6 +131,7 @@ export const WaitingFulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
+  'routing-awaiting-payment',
 ] as const satisfies readonly FulfillmentBlockReason[];
 
 export type WaitingFulfillmentBlockReason = (typeof WaitingFulfillmentBlockReasonValues)[number];

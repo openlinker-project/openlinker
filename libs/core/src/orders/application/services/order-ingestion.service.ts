@@ -115,6 +115,7 @@ import type { Order } from '../../domain/types/order.types';
 import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { orderStockRestoreDedupeKey } from '../../domain/types/order-cancel.types';
+import { isRoutingAwaitingPayment } from '../../domain/types/payment-status.types';
 import { cancelRequestTargetRef } from '../../domain/types/order-change.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
@@ -1388,6 +1389,12 @@ export class OrderIngestionService implements IOrderIngestionService {
         isCancelled: async () => {
           const record = await this.orderRecordService.getOrderRecord(order.id);
           return record?.isCancelled === true;
+        },
+        // #4033 — an unpaid order is not routed. Read from the stored record,
+        // inside the lock, like `isCancelled`: this ingestion has persisted it.
+        isAwaitingPayment: async () => {
+          const record = await this.orderRecordService.getOrderRecord(order.id);
+          return isRoutingAwaitingPayment(record?.paymentStatus);
         },
       });
 

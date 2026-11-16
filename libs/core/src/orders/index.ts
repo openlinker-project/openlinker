@@ -161,7 +161,11 @@ export {
   isDestinationRoutingBlockReason,
   buildDestinationRoutingDetail,
 } from './domain/types/destination-routing-block.types';
-export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
+export {
+  PaymentStatusValues,
+  PAYMENT_STATUS,
+  isRoutingAwaitingPayment,
+} from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export {
   PaymentMethodValues,
