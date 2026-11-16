@@ -751,6 +751,11 @@
     "unassigned": "Unassigned",
     "waitingOnFact": "Waiting on",
     "waitingReasons": {
+      "awaiting-payment": {
+        "fact": "Payment",
+        "hint": "Waiting for payment: the order is held and will be routed as soon as it is paid.",
+        "label": "Waiting: payment"
+      },
       "routing-failed": {
         "fact": "Routing error",
         "hint": "OpenLinker is holding this order: routing it failed. It is retried automatically.",

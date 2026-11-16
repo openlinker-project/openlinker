@@ -44,6 +44,7 @@ export const WAITING_REASON_TONE = {
   'routing-refused': 'warning',
   'routing-no-shipping-address': 'warning',
   'routing-failed': 'error',
+  'awaiting-payment': 'warning',
 } as const satisfies Record<WaitingFulfillmentBlockReasonValue, 'warning' | 'error'>;
 
 function hasOwn<K extends string>(table: Readonly<Record<K, unknown>>, key: string): key is K {
