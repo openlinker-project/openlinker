@@ -21,6 +21,7 @@ import {
   CAPABILITY_HELP,
   capabilityConflictMessage,
   getCapabilityConflict,
+  hasCapabilityConflict,
 } from '../lib/capability-metadata';
 import { MCP_TOOL_CAPABILITIES, useMcpConnectionChangeHint } from '../../mcp-tokens';
 import { AccessGate } from '../../../shared/ui/access-gate';
@@ -277,6 +278,18 @@ export function ConnectionCapabilitiesPanel({
               link: (text) => <Link to="/settings/sales-documents">{text}</Link>,
             },
           )}
+        </Alert>
+      ) : null}
+
+      {/* A connection saved before the master/publisher exclusion (#3985) can
+       * still hold both. Saves are not refused for it, so say so once. */}
+      {hasCapabilityConflict(Array.from(enabled)) ? (
+        <Alert
+          tone="warning"
+          data-testid="capability-legacy-conflict"
+          title={copy.legacyMasterPublisher.title}
+        >
+          {copy.legacyMasterPublisher.body}
         </Alert>
       ) : null}
 

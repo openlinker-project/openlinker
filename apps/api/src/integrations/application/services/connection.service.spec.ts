@@ -867,7 +867,9 @@ describe('ConnectionService', () => {
         };
         expect(created.enabledCapabilities).not.toContain('OfferManager');
         expect(created.enabledCapabilities).toContain('InventoryMaster');
-        expect(created.enabledCapabilities).toContain('ProductPublisher');
+        // #3985: a shop that is also a catalog master defaults to master-only.
+        expect(created.enabledCapabilities).toContain('ProductMaster');
+        expect(created.enabledCapabilities).not.toContain('ProductPublisher');
       });
 
       it('should keep the full defaulted capability set for marketplace manifests without InventoryMaster', async () => {
@@ -1910,6 +1912,65 @@ describe('ConnectionService', () => {
       await expect(service.update('connection-123', { name: 'Updated' })).rejects.toThrow(
         NotFoundException
       );
+    });
+
+    // #3985 - master/publisher exclusion.
+    describe('master and publisher exclusion (#3985)', () => {
+      const shopManifest = {
+        adapterKey: 'woocommerce.restapi.v3',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['ProductMaster', 'ProductPublisher', 'OrderSource'],
+      };
+
+      it('should reject create when ProductMaster and ProductPublisher are both explicitly enabled', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(shopManifest as never);
+
+        await expect(
+          service.create({
+            name: 'New Connection',
+            config: { baseUrl: 'https://new.com' },
+            credentialsRef: 'db:existing-ref',
+            platformType: 'woocommerce',
+            enabledCapabilities: ['ProductMaster', 'ProductPublisher'] as never,
+          })
+        ).rejects.toMatchObject({
+          response: { code: 'CONNECTION_MASTER_PUBLISHER_CONFLICT' },
+        });
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject update when the patch moves a connection into the combination', async () => {
+        connectionPort.get.mockResolvedValue({
+          ...mockConnection,
+          enabledCapabilities: ['ProductMaster'],
+        });
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(shopManifest as never);
+
+        await expect(
+          service.update('connection-123', {
+            enabledCapabilities: ['ProductMaster', 'ProductPublisher'] as never,
+          })
+        ).rejects.toMatchObject({
+          response: { code: 'CONNECTION_MASTER_PUBLISHER_CONFLICT' },
+        });
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should allow an update that keeps an already-conflicting connection as it was', async () => {
+        const legacy = {
+          ...mockConnection,
+          enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+        };
+        connectionPort.get.mockResolvedValue(legacy);
+        connectionPort.update.mockResolvedValue(legacy);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(shopManifest as never);
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductMaster', 'ProductPublisher', 'OrderSource'] as never,
+        });
+
+        expect(connectionPort.update).toHaveBeenCalled();
+      });
     });
 
     // #1498 — write-back authority guard on the update path.

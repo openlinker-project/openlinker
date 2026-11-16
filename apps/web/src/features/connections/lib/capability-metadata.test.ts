@@ -46,6 +46,18 @@ describe('hasCapabilityConflict', () => {
   });
 });
 
+describe('master and publisher exclusion (#3985)', () => {
+  it('should block each of ProductMaster and ProductPublisher while the other is selected', () => {
+    expect(getCapabilityConflict(['ProductMaster'], 'ProductPublisher')).toBe('ProductMaster');
+    expect(getCapabilityConflict(['ProductPublisher'], 'ProductMaster')).toBe('ProductPublisher');
+    expect(hasCapabilityConflict(['ProductMaster', 'ProductPublisher'])).toBe(true);
+  });
+
+  it('should explain the catalog conflict in its own words', () => {
+    expect(capabilityConflictMessage('ProductMaster')).toContain('duplicates');
+  });
+});
+
 describe('capabilityConflictMessage', () => {
   it('should name the conflicting capability', () => {
     expect(capabilityConflictMessage('InventoryMaster')).toContain(

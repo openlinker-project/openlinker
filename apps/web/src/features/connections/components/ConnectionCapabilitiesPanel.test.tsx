@@ -29,6 +29,32 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
   });
 
+  it('disables ProductPublisher while ProductMaster is on and explains why (#3985)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeDisabled();
+    expect(screen.getByText(/published products would be read back/)).toBeInTheDocument();
+    expect(screen.queryByTestId('capability-legacy-conflict')).not.toBeInTheDocument();
+  });
+
+  it('warns once on a connection that already holds both, and keeps both toggleable (#3985)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+      enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByTestId('capability-legacy-conflict')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: /ProductMaster/ })).toBeEnabled();
+  });
+
   it('calls update mutation with new set when a capability is toggled', async () => {
     const update = vi.fn().mockResolvedValue({ ...sampleConnection });
     const apiClient = createMockApiClient({ connections: { update } });

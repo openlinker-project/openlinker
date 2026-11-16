@@ -7,7 +7,8 @@
  *
  * The exclusivity rule is expressed in capability terms only - a stock source
  * of truth (InventoryMaster) must never also be a stock write-back target
- * (OfferManager) on the same connection - so no platformType dispatch is
+ * (OfferManager) on the same connection, and a catalog master (ProductMaster)
+ * must never also be a publish target (ProductPublisher) - so no platformType dispatch is
  * needed; the backend enforces the same rule authoritatively on create/update.
  *
  * @module features/connections/lib
@@ -38,7 +39,11 @@ export const CAPABILITY_HELP = Object.defineProperties(
  */
 export const CAPABILITY_EXCLUSIVITY_PAIRS: ReadonlyArray<
   readonly [CoreCapability, CoreCapability]
-> = [['InventoryMaster', 'OfferManager']];
+> = [
+  ['InventoryMaster', 'OfferManager'],
+  // #3985: what OL publishes to a shop is read back by its own master sync.
+  ['ProductMaster', 'ProductPublisher'],
+];
 
 /**
  * Returns the currently-selected capability that blocks `capability` from
@@ -67,7 +72,10 @@ export function hasCapabilityConflict(capabilities: readonly string[]): boolean 
  * exclusivity conflict.
  */
 export function capabilityConflictMessage(conflictingCapability: string): string {
-  return interpolate(getMessages('connections').capabilityMetadata.conflict, {
+  const copy = getMessages('connections').capabilityMetadata;
+  const isCatalogPair =
+    conflictingCapability === 'ProductMaster' || conflictingCapability === 'ProductPublisher';
+  return interpolate(isCatalogPair ? copy.conflictMasterPublisher : copy.conflict, {
     capability: conflictingCapability,
   });
 }
