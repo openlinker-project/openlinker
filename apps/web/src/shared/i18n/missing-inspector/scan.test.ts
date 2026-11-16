@@ -7,13 +7,20 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { encodeMarker } from './markers';
 import { buildPanelGroups, formatPanelList } from './panel-model';
 import { createFallbackRegistry } from './registry';
-import { INSPECTOR_UI_ATTRIBUTE, scanForFallbacks } from './scan';
+import { INSPECTOR_UI_ATTRIBUTE, scanForFallbacks, type TextSpan } from './scan';
 
-function textOf(span: { startContainer: Node; startOffset: number; endContainer: Node; endOffset: number }): string {
+function textOf(span: TextSpan): string {
   const range = document.createRange();
   range.setStart(span.startContainer, span.startOffset);
   range.setEnd(span.endContainer, span.endOffset);
   return range.toString();
+}
+
+/** An `<option>` built the standard way; happy-dom has no `Option` constructor. */
+function optionOf(text: string): HTMLOptionElement {
+  const option = document.createElement('option');
+  option.textContent = text;
+  return option;
 }
 
 /** Parses markup into a detached root, without assigning `innerHTML`. */
@@ -30,13 +37,15 @@ afterEach(() => {
 
 describe('scanForFallbacks', () => {
   it('should find marked text, including a sentence split around a tag', () => {
-    const root = rootFrom(`<p>${encodeMarker(1, 'Saved')}</p><p>${encodeMarker(2, 'Read the ')}<a>guide</a>${'\u2063\u2061'} first</p><p>Zapisano</p>`);
+    // One marker around the whole sentence, the way a rich-text fallback
+    // renders: it opens in the text before the link and closes after it.
+    const root = rootFrom(`<p>${encodeMarker(1, 'Saved')}</p><p>${encodeMarker(2, 'Read the <a>guide</a> first')}</p><p>Zapisano</p>`);
 
     const text = scanForFallbacks(root).filter((finding) => finding.kind === 'text');
     expect(text.map((finding) => finding.id)).toEqual([1, 2]);
     expect(text.map((finding) => (finding.kind === 'text' ? textOf(finding.span) : '')).map((value) =>
       value.replace(/[\u200B-\u200D\u2060-\u2064]/g, ''),
-    )).toEqual(['Saved', 'Read the guide']);
+    )).toEqual(['Saved', 'Read the guide first']);
   });
 
   it('should close a marker left open at the end of its element', () => {
@@ -58,7 +67,7 @@ describe('scanForFallbacks', () => {
     const image = document.createElement('img');
     image.setAttribute('alt', encodeMarker(6, 'Logo'));
     const select = document.createElement('select');
-    select.append(new Option(encodeMarker(7, 'All')), new Option('Wszystkie'));
+    select.append(optionOf(encodeMarker(7, 'All')), optionOf('Wszystkie'));
     root.append(input, button, image, select);
     document.body.append(root);
 
