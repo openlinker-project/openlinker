@@ -17,6 +17,14 @@ const staleStock = new ShopifyUserErrorsException('inventorySetQuantities', [
 const grant = (code: string, status = 400): ShopifyApiError =>
   new ShopifyApiError(status, `{"error":"${code}"}`, 'token-endpoint', code);
 
+const invalidRequest = (description: string): ShopifyApiError =>
+  new ShopifyApiError(
+    400,
+    JSON.stringify({ error: 'invalid_request', error_description: description }),
+    'token-endpoint',
+    'invalid_request',
+  );
+
 describe('ShopifyRetryClassifierAdapter', () => {
   const classifier = new ShopifyRetryClassifierAdapter();
 
@@ -94,6 +102,8 @@ describe('ShopifyAuthFailureClassifierAdapter', () => {
     ['the invalid-token GraphQL error', new ShopifyGraphqlError([''], ['Invalid API key or access token'])],
     ['a wrong client id or secret (G03)', grant('application_cannot_be_found')],
     ['a spent OAuth refresh token', grant('invalid_grant')],
+    ['an unauthorized client', grant('unauthorized_client')],
+    ['a wrong client secret answered as invalid_request (F11)', invalidRequest('Missing or invalid client secret')],
   ])('should flag %s for re-auth', (_label, cause) => {
     expect(classifier.isCredentialRejected(cause)).toBe(true);
   });
@@ -103,6 +113,8 @@ describe('ShopifyAuthFailureClassifierAdapter', () => {
     ['a store in another organization', grant('shop_not_permitted')],
     ['a missing scope', new ShopifyGraphqlError(['ACCESS_DENIED'], ['denied'])],
     ['a throttle', throttled],
+    ['an invalid_request that does not name the client secret', invalidRequest('Missing grant_type')],
+    ['a 503 from the token endpoint', new ShopifyApiError(503, 'unavailable', 'token-endpoint')],
   ])('should not flag %s: the credentials are valid', (_label, cause) => {
     expect(classifier.isCredentialRejected(cause)).toBe(false);
   });

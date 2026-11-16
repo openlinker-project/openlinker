@@ -9,7 +9,9 @@
  *   - a refused token request whose grant error says the credentials
  *     themselves are wrong or revoked (`invalid_client`,
  *     `application_cannot_be_found`, `unauthorized_client`, and `invalid_grant`
- *     for an OAuth refresh token that is spent or expired).
+ *     for an OAuth refresh token that is spent or expired), including the
+ *     HTTP 400 `invalid_request` a wrong client secret draws when its
+ *     description names the client secret.
  *
  * Deliberately NOT: `ACCESS_DENIED` (a missing scope), and `app_not_installed`
  * / `shop_not_permitted` - the credentials are valid, and the fix is in the
@@ -24,10 +26,24 @@ import { ShopifyApiError } from '../../domain/exceptions/shopify-api.error';
 import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.error';
 import { isCredentialGrantError } from '../../domain/policies/shopify-grant-error.policy';
 
+// With a wrong client secret the client-credentials grant answers HTTP 400
+// `invalid_request` ("Missing or invalid client secret") instead of
+// `invalid_client`. `invalid_request` alone is too broad (a malformed request
+// is OpenLinker's own bug, not the operator's credentials), so it counts only
+// when the description names the client secret.
+const CLIENT_SECRET_WORDING = /client[ _]secret/i;
+
+function isRejectedClientCredential(error: ShopifyApiError): boolean {
+  if (isCredentialGrantError(error.grantError)) {
+    return true;
+  }
+  return error.grantError === 'invalid_request' && CLIENT_SECRET_WORDING.test(error.detail ?? '');
+}
+
 export class ShopifyAuthFailureClassifierAdapter implements AuthFailureClassifierPort {
   isCredentialRejected(cause: unknown): boolean {
     if (cause instanceof ShopifyApiError) {
-      return cause.isAuthRejection() || (cause.isTokenRequestRefused() && isCredentialGrantError(cause.grantError));
+      return cause.isAuthRejection() || (cause.isTokenRequestRefused() && isRejectedClientCredential(cause));
     }
     return cause instanceof ShopifyGraphqlError && cause.isInvalidToken();
   }
