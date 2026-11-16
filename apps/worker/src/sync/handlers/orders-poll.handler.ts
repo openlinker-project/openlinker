@@ -101,7 +101,9 @@ export class OrdersPollHandler implements SyncJobHandler {
     return typeof declared === 'string' && declared ? declared : null;
   }
 
-  private getPayload(job: SyncJob): Partial<MarketplaceOrdersPollPayloadV1> {
+  private getPayload(
+    job: SyncJob
+  ): Omit<MarketplaceOrdersPollPayloadV1, 'cursorKey'> & { cursorKey?: string } {
     const payload = job.payload as unknown as Partial<MarketplaceOrdersPollPayloadV1>;
     if (!payload || typeof payload !== 'object') {
       throw new SyncJobExecutionError(
