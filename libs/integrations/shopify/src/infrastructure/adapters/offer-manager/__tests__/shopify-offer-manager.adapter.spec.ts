@@ -1,6 +1,8 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
 import { ShopifyStockWriteRefusedException } from '../../../../domain/exceptions/shopify-stock-write-refused.exception';
+import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopify-user-errors.exception';
+import { ShopifyRetryClassifierAdapter } from '../../shopify-retry-classifier.adapter';
 import type { ShopifyGraphqlClient } from '../../../http/shopify-graphql-client';
 import type { ShopifyShopContextProvider } from '../../../shop-context/shopify-shop-context.provider';
 import { ShopifyOfferManagerAdapter } from '../shopify-offer-manager.adapter';
@@ -110,6 +112,80 @@ describe('ShopifyOfferManagerAdapter', () => {
     await h.adapter.updateOfferQuantity({ offerId: '5', quantity: 1 } as never);
 
     expect(h.mapping.deleteMapping).toHaveBeenCalledWith('ShopProduct', '5', 'c1');
+    expect(h.mutate).not.toHaveBeenCalled();
+  });
+
+  it('should delete the ShopProductVariant mapping of a gone product too, on this connection only', async () => {
+    const h = build('9');
+    h.mapping.getExternalIds.mockResolvedValue([
+      { connectionId: 'c1', externalId: '9' },
+      { connectionId: 'c2', externalId: '9' },
+    ]);
+    h.query.mockResolvedValueOnce({ nodes: [null] }).mockResolvedValueOnce({ nodes: [null, null] });
+
+    await h.adapter.updateOfferQuantity({ offerId: '5', quantity: 1 } as never);
+
+    expect(h.mapping.deleteMapping.mock.calls).toEqual([
+      ['ShopProductVariant', '9', 'c1'],
+      ['ShopProduct', '5', 'c1'],
+    ]);
+  });
+
+  it('should let a stale compare-and-set reach the runner as a retryable failure', async () => {
+    const h = build('9');
+    h.query.mockResolvedValueOnce({ nodes: [variant('9', 3)] });
+    const stale = new ShopifyUserErrorsException('inventorySetQuantities', [
+      { message: 'The compare quantity is stale', code: 'CHANGE_FROM_QUANTITY_STALE' },
+    ]);
+    h.mutate.mockRejectedValueOnce(stale);
+
+    const failure = await h.adapter
+      .updateOfferQuantity({ offerId: '5', quantity: 8, idempotencyKey: 'k1' } as never)
+      .catch((error: unknown) => error);
+
+    expect(failure).toBe(stale);
+    expect(new ShopifyRetryClassifierAdapter().isNonRetryable(failure)).toBe(false);
+  });
+
+  it('should send the same request key on a retry that read the same level, and a new one when the level moved', async () => {
+    const keys: string[] = [];
+    for (const level of [3, 3, 4]) {
+      const h = build('9');
+      h.query.mockResolvedValueOnce({ nodes: [variant('9', level)] });
+      await h.adapter.updateOfferQuantity({ offerId: '5', quantity: 8, idempotencyKey: 'k1' } as never);
+      keys.push((h.mutate.mock.calls[0] as [string, { key: string }])[1].key);
+    }
+
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it('should fall back to the product lookup when the variant mapping names a variant of another product', async () => {
+    const h = build('9');
+    h.query
+      .mockResolvedValueOnce({ nodes: [variant('9', 3, true, '777')] })
+      .mockResolvedValueOnce({
+        nodes: [null, { __typename: 'Product', id: 'gid://shopify/Product/5', variants: { nodes: [variant('11', 2)] } }],
+      });
+
+    await h.adapter.updateOfferQuantity({ offerId: '5', quantity: 6 } as never);
+
+    const [, variables] = h.mutate.mock.calls[0] as [string, { input: { quantities: Array<Record<string, unknown>> } }];
+    expect(variables.input.quantities[0]).toMatchObject({
+      inventoryItemId: 'gid://shopify/InventoryItem/11',
+      changeFromQuantity: 2,
+    });
+  });
+
+  it('should refuse an id that names both a product and a variant', async () => {
+    const h = build();
+    h.query.mockResolvedValueOnce({
+      nodes: [variant('5', 1), { __typename: 'Product', id: 'gid://shopify/Product/5', variants: { nodes: [variant('6', 1)] } }],
+    });
+
+    await expect(h.adapter.updateOfferQuantity({ offerId: '5', quantity: 2 } as never)).rejects.toThrow(
+      /both a product and a variant/,
+    );
     expect(h.mutate).not.toHaveBeenCalled();
   });
 

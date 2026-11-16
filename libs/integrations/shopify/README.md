@@ -266,7 +266,9 @@ Opt-in. Keeps the stock of products this connection PUBLISHED in step with the m
 - The target is resolved, never guessed: the variant mapping the publish wrote, else the id read as a variant or as
   a single-variant product. A product with several variants and no variant mapping is refused.
 - A variant that does not track stock is refused (tracking is the merchant's choice); one not stocked at the
-  location is activated there first. A mapping whose product is gone is deleted, so the next publish re-creates it.
+  location is activated there first. The refusal ends the job (no retries).
+- A product deleted in Shopify drops both its mappings (product and variant), so the next publish re-creates it.
+  "Gone" means Shopify answered that the id does not exist; a missing app scope is an error and deletes nothing.
 - Not together with InventoryMaster: the propagation never writes back to the stock master, so on a connection
   with both nothing is written back. Use a separate publish-only connection.
 

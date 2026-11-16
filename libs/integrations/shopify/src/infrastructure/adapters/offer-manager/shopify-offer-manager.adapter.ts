@@ -27,7 +27,9 @@
  * read the same level replays the same request, while a retry that read a
  * moved level is a new request to the same absolute target - which is safe,
  * because setting N twice is N. A write that would not change the level is
- * skipped. Without a command key the request key is random.
+ * skipped. Without a command key the request key is random, so a runner retry
+ * sends a new key; that stays correct because the compare-and-set, not the
+ * key, is what refuses a stale write.
  *
  * Untracked stock is REFUSED, never switched on: tracking is the merchant's
  * decision, and turning it on silently would make an "always available"
@@ -36,7 +38,13 @@
  *
  * A mapping whose product and variant are both gone shop-side is deleted
  * (the WooCommerce #1846 behaviour), so it stops failing on every stock
- * change and the next publish re-creates the product.
+ * change and the next publish re-creates the product. Both mappings the
+ * publish wrote for the internal variant go - the `ShopProduct` one and its
+ * `ShopProductVariant` one - or an order line naming the deleted variant would
+ * still resolve to it. A `nodes(ids:)` entry is `null` only for an id that
+ * does not exist: a scope this token lacks comes back as an `ACCESS_DENIED`
+ * GraphQL error, and the client throws on any `errors` entry even beside
+ * partial data, so a scope change can never be read as a deletion.
  *
  * `OfferManager` is advertised but NOT enabled by default, and the
  * propagation fan-out skips a connection that also has `InventoryMaster`
@@ -156,10 +164,10 @@ export class ShopifyOfferManagerAdapter implements OfferManagerPort {
     if (variant === null) {
       this.logger.warn(
         `Shopify product/variant ${externalId} not found on connection ${this.connection.id}; ` +
-          `stale ShopProduct mapping deleted so a future publish re-creates it ` +
+          `stale ShopProduct and ShopProductVariant mappings deleted so a future publish re-creates it ` +
           `(quantity=${cmd.quantity} not written this run)`,
       );
-      await this.identifierMapping.deleteMapping(CORE_ENTITY_TYPE.ShopProduct, externalId, this.connection.id);
+      await this.deleteStaleMappings(externalId);
       return;
     }
     const variantId = fromShopifyGid(variant.id);
@@ -205,6 +213,14 @@ export class ShopifyOfferManagerAdapter implements OfferManagerPort {
     );
     const after = payload.inventoryAdjustmentGroup?.changes.find((c) => c.name === 'available')
       ?.quantityAfterChange;
+    if (after !== undefined && after !== null && after !== cmd.quantity) {
+      // The compare-and-set passed, so a different result means Shopify moved
+      // the level in the same instant (an order, another app); worth seeing.
+      this.logger.warn(
+        `Shopify variant ${variantId} is at ${after} available after setting ${cmd.quantity} ` +
+          `(offer ${externalId}, connection: ${this.connection.id})`,
+      );
+    }
     this.logger.log(
       `Set Shopify variant ${variantId} available ${current} -> ${after ?? cmd.quantity} at ${locationGid} ` +
         `(offer ${externalId}, connection: ${this.connection.id})`,
@@ -275,6 +291,31 @@ export class ShopifyOfferManagerAdapter implements OfferManagerPort {
     );
     const own = mappings.filter((m) => m.connectionId === this.connection.id);
     return own.length === 1 && NUMERIC_ID.test(own[0].externalId) ? own[0].externalId : null;
+  }
+
+  /** Deletes the `ShopProduct` mapping and the `ShopProductVariant` mapping(s) of the same internal variant. */
+  private async deleteStaleMappings(externalId: string): Promise<void> {
+    const internalVariantId = await this.identifierMapping.getInternalId(
+      CORE_ENTITY_TYPE.ShopProduct,
+      externalId,
+      this.connection.id,
+    );
+    if (internalVariantId !== null) {
+      const variantMappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.ShopProductVariant,
+        internalVariantId,
+      );
+      for (const mapping of variantMappings) {
+        if (mapping.connectionId === this.connection.id) {
+          await this.identifierMapping.deleteMapping(
+            CORE_ENTITY_TYPE.ShopProductVariant,
+            mapping.externalId,
+            this.connection.id,
+          );
+        }
+      }
+    }
+    await this.identifierMapping.deleteMapping(CORE_ENTITY_TYPE.ShopProduct, externalId, this.connection.id);
   }
 
   private async readNodes(ids: readonly string[], locationGid: string): Promise<Array<TargetNode | null>> {
