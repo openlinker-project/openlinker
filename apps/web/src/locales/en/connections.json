@@ -829,6 +829,7 @@
       "platform": "Platform settings",
       "rateLimit": "Request rate limit",
       "salesDocuments": "Sales documents",
+      "shipping": "Who ships",
       "stockPricing": "Stock and pricing"
     },
     "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
@@ -1407,6 +1408,16 @@
       "other": "{n} delivery methods (names not loaded)"
     }
   },
+  "shippingNextStep": {
+    "body": "Until you assign a carrier, your shop ships every order from this channel, the way it did before OpenLinker. To have OpenLinker buy labels, choose a carrier per delivery method in Mappings.",
+    "link": "Assign who ships",
+    "title": "What next: who ships from this channel"
+  },
+  "shippingSummary": {
+    "configure": "Configure in Mappings",
+    "intro": "Who ships each delivery method, per sales channel. Methods without a carrier are shipped by your shop.",
+    "noChannels": "No sales channel is connected to this shop yet. Connect one, then assign who ships its delivery methods."
+  },
   "shoperSetupForm": {
     "beforeYouStart": {
       "body": "In your {platform} admin panel open <strong>Dodaj integrację</strong> and create an integration. {platform} issues a <strong>Token API</strong>; OpenLinker sends it as a bearer token on every request. Grant the integration access to: produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki, statusy zamówień, klienci, webhooki, dostawy and płatności.",
@@ -1441,6 +1452,7 @@
     "latency": "({ms}ms)",
     "ordersNextStep": {
       "body": "{platform} needs a default delivery method, payment method and order status to create an order. Pick them from the shop's own lists in <link>the connection settings</link>.",
+      "shipping": "Packing: once a sales channel is connected to this shop, choose per delivery method who ships it. <link>Assign carriers per channel</link>.",
       "title": "One more step to receive orders"
     },
     "platformFallback": "the shop",

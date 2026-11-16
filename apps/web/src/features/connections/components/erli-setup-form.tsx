@@ -52,6 +52,7 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import { ShippingNextStep } from './shipping-next-step';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
@@ -276,6 +277,7 @@ export function ErliSetupForm(): ReactElement {
 
         {createdConnectionId ? (
           <>
+            <ShippingNextStep connectionId={createdConnectionId} />
             {testResult ? (
               <Alert
                 tone={testResult.success ? 'success' : 'error'}
