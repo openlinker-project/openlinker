@@ -2582,6 +2582,52 @@ describe('OrderIngestionService', () => {
       expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
     });
 
+    it('hydrates and persists an order whose only event was its cancellation, with no routing or mirror (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_cancelled_only');
+      const hydrated = { externalOrderId, status: 'cancelled', items: [] } as unknown as Awaited<
+        ReturnType<OrderSourcePort['getOrder']>
+      >;
+      orderSource.getOrder.mockResolvedValue(hydrated);
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        hydrated,
+        'ol_order_cancelled_only',
+        null,
+        connectionId,
+        'evt-1'
+      );
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('keeps only the cancellation signal when the source cannot hydrate the unknown order (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      orderSource.getOrder.mockRejectedValue(new Error('404 not found'));
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).not.toHaveBeenCalled();
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+    });
+
     it('propagates a failure recording the early-cancellation signal (#2069) — unlike the known-order branch, there is no relay to protect', async () => {
       identifierMapping.getInternalId.mockResolvedValue(null);
       orderRecordService.recordEarlyCancellationSignal.mockRejectedValueOnce(

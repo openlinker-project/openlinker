@@ -442,7 +442,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     // destination(s) via OrderStatusWriteback. OL owns no canonical status here —
     // it forwards the source's fact to the participants it already synced to.
     if (eventType === 'cancelled') {
-      return this.handleSourceCancellation(connectionId, externalOrderId);
+      return this.handleSourceCancellation(connectionId, externalOrderId, sourceEventId);
     }
 
     const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
@@ -1844,6 +1844,60 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Persist an order whose ONLY observed event was its cancellation (#4032).
+   *
+   * Some feeds keep one event per order (Allegro: the newest), so a buyer who
+   * buys and cancels inside one poll window leaves OpenLinker only a
+   * `cancelled` event for an order it never saw. The early-cancellation signal
+   * is already recorded by the caller; this hydrates the order and writes the
+   * raw snapshot, which consumes that signal and stamps `cancelledAt`, so the
+   * order is listed with its cancellation and payment state.
+   *
+   * Deliberately the snapshot write ONLY: no item resolution, routing, reservation,
+   * destination mirror, document or stock restore - nothing was reserved,
+   * decremented or issued for an order that never went live. Best-effort: when
+   * the source cannot hydrate it (genuinely unknown, or a transient failure) the
+   * signal alone stands, exactly as before.
+   */
+  private async persistCancelledOrderNeverIngested(
+    connectionId: string,
+    externalOrderId: string,
+    sourceEventId: string | undefined
+  ): Promise<void> {
+    try {
+      const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+        connectionId,
+        'OrderSource'
+      );
+      const incoming = await orderSource.getOrder({ externalOrderId });
+      if (!incoming) {
+        return;
+      }
+      const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.Order,
+        incoming.externalOrderId,
+        connectionId
+      );
+      await this.orderRecordService.persistIncomingSnapshot(
+        incoming,
+        internalOrderId,
+        null,
+        connectionId,
+        sourceEventId ?? null
+      );
+      this.logger.log(
+        `Persisted cancelled order ${internalOrderId} (external ${externalOrderId}) that was ` +
+          `never ingested before its cancellation; no routing, mirror or documents created`
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not hydrate cancelled unknown order ${externalOrderId} on connection ${connectionId}; ` +
+          `only the pending cancellation signal is kept: ${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
    * Inbound source cancellation → destination(s) via the lifecycle relay (#1158).
    * Resolves the existing internal order; if unknown (never ingested), there is
    * no `order_records` row to mark cancelled yet — instead, a durable
@@ -1861,7 +1915,8 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async handleSourceCancellation(
     connectionId: string,
-    externalOrderId: string
+    externalOrderId: string,
+    sourceEventId?: string
   ): Promise<never[]> {
     const internalOrderId = await this.identifierMapping.getInternalId(
       CORE_ENTITY_TYPE.Order,
@@ -1901,6 +1956,7 @@ export class OrderIngestionService implements IOrderIngestionService {
           `has no internal mapping yet — recorded as a pending cancellation signal so the later ` +
           `create is not provisioned active`
       );
+      await this.persistCancelledOrderNeverIngested(connectionId, externalOrderId, sourceEventId);
       return [];
     }
 
