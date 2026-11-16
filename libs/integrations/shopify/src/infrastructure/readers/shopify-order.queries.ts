@@ -8,7 +8,8 @@
  * @module libs/integrations/shopify/src/infrastructure/readers
  */
 
-const MAILING_ADDRESS = 'firstName lastName company address1 address2 city provinceCode zip countryCodeV2 phone';
+const MAILING_ADDRESS =
+  'firstName lastName company address1 address2 city provinceCode zip countryCodeV2 phone';
 const MONEY = 'shopMoney { amount currencyCode }';
 const TAX_LINE = 'rate ratePercentage title';
 
@@ -55,7 +56,6 @@ export const ORDER_FEED_QUERY = `query OlOrderFeed($first: Int!, $after: String,
   }
 }`;
 
-
 /**
  * The order this shop already holds for an OpenLinker order, by the
  * `sourceIdentifier` the create stamped on it. Goes through the search index,
@@ -101,9 +101,9 @@ export const ORDER_FULFILLMENT_ORDERS_QUERY = `query OlFulfillmentOrders($id: ID
         lineItems(first: 250) { nodes { id remainingQuantity } }
       }
     }
+    fulfillments(first: 20) { id status createdAt trackingInfo(first: 5) { number } }
   }
 }`;
-
 
 export const FULFILLMENT_ORDER_MOVE_MUTATION = `mutation OlFulfillmentOrderMove($id: ID!, $locationId: ID!) {
   fulfillmentOrderMove(id: $id, newLocationId: $locationId) {
@@ -115,6 +115,18 @@ export const FULFILLMENT_ORDER_MOVE_MUTATION = `mutation OlFulfillmentOrderMove(
 export const FULFILLMENT_CREATE_MUTATION = `mutation OlFulfillmentCreate($fulfillment: FulfillmentInput!) {
   fulfillmentCreate(fulfillment: $fulfillment) {
     fulfillment { id status }
+    userErrors { field message }
+  }
+}`;
+
+/**
+ * Adds a tracking number to a fulfillment that already exists: a carrier such
+ * as InPost assigns the number only after the parcel is dispatched, so the
+ * number reaches Shopify after the fulfillment was created without one.
+ */
+export const FULFILLMENT_TRACKING_INFO_UPDATE_MUTATION = `mutation OlFulfillmentTrackingInfoUpdate($fulfillmentId: ID!, $trackingInfoInput: FulfillmentTrackingInput!, $notifyCustomer: Boolean) {
+  fulfillmentTrackingInfoUpdate(fulfillmentId: $fulfillmentId, trackingInfoInput: $trackingInfoInput, notifyCustomer: $notifyCustomer) {
+    fulfillment { id }
     userErrors { field message }
   }
 }`;

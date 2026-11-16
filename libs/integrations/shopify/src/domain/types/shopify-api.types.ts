@@ -200,6 +200,13 @@ export interface ShopifyFulfillmentOrderLineItem {
   readonly remainingQuantity: number;
 }
 
+export interface ShopifyFulfillment {
+  readonly id: string;
+  readonly status: string;
+  readonly createdAt: string;
+  readonly trackingInfo: readonly { readonly number: string | null }[];
+}
+
 export interface ShopifyFulfillmentOrder {
   readonly id: string;
   readonly status: string;
