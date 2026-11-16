@@ -2068,6 +2068,14 @@
         "one": "{n} published",
         "other": "{n} published"
       },
+      "retryDispatchedDescription": {
+        "one": "{n} product queued again.",
+        "other": "{n} products queued again."
+      },
+      "retryDispatchedTitle": "Retry dispatched",
+      "retryFailed": "Retry failed",
+      "retryFailedTitle": "Retry failed",
+      "retrying": "Retrying…",
       "running": {
         "one": "{n} running",
         "other": "{n} running"

@@ -178,6 +178,8 @@ export interface ListingsApi {
   shopPublishBulk: (body: BulkShopPublishRequest) => Promise<BulkShopPublishResponse>;
   /** Read a bulk shop-publish batch + its per-record summary. Used for polling. */
   getBulkShopPublishBatch: (batchId: string) => Promise<BulkShopPublishBatchResponse>;
+  /** Re-enqueue every failed child of a shop-publish batch; same shape as `retryBulkFailed`. */
+  retryBulkShopPublishFailed: (batchId: string) => Promise<BulkListingRetryResponse>;
   /** Destination-aware duplicate guard (#1837) - which variants already have a
    *  listing (offer or shop-product) on the connection. */
   checkPublishedVariants: (
@@ -631,6 +633,12 @@ export function createListingsApi(
     getBulkShopPublishBatch(batchId): Promise<BulkShopPublishBatchResponse> {
       return request<BulkShopPublishBatchResponse>(
         `/listings/bulk-shop-publish/${encodeURIComponent(batchId)}`,
+      );
+    },
+    retryBulkShopPublishFailed(batchId): Promise<BulkListingRetryResponse> {
+      return request<BulkListingRetryResponse>(
+        `/listings/bulk-shop-publish/${encodeURIComponent(batchId)}/retry-failed`,
+        { method: 'POST' },
       );
     },
     checkPublishedVariants(body): Promise<PublishedVariantsResponse> {

@@ -2252,6 +2252,16 @@
         "one": "opublikowano: {n}",
         "other": "opublikowano: {n}"
       },
+      "retryDispatchedDescription": {
+        "few": "{n} produkty ponownie w kolejce.",
+        "many": "{n} produktów ponownie w kolejce.",
+        "one": "{n} produkt ponownie w kolejce.",
+        "other": "{n} produktu ponownie w kolejce."
+      },
+      "retryDispatchedTitle": "Ponowiono",
+      "retryFailed": "Ponów nieudane",
+      "retryFailedTitle": "Nie udało się ponowić",
+      "retrying": "Ponawianie…",
       "running": {
         "few": "w toku: {n}",
         "many": "w toku: {n}",
