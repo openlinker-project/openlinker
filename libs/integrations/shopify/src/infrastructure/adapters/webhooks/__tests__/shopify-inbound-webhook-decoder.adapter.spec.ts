@@ -118,5 +118,26 @@ describe('ShopifyInboundWebhookDecoderAdapter', () => {
       expect(eventIdOf(body)).toBe(eventIdOf(body));
       expect(eventIdOf(body)).not.toBe(eventIdOf('{"id":5}'));
     });
+
+    // Without `x-shopify-webhook-id` the dedup gate is keyed by topic + body, so
+    // a retry Shopify sends with a new trigger time is still the same delivery,
+    // while any change to the body (or the topic) is a new one. A re-signed,
+    // altered body therefore passes the gate - it costs one re-read of the
+    // resource, since the body is only a trigger (#4100 review).
+    it('should key a delivery without the webhook id on topic and body only', () => {
+      const eventIdOf = (topic: string, raw: string, triggeredAt: string): string | null => {
+        const result = decoder.extractEnvelope(Buffer.from(raw), {
+          'x-shopify-topic': topic,
+          'x-shopify-triggered-at': triggeredAt,
+        });
+        return result.action === 'route' ? result.envelope.eventId : null;
+      };
+      const first = eventIdOf('orders/updated', body, '2026-11-10T10:00:00.000Z');
+
+      expect(first).not.toBeNull();
+      expect(eventIdOf('orders/updated', body, '2026-11-10T13:59:00.000Z')).toBe(first);
+      expect(eventIdOf('orders/updated', `${body} `, '2026-11-10T10:00:00.000Z')).not.toBe(first);
+      expect(eventIdOf('orders/create', body, '2026-11-10T10:00:00.000Z')).not.toBe(first);
+    });
   });
 });

@@ -79,6 +79,13 @@ poll picks changes up on its own schedule.
 Shopify retries a failed delivery for about four hours and removes a subscription that keeps
 failing, so keep the URL reachable. The orders poll stays on as the backstop.
 
+A delivery that arrives twice is processed once. OpenLinker records every verified delivery under
+Shopify's `x-shopify-webhook-id` and drops a repeat. A delivery without that header is recorded
+under its topic and body instead, so a byte-identical repeat is dropped while a changed body counts
+as a new delivery. That costs nothing more than one extra read: a webhook only tells OpenLinker
+which order or product to read again, and the data always comes from that read, never from the
+webhook body.
+
 ## 5. Prices and taxes
 
 Catalogue prices in OpenLinker are gross (ADR-077). A store whose prices include tax is read and
