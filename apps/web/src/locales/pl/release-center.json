@@ -18,5 +18,27 @@
       "tourTitle": "Kto wysyła przesyłki z tego kanału?",
       "why": "Kierowanie wysyłek ustawiasz w Mapowaniach, w zakładce Realizacja. Sprawdź, kto wysyła każdą metodę dostawy z tego kanału, i zapisz."
     }
+  },
+  "tour": {
+    "adminOnly": "Wymaga administratora",
+    "back": "Wstecz",
+    "choices": {
+      "externalPacking": "Pakuje inny system",
+      "notifyLater": "Po oznaczeniu jako wysłane",
+      "notifyNow": "W chwili zakupu etykiety",
+      "ownPacking": "Pakuje OpenLinker"
+    },
+    "finish": "Zakończ",
+    "later": "Zrobię to później",
+    "missing": "Nie znaleziono tego elementu na ekranie. Możesz pominąć ten krok.",
+    "next": "Dalej",
+    "optional": "Opcjonalne",
+    "regionLabel": "Przewodnik",
+    "required": "Wymagane",
+    "requiredReason": "Wybierz opcję w tym wymaganym kroku, aby przejść dalej.",
+    "saveFailed": "Nie udało się zapisać. Spróbuj ponownie.",
+    "saved": "Zapisano: {choice}",
+    "stepOf": "Krok {current} z {total}",
+    "viewerHint": "Możesz zobaczyć to ustawienie. Zmienić je może tylko administrator."
   }
 }

@@ -40151,3 +40151,134 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .sync-progress__confirm,
   .sync-guide__item[data-focus='true'] { animation: none; }
 }
+
+/* ── Guided tour (#4149) ── */
+.tour-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  border-radius: 8px;
+  border: 1px solid var(--accent-primary);
+  box-shadow: 0 0 0 9999px rgb(15 18 26 / 0.12);
+  pointer-events: none;
+}
+
+.tour-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 61;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+}
+
+.tour-card:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.tour-card--docked {
+  top: auto;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: auto;
+  max-width: none;
+  transform: none !important;
+}
+
+.tour-card__rail {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.tour-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-subtle);
+}
+
+.tour-card__dot--current {
+  background: var(--accent-primary);
+}
+
+.tour-card__dot--done {
+  background: var(--text-primary);
+}
+
+.tour-card__dot--optional {
+  border-radius: 2px;
+}
+
+.tour-card__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.tour-card__chip {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.tour-card__title {
+  margin: var(--space-1) 0;
+  font-size: 1rem;
+}
+
+.tour-card__body,
+.tour-card__hint,
+.tour-card__reason,
+.tour-card__status {
+  margin: var(--space-1) 0;
+  font-size: 0.875rem;
+}
+
+.tour-card__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.tour-card__choices .button[aria-pressed='true'] {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+}
+
+.tour-card__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.tour-card__spacer {
+  flex: 1;
+}
+
+.tour-card .button[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tour-ring,
+  .tour-card {
+    transition: transform 160ms ease-out;
+  }
+}

@@ -42,7 +42,7 @@ export function FulfilmentOwnershipSection({
   };
 
   return (
-    <section className="rate-limit-section" data-testid="fulfilment-ownership-section">
+    <section className="rate-limit-section" data-testid="fulfilment-ownership-section" data-tour="pack-check">
       <h3 className="rate-limit-section__title">{copy.heading}</h3>
       <label className="rate-limit-section__toggle">
         <input
