@@ -229,7 +229,10 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
   }
 }
 
-/** How far down an `Error.cause` chain a re-wrapped PrestaShop failure is looked for (#3984). */
+/**
+ * How many errors of an `Error.cause` chain are inspected, the outer one
+ * included (#3984): the outer error plus up to three nested causes.
+ */
 const MAX_CAUSE_DEPTH = 4;
 
 /**
@@ -248,7 +251,7 @@ function findThrottleOrOutage(
 ): { statusCode: 429 | 503; retryAfterSeconds?: number } | null {
   let current: unknown = cause;
   let found: { statusCode: 429 | 503; retryAfterSeconds?: number } | null = null;
-  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
     if (!(current instanceof Error)) {
       break;
     }

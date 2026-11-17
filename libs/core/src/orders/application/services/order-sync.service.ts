@@ -49,7 +49,7 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
-  RetryClassifierRegistryService,
+  type IRetryClassifierRegistry,
 } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
@@ -109,7 +109,7 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN)
     private readonly masterAbsorbedReservations: IMasterAbsorbedReservationService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
-    private readonly retryClassifierRegistry: RetryClassifierRegistryService
+    private readonly retryClassifierRegistry: IRetryClassifierRegistry
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
@@ -500,11 +500,23 @@ export class OrderSyncService implements IOrderSyncService {
     // safe because create is idempotent per destination via its mapping, so
     // destinations that already succeeded hit the skip path. Permanent failures
     // and errors no classifier calls deferrable still settle as `failed` below.
+    //
+    // Opt-in per caller, and bounded: the runner's deferral budget is spent only
+    // by the job that carries it, so a caller that does not pass
+    // `request.deferralBudget` (or whose budget this deferral would overrun) gets
+    // the pre-#3984 behaviour and the destination settles as `failed` with the
+    // operator's Retry action. Rethrowing past the budget would let the job die
+    // with no per-order `failed` row at all.
     const transient = settled.find(
       (outcome): outcome is PromiseRejectedResult =>
-        outcome.status === 'rejected' && this.isTransientDestinationFailure(outcome.reason)
+        outcome.status === 'rejected' &&
+        this.canDeferDestinationFailure(outcome.reason, request.deferralBudget)
     );
     if (transient) {
+      // Persist the permanent failures of this run first: the rethrow skips the
+      // caller's settle step, and a destination that failed for good would
+      // otherwise show no failed row until the budget is spent.
+      await this.settlePermanentFailuresBeforeDeferral(order.id, destinations, settled);
       this.logger.warn(
         `Order ${order.id} hit a transient destination failure; retrying sync job: ${
           transient.reason instanceof Error ? transient.reason.message : String(transient.reason)
@@ -545,14 +557,71 @@ export class OrderSyncService implements IOrderSyncService {
 
   /**
    * True when a destination plugin's own classifier says this failure is a
-   * deferrable one. A deterministic cause wins the tie, mirroring the runner,
-   * so a failure one plugin calls permanent is never re-driven for ever.
+   * deferrable one AND the caller's deferral budget can still grant the wait.
+   * A deterministic cause wins the tie, mirroring the runner, so a failure one
+   * plugin calls permanent is never re-driven for ever.
    */
-  private isTransientDestinationFailure(cause: unknown): boolean {
+  private canDeferDestinationFailure(
+    cause: unknown,
+    budget: OrderSyncRequest['deferralBudget']
+  ): boolean {
+    if (!budget) {
+      return false;
+    }
     if (this.retryClassifierRegistry.isNonRetryable(cause)) {
       return false;
     }
-    return this.retryClassifierRegistry.resolveRetryDeferral(cause) !== null;
+    const deferral = this.retryClassifierRegistry.resolveRetryDeferral(cause);
+    if (deferral === null) {
+      return false;
+    }
+    // Same arithmetic as the runner (`<=`), so "we rethrow" and "the runner
+    // grants it" cannot disagree.
+    return budget.spentMs + deferral.delaySeconds * 1000 <= budget.maxMs;
+  }
+
+  /**
+   * Best-effort `failed` rows for destinations that were rejected and are not
+   * themselves deferrable, written before a sibling's deferral rethrows.
+   */
+  private async settlePermanentFailuresBeforeDeferral(
+    orderId: string,
+    destinations: ReadonlyArray<{ connectionId: string }>,
+    settled: ReadonlyArray<PromiseSettledResult<unknown>>
+  ): Promise<void> {
+    await Promise.all(
+      settled.map(async (outcome, index) => {
+        if (
+          outcome.status !== 'rejected' ||
+          outcome.reason instanceof OrderCreateContendedException ||
+          this.isDeferrableByPlugin(outcome.reason)
+        ) {
+          return;
+        }
+        const destinationConnectionId = destinations[index].connectionId;
+        try {
+          await this.orderRecordService.updateSyncStatus(orderId, destinationConnectionId, {
+            destinationConnectionId,
+            status: 'failed',
+            error:
+              outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+          });
+        } catch (error) {
+          this.logger.warn(
+            `Could not record failed sync status for order ${orderId} on destination ${destinationConnectionId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      })
+    );
+  }
+
+  private isDeferrableByPlugin(cause: unknown): boolean {
+    return (
+      !this.retryClassifierRegistry.isNonRetryable(cause) &&
+      this.retryClassifierRegistry.resolveRetryDeferral(cause) !== null
+    );
   }
 
   /**

@@ -199,6 +199,15 @@ describe('PrestashopRetryClassifierAdapter', () => {
       expect(deferral?.reason).toBe('shop rate-limited the request (429)');
     });
 
+    it('should look at most four errors deep into a cause chain', () => {
+      const inner = new PrestashopApiException('unavailable', 503);
+
+      // inner sits at position 4 (outer + 2 wrappers + inner): inspected.
+      expect(classifier.getRetryDeferral(wrap(wrap(wrap(inner))))).not.toBeNull();
+      // one more wrapper pushes it to position 5: not inspected.
+      expect(classifier.getRetryDeferral(wrap(wrap(wrap(wrap(inner)))))).toBeNull();
+    });
+
     it('should not defer a module 503, which may have committed the order', () => {
       expect(
         classifier.getRetryDeferral(

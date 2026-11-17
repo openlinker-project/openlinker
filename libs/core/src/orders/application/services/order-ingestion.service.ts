@@ -24,7 +24,14 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type Connection, type ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+  CONNECTION_PORT_TOKEN,
+  type Connection,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import {
   IAutoIssueTriggerService,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
@@ -35,7 +42,10 @@ import {
   IOrderCustomerProjectionUpdaterService,
   ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
 } from '@openlinker/core/customers';
-import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
+import {
+  IOrderSyncService,
+  type OrderSyncRequest,
+} from '../interfaces/order-sync.service.interface';
 import type {
   IOrderIngestionService,
   OrderIngestionOptions,
@@ -129,11 +139,7 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
-import {
-  describeMultipackHold,
-  hasBundleDefinition,
-  isMultipackLine,
-} from './multipack-hold';
+import { describeMultipackHold, hasBundleDefinition, isMultipackLine } from './multipack-hold';
 import {
   projectOrderForRouting,
   type OrderRoutingProjection,
@@ -373,7 +379,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // backwards. Enforced only for cursor shapes core can order - see
       // `compareOrderCursors`.
       if (nextCursor && nextCursor.trim() !== '') {
-        if (fromCursor && this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)) {
+        if (
+          fromCursor &&
+          this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)
+        ) {
           this.logger.warn(
             `Cursor regression detected; not committing cursor. cursorKey=${cursorKey}, fromCursor=${fromCursor}, nextCursor=${nextCursor} (connection: ${connectionId})`
           );
@@ -434,7 +443,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     externalOrderId: string,
     sourceEventId?: string,
-    eventType?: OrderFeedEventType
+    eventType?: OrderFeedEventType,
+    deferralBudget?: OrderSyncRequest['deferralBudget']
   ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
     // Inbound cancellation (#1158): a source `cancelled` event must NOT re-run the
     // create/update path (which would re-create the order — the #1132 bug). Route
@@ -573,7 +583,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // will carry variantIds; if items never resolve, OfferStockRestoreService
     // will no-op (no variantIds in the raw snapshot) and the job stays visible
     // in the dead-letter queue for operator inspection.
-    if ((incoming.status === 'cancelled' || cancelledFromEarlySignal) && priorStatus !== 'cancelled') {
+    if (
+      (incoming.status === 'cancelled' || cancelledFromEarlySignal) &&
+      priorStatus !== 'cancelled'
+    ) {
       try {
         await this.jobQueue.enqueue({
           type: 'marketplace.offer.stockRestore',
@@ -589,23 +602,25 @@ export class OrderIngestionService implements IOrderIngestionService {
       } catch (error) {
         this.logger.error(
           `Failed to enqueue stock-restore job (early-fire) for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
       }
     }
 
     // Step 3: attempt item resolution (non-throwing)
     const resolvedItems: Order['items'] = [];
-    const unresolvedRefs: Array<{ itemId: string; reason: string; kind: ItemResolutionFailureKind }> =
-      [];
+    const unresolvedRefs: Array<{
+      itemId: string;
+      reason: string;
+      kind: ItemResolutionFailureKind;
+    }> = [];
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
       // A ready order with a frozen expansion was already decided: re-asking the
       // LIVE definitions would flip a (possibly shipped) order back to held
       // the day a definition or confirmation is retired.
-      const alreadyFrozen =
-        existing?.recordStatus === 'ready' && existing.lineExpansion != null;
+      const alreadyFrozen = existing?.recordStatus === 'ready' && existing.lineExpansion != null;
       if (result.resolved && !alreadyFrozen && isMultipackLine(item)) {
         // #3929: held BEFORE anything reserves. Treating the line as one unit
         // would reserve and ship a single unit for the price of several. The
@@ -834,7 +849,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // error so the missed restore is loud and actionable.
         this.logger.error(
           `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
       }
     }
@@ -912,6 +927,8 @@ export class OrderIngestionService implements IOrderIngestionService {
           order,
           sourceConnectionId: connectionId,
           sourceEventId,
+          // #3984: only a job the runner can defer passes this.
+          ...(deferralBudget ? { deferralBudget } : {}),
           // Only when a bundle expanded anything, so an order without one sends
           // the byte-identical request it always did.
           ...(physicalItems.some(
@@ -1216,9 +1233,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (skipReason !== null) {
         // `log`, not `debug`: the answer to "why is this order not on the pack
         // bench?", invisible at `debug` on a normal deployment (#3490 / #3496 review).
-        this.logger.log(
-          `Not routing order ${orderId}: ${skipReason}; following today's path.`
-        );
+        this.logger.log(`Not routing order ${orderId}: ${skipReason}; following today's path.`);
         return { kind: 'skip', reason: skipReason };
       }
 
@@ -2183,7 +2198,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.warn(
         `Source amended order ${internalOrderId} on connection ${connectionId} after ingestion: ` +
           changes
-            .map((c) => (c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`))
+            .map((c) =>
+              c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`
+            )
             .join('; ')
       );
       await this.orderRecordService.recordAmendment(internalOrderId, new Date(), changes);
@@ -2327,9 +2344,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    * first: sources such as WooCommerce truncate `placedAt` to the second, so a
    * cost saved a few hundred ms before the sale must not look "after" it.
    */
-  private async resolveLineCostCandidates(
-    order: Order
-  ): Promise<Map<string, LineCostCandidate>> {
+  private async resolveLineCostCandidates(order: Order): Promise<Map<string, LineCostCandidate>> {
     const variantIds = [
       ...new Set(
         order.items.map((item) => item.variantId).filter((id): id is string => Boolean(id))

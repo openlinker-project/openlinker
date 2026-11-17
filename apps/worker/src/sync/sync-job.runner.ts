@@ -19,6 +19,10 @@
 import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  MAX_DEFERRED_TOTAL_SECONDS_DEFAULT,
+  parseMaxDeferredTotalSeconds,
+} from './deferral-budget';
 import type {
   RetryDeferral,
   SyncJobEntity,
@@ -120,8 +124,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * 24 h by default: longer than any maintenance window an operator schedules,
    * short enough that a permanently broken destination surfaces within a day.
    */
-  private readonly MAX_DEFERRED_TOTAL_SECONDS_DEFAULT = 24 * 60 * 60;
-  private maxDeferredTotalSeconds = this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
+  private maxDeferredTotalSeconds = MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
 
   /** Fixed short deferral for a write refused because a peer held the lock (#2617). */
   private readonly CONTENDED_WRITE_DEFERRAL_SECONDS = 15;
@@ -742,18 +745,13 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    */
   private resolveMaxDeferredTotalSeconds(): number {
     const raw = this.configService.get<string>('OL_JOB_MAX_DEFERRED_WAIT_SECONDS');
-    if (raw === undefined || raw === null || raw === '') {
-      return this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
-    }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 1) {
+    const { seconds, invalid } = parseMaxDeferredTotalSeconds(raw);
+    if (invalid) {
       this.logger.warn(
-        `Ignoring invalid OL_JOB_MAX_DEFERRED_WAIT_SECONDS=${raw} - using default ` +
-          `${this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT}`
+        `Ignoring invalid OL_JOB_MAX_DEFERRED_WAIT_SECONDS=${raw} - using default ${seconds}`
       );
-      return this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
     }
-    return Math.round(parsed);
+    return seconds;
   }
 
   /**
