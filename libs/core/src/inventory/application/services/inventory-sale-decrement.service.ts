@@ -110,9 +110,7 @@ import type {
 } from './inventory-sale-decrement.service.interface';
 
 /** An owner's adapter, or the reason it could not be built. */
-type AdapterResolution =
-  | { readonly adapter: InventoryMasterPort }
-  | { readonly error: string };
+type AdapterResolution = { readonly adapter: InventoryMasterPort } | { readonly error: string };
 
 @Injectable()
 export class InventorySaleDecrementService implements IInventorySaleDecrementService {
@@ -312,6 +310,16 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         );
       } else if (settlement.status === 'in_doubt') {
         await this.refreshFromMaster(adapter.adapter, resolution.position, owner, line);
+      }
+
+      if (settlement.status === 'retryable' && settlement.reason === 'request-not-sent') {
+        // A persistently wrong host keeps landing here until the job attempts
+        // run out, so make each occurrence visible to an operator.
+        this.logger.warn(
+          `Sale decrement request never left the process, will retry: orderId=${input.orderId} ` +
+            `workId=${input.workId} line=${line.orderLineId} owner=${owner} ` +
+            `connection=${owner} reason=request-not-sent`
+        );
       }
 
       if (settlement.status !== 'applied' && settlement.status !== 'deduplicated') {

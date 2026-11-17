@@ -647,7 +647,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     // All retries exhausted
     // An earlier attempt that may have been received poisons the last one's
     // mark: "never left" must hold for every attempt, not just the final one.
-    throw lastError ? (everyAttemptUnsent ? lastError : clearRequestNotSent(lastError)) : new Error('Request failed after retries');
+    if (lastError === null) {
+      throw new Error('Request failed after retries');
+    }
+    // Keep the mark only when every attempt was provably unsent; a mixed run
+    // may have reached the shop on an earlier attempt.
+    const finalError = everyAttemptUnsent ? lastError : clearRequestNotSent(lastError);
+    throw finalError;
   }
 
   /**
