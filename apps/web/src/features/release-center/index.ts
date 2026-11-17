@@ -32,3 +32,13 @@ export type {
   ReleaseState,
   UserReleaseItemChange,
 } from './api/release-state.types';
+export { ReleaseBell } from './components/release-bell';
+export { ReleaseCenterProvider, useReleaseCenterView } from './components/release-center-provider';
+export {
+  requestReleaseTour,
+  requestWhatsNew,
+  subscribeToTourRequests,
+  subscribeToWhatsNewRequests,
+  type TourRequest,
+  type WhatsNewRequest,
+} from './lib/release-center-requests';

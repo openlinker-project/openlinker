@@ -97,11 +97,6 @@
     "settings": "Settings"
   },
   "shell": {
-    "alerts": "Alerts",
-    "alertsNew": {
-      "one": "({n} new)",
-      "other": "({n} new)"
-    },
     "breadcrumb": "Breadcrumb",
     "closeMenu": "Close menu",
     "loggedOut": "You have been logged out.",
