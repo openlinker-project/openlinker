@@ -93,13 +93,16 @@ describe('ShopifyOrderDeliveryUpdater', () => {
     expect(remove.shippingLineId).toBe('gid://shopify/CalculatedShippingLine/5');
   });
 
-  it('should say so when the replaced shipping line had a tax line, which the edit cannot carry', async () => {
-    const { updater } = build({
+  it('should keep a taxed shipping line as it is, update only the pickup details and say so', async () => {
+    const { updater, mutate } = build({
       shippingLines: [{ id: 'l', title: 'old', taxLines: [{ rate: 0.23 }] }],
     });
 
     const result = await updater.update('1', order('KRK01M'), {});
 
+    // The edit API cannot carry a tax line onto a replacement line, so replacing
+    // it would lower the order's tax and total: the line is not touched at all.
+    expect(fields(mutate)).toEqual(['orderUpdate']);
     expect(result).toMatchObject({ outcome: 'updated', detail: expect.stringContaining('VAT') });
   });
 

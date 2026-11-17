@@ -124,7 +124,7 @@ export const PRICE_TARGET_QUERY = `query OlPriceTarget($ids: [ID!]!) {
 export const PRODUCT_STATUS_UPDATE_MUTATION = `mutation OlProductStatus($product: ProductUpdateInput!) {
   productUpdate(product: $product) {
     product { id status }
-    userErrors { field message code }
+    userErrors { field message }
   }
 }`;
 

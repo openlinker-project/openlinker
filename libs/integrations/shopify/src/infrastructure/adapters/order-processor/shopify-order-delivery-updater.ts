@@ -78,8 +78,8 @@ interface OrderEditBeginPayload {
 }
 
 const UNFULFILLED = 'UNFULFILLED';
-const SHIPPING_TAX_CAVEAT =
-  'The shipping line was replaced without its VAT line; the Shopify order shows less tax on shipping';
+const SHIPPING_TAX_KEPT =
+  'The shipping line keeps its old title: replacing it would drop its VAT line and change the order total';
 const EDIT_STAFF_NOTE = 'OpenLinker: delivery point changed at the source';
 
 export class ShopifyOrderDeliveryUpdater {
@@ -116,7 +116,12 @@ export class ShopifyOrderDeliveryUpdater {
 
     const title = shopifyShippingTitle(order, mapped);
     const lines = current.shippingLines.nodes;
-    const editShipping = lines.length === 1 && lines[0].title !== title;
+    // The order edit API cannot carry a tax line onto a replacement shipping line,
+    // so replacing a taxed one would lower the order's tax and total (confirmed
+    // live). A taxed line keeps its title; only the pickup-point details change.
+    const shippingTaxed = lines.length === 1 && (lines[0].taxLines ?? []).length > 0;
+    const shippingTitleDiffers = lines.length === 1 && lines[0].title !== title;
+    const editShipping = shippingTitleDiffers && !shippingTaxed;
     if (lines.length > 1) {
       this.logger.warn(
         `Shopify order ${externalOrderId} has ${lines.length} shipping lines; the shipping line is left ` +
@@ -142,16 +147,9 @@ export class ShopifyOrderDeliveryUpdater {
     }
     if (editShipping) {
       await this.replaceShippingLine(id, title);
-      // Confirmed live: the order edit API cannot carry a tax line onto the
-      // replacement, so the copy's VAT on shipping drops out of its tax totals
-      // (the total price is unchanged on a tax-inclusive order). Said, not hidden.
-      if ((lines[0].taxLines ?? []).length > 0) {
-        this.logger.warn(
-          `Shopify order ${externalOrderId}: the replaced shipping line lost its tax line ` +
-            `(connection: ${this.connectionId})`,
-        );
-        return { outcome: 'updated', detail: SHIPPING_TAX_CAVEAT };
-      }
+    }
+    if (shippingTitleDiffers && shippingTaxed) {
+      return { outcome: 'updated', detail: SHIPPING_TAX_KEPT };
     }
     return { outcome: 'updated' };
   }
