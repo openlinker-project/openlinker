@@ -63,6 +63,11 @@
  * the Online Store publication (looked up once per adapter instance);
  * `draft` writes `DRAFT` and leaves publications alone.
  *
+ * Live status (#4192): `getShopProductStatus` reads one product (or, for a
+ * grouped publish, the variant's product) and maps ACTIVE -> published, DRAFT
+ * -> draft (also what `setShopProductVisibility` hide writes), ARCHIVED ->
+ * unpublished (kept, restorable, not sold) and a missing node -> removed.
+ *
  * Category: collections. `browseCategories` lists the shop's manual
  * collections (flat, no parents) for the destination taxonomy sync behind the
  * category picker; smart collections are left out, since a product cannot be
@@ -107,6 +112,10 @@ import {
   type ShopCategoryBrowser,
   type ShopAttributeReader,
   type ShopProductVisibilityWriter,
+  type ShopProductStatusReader,
+  type ShopProductStatusReadResult,
+  type ShopPublicationStatus,
+  SHOP_PUBLICATION_STATUS,
   type SetShopProductVisibilityCommand,
   type ShopAttributeTerm,
   type ShopCurrencyDeclarer,
@@ -138,6 +147,8 @@ import {
   MANUAL_COLLECTIONS_QUERY,
   METAFIELDS_SET_MUTATION,
   PRODUCT_DELETE_MUTATION,
+  PRODUCT_LIVE_STATUS_QUERY,
+  type ProductLiveStatusQuery,
   PRICE_TARGET_QUERY,
   PRODUCT_METAFIELD_DEFINITIONS_QUERY,
   PRODUCT_SET_MUTATION,
@@ -248,7 +259,8 @@ export class ShopifyProductPublisherAdapter
     ShopProductPriceUpdater,
     ShopAttributeReader,
     ShopCategoryBrowser,
-    ShopProductVisibilityWriter
+    ShopProductVisibilityWriter,
+    ShopProductStatusReader
 {
   private readonly logger = new Logger(ShopifyProductPublisherAdapter.name);
   /** The Online Store publication id, read once per adapter instance; a failed read is retried next time. */
@@ -299,6 +311,47 @@ export class ShopifyProductPublisherAdapter
       const warnings: string[] = [];
       await this.publishToOnlineStore(productGid, warnings);
       for (const warning of warnings) this.logger.warn(warning);
+    }
+  }
+
+  /**
+   * Live publication status of a mapped product (#4192). The id may be a
+   * product (simple publish) or a variant (grouped publish): `node(id:)` answers
+   * for both, so the grouped read needs no parent. A node Shopify no longer
+   * knows is `removed`; other failures propagate for the runner's retry.
+   */
+  async getShopProductStatus(externalProductId: string): Promise<ShopProductStatusReadResult> {
+    const gid = /^gid:\/\//.test(externalProductId) ? externalProductId : toShopifyGid('Product', externalProductId);
+    return this.readLiveStatus(gid);
+  }
+
+  /** Grouped publish: the mapping names the VARIANT; the status is its product's. */
+  async getShopVariationStatus(
+    _externalParentProductId: string,
+    externalVariationId: string,
+  ): Promise<ShopProductStatusReadResult> {
+    return this.readLiveStatus(toShopifyGid('ProductVariant', externalVariationId));
+  }
+
+  private async readLiveStatus(gid: string): Promise<ShopProductStatusReadResult> {
+    const { node } = await this.client.query<ProductLiveStatusQuery>(PRODUCT_LIVE_STATUS_QUERY, { id: gid });
+    let status: string | null = null;
+    if (node !== null) {
+      if (node.__typename === 'Product') status = (node as { status: string }).status;
+      else if (node.__typename === 'ProductVariant') status = (node as { product: { status: string } | null }).product?.status ?? null;
+    }
+    return { publicationStatus: status === null ? SHOP_PUBLICATION_STATUS.Removed : this.toPublicationStatus(status) };
+  }
+
+  /** ACTIVE live; DRAFT reverted; ARCHIVED kept but not sold; anything unknown is not claimed as live. */
+  private toPublicationStatus(status: string): ShopPublicationStatus {
+    switch (status) {
+      case 'ACTIVE':
+        return SHOP_PUBLICATION_STATUS.Published;
+      case 'DRAFT':
+        return SHOP_PUBLICATION_STATUS.Draft;
+      default:
+        return SHOP_PUBLICATION_STATUS.Unpublished;
     }
   }
 

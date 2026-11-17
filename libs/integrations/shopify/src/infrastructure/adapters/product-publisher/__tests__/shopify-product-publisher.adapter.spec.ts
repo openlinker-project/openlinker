@@ -6,6 +6,7 @@ import {
   isShopCurrencyDeclarer,
   isShopProductPriceUpdater,
   isShopProductVisibilityWriter,
+  isShopProductStatusReader,
   ProductPublishRejectedException,
   type PublishProductCommand,
 } from '@openlinker/core/listings';
@@ -101,6 +102,46 @@ describe('ShopifyProductPublisherAdapter', () => {
     expect(isShopCurrencyDeclarer(adapter)).toBe(true);
     expect(isShopProductPriceUpdater(adapter)).toBe(true);
     expect(isShopProductVisibilityWriter(adapter)).toBe(true);
+    expect(isShopProductStatusReader(adapter)).toBe(true);
+  });
+
+  describe('getShopProductStatus (#4192)', () => {
+    it.each([
+      ['ACTIVE', 'published'],
+      ['DRAFT', 'draft'],
+      ['ARCHIVED', 'unpublished'],
+    ])('should map a product %s to %s', async (native, expected) => {
+      const h = build();
+      h.query.mockResolvedValueOnce({ node: { __typename: 'Product', status: native } });
+
+      await expect(h.adapter.getShopProductStatus('5')).resolves.toEqual({ publicationStatus: expected });
+      expect((h.query.mock.calls[0] as unknown[])[1]).toEqual({ id: 'gid://shopify/Product/5' });
+    });
+
+    it('should report removed when Shopify no longer knows the product', async () => {
+      const h = build();
+      h.query.mockResolvedValueOnce({ node: null });
+
+      await expect(h.adapter.getShopProductStatus('5')).resolves.toEqual({ publicationStatus: 'removed' });
+    });
+
+    it('should read a grouped variant through its product and report removed when the variant is gone', async () => {
+      const h = build();
+      h.query
+        .mockResolvedValueOnce({ node: { __typename: 'ProductVariant', product: { status: 'DRAFT' } } })
+        .mockResolvedValueOnce({ node: null });
+
+      await expect(h.adapter.getShopVariationStatus('5', '9')).resolves.toEqual({ publicationStatus: 'draft' });
+      expect((h.query.mock.calls[0] as unknown[])[1]).toEqual({ id: 'gid://shopify/ProductVariant/9' });
+      await expect(h.adapter.getShopVariationStatus('5', '9')).resolves.toEqual({ publicationStatus: 'removed' });
+    });
+
+    it('should propagate a transport failure instead of claiming removed', async () => {
+      const h = build();
+      h.query.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(h.adapter.getShopProductStatus('5')).rejects.toThrow('boom');
+    });
   });
 
   describe('setShopProductVisibility', () => {

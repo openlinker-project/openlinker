@@ -58,6 +58,24 @@ export function buildShopifySchedulerTasks(): SchedulerTaskConfig[] {
         `marketplace:${connection.id}:shopify:fulfillment:status:sync:${timestamp}`,
     },
     {
+      // Live status of published products (#4192): one page of the connection's
+      // published/draft records per tick into shop_product_status_snapshots.
+      // Gated on ProductPublisher; the sub-capability is narrowed in core.
+      taskId: 'shopify-product-status-sync',
+      platformType: SHOPIFY_PLATFORM_TYPE,
+      requiredCapability: 'ProductPublisher',
+      jobType: 'shop.product.statusSync',
+      cronExpression: '0 * * * *',
+      enabledEnvVar: 'OL_SHOPIFY_PRODUCT_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: (_connection: Connection) => ({
+        schemaVersion: 1 as const,
+        cursorKey: 'shop.productStatus.scanOffset',
+        limit: 100,
+      }),
+      generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
+        `shop:${connection.id}:product:status:sync:${timestamp}`,
+    },
+    {
       taskId: 'shopify-returns-poll',
       platformType: SHOPIFY_PLATFORM_TYPE,
       requiredCapability: 'OrderSource',
