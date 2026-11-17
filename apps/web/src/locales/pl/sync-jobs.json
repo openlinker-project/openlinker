@@ -121,12 +121,14 @@
   "syncJobStatusBadge": {
     "businessFailure": "błąd biznesowy",
     "outcomeReasons": {
+      "auto_dispatch_carrier_refused": "kurier odmówił",
       "auto_dispatch_no_address": "brak adresu",
       "auto_dispatch_no_delivery_method": "brak metody dostawy",
       "auto_dispatch_no_dimensions": "brak wymiarów",
       "auto_dispatch_no_weight": "brak wagi",
       "auto_dispatch_not_enabled": "autoetykieta wyłączona",
       "auto_dispatch_payload_invalid": "błędne dane zadania",
+      "auto_dispatch_preflight_failed": "nieprawidłowe dane przesyłki",
       "auto_dispatch_shipment_claimed_by_sibling_work": "inna paczka ma etykietę",
       "auto_dispatch_work_not_eligible": "zamówienie niegotowe",
       "master_deleted": "usunięte w źródle"

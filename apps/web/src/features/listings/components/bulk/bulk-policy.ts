@@ -183,6 +183,13 @@ export interface ComputeBlockersInput {
    */
   cardInOtherCategory?: boolean;
   /**
+   * The variant's barcode matched a catalogue card in one category and the
+   * operator chose another (#4035). Gates the row: card-linked rows skip the
+   * product-parameter checks, so without it the row reads READY and the
+   * marketplace refuses the offer.
+   */
+  cardCategoryMismatch?: boolean;
+  /**
    * Per-variant category outcome. The Resolve step synthesizes `{ kind: 'no-ean' }`
    * for variant rows without a barcode (no BE call); `undefined` is treated
    * defensively as `no-match`.
@@ -348,7 +355,10 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   // Advisory, independent of `hasCategoryOverride`: a multi-variant sibling
   // always carries the product-tier category, which would otherwise hide the
   // disagreement on exactly the rows where a card was set aside (#3994).
-  if (input.cardInOtherCategory) {
+  // The gating chip says the same thing louder, so it replaces the advisory one.
+  if (input.cardCategoryMismatch) {
+    blockers.push('card-category-mismatch');
+  } else if (input.cardInOtherCategory) {
     blockers.push('card-category-differs');
   }
 
@@ -513,6 +523,9 @@ export function recomputeRowBlockers(
   platformValidate?: (input: OfferRowValidationInput) => string[],
   destinationResolvesCategoryAtSubmit = false,
 ): BulkRowBlocker[] {
+  // Row level DROPS the card when its category differs from the submit category
+  // (`rowProductCardIdFor`); the variant path BLOCKS instead
+  // (`isCardInOtherCategoryThanChosen`) because a sibling's card is what groups it.
   if (!row.primaryVariant) return ['no-variant'];
   const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
   return computeBlockers({
@@ -587,9 +600,7 @@ export function siblingCardCoverage(row: BulkWizardRow): {
   for (const variant of row.variants) {
     if (!variant.included) continue;
     included += 1;
-    const hasCard =
-      variant.resolvedProductCardId !== null ||
-      Boolean(variant.override.overrides?.productCardId);
+    const hasCard = variantProductCardIdOf(variant) !== null;
     if (!hasCard) withoutCard += 1;
   }
   return { included, withoutCard };
@@ -670,6 +681,53 @@ export function effectiveVariantEan(variant: BulkVariantRow): string | null {
     variant.variant.gtin ??
     null;
   return raw && raw.trim() !== '' ? raw.trim() : null;
+}
+
+/**
+ * Whether the operator cleared this sibling's barcode on purpose (#4036). An
+ * empty `ean` override is an explicit "list without a barcode", distinct from an
+ * absent one, which inherits the master barcode. The distinction has to survive
+ * because a master that carries an EAN would otherwise win back on every reopen
+ * and the offer would still be sent with it.
+ */
+export function hasExplicitNoBarcode(variant: BulkVariantRow): boolean {
+  const ean = variant.override.overrides?.ean;
+  return ean !== undefined && ean.trim() === '';
+}
+
+/**
+ * The catalogue card a sibling would be linked to (#4036). A card belongs to a
+ * barcode, so a variant listed without one has no card, whatever the resolve
+ * step found for the barcode it used to carry.
+ */
+export function variantProductCardIdOf(variant: BulkVariantRow): string | null {
+  if (hasExplicitNoBarcode(variant)) return null;
+  return variant.override.overrides?.productCardId || variant.resolvedProductCardId || null;
+}
+
+/**
+ * Whether the card the resolve step linked lives in a different category than
+ * the one this sibling will submit under (#4035). A card is only linkable in its
+ * own category, so the link would be refused downstream. An explicit
+ * operator-picked card is exempt: it was chosen together with its own category.
+ * A variant listed without a barcode has no card and cannot mismatch.
+ *
+ * `submitCategoryId` may be the RESOLVED category (a sibling inheriting the
+ * product-tier family pin), not only an operator pick: the marketplace refuses
+ * the link in both cases, so both gate, and the chip copy therefore speaks of
+ * the category "this offer will use". Contrast `recomputeRowBlockers`, whose
+ * single-variant row drops the card instead (`rowProductCardIdFor`) - a sibling
+ * cannot, because its card is what groups it with its siblings (#824).
+ */
+export function isCardInOtherCategoryThanChosen(
+  variant: BulkVariantRow,
+  submitCategoryId: string | null,
+): boolean {
+  if (hasExplicitNoBarcode(variant)) return false;
+  if (variant.override.overrides?.productCardId) return false;
+  if (variant.resolvedProductCardId === null || variant.resolvedCategoryId === null) return false;
+  if (variant.resolutionMethod !== 'auto_detect') return false;
+  return submitCategoryId !== null && submitCategoryId !== variant.resolvedCategoryId;
 }
 
 /**
@@ -857,6 +915,7 @@ export function recomputeVariantBlockers(
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
     cardInOtherCategory: variant.overriddenCard !== null && !operatorPickedCategory(row, variant),
+    cardCategoryMismatch: isCardInOtherCategoryThanChosen(variant, submitCategoryId),
     productCategoryId,
     // Per-product policy (on the shared-base override) wins over the batch (#1741).
     pricingPolicy: effectivePricingPolicy(row.override, config.pricingPolicy),
@@ -866,8 +925,7 @@ export function recomputeVariantBlockers(
     masterCurrency: variant.masterCurrency,
     batchCurrency: config.currency,
     override: variant.override,
-    willLinkProductCard: variant.resolvedProductCardId !== null
-      || Boolean(variant.override.overrides?.productCardId),
+    willLinkProductCard: variantProductCardIdOf(variant) !== null,
     requiredProductParamIds: submitCategoryId
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
