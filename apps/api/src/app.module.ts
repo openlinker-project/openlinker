@@ -62,6 +62,7 @@ import { AutomationApiModule } from './automation/automation-api.module';
 import { PromotionsApiModule } from './promotions/promotions-api.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { OperationalSettingsApiModule } from './operational-settings/operational-settings.module';
+import { ReleaseCenterApiModule } from './release-center/release-center-api.module';
 import { LoginPageSettingsApiModule } from './login-page-settings/login-page-settings.module';
 import { OmsApiModule } from './oms/oms-api.module';
 import { RequestPriorityModule } from './http/request-priority.module';
@@ -153,6 +154,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
     CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)
     OperationalSettingsApiModule, // Operator-settable sweep budgets + deletion-audit cadence (#2651)
+    ReleaseCenterApiModule, // Release center state endpoints (#4142)
     LoginPageSettingsApiModule, // Admin-editable login-page copy (#4028)
     // /connections/:id/sourcing-rules — authoring the OL fulfilment router's ordered
     // ruleset (#2953). Deliberately NOT `routing-rules`, which MappingsApiModule owns
