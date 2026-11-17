@@ -101,6 +101,18 @@ describe('ShopifyIdPager', () => {
     await expect(pager.window(SPEC, 25, 5)).resolves.toEqual(['26', '27', '28', '29', '30']);
   });
 
+  it('should let a schema error out instead of restarting from page zero', async () => {
+    const graphql = catalogue(40);
+    const pager = new ShopifyIdPager(graphql, memoryCache(), 'c1');
+    await pager.window(SPEC, 0, 25);
+    const removed = new ShopifyGraphqlError(['undefinedField'], ['Field does not exist']);
+    graphql.query.mockClear();
+    graphql.query.mockImplementationOnce(() => Promise.reject(removed));
+
+    await expect(pager.window(SPEC, 25, 5)).rejects.toBe(removed);
+    expect(graphql.query).toHaveBeenCalledTimes(1);
+  });
+
   it('should let a throttle out instead of re-reading every page from the start', async () => {
     const graphql = catalogue(40);
     const pager = new ShopifyIdPager(graphql, memoryCache(), 'c1');

@@ -314,3 +314,14 @@ export function groupHandle(cmd: PublishProductCommand, groupId: string): string
   const tag = createHash('sha1').update(groupId).digest('hex').slice(0, 8);
   return `${readable.length > 0 ? readable : 'product'}-ol${tag}`;
 }
+
+/**
+ * The handle a SIMPLE product is created under: the operator's own slug when
+ * set, else a name plus a hash of the internal variant id. It is the key a
+ * retry finds the product by (see `findSimpleByMarker`), so it must be a pure
+ * function of the command.
+ */
+export function simpleCreateHandle(cmd: PublishProductCommand): string {
+  const slug = cmd.content?.seo?.slug?.trim();
+  return slug !== undefined && slug.length > 0 ? slug : groupHandle(cmd, `simple:${cmd.internalVariantId}`);
+}

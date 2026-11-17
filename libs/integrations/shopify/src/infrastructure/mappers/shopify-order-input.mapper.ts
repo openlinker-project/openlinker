@@ -90,12 +90,15 @@ type MoneyBag = { shopMoney: { amount: string; currencyCode: string } };
 
 const NUMERIC_RATE = /^\d+(\.\d+)?$/;
 
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
+/**
+ * A money amount rounded to the currency's own minor unit (JPY has none, KWD
+ * three), the same exponent the discount split uses, so the lines, the tax
+ * and the discount all round on one grid.
+ */
 function money(value: number, currencyCode: string): MoneyBag {
-  return { shopMoney: { amount: round2(value).toFixed(2), currencyCode } };
+  const exponent = minorUnitExponentFor(currencyCode);
+  const scale = 10 ** exponent;
+  return { shopMoney: { amount: (Math.round(value * scale) / scale).toFixed(exponent), currencyCode } };
 }
 
 function taxLines(

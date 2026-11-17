@@ -103,6 +103,7 @@ describe('ShopifyProductPublisherAdapter', () => {
   describe('publishProduct', () => {
     it('should create a simple product with the net price and its stock at the location', async () => {
       const h = build();
+      h.query.mockResolvedValueOnce({ c0: null });
       h.mutate.mockResolvedValueOnce({ product: product() });
 
       await expect(h.adapter.publishProduct(cmd())).resolves.toEqual({
@@ -125,8 +126,52 @@ describe('ShopifyProductPublisherAdapter', () => {
       });
     });
 
+    it('should stamp a created simple product with a marker keyed by the internal variant id', async () => {
+      const h = build();
+      h.query.mockResolvedValueOnce({ c0: null });
+      h.mutate.mockResolvedValueOnce({ product: product() });
+
+      await h.adapter.publishProduct(cmd());
+
+      const [, variables] = h.mutate.mock.calls[0] as [
+        string,
+        { input: { handle: string; metafields: Array<{ key: string; value: string }> } },
+      ];
+      expect(variables.input.handle).toMatch(/^shirt-ol[0-9a-f]{8}$/);
+      expect(variables.input.metafields[0]).toMatchObject({ value: 'v1' });
+    });
+
+    it('should adopt the product a timed-out create already made instead of creating a second one', async () => {
+      const h = build();
+      h.query
+        .mockResolvedValueOnce({
+          c0: { id: 'gid://shopify/Product/5', handle: 'x', createdAt: 't', marker: { value: 'v1' } },
+        })
+        .mockResolvedValueOnce({ product: product() });
+      h.mutate.mockResolvedValueOnce({ product: product() });
+
+      await h.adapter.publishProduct(cmd());
+
+      const [, variables] = h.mutate.mock.calls[0] as [string, { identifier: { id: string } | null }];
+      expect(variables.identifier).toEqual({ id: 'gid://shopify/Product/5' });
+    });
+
+    it('should not adopt a product holding the handle that carries another marker', async () => {
+      const h = build();
+      h.query.mockResolvedValueOnce({
+        c0: { id: 'gid://shopify/Product/8', handle: 'x', createdAt: 't', marker: { value: 'other' } },
+      });
+      h.mutate.mockResolvedValueOnce({ product: product() });
+
+      await h.adapter.publishProduct(cmd());
+
+      const [, variables] = h.mutate.mock.calls[0] as [string, { identifier: unknown }];
+      expect(variables.identifier).toBeNull();
+    });
+
     it('should send the gross price to a shop that enters prices with tax', async () => {
       const h = build({ taxesIncluded: true });
+      h.query.mockResolvedValueOnce({ c0: null });
       h.mutate.mockResolvedValueOnce({ product: product() });
 
       await h.adapter.publishProduct(cmd({ taxRate: undefined }));

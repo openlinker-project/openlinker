@@ -18,7 +18,9 @@
  * any user error other than the two
  * below (the mutation wrote nothing and would be refused the same way),
  * `ACCESS_DENIED` (a scope missing on the app), `MAX_COST_EXCEEDED` (the query
- * itself is too expensive), a refused token request, and any other 4xx except
+ * itself is too expensive), a document or variables Shopify refuses as invalid
+ * (`undefinedField` after an API version dropped a field, `variableMissing`,
+ * ...), `SHOP_INACTIVE`, a refused token request, and any other 4xx except
  * 408 / 429.
  *
  * Retried normally: a stale compare-and-set on a stock write
@@ -35,6 +37,7 @@ import { ShopifyApiError } from '../../domain/exceptions/shopify-api.error';
 import { ShopifyConfigException } from '../../domain/exceptions/shopify-config.exception';
 import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.error';
 import { ShopifyNotMappedException } from '../../domain/exceptions/shopify-not-mapped.exception';
+import { ShopifyOrderTooLargeException } from '../../domain/exceptions/shopify-order-too-large.exception';
 import { ShopifyOrderNotFoundException } from '../../domain/exceptions/shopify-order-not-found.exception';
 import { ShopifyRefundInDoubtException } from '../../domain/exceptions/shopify-refund-in-doubt.exception';
 import { ShopifyReturnNotFoundException } from '../../domain/exceptions/shopify-return-not-found.exception';
@@ -48,6 +51,8 @@ const ORDER_CAP_DEFERRAL_SECONDS = 65;
 const HTTP_THROTTLE_DEFERRAL_SECONDS = 60;
 const UNAVAILABLE_DEFERRAL_SECONDS = 300;
 const MAX_CAUSE_DEPTH = 5;
+/** A server-supplied wait is honoured but bounded, so one odd header cannot park a job for hours. */
+const MAX_RETRY_AFTER_SECONDS = 600;
 
 /**
  * Both questions walk the same `cause` chain: the runner unwraps one
@@ -98,6 +103,7 @@ function terminalityOf(cause: unknown): boolean | null {
     cause instanceof ShopifyNotSupportedException ||
     cause instanceof ShopifyNotMappedException ||
     cause instanceof ShopifyOrderNotFoundException ||
+    cause instanceof ShopifyOrderTooLargeException ||
     cause instanceof ShopifyReturnNotFoundException ||
     cause instanceof ShopifyRefundInDoubtException ||
     cause instanceof ShopifyStockWriteRefusedException
@@ -108,7 +114,7 @@ function terminalityOf(cause: unknown): boolean | null {
     return !cause.isRateLimited() && !cause.isStaleCompareAndSet();
   }
   if (cause instanceof ShopifyGraphqlError) {
-    return cause.isAccessDenied() || cause.isMaxCostExceeded();
+    return cause.isAccessDenied() || cause.isMaxCostExceeded() || cause.isInvalidDocument() || cause.isShopInactive();
   }
   if (cause instanceof ShopifyApiError) {
     return (
@@ -131,10 +137,22 @@ function deferralFor(cause: unknown): RetryDeferral | null {
     };
   }
   if (cause instanceof ShopifyApiError && cause.statusCode === 429) {
-    return { delaySeconds: HTTP_THROTTLE_DEFERRAL_SECONDS, reason: 'Shopify rate-limited the request (429)' };
+    return {
+      delaySeconds: honouredRetryAfter(cause, HTTP_THROTTLE_DEFERRAL_SECONDS),
+      reason: 'Shopify rate-limited the request (429)',
+    };
   }
   if (cause instanceof ShopifyApiError && cause.statusCode === 503) {
-    return { delaySeconds: UNAVAILABLE_DEFERRAL_SECONDS, reason: 'Shopify unavailable (503)' };
+    return {
+      delaySeconds: honouredRetryAfter(cause, UNAVAILABLE_DEFERRAL_SECONDS),
+      reason: 'Shopify unavailable (503)',
+    };
   }
   return null;
+}
+
+/** The wait Shopify asked for when it named one (never less than a second), else the default. */
+function honouredRetryAfter(error: ShopifyApiError, fallbackSeconds: number): number {
+  const asked = error.retryAfterSeconds;
+  return asked === null ? fallbackSeconds : Math.min(Math.max(Math.ceil(asked), 1), MAX_RETRY_AFTER_SECONDS);
 }

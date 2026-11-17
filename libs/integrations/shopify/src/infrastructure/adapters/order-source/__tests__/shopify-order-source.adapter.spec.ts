@@ -4,6 +4,7 @@ import { isRefundExecutor, isReturnDecliner, isReturnSourceReader, isSourceOptio
 
 import { ShopifyAdapterFactory } from '../../../../application/shopify-adapter.factory';
 import type { ShopifyResolution } from '../../../../application/shopify-adapter.factory';
+import { ShopifyOrderTooLargeException } from '../../../../domain/exceptions/shopify-order-too-large.exception';
 import { ShopifyReturnNotFoundException } from '../../../../domain/exceptions/shopify-return-not-found.exception';
 import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopify-user-errors.exception';
 import type { ShopifyGraphqlClient } from '../../../http/shopify-graphql-client';
@@ -37,12 +38,83 @@ const feedRow = (id: string, updatedAt: string, extra: Record<string, unknown> =
   ...extra,
 });
 
+const MONEY = { shopMoney: { amount: '10.00', currencyCode: 'PLN' } };
+const lineNode = (id: string): Record<string, unknown> => ({
+  id: `gid://shopify/LineItem/${id}`,
+  name: 'Mug',
+  sku: 'MUG',
+  quantity: 1,
+  currentQuantity: 1,
+  variant: { id: 'gid://shopify/ProductVariant/1' },
+  product: { id: 'gid://shopify/Product/1' },
+  originalUnitPriceSet: MONEY,
+  discountedUnitPriceAfterAllDiscountsSet: MONEY,
+  taxLines: [],
+});
+function orderNode(lineItems: unknown, shippingPageInfo = { hasNextPage: false }): Record<string, unknown> {
+  return {
+    id: 'gid://shopify/Order/9',
+    name: '#9',
+    createdAt: '2026-11-04T10:00:00Z',
+    updatedAt: '2026-11-04T10:00:00Z',
+    processedAt: null,
+    cancelledAt: null,
+    displayFinancialStatus: 'PAID',
+    displayFulfillmentStatus: 'UNFULFILLED',
+    paymentGatewayNames: ['manual'],
+    email: null,
+    phone: null,
+    note: null,
+    taxesIncluded: true,
+    currencyCode: 'PLN',
+    presentmentCurrencyCode: 'PLN',
+    customer: null,
+    currentTotalPriceSet: MONEY,
+    currentSubtotalPriceSet: MONEY,
+    currentTotalTaxSet: MONEY,
+    currentShippingPriceSet: MONEY,
+    purchasingEntity: null,
+    shippingAddress: null,
+    billingAddress: null,
+    shippingLines: { nodes: [], pageInfo: shippingPageInfo },
+    lineItems,
+  };
+}
+
 describe('ShopifyOrderSourceAdapter', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-11-05T12:00:00Z'));
   });
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  describe('getOrder', () => {
+    it('should page the lines past the first 250 so the order is ingested whole', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce({
+          order: orderNode({ nodes: [lineNode('1'), lineNode('2')], pageInfo: { hasNextPage: true, endCursor: 'c1' } }),
+        })
+        .mockResolvedValueOnce({
+          order: { lineItems: { nodes: [lineNode('3')], pageInfo: { hasNextPage: false, endCursor: null } } },
+        });
+
+      const incoming = await build(query).getOrder({ externalOrderId: '9' });
+
+      expect(incoming.items.map((i) => i.id)).toEqual(['1', '2', '3']);
+      expect((query.mock.calls[1] as unknown[])[1]).toEqual({ id: 'gid://shopify/Order/9', after: 'c1' });
+    });
+
+    it('should refuse an order whose shipping lines do not fit rather than ingest it partially', async () => {
+      const query = jest.fn().mockResolvedValue({
+        order: orderNode({ nodes: [lineNode('1')], pageInfo: { hasNextPage: false } }, { hasNextPage: true }),
+      });
+
+      await expect(build(query).getOrder({ externalOrderId: '9' })).rejects.toBeInstanceOf(
+        ShopifyOrderTooLargeException,
+      );
+    });
   });
 
   describe('listOrderFeed', () => {
@@ -197,6 +269,8 @@ describe('ShopifyAdapterFactory.createOrderSource', () => {
         unmanagedStockQuantity: null,
         salesCountryIso2: null,
         refundsThroughShopify,
+        codGatewayNames: [],
+        bankDepositGatewayNames: [],
       },
       client: {} as ShopifyGraphqlClient,
       shopContext: {} as ShopifyResolution['shopContext'],

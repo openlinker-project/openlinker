@@ -63,7 +63,9 @@ function isRejectedCursor(error: unknown): boolean {
     !error.isThrottled() &&
     !error.isAccessDenied() &&
     !error.isInvalidToken() &&
-    !error.isMaxCostExceeded()
+    !error.isMaxCostExceeded() &&
+    !error.isInvalidDocument() &&
+    !error.isShopInactive()
   );
 }
 

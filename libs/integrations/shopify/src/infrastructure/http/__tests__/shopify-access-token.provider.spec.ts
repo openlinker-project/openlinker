@@ -37,6 +37,11 @@ function sentForm(fetchImpl: jest.Mock, call = 0): URLSearchParams {
 }
 
 describe('ShopifyAccessTokenProvider', () => {
+  // Restored here so a failing fake-timer test cannot leak fake timers into the next one.
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('should hand back a pre-issued token as is and never renew it', async () => {
     const fetchImpl = jest.fn();
     const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', { accessToken: 'shpat_x' }, fetchImpl, undefined, new Map());
@@ -66,6 +71,21 @@ describe('ShopifyAccessTokenProvider', () => {
       expect(sentCall(fetchImpl)[0]).toBe(`https://${DOMAIN}/admin/oauth/access_token`);
       expect(sentForm(fetchImpl).get('grant_type')).toBe('client_credentials');
       expect(cache.store.has('shopify:access-token:c1')).toBe(true);
+    });
+
+    it('should cache a minted token for minutes only, not for the whole day it lives', async () => {
+      const cache = memoryCache();
+      const setSpy = jest.spyOn(cache, 'set');
+      await new ShopifyAccessTokenProvider(
+        DOMAIN,
+        'c1',
+        credentials,
+        tokenReply({ access_token: 'minted', expires_in: 86399 }),
+        cache,
+        new Map(),
+      ).get();
+
+      expect(setSpy).toHaveBeenCalledWith('shopify:access-token:c1', expect.anything(), 900);
     });
 
     it('should reuse a token another process cached, across a new memo', async () => {
@@ -222,100 +242,84 @@ describe('ShopifyAccessTokenProvider', () => {
 
     it('should report a contended refresh as a deferrable ContendedWriteError when a peer holds the lock', async () => {
       jest.useFakeTimers();
-      try {
-        const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
-        const refreshFetch = jest.fn();
-        const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
-          credentialsRef: 'db:ref',
-          reload: jest.fn().mockResolvedValue(expiring),
-          writer: { replace: jest.fn() },
-          lock: lock(null),
-          refreshFetch,
-        });
+      const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
+      const refreshFetch = jest.fn();
+      const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
+        credentialsRef: 'db:ref',
+        reload: jest.fn().mockResolvedValue(expiring),
+        writer: { replace: jest.fn() },
+        lock: lock(null),
+        refreshFetch,
+      });
 
-        const outcome = provider.get().catch((e: unknown) => e);
-        await jest.advanceTimersByTimeAsync(15_000);
+      const outcome = provider.get().catch((e: unknown) => e);
+      await jest.advanceTimersByTimeAsync(15_000);
 
-        await expect(outcome).resolves.toBeInstanceOf(ContendedWriteError);
-        expect(refreshFetch).not.toHaveBeenCalled();
-      } finally {
-        jest.useRealTimers();
-      }
+      await expect(outcome).resolves.toBeInstanceOf(ContendedWriteError);
+      expect(refreshFetch).not.toHaveBeenCalled();
     });
 
     it('should take the peer\'s refreshed token when it lands while waiting for the lock', async () => {
       jest.useFakeTimers();
-      try {
-        const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
-        const reload = jest
-          .fn()
-          .mockResolvedValueOnce(expiring)
-          .mockResolvedValue({ ...fresh, accessToken: 'peer-refreshed' });
-        const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
-          credentialsRef: 'db:ref',
-          reload,
-          writer: { replace: jest.fn() },
-          lock: lock(null),
-          refreshFetch: jest.fn(),
-        });
+      const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
+      const reload = jest
+        .fn()
+        .mockResolvedValueOnce(expiring)
+        .mockResolvedValue({ ...fresh, accessToken: 'peer-refreshed' });
+      const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
+        credentialsRef: 'db:ref',
+        reload,
+        writer: { replace: jest.fn() },
+        lock: lock(null),
+        refreshFetch: jest.fn(),
+      });
 
-        const outcome = provider.get();
-        await jest.advanceTimersByTimeAsync(1_000);
+      const outcome = provider.get();
+      await jest.advanceTimersByTimeAsync(1_000);
 
-        await expect(outcome).resolves.toMatchObject({ token: 'peer-refreshed' });
-      } finally {
-        jest.useRealTimers();
-      }
+      await expect(outcome).resolves.toMatchObject({ token: 'peer-refreshed' });
     });
 
     it('should keep the refreshed token and retry the write-back when storing it fails', async () => {
       jest.useFakeTimers();
-      try {
-        const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
-        const writer = {
-          replace: jest.fn().mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce(undefined),
-        };
-        const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
-          credentialsRef: 'db:ref',
-          reload: jest.fn().mockResolvedValue(expiring),
-          writer,
-          lock: lock(),
-          refreshFetch: tokenReply({ access_token: 'oauth-2', refresh_token: 'refresh-2', expires_in: 3600 }),
-        });
+      const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
+      const writer = {
+        replace: jest.fn().mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce(undefined),
+      };
+      const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
+        credentialsRef: 'db:ref',
+        reload: jest.fn().mockResolvedValue(expiring),
+        writer,
+        lock: lock(),
+        refreshFetch: tokenReply({ access_token: 'oauth-2', refresh_token: 'refresh-2', expires_in: 3600 }),
+      });
 
-        const outcome = provider.get();
-        await jest.advanceTimersByTimeAsync(1_000);
+      const outcome = provider.get();
+      await jest.advanceTimersByTimeAsync(1_000);
 
-        await expect(outcome).resolves.toMatchObject({ token: 'oauth-2' });
-        expect(writer.replace).toHaveBeenCalledTimes(2);
-      } finally {
-        jest.useRealTimers();
-      }
+      await expect(outcome).resolves.toMatchObject({ token: 'oauth-2' });
+      expect(writer.replace).toHaveBeenCalledTimes(2);
     });
 
     it('should still answer with the refreshed token when every write-back attempt fails', async () => {
       jest.useFakeTimers();
-      try {
-        const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
-        const writer = { replace: jest.fn().mockRejectedValue(new Error('db down')) };
-        const syncLock = lock();
-        const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
-          credentialsRef: 'db:ref',
-          reload: jest.fn().mockResolvedValue(expiring),
-          writer,
-          lock: syncLock,
-          refreshFetch: tokenReply({ access_token: 'oauth-2', refresh_token: 'refresh-2', expires_in: 3600 }),
-        });
+      const expiring = { ...fresh, expiresAt: new Date(Date.now() + 1_000).toISOString() };
+      const writer = { replace: jest.fn().mockRejectedValue(new Error('db down')) };
+      const syncLock = lock();
+      const provider = new ShopifyAccessTokenProvider(DOMAIN, 'c1', expiring, jest.fn(), undefined, new Map(), {
+        credentialsRef: 'db:ref',
+        reload: jest.fn().mockResolvedValue(expiring),
+        writer,
+        lock: syncLock,
+        refreshFetch: tokenReply({ access_token: 'oauth-2', refresh_token: 'refresh-2', expires_in: 3600 }),
+      });
 
-        const outcome = provider.get();
-        await jest.advanceTimersByTimeAsync(5_000);
+      const outcome = provider.get();
+      await jest.advanceTimersByTimeAsync(5_000);
 
-        await expect(outcome).resolves.toMatchObject({ token: 'oauth-2' });
-        expect(writer.replace).toHaveBeenCalledTimes(3);
-        expect(syncLock.release).toHaveBeenCalledWith('shopify:token-refresh:c1', 'lock-token');
-      } finally {
-        jest.useRealTimers();
-      }
+      await expect(outcome).resolves.toMatchObject({ token: 'oauth-2' });
+      expect(writer.replace).toHaveBeenCalledTimes(3);
+      expect(syncLock.release).toHaveBeenCalledWith('shopify:token-refresh:c1', 'lock-token');
     });
 
     it('should refuse to refresh when no writer can store the rotated refresh token', async () => {

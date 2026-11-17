@@ -7,6 +7,7 @@ import { createHmac } from 'node:crypto';
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { CONNECTION_SERVICE_TOKEN } from '../application/interfaces/connection.service.interface';
 import { SHOPIFY_LOCATION_READER_TOKEN } from '@openlinker/integrations-shopify';
 
 import {
@@ -44,6 +45,7 @@ describe('ShopifyController', () => {
   let controller: ShopifyController;
   let oauth: jest.Mocked<IOAuthConnectionService>;
   let locationReader: { listLocations: jest.Mock };
+  let connections: { get: jest.Mock };
 
   beforeEach(async () => {
     oauth = {
@@ -56,12 +58,14 @@ describe('ShopifyController', () => {
       checkCompletedState: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<IOAuthConnectionService>;
     locationReader = { listLocations: jest.fn() };
+    connections = { get: jest.fn().mockResolvedValue({ id: 'conn-1', platformType: 'shopify' }) };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ShopifyController],
       providers: [
         { provide: OAUTH_CONNECTION_SERVICE_TOKEN, useValue: oauth },
         { provide: SHOPIFY_LOCATION_READER_TOKEN, useValue: locationReader },
+        { provide: CONNECTION_SERVICE_TOKEN, useValue: connections },
       ],
     }).compile();
     controller = module.get(ShopifyController);
@@ -180,6 +184,13 @@ describe('ShopifyController', () => {
       locationReader.listLocations.mockResolvedValueOnce(locations);
 
       await expect(controller.listLocations('conn-1')).resolves.toEqual({ locations });
+    });
+
+    it('should refuse a connection that is not a Shopify one before reading any store', async () => {
+      connections.get.mockResolvedValueOnce({ id: 'conn-1', platformType: 'allegro' });
+
+      await expect(controller.listLocations('conn-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(locationReader.listLocations).not.toHaveBeenCalled();
     });
 
     it('should answer 502 when the store cannot be read', async () => {

@@ -115,7 +115,29 @@ interface OrderFulfillmentStatusQuery {
 }
 
 interface OrdersBySourceQuery {
-  readonly orders: ShopifyConnection<{ readonly id: string; readonly name: string }>;
+  readonly orders: ShopifyConnection<{
+    readonly id: string;
+    readonly name: string;
+    readonly fulfillmentOrders: { readonly nodes: readonly ShopifyFulfillmentOrder[] };
+  }>;
+}
+
+interface ExistingOrder {
+  readonly ref: OrderRef;
+  readonly fulfillmentOrders: readonly ShopifyFulfillmentOrder[];
+}
+
+/**
+ * Shopify's order search is eventually consistent: an order created a moment
+ * ago (the previous attempt timed out after Shopify applied it) can be missing
+ * from `orders(query:)` for a short while. A miss is therefore re-asked a
+ * couple of times before the order is treated as new, because creating a
+ * second order decrements stock twice.
+ */
+const LOOKUP_RETRY_DELAYS_MS: readonly number[] = [500, 1500];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function toOrderRef(node: { id: string; name: string }): OrderRef {
@@ -137,6 +159,9 @@ export class ShopifyOrderProcessorAdapter
 {
   private readonly logger = new Logger(ShopifyOrderProcessorAdapter.name);
   private readonly options: ShopifyMappingOptionsReader;
+
+  /** Delays between re-asks of the source-identifier search after a miss; tests shorten it. */
+  private readonly lookupRetryDelaysMs: readonly number[] = LOOKUP_RETRY_DELAYS_MS;
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
@@ -180,10 +205,12 @@ export class ShopifyOrderProcessorAdapter
       const existing = await this.findBySourceIdentifier(sourceIdentifier);
       if (existing !== null) {
         this.logger.warn(
-          `Shopify already holds order ${existing.orderNumber ?? existing.orderId} for ${sourceIdentifier}; ` +
+          `Shopify already holds order ${existing.ref.orderNumber ?? existing.ref.orderId} for ${sourceIdentifier}; ` +
             `not creating a second one (connection: ${this.connection.id})`,
         );
-        return existing;
+        // The previous attempt may have died between the create and the move.
+        await this.moveSafely(existing.ref.orderId, existing.fulfillmentOrders, context.locationGid);
+        return existing.ref;
       }
     }
 
@@ -206,7 +233,7 @@ export class ShopifyOrderProcessorAdapter
       throw new ShopifyUserErrorsException('orderCreate', [{ message: 'no order returned' }]);
     }
     const ref = toOrderRef(payload.order);
-    await this.moveToConfiguredLocation(ref.orderId, payload.order.fulfillmentOrders.nodes, context.locationGid);
+    await this.moveSafely(ref.orderId, payload.order.fulfillmentOrders.nodes, context.locationGid);
     return ref;
   }
 
@@ -290,13 +317,37 @@ export class ShopifyOrderProcessorAdapter
 
   // ─── Internals ─────────────────────────────────────────────────────────────
 
-  private async findBySourceIdentifier(sourceIdentifier: string): Promise<OrderRef | null> {
+  private async findBySourceIdentifier(sourceIdentifier: string): Promise<ExistingOrder | null> {
     // Quotes are not part of an OpenLinker id; stripping them keeps the search syntax intact.
-    const data = await this.client.query<OrdersBySourceQuery>(ORDER_BY_SOURCE_IDENTIFIER_QUERY, {
-      query: `source_identifier:'${sourceIdentifier.replace(/['"\\]/g, '')}'`,
-    });
-    const found = data.orders.nodes[0];
-    return found === undefined ? null : toOrderRef(found);
+    const variables = { query: `source_identifier:'${sourceIdentifier.replace(/['"\\]/g, '')}'` };
+    for (let attempt = 0; ; attempt += 1) {
+      const data = await this.client.query<OrdersBySourceQuery>(ORDER_BY_SOURCE_IDENTIFIER_QUERY, variables);
+      const found = data.orders.nodes[0];
+      if (found !== undefined) {
+        return { ref: toOrderRef(found), fulfillmentOrders: found.fulfillmentOrders?.nodes ?? [] };
+      }
+      const delay = this.lookupRetryDelaysMs[attempt];
+      if (delay === undefined) {
+        return null;
+      }
+      await sleep(delay);
+    }
+  }
+
+  /** The order exists from here on, so nothing in the location move may fail the create. */
+  private async moveSafely(
+    orderId: string,
+    fulfillmentOrders: readonly ShopifyFulfillmentOrder[],
+    locationGid: string,
+  ): Promise<void> {
+    try {
+      await this.moveToConfiguredLocation(orderId, fulfillmentOrders, locationGid);
+    } catch (error) {
+      this.logger.warn(
+        `Shopify order ${orderId}: the location move failed after the order was created: ${errorMessage(error)} ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
   }
 
   /**

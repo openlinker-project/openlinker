@@ -81,8 +81,14 @@ export const SHOPIFY_PUBLISHER_SCOPES = ['read_publications', 'write_publication
  * `read_shipping` - the delivery-profile method names offered as delivery
  * methods in the mapping UI (#3977, C13). Without it only the methods seen on
  * recent orders are listed.
+ *
+ * `read_all_orders` - orders older than 60 days. Without it Shopify answers
+ * `order(id:)` with null for an older order, which reads as "not found" and
+ * is terminal, and the order feed never lists one. It is gated by Shopify on
+ * the app's protected customer data access (approved in the Partner
+ * dashboard), so a custom app that was not granted it simply lacks the scope.
  */
-export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders', 'read_shipping'] as const;
+export const SHOPIFY_OPTIONAL_SCOPES = ['write_draft_orders', 'read_shipping', 'read_all_orders'] as const;
 
 /**
  * What each scope that is not strictly required switches off when it is
@@ -94,6 +100,8 @@ export const SHOPIFY_OPTIONAL_SCOPE_EFFECTS: Readonly<
 > = {
   write_draft_orders: 'product tax rates are not read, and a store whose prices exclude tax reports no prices',
   read_shipping: 'delivery methods are offered only as seen on recent orders',
+  read_all_orders:
+    'orders placed more than 60 days ago cannot be read, so an old order is reported as not found',
   read_publications: 'products published to the store would stay off the Online Store',
   write_publications: 'products published to the store would stay off the Online Store',
 };

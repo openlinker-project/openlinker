@@ -176,6 +176,7 @@ import {
   DEFAULT_OPTION_VALUE,
   groupHandle,
   planImages,
+  simpleCreateHandle,
   resolvePublishPriceBasis,
   toShopifyHandle,
   toStoreAmount,
@@ -368,13 +369,27 @@ export class ShopifyProductPublisherAdapter
     const price = buildPriceFields(cmd, basis.divisor);
     const warnings = [...price.warnings, ...unsupportedFieldWarnings(cmd)];
 
+    // A create has no mapping to adopt on retry, so the product is stamped with a
+    // marker keyed by the internal variant id and found again by its handle: a
+    // create that timed out after Shopify applied it is then adopted, not duplicated.
+    const createHandle = isUpsert ? null : simpleCreateHandle(cmd);
+    const adoptedId =
+      createHandle === null ? null : await this.findSimpleByMarker(createHandle, cmd.internalVariantId);
+    if (adoptedId !== null) {
+      this.logger.warn(
+        `Adopting Shopify product ${adoptedId} already stamped for variant ${cmd.internalVariantId} ` +
+          `(connection ${this.connection.id})`,
+      );
+    }
+    const targetId = isUpsert ? String(cmd.externalProductId) : adoptedId;
+
     let target: PublishedProductNode | null = null;
-    if (isUpsert) {
-      target = await this.readTarget(String(cmd.externalProductId), locationGid);
+    if (targetId !== null) {
+      target = await this.readTarget(targetId, locationGid);
       if (target.variants.nodes.length !== 1) {
         throw this.refuse(
           'shopify_not_a_simple_product',
-          `Shopify product ${String(cmd.externalProductId)} has ${target.variants.nodes.length} variants, ` +
+          `Shopify product ${targetId} has ${target.variants.nodes.length} variants, ` +
             'but this publish is for a single-variant product. Publishing it would delete the other variants.',
         );
       }
@@ -391,6 +406,19 @@ export class ShopifyProductPublisherAdapter
 
     const input = {
       ...buildProductFields(cmd),
+      ...(createHandle === null
+        ? {}
+        : {
+            handle: createHandle,
+            metafields: [
+              {
+                namespace: GROUP_MARKER_NAMESPACE,
+                key: GROUP_MARKER_KEY,
+                type: 'single_line_text_field',
+                value: cmd.internalVariantId,
+              },
+            ],
+          }),
       productOptions: optionValues.map((ov) => ({ name: ov.optionName, values: [{ name: ov.name }] })),
       variants: [
         {
@@ -651,6 +679,19 @@ export class ShopifyProductPublisherAdapter
     }
     const byId = [...candidates].sort((a, b) => Number(fromShopifyGid(a.id)) - Number(fromShopifyGid(b.id)));
     return byId[0]?.id ?? null;
+  }
+
+  /**
+   * The product already holding `handle` that carries this variant's marker, else
+   * null. A read failure is not swallowed: creating blind is exactly the
+   * duplicate this lookup exists to prevent, so the publish is retried instead.
+   */
+  private async findSimpleByMarker(handle: string, internalVariantId: string): Promise<string | null> {
+    const data = await this.client.query<Record<string, GroupCandidateNode | null>>(groupCandidatesQuery(1), {
+      h0: handle,
+    });
+    const node = Object.values(data)[0] ?? null;
+    return node !== null && node.marker?.value === internalVariantId ? node.id : null;
   }
 
   /** The product holding `handle` when it is marked as this group's, else null. Never throws. */

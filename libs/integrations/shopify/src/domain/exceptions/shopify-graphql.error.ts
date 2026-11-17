@@ -9,6 +9,26 @@
  * @module libs/integrations/shopify/src/domain/exceptions
  */
 
+/**
+ * `extensions.code` values graphql-ruby (Shopify) raises for a document or its
+ * variables the server will refuse identically every time: a field removed by
+ * an API version change, a missing or mistyped variable, a bad argument.
+ */
+const DETERMINISTIC_DOCUMENT_CODES: ReadonlySet<string> = new Set([
+  'undefinedField',
+  'undefinedType',
+  'argumentNotAccepted',
+  'argumentLiteralsIncompatible',
+  'missingRequiredArguments',
+  'missingRequiredInputObjectAttribute',
+  'variableMissing',
+  'variableRequired',
+  'invalidVariable',
+  'selectionMismatch',
+  'nullValueForNonNull',
+  'INVALID_FIELD_ARGUMENTS',
+]);
+
 export class ShopifyGraphqlError extends Error {
   constructor(
     readonly codes: readonly string[],
@@ -29,6 +49,16 @@ export class ShopifyGraphqlError extends Error {
    */
   isMaxCostExceeded(): boolean {
     return this.codes.includes('MAX_COST_EXCEEDED');
+  }
+
+  /** The document or its variables are invalid for this API version: no retry can change the answer. */
+  isInvalidDocument(): boolean {
+    return this.codes.some((code) => DETERMINISTIC_DOCUMENT_CODES.has(code));
+  }
+
+  /** The shop is frozen, closed or otherwise not serving the Admin API. */
+  isShopInactive(): boolean {
+    return this.codes.includes('SHOP_INACTIVE');
   }
 
   isAccessDenied(): boolean {

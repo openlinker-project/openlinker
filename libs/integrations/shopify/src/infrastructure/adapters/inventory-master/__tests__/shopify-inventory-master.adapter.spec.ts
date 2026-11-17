@@ -226,6 +226,16 @@ describe('ShopifyInventoryMasterAdapter', () => {
       expect(mutate).toHaveBeenCalledTimes(3);
     });
 
+    it('should write nothing and report no outcome for a zero delta, never claiming it applied', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 0)]));
+      const mutate = jest.fn();
+
+      const result = await build({ query, mutate }).adjustInventory({ productId: 'ol_7', quantity: -3, idempotencyKey: 'k' });
+
+      expect(mutate).not.toHaveBeenCalled();
+      expect(result.adjustmentOutcome).toBeUndefined();
+    });
+
     it('should clamp a removal past zero to zero', async () => {
       const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 3)]));
       const mutate = jest.fn().mockResolvedValue(adjusted(undefined, 0));

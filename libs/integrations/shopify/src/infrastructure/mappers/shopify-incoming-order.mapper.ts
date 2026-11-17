@@ -48,6 +48,7 @@ import {
 
 import { SHOPIFY_BANK_DEPOSIT_GATEWAY, SHOPIFY_COD_GATEWAY } from '../../shopify.constants';
 import { fromShopifyGid } from '../../domain/policies/shopify-gid.policy';
+import type { ShopifyPaymentGatewayNames } from '../../domain/types/shopify-config.types';
 import type {
   ShopifyLineItem,
   ShopifyMailingAddress,
@@ -77,6 +78,22 @@ export function shopifyTaxRateCode(taxLines: readonly ShopifyTaxLine[]): string 
   return rates.length === 1 ? String(rates[0]) : null;
 }
 
+/**
+ * The one tax rate every PRICED shipping line carries, or null. Several lines
+ * at different rates (or one priced line with no rate) have no single rate to
+ * state, and stating the first line's would tax the whole shipping at it; a
+ * free line carries no tax and says nothing about the rate.
+ */
+function shippingRateAcross(lines: ShopifyOrder['shippingLines']['nodes']): string | null {
+  const priced = lines.filter((line) => amount(line.originalPriceSet.shopMoney.amount) > 0);
+  const rates = priced.map((line) => shopifyTaxRateCode(line.taxLines));
+  const first = rates[0];
+  if (first === undefined || first === null || rates.some((rate) => rate !== first)) {
+    return null;
+  }
+  return first;
+}
+
 export function mapShopifyOrderStatus(order: ShopifyOrder): string {
   if (order.cancelledAt !== null) {
     return 'cancelled';
@@ -93,21 +110,55 @@ export function mapShopifyOrderStatus(order: ShopifyOrder): string {
   return 'pending';
 }
 
-function isCod(order: ShopifyOrder): boolean {
-  return order.paymentGatewayNames.includes(SHOPIFY_COD_GATEWAY);
+/** Gateway names compare trimmed and case-insensitively, so "cash on delivery" matches the built-in. */
+function matchesGateway(order: ShopifyOrder, builtIn: string, extra: readonly string[] | undefined): boolean {
+  const wanted = new Set([builtIn, ...(extra ?? [])].map((name) => name.trim().toLowerCase()));
+  return order.paymentGatewayNames.some((name) => wanted.has(name.trim().toLowerCase()));
 }
 
-export function mapShopifyPaymentMethod(order: ShopifyOrder): PaymentMethod {
-  if (isCod(order)) {
+function isCod(order: ShopifyOrder, gateways: ShopifyPaymentGatewayNames | undefined): boolean {
+  return matchesGateway(order, SHOPIFY_COD_GATEWAY, gateways?.cod);
+}
+
+function isBankDeposit(order: ShopifyOrder, gateways: ShopifyPaymentGatewayNames | undefined): boolean {
+  return matchesGateway(order, SHOPIFY_BANK_DEPOSIT_GATEWAY, gateways?.bankDeposit);
+}
+
+export function mapShopifyPaymentMethod(
+  order: ShopifyOrder,
+  gateways?: ShopifyPaymentGatewayNames,
+): PaymentMethod {
+  if (isCod(order, gateways)) {
     return PAYMENT_METHOD.CashOnDelivery;
   }
-  if (order.paymentGatewayNames.includes(SHOPIFY_BANK_DEPOSIT_GATEWAY)) {
+  if (isBankDeposit(order, gateways)) {
     return PAYMENT_METHOD.BankTransfer;
   }
   return PAYMENT_METHOD.Unknown;
 }
 
-export function mapShopifyPaymentStatus(order: ShopifyOrder): PaymentStatus | undefined {
+/**
+ * The gateway of an order that is still unpaid and that no rule recognises: a
+ * manual method the merchant renamed or translated looks exactly like this, and
+ * if it was cash on delivery the amount to collect is lost. Reported so the
+ * adapter can say which name to add to the connection's config.
+ */
+export function unrecognisedUnpaidGateway(
+  order: ShopifyOrder,
+  gateways?: ShopifyPaymentGatewayNames,
+): string | undefined {
+  const status = order.displayFinancialStatus;
+  const unpaid = status === 'PENDING' || status === 'AUTHORIZED' || status === 'PARTIALLY_PAID';
+  if (!unpaid || isCod(order, gateways) || isBankDeposit(order, gateways)) {
+    return undefined;
+  }
+  return nonEmpty(order.paymentGatewayNames[0]);
+}
+
+export function mapShopifyPaymentStatus(
+  order: ShopifyOrder,
+  gateways?: ShopifyPaymentGatewayNames,
+): PaymentStatus | undefined {
   switch (order.displayFinancialStatus) {
     case 'PAID':
     case 'PARTIALLY_REFUNDED':
@@ -118,22 +169,29 @@ export function mapShopifyPaymentStatus(order: ShopifyOrder): PaymentStatus | un
     case 'AUTHORIZED':
     case 'PARTIALLY_PAID':
       // A pending COD order is not "awaiting payment" - the courier collects it.
-      return isCod(order) ? PAYMENT_STATUS.Cod : PAYMENT_STATUS.Awaiting;
+      return isCod(order, gateways) ? PAYMENT_STATUS.Cod : PAYMENT_STATUS.Awaiting;
     default:
       return undefined;
   }
 }
 
+/**
+ * The address, or undefined when there is nothing to carry. A company buyer's
+ * tax id must survive an address with no street or city (or no address at
+ * all, as on a digital order): then the address is only a carrier for it, with
+ * the type's required text fields empty. An empty `country` is how core reads
+ * "unknown" (routing skips it), so no country is invented for it.
+ */
 function mapAddress(
   raw: ShopifyMailingAddress | null,
   taxId: string | undefined,
 ): IncomingOrderAddress | undefined {
   if (raw === null) {
-    return undefined;
+    return taxId === undefined ? undefined : { address1: '', city: '', postalCode: '', country: '', taxId };
   }
   const address1 = nonEmpty(raw.address1);
   const city = nonEmpty(raw.city);
-  if (address1 === undefined && city === undefined) {
+  if (address1 === undefined && city === undefined && taxId === undefined) {
     return undefined;
   }
   const optional = (key: keyof IncomingOrderAddress, value: string | null): Partial<IncomingOrderAddress> => {
@@ -196,6 +254,8 @@ function buyerTaxId(order: ShopifyOrder): string | undefined {
 export interface ShopifyIncomingOrderContext {
   /** The admin URL of the order, built from the shop handle. */
   readonly adminOrderUrl: string;
+  /** Payment method names the connection adds to the built-in ones. */
+  readonly paymentGateways?: ShopifyPaymentGatewayNames;
 }
 
 export function mapShopifyOrderToIncoming(
@@ -205,17 +265,18 @@ export function mapShopifyOrderToIncoming(
   const currency = order.currentTotalPriceSet.shopMoney.currencyCode ?? order.currencyCode;
   const total = amount(order.currentTotalPriceSet.shopMoney.amount);
   const shipping = amount(order.currentShippingPriceSet.shopMoney.amount);
-  const paymentStatus = mapShopifyPaymentStatus(order);
+  const paymentStatus = mapShopifyPaymentStatus(order, ctx.paymentGateways);
   const taxId = buyerTaxId(order);
   // The tax id belongs to the invoicing party; with no billing address it rides
   // on the shipping one so the fact is not lost.
   const billingAddress = mapAddress(order.billingAddress, taxId);
   const shippingAddress = mapAddress(order.shippingAddress, billingAddress === undefined ? taxId : undefined);
   const shippingLine = order.shippingLines.nodes[0];
-  const shippingTaxRate = shippingLine === undefined ? null : shopifyTaxRateCode(shippingLine.taxLines);
+  const shippingTaxRate = shippingRateAcross(order.shippingLines.nodes);
   const email = nonEmpty(order.email);
-  const codToCollect = isCod(order) ? toCodToCollect(total, currency) : undefined;
+  const codToCollect = isCod(order, ctx.paymentGateways) ? toCodToCollect(total, currency) : undefined;
   const gateway = nonEmpty(order.paymentGatewayNames[0]);
+  const unrecognisedGateway = unrecognisedUnpaidGateway(order, ctx.paymentGateways);
   const placedAt = order.processedAt ?? order.createdAt;
 
   return {
@@ -227,7 +288,7 @@ export function mapShopifyOrderToIncoming(
       : {}),
     status: mapShopifyOrderStatus(order),
     ...(paymentStatus === undefined ? {} : { paymentStatus }),
-    paymentMethod: mapShopifyPaymentMethod(order),
+    paymentMethod: mapShopifyPaymentMethod(order, ctx.paymentGateways),
     ...(gateway === undefined ? {} : { sourcePaymentMethod: gateway }),
     ...(order.customer === null ? {} : { customerExternalId: fromShopifyGid(order.customer.id) }),
     ...(email === undefined ? {} : { customerEmail: email }),
@@ -261,6 +322,10 @@ export function mapShopifyOrderToIncoming(
     placedAt,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
-    metadata: { shopifyOrderGid: order.id, shopifyOrderName: order.name },
+    metadata: {
+      shopifyOrderGid: order.id,
+      shopifyOrderName: order.name,
+      ...(unrecognisedGateway === undefined ? {} : { unrecognisedUnpaidGateway: unrecognisedGateway }),
+    },
   };
 }

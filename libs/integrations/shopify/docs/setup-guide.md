@@ -16,8 +16,12 @@ connection does. For a local test store and its seed data see
   `read_publications` and `write_publications`; without them a published product stays off the
   Online Store, so the connection test fails on a connection with Product publisher enabled and
   only warns elsewhere. Optional: `write_draft_orders` (product tax rates; without it a store whose
-  prices exclude tax reports no prices) and `read_shipping` (delivery method names in the mapping
-  screens).
+  prices exclude tax reports no prices), `read_shipping` (delivery method names in the mapping
+  screens) and `read_all_orders` (orders older than 60 days; without it Shopify hides them, so an
+  old order is reported as not found). `read_all_orders` is only granted to an app approved for
+  **protected customer data** in the Partner dashboard (order data carries the buyer's name,
+  address and email): request that access before expecting the scope on a Partner app. Without it
+  an order-source connection sees the last 60 days only.
 
 ## 1. Choose how to connect
 
@@ -54,7 +58,10 @@ On the connection edit page, in the Shopify section:
 - **Stock location** - the ONE location OpenLinker reads and writes stock at, picked from the
   store's active locations. Leave it on the primary location unless your stock lives elsewhere.
   Stock at other locations is not counted: OpenLinker treats Shopify as a single warehouse until
-  multi-location support arrives.
+  multi-location support arrives. With the field empty the connection FOLLOWS the store's primary
+  location (re-read about every 10 minutes), so changing the primary location in Shopify moves
+  where stock is read and written; OpenLinker logs a warning when it sees that change. Pick a
+  location explicitly to pin it.
 - **Quantity for untracked stock** - reported for a variant whose stock Shopify does not track
   ("always available"). Empty means 1000.
 - **Sales country** - the country whose VAT rate is read for products. Empty means the store's
@@ -62,6 +69,12 @@ On the connection edit page, in the Shopify section:
 - **Send refunds to Shopify** - off by default. When on, confirming a refund in OpenLinker makes
   Shopify return the money to the buyer (Shopify Payments). When off, a confirmed refund is only
   recorded as made outside OpenLinker.
+- **Cash-on-delivery and bank-deposit payment names** (`codGatewayNames`,
+  `bankDepositGatewayNames`, advanced config) - the names of the store's manual payment methods
+  as Shopify reports them. "Cash on Delivery (COD)" and "Bank Deposit" are always recognised
+  (case-insensitively); a store that renamed or translated the method lists its name here, or an
+  unpaid order on it is ingested with no amount to collect (OpenLinker logs a warning naming the
+  unrecognised payment method).
 - **OpenLinker callback URL** - the public https address of the OpenLinker API, for webhooks.
 
 ## 4. Webhooks
@@ -80,9 +93,12 @@ Shopify retries a failed delivery for about four hours and removes a subscriptio
 failing, so keep the URL reachable. The orders poll stays on as the backstop.
 
 A delivery that arrives twice is processed once. OpenLinker records every verified delivery under
-Shopify's `x-shopify-webhook-id` and drops a repeat. A delivery without that header is recorded
-under its topic and body instead, so a byte-identical repeat is dropped while a changed body counts
-as a new delivery. That costs nothing more than one extra read: a webhook only tells OpenLinker
+Shopify's `x-shopify-webhook-id` together with a hash of the body (Shopify's signature covers the
+body but not that header, so the hash keeps an altered body from passing as the original) and drops
+a repeat of the same id and body. A delivery without that header is recorded under its topic and
+body instead. A repeat is dropped for as long as the delivery record is kept; after that it is
+processed again, and a changed body counts as a new delivery. That costs nothing more than one
+extra read: a webhook only tells OpenLinker
 which order or product to read again, and the data always comes from that read, never from the
 webhook body.
 

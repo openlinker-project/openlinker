@@ -12,6 +12,11 @@
  * (`QueryRoot.location` with no `id`, verified live on 2026-10), falling back
  * to the first active location.
  *
+ * With no `config.locationId` the location FOLLOWS the shop's primary one, so a
+ * merchant changing the primary location in Shopify silently moves where stock
+ * is read and written (within the cache window). That change is warned about
+ * when seen; pin `locationId` to stop following it.
+ *
  * One request, memoised per instance and carried between the per-call adapter
  * bags by the host cache for a few minutes. The cached value records the
  * configured location it was resolved for, so a config change is seen at once.
@@ -19,6 +24,7 @@
  * @module libs/integrations/shopify/src/infrastructure/shop-context
  */
 import type { CachePort } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared/logging';
 
 import { ShopifyConfigException } from '../../domain/exceptions/shopify-config.exception';
 import { shopifyShopContextCacheKey } from '../../domain/policies/shopify-credentials.policy';
@@ -31,6 +37,8 @@ import type {
 import type { ShopifyGraphqlClient } from '../http/shopify-graphql-client';
 
 const CACHE_TTL_SECONDS = 600;
+/** How long the last resolved DEFAULT location is remembered, to notice the merchant changing it. */
+const LAST_LOCATION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 export interface ShopifyShopContext {
   readonly shopName: string;
@@ -61,6 +69,7 @@ export const SHOPIFY_SHOP_CONTEXT_QUERY = `query OlShopContext {
 
 export class ShopifyShopContextProvider {
   private read: Promise<ShopifyShopContext> | null = null;
+  private readonly logger = new Logger(ShopifyShopContextProvider.name);
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
@@ -106,8 +115,28 @@ export class ShopifyShopContextProvider {
     if (this.cache !== undefined) {
       const entry: CachedShopContext = { ...context, configuredLocationGid: this.configuredLocationGid };
       await this.cache.set(key, entry, CACHE_TTL_SECONDS).catch(() => undefined);
+      if (this.configuredLocationGid === null) {
+        await this.noteDefaultLocation(key, location);
+      }
     }
     return context;
+  }
+
+  /** Warns when the location the default resolves to differs from the one this connection last used. */
+  private async noteDefaultLocation(contextKey: string, location: ShopifyLocationNode): Promise<void> {
+    if (this.cache === undefined) {
+      return;
+    }
+    const key = `${contextKey}:default-location`;
+    const previous = await this.cache.get<string>(key).catch(() => null);
+    if (typeof previous === 'string' && previous !== location.id) {
+      this.logger.warn(
+        `The default Shopify stock location of connection ${this.connectionId} changed from ${previous} to ` +
+          `${location.id} (${location.name}); stock is now read and written there. Set locationId on the ` +
+          'connection to pin it.',
+      );
+    }
+    await this.cache.set(key, location.id, LAST_LOCATION_TTL_SECONDS).catch(() => undefined);
   }
 
   private resolveLocation(data: ShopContextQuery): ShopifyLocationNode {

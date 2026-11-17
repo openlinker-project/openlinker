@@ -28,7 +28,11 @@
  * result, then reports a `ContendedWriteError`: the runner requeues the job
  * without spending an attempt, instead of failing it for a peer's work.
  *
- * The token is never logged.
+ * The token is never logged. A minted client-credentials token is cached as
+ * PLAINTEXT in the host cache (Redis), which is inside the deployment's trust
+ * boundary like the database; its life there is capped at 15 minutes
+ * (`MAX_CACHE_SECONDS`) to keep a Redis read or dump from yielding a token
+ * that works for a day.
  *
  * @module libs/integrations/shopify/src/infrastructure/http
  */
@@ -59,6 +63,13 @@ const DEFAULT_TOKEN_LIFE_SECONDS = 86_399;
 /** A minted token is retired an hour early so a long job never runs on an expiring one. */
 const TOKEN_SAFETY_MARGIN_SECONDS = 3_600;
 const MIN_CACHE_SECONDS = 60;
+/**
+ * Upper bound on how long a minted token sits in the shared cache. The token is
+ * stored there as plaintext (the host exposes no encryption to a plugin), so
+ * the exposure window is cut from ~23 h to minutes: minting is one cheap call
+ * and re-minting every quarter hour costs nothing that matters.
+ */
+const MAX_CACHE_SECONDS = 900;
 /** An OAuth token is refreshed when it has less than this left. */
 const OAUTH_REFRESH_AHEAD_MS = 5 * 60_000;
 /**
@@ -188,7 +199,10 @@ export class ShopifyAccessTokenProvider {
       typeof body.expires_in === 'number' && body.expires_in > 0
         ? body.expires_in
         : DEFAULT_TOKEN_LIFE_SECONDS;
-    const cacheSeconds = Math.max(MIN_CACHE_SECONDS, life - TOKEN_SAFETY_MARGIN_SECONDS);
+    const cacheSeconds = Math.min(
+      MAX_CACHE_SECONDS,
+      Math.max(MIN_CACHE_SECONDS, life - TOKEN_SAFETY_MARGIN_SECONDS),
+    );
     const entry: ShopifyTokenMemoEntry = {
       token: body.access_token,
       expiresAtMs: Date.now() + cacheSeconds * 1000,

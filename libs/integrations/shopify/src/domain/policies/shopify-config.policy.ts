@@ -129,6 +129,9 @@ export function parseShopifyConfig(
     }
   }
 
+  const codGatewayNames = parseGatewayNames(config.codGatewayNames, 'codGatewayNames', issues);
+  const bankDepositGatewayNames = parseGatewayNames(config.bankDepositGatewayNames, 'bankDepositGatewayNames', issues);
+
   if (present(config.openlinkerCallbackBaseUrl)) {
     issues.push(...validateCallbackBaseUrl(config.openlinkerCallbackBaseUrl));
   }
@@ -144,8 +147,31 @@ export function parseShopifyConfig(
           unmanagedStockQuantity,
           salesCountryIso2,
           refundsThroughShopify,
+          codGatewayNames,
+          bankDepositGatewayNames,
         },
       };
+}
+
+const MAX_GATEWAY_NAMES = 20;
+const MAX_GATEWAY_NAME_LENGTH = 100;
+
+function parseGatewayNames(raw: unknown, path: string, issues: ShopifyConfigIssue[]): readonly string[] {
+  if (!present(raw)) {
+    return [];
+  }
+  if (
+    !Array.isArray(raw) ||
+    raw.length > MAX_GATEWAY_NAMES ||
+    raw.some((name) => typeof name !== 'string' || name.trim().length === 0 || name.length > MAX_GATEWAY_NAME_LENGTH)
+  ) {
+    issues.push({
+      path,
+      message: `must be a list of up to ${MAX_GATEWAY_NAMES} payment method names (each up to ${MAX_GATEWAY_NAME_LENGTH} characters)`,
+    });
+    return [];
+  }
+  return (raw as string[]).map((name) => name.trim());
 }
 
 /** Shopify delivers webhooks to https only, so an http base is refused when saved, not at install. */

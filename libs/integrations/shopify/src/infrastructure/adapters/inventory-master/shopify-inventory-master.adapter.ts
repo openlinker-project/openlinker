@@ -248,6 +248,14 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
         const payload = await this.client.mutate<AdjustPayload>(
           ADJUST_AVAILABLE_MUTATION,
           {
+            // Deliberately NOT derived from the payload: after a crash that
+            // followed a write which landed, a retry re-reads a moved level and
+            // so builds a different `changeFromQuantity`; under the SAME key
+            // Shopify then answers a parameter mismatch instead of applying the
+            // delta a second time. A payload-derived key would mint a fresh key
+            // and double-apply it. Only the compare-and-set loop below moves to
+            // a new key (the attempt number), because it re-reads after a
+            // refusal that wrote nothing.
             key:
               callerKey.length > 0
                 ? shopifyIdempotencyKey(this.connection.id, callerKey, attempt)
@@ -305,11 +313,20 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
 
     return {
       ...this.toInventory(adjustment.productId, variant, ids, after),
-      adjustmentOutcome: {
-        disposition: 'applied',
-        idempotency: memoKey === null ? 'not_requested' : this.cache === undefined ? 'unsupported' : 'honoured',
-        appliedAt,
-      },
+      // Nothing was written for a zero delta (a no-op request, or a decrement
+      // clamped at an empty level), so no outcome is reported: `applied` would
+      // claim a write that never happened, and an absent outcome is read by
+      // callers as "not reported", the conservative reading.
+      ...(wrote
+        ? {
+            adjustmentOutcome: {
+              disposition: 'applied' as const,
+              idempotency:
+                memoKey === null ? ('not_requested' as const) : this.cache === undefined ? ('unsupported' as const) : ('honoured' as const),
+              appliedAt,
+            },
+          }
+        : {}),
     };
   }
 

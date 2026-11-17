@@ -104,6 +104,7 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
   createOrderSource(resolution: ShopifyResolution): OrderSourcePort {
     const { client, connection, config, shopContext } = resolution;
     const writeback = new ShopifyOrderStatusWriteback(client, shopContext, connection);
+    const paymentGateways = { cod: config.codGatewayNames, bankDeposit: config.bankDepositGatewayNames };
     // A separate class rather than a flag: core finds `RefundExecutor` by the
     // method's presence, so a connection that did not opt in must not have it.
     return config.refundsThroughShopify
@@ -113,8 +114,9 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
           connection,
           writeback,
           new ShopifyRefundExecutor(client, connection.id),
+          paymentGateways,
         )
-      : new ShopifyOrderSourceAdapter(client, config.storeDomain, connection, writeback);
+      : new ShopifyOrderSourceAdapter(client, config.storeDomain, connection, writeback, paymentGateways);
   }
 
   createOrderProcessor(

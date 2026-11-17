@@ -16,8 +16,12 @@
  * hours with the original `x-shopify-triggered-at`; a window of minutes would
  * answer a legitimate retry with 401, and repeated failures make Shopify remove
  * the subscription. Replays are stopped by the Postgres dedup gate keyed by
- * `x-shopify-webhook-id`, which Shopify itself names as the dedup key; and a
- * webhook is only a trigger, so a replay that got through costs one re-read.
+ * the event id, which combines `x-shopify-webhook-id` (Shopify's own dedup key)
+ * with a hash of the body: the HMAC covers the body but NOT that header, so an
+ * attacker replaying a captured body under a fresh id would otherwise get a
+ * second job per forged id. A genuine Shopify retry keeps both the id and the
+ * body, so it maps to the same key. A webhook is only a trigger, so a replay
+ * that got through costs one re-read.
  *
  * TRIGGER MODEL: the body is the whole REST resource and only its id is read.
  * The order or product is re-read downstream (#904), so a stale or reordered
@@ -104,7 +108,7 @@ export class ShopifyInboundWebhookDecoderAdapter implements InboundWebhookDecode
     return {
       action: 'route',
       envelope: {
-        eventId: header(headers, SHOPIFY_WEBHOOK_ID_HEADER) ?? deriveEventId(eventType, rawBody),
+        eventId: eventIdOf(header(headers, SHOPIFY_WEBHOOK_ID_HEADER), eventType, rawBody),
         eventType,
         occurredAt: occurredAt(headers),
         objectType: resource,
@@ -136,11 +140,15 @@ function resourceId(record: Record<string, unknown>, text: string): string | nul
 }
 
 /**
- * Fallback only, for a delivery without `x-shopify-webhook-id`: the topic plus
- * the exact body, so a replay of the same delivery maps to the same key.
+ * The dedup key. With `x-shopify-webhook-id` it is that id plus a short hash of
+ * the verified body; without one, the topic plus the exact body. Either way an
+ * identical delivery maps to the same key and a different body to a different one.
  */
-function deriveEventId(eventType: string, rawBody: Buffer): string {
-  return createHash('sha256').update(eventType).update(':').update(rawBody).digest('hex');
+function eventIdOf(webhookId: string | undefined, eventType: string, rawBody: Buffer): string {
+  if (webhookId === undefined) {
+    return createHash('sha256').update(eventType).update(':').update(rawBody).digest('hex');
+  }
+  return `${webhookId}:${createHash('sha256').update(rawBody).digest('hex').slice(0, 16)}`;
 }
 
 function occurredAt(headers: Record<string, string>): string {

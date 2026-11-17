@@ -65,11 +65,11 @@ describe('ShopifyInboundWebhookDecoderAdapter', () => {
   });
 
   describe('extractEnvelope', () => {
-    it('should route an order with the exact id from the GID and the webhook id as the event id', () => {
+    it('should route an order with the exact id from the GID and the webhook id combined with a body hash as the event id', () => {
       expect(decoder.extractEnvelope(Buffer.from(body), headers('orders/create'))).toEqual({
         action: 'route',
         envelope: {
-          eventId: 'wh-1',
+          eventId: expect.stringMatching(/^wh-1:[0-9a-f]{16}$/),
           eventType: 'orders/create',
           occurredAt: '2026-11-10T10:00:00.000Z',
           objectType: 'order',
@@ -117,6 +117,19 @@ describe('ShopifyInboundWebhookDecoderAdapter', () => {
       expect(eventIdOf(body)).toMatch(/^[0-9a-f]{64}$/);
       expect(eventIdOf(body)).toBe(eventIdOf(body));
       expect(eventIdOf(body)).not.toBe(eventIdOf('{"id":5}'));
+    });
+
+    it('should keep the event id for a genuine retry (same id, same body) and change it when the body differs', () => {
+      const eventIdOf = (raw: string, id = 'wh-1'): string | null => {
+        const result = decoder.extractEnvelope(Buffer.from(raw), headers('orders/updated', { 'x-shopify-webhook-id': id }));
+        return result.action === 'route' ? result.envelope.eventId : null;
+      };
+
+      expect(eventIdOf(body)).toBe(eventIdOf(body));
+      // The HMAC covers the body but not the id header, so the body hash stops a different body
+      // sent under a replayed id from collapsing into the original delivery.
+      expect(eventIdOf(`${body} `)).not.toBe(eventIdOf(body));
+      expect(eventIdOf(body, 'wh-2')).not.toBe(eventIdOf(body));
     });
 
     // Without `x-shopify-webhook-id` the dedup gate is keyed by topic + body, so

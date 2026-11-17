@@ -74,9 +74,10 @@ export const apiPlugins: PluginEntry[] = [
   // CategoryProvisioner, OrderProcessorManager and OrderSource, plus signed
   // webhooks and one request budget shared by every connection to a shop.
   ShoperIntegrationModule,
-  // #3974: Shopify plugin foundation - connection, token (client credentials,
-  // pre-issued token or OAuth install), tester and classifiers. No capability
-  // yet; each arrives with its adapter.
+  // #3974: Shopify - connection, token (client credentials, pre-issued token or
+  // OAuth install), tester and classifiers, plus ProductMaster, InventoryMaster,
+  // OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner
+  // and OfferManager, and signed webhooks.
   ShopifyIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB). NOT a plugin - it
   // registers no adapter manifest and exposes no capability; it appears here

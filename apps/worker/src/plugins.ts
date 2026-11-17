@@ -76,8 +76,9 @@ export const workerPlugins: PluginEntry[] = [
   // #3639: Shoper shop platform, registered worker-side so its sync jobs
   // (catalogue, stock, orders, publish) and auth failure classifier run here.
   ShoperIntegrationModule,
-  // #3974: Shopify plugin foundation, registered worker-side so its retry and
-  // auth-failure classifiers apply to the capability jobs that follow.
+  // #3974: Shopify, registered worker-side so its capability jobs (catalogue,
+  // stock, orders, returns, publish) and its retry and auth-failure
+  // classifiers run here.
   ShopifyIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB), registered into the
   // core currency registry at boot. Load-bearing here: order ingestion and the

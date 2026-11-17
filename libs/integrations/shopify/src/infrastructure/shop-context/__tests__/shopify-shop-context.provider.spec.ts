@@ -1,4 +1,5 @@
 import type { CachePort } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared/logging';
 
 import { ShopifyConfigException } from '../../../domain/exceptions/shopify-config.exception';
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
@@ -82,5 +83,22 @@ describe('ShopifyShopContextProvider', () => {
 
     expect(graphql.query).toHaveBeenCalled();
     expect(context.shopAddress).toEqual({ countryCodeV2: 'PL', provinceCode: null, zip: '00-001' });
+  });
+
+  it('should warn when the default location it follows is not the one it used last time', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const cache = {
+      // No cached context, but the last default location on record was another one.
+      get: jest.fn((key: string) =>
+        Promise.resolve(key.endsWith(':default-location') ? 'gid://shopify/Location/7' : null),
+      ),
+      set: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn(),
+    } as unknown as CachePort;
+
+    await new ShopifyShopContextProvider(client(), 'c1', null, cache).get();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('default Shopify stock location'));
+    warn.mockRestore();
   });
 });

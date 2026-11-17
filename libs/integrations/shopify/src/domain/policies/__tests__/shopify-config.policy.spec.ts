@@ -13,8 +13,18 @@ describe('parseShopifyConfig', () => {
         unmanagedStockQuantity: null,
         salesCountryIso2: null,
         refundsThroughShopify: false,
+        codGatewayNames: [],
+        bankDepositGatewayNames: [],
       },
     });
+  });
+
+  it('should keep configured payment method names and refuse a malformed list', () => {
+    const ok = parseShopifyConfig({ storeDomain: 'a.myshopify.com', codGatewayNames: [' Za pobraniem '] });
+    expect(ok.ok && ok.config.codGatewayNames).toEqual(['Za pobraniem']);
+
+    const bad = parseShopifyConfig({ storeDomain: 'a.myshopify.com', bankDepositGatewayNames: ['', 5] });
+    expect(!bad.ok && bad.issues.map((i) => i.path)).toEqual(['bankDepositGatewayNames']);
   });
 
   it('should refuse a custom storefront domain naming storeDomain', () => {

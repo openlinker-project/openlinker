@@ -12,9 +12,12 @@
  * Every product topic becomes the `product` domain
  * (`master.product.syncByExternalId`). `products/update` also yields an
  * `inventory` event (`master.inventory.syncByExternalId`), the Shoper
- * `product.edit` shape (ADR-049 § Amendment): a stock edit in the admin bumps
- * the product's `updated_at` and so arrives as `products/update`, and without
- * the second event it would wait for the inventory sweep. The host gates the
+ * `product.edit` shape (ADR-049 § Amendment): a stock edit made on the product
+ * in the admin updates the product and so tends to arrive as `products/update`.
+ * That is NOT guaranteed for a change made purely through the inventory-level
+ * API (Shopify has a separate `inventory_levels/update` topic for that, which
+ * this integration does not subscribe to), so the inventory sweep stays the
+ * backstop for stock changes that bring no product webhook. The host gates the
  * inventory event on `InventoryMaster`, so a connection without it gets only the
  * product job. `products/delete` stays single: the product re-read's not-found
  * runs the deletion path, and an inventory re-read would only repeat it.

@@ -22,6 +22,8 @@ export class ShopifyApiError extends Error {
     readonly source: ShopifyApiErrorSource = 'admin-api',
     /** The token endpoint's error code (`invalid_client`, `app_not_installed`, ...), when it named one. */
     readonly grantError: string | null = null,
+    /** Seconds the `Retry-After` header asked to wait (429 / 503), when it carried a usable one. */
+    readonly retryAfterSeconds: number | null = null,
   ) {
     super(
       `Shopify ${source === 'token-endpoint' ? 'token request' : 'API'} returned HTTP ${statusCode}` +

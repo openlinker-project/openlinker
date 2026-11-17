@@ -102,6 +102,8 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   // Shopify's budget is per app and store, so connections to one store share one bucket.
   resolveRateLimitBucketKey: resolveShopifyRateLimitBucketKey,
+  // Non-secret keys the UI may read by any role; the orders UI needs refundsThroughShopify to word its refund confirmation.
+  publicConfigKeys: ['refundsThroughShopify'],
   displayName: 'Shopify Admin API',
   version: '0.1.0',
   isDefault: true,

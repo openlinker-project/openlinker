@@ -43,6 +43,16 @@ export interface ShopifyConnectionConfig {
    * Absent: webhooks cannot be configured; the orders poll still runs.
    */
   readonly openlinkerCallbackBaseUrl?: string;
+  /**
+   * Names of the store's manual payment methods that mean cash on delivery
+   * (the name the merchant gave them, as `paymentGatewayNames` reports it).
+   * The built-in English "Cash on Delivery (COD)" is always recognised; a store
+   * that renamed or translated its method lists the name here, or the order
+   * reads as an unknown, unpaid sale and the amount to collect is lost.
+   */
+  readonly codGatewayNames?: readonly string[];
+  /** Same, for the store's manual bank-transfer method ("Bank Deposit" is always recognised). */
+  readonly bankDepositGatewayNames?: readonly string[];
 }
 
 /** `ShopifyConnectionConfig` after validation and normalisation. */
@@ -54,4 +64,12 @@ export interface ShopifyResolvedConfig {
   readonly unmanagedStockQuantity: number | null;
   readonly salesCountryIso2: string | null;
   readonly refundsThroughShopify: boolean;
+  readonly codGatewayNames: readonly string[];
+  readonly bankDepositGatewayNames: readonly string[];
+}
+
+/** The gateway names an order's payment method is recognised by, beyond the built-in ones. */
+export interface ShopifyPaymentGatewayNames {
+  readonly cod?: readonly string[];
+  readonly bankDeposit?: readonly string[];
 }

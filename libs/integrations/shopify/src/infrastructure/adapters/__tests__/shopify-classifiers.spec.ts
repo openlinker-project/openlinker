@@ -3,6 +3,7 @@ import { ContendedWriteError } from '@openlinker/core/sync';
 import { ShopifyApiError } from '../../../domain/exceptions/shopify-api.error';
 import { ShopifyConfigException } from '../../../domain/exceptions/shopify-config.exception';
 import { ShopifyGraphqlError } from '../../../domain/exceptions/shopify-graphql.error';
+import { ShopifyOrderTooLargeException } from '../../../domain/exceptions/shopify-order-too-large.exception';
 import { ShopifyNetworkError } from '../../../domain/exceptions/shopify-network.error';
 import { ShopifyStockWriteRefusedException } from '../../../domain/exceptions/shopify-stock-write-refused.exception';
 import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
@@ -36,6 +37,31 @@ describe('ShopifyRetryClassifierAdapter', () => {
   ])('should defer %s without spending an attempt', (_label, cause, seconds) => {
     expect(classifier.isNonRetryable(cause)).toBe(false);
     expect(classifier.getRetryDeferral(cause)).toMatchObject({ delaySeconds: seconds });
+  });
+
+  it('should honour the Retry-After a 429 or 503 carried, bounded', () => {
+    expect(classifier.getRetryDeferral(new ShopifyApiError(429, '', 'admin-api', null, 7))).toMatchObject({
+      delaySeconds: 7,
+    });
+    expect(classifier.getRetryDeferral(new ShopifyApiError(503, '', 'admin-api', null, 100000))).toMatchObject({
+      delaySeconds: 600,
+    });
+  });
+
+  it.each([
+    ['a field removed by an API version change', new ShopifyGraphqlError(['undefinedField'], ['no such field'])],
+    ['a missing variable', new ShopifyGraphqlError(['variableMissing'], ['missing'])],
+    ['an inactive shop', new ShopifyGraphqlError(['SHOP_INACTIVE'], ['frozen'])],
+  ])('should treat %s as terminal', (_label, cause) => {
+    expect(classifier.isNonRetryable(cause)).toBe(true);
+  });
+
+  it('should not treat a user error that only mentions changeFromQuantity as a stale compare-and-set', () => {
+    const malformed = new ShopifyUserErrorsException('inventorySetQuantities', [
+      { message: 'changeFromQuantity must be an integer' },
+    ]);
+    expect(malformed.isStaleCompareAndSet()).toBe(false);
+    expect(classifier.isNonRetryable(malformed)).toBe(true);
   });
 
   it('should leave a contended OAuth refresh to the runner\'s penalty-free deferral', () => {
@@ -87,6 +113,7 @@ describe('ShopifyRetryClassifierAdapter', () => {
     ['a refused stock write (untracked stock)', new ShopifyStockWriteRefusedException('5', 'c1', 'does not track stock')],
     ['a missing scope', new ShopifyGraphqlError(['ACCESS_DENIED'], ['denied'])],
     ['another user error', new ShopifyUserErrorsException('productSet', [{ message: 'Title is invalid' }])],
+    ['an order too large to ingest whole', new ShopifyOrderTooLargeException('9', 'lines', 'c1')],
     ['a refused token request', grant('invalid_client')],
     ['a 404', new ShopifyApiError(404)],
   ])('should treat %s as terminal', (_label, cause) => {

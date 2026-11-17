@@ -191,7 +191,13 @@ export class ShopifyGraphqlClient {
     }
 
     if (response.status < 200 || response.status >= 300) {
-      throw new ShopifyApiError(response.status, text);
+      throw new ShopifyApiError(
+        response.status,
+        text,
+        'admin-api',
+        null,
+        parseRetryAfterSeconds(response.headers.get('retry-after')),
+      );
     }
     const envelope = parseShopifyJson<ShopifyGraphqlEnvelope<T>>(text);
     if (envelope === null) {
@@ -223,4 +229,13 @@ export class ShopifyGraphqlClient {
       observedAtMs: Date.now(),
     });
   }
+}
+
+/** `Retry-After` in delta-seconds form; the HTTP-date form is not used by Shopify and reads as absent. */
+function parseRetryAfterSeconds(header: string | null): number | null {
+  if (header === null) {
+    return null;
+  }
+  const seconds = Number(header.trim());
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }

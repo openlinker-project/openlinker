@@ -50,6 +50,10 @@ import { Public } from '../../auth/decorators/public.decorator';
 import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
+  CONNECTION_SERVICE_TOKEN,
+  IConnectionService,
+} from '../application/interfaces/connection.service.interface';
+import {
   IOAuthConnectionService,
   OAUTH_CONNECTION_SERVICE_TOKEN,
 } from '../application/interfaces/oauth-connection.service.interface';
@@ -73,6 +77,8 @@ export class ShopifyController {
     private readonly oauthService: IOAuthConnectionService,
     @Inject(SHOPIFY_LOCATION_READER_TOKEN)
     private readonly locationReader: IShopifyLocationReader,
+    @Inject(CONNECTION_SERVICE_TOKEN)
+    private readonly connections: IConnectionService,
   ) {}
 
   @Roles('admin', 'operator')
@@ -85,6 +91,12 @@ export class ShopifyController {
   async listLocations(
     @Param('connectionId', ParseUUIDPipe) connectionId: string,
   ): Promise<{ locations: ShopifyLocationSummary[] }> {
+    // Stated here so the contract is visible at the route; the reader repeats it
+    // for any other caller, and a missing connection answers 404 from `get`.
+    const connection = await this.connections.get(connectionId);
+    if (connection.platformType !== SHOPIFY_PLATFORM_TYPE) {
+      throw new BadRequestException(`Connection ${connectionId} is not a Shopify connection.`);
+    }
     try {
       return { locations: await this.locationReader.listLocations(connectionId) };
     } catch (error) {

@@ -233,7 +233,7 @@ describe('ShopifyProductMasterAdapter', () => {
     const products = await build(query).searchProducts('mug "x"');
 
     expect(products.map((p) => p.id)).toEqual(['ol_1']);
-    expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ query: 'title:*mug x*' });
+    expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ query: 'title:mug* title:x*' });
   });
 
   it('should halve the bulk batch when Shopify refuses its cost, and still read every product', async () => {

@@ -36,10 +36,12 @@ export class ShopifyUserErrorsException extends Error {
     return this.userErrors.some((e) => /too many attempts/i.test(e.message));
   }
 
-  /** `changeFromQuantity` no longer matched: somebody moved the stock between our read and write. */
+  /**
+   * `changeFromQuantity` no longer matched: somebody moved the stock between
+   * our read and write. Decided on the code only: a message that merely
+   * mentions the argument (a malformed one) is a refusal no retry will change.
+   */
   isStaleCompareAndSet(): boolean {
-    return this.userErrors.some(
-      (e) => e.code === 'CHANGE_FROM_QUANTITY_STALE' || /changeFromQuantity/i.test(e.message),
-    );
+    return this.userErrors.some((e) => e.code === 'CHANGE_FROM_QUANTITY_STALE');
   }
 }

@@ -102,7 +102,13 @@ import {
 } from '../../mappers/shopify-return-feed-cursor.mapper';
 import type { ShopifyRefundExecutor } from './shopify-refund-executor';
 import { ShopifyMappingOptionsReader } from '../../readers/shopify-mapping-options.reader';
-import { ORDER_BY_ID_QUERY, ORDER_FEED_QUERY } from '../../readers/shopify-order.queries';
+import {
+  ORDER_BY_ID_QUERY,
+  ORDER_FEED_QUERY,
+  ORDER_LINE_ITEMS_PAGE_QUERY,
+} from '../../readers/shopify-order.queries';
+import type { ShopifyPaymentGatewayNames } from '../../../domain/types/shopify-config.types';
+import { ShopifyOrderTooLargeException } from '../../../domain/exceptions/shopify-order-too-large.exception';
 import {
   RETURN_BY_ID_QUERY,
   RETURN_DECLINE_MUTATION,
@@ -119,6 +125,8 @@ const MAX_FEED_PAGES = 20;
 const EPOCH = '1970-01-01T00:00:00Z';
 /** Orders read per return-feed page; each carries its returns' ids, never their lines. */
 const RETURN_FEED_ORDERS_PER_PAGE = 50;
+/** Extra 250-line pages read for one order; past this the order is refused rather than ingested partially. */
+const MAX_EXTRA_LINE_PAGES = 20;
 
 /**
  * Also an `OrderStatusWriteback`: the lifecycle relay asks the SOURCE participant
@@ -139,6 +147,7 @@ export class ShopifyOrderSourceAdapter
     private readonly storeDomain: string,
     private readonly connection: Connection,
     private readonly writeback: OrderStatusWriteback,
+    private readonly paymentGateways: ShopifyPaymentGatewayNames = {},
   ) {
     this.options = new ShopifyMappingOptionsReader(client, connection.id);
   }
@@ -224,25 +233,63 @@ export class ShopifyOrderSourceAdapter
     if (data.order === null) {
       throw new ShopifyOrderNotFoundException(input.externalOrderId, this.connection.id);
     }
-    if (data.order.lineItems.pageInfo?.hasNextPage === true) {
-      this.logger.warn(
-        `Shopify order ${input.externalOrderId} has more than ${data.order.lineItems.nodes.length} lines; ` +
-          `the rest are not ingested (connection: ${this.connection.id})`,
-      );
+    if (data.order.shippingLines.pageInfo?.hasNextPage === true) {
+      throw new ShopifyOrderTooLargeException(input.externalOrderId, 'shipping lines', this.connection.id);
     }
-    if (data.order.presentmentCurrencyCode !== data.order.currencyCode) {
+    const order = await this.withAllLines(data.order, input.externalOrderId);
+    if (order.presentmentCurrencyCode !== order.currencyCode) {
       // Every figure is read in the shop's currency (the one the rest of this
       // connection uses); the buyer paid in another, so the amounts differ.
       this.logger.warn(
-        `Shopify order ${input.externalOrderId} was paid in ${data.order.presentmentCurrencyCode}; ` +
-          `it is ingested in the shop currency ${data.order.currencyCode} (connection: ${this.connection.id})`,
+        `Shopify order ${input.externalOrderId} was paid in ${order.presentmentCurrencyCode}; ` +
+          `it is ingested in the shop currency ${order.currencyCode} (connection: ${this.connection.id})`,
       );
     }
-    return mapShopifyOrderToIncoming(data.order, {
+    const incoming = mapShopifyOrderToIncoming(order, {
       adminOrderUrl:
         `https://admin.shopify.com/store/${shopifyStoreHandle(this.storeDomain)}` +
         `/orders/${input.externalOrderId}`,
+      paymentGateways: this.paymentGateways,
     });
+    const unrecognised = incoming.metadata?.['unrecognisedUnpaidGateway'];
+    if (typeof unrecognised === 'string') {
+      this.logger.warn(
+        `Shopify order ${input.externalOrderId} is unpaid and its payment method "${unrecognised}" is not ` +
+          `recognised, so it is ingested without an amount to collect. If it is cash on delivery, add the name ` +
+          `to the connection's codGatewayNames (connection: ${this.connection.id})`,
+      );
+    }
+    return incoming;
+  }
+
+  /**
+   * The order with every line on it. The first 250 come with the order; the
+   * rest are paged here, because an order missing lines is a wrong order, not
+   * a smaller one.
+   */
+  private async withAllLines(order: ShopifyOrder, externalOrderId: string): Promise<ShopifyOrder> {
+    let pageInfo = order.lineItems.pageInfo;
+    if (pageInfo?.hasNextPage !== true) {
+      return order;
+    }
+    const nodes = [...order.lineItems.nodes];
+    for (let page = 0; pageInfo?.hasNextPage === true; page += 1) {
+      if (page >= MAX_EXTRA_LINE_PAGES || !pageInfo.endCursor) {
+        throw new ShopifyOrderTooLargeException(externalOrderId, 'lines', this.connection.id);
+      }
+      const next: { order: { lineItems: ShopifyOrder['lineItems'] } | null } = await this.client.query<{
+        order: { lineItems: ShopifyOrder['lineItems'] } | null;
+      }>(
+        ORDER_LINE_ITEMS_PAGE_QUERY,
+        { id: toShopifyGid('Order', externalOrderId), after: pageInfo.endCursor },
+      );
+      if (next.order === null) {
+        throw new ShopifyOrderNotFoundException(externalOrderId, this.connection.id);
+      }
+      nodes.push(...next.order.lineItems.nodes);
+      pageInfo = next.order.lineItems.pageInfo;
+    }
+    return { ...order, lineItems: { nodes } };
   }
 
   // ─── ReturnSourceReader ────────────────────────────────────────────────────
@@ -430,8 +477,9 @@ export class ShopifyRefundingOrderSourceAdapter extends ShopifyOrderSourceAdapte
     connection: Connection,
     writeback: OrderStatusWriteback,
     private readonly refunds: ShopifyRefundExecutor,
+    paymentGateways: ShopifyPaymentGatewayNames = {},
   ) {
-    super(client, storeDomain, connection, writeback);
+    super(client, storeDomain, connection, writeback, paymentGateways);
   }
 
   executeRefund(command: ExecuteRefundCommand): Promise<RefundExecutionResult> {

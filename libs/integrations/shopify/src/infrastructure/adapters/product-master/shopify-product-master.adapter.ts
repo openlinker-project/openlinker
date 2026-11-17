@@ -10,8 +10,10 @@
  * Also implements three guard-only rungs (ADR-048 / ADR-063), never advertised
  * in the manifest:
  *   - `ModifiedProductLister` - the UNION of products and variants whose
- *     `updated_at` moved since the watermark. A stock change bumps both, but a
- *     variant price edit bumps ONLY the variant (L-M2). Both reads go through
+ *     `updated_at` moved since the watermark. A stock edit made on the product
+ *     bumps both, but a variant price edit bumps ONLY the variant (L-M2); a
+ *     change made purely through the inventory-level API is not promised to
+ *     bump either, so the inventory sweep stays the stock backstop. Both reads go through
  *     the search index, which lags a write by 5-10 s, and Shopify's clock ran
  *     14 s behind OpenLinker's watermark (A19), so the window is pulled back a
  *     further 15 s on top of the caller's lookback.
@@ -100,6 +102,21 @@ const DEFAULT_WINDOW = 50;
 const NUMERIC_ID = /^\d+$/;
 /** 40 x 250 = 10 000 products read for the category directory; past that it is partial and warned. */
 const CATEGORY_SCAN_MAX_PAGES = 40;
+/**
+ * Shopify's product search supports a trailing wildcard only (`title:mug*`);
+ * a leading one (`title:*mug*`) matches nothing for a term that starts
+ * mid-word. Each word is therefore a prefix match, ANDed: "blue mu" finds
+ * "Blue Mug" but "ug" does not. Quotes, backslashes and wildcards in the
+ * operator's text are dropped so they cannot change the query's meaning.
+ */
+function searchQuery(search: string | undefined): string | null {
+  const words = (search ?? '')
+    .replace(/["\\*]/g, '')
+    .split(/\s+/)
+    .filter((word) => word.length > 0);
+  return words.length === 0 ? null : words.map((word) => `title:${word}*`).join(' ');
+}
+
 /** Extra pull-back of a modified-since window: index lag plus the clock gap seen live (A19, L-M2). */
 const MODIFIED_SINCE_PULL_BACK_MS = 15_000;
 /** 80 x 250 = 20 000 changed rows per read; past that the window is partial and warned about. */
@@ -271,7 +288,7 @@ export class ShopifyProductMasterAdapter
     const rows = await this.readWindow(
       filters?.offset ?? 0,
       filters?.limit ?? DEFAULT_WINDOW,
-      search === undefined || search.length === 0 ? null : `title:*${search.replace(/["\\*]/g, '')}*`,
+      searchQuery(search),
     );
     return this.toProducts(rows);
   }

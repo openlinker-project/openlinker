@@ -173,6 +173,51 @@ describe('mapShopifyOrderToIncoming', () => {
     expect(incoming.codToCollect).toBeDefined();
   });
 
+  it('should recognise a renamed cash-on-delivery method from the connection config and flag an unrecognised unpaid one', () => {
+    const renamed = order({ displayFinancialStatus: 'PENDING', paymentGatewayNames: ['Płatność przy odbiorze'] });
+
+    const unconfigured = mapShopifyOrderToIncoming(renamed, CTX);
+    expect(unconfigured.codToCollect).toBeUndefined();
+    expect(unconfigured.metadata).toMatchObject({ unrecognisedUnpaidGateway: 'Płatność przy odbiorze' });
+
+    const configured = mapShopifyOrderToIncoming(renamed, { ...CTX, paymentGateways: { cod: ['płatność PRZY odbiorze'] } });
+    expect(configured.paymentMethod).toBe('cash_on_delivery');
+    expect(configured.codToCollect).toBeDefined();
+    expect(configured.metadata).not.toHaveProperty('unrecognisedUnpaidGateway');
+  });
+
+  it('should keep the buyer tax id when no address survives, without inventing a country', () => {
+    const incoming = mapShopifyOrderToIncoming(
+      order({
+        purchasingEntity: {
+          __typename: 'PurchasingCompany',
+          location: { taxSettings: { taxRegistrationId: 'PL8113439670' } },
+        },
+        shippingAddress: null,
+        billingAddress: null,
+      }),
+      CTX,
+    );
+
+    expect(incoming.billingAddress).toMatchObject({ taxId: 'PL8113439670', country: '' });
+    expect(incoming.shippingAddress).toBeUndefined();
+  });
+
+  it('should state a shipping tax rate only when every priced shipping line agrees on it', () => {
+    const shippingLine = (rate: number, price: string): ShopifyOrder['shippingLines']['nodes'][number] => ({
+      title: 'S',
+      code: 'S',
+      originalPriceSet: money(price),
+      taxLines: [{ title: 'VAT', rate, ratePercentage: rate * 100 }],
+    });
+    const rateOf = (nodes: ShopifyOrder['shippingLines']['nodes']): string | undefined =>
+      mapShopifyOrderToIncoming(order({ shippingLines: { nodes } }), CTX).totals.shippingTaxRate;
+
+    expect(rateOf([shippingLine(0.23, '5.00'), shippingLine(0.23, '2.00')])).toBe('23');
+    expect(rateOf([shippingLine(0.23, '5.00'), shippingLine(0.08, '2.00')])).toBeUndefined();
+    expect(rateOf([shippingLine(0.23, '5.00'), { ...shippingLine(0.23, '0.00'), taxLines: [] }])).toBe('23');
+  });
+
   it('should keep the buyer note verbatim', () => {
     expect(mapShopifyOrderToIncoming(order({ note: ' Please ring twice ' }), CTX).buyerNote).toBe('Please ring twice');
   });

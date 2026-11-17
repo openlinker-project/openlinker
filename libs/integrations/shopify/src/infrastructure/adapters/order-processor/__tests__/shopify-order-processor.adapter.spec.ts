@@ -43,7 +43,8 @@ interface Harness {
 function build(
   options: {
     currency?: string;
-    existing?: Array<{ id: string; name: string }>;
+    existing?: Array<{ id: string; name: string; fulfillmentOrders?: unknown }>;
+    lookupRetryDelaysMs?: number[];
     mappingConfig?: IMappingConfigService;
     /** `inventoryItem.requiresShipping` of variant 9 (the one line that resolves). */
     variantShips?: boolean;
@@ -96,6 +97,8 @@ function build(
     { write } as unknown as ShopifyOrderStatusWriteback,
     options.mappingConfig,
   );
+  // The default re-asks wait seconds for the search index; tests run without waiting.
+  Object.assign(adapter, { lookupRetryDelaysMs: options.lookupRetryDelaysMs ?? [] });
   return { adapter, query, mutate, write };
 }
 
@@ -206,6 +209,48 @@ describe('ShopifyOrderProcessorAdapter', () => {
       await expect(h.adapter.createOrder(ORDER)).resolves.toEqual({ orderId: '55', orderNumber: '1055' });
 
       expect(h.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should re-ask the search before treating an order as new, then return the one that appeared', async () => {
+      const h = build();
+      Object.assign(h.adapter, { lookupRetryDelaysMs: [0, 0] });
+      let asked = 0;
+      const base = h.query.getMockImplementation() as (doc: string) => Promise<unknown>;
+      h.query.mockImplementation((doc: string) => {
+        if (doc.includes('OlOrderBySource')) {
+          asked += 1;
+          return Promise.resolve({
+            orders: { nodes: asked < 3 ? [] : [{ id: 'gid://shopify/Order/55', name: '#1055', fulfillmentOrders: { nodes: [] } }] },
+          });
+        }
+        return base(doc);
+      });
+
+      await expect(h.adapter.createOrder(ORDER)).resolves.toEqual({ orderId: '55', orderNumber: '1055' });
+      expect(h.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should move work to the configured location when it finds the order a previous attempt created', async () => {
+      const h = build({
+        existing: [
+          {
+            id: 'gid://shopify/Order/55',
+            name: '#1055',
+            fulfillmentOrders: {
+              nodes: [{ id: 'gid://shopify/FulfillmentOrder/1', status: 'OPEN', assignedLocation: { location: { id: 'gid://shopify/Location/9' } } }],
+            },
+          },
+        ],
+      });
+      h.mutate.mockResolvedValueOnce({});
+
+      await h.adapter.createOrder(ORDER);
+
+      expect(h.mutate).toHaveBeenCalledWith(
+        expect.any(String),
+        { id: 'gid://shopify/FulfillmentOrder/1', locationId: LOCATION },
+        'fulfillmentOrderMove',
+      );
     });
 
     it('should refuse an order in another currency before anything is sent', async () => {

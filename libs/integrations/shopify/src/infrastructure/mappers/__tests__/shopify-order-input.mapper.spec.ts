@@ -62,6 +62,17 @@ describe('buildShopifyOrderCreateVariables', () => {
     });
   });
 
+  it('should round money to the currency minor unit, not always two decimals', () => {
+    const o = order({
+      items: [{ id: 'l1', productId: 'p1', variantId: 'v1', quantity: 1, price: 1234, name: 'Shirt' }],
+      totals: { subtotal: 1234, tax: 0, shipping: 0, total: 1234, currency: 'JPY' },
+    } as Partial<OrderCreate>);
+
+    const { order: input } = buildShopifyOrderCreateVariables(o, VARIANT_LINE(o), 'ol_order_1');
+
+    expect((input.lineItems as Array<{ priceSet: { shopMoney: { amount: string } } }>)[0].priceSet.shopMoney.amount).toBe('1234');
+  });
+
   it('should send a net-priced order net, with the tax on top', () => {
     const o = order({ totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' } });
     o.items[0] = { ...o.items[0], quantity: 1, price: 100, unitPriceGross: 123 };

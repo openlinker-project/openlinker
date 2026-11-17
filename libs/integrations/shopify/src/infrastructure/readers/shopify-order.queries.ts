@@ -13,6 +13,14 @@ const MAILING_ADDRESS =
 const MONEY = 'shopMoney { amount currencyCode }';
 const TAX_LINE = 'rate ratePercentage title';
 
+const LINE_ITEM_FIELDS = `
+      id name sku quantity currentQuantity
+      variant { id }
+      product { id }
+      originalUnitPriceSet { ${MONEY} }
+      discountedUnitPriceAfterAllDiscountsSet { ${MONEY} }
+      taxLines { ${TAX_LINE} }`;
+
 export const ORDER_FIELDS = `
   id name sourceIdentifier createdAt updatedAt processedAt cancelledAt
   displayFinancialStatus displayFulfillmentStatus paymentGatewayNames
@@ -28,19 +36,27 @@ export const ORDER_FIELDS = `
   }
   shippingAddress { ${MAILING_ADDRESS} }
   billingAddress { ${MAILING_ADDRESS} }
-  shippingLines(first: 5) { nodes { title code originalPriceSet { ${MONEY} } taxLines { ${TAX_LINE} } } }
+  shippingLines(first: 25) {
+    nodes { title code originalPriceSet { ${MONEY} } taxLines { ${TAX_LINE} } }
+    pageInfo { hasNextPage }
+  }
   lineItems(first: 250) {
-    nodes {
-      id name sku quantity currentQuantity
-      variant { id }
-      product { id }
-      originalUnitPriceSet { ${MONEY} }
-      discountedUnitPriceAfterAllDiscountsSet { ${MONEY} }
-      taxLines { ${TAX_LINE} }
+    nodes {${LINE_ITEM_FIELDS}
     }
     pageInfo { hasNextPage endCursor }
   }
 `;
+
+/** The lines past the first 250 of one order, so a large order is ingested whole rather than truncated. */
+export const ORDER_LINE_ITEMS_PAGE_QUERY = `query OlOrderLineItemsPage($id: ID!, $after: String) {
+  order(id: $id) {
+    lineItems(first: 250, after: $after) {
+      nodes {${LINE_ITEM_FIELDS}
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`;
 
 export const ORDER_BY_ID_QUERY = `query OlOrder($id: ID!) { order(id: $id) { ${ORDER_FIELDS} } }`;
 
@@ -76,7 +92,9 @@ export const ORDER_FEED_QUERY = `query OlOrderFeed($first: Int!, $after: String,
  * race does not (core's per-order create lock covers the race).
  */
 export const ORDER_BY_SOURCE_IDENTIFIER_QUERY = `query OlOrderBySource($query: String!) {
-  orders(first: 1, query: $query) { nodes { id name } }
+  orders(first: 1, query: $query) {
+    nodes { id name fulfillmentOrders(first: 20) { nodes { id status assignedLocation { location { id } } } } }
+  }
 }`;
 
 /**
