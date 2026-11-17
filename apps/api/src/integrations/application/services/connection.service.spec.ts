@@ -10,6 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import {
   ConnectionService,
   ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
@@ -347,7 +348,10 @@ describe('ConnectionService', () => {
 
         await expect(service.create(subiektPayload)).rejects.toThrow(/must be unique/);
         expect(connectionPort.create).not.toHaveBeenCalled();
-        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+        expect(connectionPort.list).toHaveBeenCalledWith({
+          platformType: 'subiekt',
+          status: 'active',
+        });
       });
 
       it('should allow the create when no active sibling shares the bridgeBaseUrl', async () => {
@@ -379,7 +383,10 @@ describe('ConnectionService', () => {
         connectionPort.create.mockResolvedValue(mockConnection);
 
         await expect(service.create(subiektPayload)).resolves.toEqual(mockConnection);
-        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+        expect(connectionPort.list).toHaveBeenCalledWith({
+          platformType: 'subiekt',
+          status: 'active',
+        });
       });
 
       it('should skip the collision check entirely when the adapter declares no uniqueConfigKeys', async () => {
@@ -643,7 +650,9 @@ describe('ConnectionService', () => {
               baseUrl: 'https://new.com',
               deliveryOnDocuments: {
                 default: { name: 'Dostawa' },
-                countries: { pl: { name: 'Koszt dostawy', rateFormat: 'labelled', rateLabel: 'VAT' } },
+                countries: {
+                  pl: { name: 'Koszt dostawy', rateFormat: 'labelled', rateLabel: 'VAT' },
+                },
               },
             },
           })
@@ -1206,11 +1215,12 @@ describe('ConnectionService', () => {
       it('should update accepting a valid rateLimit and never default a value into stored config', async () => {
         connectionPort.get.mockResolvedValue(mockConnection);
         connectionPort.update.mockResolvedValue(mockConnection);
-        const config = { baseUrl: 'https://shop.example.com', rateLimit: { requestsPerMinute: 30 } };
+        const config = {
+          baseUrl: 'https://shop.example.com',
+          rateLimit: { requestsPerMinute: 30 },
+        };
 
-        await expect(
-          service.update('connection-123', { config })
-        ).resolves.toEqual(mockConnection);
+        await expect(service.update('connection-123', { config })).resolves.toEqual(mockConnection);
         expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
       });
 
@@ -1540,7 +1550,10 @@ describe('ConnectionService', () => {
 
         await expect(
           service.update('connection-123', {
-            config: { baseUrl: 'https://shop.example.com', stockLocationOverride: 'ol_location_ghost' },
+            config: {
+              baseUrl: 'https://shop.example.com',
+              stockLocationOverride: 'ol_location_ghost',
+            },
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
@@ -1880,7 +1893,9 @@ describe('ConnectionService', () => {
       });
 
       it('should not enqueue when ProductMaster is switched off', async () => {
-        connectionPort.get.mockResolvedValue(withState('active', ['ProductMaster', 'ProductPublisher']));
+        connectionPort.get.mockResolvedValue(
+          withState('active', ['ProductMaster', 'ProductPublisher'])
+        );
         connectionPort.update.mockResolvedValue(withState('active', ['ProductPublisher']));
 
         await service.update('connection-123', {
@@ -1968,6 +1983,25 @@ describe('ConnectionService', () => {
         });
 
         expect(connectionPort.update).toHaveBeenCalled();
+      });
+
+      it('should warn once per process when a read returns a connection holding both', async () => {
+        const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        const legacy = {
+          ...mockConnection,
+          enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+        };
+        connectionPort.get.mockResolvedValue(legacy);
+
+        await service.get('connection-123');
+        await service.get('connection-123');
+
+        const hits = warnSpy.mock.calls.filter(([message]) =>
+          String(message).includes('holds ProductMaster and ProductPublisher')
+        );
+        expect(hits).toHaveLength(1);
+        expect(String(hits[0][0])).toContain('connection-123');
+        warnSpy.mockRestore();
       });
     });
 
@@ -2471,7 +2505,10 @@ describe('ConnectionService', () => {
       });
 
       it('should send the rewriter refusal as PROVIDER_REJECTED with its words apart (#3864)', async () => {
-        const refusal = new ConnectionCredentialsRewriteException('Stub', 'source connection is invalid');
+        const refusal = new ConnectionCredentialsRewriteException(
+          'Stub',
+          'source connection is invalid'
+        );
         credentialsRewriterRegistry.register('prestashop.webservice.v1', {
           rewrite: jest.fn().mockRejectedValue(refusal),
         });
@@ -2686,9 +2723,9 @@ describe('ConnectionService', () => {
         locations.countActiveLocations.mockResolvedValue(1);
         connectionPort.create.mockResolvedValue(mockConnection);
 
-        await expect(
-          service.create(claiming({ sourcingAuthority: true }))
-        ).resolves.toEqual(mockConnection);
+        await expect(service.create(claiming({ sourcingAuthority: true }))).resolves.toEqual(
+          mockConnection
+        );
       });
 
       it('should not read the location count at all when nothing claims routing', async () => {
@@ -2749,17 +2786,14 @@ describe('ConnectionService', () => {
         locations.countActiveLocations.mockResolvedValue(0);
         connectionPort.create.mockResolvedValue(mockConnection);
 
-        await expect(
-          service.create(claiming(config as Record<string, unknown>))
-        ).resolves.toEqual(mockConnection);
+        await expect(service.create(claiming(config as Record<string, unknown>))).resolves.toEqual(
+          mockConnection
+        );
       });
     });
   });
   describe('archive / restore (#3657)', () => {
-    const withState = (
-      status: Connection['status'],
-      credentialsRef: string
-    ): Connection =>
+    const withState = (status: Connection['status'], credentialsRef: string): Connection =>
       new Connection(
         'connection-123',
         'prestashop',
@@ -2894,9 +2928,7 @@ describe('ConnectionService', () => {
         async (status) => {
           connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
 
-          await expect(service.archive('connection-123')).rejects.toBeInstanceOf(
-            ConflictException
-          );
+          await expect(service.archive('connection-123')).rejects.toBeInstanceOf(ConflictException);
           expect(credentials.delete).not.toHaveBeenCalled();
           expect(connectionPort.update).not.toHaveBeenCalled();
         }
@@ -2951,9 +2983,7 @@ describe('ConnectionService', () => {
         async (status) => {
           connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
 
-          await expect(service.restore('connection-123')).rejects.toBeInstanceOf(
-            ConflictException
-          );
+          await expect(service.restore('connection-123')).rejects.toBeInstanceOf(ConflictException);
           expect(connectionPort.update).not.toHaveBeenCalled();
         }
       );
@@ -2972,9 +3002,9 @@ describe('ConnectionService', () => {
       it('should refuse any status change on an archived connection', async () => {
         connectionPort.get.mockResolvedValue(withState('archived', ''));
 
-        await expect(
-          service.update('connection-123', { status: 'active' })
-        ).rejects.toBeInstanceOf(ConflictException);
+        await expect(service.update('connection-123', { status: 'active' })).rejects.toBeInstanceOf(
+          ConflictException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
