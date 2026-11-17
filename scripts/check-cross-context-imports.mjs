@@ -442,6 +442,15 @@ const ALLOW_LIST = new Map([
     ]),
   ],
 
+  // The release-center persistence int-spec (#4141) proves partial-index
+  // ON CONFLICT predicates, the cursor row comparison and the per-user row
+  // limit under concurrency, all repository SQL. Like the entry above it has
+  // no rewire target and must NOT be dropped when #722 lands.
+  [
+    'apps/api/test/integration/release-center-persistence.int-spec.ts',
+    new Set(['ReleaseCursorRepositoryPort', 'ReleaseItemStateRepositoryPort']),
+  ],
+
   // The dead failed-creation guard is a SQL predicate over a LEFT join, so the
   // int-spec must drive the repository against real Postgres - a service-level
   // read would not exercise the negated-NULL case it exists to pin. Like the
