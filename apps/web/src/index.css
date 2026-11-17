@@ -396,6 +396,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1); /* @kind other */
 
   /* ── Tracking (letter-spacing) ────────────────────────────────────── */
   --tracking-tight: -0.012em;
@@ -40150,4 +40151,163 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .sync-guide__section-body { transition: none; }
   .sync-progress__confirm,
   .sync-guide__item[data-focus='true'] { animation: none; }
+}
+
+/* ── SettingsPageTemplate (#4132) ───────────────────────────────────────
+   One layout for every settings screen. The sticky contents keep a
+   --space-5 gap below the sticky topbar so they never touch the navbar. */
+.settings-page__head { display: grid; gap: var(--space-1); margin-bottom: var(--space-5); }
+.settings-page__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+.settings-page__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+.settings-page__description { color: var(--text-secondary); max-width: 62ch; }
+.settings-page__head[data-condensed='true'] .settings-page__title,
+.settings-page__head[data-condensed='true'] .settings-page__eyebrow { opacity: 0.35; }
+.settings-page__layout {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+.settings-page__toc {
+  position: sticky;
+  top: calc(var(--shell-topbar-height) + var(--space-5));
+  align-self: start;
+  display: grid;
+  gap: 2px;
+  font-size: 0.8125rem;
+}
+.settings-page__toc-title {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 var(--space-2) var(--space-2);
+}
+.settings-page__toc-link {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: inherit;
+  box-shadow: inset 2px 0 0 transparent;
+  transition:
+    box-shadow var(--duration-normal) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.settings-page__toc-link:hover { color: var(--text-primary); background: var(--bg-surface-muted); }
+.settings-page__toc-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.settings-page__toc-link[aria-current='true'] {
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+.settings-page__toc-page {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(var(--space-2)) scale(0.96);
+  transform-origin: left top;
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-spring),
+    opacity var(--duration-normal) var(--ease-out),
+    transform var(--duration-slow) var(--ease-spring);
+}
+.settings-page__toc-page[data-on='true'] { grid-template-rows: 1fr; opacity: 1; transform: none; }
+.settings-page__toc-page > div { overflow: hidden; min-height: 0; }
+.settings-page__toc-page-btn {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  padding: 2px var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-page__toc-page-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.settings-page__toc-page-btn strong {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.settings-page__toc-page-btn span {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.settings-page__toc-page-btn:hover strong { color: var(--accent-primary); }
+.settings-page__card {
+  max-width: 40rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.settings-page__fields { display: grid; min-width: 0; margin: 0; padding: 0; border: 0; }
+.settings-page__readonly {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) var(--space-5) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+.settings-page__section {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  scroll-margin-top: calc(var(--shell-topbar-height) + var(--space-5));
+}
+.settings-page__section-head { display: grid; gap: 2px; }
+.settings-page__section-head h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.settings-page__section-head p { font-size: 0.8125rem; color: var(--text-muted); max-width: 56ch; }
+.settings-page__actions {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-surface-elevated);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.settings-page__fields > .settings-page__section:last-child { border-bottom: 0; }
+@media (max-width: 767px) {
+  .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
+  .settings-page__toc { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-page__toc-page,
+  .settings-page__toc-link,
+  .settings-page__title,
+  .settings-page__eyebrow { transition: none; }
 }
