@@ -172,6 +172,25 @@ describe('InventoryService', () => {
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
   });
 
+  it('enqueues propagation when a previously stale row returns at the same quantity', async () => {
+    const input = createItem({
+      availableQuantity: 5,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+    const previous = createItem({
+      availableQuantity: 5,
+      isStale: true,
+      updatedAt: new Date('2026-01-01T11:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(previous);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+  });
+
   // #2324 (ADR-058 decision 5) — INVERTED. A located write used to be skipped,
   // which meant a locating master never propagated at all.
   it('enqueues propagation for a located write', async () => {

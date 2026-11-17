@@ -94,7 +94,16 @@ export class InventoryService implements IInventoryService {
     // change contributes nothing new to the sum, and suppressing it costs
     // nothing. Making this guard aggregate-aware would put an N+1 read on the
     // hottest write path in the system.
-    if (previous && previous.availableQuantity === upserted.availableQuantity) {
+    //
+    // A previously STALE row coming back is a transition even at an identical
+    // quantity: the stale pause (#1689) zeroed the offers while this row kept
+    // its stock, so skipping here would leave every offer at 0 until the
+    // master's stock happened to change.
+    if (
+      previous &&
+      !previous.isStale &&
+      previous.availableQuantity === upserted.availableQuantity
+    ) {
       this.logger.debug(
         `inventory_write_propagation_skipped_no_change product=${upserted.productId} variant=${upserted.productVariantId ?? 'base'} quantity=${upserted.availableQuantity}`
       );
