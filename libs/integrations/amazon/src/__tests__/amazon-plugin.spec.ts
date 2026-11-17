@@ -42,7 +42,7 @@ describe('Amazon plugin', () => {
     expect(amazonAdapterManifest).toMatchObject({
       adapterKey: 'amazon.spapi.v1',
       platformType: 'amazon',
-      supportedCapabilities: ['OrderSource', 'OfferManager'],
+      supportedCapabilities: ['OrderSource', 'OfferManager', 'EanCategoryMatcher', 'OfferCreator'],
       defaultEnabledCapabilities: [],
       buyerDataRetentionDays: 30,
       isDefault: true,

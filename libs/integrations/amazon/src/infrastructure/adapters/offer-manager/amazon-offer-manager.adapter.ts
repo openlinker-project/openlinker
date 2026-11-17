@@ -21,6 +21,15 @@
  *     refused rather than ignored. Replacing `purchasable_offer` also clears
  *     what else it held for that marketplace (a sale price, min / max price
  *     bounds set in Seller Central).
+ *   - `CatalogProductReader` + `EanCategoryMatcher` (#4181): Amazon's catalogue
+ *     by EAN (Catalog Items 2022-04-01); a match is the ASIN as the product
+ *     card and its product type as the category.
+ *   - `OfferCreator` (#4181): `putListingsItem`. On an existing ASIN, an
+ *     offer-only listing (`LISTING_OFFER_ONLY`); the SKU is derived from the
+ *     variant so a retry addresses the same listing, and an existing listing
+ *     under that SKU is reported as already existing rather than overwritten.
+ *     Amazon checks the listing after it answers `ACCEPTED`, so the create
+ *     reports `validating` and the status read reports the outcome.
  *   - `OfferStatusReader`: `getListingsItem` with summaries, offers,
  *     fulfilment and issues: `BUYABLE` is active, otherwise inactive; ERROR
  *     issues are the validation errors; the live price and quantity are the
@@ -39,8 +48,20 @@
  * @module libs/integrations/amazon/src/infrastructure/adapters/offer-manager
  */
 import {
+  CatalogProductNotFoundException,
   CONSERVATIVE_DESCRIPTION_FORMAT,
+  type BatchCategoryByEanInput,
+  type CatalogProduct,
+  type CatalogProductMatchResult,
+  type CatalogProductReader,
+  type CatalogProductSummary,
+  type CreateOfferCommand,
+  type CreateOfferResult,
   type DescriptionFormat,
+  type EanCategoryMatcher,
+  type EanMatchResult,
+  type FindProductsByBarcodeInput,
+  type OfferCreator,
   type OfferFeedInput,
   type OfferFeedOutput,
   type OfferFieldUpdater,
@@ -58,6 +79,7 @@ import { AMAZON_KNOWN_MARKETPLACES } from '../../../amazon.constants';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import { AmazonNotSupportedException } from '../../../domain/exceptions/amazon-not-supported.exception';
+import type { AmazonCatalogEntry } from '../../../domain/types/amazon-catalog.types';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import {
   AMAZON_SELLER_FULFILLMENT_CHANNEL,
@@ -66,19 +88,126 @@ import {
   type AmazonListingSubmissionResponse,
 } from '../../../domain/types/amazon-listing.types';
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
+import {
+  AMAZON_OFFER_ONLY_PRODUCT_TYPE,
+  composeOfferOnlyListing,
+  resolveAmazonSku,
+  type AmazonListingPlan,
+} from '../../mappers/amazon-listing-composer';
+import { AmazonCatalogReader } from './amazon-catalog-reader';
 
 const LISTINGS_PATH = '/listings/2021-08-01/items';
 /** `searchListingsItems` returns at most 20 items a page. */
 const MAX_PAGE_SIZE = 20;
 
-export class AmazonOfferManagerAdapter implements OfferManagerPort, OfferLister, OfferStatusReader, OfferFieldUpdater {
+export class AmazonOfferManagerAdapter
+  implements
+    OfferManagerPort,
+    OfferLister,
+    OfferStatusReader,
+    OfferFieldUpdater,
+    CatalogProductReader,
+    EanCategoryMatcher,
+    OfferCreator
+{
   private readonly logger = new Logger(AmazonOfferManagerAdapter.name);
+  private readonly catalog: AmazonCatalogReader;
 
   constructor(
     private readonly connectionId: string,
     private readonly client: AmazonSpApiClient,
     private readonly config: AmazonConnectionConfig,
-  ) {}
+  ) {
+    this.catalog = new AmazonCatalogReader(client, config.marketplaceIds[0]);
+  }
+
+  async findProductsByBarcode(input: FindProductsByBarcodeInput): Promise<CatalogProductMatchResult> {
+    const entries = await this.catalog.findByEan(input.barcode);
+    if (entries.length === 0) {
+      return { kind: 'no_match' };
+    }
+    if (entries.length > 1) {
+      return { kind: 'ambiguous', products: entries.map(toSummary) };
+    }
+    return { kind: 'unique', product: toCatalogProduct(entries[0]) };
+  }
+
+  async getProduct(input: { productId: string }): Promise<CatalogProduct> {
+    try {
+      return toCatalogProduct(await this.catalog.getByAsin(input.productId));
+    } catch (error) {
+      if (error instanceof AmazonApiError && error.statusCode === 404) {
+        throw new CatalogProductNotFoundException(input.productId);
+      }
+      throw error;
+    }
+  }
+
+  async resolveCategoriesForBatchByEan(input: BatchCategoryByEanInput): Promise<Map<string, EanMatchResult>> {
+    const results = new Map<string, EanMatchResult>();
+    // Sequential: Catalog Items allows 2 requests a second; the client's
+    // limiter paces each call, a parallel fan-out would only queue there.
+    for (const item of input.items) {
+      if (item.ean === null || item.ean.trim().length === 0) {
+        results.set(item.variantId, { kind: 'no-ean' });
+        continue;
+      }
+      let entries: AmazonCatalogEntry[];
+      try {
+        entries = await this.catalog.findByEan(item.ean);
+      } catch {
+        results.set(item.variantId, { kind: 'no-match' });
+        continue;
+      }
+      if (entries.length === 0) {
+        results.set(item.variantId, { kind: 'no-match' });
+      } else if (entries.length === 1) {
+        results.set(item.variantId, {
+          kind: 'matched',
+          allegroCategoryId: entries[0].productType ?? AMAZON_OFFER_ONLY_PRODUCT_TYPE,
+          productCardId: entries[0].asin,
+          method: 'auto_detect',
+        });
+      } else {
+        results.set(item.variantId, {
+          kind: 'multi-match',
+          candidates: entries.map((entry) => ({
+            allegroCategoryId: entry.productType ?? AMAZON_OFFER_ONLY_PRODUCT_TYPE,
+            productCardId: entry.asin,
+            name: entry.name,
+          })),
+        });
+      }
+    }
+    return results;
+  }
+
+  async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
+    const sku = resolveAmazonSku(cmd);
+    const existing = await this.findListing(sku);
+    if (existing !== null) {
+      const summary = existing.summaries?.[0];
+      return {
+        externalOfferId: sku,
+        status: summary?.status.includes('BUYABLE') ? 'active' : 'validating',
+        alreadyExisted: true,
+      };
+    }
+
+    const asin = cmd.productCardId ?? cmd.overrides?.productCardId ?? null;
+    if (asin === null) {
+      throw new AmazonNotSupportedException(
+        'creating a new catalogue item: no Amazon product (ASIN) matches this barcode',
+      );
+    }
+    const plan = composeOfferOnlyListing({
+      cmd,
+      asin,
+      productType: cmd.overrides?.categoryId ?? null,
+      marketplaceIds: this.config.marketplaceIds,
+    });
+    return this.submit(plan);
+  }
 
   async listOffers(input: OfferFeedInput): Promise<OfferFeedOutput> {
     const response = await this.client.get<AmazonListingSearchResults>(`${LISTINGS_PATH}/${this.sellerPath()}`, {
@@ -199,6 +328,39 @@ export class AmazonOfferManagerAdapter implements OfferManagerPort, OfferLister,
     };
   }
 
+  private async submit(plan: AmazonListingPlan): Promise<CreateOfferResult> {
+    const response = await this.client.put<AmazonListingSubmissionResponse>(
+      `${LISTINGS_PATH}/${this.sellerPath()}/${encodeURIComponent(plan.sku)}`,
+      plan.body,
+      { marketplaceIds: plan.marketplaceIds },
+    );
+    const errors = (response.data.issues ?? []).filter((issue) => issue.severity === 'ERROR');
+    if (response.data.status === 'INVALID') {
+      return {
+        externalOfferId: plan.sku,
+        status: 'draft',
+        validationErrors: (errors.length > 0 ? errors : (response.data.issues ?? [])).map((issue) => ({
+          code: issue.code,
+          message: issue.message,
+          ...(issue.attributeNames?.[0] ? { field: issue.attributeNames[0] } : {}),
+        })),
+      };
+    }
+    return { externalOfferId: plan.sku, status: 'validating' };
+  }
+
+  /** The listing under `sku`, or `null` when Amazon has none. */
+  private async findListing(sku: string): Promise<AmazonListingItem | null> {
+    try {
+      return await this.readListing(sku);
+    } catch (error) {
+      if (error instanceof AmazonApiError && error.statusCode === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   private async readListing(sku: string, withIssues = false): Promise<AmazonListingItem> {
     const response = await this.client.get<AmazonListingItem>(
       `${LISTINGS_PATH}/${this.sellerPath()}/${encodeURIComponent(sku)}`,
@@ -249,4 +411,21 @@ function isFulfilledByAmazon(item: AmazonListingItem): boolean {
   return (item.fulfillmentAvailability ?? []).some(
     (entry) => entry.fulfillmentChannelCode !== AMAZON_SELLER_FULFILLMENT_CHANNEL,
   );
+}
+
+function toSummary(entry: AmazonCatalogEntry): CatalogProductSummary {
+  return {
+    id: entry.asin,
+    name: entry.name,
+    ...(entry.ean ? { ean: entry.ean } : {}),
+    ...(entry.images[0] ? { imageUrl: entry.images[0] } : {}),
+  };
+}
+
+function toCatalogProduct(entry: AmazonCatalogEntry): CatalogProduct {
+  return {
+    ...toSummary(entry),
+    images: [...entry.images],
+    parameters: entry.brand ? [{ parameterId: 'brand', name: 'Brand', valueStrings: [entry.brand] }] : [],
+  };
 }

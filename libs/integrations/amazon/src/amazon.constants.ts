@@ -50,11 +50,20 @@ export const AMAZON_SPAPI_HOSTS: Readonly<Record<AmazonEnvironment, Readonly<Rec
  * by format alone: the list names what we target, not every Amazon market.
  */
 export const AMAZON_KNOWN_MARKETPLACES: Readonly<
-  Record<string, { readonly country: string; readonly region: AmazonRegion; readonly currency: string }>
+  Record<
+    string,
+    {
+      readonly country: string;
+      readonly region: AmazonRegion;
+      readonly currency: string;
+      /** The language text attributes of a listing are written in (`language_tag`, #4181). */
+      readonly languageTag: string;
+    }
+  >
 > = {
-  A13V1IB3VIYZZH: { country: 'FR', region: 'eu', currency: 'EUR' },
-  A1PA6795UKMFR9: { country: 'DE', region: 'eu', currency: 'EUR' },
-  A1C3SOZRARQ6R3: { country: 'PL', region: 'eu', currency: 'PLN' },
+  A13V1IB3VIYZZH: { country: 'FR', region: 'eu', currency: 'EUR', languageTag: 'fr_FR' },
+  A1PA6795UKMFR9: { country: 'DE', region: 'eu', currency: 'EUR', languageTag: 'de_DE' },
+  A1C3SOZRARQ6R3: { country: 'PL', region: 'eu', currency: 'PLN', languageTag: 'pl_PL' },
 };
 
 /** Probe used by the connection tester; needs no role beyond the app's base access. */

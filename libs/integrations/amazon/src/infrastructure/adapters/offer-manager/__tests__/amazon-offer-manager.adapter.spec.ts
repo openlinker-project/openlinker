@@ -217,3 +217,151 @@ describe('AmazonOfferManagerAdapter.getOfferStatus', () => {
     await expect(adapter.getOfferStatus('MUG-BLUE')).rejects.toBeInstanceOf(AmazonApiError);
   });
 });
+
+const catalogHit = {
+  asin: 'B0MUG00001',
+  summaries: [{ marketplaceId: 'A1PA6795UKMFR9', itemName: 'Blaue Tasse', brand: 'Acme' }],
+  productTypes: [{ marketplaceId: 'A1PA6795UKMFR9', productType: 'KITCHEN' }],
+};
+
+function catalogSetup(items: unknown[]): { adapter: AmazonOfferManagerAdapter; get: jest.Mock } {
+  const { adapter, get } = setup();
+  get.mockResolvedValue({ status: 200, data: { numberOfResults: items.length, items }, requestId: 'r' });
+  return { adapter, get };
+}
+
+describe('AmazonOfferManagerAdapter.findProductsByBarcode', () => {
+  it('should report one catalogue item as a unique match with its ASIN', async () => {
+    const { adapter } = catalogSetup([catalogHit]);
+
+    const result = await adapter.findProductsByBarcode({ barcode: '5901234123457' });
+
+    expect(result).toMatchObject({
+      kind: 'unique',
+      product: { id: 'B0MUG00001', name: 'Blaue Tasse', parameters: [{ parameterId: 'brand', valueStrings: ['Acme'] }] },
+    });
+  });
+
+  it('should report no match and an ambiguity', async () => {
+    await expect(catalogSetup([]).adapter.findProductsByBarcode({ barcode: '5901234123457' })).resolves.toEqual({
+      kind: 'no_match',
+    });
+    const ambiguous = await catalogSetup([catalogHit, { ...catalogHit, asin: 'B0MUG00002' }]).adapter.findProductsByBarcode({
+      barcode: '5901234123457',
+    });
+    expect(ambiguous).toMatchObject({ kind: 'ambiguous', products: [{ id: 'B0MUG00001' }, { id: 'B0MUG00002' }] });
+  });
+
+  it('should translate an unknown ASIN into the core not-found exception', async () => {
+    const { adapter, get } = setup();
+    get.mockRejectedValue(new AmazonApiError(404, 'NOT_FOUND', 'no item', 'r'));
+
+    await expect(adapter.getProduct({ productId: 'B0NOPE' })).rejects.toThrow('Catalog product not found: B0NOPE');
+  });
+});
+
+describe('AmazonOfferManagerAdapter.resolveCategoriesForBatchByEan', () => {
+  it('should resolve each variant without failing the batch', async () => {
+    const { adapter, get } = setup();
+    get
+      .mockResolvedValueOnce({ status: 200, data: { numberOfResults: 1, items: [catalogHit] }, requestId: 'r' })
+      .mockRejectedValueOnce(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'))
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { numberOfResults: 2, items: [catalogHit, { ...catalogHit, asin: 'B0MUG00002' }] },
+        requestId: 'r',
+      });
+
+    const result = await adapter.resolveCategoriesForBatchByEan({
+      items: [
+        { variantId: 'v1', ean: '5901234123457' },
+        { variantId: 'v2', ean: null },
+        { variantId: 'v3', ean: '5901234123458' },
+        { variantId: 'v4', ean: '5901234123459' },
+      ],
+    });
+
+    expect(result.get('v1')).toEqual({
+      kind: 'matched',
+      allegroCategoryId: 'KITCHEN',
+      productCardId: 'B0MUG00001',
+      method: 'auto_detect',
+    });
+    expect(result.get('v2')).toEqual({ kind: 'no-ean' });
+    expect(result.get('v3')).toEqual({ kind: 'no-match' });
+    expect(result.get('v4')).toMatchObject({ kind: 'multi-match', candidates: [{ productCardId: 'B0MUG00001' }, {}] });
+  });
+});
+
+describe('AmazonOfferManagerAdapter.createOffer', () => {
+  const cmd = {
+    internalVariantId: 'ol_variant_abc',
+    connectionId: 'conn-amz',
+    price: { amount: 19.99, currency: 'EUR' },
+    stock: 3,
+    publishImmediately: true,
+    productCardId: 'B0MUG00001',
+    overrides: { categoryId: 'KITCHEN' },
+  };
+
+  function createSetup(): { adapter: AmazonOfferManagerAdapter; get: jest.Mock; put: jest.Mock } {
+    const get = jest.fn().mockRejectedValue(new AmazonApiError(404, 'NOT_FOUND', 'no listing', 'r'));
+    const put = jest
+      .fn()
+      .mockResolvedValue({ status: 200, data: { sku: 'OL-abc', status: 'ACCEPTED', submissionId: 's1' }, requestId: 'r' });
+    const client = { get, put } as unknown as AmazonSpApiClient;
+    return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, CONFIG), get, put };
+  }
+
+  it('should list an offer on the matched ASIN and report it validating', async () => {
+    const { adapter, put } = createSetup();
+
+    const result = await adapter.createOffer(cmd);
+
+    expect(put).toHaveBeenCalledWith(
+      '/listings/2021-08-01/items/A2SELLER123/OL-abc',
+      expect.objectContaining({ productType: 'KITCHEN', requirements: 'LISTING_OFFER_ONLY' }),
+      { marketplaceIds: ['A1PA6795UKMFR9', 'A13V1IB3VIYZZH'] },
+    );
+    expect(result).toEqual({ externalOfferId: 'OL-abc', status: 'validating' });
+  });
+
+  it('should report a listing Amazon refuses as a draft with its issues', async () => {
+    const { adapter, put } = createSetup();
+    put.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: {
+        sku: 'OL-abc',
+        status: 'INVALID',
+        submissionId: 's1',
+        issues: [{ code: '90220', message: 'condition_type is required', severity: 'ERROR', attributeNames: ['condition_type'] }],
+      },
+    });
+
+    await expect(adapter.createOffer(cmd)).resolves.toEqual({
+      externalOfferId: 'OL-abc',
+      status: 'draft',
+      validationErrors: [{ code: '90220', message: 'condition_type is required', field: 'condition_type' }],
+    });
+  });
+
+  it('should not overwrite a listing that already exists under the SKU', async () => {
+    const { adapter, get, put } = createSetup();
+    get.mockResolvedValue({ status: 200, data: fbmListing({ sku: 'OL-abc' }), requestId: 'r' });
+
+    await expect(adapter.createOffer(cmd)).resolves.toEqual({
+      externalOfferId: 'OL-abc',
+      status: 'active',
+      alreadyExisted: true,
+    });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('should refuse a variant with no Amazon catalogue item', async () => {
+    const { adapter, put } = createSetup();
+
+    await expect(adapter.createOffer({ ...cmd, productCardId: undefined })).rejects.toThrow(AmazonNotSupportedException);
+    expect(put).not.toHaveBeenCalled();
+  });
+});
