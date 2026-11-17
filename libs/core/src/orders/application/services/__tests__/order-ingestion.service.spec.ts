@@ -4324,6 +4324,39 @@ describe('OrderIngestionService', () => {
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
       });
 
+      // #4033 — an order nobody has paid for yet is not routed: it is held in
+      // OpenLinker, it is not mirrored, and no sale decrement or dispatch job
+      // is enqueued.
+      it('holds an order the routing commit skipped as awaiting payment, without lowering master stock', async () => {
+        routingCommit.route.mockResolvedValue({ status: 'skipped', reason: 'awaiting-payment' });
+
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        // The outcome is mocked; this proves what the intercept does with it.
+        // The callback itself re-reads the stored record under the routing lock
+        // (the real-DB path is in fulfillment-router-wiring.int-spec.ts).
+        const input = routingCommit.route.mock.calls[0][0];
+        orderRecordService.getOrderRecord.mockResolvedValue({ paymentStatus: 'awaiting' } as never);
+        await expect(input.isAwaitingPayment()).resolves.toBe(true);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(results).toEqual([]);
+        expect(markBlock()).toHaveBeenCalledWith('ol_order_int', {
+          reason: 'routing-awaiting-payment',
+          detail: null,
+        });
+        const enqueuedTypes = jobQueue.enqueue.mock.calls.map(([request]) => request.type);
+        expect(enqueuedTypes).not.toContain('inventory.saleDecrement');
+        expect(enqueuedTypes).not.toContain('fulfillment.work.dispatch');
+      });
+
+      it('lets a cash on delivery order route before it is paid', async () => {
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const input = routingCommit.route.mock.calls[0][0];
+        orderRecordService.getOrderRecord.mockResolvedValue({ paymentStatus: 'cod' } as never);
+        await expect(input.isAwaitingPayment()).resolves.toBe(false);
+      });
+
       // #3485 — no shipping address: nothing to route to, and mirroring would
       // put the order in every product master.
       it('holds an order with no shipping address instead of mirroring it', async () => {
