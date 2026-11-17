@@ -513,8 +513,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     // Two properties depend on the placement:
     //   - `persistIncomingSnapshot` overwrites `orderSnapshot`, so after it the
     //     prior state this diff needs no longer exists anywhere;
-    //   - Step 4 throws `MissingOrderItemMappingError` before `persistOrder` is
-    //     ever reached, so writing the fact later would lose it permanently on
+    //   - Step 4 throws `MissingOrderItemMappingError` (or, for unlisted offers,
+    //     returns early, #4040) before `persistOrder` is ever reached, so writing the fact later would lose it permanently on
     //     exactly the orders most likely to have been amended (a line the source
     //     changed is a line whose mapping may well have gone with it).
     // The fact is an observation about the SOURCE and is true whether or not
@@ -689,12 +689,15 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
     }
 
-    // Step 4: if any unresolved, persist the honest record state (#1689) then
-    // throw so the job runner retries with backoff. A `source_deleted` ref is
-    // a permanently unresolvable state (deleted at the master, #1599) — distinct
-    // from the ordinary, self-healing `awaiting_mapping` gap; the retry itself
-    // is unchanged (review #11 — routing a stale line to a terminal outcome
-    // and partial-order fulfilment — is out of scope for this issue).
+    // Step 4: if any unresolved, persist the honest record state (#1689), then
+    // end one of two ways:
+    //   - every unresolved line is a `missing_mapping` on an `offer` ref
+    //     (#4040): return early WITHOUT throwing, so the job is not retried;
+    //   - anything else: throw so the job runner retries with backoff.
+    // A `source_deleted` ref is a permanently unresolvable state (deleted at the
+    // master, #1599) - distinct from the ordinary `awaiting_mapping` gap - and
+    // keeps the throw (review #11 - routing a stale line to a terminal outcome
+    // and partial-order fulfilment - is out of scope).
     if (unresolvedRefs.length > 0) {
       const first = unresolvedRefs[0];
       const firstItem = incoming.items.find((i) => i.id === first.itemId);
@@ -704,6 +707,29 @@ export class OrderIngestionService implements IOrderIngestionService {
         status: recordStatus,
         reason: (firstStaleRef ?? first).reason,
       });
+      // #4040: an offer OpenLinker never listed is not a transient gap. The offer
+      // mapping only appears when someone lists or links that offer, which a
+      // retry ladder (10 attempts in hours) cannot wait for, and on a freshly
+      // connected account every historic order is in this state, so retrying
+      // holds the connection's realtime lane for hours. The record already
+      // carries `awaiting_mapping` and its reason, which is the operator's
+      // signal. Known limitation: nothing re-drives the order once the offer is
+      // later mapped (cursor-based feeds never re-deliver the event); the
+      // operator remedy is a manual re-sync of the order.
+      // A line missing from `incoming.items` fails the check and falls through
+      // to the throw, the safe direction.
+      const onlyUnlistedOffers = unresolvedRefs.every(
+        (ref) =>
+          ref.kind === 'missing_mapping' &&
+          incoming.items.find((i) => i.id === ref.itemId)?.productRef.type === 'offer'
+      );
+      if (onlyUnlistedOffers) {
+        this.logger.debug(
+          `Order ${internalOrderId} awaits an offer mapping (connectionId=${connectionId}); ` +
+            `recorded as awaiting_mapping without retrying`
+        );
+        return [];
+      }
       throw new MissingOrderItemMappingError(
         connectionId,
         firstItem?.productRef ?? { type: 'offer', externalId: first.itemId },

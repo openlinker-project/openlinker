@@ -1840,7 +1840,7 @@ describe('OrderIngestionService', () => {
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
       expect(jobQueue.enqueue).toHaveBeenCalledWith({
@@ -2187,7 +2187,7 @@ describe('OrderIngestionService', () => {
       expect('gift' in items[1]).toBe(false);
     });
 
-    it('partial unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
+    it('partial unresolved (unlisted offer): persistIncomingSnapshot called, no retry, persistOrder NOT called (#4040)', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
           resolved: true,
@@ -2203,7 +2203,7 @@ describe('OrderIngestionService', () => {
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
@@ -2283,7 +2283,7 @@ describe('OrderIngestionService', () => {
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
         'ol_order_item_test',
@@ -2294,7 +2294,35 @@ describe('OrderIngestionService', () => {
       );
     });
 
-    it('all unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
+    it('should still throw for a missing mapping on a non-offer ref so the job retries (#4040)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [
+          {
+            id: 'item-1',
+            productRef: { type: 'product' as const, externalId: 'p-1' },
+            quantity: 1,
+            price: 9.99,
+          },
+        ],
+      });
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: false,
+        productRef: { type: 'product', externalId: 'p-1' },
+        reason: 'no mapping',
+        kind: 'missing_mapping' as const,
+      });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ status: 'awaiting_mapping' })
+      );
+    });
+
+    it('all unresolved (unlisted offers): persistIncomingSnapshot called, no retry, persistOrder NOT called (#4040)', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
           resolved: false,
@@ -2311,7 +2339,7 @@ describe('OrderIngestionService', () => {
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
@@ -3022,7 +3050,7 @@ describe('OrderIngestionService', () => {
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(orderRecordService.recordAmendment).toHaveBeenCalledTimes(1);
     });
