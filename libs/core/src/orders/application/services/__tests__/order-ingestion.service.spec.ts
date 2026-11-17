@@ -4101,12 +4101,14 @@ describe('OrderIngestionService', () => {
       // #4033 — an order nobody has paid for yet is not routed: it is held in
       // OpenLinker, it is not mirrored, and no sale decrement or dispatch job
       // is enqueued.
-      it('holds an unpaid order as waiting for payment without lowering master stock', async () => {
+      it('holds an order the routing commit skipped as awaiting payment, without lowering master stock', async () => {
         routingCommit.route.mockResolvedValue({ status: 'skipped', reason: 'awaiting-payment' });
 
         const results = await service.syncOrderFromSource(connectionId, externalOrderId);
 
-        // The callback re-reads the stored record under the routing lock.
+        // The outcome is mocked; this proves what the intercept does with it.
+        // The callback itself re-reads the stored record under the routing lock
+        // (the real-DB path is in fulfillment-router-wiring.int-spec.ts).
         const input = routingCommit.route.mock.calls[0][0];
         orderRecordService.getOrderRecord.mockResolvedValue({ paymentStatus: 'awaiting' } as never);
         await expect(input.isAwaitingPayment()).resolves.toBe(true);

@@ -59,6 +59,7 @@ import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
+  deriveRoutingHoldOutcome,
   type FulfillmentRouterResolverPort,
   type IFulfillmentHandshakeService,
   type IRoutingCommitService,
@@ -66,7 +67,14 @@ import {
 } from '@openlinker/core/fulfillment';
 import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/inventory';
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
-import { OrdersModule } from '@openlinker/core/orders';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  OrdersModule,
+  isRoutingAwaitingPayment,
+  type IOrderRecordService,
+  type Order,
+  type PaymentStatus,
+} from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 import { OMS_PLATFORM_TYPE, OlFulfillmentExecutorAdapter } from '@openlinker/oms';
 
@@ -171,6 +179,144 @@ describe('Fulfilment router wiring (#2408)', () => {
       expect(
         await resolverFromOrdersModule().resolve('00000000-0000-0000-0000-0000000000ff')
       ).toBeNull();
+    });
+  });
+
+  /**
+   * One active location holding enough stock for `variantId`. Read the TRAP in
+   * this file's header before changing any of this.
+   */
+  const seedLocatedStock = async (suffix: string) => {
+    const dataSource = harness.getDataSource();
+    const location = await harness
+      .getApp()
+      .get<ILocationService>(LOCATION_SERVICE_TOKEN)
+      .createLocation({
+        code: `WH-${suffix}`.toUpperCase(),
+        name: 'Main warehouse',
+        kind: 'warehouse',
+        countryIso2: 'PL',
+        postcode: '30-001',
+      });
+    const productId = `ol_product_${suffix}`;
+    const variantId = `ol_variant_${suffix}`;
+    await dataSource
+      .getRepository(ProductOrmEntity)
+      .save({ id: productId, name: 'Routed product', sku: null, price: null });
+    await dataSource
+      .getRepository(ProductVariantOrmEntity)
+      .save({ id: variantId, productId, sku: `SKU-${suffix}` });
+    await dataSource.getRepository(InventoryItemOrmEntity).save({
+      id: `ol_inventory_${suffix}`,
+      productId,
+      productVariantId: variantId,
+      locationId: location.id,
+      availableQuantity: 10,
+      reservedQuantity: 0,
+    });
+    return { productId, variantId };
+  };
+
+  // #4033 review — the "routed by the next ingestion" half, against a real
+  // order record: the payment status is read from what was stored, exactly as
+  // both routing hosts read it, and nothing is written while it waits.
+  describe('an unpaid order waits, then routes once it is paid (#4033)', () => {
+    it('holds an awaiting-payment order with nothing written, then routes it and clears the block after payment', async () => {
+      const dataSource = harness.getDataSource();
+      const oms = await createOmsConnection('Warehouse packing');
+      const source = await createTestConnection(dataSource, {
+        platformType: 'allegro',
+        name: 'Allegro source',
+        adapterKey: 'allegro.test.unused',
+      });
+      const { productId, variantId } = await seedLocatedStock('awaitpay');
+      const records = harness.getApp().get<IOrderRecordService>(ORDER_RECORD_SERVICE_TOKEN);
+
+      const orderId = 'ol_order_awaitpay';
+      const storeOrder = (paymentStatus: PaymentStatus, eventKey: string) =>
+        records.persistOrder(
+          {
+            id: orderId,
+            orderNumber: 'ORD-AWAITPAY',
+            status: 'pending',
+            paymentStatus,
+            items: [
+              { id: 'line-1', productId, variantId, quantity: 2, price: 10, sku: 'SKU-awaitpay' },
+            ],
+            totals: { subtotal: 20, tax: 0, shipping: 0, total: 20, currency: 'PLN' },
+            createdAt: new Date('2026-11-01T00:00:00Z'),
+            updatedAt: new Date('2026-11-01T00:00:00Z'),
+          } as Order,
+          source.id,
+          eventKey
+        );
+
+      const router = await resolverFromOrdersModule().resolve(oms.id);
+      expect(router).not.toBeNull();
+      const routingCommit = harness
+        .getApp()
+        .select(OrdersModule)
+        .get<IRoutingCommitService>(ROUTING_COMMIT_SERVICE_TOKEN);
+      const routeOnce = () =>
+        routingCommit.route({
+          orderId,
+          routerConnectionId: oms.id,
+          lines: [{ orderLineId: 'line-1', productVariantId: variantId, quantity: 2 }],
+          shipTo: buildRoutingShipTo(
+            { countryIso2: 'PL', postalCode: '30-001', city: 'Kraków', addressHash: null },
+            { storePii: true }
+          ),
+          requestedDeliveryMethod: 'courier',
+          router: router!,
+          lock: singleUseLock(),
+          isCancelled: async () => (await records.getOrderRecord(orderId))?.isCancelled === true,
+          // The same read the ingestion intercept and the route handler make.
+          isAwaitingPayment: async () =>
+            isRoutingAwaitingPayment((await records.getOrderRecord(orderId))?.paymentStatus),
+        });
+      const countRows = async (
+        table: 'routing_decisions' | 'fulfillment_works'
+      ): Promise<number> => {
+        const [row] = await dataSource.query<{ n: number }[]>(
+          `SELECT COUNT(*)::int AS n FROM "${table}" WHERE "orderId" = $1`,
+          [orderId]
+        );
+        return Number(row.n);
+      };
+
+      // --- 1. stored unpaid: skipped, held, and nothing written --------------
+      await storeOrder('awaiting', 'evt-unpaid');
+      const waiting = await routeOnce();
+      expect(waiting).toEqual({ status: 'skipped', reason: 'awaiting-payment' });
+      expect(await countRows('routing_decisions')).toBe(0);
+      expect(await countRows('fulfillment_works')).toBe(0);
+
+      const held = deriveRoutingHoldOutcome(waiting);
+      expect(held.held).toBe(true);
+      await records.markFulfillmentBlock(orderId, held.block);
+      expect((await records.getOrderRecord(orderId))?.fulfillmentBlock).toEqual({
+        reason: 'routing-awaiting-payment',
+        detail: null,
+      });
+
+      // --- 2. re-ingested as paid: routed, and the block is cleared ----------
+      await storeOrder('paid', 'evt-paid');
+      // The block survives the re-ingestion write itself (single writer) - it is
+      // the routing outcome that clears it, not `persistOrder`.
+      expect((await records.getOrderRecord(orderId))?.fulfillmentBlock?.reason).toBe(
+        'routing-awaiting-payment'
+      );
+
+      const routed = await routeOnce();
+      // Whole-status check, so a `refused` arm cannot slip past - see the TRAP.
+      expect(routed.status).toBe('routed');
+      expect(await countRows('routing_decisions')).toBe(1);
+      expect(await countRows('fulfillment_works')).toBe(1);
+
+      const cleared = deriveRoutingHoldOutcome(routed);
+      expect(cleared.block).toBeNull();
+      await records.markFulfillmentBlock(orderId, cleared.block);
+      expect((await records.getOrderRecord(orderId))?.fulfillmentBlock).toBeNull();
     });
   });
 
