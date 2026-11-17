@@ -282,12 +282,72 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
     expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_delivery_method' });
   });
 
-  it('should treat a carrier rejection as RETRYABLE', async () => {
+  it('should report a carrier refusal as a TERMINAL business_failure (#3987)', async () => {
     shipmentDispatch.dispatch.mockRejectedValue(
-      new ShippingProviderRejectionException('inpost', 'timeout', 'timed out')
+      new ShippingProviderRejectionException(
+        'inpost',
+        'trucker_ID_is_not_set_for_organization',
+        'refused'
+      )
     );
 
-    await expect(handler.execute(job(validPayload))).rejects.toBeInstanceOf(SyncJobExecutionError);
+    expect(await handler.execute(job(validPayload))).toEqual({
+      outcome: 'business_failure',
+      outcomeReason: 'auto_dispatch_carrier_refused',
+    });
+  });
+
+  it('should report an adapter preflight failure as a TERMINAL business_failure (#3987)', async () => {
+    shipmentDispatch.dispatch.mockRejectedValue(
+      new ShippingProviderRejectionException(
+        'inpost',
+        'preflight.missing-dimensions-or-weight',
+        'missing'
+      )
+    );
+
+    expect(await handler.execute(job(validPayload))).toEqual({
+      outcome: 'business_failure',
+      outcomeReason: 'auto_dispatch_preflight_failed',
+    });
+  });
+
+  it.each(['api.http-503', 'api.http-429'])(
+    'should keep a transient carrier rejection (%s) RETRYABLE',
+    async (code) => {
+      shipmentDispatch.dispatch.mockRejectedValue(
+        new ShippingProviderRejectionException('inpost', code, 'upstream down')
+      );
+
+      await expect(handler.execute(job(validPayload))).rejects.toBeInstanceOf(
+        SyncJobExecutionError
+      );
+    }
+  );
+
+  it.each([null, 'shipx.something', 'api.http-unknown', 'api.http-408', 'api.http-401'])(
+    'should end a rejection with code %s as TERMINAL (core does not class it transient)',
+    async (code) => {
+      shipmentDispatch.dispatch.mockRejectedValue(
+        new ShippingProviderRejectionException('inpost', code as string, 'refused')
+      );
+
+      expect(await handler.execute(job(validPayload))).toEqual({
+        outcome: 'business_failure',
+        outcomeReason: 'auto_dispatch_carrier_refused',
+      });
+    }
+  );
+
+  it('should treat a 4xx carrier rejection as terminal (#3987)', async () => {
+    shipmentDispatch.dispatch.mockRejectedValue(
+      new ShippingProviderRejectionException('inpost', 'api.http-422', 'bad parcel')
+    );
+
+    expect(await handler.execute(job(validPayload))).toEqual({
+      outcome: 'business_failure',
+      outcomeReason: 'auto_dispatch_carrier_refused',
+    });
   });
 
   it('should treat any other adapter/infra failure as RETRYABLE', async () => {

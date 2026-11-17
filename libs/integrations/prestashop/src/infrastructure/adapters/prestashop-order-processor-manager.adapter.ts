@@ -593,8 +593,30 @@ export class PrestashopOrderProcessorManagerAdapter
         } catch (cartError) {
           const errorMessage = cartError instanceof Error ? cartError.message : String(cartError);
           this.logger.error(`Failed to create cart in PrestaShop: ${errorMessage}`);
+          // The cause keeps the status so the retry classifier can defer a
+          // throttled or unavailable shop (#3984). A cart is a pre-order
+          // artefact (a repeat leaves at most an orphan cart, and order
+          // duplication is guarded by the reference lookup), so the client's
+          // "ambiguous write" marker is deliberately dropped here: it would
+          // otherwise veto the deferral for a write that is safe to repeat. The
+          // response body is left out on purpose too: classification needs only
+          // the status and Retry-After, and the body (already logged by the
+          // client) is shop-controlled text we do not copy onto a second error.
           throw new PrestashopProvisioningException(
-            `Failed to create cart in PrestaShop: ${errorMessage}`
+            `Failed to create cart in PrestaShop: ${errorMessage}`,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            cartError instanceof PrestashopApiException
+              ? new PrestashopApiException(
+                  cartError.message,
+                  cartError.statusCode,
+                  undefined,
+                  cartError.connectionId,
+                  cartError.retryAfterSeconds
+                )
+              : undefined
           );
         }
 
@@ -838,7 +860,10 @@ export class PrestashopOrderProcessorManagerAdapter
       throw new PrestashopApiException(
         `Failed to create PrestaShop order: ${errorMessage}`,
         undefined,
-        undefined
+        undefined,
+        undefined,
+        undefined,
+        error
       );
     }
   }
@@ -928,7 +953,9 @@ export class PrestashopOrderProcessorManagerAdapter
       // `id_product_attribute` — collapse it (and any unmapped variant) to 0,
       // matching the order/cart mapper (#923).
       const externalVariantId = Number(
-        toPrestashopProductAttributeId(item.variantId ? externalVariantIds.get(item.variantId) : undefined)
+        toPrestashopProductAttributeId(
+          item.variantId ? externalVariantIds.get(item.variantId) : undefined
+        )
       );
       const key = `${String(externalProductId)}:${externalVariantId}`;
       const existing = groups.get(key);
@@ -1430,7 +1457,10 @@ export class PrestashopOrderProcessorManagerAdapter
   /** The first active state that reads as "processing, paid" - "Payment accepted" on a default install. */
   private defaultPaidStateId(states: PrestashopOrderStateSnapshot): number | null {
     for (const state of states.active()) {
-      if (states.statusOf(state.id) === 'processing' && states.paymentStatusOf(state.id) === 'paid') {
+      if (
+        states.statusOf(state.id) === 'processing' &&
+        states.paymentStatusOf(state.id) === 'paid'
+      ) {
         const id = Number(state.id);
         if (Number.isFinite(id) && id > 0) return id;
       }

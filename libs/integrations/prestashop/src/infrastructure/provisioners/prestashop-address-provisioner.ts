@@ -427,7 +427,9 @@ export class PrestashopAddressProvisioner {
         `Failed to provision address in PrestaShop: ${errorMessage}`,
         internalCustomerId,
         destinationConnectionId,
-        addressHash
+        addressHash,
+        undefined,
+        error
       );
     } finally {
       // Step 9: Release lock
