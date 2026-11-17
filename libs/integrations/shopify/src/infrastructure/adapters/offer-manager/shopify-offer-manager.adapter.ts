@@ -113,8 +113,8 @@ const SET_QUANTITIES_MUTATION = `mutation OlSetStock($input: InventorySetQuantit
   }
 }`;
 
-const ACTIVATE_MUTATION = `mutation OlActivateStock($inventoryItemId: ID!, $locationId: ID!) {
-  inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+const ACTIVATE_MUTATION = `mutation OlActivateStock($inventoryItemId: ID!, $locationId: ID!, $key: String!) {
+  inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) @idempotent(key: $key) {
     inventoryLevel { quantities(names: ["available"]) { name quantity } }
     userErrors { field message }
   }
@@ -334,7 +334,10 @@ export class ShopifyOfferManagerAdapter implements OfferManagerPort {
     );
     const payload = await this.client.mutate<ActivatePayload>(
       ACTIVATE_MUTATION,
-      { inventoryItemId, locationId: locationGid },
+      // Admin API 2026-10 refuses the mutation without the directive. Activating a level is
+      // naturally repeatable, so a fresh key per attempt cannot double-apply anything and a
+      // reused key can never replay a stale result after a later deactivation.
+      { inventoryItemId, locationId: locationGid, key: randomUUID() },
       'inventoryActivate',
     );
     return available(payload.inventoryLevel?.quantities);

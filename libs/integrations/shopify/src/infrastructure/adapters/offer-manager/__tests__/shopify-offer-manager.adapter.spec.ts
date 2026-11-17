@@ -103,6 +103,10 @@ describe('ShopifyOfferManagerAdapter', () => {
     await h.adapter.updateOfferQuantity({ offerId: '9', quantity: 4 } as never);
 
     expect(h.mutate.mock.calls.map((call: unknown[]) => call[2])).toEqual(['inventoryActivate', 'inventorySetQuantities']);
+    // Admin API 2026-10 refuses inventoryActivate without the @idempotent directive and its key.
+    const [activateDocument, activateVariables] = h.mutate.mock.calls[0] as [string, { key: unknown }];
+    expect(activateDocument).toContain('@idempotent(key: $key)');
+    expect(typeof activateVariables.key).toBe('string');
   });
 
   it('should delete a mapping whose product is gone and write nothing', async () => {
