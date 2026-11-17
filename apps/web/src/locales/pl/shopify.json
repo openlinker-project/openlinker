@@ -34,6 +34,7 @@
     "viewAll": "Wszystkie połączenia"
   },
   "connectionConfig": {
+    "callbackUrlHttpsRequired": "Wpisz adres zaczynający się od https://, np. https://openlinker.example.com. Shopify wysyła webhooki tylko na https.",
     "locationIdInvalid": "Wpisz ID lokalizacji Shopify, np. 12345678.",
     "salesCountryInvalid": "Wpisz dwuliterowy kod kraju, np. PL.",
     "unmanagedStockInvalid": "Wpisz liczbę całkowitą, 0 lub większą."

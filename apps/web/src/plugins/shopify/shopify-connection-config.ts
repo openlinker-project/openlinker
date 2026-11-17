@@ -17,7 +17,7 @@
  *
  * @module plugins/shopify
  */
-import { z } from 'zod';
+import { z, type RefinementCtx } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readOptionalConfigString } from '../../shared/plugins';
 import { getShopifyMessages } from './messages';
@@ -123,8 +123,26 @@ function applyShopifyConfig(
   return next;
 }
 
+/**
+ * The callback URL must be https for Shopify. The host schema accepts http for
+ * platforms that deliver to a LAN address, so without this the form let an
+ * http:// value through and only the API refused it, with a generic summary
+ * that named no field.
+ */
+function refineCallbackUrl(values: Record<string, unknown>, ctx: RefinementCtx): void {
+  const value = values.openlinkerCallbackBaseUrl;
+  if (typeof value === 'string' && value.trim().toLowerCase().startsWith('http://')) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['openlinkerCallbackBaseUrl'],
+      message: getShopifyMessages().connectionConfig.callbackUrlHttpsRequired,
+    });
+  }
+}
+
 export const shopifyConnectionConfig: ConnectionConfigContribution = {
   schemaShape: shopifySchemaShape,
+  superRefine: refineCallbackUrl,
   readConfigToForm: readShopifyConfig,
   applyToConfig: applyShopifyConfig,
 };

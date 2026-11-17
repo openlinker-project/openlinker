@@ -8,6 +8,7 @@
  * @module plugins/shopify
  */
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { readLocationId, shopifyConnectionConfig } from './shopify-connection-config';
 
 const { readConfigToForm, applyToConfig, schemaShape } = shopifyConnectionConfig;
@@ -86,6 +87,19 @@ describe('shopifyConnectionConfig', () => {
     expect(schemaShape.shopifyUnmanagedStockQuantity?.safeParse('-1').success).toBe(false);
     expect(schemaShape.shopifySalesCountryIso2?.safeParse('POL').success).toBe(false);
     expect(schemaShape.shopifySalesCountryIso2?.safeParse('').success).toBe(true);
+  });
+
+  it('should flag an http callback URL on its own field with a specific message', () => {
+    const schema = z
+      .object({ openlinkerCallbackBaseUrl: z.string() })
+      .superRefine((values, ctx) => shopifyConnectionConfig.superRefine?.(values, ctx));
+
+    const http = schema.safeParse({ openlinkerCallbackBaseUrl: 'http://ol.example.com' });
+    expect(http.success).toBe(false);
+    expect(http.error?.issues[0]?.path).toEqual(['openlinkerCallbackBaseUrl']);
+    expect(http.error?.issues[0]?.message).toContain('https://');
+    expect(schema.safeParse({ openlinkerCallbackBaseUrl: 'https://ol.example.com' }).success).toBe(true);
+    expect(schema.safeParse({ openlinkerCallbackBaseUrl: '' }).success).toBe(true);
   });
 
   it('should read a numeric location id stored as a number', () => {
