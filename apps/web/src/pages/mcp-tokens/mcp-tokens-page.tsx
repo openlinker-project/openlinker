@@ -12,11 +12,13 @@ import { useSession } from '../../shared/auth/use-session';
 import { useMessages } from '../../shared/i18n';
 import { ErrorState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { McpTokensPanel } from '../../features/mcp-tokens/components/mcp-tokens-panel';
 
 export function McpTokensPage(): ReactElement {
   const { session } = useSession();
   const copy = useMessages('mcp-tokens').mcpTokensPage;
+  const tpl = useMessages('settings').template.mcpTokens;
 
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
@@ -27,13 +29,15 @@ export function McpTokensPage(): ReactElement {
   }
 
   return (
-    <PageLayout
+    <SettingsPageFrame
       eyebrow={copy.eyebrow}
       title={copy.title}
+      short={tpl.short}
       description={copy.description}
       backTo={{ to: '/settings', label: copy.backLabel }}
-    >
-      <McpTokensPanel />
-    </PageLayout>
+      sections={[
+        { id: 'tokens', label: tpl.short, title: tpl.title, hint: tpl.hint, children: <McpTokensPanel /> },
+      ]}
+    />
   );
 }

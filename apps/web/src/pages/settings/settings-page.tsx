@@ -14,7 +14,7 @@ import { InventoryLocationsTile } from '../../features/inventory';
 import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
 import { BuyerEmailsTile } from '../../features/buyer-emails';
 import { LoginPageSettingsTile } from '../../features/login-page-settings';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { useMessages } from '../../shared/i18n';
 
 export function SettingsPage(): ReactElement {
@@ -24,35 +24,22 @@ export function SettingsPage(): ReactElement {
   // #3634 - both OMS routing tiles are withheld unless the build opts in.
   const omsRoutingUi = isOmsRoutingUiEnabled();
   const loginPageCopy = useMessages('login-page-settings');
+  const tpl = useMessages('settings').template;
 
   return (
-    <PageLayout
+    <SettingsPageFrame
       eyebrow={copy.eyebrow}
       title={copy.title}
+      short={tpl.settingsHome.short}
       description={copy.description}
-      summary={
-        <div className="toolbar__group">
-          <span className="toolbar-chip">{copy.chips.environment}</span>
-          <span className="toolbar-chip">{copy.chips.account}</span>
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.currency}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.mailer}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.posthog}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.mcpTokens}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.salesDocuments}</span> : null}
-          {/* Ungated, unlike its admin-gated neighbours - see `WhoDecidesTile`'s docblock. */}
-          <span className="toolbar-chip">{copy.chips.whoDecides}</span>
-          {omsRoutingUi && isAdmin ? <span className="toolbar-chip">{copy.chips.sourcingRules}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.syncPacing}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.orderTags}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.buyerEmails}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{loginPageCopy.title}</span> : null}
-          {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
-          {omsRoutingUi ? <span className="toolbar-chip">{copy.chips.inventoryLocations}</span> : null}
-          <span className="toolbar-chip">{copy.chips.upcoming}</span>
-        </div>
-      }
-    >
-      <div className="workspace-grid">
+      sections={[
+        {
+          id: 'environment',
+          label: tpl.settingsEnv.short,
+          title: tpl.settingsEnv.title,
+          hint: tpl.settingsEnv.hint,
+          children: (
+            <div className="workspace-grid">
         {/* ── Environment ──────────────────────────────────────────── */}
         <article className="panel panel--dense">
           <div className="panel__header">
@@ -112,6 +99,38 @@ export function SettingsPage(): ReactElement {
           )}
         </article>
 
+            </div>
+          ),
+        },
+        {
+          id: 'areas',
+          label: tpl.settingsHome.short,
+          title: tpl.settingsHome.title,
+          hint: tpl.settingsHome.hint,
+          children: (
+            <>
+              <div className="toolbar page-summary">
+        <div className="toolbar__group">
+          <span className="toolbar-chip">{copy.chips.environment}</span>
+          <span className="toolbar-chip">{copy.chips.account}</span>
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.currency}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.mailer}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.posthog}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.mcpTokens}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.salesDocuments}</span> : null}
+          {/* Ungated, unlike its admin-gated neighbours - see `WhoDecidesTile`'s docblock. */}
+          <span className="toolbar-chip">{copy.chips.whoDecides}</span>
+          {omsRoutingUi && isAdmin ? <span className="toolbar-chip">{copy.chips.sourcingRules}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.syncPacing}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.orderTags}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.buyerEmails}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{loginPageCopy.title}</span> : null}
+          {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
+          {omsRoutingUi ? <span className="toolbar-chip">{copy.chips.inventoryLocations}</span> : null}
+          <span className="toolbar-chip">{copy.chips.upcoming}</span>
+        </div>
+              </div>
+              <div className="workspace-grid">
         {/* ── Currency (admin-only) ─────────────────────────────────── */}
         {isAdmin ? <CurrencySettingsTile /> : null}
 
@@ -145,6 +164,17 @@ export function SettingsPage(): ReactElement {
         {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
         {omsRoutingUi ? <InventoryLocationsTile /> : null}
 
+              </div>
+            </>
+          ),
+        },
+        {
+          id: 'soon',
+          label: tpl.settingsSoon.short,
+          title: tpl.settingsSoon.title,
+          hint: tpl.settingsSoon.hint,
+          children: (
+            <div className="workspace-grid">
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">
           <div className="panel__header">
@@ -186,7 +216,10 @@ export function SettingsPage(): ReactElement {
             {copy.preferences.body}
           </p>
         </article>
-      </div>
-    </PageLayout>
+            </div>
+          ),
+        },
+      ]}
+    />
   );
 }

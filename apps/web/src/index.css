@@ -40318,3 +40318,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .settings-page__title,
   .settings-page__eyebrow { transition: none; }
 }
+
+/* SettingsPageFrame (#4136): back link and header extras above the template. */
+.settings-frame__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.settings-frame__extra { display: flex; align-items: center; gap: var(--space-2); }

@@ -14,19 +14,23 @@
  */
 import type { ReactElement } from 'react';
 import { HelpLink } from '../../shared/ui/help-link';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
+import { useMessages } from '../../shared/i18n';
 import { WhoDecidesPanel, WHO_DECIDES_PAGE_COPY } from '../../features/fulfillment-authority';
 
 export function WhoDecidesPage(): ReactElement {
+  const tpl = useMessages('settings').template.whoDecides;
   return (
-    <PageLayout
+    <SettingsPageFrame
       eyebrow={WHO_DECIDES_PAGE_COPY.eyebrow}
       title={WHO_DECIDES_PAGE_COPY.title}
       description={WHO_DECIDES_PAGE_COPY.lede}
+      short={tpl.short}
       backTo={{ to: '/settings', label: WHO_DECIDES_PAGE_COPY.backLabel }}
-      actions={<HelpLink surfaceKey="who-decides" />}
-    >
-      <WhoDecidesPanel />
-    </PageLayout>
+      headerExtra={<HelpLink surfaceKey="who-decides" />}
+      sections={[
+        { id: 'decides', label: tpl.short, title: tpl.title, hint: tpl.hint, children: <WhoDecidesPanel /> },
+      ]}
+    />
   );
 }

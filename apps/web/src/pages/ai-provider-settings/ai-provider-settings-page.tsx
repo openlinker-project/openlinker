@@ -17,11 +17,13 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { AiProviderTable } from '../../features/ai-provider-settings/components/ai-provider-table';
 import { useAiProviderSettingsQuery } from '../../features/ai-provider-settings/hooks/use-ai-provider-settings-query';
 
 export function AiProviderSettingsPage(): ReactElement {
   const copy = useMessages('ai-provider-settings').aiProviderSettingsPage;
+  const tpl = useMessages('settings').template.aiProvider;
   const { session } = useSession();
   const query = useAiProviderSettingsQuery();
 
@@ -34,11 +36,19 @@ export function AiProviderSettingsPage(): ReactElement {
   }
 
   return (
-    <PageLayout
+    <SettingsPageFrame
       eyebrow={copy.eyebrow}
       title={copy.title}
+      short={tpl.short}
       description={copy.description}
-    >
+      sections={[
+        {
+          id: 'providers',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            <>
       {query.isPending ? (
         <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />
       ) : query.error ? (
@@ -61,7 +71,11 @@ export function AiProviderSettingsPage(): ReactElement {
           <AiProviderTable view={query.data} />
         </>
       ) : null}
-    </PageLayout>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }
 

@@ -31,6 +31,7 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { RangeNumberInput } from '../../shared/ui/range-number-input';
 import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
@@ -146,6 +147,7 @@ export function OperationalSettingsPage(): ReactElement {
   const { isReady, session } = useSession();
   const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
   const copy = useMessages('settings').operationalSettingsPage;
+  const tpl = useMessages('settings').template.syncPacing;
   const plural = usePlural();
   const format = useFormat();
 
@@ -361,12 +363,20 @@ export function OperationalSettingsPage(): ReactElement {
         : copy.saveStatus.ready;
 
   return (
-    <PageLayout
+    <SettingsPageFrame
       eyebrow={copy.eyebrow}
       title={copy.title}
+      short={tpl.short}
       description={copy.description}
-      summary={
-        <nav className="pacing-nav" aria-label={copy.sectionsNavLabel}>
+      sections={[
+        {
+          id: 'pacing',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            <>
+            <nav className="pacing-nav" aria-label={copy.sectionsNavLabel}>
           {SECTION_LINKS.map((link) => (
             <a
               key={link.id}
@@ -382,8 +392,6 @@ export function OperationalSettingsPage(): ReactElement {
             </a>
           ))}
         </nav>
-      }
-    >
       {query.isPending ? (
         <LoadingState title={copy.loading.title} message={copy.loading.message} />
       ) : query.error ? (
@@ -834,6 +842,10 @@ export function OperationalSettingsPage(): ReactElement {
           />
         </div>
       ) : null}
-    </PageLayout>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }
