@@ -98,13 +98,6 @@
     "settings": "Ustawienia"
   },
   "shell": {
-    "alerts": "Alerty",
-    "alertsNew": {
-      "few": "({n} nowe)",
-      "many": "({n} nowych)",
-      "one": "({n} nowy)",
-      "other": "({n} nowego)"
-    },
     "breadcrumb": "Ścieżka nawigacji",
     "closeMenu": "Zamknij menu",
     "loggedOut": "Wylogowano.",
