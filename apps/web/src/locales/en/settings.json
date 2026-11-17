@@ -253,52 +253,29 @@
     "account": {
       "anonymous": "No active session.",
       "email": "Email",
-      "eyebrow": "Session",
       "loading": "Loading session…",
-      "meta": "Read-only",
       "role": "Role",
       "title": "Account",
       "username": "Username"
     },
-    "chips": {
-      "account": "Account",
-      "buyerEmails": "Buyer emails",
-      "currency": "Currency",
-      "environment": "Environment",
-      "inventoryLocations": "Inventory locations",
-      "mailer": "Mailer",
-      "mcpTokens": "MCP tokens",
-      "orderTags": "Order tags",
-      "posthog": "PostHog",
-      "salesDocuments": "Sales documents routing",
-      "sourcingRules": "Sourcing rules",
-      "syncPacing": "Sync pacing",
-      "upcoming": "Upcoming",
-      "whoDecides": "Who decides what"
-    },
+    "adminNote": "Some areas are only available to administrators, so they are not listed here.",
     "comingSoon": "Coming soon",
     "description": "Platform configuration, session context, and upcoming operator preferences.",
     "environment": {
       "apiBaseUrl": "API base URL",
       "environment": "Environment",
-      "eyebrow": "Runtime",
-      "meta": "Build-time config",
       "title": "Environment"
     },
-    "eyebrow": "Settings",
     "notifications": {
       "body": "Sync failure alerts, manual-review triggers, and threshold notifications will be configurable here.",
-      "eyebrow": "Alerts",
       "title": "Notifications"
     },
     "organization": {
       "body": "Team members, roles, and workspace-level settings will be managed here.",
-      "eyebrow": "Workspace",
       "title": "Organization"
     },
     "preferences": {
       "body": "Timezone, date format, and display density options will be available here.",
-      "eyebrow": "Display",
       "title": "Preferences"
     },
     "title": "Settings"
@@ -519,6 +496,23 @@
       "hint": "The installation you are signed in to.",
       "short": "Environment",
       "title": "Environment and account"
+    },
+    "settingsGroups": {
+      "access": {
+        "hint": "Who can connect to this installation and what visitors see.",
+        "short": "Access",
+        "title": "Access and branding"
+      },
+      "data": {
+        "hint": "How often catalogue and stock are read, and in which currency.",
+        "short": "Data",
+        "title": "Data and sync"
+      },
+      "orders": {
+        "hint": "How orders are decided, documented and communicated.",
+        "short": "Orders",
+        "title": "Orders and documents"
+      }
     },
     "settingsHome": {
       "hint": "Every area you can configure.",

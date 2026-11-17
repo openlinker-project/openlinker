@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { env } from '../../shared/config/env';
 import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { useSession } from '../../shared/auth/use-session';
@@ -15,74 +15,58 @@ import { OrderTagsSettingsTile } from '../../features/orders/components/order-ta
 import { BuyerEmailsTile } from '../../features/buyer-emails';
 import { LoginPageSettingsTile } from '../../features/login-page-settings';
 import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
+import type { SettingsPageSection } from '../../shared/ui/settings-page-template';
 import { useMessages } from '../../shared/i18n';
 
+/**
+ * The settings hub. Areas are grouped by what an operator is trying to do, not
+ * by who built them; a group with no tile the current role may open is left out
+ * instead of rendering an empty heading.
+ */
 export function SettingsPage(): ReactElement {
   const { isReady, session } = useSession();
   const copy = useMessages('settings').settingsPage;
   const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
   // #3634 - both OMS routing tiles are withheld unless the build opts in.
   const omsRoutingUi = isOmsRoutingUiEnabled();
-  const loginPageCopy = useMessages('login-page-settings');
   const tpl = useMessages('settings').template;
 
-  return (
-    <SettingsPageFrame
-      eyebrow={copy.eyebrow}
-      title={copy.title}
-      short={tpl.settingsHome.short}
-      description={copy.description}
-      sections={[
-        {
-          id: 'environment',
-          label: tpl.settingsEnv.short,
-          title: tpl.settingsEnv.title,
-          hint: tpl.settingsEnv.hint,
-          children: (
-            <div className="workspace-grid">
-        {/* ── Environment ──────────────────────────────────────────── */}
-        <article className="panel panel--dense">
-          <div className="panel__header">
-            <div>
-              <p className="eyebrow">{copy.environment.eyebrow}</p>
-              <h3 className="section-title">{copy.environment.title}</h3>
-            </div>
-            <span className="panel__meta">{copy.environment.meta}</span>
-          </div>
-          <dl className="definition-list">
-            <div>
-              <dt>{copy.environment.environment}</dt>
-              <dd className="mono-text">{env.VITE_APP_ENV}</dd>
-            </div>
-            <div>
-              <dt>{copy.environment.apiBaseUrl}</dt>
-              <dd className="mono-text">{env.VITE_API_BASE_URL}</dd>
-            </div>
-          </dl>
-        </article>
+  const group = (
+    id: string,
+    meta: { short: string; title: string; hint: string },
+    tiles: ReactNode[],
+  ): SettingsPageSection[] => {
+    const visible = tiles.filter(Boolean);
+    if (visible.length === 0) return [];
+    return [
+      {
+        id,
+        label: meta.short,
+        title: meta.title,
+        hint: meta.hint,
+        children: <div className="settings-hub__grid">{visible}</div>,
+      },
+    ];
+  };
 
-        {/* ── Account ──────────────────────────────────────────────── */}
-        <article className="panel panel--dense">
-          <div className="panel__header">
-            <div>
-              <p className="eyebrow">{copy.account.eyebrow}</p>
-              <h3 className="section-title">{copy.account.title}</h3>
-            </div>
-            <span className="panel__meta">{copy.account.meta}</span>
-          </div>
-
-          {!isReady && (
-            <p className="muted-text" aria-live="polite">
-              {copy.account.loading}
-            </p>
-          )}
-
-          {isReady && session.status === 'anonymous' && (
-            <p className="muted-text">{copy.account.anonymous}</p>
-          )}
-
-          {isReady && session.status === 'authenticated' && session.user !== null && (
-            <dl className="definition-list">
+  const sections: SettingsPageSection[] = [
+    {
+      id: 'environment',
+      label: tpl.settingsEnv.short,
+      title: tpl.settingsEnv.title,
+      hint: tpl.settingsEnv.hint,
+      children: (
+        <>
+          {isReady && session.status === 'authenticated' && session.user !== null ? (
+            <dl className="settings-hub__facts">
+              <div>
+                <dt>{copy.environment.environment}</dt>
+                <dd className="mono-text">{env.VITE_APP_ENV}</dd>
+              </div>
+              <div>
+                <dt>{copy.environment.apiBaseUrl}</dt>
+                <dd className="mono-text">{env.VITE_API_BASE_URL}</dd>
+              </div>
               <div>
                 <dt>{copy.account.username}</dt>
                 <dd>{session.user.username}</dd>
@@ -96,130 +80,77 @@ export function SettingsPage(): ReactElement {
                 <dd>{session.user.role}</dd>
               </div>
             </dl>
-          )}
-        </article>
-
-            </div>
-          ),
-        },
-        {
-          id: 'areas',
-          label: tpl.settingsHome.short,
-          title: tpl.settingsHome.title,
-          hint: tpl.settingsHome.hint,
-          children: (
+          ) : (
             <>
-              <div className="toolbar page-summary">
-        <div className="toolbar__group">
-          <span className="toolbar-chip">{copy.chips.environment}</span>
-          <span className="toolbar-chip">{copy.chips.account}</span>
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.currency}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.mailer}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.posthog}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.mcpTokens}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.salesDocuments}</span> : null}
-          {/* Ungated, unlike its admin-gated neighbours - see `WhoDecidesTile`'s docblock. */}
-          <span className="toolbar-chip">{copy.chips.whoDecides}</span>
-          {omsRoutingUi && isAdmin ? <span className="toolbar-chip">{copy.chips.sourcingRules}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.syncPacing}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.orderTags}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{copy.chips.buyerEmails}</span> : null}
-          {isAdmin ? <span className="toolbar-chip">{loginPageCopy.title}</span> : null}
-          {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
-          {omsRoutingUi ? <span className="toolbar-chip">{copy.chips.inventoryLocations}</span> : null}
-          <span className="toolbar-chip">{copy.chips.upcoming}</span>
-        </div>
-              </div>
-              <div className="workspace-grid">
-        {/* ── Currency (admin-only) ─────────────────────────────────── */}
-        {isAdmin ? <CurrencySettingsTile /> : null}
-
-        {/* ── Mailer (admin-only) ──────────────────────────────────── */}
-        {isAdmin ? <MailerSettingsTile /> : null}
-
-        {/* ── PostHog analytics (admin-only) ──────────────────────── */}
-        {isAdmin ? <PosthogSettingsTile /> : null}
-
-        {/* ── MCP tokens (admin-only) ──────────────────────────────── */}
-        {isAdmin ? <McpTokensTile /> : null}
-
-        {/* ── Sales documents (admin-only, #2159) ───────────────────── */}
-        {isAdmin ? <SalesDocumentsTile /> : null}
-        {/* Deliberately NOT admin-gated — see `WhoDecidesTile`'s docblock. */}
-        <WhoDecidesTile />
-
-        {/* ── Sourcing rules (admin-only, #3060) ────────────────────── */}
-        {omsRoutingUi && isAdmin ? <SourcingRulesTile /> : null}
-
-        {/* ── Sync pacing (admin-only, #2653) ───────────────────────── */}
-        {isAdmin ? <SyncPacingTile /> : null}
-
-        {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
-        {isAdmin ? <OrderTagsSettingsTile /> : null}
-        {isAdmin ? <BuyerEmailsTile /> : null}
-
-        {/* ── Login page (admin-only, #4029) ──────────────────────── */}
-        {isAdmin ? <LoginPageSettingsTile /> : null}
-
-        {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
-        {omsRoutingUi ? <InventoryLocationsTile /> : null}
-
-              </div>
+              <dl className="settings-hub__facts">
+                <div>
+                  <dt>{copy.environment.environment}</dt>
+                  <dd className="mono-text">{env.VITE_APP_ENV}</dd>
+                </div>
+                <div>
+                  <dt>{copy.environment.apiBaseUrl}</dt>
+                  <dd className="mono-text">{env.VITE_API_BASE_URL}</dd>
+                </div>
+              </dl>
+              {!isReady ? (
+                <p className="muted-text" aria-live="polite">
+                  {copy.account.loading}
+                </p>
+              ) : (
+                <p className="muted-text">{copy.account.anonymous}</p>
+              )}
             </>
-          ),
-        },
-        {
-          id: 'soon',
-          label: tpl.settingsSoon.short,
-          title: tpl.settingsSoon.title,
-          hint: tpl.settingsSoon.hint,
-          children: (
-            <div className="workspace-grid">
-        {/* ── Notifications (planned) ───────────────────────────────── */}
-        <article className="panel panel--dense">
-          <div className="panel__header">
-            <div>
-              <p className="eyebrow">{copy.notifications.eyebrow}</p>
-              <h3 className="section-title">{copy.notifications.title}</h3>
-            </div>
-            <span className="panel__meta">{copy.comingSoon}</span>
-          </div>
-          <p className="muted-text panel-copy">
-            {copy.notifications.body}
-          </p>
-        </article>
+          )}
+          {isReady && session.status === 'authenticated' && !isAdmin ? (
+            <p className="settings-hub__note">{copy.adminNote}</p>
+          ) : null}
+        </>
+      ),
+    },
+    ...group('data', tpl.settingsGroups.data, [
+      isAdmin ? <SyncPacingTile key="sync" /> : null,
+      isAdmin ? <CurrencySettingsTile key="currency" /> : null,
+      omsRoutingUi ? <InventoryLocationsTile key="locations" /> : null,
+      omsRoutingUi && isAdmin ? <SourcingRulesTile key="sourcing" /> : null,
+    ]),
+    ...group('orders', tpl.settingsGroups.orders, [
+      isAdmin ? <SalesDocumentsTile key="documents" /> : null,
+      // Deliberately NOT admin-gated - see `WhoDecidesTile`'s docblock.
+      <WhoDecidesTile key="who" />,
+      isAdmin ? <OrderTagsSettingsTile key="tags" /> : null,
+      isAdmin ? <BuyerEmailsTile key="emails" /> : null,
+      isAdmin ? <MailerSettingsTile key="mailer" /> : null,
+    ]),
+    ...group('access', tpl.settingsGroups.access, [
+      isAdmin ? <McpTokensTile key="mcp" /> : null,
+      isAdmin ? <LoginPageSettingsTile key="login" /> : null,
+      isAdmin ? <PosthogSettingsTile key="posthog" /> : null,
+    ]),
+    {
+      id: 'soon',
+      label: tpl.settingsSoon.short,
+      title: tpl.settingsSoon.title,
+      hint: tpl.settingsSoon.hint,
+      children: (
+        <ul className="settings-hub__planned">
+          {[copy.notifications, copy.organization, copy.preferences].map((item) => (
+            <li key={item.title}>
+              <h3>{item.title}</h3>
+              <p>{item.body}</p>
+            </li>
+          ))}
+        </ul>
+      ),
+    },
+  ];
 
-        {/* ── Organization (planned) ───────────────────────────────── */}
-        <article className="panel panel--dense">
-          <div className="panel__header">
-            <div>
-              <p className="eyebrow">{copy.organization.eyebrow}</p>
-              <h3 className="section-title">{copy.organization.title}</h3>
-            </div>
-            <span className="panel__meta">{copy.comingSoon}</span>
-          </div>
-          <p className="muted-text panel-copy">
-            {copy.organization.body}
-          </p>
-        </article>
-
-        {/* ── Preferences (planned) ─────────────────────────────────── */}
-        <article className="panel panel--dense">
-          <div className="panel__header">
-            <div>
-              <p className="eyebrow">{copy.preferences.eyebrow}</p>
-              <h3 className="section-title">{copy.preferences.title}</h3>
-            </div>
-            <span className="panel__meta">{copy.comingSoon}</span>
-          </div>
-          <p className="muted-text panel-copy">
-            {copy.preferences.body}
-          </p>
-        </article>
-            </div>
-          ),
-        },
-      ]}
+  return (
+    <SettingsPageFrame
+      wide
+      title={copy.title}
+      short={tpl.settingsHome.short}
+      description={copy.description}
+      sections={sections}
     />
   );
 }

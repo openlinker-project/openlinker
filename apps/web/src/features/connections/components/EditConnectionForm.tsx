@@ -50,7 +50,8 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
-import { SettingsPageTemplate, type SettingsPageSection } from '../../../shared/ui/settings-page-template';
+import type { SettingsPageSection } from '../../../shared/ui/settings-page-template';
+import { SettingsPageFrame } from '../../../shared/ui/settings-page-frame';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
@@ -75,6 +76,12 @@ const ADAPTER_KEY_EXAMPLE = 'prestashop.webservice.v1';
 
 interface EditConnectionFormProps {
   connection: Connection;
+  /** Back link above the header; the page owns where it points. */
+  backTo?: { to: string; label: ReactNode };
+  /** Platform tile shown left of the connection name. */
+  mark?: ReactNode;
+  /** Replaces the default one-line description (platform, environment, status). */
+  subtitle?: ReactNode;
 }
 
 type EditConnectionCopy = ResolvedCopy<Messages['connections']>['editConnectionForm'];
@@ -436,7 +443,7 @@ function isParseableJson(text: string): boolean {
   }
 }
 
-export function EditConnectionForm({ connection }: EditConnectionFormProps): ReactElement {
+export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditConnectionFormProps): ReactElement {
   const apiClient = useApiClient();
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
@@ -1142,11 +1149,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         </Alert>
       ) : null}
 
-      <SettingsPageTemplate
-        eyebrow={copy.eyebrow}
+      <SettingsPageFrame
+        backTo={backTo}
+        mark={mark}
         title={connection.name}
         short={connection.name}
-        description={copy.meta}
+        description={subtitle ?? copy.meta}
         sections={sections.filter((section) => !emptySlots.has(section.id))}
         actions={
           <div className="form-actions">
@@ -1183,7 +1191,11 @@ function PlatformSlots({ id, onEmpty, children }: PlatformSlotsProps): ReactElem
   useLayoutEffect(() => {
     if (ref.current && ref.current.childElementCount === 0) onEmpty(id);
   });
-  return <div ref={ref}>{children}</div>;
+  return (
+    <div ref={ref} className="settings-page__slots">
+      {children}
+    </div>
+  );
 }
 
 interface MarketplaceCatalogPickerProps {

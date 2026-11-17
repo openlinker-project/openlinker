@@ -105,4 +105,11 @@ describe('SettingsPageTemplate', () => {
     expect(ref.current).toBe(container.firstChild);
     expect(ref.current).toHaveClass('settings-page', 'custom');
   });
+
+  it('should render the identity mark and keep the eyebrow out of the big header', () => {
+    renderTemplate({ mark: <span data-testid="mark">AL</span> });
+    expect(screen.getByTestId('mark')).toBeInTheDocument();
+    const head = document.querySelector('.settings-page__head') as HTMLElement;
+    expect(head).not.toHaveTextContent('Shop');
+  });
 });
