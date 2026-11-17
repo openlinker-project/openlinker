@@ -355,7 +355,10 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   // Advisory, independent of `hasCategoryOverride`: a multi-variant sibling
   // always carries the product-tier category, which would otherwise hide the
   // disagreement on exactly the rows where a card was set aside (#3994).
-  if (input.cardInOtherCategory) {
+  // The gating chip says the same thing louder, so it replaces the advisory one.
+  if (input.cardCategoryMismatch) {
+    blockers.push('card-category-mismatch');
+  } else if (input.cardInOtherCategory) {
     blockers.push('card-category-differs');
   }
   if (input.cardCategoryMismatch) {
@@ -523,6 +526,9 @@ export function recomputeRowBlockers(
   platformValidate?: (input: OfferRowValidationInput) => string[],
   destinationResolvesCategoryAtSubmit = false,
 ): BulkRowBlocker[] {
+  // Row level DROPS the card when its category differs from the submit category
+  // (`rowProductCardIdFor`); the variant path BLOCKS instead
+  // (`isCardInOtherCategoryThanChosen`) because a sibling's card is what groups it.
   if (!row.primaryVariant) return ['no-variant'];
   const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
   return computeBlockers({
@@ -708,6 +714,13 @@ export function variantProductCardIdOf(variant: BulkVariantRow): string | null {
  * own category, so the link would be refused downstream. An explicit
  * operator-picked card is exempt: it was chosen together with its own category.
  * A variant listed without a barcode has no card and cannot mismatch.
+ *
+ * `submitCategoryId` may be the RESOLVED category (a sibling inheriting the
+ * product-tier family pin), not only an operator pick: the marketplace refuses
+ * the link in both cases, so both gate, and the chip copy therefore speaks of
+ * the category "this offer will use". Contrast `recomputeRowBlockers`, whose
+ * single-variant row drops the card instead (`rowProductCardIdFor`) - a sibling
+ * cannot, because its card is what groups it with its siblings (#824).
  */
 export function isCardInOtherCategoryThanChosen(
   variant: BulkVariantRow,

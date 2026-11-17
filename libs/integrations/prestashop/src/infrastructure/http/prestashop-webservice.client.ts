@@ -40,7 +40,13 @@ import { PrestashopResponseParser } from './prestashop-response.parser';
 import { parseRetryAfterSeconds } from './prestashop-retry-after.types';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { XMLBuilder } from 'fast-xml-parser';
-import type { FetchLike } from '@openlinker/shared/http';
+import {
+  clearRequestNotSent,
+  isProvablyUnsentTransportError,
+  isRequestNotSentError,
+  markRequestNotSent,
+  type FetchLike,
+} from '@openlinker/shared/http';
 
 /**
  * Resources whose PrestaShop singular element name is not the plural minus a
@@ -546,6 +552,11 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   ): Promise<{ body: string; contentType?: string }> {
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
+    // True only while every attempt so far failed before the request was
+    // written (DNS / refused). Any response, timeout or other transport error
+    // may mean PrestaShop received it, which makes the final failure ambiguous
+    // for good (#4041).
+    let everyAttemptUnsent = true;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
@@ -553,6 +564,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       } catch (error: unknown) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
         lastError = error instanceof Error ? error : new Error(String(error));
+        everyAttemptUnsent = everyAttemptUnsent && isRequestNotSentError(error);
 
         // Don't retry on client errors (4xx) except 429 (rate limit)
         if (error instanceof PrestashopAuthenticationException) {
@@ -586,18 +598,24 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
           // whole job and re-send the same non-idempotent POST — the
           // duplicate row this exists to stop, one layer up.
           if (!idempotent && (statusCode === undefined || statusCode >= 500)) {
-            throw new PrestashopAmbiguousWriteException(
+            const ambiguous = new PrestashopAmbiguousWriteException(
               error.message,
               options.method ?? 'POST',
               url,
               statusCode,
               error.responseBody
             );
+            throw everyAttemptUnsent ? markRequestNotSent(ambiguous) : ambiguous;
           }
         } else if (!idempotent) {
           // A non-PrestashopApiException failure on a non-idempotent call —
           // still ambiguous, still not retried.
-          throw new PrestashopAmbiguousWriteException(lastError.message, options.method ?? 'POST', url);
+          const ambiguous = new PrestashopAmbiguousWriteException(
+            lastError.message,
+            options.method ?? 'POST',
+            url
+          );
+          throw everyAttemptUnsent ? markRequestNotSent(ambiguous) : ambiguous;
         }
 
         // Honour the shop's own Retry-After for the in-client retry too, not
@@ -627,7 +645,15 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     }
 
     // All retries exhausted
-    throw lastError || new Error('Request failed after retries');
+    // An earlier attempt that may have been received poisons the last one's
+    // mark: "never left" must hold for every attempt, not just the final one.
+    if (lastError === null) {
+      throw new Error('Request failed after retries');
+    }
+    // Keep the mark only when every attempt was provably unsent; a mixed run
+    // may have reached the shop on an earlier attempt.
+    const finalError = everyAttemptUnsent ? lastError : clearRequestNotSent(lastError);
+    throw finalError;
   }
 
   /**
@@ -736,7 +762,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         undefined,
         undefined
       );
-      throw networkError;
+      throw isProvablyUnsentTransportError(error) ? markRequestNotSent(networkError) : networkError;
     } finally {
       clearTimeout(timeoutId);
     }

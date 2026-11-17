@@ -322,7 +322,7 @@
       },
       "cardCategoryMismatch": {
         "detail": "Pick that category again, or clear the barcode to list this variant without a catalog product.",
-        "title": "Barcode {ean} is a {destination} catalog product in a different category than the one you chose."
+        "title": "Barcode {ean} is a {destination} catalog product in a different category than the one this offer will use."
       },
       "currencyMismatch": {
         "detail": "Set an explicit {currency} price for this variant, or change the batch currency.",

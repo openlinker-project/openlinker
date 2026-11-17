@@ -201,6 +201,7 @@ export { ShippingProviderRejectionException } from './domain/exceptions/shipping
 export { ShippingProviderAuthException } from './domain/exceptions/shipping-provider-auth.exception';
 export { LabelDocumentNotSupportedException } from './domain/exceptions/label-document-not-supported.exception';
 export { LabelNotAvailableException } from './domain/exceptions/label-not-available.exception';
+export { LabelNotReadyException } from './domain/exceptions/label-not-ready.exception';
 export { DispatchProtocolNotSupportedException } from './domain/exceptions/dispatch-protocol-not-supported.exception';
 export { InvalidProtocolBatchException } from './domain/exceptions/invalid-protocol-batch.exception';
 export { ShipmentDispatchContendedException } from './domain/exceptions/shipment-dispatch-contended.exception';

@@ -352,7 +352,7 @@
       },
       "cardCategoryMismatch": {
         "detail": "Wybierz ponownie tę kategorię albo wyczyść kod kreskowy, aby wystawić ten wariant bez produktu z katalogu.",
-        "title": "Kod kreskowy {ean} to produkt z katalogu {destination} w innej kategorii niż wybrana przez Ciebie."
+        "title": "Kod kreskowy {ean} to produkt z katalogu {destination} w innej kategorii niż ta, której użyje ta oferta."
       },
       "currencyMismatch": {
         "detail": "Ustaw jawną cenę w {currency} dla tego wariantu lub zmień walutę partii.",

@@ -52,6 +52,7 @@ describe('SyncController', () => {
     findAndLockDueJobs: jest.fn(),
     findAndLockDueJobsForLane: jest.fn(),
     findById: jest.fn(),
+    claimQueuedPeers: jest.fn(),
     findByIdempotencyKey: jest.fn(),
     findMany: jest.fn(),
     markSucceeded: jest.fn(),
