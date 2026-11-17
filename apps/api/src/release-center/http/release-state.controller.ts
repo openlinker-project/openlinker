@@ -11,9 +11,9 @@
  */
 import { Body, Controller, Get, Inject, Put, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
+import { Response } from 'express';
 import type { ReleaseItemStateChange } from '@openlinker/core/release-center';
-import type { AuthenticatedUser } from '../../auth/auth.types';
+import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {

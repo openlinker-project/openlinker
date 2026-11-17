@@ -440,8 +440,6 @@
   "connections:setup.next": 8,
   "connections:shipping.backToOmsSetup": 32,
   "connections:shipping.createdAction": 28,
-  "connections:shipping.rowChange": 12,
-  "connections:shipping.rowChoose": 12,
   "connections:shipping.shippingChange": 28,
   "connections:shipping.shipsForTitle": 24,
   "connections:shoperSetupForm.create": 28,
