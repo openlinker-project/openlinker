@@ -20,6 +20,8 @@ import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseCursorMutation } from '../hooks/use-release-cursor-mutation';
 import { useReleaseStateQuery, useReleaseCenterEnabled } from '../hooks/use-release-state-query';
 import { useReleaseStepRows } from '../hooks/use-release-step-rows';
+import { subscribeToWhatsNewRequests } from '../lib/release-center-requests';
+import { useTour, type TourStepInput } from '../tour/tour-context';
 import { shouldOpenDialog } from '../lib/should-open-dialog';
 import { buildDialogHighlights, type ReleaseStepRow } from '../lib/release-dialog-content';
 import { ReleaseDialog } from './release-dialog';
@@ -35,6 +37,14 @@ export function stepPath(row: ReleaseStepRow): string {
   }));
 }
 
+export function rowsToTourSteps(rows: readonly ReleaseStepRow[]): TourStepInput[] {
+  return rows.map((row) => ({
+    stepId: row.step.id,
+    connectionId: row.connection?.id ?? null,
+    importance: row.importance,
+  }));
+}
+
 export function ReleaseDialogHost(): ReactElement | null {
   const enabled = useReleaseCenterEnabled();
   const { canWriteSteps } = useReleaseCenterAccess();
@@ -42,6 +52,7 @@ export function ReleaseDialogHost(): ReactElement | null {
   const rejected = useRejectedCursorVersions();
   const cursorMutation = useReleaseCursorMutation();
   const navigate = useNavigate();
+  const tour = useTour();
   const [dismissed, setDismissed] = useState(false);
   const written = useRef<string | null>(null);
 
@@ -52,6 +63,11 @@ export function ReleaseDialogHost(): ReactElement | null {
   const decision = useMemo(
     () => shouldOpenDialog(cursor, APP_VERSION, changelog.releases, RELEASE_STEPS),
     [cursor]
+  );
+
+  useEffect(
+    () => subscribeToWhatsNewRequests(() => void navigate(WHATS_NEW_PATH)),
+    [navigate]
   );
 
   const { mutate } = cursorMutation;
@@ -98,8 +114,12 @@ export function ReleaseDialogHost(): ReactElement | null {
       }}
       onStartGuide={(openRows, skip) => {
         close(skip);
-        const first = openRows[0];
-        void navigate(first ? stepPath(first) : WHATS_NEW_PATH);
+        if (openRows.length === 0) {
+          void navigate(WHATS_NEW_PATH);
+          return;
+        }
+        // The tour navigates to each step's screen itself.
+        tour.start(rowsToTourSteps(openRows));
       }}
     />
   );

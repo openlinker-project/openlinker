@@ -10,7 +10,6 @@
  */
 import type { ReactElement } from 'react';
 import changelog from 'virtual:openlinker-changelog';
-import { useNavigate } from 'react-router-dom';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { useFormat } from '../../../shared/i18n/use-format';
 import { Button } from '../../../shared/ui/button';
@@ -19,7 +18,8 @@ import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseStepRows } from '../hooks/use-release-step-rows';
 import { compareVersions, isValidVersion } from '../lib/compare-versions';
 import { BaselineMarkdown } from './baseline-markdown';
-import { stepPath } from './release-dialog-host';
+import { rowsToTourSteps } from './release-dialog-host';
+import { useTour } from '../tour/tour-context';
 import { useStepCopy } from './release-step-copy';
 
 export function WhatsNewContent(): ReactElement {
@@ -27,7 +27,7 @@ export function WhatsNewContent(): ReactElement {
   const dialogCopy = useMessages('release-center').dialog;
   const stepCopy = useStepCopy();
   const format = useFormat();
-  const navigate = useNavigate();
+  const tour = useTour();
   const { canWriteSteps } = useReleaseCenterAccess();
   const rows = useReleaseStepRows();
   const left = rows.filter((row) => !row.done).length;
@@ -69,7 +69,7 @@ export function WhatsNewContent(): ReactElement {
               {row.done ? (
                 <StatusBadge tone="success">{copy.done}</StatusBadge>
               ) : (
-                <Button tone="secondary" onClick={() => navigate(stepPath(row))}>
+                <Button tone="secondary" onClick={() => tour.start(rowsToTourSteps([row]))}>
                   {canWriteSteps ? copy.setNow : copy.showWhere}
                 </Button>
               )}

@@ -19,8 +19,11 @@ import {
 } from 'react';
 import { generatePath, useLocation, useNavigate } from 'react-router-dom';
 import { RELEASE_STEPS } from '../catalog/release-steps';
+import { useReleaseCenterView } from '../components/release-center-provider';
+import { subscribeToTourRequests } from '../lib/release-center-requests';
 import { TourCard } from './tour-card';
 import { TourContext, type TourController, type TourStepInput } from './tour-context';
+import { tourStepsForRequest } from './tour-request-steps';
 import { INITIAL_TOUR_STATE, tourReducer } from './tour-reducer';
 
 export function tourPathFor(step: TourStepInput): string | null {
@@ -54,6 +57,19 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
       trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     dispatch({ type: 'start', steps });
   }, []);
+
+  const view = useReleaseCenterView();
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(
+    () =>
+      subscribeToTourRequests((request) => {
+        const latest = viewRef.current;
+        if (!latest) return;
+        start(tourStepsForRequest(latest.instances, latest.state, request));
+      }),
+    [start]
+  );
 
   const current = state.active ? state.steps[state.index] : undefined;
   const path = current ? tourPathFor(current) : null;
