@@ -3988,10 +3988,6 @@ describe('OrderIngestionService', () => {
         ],
         [{ status: 'contended' }, 'routing-contended'],
         [
-          { status: 'skipped', reason: 'already-routed' },
-          'routing-already-live-elsewhere',
-        ],
-        [
           { status: 'skipped', reason: 'already-live-elsewhere' },
           'routing-already-live-elsewhere',
         ],
@@ -4061,6 +4057,17 @@ describe('OrderIngestionService', () => {
         });
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
+        expect(markBlock()).toHaveBeenLastCalledWith('ol_order_int', null);
+      });
+
+      it('clears the block of a re-ingested order whose routing answers already-routed (#4034)', async () => {
+        routingCommit.route.mockResolvedValue({ status: 'contended' });
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        routingCommit.route.mockResolvedValue({ status: 'skipped', reason: 'already-routed' });
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
         expect(markBlock()).toHaveBeenLastCalledWith('ol_order_int', null);
       });
 
