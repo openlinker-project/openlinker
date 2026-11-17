@@ -24,6 +24,11 @@ export interface AmazonResolution {
   readonly client: AmazonSpApiClient;
   /** Present when the connection names a notification queue and its AWS key (#4179). */
   readonly notificationQueue?: AmazonSqsClient;
+  /**
+   * Same host, authorized with a grantless token for the Notifications API
+   * (`sellingpartnerapi::notifications`); minted only when first used (#4179).
+   */
+  readonly notificationsClient: AmazonSpApiClient;
 }
 
 export interface IAmazonAdapterFactory {

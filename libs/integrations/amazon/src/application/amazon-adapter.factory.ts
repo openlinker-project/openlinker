@@ -17,6 +17,7 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 
+import { AMAZON_NOTIFICATIONS_GRANTLESS_SCOPE } from '../amazon.constants';
 import { AmazonConfigException } from '../domain/exceptions/amazon-config.exception';
 import { parseAmazonConfig, resolveAmazonSpApiHost } from '../domain/policies/amazon-config.policy';
 import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.policy';
@@ -58,6 +59,13 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       config: config.config,
       credentialSource: credentials.source,
       client: new AmazonSpApiClient(resolveAmazonSpApiHost(config.config), tokens, fetchImpl),
+      notificationsClient: new AmazonSpApiClient(
+        resolveAmazonSpApiHost(config.config),
+        new AmazonAccessTokenProvider(credentials.credentials, fetchImpl, cache, undefined, undefined, undefined, {
+          scope: AMAZON_NOTIFICATIONS_GRANTLESS_SCOPE,
+        }),
+        fetchImpl,
+      ),
       ...(queue && awsAccessKeyId && awsSecretAccessKey
         ? {
             notificationQueue: new AmazonSqsClient(

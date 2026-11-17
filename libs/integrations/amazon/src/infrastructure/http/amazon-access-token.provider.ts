@@ -24,6 +24,12 @@
  *   - anything else LWA answers (5xx, 429, an unknown error code) is an
  *     `AmazonApiError` and follows the ordinary retry rules.
  *
+ * Grantless tokens (#4179): with `options.scope` the provider mints through
+ * `grant_type=client_credentials` for that scope instead of the refresh
+ * token. The Notifications API's destination calls need one
+ * (`sellingpartnerapi::notifications`); they act for the app, not a seller.
+ * The scope is part of the cache key.
+ *
  * The call goes through the transport it is handed (the connection-bound one),
  * so it is paced like every other request for the connection. Nothing here
  * logs the request body; LWA does not echo the secret in its errors.
@@ -80,8 +86,10 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
     private readonly now: () => number = Date.now,
     private readonly memo: Map<string, AmazonAccessTokenEntry> = processMemo,
     private readonly inFlight: Map<string, Promise<AmazonAccessTokenEntry>> = processInFlight,
+    private readonly options: { readonly scope?: string } = {},
   ) {
-    this.fingerprint = fingerprintAmazonCredentials(credentials);
+    const base = fingerprintAmazonCredentials(credentials);
+    this.fingerprint = options.scope ? `${base}:${options.scope}` : base;
   }
 
   async getAccessToken(): Promise<string> {
@@ -148,12 +156,21 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
           'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
           Accept: 'application/json',
         },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: this.credentials.refreshToken,
-          client_id: this.credentials.clientId,
-          client_secret: this.credentials.clientSecret,
-        }).toString(),
+        body: new URLSearchParams(
+          this.options.scope
+            ? {
+                grant_type: 'client_credentials',
+                scope: this.options.scope,
+                client_id: this.credentials.clientId,
+                client_secret: this.credentials.clientSecret,
+              }
+            : {
+                grant_type: 'refresh_token',
+                refresh_token: this.credentials.refreshToken,
+                client_id: this.credentials.clientId,
+                client_secret: this.credentials.clientSecret,
+              },
+        ).toString(),
         redirect: 'manual',
         signal: controller.signal,
       });

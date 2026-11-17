@@ -73,8 +73,12 @@ ordinary order sync, so an order arrives within about a minute; the orders poll 
 - A message is deleted only after its events were routed; a duplicate dedups on Amazon's
   `NotificationId`. Other notification types are acknowledged and ignored for now.
 
-Registering the queue with Amazon (destination + `ORDER_CHANGE` subscription) is the "Configure
-webhooks" action, added in the next commit of #4179.
+Registering the queue with Amazon is the "Configure webhooks" action (`POST
+/connections/:id/webhooks/install`): it reuses or creates the Notifications API destination for the
+queue's ARN (grantless token, scope `sellingpartnerapi::notifications`) and subscribes it to
+`ORDER_CHANGE` (order status and buyer-requested changes). Running it again changes nothing; a
+subscription that already points at another destination is reported, not replaced. A Sandbox-status
+app is refused the grantless scope (#2881), so this step needs a production app.
 
 ## Buyer data retention
 
