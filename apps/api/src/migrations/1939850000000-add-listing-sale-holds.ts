@@ -10,8 +10,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddListingSaleHolds1938410000000 implements MigrationInterface {
-  name = 'AddListingSaleHolds1938410000000';
+export class AddListingSaleHolds1939850000000 implements MigrationInterface {
+  name = 'AddListingSaleHolds1939850000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

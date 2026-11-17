@@ -106,6 +106,8 @@ import {
   type ShopCategory,
   type ShopCategoryBrowser,
   type ShopAttributeReader,
+  type ShopProductVisibilityWriter,
+  type SetShopProductVisibilityCommand,
   type ShopAttributeTerm,
   type ShopCurrencyDeclarer,
   type ShopProductManagerPort,
@@ -144,6 +146,7 @@ import {
   PUBLISHABLE_PUBLISH_MUTATION,
   VARIANTS_BULK_CREATE_MUTATION,
   VARIANTS_BULK_UPDATE_MUTATION,
+  PRODUCT_STATUS_UPDATE_MUTATION,
   VARIANT_PRICE_UPDATE_MUTATION,
   type CollectionByHandleQuery,
   type CollectionCreatePayload,
@@ -244,7 +247,8 @@ export class ShopifyProductPublisherAdapter
     ShopCurrencyDeclarer,
     ShopProductPriceUpdater,
     ShopAttributeReader,
-    ShopCategoryBrowser
+    ShopCategoryBrowser,
+    ShopProductVisibilityWriter
 {
   private readonly logger = new Logger(ShopifyProductPublisherAdapter.name);
   /** The Online Store publication id, read once per adapter instance; a failed read is retried next time. */
@@ -274,6 +278,30 @@ export class ShopifyProductPublisherAdapter
    * rides along. A sale price writes `price` = sale and `compareAtPrice` =
    * regular, the same mapping the publish uses.
    */
+  /**
+   * Hide a product (`DRAFT`, so the storefront and every sales channel stop
+   * selling it; the product, its variants and its history stay) or put it back
+   * (`ACTIVE`, republished to the Online Store like a first publish). Writes the
+   * status and nothing else (#3962).
+   */
+  async setShopProductVisibility(cmd: SetShopProductVisibilityCommand): Promise<void> {
+    const productGid = toShopifyGid('Product', cmd.externalProductId);
+    try {
+      await this.client.mutate(
+        PRODUCT_STATUS_UPDATE_MUTATION,
+        { product: { id: productGid, status: cmd.visible ? 'ACTIVE' : 'DRAFT' } },
+        'productUpdate',
+      );
+    } catch (error) {
+      throw this.toPublishError(error);
+    }
+    if (cmd.visible) {
+      const warnings: string[] = [];
+      await this.publishToOnlineStore(productGid, warnings);
+      for (const warning of warnings) this.logger.warn(warning);
+    }
+  }
+
   async updateShopProductPrice(cmd: UpdateShopProductPriceCommand): Promise<void> {
     const ids = cmd.externalParentProductId
       ? [toShopifyGid('ProductVariant', cmd.externalProductId)]
