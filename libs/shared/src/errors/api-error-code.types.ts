@@ -162,6 +162,8 @@ export const ApiErrorCodeValues = [
   'ORDER_DESTINATION_NOT_FOUND',
   /** Only a failed destination sync can be retried. params: `orderId`, `connectionId`, `status`. */
   'ORDER_DESTINATION_NOT_RETRYABLE',
+  /** OMS routing owns the order, so a destination mirror is not retryable. params: `orderId`, `connectionId`. */
+  'ORDER_HANDLED_BY_ROUTING',
   /** The order has no source external id for the connection (500). params: `orderId`, `connectionId`. */
   'ORDER_SOURCE_ID_MISSING',
   /** The routing retry could not be queued; try again. params: `orderId`. */
