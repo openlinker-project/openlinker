@@ -1320,6 +1320,31 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    it('should store the delivery fingerprint and relay report on the synced row (#4195)', async () => {
+      const at = new Date('2026-11-17T10:00:00Z');
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'success',
+          destinationConnectionId: 'dest-conn-1',
+          orderRef: { orderId: 'ext-order-1' },
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', at },
+        },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_test',
+        'dest-conn-1',
+        expect.objectContaining({
+          status: 'synced',
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', at },
+        })
+      );
+    });
+
     // #2397 — the consumer half of "a deliberate empty routing decision returns
     // []". `OrderSyncService` refuses to throw for that case precisely so this
     // is a no-op; asserted HERE, at the caller, because the claim is about what

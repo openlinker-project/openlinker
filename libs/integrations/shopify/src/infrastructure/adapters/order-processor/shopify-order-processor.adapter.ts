@@ -3,7 +3,8 @@
  *
  * Shopify as an order DESTINATION (#3978): an order from a marketplace
  * (Allegro, Erli) is created in the store with `orderCreate`. Implements
- * `OrderProcessorManagerPort` plus four sub-capabilities, each narrowed by its
+ * `OrderProcessorManagerPort` plus five sub-capabilities (`OrderDeliveryUpdater`, #4195, edits the
+ * shipping line and pickup-point details of a copy whose locker changed at the source), each narrowed by its
  * guard at the call site:
  *   - `OrderStatusWriteback` and `OrderFulfillmentUpdater`: a dispatch is
  *     `fulfillmentCreate` with tracking, a cancellation `orderCancel`, through
@@ -48,6 +49,8 @@ import type {
   MappingOption,
   OrderCreate,
   OrderCreateStockEffect,
+  OrderDeliveryUpdateResult,
+  OrderDeliveryUpdater,
   OrderFulfillmentUpdater,
   OrderLifecycleEvent,
   OrderProcessorManagerPort,
@@ -82,6 +85,7 @@ import {
 } from '../../readers/shopify-order.queries';
 import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop-context.provider';
 import type { ShopifyOrderStatusWriteback } from '../order-status/shopify-order-status-writeback';
+import { ShopifyOrderDeliveryUpdater } from './shopify-order-delivery-updater';
 
 /** Fulfillment-order states that still hold work to move. */
 const MOVABLE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'IN_PROGRESS']);
@@ -154,11 +158,13 @@ export class ShopifyOrderProcessorAdapter
     OrderFulfillmentUpdater,
     OrderStatusWriteback,
     OrderCreateStockEffect,
+    OrderDeliveryUpdater,
     DestinationOptionsReader,
     FulfillmentStatusReader
 {
   private readonly logger = new Logger(ShopifyOrderProcessorAdapter.name);
   private readonly options: ShopifyMappingOptionsReader;
+  private readonly deliveryUpdater: ShopifyOrderDeliveryUpdater;
 
   /** Delays between re-asks of the source-identifier search after a miss; tests shorten it. */
   private readonly lookupRetryDelaysMs: readonly number[] = LOOKUP_RETRY_DELAYS_MS;
@@ -172,6 +178,7 @@ export class ShopifyOrderProcessorAdapter
     private readonly mappingConfig?: IMappingConfigService,
   ) {
     this.options = new ShopifyMappingOptionsReader(client, connection.id);
+    this.deliveryUpdater = new ShopifyOrderDeliveryUpdater(client, connection.id);
   }
 
   // ─── DestinationOptionsReader ──────────────────────────────────────────────
@@ -235,6 +242,17 @@ export class ShopifyOrderProcessorAdapter
     const ref = toOrderRef(payload.order);
     await this.moveSafely(ref.orderId, payload.order.fulfillmentOrders.nodes, context.locationGid);
     return ref;
+  }
+
+  // ─── OrderDeliveryUpdater ──────────────────────────────────────────────────
+
+  /** Edits the copy's shipping line and pickup-point details, or answers why it will not (#4195). */
+  async updateOrderDelivery(input: {
+    externalOrderId: string;
+    order: OrderCreate;
+  }): Promise<OrderDeliveryUpdateResult> {
+    const mapped = await this.resolveMappedOptions(input.order);
+    return this.deliveryUpdater.update(input.externalOrderId, input.order, mapped);
   }
 
   // ─── OrderCreateStockEffect ────────────────────────────────────────────────

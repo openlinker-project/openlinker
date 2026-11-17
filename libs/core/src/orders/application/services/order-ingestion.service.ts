@@ -1038,6 +1038,12 @@ export class OrderIngestionService implements IOrderIngestionService {
               syncedAt: new Date(),
               externalOrderId: result.orderRef.orderId,
               externalOrderNumber: result.orderRef.orderNumber,
+              // #4195: what the destination copy now carries about delivery, so
+              // the next re-ingestion relays only a real change.
+              ...(result.deliveryFingerprint !== undefined
+                ? { deliveryFingerprint: result.deliveryFingerprint }
+                : {}),
+              ...(result.deliveryUpdate ? { deliveryUpdate: result.deliveryUpdate } : {}),
             }
           );
         } else if (result.status === 'skipped_held') {

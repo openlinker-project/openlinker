@@ -32,6 +32,23 @@ export {
 // asked on the create-skip path only, best-effort.
 export type { OrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
 export { isOrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
+// Delivery-point edit of an order the destination already holds (#4195): asked
+// on the create-skip path when the source changed the locker or shipping method.
+export type { OrderDeliveryUpdater } from './domain/ports/capabilities/order-delivery-updater.capability';
+export { isOrderDeliveryUpdater } from './domain/ports/capabilities/order-delivery-updater.capability';
+export type {
+  OrderDeliveryRefusalReason,
+  OrderDeliveryUpdateOutcome,
+  OrderDeliveryUpdateReport,
+  OrderDeliveryUpdateResult,
+} from './domain/types/order-delivery-update.types';
+export {
+  OrderDeliveryRefusalReasonValues,
+  OrderDeliveryUpdateOutcomeValues,
+  computeDeliveryFingerprint,
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+} from './domain/types/order-delivery-update.types';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
 // shipment-status projection from the OMP's view.
 export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';

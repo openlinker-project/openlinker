@@ -95,6 +95,15 @@ export type ShopifyOrderCreateVariables = {
 
 type MoneyBag = { shopMoney: { amount: string; currencyCode: string } };
 
+/** Keys the pickup point is written under as custom attributes. */
+const ATTRIBUTE_POINT = 'Pickup point';
+const ATTRIBUTE_NAME = 'Pickup point name';
+const ATTRIBUTE_ADDRESS = 'Pickup point address';
+export const PICKUP_POINT_ATTRIBUTE_KEYS: readonly string[] = [ATTRIBUTE_POINT, ATTRIBUTE_NAME, ATTRIBUTE_ADDRESS];
+
+/** Prefix of the order-note line that names the pickup point. */
+export const PICKUP_POINT_NOTE_PREFIX = 'Pickup point:';
+
 const NUMERIC_RATE = /^\d+(\.\d+)?$/;
 
 /**
@@ -157,23 +166,23 @@ export function pickupPointAttributes(point: OrderPickupPoint | undefined): Arra
   const name = point.name?.trim();
   const description = point.description?.trim();
   return [
-    { key: 'Pickup point', value: id },
-    ...(name ? [{ key: 'Pickup point name', value: name }] : []),
-    ...(description ? [{ key: 'Pickup point address', value: description }] : []),
+    { key: ATTRIBUTE_POINT, value: id },
+    ...(name ? [{ key: ATTRIBUTE_NAME, value: name }] : []),
+    ...(description ? [{ key: ATTRIBUTE_ADDRESS, value: description }] : []),
   ];
 }
 
 /** One readable line for the order note: `Pickup point: GIT01D - <name>, <description>`. */
-function pickupPointNote(point: OrderPickupPoint | undefined): string | null {
+export function pickupPointNote(point: OrderPickupPoint | undefined): string | null {
   const attributes = pickupPointAttributes(point);
   if (attributes.length === 0) {
     return null;
   }
   const details = attributes.slice(1).map((a) => a.value);
-  return `Pickup point: ${attributes[0].value}${details.length > 0 ? ` - ${details.join(', ')}` : ''}`;
+  return `${PICKUP_POINT_NOTE_PREFIX} ${attributes[0].value}${details.length > 0 ? ` - ${details.join(', ')}` : ''}`;
 }
 
-function shippingTitle(order: OrderCreate, mapped: ShopifyOrderMappedOptions): string {
+export function shopifyShippingTitle(order: OrderCreate, mapped: ShopifyOrderMappedOptions): string {
   const mappedTitle = mapped.deliveryMethodIsConfigured === false ? undefined : mapped.deliveryMethod;
   const base =
     mappedTitle ?? order.shipping?.methodName ?? mapped.deliveryMethod ?? order.shipping?.methodId ?? 'Shipping';
@@ -287,7 +296,7 @@ export function buildShopifyOrderCreateVariables(
       ? []
       : [
           {
-            title: shippingTitle(order, mapped),
+            title: shopifyShippingTitle(order, mapped),
             ...(shippingCode ? { code: shippingCode } : {}),
             source: 'openlinker',
             priceSet: money(shippingAmount, currencyCode),

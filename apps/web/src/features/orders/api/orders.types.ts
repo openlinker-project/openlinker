@@ -36,6 +36,17 @@ export const OrderSyncStatusValues = [
 ] as const;
 export type OrderSyncStatusValue = (typeof OrderSyncStatusValues)[number];
 
+/**
+ * Last attempt to carry a changed delivery point to a destination copy (#4195).
+ * Mirrors `OrderDeliveryUpdateResponseDto`; `reason` is set for `refused` only.
+ */
+export interface OrderDeliveryUpdate {
+  outcome: 'updated' | 'unchanged' | 'refused' | 'unsupported' | 'failed';
+  reason: 'cancelled' | 'fulfilled' | 'closed' | 'not-found' | null;
+  detail: string | null;
+  at: string;
+}
+
 export interface OrderSyncStatus {
   destinationConnectionId: string;
   status: OrderSyncStatusValue;
@@ -43,6 +54,7 @@ export interface OrderSyncStatus {
   externalOrderId: string | null;
   externalOrderNumber: string | null;
   error: string | null;
+  deliveryUpdate?: OrderDeliveryUpdate | null;
 }
 
 /**
