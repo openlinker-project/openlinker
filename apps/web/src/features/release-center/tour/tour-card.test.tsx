@@ -33,6 +33,16 @@ function Starter(): ReactElement {
       >
         start
       </button>
+      <button
+        onClick={() =>
+          tour.start([
+            { stepId: 'packing-owner', connectionId: 'c1', importance: 'required' },
+            { stepId: 'shipping-routing', connectionId: 'c1', importance: 'optional' },
+          ])
+        }
+      >
+        start-missing
+      </button>
       <div data-tour="label-master">target</div>
     </>
   );
@@ -82,5 +92,15 @@ describe('TourCard', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Guided tour' })).not.toBeInTheDocument());
     await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('should offer Skip instead of Next when the target is missing, even on a required step', async () => {
+    setup(admin);
+    fireEvent.click(screen.getByText('start-missing'));
+    const skip = await screen.findByRole('button', { name: 'Skip this step' }, { timeout: 4000 });
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'I will do it later' })).toBeInTheDocument();
+    fireEvent.click(skip);
+    expect(await screen.findByText(/Step 2 of 2/)).toBeInTheDocument();
   });
 });

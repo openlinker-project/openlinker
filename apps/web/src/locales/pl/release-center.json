@@ -136,6 +136,7 @@
     "requiredReason": "Wybierz opcję w tym wymaganym kroku, aby przejść dalej.",
     "saveFailed": "Nie udało się zapisać. Spróbuj ponownie.",
     "saved": "Zapisano: {choice}",
+    "skip": "Pomiń ten krok",
     "stepOf": "Krok {current} z {total}",
     "viewerHint": "Możesz zobaczyć to ustawienie. Zmienić je może tylko administrator."
   },

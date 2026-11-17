@@ -132,6 +132,7 @@
     "requiredReason": "Make a choice for this required step to continue.",
     "saveFailed": "Could not save. Try again.",
     "saved": "Saved: {choice}",
+    "skip": "Skip this step",
     "stepOf": "Step {current} of {total}",
     "viewerHint": "You can look at this setting. Only an administrator can change it."
   },

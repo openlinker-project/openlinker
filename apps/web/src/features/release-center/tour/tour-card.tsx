@@ -80,6 +80,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     if (!element || !ring) return undefined;
     const card = cardRef.current;
     if (!card) return undefined;
+    document.documentElement.classList.add('tour-active');
     let frame = 0;
     let dockFrame = 0;
     let scrolled = false;
@@ -163,6 +164,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     window.addEventListener('load', schedule, true);
     void document.fonts?.ready.then(schedule);
     return () => {
+      document.documentElement.classList.remove('tour-active');
       document.documentElement.style.removeProperty('--tour-card-space');
       cancelAnimationFrame(frame);
       cancelAnimationFrame(dockFrame);
@@ -293,7 +295,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             <p className="tour-card__hint">{tour.viewerHint}</p>
           ) : null}
         </div>
-        {blocked ? (
+        {blocked && state.target !== 'missing' ? (
           <p id={reasonId} className="tour-card__reason">
             {tour.requiredReason}
           </p>
@@ -312,15 +314,22 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
                 <ReleaseIcon name="arrow-left" size={14} /> {tour.back}
               </Button>
             ) : null}
-            <Button
-              tone="primary"
-              className="button--sm"
-              aria-disabled={blocked || undefined}
-              aria-describedby={blocked ? reasonId : undefined}
-              onClick={handleNext}
-            >
-              {isLast ? tour.finish : tour.next} <ReleaseIcon name="arrow-right" size={14} />
-            </Button>
+            {state.target === 'missing' ? (
+              // A step that cannot be shown must never trap the walk: skipping always moves on.
+              <Button tone="primary" className="button--sm" onClick={() => (isLast ? onClose() : dispatch({ type: 'next' }))}>
+                {tour.skip} <ReleaseIcon name="arrow-right" size={14} />
+              </Button>
+            ) : (
+              <Button
+                tone="primary"
+                className="button--sm"
+                aria-disabled={blocked || undefined}
+                aria-describedby={blocked ? reasonId : undefined}
+                onClick={handleNext}
+              >
+                {isLast ? tour.finish : tour.next} <ReleaseIcon name="arrow-right" size={14} />
+              </Button>
+            )}
           </div>
         </div>
       </section>
