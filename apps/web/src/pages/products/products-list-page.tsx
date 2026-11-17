@@ -91,6 +91,7 @@ import { useTrackMargin } from '../../features/analytics';
 import { ProductPeek, type ProductPeekView } from './product-peek';
 import { formatPrice, useProductCells } from './use-product-cells';
 import { ProductsFilterBar } from './products-filter-bar';
+import { useSaleHoldAttentionCountQuery } from '../../features/listings';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
 import {
@@ -170,6 +171,8 @@ function ProductsListPageBody(): ReactElement {
   // the operator their catalogue.
   const omsAttention = useOmsAttentionQuery();
   const availabilityUnknown = omsAttention.forReason('availability-unknown');
+  const saleHoldCopy = useMessages('listings').salesChannels;
+  const saleHoldAttention = useSaleHoldAttentionCountQuery();
 
   // #3588 - margin reminders. Off means hidden, never degraded: cost snapshots
   // keep being written, only the views and nudges go quiet.
@@ -1031,6 +1034,21 @@ function ProductsListPageBody(): ReactElement {
             link points at the surface that DOES name them instead.
           */}
           <Link to="/settings/who-decides">{copy.availabilityUnknownLink}</Link>
+        </Alert>
+      ) : null}
+
+      {saleHoldAttention.isError ? (
+        <Alert tone="warning" title={saleHoldCopy.banner.loadFailed} data-testid="sale-hold-banner-failed">
+          {saleHoldCopy.loadFailed.body}
+        </Alert>
+      ) : saleHoldAttention.data && saleHoldAttention.data.productsStillOnSale > 0 ? (
+        <Alert
+          tone="error"
+          title={plural(saleHoldAttention.data.productsStillOnSale, saleHoldCopy.banner.title)}
+          data-testid="sale-hold-banner"
+        >
+          {saleHoldCopy.banner.body}{' '}
+          <Link to="/listings?staleSignal=selling">{saleHoldCopy.banner.link}</Link>
         </Alert>
       ) : null}
 
