@@ -170,7 +170,7 @@ export function ReleaseCard({
           </button>
           <div id={regionId} className="release-card__collapse" data-open={open}>
             <div>
-              {open ? <ReleaseStepList instances={mine} /> : null}
+              {open ? <ReleaseStepList instances={mine} onNavigate={onNavigate} /> : null}
             </div>
           </div>
           <div className="release-card__actions">

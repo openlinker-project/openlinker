@@ -27,8 +27,11 @@ interface StepCopy {
 
 export function ReleaseStepList({
   instances,
+  onNavigate,
 }: {
   instances: readonly StepInstance[];
+  /** Called when a step hands the user off to the guided tour, so the panel can step aside. */
+  onNavigate?: () => void;
 }): ReactElement | null {
   const view = useReleaseCenterView();
   const copy = useMessages('release-center');
@@ -116,12 +119,13 @@ export function ReleaseStepList({
                   <Button
                     className="button--xs"
                     tone="secondary"
-                    onClick={() =>
+                    onClick={() => {
                       requestReleaseTour({
                         stepId: instance.step.id,
                         connectionId: instance.connectionId,
-                      })
-                    }
+                      });
+                      onNavigate?.();
+                    }}
                   >
                     {panel.showMe} <ReleaseIcon name="arrow-right" size={12} />
                   </Button>
