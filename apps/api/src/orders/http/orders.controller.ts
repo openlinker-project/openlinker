@@ -2446,6 +2446,14 @@ export class OrdersController {
       externalOrderId: s.externalOrderId ?? null,
       externalOrderNumber: s.externalOrderNumber ?? null,
       error: s.error ?? null,
+      deliveryUpdate: s.deliveryUpdate
+        ? {
+            outcome: s.deliveryUpdate.outcome,
+            reason: s.deliveryUpdate.reason ?? null,
+            detail: s.deliveryUpdate.detail ?? null,
+            at: s.deliveryUpdate.at.toISOString(),
+          }
+        : null,
     };
   }
 

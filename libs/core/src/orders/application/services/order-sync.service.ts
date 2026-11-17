@@ -40,6 +40,12 @@ import type {
 import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
 import { lowersStockOnOrderCreate } from '../../domain/ports/capabilities/order-create-stock-effect.capability';
 import { isOrderContactRefresher } from '../../domain/ports/capabilities/order-contact-refresher.capability';
+import { isOrderDeliveryUpdater } from '../../domain/ports/capabilities/order-delivery-updater.capability';
+import {
+  computeDeliveryFingerprint,
+  type OrderDeliveryUpdateReport,
+} from '../../domain/types/order-delivery-update.types';
+import type { OrderSyncStatus } from '../../domain/types/order-sync.types';
 import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -85,6 +91,13 @@ interface DestinationCreateOutcome {
 interface SettledDestination extends DestinationCreateOutcome {
   readonly connectionId: string;
   readonly lowersStock: boolean;
+  readonly delivery: DeliveryRelayOutcome;
+}
+
+/** What the delivery relay leaves for ingestion to store beside the sync status (#4195). */
+interface DeliveryRelayOutcome {
+  readonly fingerprint: string;
+  readonly report?: OrderDeliveryUpdateReport;
 }
 
 @Injectable()
@@ -427,7 +440,18 @@ export class OrderSyncService implements IOrderSyncService {
                 orderCreate
               );
             }
+            const delivery = created
+              ? { fingerprint: computeDeliveryFingerprint(orderCreate) }
+              : await this.relayDeliveryChange(
+                  adapter,
+                  connectionId,
+                  order.id,
+                  orderRef,
+                  orderCreate,
+                  record?.syncStatus.find((row) => row.destinationConnectionId === connectionId)
+                );
             return {
+              delivery,
               connectionId,
               orderRef,
               created,
@@ -529,7 +553,7 @@ export class OrderSyncService implements IOrderSyncService {
       const destinationConnectionId = destinations[index].connectionId;
 
       if (outcome.status === 'fulfilled') {
-        const { orderRef, created } = outcome.value;
+        const { orderRef, created, delivery } = outcome.value;
         this.logger.log(
           `Order ${order.id} synced to destination ${destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`
         );
@@ -538,6 +562,8 @@ export class OrderSyncService implements IOrderSyncService {
           status: 'success',
           orderRef,
           created,
+          deliveryFingerprint: delivery.fingerprint,
+          ...(delivery.report ? { deliveryUpdate: delivery.report } : {}),
         };
       }
 
@@ -712,6 +738,100 @@ export class OrderSyncService implements IOrderSyncService {
           `${destinationConnectionId} (destination order: ${orderRef.orderId}): ` +
           `${error instanceof Error ? error.message : String(error)}`
       );
+    }
+  }
+
+  /**
+   * Carry a changed delivery point or shipping method to a destination that
+   * already holds the order (`OrderDeliveryUpdater`, #4195).
+   *
+   * Idempotent on the VALUE: the digest of what the copy was last given is kept
+   * on its sync status and compared with the order's current one, so the same
+   * change re-ingested by a poll and a webhook is relayed once. Where no digest
+   * was ever stored (a copy created before the relay existed) the current value
+   * is recorded as the baseline and nothing is relayed: what the copy holds is
+   * unknown, and editing every historical order on first sight would touch
+   * orders nobody changed.
+   *
+   * Never throws: the order is already at the destination. A refusal (the copy
+   * is fulfilled, closed or cancelled) and a destination without the
+   * capability are recorded with their reason and their digest, since asking
+   * again cannot change the answer. A failed call keeps the OLD digest so the
+   * next re-ingestion tries again.
+   */
+  private async relayDeliveryChange(
+    adapter: OrderProcessorManagerPort,
+    destinationConnectionId: string,
+    internalOrderId: string,
+    orderRef: OrderRef,
+    orderCreate: OrderCreate,
+    previous: OrderSyncStatus | undefined
+  ): Promise<DeliveryRelayOutcome> {
+    const current = computeDeliveryFingerprint(orderCreate);
+    const stored = previous?.deliveryFingerprint;
+    if (stored === undefined) {
+      return { fingerprint: current, report: previous?.deliveryUpdate };
+    }
+    if (stored === current) {
+      return { fingerprint: current, report: previous?.deliveryUpdate };
+    }
+
+    const at = new Date();
+    if (!isOrderDeliveryUpdater(adapter)) {
+      this.logger.warn(
+        `Delivery point of order ${internalOrderId} changed at the source, but destination ` +
+          `${destinationConnectionId} cannot edit an order after create; its copy keeps the old one`
+      );
+      return {
+        fingerprint: current,
+        report: {
+          outcome: 'unsupported',
+          detail: 'The destination cannot edit an order after it is created',
+          at,
+        },
+      };
+    }
+
+    try {
+      const result = await adapter.updateOrderDelivery({
+        externalOrderId: orderRef.orderId,
+        order: orderCreate,
+      });
+      if (result.outcome === 'refused') {
+        this.logger.warn(
+          `Destination ${destinationConnectionId} refused the new delivery point of order ` +
+            `${internalOrderId} (destination order ${orderRef.orderId}): ${result.reason}` +
+            `${result.detail ? ` - ${result.detail}` : ''}`
+        );
+        return {
+          fingerprint: current,
+          report: {
+            outcome: 'refused',
+            reason: result.reason,
+            ...(result.detail ? { detail: result.detail } : {}),
+            at,
+          },
+        };
+      }
+      this.logger.log(
+        `Delivery point of order ${internalOrderId} ${result.outcome} at destination ` +
+          `${destinationConnectionId} (destination order ${orderRef.orderId})`
+      );
+      return {
+        fingerprint: current,
+        report: {
+          outcome: result.outcome,
+          ...(result.outcome === 'updated' && result.detail ? { detail: result.detail } : {}),
+          at,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Could not update the delivery point of order ${internalOrderId} at destination ` +
+          `${destinationConnectionId} (destination order ${orderRef.orderId}): ${message}`
+      );
+      return { fingerprint: stored, report: { outcome: 'failed', detail: message, at } };
     }
   }
 

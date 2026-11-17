@@ -4,6 +4,7 @@ import {
   isDestinationOptionsReader,
   isFulfillmentStatusReader,
   isOrderCreateStockEffect,
+  isOrderDeliveryUpdater,
   isOrderFulfillmentUpdater,
   isOrderStatusWriteback,
   type OrderCreate,
@@ -124,6 +125,7 @@ describe('ShopifyOrderProcessorAdapter', () => {
     expect(isDestinationOptionsReader(adapter)).toBe(true);
     expect(isOrderCreateStockEffect(adapter)).toBe(true);
     expect(isFulfillmentStatusReader(adapter)).toBe(true);
+    expect(isOrderDeliveryUpdater(adapter)).toBe(true);
   });
 
   it('should report that a create lowers the store stock', async () => {

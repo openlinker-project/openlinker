@@ -2910,6 +2910,63 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('delivery relay state on the sync status (#4195)', () => {
+    it('should write the fingerprint and the relay report into the status row', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([[], 1]);
+      const at = new Date('2026-11-17T10:00:00Z');
+
+      await repository.updateSyncStatus(
+        'order-123',
+        'dest-1',
+        {
+          destinationConnectionId: 'dest-1',
+          status: 'synced',
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', detail: 'shipped', at },
+        },
+        { destinationConnectionId: 'dest-1', status: 'synced', attemptedAt: at }
+      );
+
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      const params = calls[0][1] as unknown[];
+      expect(JSON.parse(params[2] as string)).toMatchObject({
+        deliveryFingerprint: 'fp-1',
+        deliveryUpdate: {
+          outcome: 'refused',
+          reason: 'fulfilled',
+          detail: 'shipped',
+          at: at.toISOString(),
+        },
+      });
+    });
+
+    it('should read the persisted fingerprint and report back, and drop an unrecognised outcome', async () => {
+      const entity = createOrmEntity();
+      entity.syncStatus = [
+        {
+          destinationConnectionId: 'a',
+          status: 'synced',
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'updated', at: '2026-11-17T10:00:00.000Z' },
+        },
+        {
+          destinationConnectionId: 'b',
+          status: 'synced',
+          deliveryUpdate: { outcome: 'something-new', at: '2026-11-17T10:00:00.000Z' },
+        },
+      ];
+      ormRepository.findOne.mockResolvedValue(entity);
+
+      const result = await repository.findById('order-123');
+
+      expect(result?.syncStatus[0]).toMatchObject({
+        deliveryFingerprint: 'fp-1',
+        deliveryUpdate: { outcome: 'updated', at: new Date('2026-11-17T10:00:00.000Z') },
+      });
+      expect(result?.syncStatus[1].deliveryUpdate).toBeUndefined();
+    });
+  });
+
   describe('markCancelled (#1984)', () => {
     it('should issue a first-write-wins update and report the transition from the affected count', async () => {
       (ormRepository.query as jest.Mock).mockResolvedValue([[], 1]);

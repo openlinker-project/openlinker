@@ -35,6 +35,11 @@ import type { OrderLineItemDraft } from '../../../domain/order-analytics-project
 import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import {
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+  type OrderDeliveryUpdateReport,
+} from '../../../domain/types/order-delivery-update.types';
+import {
   isFulfillmentRoutingSkipReason,
   type FulfillmentRoutingSkipReason,
 } from '../../../domain/types/fulfillment-routing-eligibility.types';
@@ -4240,6 +4245,15 @@ export class OrderRecordRepository
       externalOrderId: status.externalOrderId,
       externalOrderNumber: status.externalOrderNumber,
       error: status.error,
+      deliveryFingerprint: status.deliveryFingerprint,
+      deliveryUpdate: status.deliveryUpdate
+        ? {
+            outcome: status.deliveryUpdate.outcome,
+            reason: status.deliveryUpdate.reason,
+            detail: status.deliveryUpdate.detail,
+            at: status.deliveryUpdate.at.toISOString(),
+          }
+        : undefined,
     };
 
     const newAttemptRow: SyncAttemptJson = {
@@ -4320,6 +4334,8 @@ export class OrderRecordRepository
       externalOrderId: s.externalOrderId,
       externalOrderNumber: s.externalOrderNumber,
       error: s.error,
+      deliveryFingerprint: s.deliveryFingerprint,
+      deliveryUpdate: toDeliveryUpdateReport(s.deliveryUpdate),
     }));
 
     const syncAttempts: SyncAttempt[] = (entity.syncAttempts ?? []).map((a) => ({
@@ -4637,4 +4653,27 @@ export class OrderRecordRepository
     entity.unitCostCurrency = item.cost.unitCostCurrency;
     return entity;
   }
+}
+
+/**
+ * Coerce a persisted delivery-relay report (#4195). An unrecognised outcome
+ * reads as absent rather than being surfaced as something this build cannot
+ * describe, and a malformed instant is dropped with it.
+ */
+function toDeliveryUpdateReport(
+  json: OrderSyncStatusJson['deliveryUpdate']
+): OrderDeliveryUpdateReport | undefined {
+  if (!json || !isOrderDeliveryUpdateOutcome(json.outcome)) {
+    return undefined;
+  }
+  const at = new Date(json.at);
+  if (Number.isNaN(at.getTime())) {
+    return undefined;
+  }
+  return {
+    outcome: json.outcome,
+    ...(isOrderDeliveryRefusalReason(json.reason) ? { reason: json.reason } : {}),
+    ...(json.detail ? { detail: json.detail } : {}),
+    at,
+  };
 }

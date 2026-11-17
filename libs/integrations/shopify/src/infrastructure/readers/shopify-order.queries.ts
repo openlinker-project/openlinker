@@ -187,3 +187,53 @@ export const ORDER_CANCEL_MUTATION = `mutation OlOrderCancel($id: ID!) {
     orderCancelUserErrors { field message code }
   }
 }`;
+
+/**
+ * What the delivery update needs to know about the copy (#4195): whether it can
+ * still be edited, and the note, attributes and shipping lines it carries now.
+ */
+export const ORDER_DELIVERY_QUERY = `query OlOrderDelivery($id: ID!) {
+  order(id: $id) {
+    id cancelledAt closedAt displayFulfillmentStatus note
+    customAttributes { key value }
+    shippingLines(first: 25) { nodes { id title originalPriceSet { ${MONEY} } taxLines { rate } } }
+  }
+}`;
+
+export const ORDER_EDIT_BEGIN_MUTATION = `mutation OlOrderEditBegin($id: ID!) {
+  orderEditBegin(id: $id) {
+    calculatedOrder {
+      id
+      shippingLines { id title price { ${MONEY} } }
+    }
+    userErrors { field message }
+  }
+}`;
+
+export const ORDER_EDIT_REMOVE_SHIPPING_LINE_MUTATION = `mutation OlOrderEditRemoveShippingLine($id: ID!, $shippingLineId: ID!) {
+  orderEditRemoveShippingLine(id: $id, shippingLineId: $shippingLineId) {
+    calculatedOrder { id }
+    userErrors { field message }
+  }
+}`;
+
+export const ORDER_EDIT_ADD_SHIPPING_LINE_MUTATION = `mutation OlOrderEditAddShippingLine($id: ID!, $shippingLine: OrderEditAddShippingLineInput!) {
+  orderEditAddShippingLine(id: $id, shippingLine: $shippingLine) {
+    calculatedOrder { id }
+    userErrors { field message }
+  }
+}`;
+
+export const ORDER_EDIT_COMMIT_MUTATION = `mutation OlOrderEditCommit($id: ID!, $staffNote: String) {
+  orderEditCommit(id: $id, notifyCustomer: false, staffNote: $staffNote) {
+    order { id }
+    userErrors { field message }
+  }
+}`;
+
+export const ORDER_UPDATE_MUTATION = `mutation OlOrderUpdate($input: OrderInput!) {
+  orderUpdate(input: $input) {
+    order { id }
+    userErrors { field message }
+  }
+}`;
