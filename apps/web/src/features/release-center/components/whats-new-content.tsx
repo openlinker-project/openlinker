@@ -58,7 +58,7 @@ export function WhatsNewContent(): ReactElement {
               <span className="whats-new__row-title">
                 {stepCopy(row.step.id).title}
                 {row.connection ? <span> · {row.connection.name}</span> : null}
-                <span className="release-dialog__chip">
+                <span className="release-chip">
                   {canWriteSteps
                     ? row.importance === 'required'
                       ? dialogCopy.required

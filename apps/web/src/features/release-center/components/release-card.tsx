@@ -29,9 +29,8 @@ import {
   type StepInstance,
 } from '../lib/release-notifications';
 import { useReleaseCenterView } from './release-center-provider';
+import { ReleaseIcon } from './release-icon';
 import { ReleaseStepList } from './release-step-list';
-
-const MENU_GLYPH = '\u22EF';
 
 export function ReleaseCard({
   notification,
@@ -89,10 +88,10 @@ export function ReleaseCard({
           <DropdownMenuTrigger asChild>
             <Button
               tone="ghost"
-              className="release-card__menu-trigger"
+              className="button--icon button--sm"
               aria-label={copy.itemActions}
             >
-              <span aria-hidden="true">{MENU_GLYPH}</span>
+              <ReleaseIcon name="dots" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -158,11 +157,13 @@ export function ReleaseCard({
           >
             <span>{open ? copy.stepsHide : interpolate(copy.stepsShow, { n: mine.length })}</span>
             <span className="release-card__chevron" aria-hidden="true" data-open={open}>
-              ▾
+              <ReleaseIcon name="chevron" />
             </span>
           </button>
-          <div id={regionId} hidden={!open}>
-            {open ? <ReleaseStepList instances={mine} /> : null}
+          <div id={regionId} className="release-card__collapse" data-open={open}>
+            <div>
+              {open ? <ReleaseStepList instances={mine} /> : null}
+            </div>
           </div>
           <div className="release-card__actions">
             <Button
@@ -172,7 +173,7 @@ export function ReleaseCard({
                 onNavigate();
               }}
             >
-              {cta}
+              {cta} <ReleaseIcon name="arrow-right" size={14} />
             </Button>
             <Button
               className="button--sm"

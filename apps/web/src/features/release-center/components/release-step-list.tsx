@@ -10,15 +10,15 @@
  * @module features/release-center/components
  */
 import type { ReactElement } from 'react';
-import { interpolate, useMessages } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useReleaseActions } from '../hooks/use-release-actions';
 import { requestReleaseTour } from '../lib/release-center-requests';
 import { stepStatusOf, type StepInstance } from '../lib/release-notifications';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseCenterView } from './release-center-provider';
+import { ReleaseIcon } from './release-icon';
 
 interface StepCopy {
   title: string;
@@ -39,11 +39,12 @@ export function ReleaseStepList({
   const stepCopies = copy.steps as unknown as Record<string, StepCopy | undefined>;
 
   return (
-    <ol className="release-steps">
-      {instances.map((instance) => {
+    <ol className="release-steps" aria-label={panel.progressLabel}>
+      {instances.map((instance, index) => {
         const { status, doneVia } = stepStatusOf(view.state, instance.itemKey, view.now);
         const text = stepCopies[instance.step.id];
         const closed = status === 'done' || status === 'not_applicable';
+        const required = instance.importance === 'required';
         return (
           <li
             key={instance.itemKey}
@@ -51,100 +52,106 @@ export function ReleaseStepList({
             data-status={status}
             data-importance={instance.importance}
           >
-            <div className="release-step__head">
-              <p className="release-step__title">{text?.title ?? instance.step.id}</p>
-              <StatusBadge compact tone={instance.importance === 'required' ? 'warning' : 'neutral'}>
-                {instance.importance === 'required' ? panel.stepRequired : panel.stepOptional}
-              </StatusBadge>
-            </div>
-            {instance.connectionName ? (
-              <p className="release-step__for">
-                {interpolate(panel.stepFor, { name: instance.connectionName })}
+            <span className="release-step__ind">
+              {closed ? <ReleaseIcon name="check" size={12} /> : index + 1}
+            </span>
+            <div className="release-step__body">
+              <p className="release-step__title">
+                {text?.title ?? instance.step.id}
+                {instance.connectionName ? (
+                  <span className="release-step__conn"> · {instance.connectionName}</span>
+                ) : null}
               </p>
-            ) : null}
-            {text?.why ? <p className="release-step__why">{text.why}</p> : null}
-            <div className="release-step__chips">
-              {status === 'snoozed' ? (
-                <StatusBadge compact tone="info">
-                  {panel.snoozedChip}
-                </StatusBadge>
-              ) : null}
-              {status === 'done' ? (
-                <StatusBadge compact tone="success" withDot>
-                  {doneVia === 'auto' ? panel.doneAuto : panel.doneManual}
-                </StatusBadge>
-              ) : null}
-              {status === 'not_applicable' ? (
-                <StatusBadge compact tone="neutral">
-                  {panel.naChip}
-                </StatusBadge>
-              ) : null}
-            </div>
-            <p className="release-step__hint">
-              {canWriteSteps ? panel.stepperAdmin : panel.stepperViewer}
-            </p>
-            <div className="release-step__actions">
-              <Button
-                className="button--sm"
-               
-                tone="ghost"
-                onClick={() =>
-                  requestReleaseTour({
-                    stepId: instance.step.id,
-                    connectionId: instance.connectionId,
-                  })
-                }
-              >
-                {panel.showMe}
-              </Button>
-              {closed ? (
-                <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
-                  <Button
-                className="button--sm"
-                   
-                    tone="secondary"
-                    disabled={!canWriteSteps}
-                    onClick={() => actions.reopenStep(instance.itemKey)}
+              <div className="release-step__chips">
+                <span
+                  className={`release-chip${required && canWriteSteps ? ' release-chip--accent' : ''}`}
+                >
+                  {!canWriteSteps
+                    ? panel.needsAdmin
+                    : required
+                      ? panel.stepRequired
+                      : panel.stepOptional}
+                </span>
+                {status === 'snoozed' ? (
+                  <span className="release-chip">{panel.snoozedChip}</span>
+                ) : null}
+                {status === 'done' ? (
+                  <span
+                    className={`release-chip ${doneVia === 'auto' ? 'release-chip--success' : 'release-chip--info'}`}
                   >
-                    {panel.undo}
+                    {doneVia === 'auto' ? panel.doneAuto : panel.doneManual}
+                  </span>
+                ) : null}
+                {status === 'not_applicable' ? (
+                  <span className="release-chip">{panel.naChip}</span>
+                ) : null}
+              </div>
+              {text?.why ? <p className="release-step__why">{text.why}</p> : null}
+              {!closed ? (
+                <p className="release-step__hint">
+                  {canWriteSteps ? panel.stepperAdmin : panel.stepperViewer}
+                </p>
+              ) : null}
+              <div className="release-step__actions">
+                {!closed ? (
+                  <Button
+                    className="button--xs"
+                    tone="secondary"
+                    onClick={() =>
+                      requestReleaseTour({
+                        stepId: instance.step.id,
+                        connectionId: instance.connectionId,
+                      })
+                    }
+                  >
+                    {panel.showMe} <ReleaseIcon name="arrow-right" size={12} />
                   </Button>
-                </ReadOnlyLock>
-              ) : (
-                <>
+                ) : null}
+                {closed ? (
                   <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
                     <Button
-                className="button--sm"
-                     
-                      tone="secondary"
-                      disabled={!canWriteSteps}
-                      onClick={() => actions.markStep(instance.itemKey, 'done')}
-                    >
-                      {panel.stayAsIs}
-                    </Button>
-                  </ReadOnlyLock>
-                  <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
-                    <Button
-                className="button--sm"
-                     
-                      tone="secondary"
-                      disabled={!canWriteSteps}
-                      onClick={() => actions.markStep(instance.itemKey, 'not_applicable')}
-                    >
-                      {panel.notApplicable}
-                    </Button>
-                  </ReadOnlyLock>
-                  {status === 'open' ? (
-                    <Button
-                className="button--sm"
-                     
+                      className="button--xs"
                       tone="ghost"
-                      onClick={() => actions.snoozeStep(instance.itemKey)}
+                      disabled={!canWriteSteps}
+                      onClick={() => actions.reopenStep(instance.itemKey)}
                     >
-                      {panel.remind}
+                      {panel.undo}
                     </Button>
-                  ) : null}
-                </>
-              )}
+                  </ReadOnlyLock>
+                ) : (
+                  <>
+                    <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
+                      <Button
+                        className="button--xs"
+                        tone="secondary"
+                        disabled={!canWriteSteps}
+                        onClick={() => actions.markStep(instance.itemKey, 'done')}
+                      >
+                        {panel.stayAsIs}
+                      </Button>
+                    </ReadOnlyLock>
+                    <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
+                      <Button
+                        className="button--xs"
+                        tone="ghost"
+                        disabled={!canWriteSteps}
+                        onClick={() => actions.markStep(instance.itemKey, 'not_applicable')}
+                      >
+                        {panel.notApplicable}
+                      </Button>
+                    </ReadOnlyLock>
+                    {status === 'open' ? (
+                      <Button
+                        className="button--xs"
+                        tone="ghost"
+                        onClick={() => actions.snoozeStep(instance.itemKey)}
+                      >
+                        {panel.remind}
+                      </Button>
+                    ) : null}
+                  </>
+                )}
+              </div>
             </div>
           </li>
         );

@@ -14,6 +14,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
+import { ReleaseIcon } from '../components/release-icon';
 import { connectionsQueryKeys, useConnectionQuery } from '../../connections';
 import { RELEASE_STEPS } from '../catalog/release-steps';
 import { useReleaseStateQuery } from '../hooks/use-release-state-query';
@@ -29,17 +30,10 @@ interface TourCardProps {
   onClose: () => void;
 }
 
-const RING_PADDING = 4;
-const CARD_GAP = 12;
-const CARD_WIDTH = 340;
-const MOBILE_QUERY = '(max-width: 767px)';
+const RING_PADDING = 8;
 
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function isMobile(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_QUERY).matches;
 }
 
 export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElement | null {
@@ -75,26 +69,16 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
   const element = target.state === 'found' ? target.element : null;
 
   useEffect(() => {
-    const card = cardRef.current;
     const ring = ringRef.current;
-    if (!element || !card || !ring) return undefined;
+    if (!element || !ring) return undefined;
     element.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     let frame = 0;
     const place = (): void => {
       const rect = element.getBoundingClientRect();
       ring.style.width = `${rect.width + RING_PADDING * 2}px`;
       ring.style.height = `${rect.height + RING_PADDING * 2}px`;
-      ring.style.transform = `translate(${rect.left - RING_PADDING}px, ${rect.top - RING_PADDING}px)`;
-      if (isMobile()) {
-        card.style.transform = '';
-        return;
-      }
-      const cardHeight = card.offsetHeight;
-      const below = rect.bottom + CARD_GAP;
-      const fitsBelow = below + cardHeight <= window.innerHeight;
-      const top = fitsBelow ? below : Math.max(CARD_GAP, rect.top - CARD_GAP - cardHeight);
-      const left = Math.min(Math.max(CARD_GAP, rect.left), window.innerWidth - CARD_WIDTH - CARD_GAP);
-      card.style.transform = `translate(${left}px, ${top}px)`;
+      ring.style.top = `${rect.top - RING_PADDING}px`;
+      ring.style.left = `${rect.left - RING_PADDING}px`;
     };
     const schedule = (): void => {
       cancelAnimationFrame(frame);
@@ -161,12 +145,10 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     else dispatch({ type: 'next' });
   };
 
-  const className = ['tour-card', isMobile() ? 'tour-card--docked' : ''].filter(Boolean).join(' ');
-
   return (
     <>
       <div ref={ringRef} className="tour-ring" aria-hidden="true" hidden={!element} />
-      <section ref={cardRef} className={className} role="region" aria-label={tour.regionLabel} tabIndex={-1}>
+      <section ref={cardRef} className="tour-card" role="region" aria-label={tour.regionLabel} tabIndex={-1}>
         <ol className="tour-card__rail" aria-hidden="true">
           {state.steps.map((other, index) => {
             const otherDone =
@@ -183,51 +165,71 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             );
           })}
         </ol>
-        <p className="tour-card__eyebrow">
-          {interpolate(tour.stepOf, { current: state.index + 1, total })}
-          {' · '}
-          {step.importance === 'required' ? tour.required : tour.optional}
-          {!isAdmin ? <span className="tour-card__chip">{tour.adminOnly}</span> : null}
-        </p>
-        <h2 className="tour-card__title">{stepCopy.tourTitle}</h2>
-        <p className="tour-card__body">{stepCopy.tourBody}</p>
-        {!isAdmin ? <p className="tour-card__hint">{tour.viewerHint}</p> : null}
+        <div className="tour-card__top">
+          <span>{interpolate(tour.stepOf, { current: state.index + 1, total })}</span>
+          <span
+            className={`release-chip${isAdmin && step.importance === 'required' ? ' release-chip--accent' : ''}`}
+          >
+            {!isAdmin ? tour.adminOnly : step.importance === 'required' ? tour.required : tour.optional}
+          </span>
+        </div>
+        <div className="tour-card__text">
+          <h2 className="tour-card__title">{stepCopy.tourTitle}</h2>
+          <p className="tour-card__body">{stepCopy.tourBody}</p>
+        </div>
         {isAdmin && spec ? (
           <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle}>
             {spec.choices.map((choice) => (
-              <Button
+              <button
                 key={choice.id}
-                tone="secondary"
+                type="button"
+                className="tour-choice"
                 aria-pressed={shownChoice === choice.id}
                 disabled={choose.isPending || connection.data === undefined}
                 onClick={() => choose.mutate(choice.id)}
               >
+                <span className="tour-choice__dot" aria-hidden="true" />
                 {choiceLabels[choice.id]}
-              </Button>
+              </button>
             ))}
           </div>
         ) : null}
-        <p className="tour-card__status" role="status" aria-live="polite">
-          {status}
-        </p>
+        <div role="status" aria-live="polite">
+          {status && shownChoice && state.target !== 'missing' && !saveFailed ? (
+            <div className="tour-done">
+              <ReleaseIcon name="check" size={14} />
+              <span>{status}</span>
+            </div>
+          ) : status ? (
+            <p className="tour-card__hint">{status}</p>
+          ) : !isAdmin ? (
+            <p className="tour-card__hint">{tour.viewerHint}</p>
+          ) : null}
+        </div>
         <div className="tour-card__footer">
-          <Button tone="ghost" onClick={onClose}>
+          <Button tone="ghost" className="button--sm" onClick={onClose}>
             {tour.later}
           </Button>
-          <span className="tour-card__spacer" />
-          {state.index > 0 ? (
-            <Button tone="secondary" onClick={() => dispatch({ type: 'back' })}>
-              {tour.back}
+          <div className="tour-card__nav">
+            {state.index > 0 ? (
+              <Button
+                tone="secondary"
+                className="button--sm"
+                onClick={() => dispatch({ type: 'back' })}
+              >
+                <ReleaseIcon name="arrow-left" size={14} /> {tour.back}
+              </Button>
+            ) : null}
+            <Button
+              tone="primary"
+              className="button--sm"
+              aria-disabled={blocked || undefined}
+              aria-describedby={blocked ? reasonId : undefined}
+              onClick={handleNext}
+            >
+              {isLast ? tour.finish : tour.next} <ReleaseIcon name="arrow-right" size={14} />
             </Button>
-          ) : null}
-          <Button
-            tone="primary"
-            aria-disabled={blocked || undefined}
-            aria-describedby={blocked ? reasonId : undefined}
-            onClick={handleNext}
-          >
-            {isLast ? tour.finish : tour.next}
-          </Button>
+          </div>
         </div>
         {blocked ? (
           <p id={reasonId} className="tour-card__reason">

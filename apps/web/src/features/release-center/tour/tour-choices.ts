@@ -25,8 +25,8 @@ export const TOUR_CHOICES: Readonly<Record<string, TourChoiceSpec>> = {
   'packing-owner': {
     path: ['fulfilmentOwnedByDestination'],
     choices: [
-      { id: 'externalPacking', value: true },
       { id: 'ownPacking', value: false },
+      { id: 'externalPacking', value: true },
     ],
   },
   'inpost-notify-buyer': {
