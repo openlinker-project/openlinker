@@ -38,11 +38,19 @@ function start(): void {
 // Development-only missing-translation inspector (#4017). `import.meta.env.DEV`
 // is a literal `false` in a production build, so the branch and its chunk are
 // dropped there even with the variable set. It must install before the first
-// load so every merge is tagged; a failed import just starts the app plainly.
+// load so every merge is tagged. A failed install still starts the app, but
+// says so: with no marks on screen a developer would otherwise read the page
+// as fully translated.
 if (import.meta.env.DEV && env.VITE_I18N_HIGHLIGHT_MISSING) {
   void import('./shared/i18n/missing-inspector')
     .then((inspector) => inspector.installMissingInspector())
-    .catch(() => undefined)
+    .catch((error: unknown) => {
+      console.warn(
+        'The missing-translation inspector failed to load, so no text is marked. ' +
+          'Untranslated text is NOT highlighted on this page.',
+        error,
+      );
+    })
     .then(start);
 } else {
   start();

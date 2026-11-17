@@ -48,6 +48,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/**
+ * The same rule `IsPlural` applies to the copy types (`copy.types.ts`): an
+ * object whose keys are exactly `one` and `other`, both strings, is a plural.
+ * A section may not be shaped like that (docs/engineering-standards.md, User
+ * facing copy), so the shape is unambiguous; a section that holds `one` and
+ * `other` next to any other key stays a section. `merge.test.ts` pins both.
+ */
 function isEnglishPlural(value: Record<string, unknown>): boolean {
   const keys = Object.keys(value);
   return (

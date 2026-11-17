@@ -59,6 +59,21 @@ describe('mergeOverEnglish', () => {
     expect(tagger.calls.every((call) => call.namespace === 'orders')).toBe(true);
   });
 
+  // The plural rule is the copy types' `IsPlural`: exactly `one` + `other`.
+  // A section that also holds another key is a section, so the inspector must
+  // not invent `few` / `many` for it.
+  it('should treat a section holding one and other next to another key as a section', () => {
+    const tagger = recorder();
+    const merged = mergeOverEnglish(
+      { steps: { one: 'Step one', other: 'Other steps', title: 'Steps' } },
+      { steps: { one: 'Krok pierwszy', other: 'Pozostałe kroki', title: 'Kroki' } },
+      { tagger, locale: 'pl', namespace: 'orders' },
+    ) as { steps: Record<string, unknown> };
+
+    expect(Object.keys(merged.steps).sort()).toEqual(['one', 'other', 'title']);
+    expect(tagger.calls).toEqual([]);
+  });
+
   it('should not tag a plural whose Polish forms are all present', () => {
     const tagger = recorder();
     mergeOverEnglish(

@@ -9,6 +9,13 @@
  * bundle contains none of it; `scripts/check-i18n-inspector-not-in-build.mjs`
  * proves that by looking for `MISSING_INSPECTOR_SENTINEL` in a build.
  *
+ * Installing it patches three globals for the life of the page, with no way
+ * to undo: `history.pushState` / `history.replaceState` (to see a route change
+ * before the new screen renders, `route-change.ts`) and
+ * `navigator.clipboard.writeText` (to strip markers from copied text). That is
+ * acceptable only because this is a development tool that is never in a
+ * production build; nothing else may rely on those patches.
+ *
  * @module shared/i18n/missing-inspector
  */
 import { getLocale } from '../active-locale';
@@ -19,6 +26,7 @@ import { createOverlay, MISSING_ATTRIBUTE, OUTLINE_ATTRIBUTE } from './overlay';
 import { createPanel } from './panel';
 import { buildPanelGroups, formatPanelList, type PanelRow } from './panel-model';
 import { createReadTracker } from './read-tracker';
+import { onPathnameChange } from './route-change';
 import { createFallbackRegistry } from './registry';
 import { INSPECTOR_UI_ATTRIBUTE, scanForFallbacks, type ScanFinding } from './scan';
 
@@ -56,28 +64,6 @@ function installClipboardStripping(): void {
   if (clipboard === undefined || typeof clipboard.writeText !== 'function') return;
   const writeText = clipboard.writeText.bind(clipboard);
   clipboard.writeText = (text: string): Promise<void> => writeText(stripMarkers(text));
-}
-
-/**
- * Patches history so a route change is seen before the new screen renders,
- * not after: the reads the new screen makes must not be cleared with the
- * old screen's.
- */
-function onPathnameChange(listener: () => void): void {
-  let pathname = window.location.pathname;
-  const check = (): void => {
-    if (window.location.pathname === pathname) return;
-    pathname = window.location.pathname;
-    listener();
-  };
-  for (const method of ['pushState', 'replaceState'] as const) {
-    const original = window.history[method].bind(window.history);
-    window.history[method] = (...args: Parameters<History['pushState']>): void => {
-      original(...args);
-      check();
-    };
-  }
-  window.addEventListener('popstate', check);
 }
 
 /**
