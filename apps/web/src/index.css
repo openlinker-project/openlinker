@@ -40918,14 +40918,16 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 
 /* ── Guided tour (#4149) ── */
 .popover__content.release-panel { z-index: 62; }
-/* Release center layers, low to high: popover 50, tour ring 60, tour card 61,
-   bell panel 62 (stays readable and clickable above the highlight), toast 70. */
+/* Release center layers, low to high: tour ring 9 (below the sticky topbar, z 10, so the
+   highlight never paints over chrome), popover 50, tour card 61, bell panel 62
+   (stays readable and clickable above the highlight), toast 70. The topbar is dimmed by
+   its own ::after while a tour runs, so chrome is dimmed exactly once (#4154). */
 /* Document coordinates (#4154): the ring scrolls with the content and is never re-measured per scroll event. */
 .tour-ring {
   position: absolute;
   top: 0;
   left: 0;
-  z-index: 60;
+  z-index: 9;
   border-radius: var(--radius-lg);
   box-shadow:
     0 0 0 1.5px var(--accent-primary),
@@ -40942,6 +40944,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* While a tour card is up the page gains room under its last row, so every
    target can scroll clear of the card. The value is set from the card height. */
 .shell-content::after { content: ""; display: block; height: var(--tour-card-space, 0px); }
+.tour-active .shell-topbar::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 -1px 0;
+  background: var(--overlay-scrim);
+  pointer-events: none;
+}
 .tour-card {
   position: fixed;
   z-index: 61;
