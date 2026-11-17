@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBatchFixUrl,
+  buildRecoveryPrefill,
+  offerParametersToFormValues,
   describeBatchFixBlocker,
   MAX_WIZARD_PRODUCTS,
   resolveBatchFixTarget,
@@ -102,5 +104,52 @@ describe('describeBatchFixBlocker', () => {
   it('should state the reason and that retry still works for every blocker', () => {
     expect(describeBatchFixBlocker('no-product-link')).toContain('Retry is unaffected.');
     expect(describeBatchFixBlocker('over-product-cap')).toContain('Retry is unaffected.');
+  });
+});
+
+describe('buildRecoveryPrefill (#4037)', () => {
+  const request = {
+    schemaVersion: 1,
+    internalVariantId: 'v1',
+    overrides: { title: 'Edited', categoryId: 'cat-9', ean: '5901234123457' },
+  };
+
+  it('should restore the saved overrides of failed, selected variants only', () => {
+    const prefill = buildRecoveryPrefill(
+      [
+        record({ internalVariantId: 'v1', request }),
+        record({ id: 'b', internalVariantId: 'v2', request }),
+        record({ id: 'c', internalVariantId: 'v3', status: 'active', request }),
+      ],
+      new Set(['v1', 'v3']),
+    );
+
+    expect([...prefill.keys()]).toEqual(['v1']);
+    expect(prefill.get('v1')?.overrides).toMatchObject({ title: 'Edited', categoryId: 'cat-9' });
+  });
+
+  it('should skip a record without a snapshot or with an unknown schema version', () => {
+    const prefill = buildRecoveryPrefill(
+      [
+        record({ internalVariantId: 'v1', request: null }),
+        record({ id: 'b', internalVariantId: 'v2', request: { ...request, schemaVersion: 2 } }),
+      ],
+      new Set(['v1', 'v2']),
+    );
+
+    expect(prefill.size).toBe(0);
+  });
+});
+
+describe('offerParametersToFormValues', () => {
+  it('should map each wire shape back to the form state', () => {
+    expect(
+      offerParametersToFormValues([
+        { id: 'a', valuesIds: ['1'], section: 'offer' },
+        { id: 'b', valuesIds: ['1', '2'], section: 'offer' },
+        { id: 'c', values: ['text'], section: 'product' },
+        { id: 'd', rangeValue: { from: '1', to: '2' }, section: 'offer' },
+      ]),
+    ).toEqual({ a: '1', b: ['1', '2'], c: 'text', d: { from: '1', to: '2' } });
   });
 });
