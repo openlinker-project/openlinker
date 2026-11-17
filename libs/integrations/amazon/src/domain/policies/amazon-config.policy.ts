@@ -60,6 +60,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
   const marketplaceIds = readMarketplaceIds(config.marketplaceIds, region, issues);
   const notificationQueue = readNotificationQueue(config.notificationQueueUrl, issues);
   const sellerId = readSellerId(config.sellerId, issues);
+  const taxCodeRates = readTaxCodeRates(config.taxCodeRates, issues);
 
   if (issues.length > 0 || region === null || environment === null) {
     return { ok: false, issues };
@@ -72,6 +73,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
       marketplaceIds,
       ...(notificationQueue ? { notificationQueue } : {}),
       ...(sellerId ? { sellerId } : {}),
+      ...(taxCodeRates ? { taxCodeRates } : {}),
     },
   };
 }
@@ -186,4 +188,26 @@ export function readSellerId(value: unknown, issues: FlatValidationIssue[] = [])
     return undefined;
   }
   return value.trim();
+}
+
+/** OpenLinker's VAT rate codes: a percentage or an exemption code (`zw`, `np`, `oo`). */
+const TAX_RATE_CODE_PATTERN = /^(\d{1,2}(\.\d{1,2})?|zw|np|oo)$/;
+
+function readTaxCodeRates(value: unknown, issues: FlatValidationIssue[]): Record<string, string> | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    issues.push({ path: 'taxCodeRates', message: 'must map Amazon product tax codes to rates, such as {"A_GEN_STANDARD": "23"}' });
+    return undefined;
+  }
+  const rates: Record<string, string> = {};
+  for (const [code, rate] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof rate !== 'string' || !TAX_RATE_CODE_PATTERN.test(rate.trim())) {
+      issues.push({ path: `taxCodeRates.${code}`, message: 'must be a rate such as "23", "8", "0" or "zw"' });
+      continue;
+    }
+    rates[code.trim()] = rate.trim();
+  }
+  return Object.keys(rates).length > 0 ? rates : undefined;
 }

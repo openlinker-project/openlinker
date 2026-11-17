@@ -30,6 +30,12 @@ export interface AmazonConnectionConfig {
    * it, and no SP-API call returns it to a self-authorized app (#4180).
    */
   readonly sellerId?: string;
+  /**
+   * Amazon `product_tax_code` -> the VAT rate code OpenLinker records
+   * (`'23'`, `'8'`, `'zw'`, #4182). Amazon carries a tax CODE, not a rate, so a
+   * catalogue read reports the rate as not known unless the operator maps it.
+   */
+  readonly taxCodeRates?: Readonly<Record<string, string>>;
 }
 
 export interface AmazonNotificationQueue {

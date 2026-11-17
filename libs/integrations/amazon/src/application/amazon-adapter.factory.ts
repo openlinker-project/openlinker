@@ -12,7 +12,7 @@
  *
  * @module libs/integrations/amazon/src/application
  */
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
@@ -25,6 +25,7 @@ import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
 import { AmazonSqsClient } from '../infrastructure/http/amazon-sqs-client';
 import { AmazonOfferManagerAdapter } from '../infrastructure/adapters/offer-manager/amazon-offer-manager.adapter';
+import { AmazonProductMasterAdapter } from '../infrastructure/adapters/product-master/amazon-product-master.adapter';
 import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
 import { AmazonQueuedOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-queued-order-source.adapter';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
@@ -101,6 +102,20 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       resolution.config,
       resolution.fetchImpl,
       resolution.cache,
+    );
+  }
+
+  createProductMaster(
+    resolution: AmazonResolution,
+    identifierMapping: IdentifierMappingPort,
+    cache?: CachePort,
+  ): AmazonProductMasterAdapter {
+    return new AmazonProductMasterAdapter(
+      resolution.connection,
+      resolution.client,
+      resolution.config,
+      identifierMapping,
+      cache,
     );
   }
 }
