@@ -1517,6 +1517,19 @@ describe('SyncJobRunner', () => {
       expect(laneInFlight('realtime').get('conn-1:hook-sync')).toBe(1);
     });
 
+    it('should start a stock webhook sync while a product webhook burst holds the product hook slot (#3986)', async () => {
+      laneInFlight('realtime').set('conn-1:hook-sync', 1);
+      const stock = createLaneJob('conn-1', 'master.inventory.syncByExternalId');
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([stock]);
+      mockHandler.execute.mockReturnValue(new Promise(() => {}));
+      handlerRegistry.getHandler.mockReturnValue(mockHandler);
+
+      const started = await (runner as any).claimAndStartForLane('realtime');
+
+      expect(started).toBe(1);
+      expect(laneInFlight('realtime').get('conn-1:hook-sync-inventory')).toBe(1);
+    });
+
     it('should hold a 1000-hook burst to one running job per connection (#3986)', async () => {
       const hooks = Array.from({ length: 1000 }, () =>
         createLaneJob('conn-1', 'master.product.syncByExternalId')

@@ -62,30 +62,59 @@ export const HOOK_SYNC_JOB_TYPES: readonly JobType[] = [
 ];
 
 /**
- * Suffix that qualifies a connection id into the hook-sync workload class.
- * Shared by {@link resolveJobScope} (runner slot accounting) AND the repository
- * claim's SQL exclusion, which builds the same expression from this constant: a
- * mismatch between the two would silently stop excluding saturated scopes.
+ * Suffix that qualifies a connection id into the PRODUCT hook-sync workload
+ * class. Shared by {@link resolveJobScope} (runner slot accounting) AND the
+ * repository claim's SQL exclusion, which builds the same expression from
+ * {@link HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE}: a mismatch between the two would
+ * silently stop excluding saturated scopes.
  */
 export const HOOK_SCOPE_SUFFIX = ':hook-sync';
 
-/** True when `scope` names the hook-sync class of a connection. */
+/**
+ * Suffix of the INVENTORY hook-sync class. Its own class so a stock burst is
+ * not queued behind a product burst on a shared slot (#3986 review): before the
+ * change inventory webhook syncs ran two per connection.
+ */
+export const HOOK_INVENTORY_SCOPE_SUFFIX = ':hook-sync-inventory';
+
+/** Job type -> scope suffix: the single table the runner and the claim SQL both read. */
+export const HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE: readonly {
+  jobType: JobType;
+  suffix: string;
+}[] = [
+  { jobType: 'master.product.syncByExternalId', suffix: HOOK_SCOPE_SUFFIX },
+  { jobType: 'master.inventory.syncByExternalId', suffix: HOOK_INVENTORY_SCOPE_SUFFIX },
+];
+
+export type HookScopeClass = 'product' | 'inventory';
+
+/** Which hook-sync class `scope` names, or null for a plain connection scope. */
+export function hookScopeClass(scope: string): HookScopeClass | null {
+  if (scope.endsWith(HOOK_INVENTORY_SCOPE_SUFFIX)) {
+    return 'inventory';
+  }
+  if (scope.endsWith(HOOK_SCOPE_SUFFIX)) {
+    return 'product';
+  }
+  return null;
+}
+
+/** True when `scope` names any hook-sync class of a connection. */
 export function isHookScope(scope: string): boolean {
-  return scope.endsWith(HOOK_SCOPE_SUFFIX);
+  return hookScopeClass(scope) !== null;
 }
 
 /**
  * Resolve the isolation scope a job's lane slots are accounted against
  * (ADR-050 decision 3, amended by #3986).
  *
- * A scope is a (connection, workload class) pair. The class is `hook-sync` for
- * {@link HOOK_SYNC_JOB_TYPES} and unqualified for everything else, so on a
- * single-merchant install every other job type still resolves to the bare
- * connection id. A multi-merchant deployment changes this one body, not its
- * callers.
+ * A scope is a (connection, workload class) pair. The classes are `hook-sync`
+ * (product) and `hook-sync-inventory`, for {@link HOOK_SYNC_JOB_TYPES}; every
+ * other job type is unqualified, so on a single-merchant install it still
+ * resolves to the bare connection id. A multi-merchant deployment changes this
+ * one body, not its callers.
  */
 export function resolveJobScope(job: { connectionId: string; jobType: JobType }): string {
-  return HOOK_SYNC_JOB_TYPES.includes(job.jobType)
-    ? `${job.connectionId}${HOOK_SCOPE_SUFFIX}`
-    : job.connectionId;
+  const entry = HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE.find((e) => e.jobType === job.jobType);
+  return entry ? `${job.connectionId}${entry.suffix}` : job.connectionId;
 }

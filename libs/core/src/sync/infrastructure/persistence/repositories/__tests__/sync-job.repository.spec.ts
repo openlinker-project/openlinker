@@ -392,13 +392,15 @@ describe('SyncJobRepository', () => {
       });
 
       expect(manager.query).toHaveBeenCalledWith(
-        expect.stringContaining('::text END) != ALL($6)'),
+        expect.stringContaining('::text END) != ALL($8)'),
         [
           'queued',
           expect.any(Date),
           ['marketplace.order.sync'],
-          ['master.product.syncByExternalId', 'master.inventory.syncByExternalId'],
+          'master.product.syncByExternalId',
           ':hook-sync',
+          'master.inventory.syncByExternalId',
+          ':hook-sync-inventory',
           ['conn-at-cap'],
           2,
         ]

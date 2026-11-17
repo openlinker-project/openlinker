@@ -92,6 +92,9 @@ export {
   SyncJobLaneValues,
   resolveJobScope,
   isHookScope,
+  hookScopeClass,
+  HOOK_INVENTORY_SCOPE_SUFFIX,
+  HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE,
   HOOK_SCOPE_SUFFIX,
   HOOK_SYNC_JOB_TYPES,
 } from './domain/types/sync-job-lane.types';

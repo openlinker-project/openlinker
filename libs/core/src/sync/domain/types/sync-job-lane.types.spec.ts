@@ -13,6 +13,7 @@ import {
   HOOK_SYNC_JOB_TYPES,
   SyncJobLaneValues,
   isHookScope,
+  hookScopeClass,
   resolveJobScope,
 } from './sync-job-lane.types';
 
@@ -32,12 +33,22 @@ describe('resolveJobScope', () => {
     );
   });
 
-  it('should qualify the scope with the hook-sync class for webhook product and inventory syncs', () => {
-    for (const jobType of HOOK_SYNC_JOB_TYPES) {
-      const scope = resolveJobScope({ connectionId: 'conn-1', jobType });
-      expect(scope).toBe(`conn-1${HOOK_SCOPE_SUFFIX}`);
-      expect(isHookScope(scope)).toBe(true);
-    }
+  it('should give webhook product and inventory syncs their own hook-sync class scope', () => {
+    const product = resolveJobScope({
+      connectionId: 'conn-1',
+      jobType: 'master.product.syncByExternalId',
+    });
+    const inventory = resolveJobScope({
+      connectionId: 'conn-1',
+      jobType: 'master.inventory.syncByExternalId',
+    });
+    expect(product).toBe(`conn-1${HOOK_SCOPE_SUFFIX}`);
+    expect(inventory).toBe('conn-1:hook-sync-inventory');
+    expect(product).not.toBe(inventory);
+    expect(hookScopeClass(product)).toBe('product');
+    expect(hookScopeClass(inventory)).toBe('inventory');
+    expect(isHookScope(product) && isHookScope(inventory)).toBe(true);
+    expect(HOOK_SYNC_JOB_TYPES).toHaveLength(2);
   });
 
   it('should not report a bare connection id as a hook scope', () => {

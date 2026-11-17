@@ -47,7 +47,7 @@ import {
   JobTypeValues,
   SyncJobRetentionStatusValues,
 } from '../../../domain/types/sync-job.types';
-import { HOOK_SCOPE_SUFFIX, HOOK_SYNC_JOB_TYPES } from '../../../domain/types/sync-job-lane.types';
+import { HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE } from '../../../domain/types/sync-job-lane.types';
 
 @Injectable()
 export class SyncJobRepository implements SyncJobRepositoryPort {
@@ -169,16 +169,18 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       }
       if (input.excludedScopes && input.excludedScopes.length > 0) {
         // The scope expression mirrors `resolveJobScope` exactly, built from the
-        // same constants (#3986): hook-sync job types are scoped by
-        // (connection, class), everything else by connection. A divergence would
-        // silently stop excluding saturated scopes.
-        params.push(HOOK_SYNC_JOB_TYPES, HOOK_SCOPE_SUFFIX, input.excludedScopes);
-        const hookTypesParam = params.length - 2;
-        const suffixParam = params.length - 1;
-        const excludedParam = params.length;
-        where +=
-          ` AND (CASE WHEN "jobType" = ANY($${hookTypesParam}) THEN "connectionId"::text || $${suffixParam}::text` +
-          ` ELSE "connectionId"::text END) != ALL($${excludedParam})`;
+        // table (#3986): hook-sync job types are scoped by (connection, class
+        // suffix), everything else by connection. A divergence would silently
+        // stop excluding saturated scopes.
+        const whens: string[] = [];
+        for (const entry of HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE) {
+          params.push(entry.jobType, entry.suffix);
+          whens.push(
+            `WHEN "jobType" = $${params.length - 1} THEN "connectionId"::text || $${params.length}::text`
+          );
+        }
+        params.push(input.excludedScopes);
+        where += ` AND (CASE ${whens.join(' ')} ELSE "connectionId"::text END) != ALL($${params.length})`;
       }
       params.push(input.limit);
 

@@ -71,6 +71,37 @@ describe('Hook-sync scope claim and peer claim (#3986)', () => {
     expect((await getSyncJobById(dataSource, hook.id))?.status).toBe('queued');
   });
 
+  it('should keep inventory hook jobs claimable while the product hook scope of the connection is excluded', async () => {
+    const dataSource = harness.getDataSource();
+    const connection = await createTestConnection(dataSource, {
+      platformType: 'prestashop',
+      status: 'active',
+    });
+    const product = await createTestSyncJob(dataSource, {
+      jobType: 'master.product.syncByExternalId',
+      connectionId: connection.id,
+      nextRunAt: due(),
+    });
+    const inventory = await createTestSyncJob(dataSource, {
+      jobType: 'master.inventory.syncByExternalId',
+      connectionId: connection.id,
+      nextRunAt: due(),
+    });
+
+    const locked = await jobRepository.findAndLockDueJobsForLane({
+      jobTypes: ['master.product.syncByExternalId', 'master.inventory.syncByExternalId'],
+      limit: 10,
+      workerId: 'w1',
+      excludedScopes: [
+        resolveJobScope({ connectionId: connection.id, jobType: 'master.product.syncByExternalId' }),
+      ],
+    });
+
+    const ids = locked.map((j) => j.id);
+    expect(ids).toContain(inventory.id);
+    expect(ids).not.toContain(product.id);
+  });
+
   it('should not exclude hook jobs when only the bare connection id is excluded', async () => {
     const dataSource = harness.getDataSource();
     const connection = await createTestConnection(dataSource, {
