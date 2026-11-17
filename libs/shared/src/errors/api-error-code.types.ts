@@ -44,6 +44,7 @@ export const ApiErrorCodeValues = [
   'CONNECTION_CONFIG_NOT_UNIQUE',
   /** Stock master and stock write-back cannot both be on. params: `capabilities`. */
   'CONNECTION_CAPABILITIES_CONFLICT',
+  'CONNECTION_MASTER_PUBLISHER_CONFLICT',
   /** The adapter does not offer these capabilities. params: `adapterKey`, `capabilities`. */
   'CONNECTION_CAPABILITIES_UNSUPPORTED',
   /** Fulfilment routing needs an active inventory location first. */

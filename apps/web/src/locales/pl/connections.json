@@ -101,7 +101,8 @@
     "ReturnsAuthority": "Decyduje, co dzieje się z towarem odesłanym przez klienta - czy wraca do sprzedaży i kto to zatwierdza."
   },
   "capabilityMetadata": {
-    "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów."
+    "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów.",
+    "conflictMasterPublisher": "Niedostępne, gdy wybrano {capability} - opublikowane produkty wróciłyby z tego sklepu jako duplikaty. Drugą rolę ustaw na osobnym połączeniu."
   },
   "catalogTrustPanel": {
     "cycleNone": "Brak otwartego",
@@ -196,6 +197,10 @@
     "enabledToast": "Włączono {capability}.",
     "errorTitle": "Nie udało się zaktualizować możliwości",
     "eyebrow": "Możliwości",
+    "legacyMasterPublisher": {
+      "body": "To połączenie jest jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty mogą wracać jako duplikaty. Wyłącz jedną z tych dwóch opcji.",
+      "title": "Katalog i publikowanie na jednym połączeniu"
+    },
     "none": "To połączenie nie ma możliwości, które można tu przełączać.",
     "noneEnabled": {
       "body": "To połączenie jest nieaktywne dla wszystkich możliwości. Żadne zadanie synchronizacji z niego nie skorzysta.",
@@ -1697,7 +1702,7 @@
     "title": "Połącz z {platform}"
   },
   "woocommerceSetupSchema": {
-    "capabilityConflict": "W tym samym połączeniu nie można jednocześnie włączyć głównego źródła stanów i zapisu stanów do tego sklepu.",
+    "capabilityConflict": "W tym samym połączeniu nie można jednocześnie włączyć głównego źródła stanów i zapisu stanów do tego sklepu, ani katalogu produktów i publikowania produktów.",
     "consumerKeyPrefix": "Consumer key musi zaczynać się od ck_",
     "consumerKeyRequired": "Consumer key jest wymagany",
     "consumerSecretPrefix": "Consumer secret musi zaczynać się od cs_",
