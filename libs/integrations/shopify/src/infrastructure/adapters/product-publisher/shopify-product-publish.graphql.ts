@@ -120,6 +120,14 @@ export const PRICE_TARGET_QUERY = `query OlPriceTarget($ids: [ID!]!) {
   }
 }`;
 
+/** Status only (#3962): hide or show a product without re-sending any other field. */
+export const PRODUCT_STATUS_UPDATE_MUTATION = `mutation OlProductStatus($product: ProductUpdateInput!) {
+  productUpdate(product: $product) {
+    product { id status }
+    userErrors { field message code }
+  }
+}`;
+
 export const VARIANT_PRICE_UPDATE_MUTATION = `mutation OlPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
   productVariantsBulkUpdate(productId: $productId, variants: $variants) {
     userErrors { field message code }

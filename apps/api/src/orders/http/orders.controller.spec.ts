@@ -219,6 +219,7 @@ describe('OrdersController', () => {
       claimPaymentWriteback: jest.fn().mockResolvedValue(true),
       recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
       markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
+      countOrdersMatchingSearchSince: jest.fn(),
     };
 
     const mockOrderRecordService = {

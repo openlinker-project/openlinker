@@ -44,6 +44,9 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         idempotencyKey: payload.idempotencyKey,
         observedAt: payload.observedAt,
         productVariantId: payload.productVariantId,
+        ...(typeof payload.externalParentId === 'string' && payload.externalParentId !== ''
+          ? { externalParentId: payload.externalParentId }
+          : {}),
       });
 
       if (result.failed.length > 0) {
@@ -139,6 +142,11 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
       observedAt,
       ...(typeof payload.productVariantId === 'string' && payload.productVariantId !== ''
         ? { productVariantId: payload.productVariantId }
+        : {}),
+      // #3962 - the variation's parent. Dropping it here sends a variation write
+      // to the simple-product path, which 404s and deletes a live mapping.
+      ...(typeof payload.externalParentId === 'string' && payload.externalParentId !== ''
+        ? { externalParentId: payload.externalParentId }
         : {}),
     };
   }

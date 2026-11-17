@@ -5,6 +5,7 @@ import {
   isShopCategoryBrowser,
   isShopCurrencyDeclarer,
   isShopProductPriceUpdater,
+  isShopProductVisibilityWriter,
   ProductPublishRejectedException,
   type PublishProductCommand,
 } from '@openlinker/core/listings';
@@ -12,6 +13,7 @@ import {
 import type { ShopifyGraphqlClient } from '../../../http/shopify-graphql-client';
 import type { ShopifyShopContextProvider } from '../../../shop-context/shopify-shop-context.provider';
 import type { ShopifyTaxRateReader } from '../../../tax/shopify-tax-rate.reader';
+import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopify-user-errors.exception';
 import { ShopifyProductPublisherAdapter } from '../shopify-product-publisher.adapter';
 
 const LOCATION = 'gid://shopify/Location/1';
@@ -98,6 +100,44 @@ describe('ShopifyProductPublisherAdapter', () => {
     expect(isShopAttributeReader(adapter)).toBe(true);
     expect(isShopCurrencyDeclarer(adapter)).toBe(true);
     expect(isShopProductPriceUpdater(adapter)).toBe(true);
+    expect(isShopProductVisibilityWriter(adapter)).toBe(true);
+  });
+
+  describe('setShopProductVisibility', () => {
+    it('should write DRAFT and nothing else when hiding a product', async () => {
+      const h = build();
+      h.mutate.mockResolvedValueOnce({});
+
+      await h.adapter.setShopProductVisibility({ externalProductId: '5', visible: false });
+
+      expect(h.mutate).toHaveBeenCalledTimes(1);
+      const [, variables, field] = h.mutate.mock.calls[0] as [string, { product: unknown }, string];
+      expect(variables.product).toEqual({ id: 'gid://shopify/Product/5', status: 'DRAFT' });
+      expect(field).toBe('productUpdate');
+      expect(h.query).not.toHaveBeenCalled();
+    });
+
+    it('should write ACTIVE and republish to the Online Store when showing a product', async () => {
+      const h = build();
+      h.mutate.mockResolvedValue({});
+      h.query.mockResolvedValue({ publications: { nodes: [{ id: 'gid://shopify/Publication/1', catalog: { title: 'Online Store' } }] } });
+
+      await h.adapter.setShopProductVisibility({ externalProductId: '5', visible: true });
+
+      const [, variables] = h.mutate.mock.calls[0] as [string, { product: unknown }];
+      expect(variables.product).toEqual({ id: 'gid://shopify/Product/5', status: 'ACTIVE' });
+    });
+
+    it('should map a shop refusal to a neutral publish exception', async () => {
+      const h = build();
+      h.mutate.mockRejectedValueOnce(
+        new ShopifyUserErrorsException('productUpdate', [{ field: ['id'], message: 'Product does not exist' }]),
+      );
+
+      await expect(
+        h.adapter.setShopProductVisibility({ externalProductId: '5', visible: false }),
+      ).rejects.toBeDefined();
+    });
   });
 
   describe('publishProduct', () => {

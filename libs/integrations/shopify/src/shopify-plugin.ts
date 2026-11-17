@@ -83,6 +83,8 @@ export const shopifyAdapterManifest: AdapterMetadata = {
     'ReturnDecliner',
     'ShopCategoryBrowser',
     'ShopAttributeReader',
+    // Hide / show a published product (#3962), narrowed off the ProductPublisher.
+    'ShopProductVisibilityWriter',
   ],
   // Stated rather than left to "every supported capability": `OrderSource` is
   // opt-in, because ingesting a shop's orders is polling load against the

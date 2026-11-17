@@ -42,6 +42,11 @@ import {
 } from '@openlinker/core/orders';
 
 type SyncJob = SyncJobEntity;
+import {
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
+  type IListingSaleStatusService,
+  type ListingRef,
+} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -85,7 +90,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(ORDER_ROUTING_RETRY_SERVICE_TOKEN)
     private readonly orderRoutingRetry: IOrderRoutingRetryService,
     @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
-    private readonly bundleDefinitions: IBundleDefinitionService
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    @Inject(LISTING_SALE_STATUS_SERVICE_TOKEN)
+    private readonly listingSaleStatus: IListingSaleStatusService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -203,7 +210,10 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       const mappingTargetId = payload.variantId || payload.productId;
       const offerMappings = variantIsStale
         ? []
-        : await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, mappingTargetId);
+        : await this.withoutHeld(
+            'Offer',
+            await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, mappingTargetId)
+          );
 
       if (variantIsStale) {
         this.logger.warn(
@@ -257,12 +267,20 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       // narrows to active connections with `OfferManager` enabled; the
       // inventory-master exclusion is the authoritative runtime authority
       // guard — the master connection must never be a write-back target.
-      const shopMappings = payload.variantId
-        ? await this.identifierMapping.getExternalIds(
-            CORE_ENTITY_TYPE.ShopProduct,
-            payload.variantId
-          )
-        : [];
+      //
+      // A variant deleted at the master never gets a non-zero quantity here,
+      // and a listing OpenLinker took off sale (#3962) stays off sale until an
+      // operator puts it back - even once the product reappears.
+      const shopMappings =
+        payload.variantId && !variantIsStale
+          ? await this.withoutHeld(
+              'ShopProduct',
+              await this.identifierMapping.getExternalIds(
+                CORE_ENTITY_TYPE.ShopProduct,
+                payload.variantId
+              )
+            )
+          : [];
 
       let enqueuedShopCount = 0;
       if (shopMappings.length > 0) {
@@ -286,6 +304,20 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
           return false;
         });
 
+        // A variation of a grouped shop product is written under its parent
+        // (#3962): addressed as a product, the write misses and the shop
+        // adapter's not-found handling unlinks the variation.
+        const parentByConnection = new Map(
+          eligibleShopMappings.length > 0
+            ? (
+                await this.identifierMapping.getExternalIds(
+                  CORE_ENTITY_TYPE.ShopProduct,
+                  payload.productId
+                )
+              ).map((m) => [m.connectionId, m.externalId])
+            : []
+        );
+
         await Promise.all(
           eligibleShopMappings.map((mapping) =>
             this.enqueueQuantityUpdate(
@@ -297,7 +329,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               // update for the same connection/variant/quantity.
               `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:shop:${mapping.externalId}`,
               payload.inventoryUpdatedAt,
-              payload.variantId
+              payload.variantId,
+              parentByConnection.get(mapping.connectionId)
             )
           )
         );
@@ -393,12 +426,38 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
    * Enqueue one marketplace.offerQuantity.update job for a mapping target.
    * Shared by both fan-out branches — only the idempotency key differs.
    */
+  /**
+   * Drop the listings OpenLinker took off sale after a master deletion
+   * (#3962). Only an operator's "put back on sale" ends a hold.
+   */
+  private async withoutHeld(
+    entityType: ListingRef['entityType'],
+    mappings: ExternalIdMapping[]
+  ): Promise<ExternalIdMapping[]> {
+    if (mappings.length === 0) return mappings;
+    const held = await this.listingSaleStatus.findActiveHolds(
+      mappings.map((m) => ({ connectionId: m.connectionId, entityType, externalId: m.externalId }))
+    );
+    if (held.length === 0) return mappings;
+    const heldKeys = new Set(held.map((h) => `${h.connectionId}|${h.externalId}`));
+    return mappings.filter((m) => {
+      const isHeld = heldKeys.has(`${m.connectionId}|${m.externalId}`);
+      if (isHeld) {
+        this.logger.log(
+          `Skipping quantity propagation for ${entityType} ${m.externalId} (connection: ${m.connectionId}) - taken off sale after a master deletion (#3962)`
+        );
+      }
+      return !isHeld;
+    });
+  }
+
   private async enqueueQuantityUpdate(
     mapping: ExternalIdMapping,
     quantity: number,
     idempotencyKey: string,
     observedAt: string | null | undefined,
-    productVariantId: string | null | undefined
+    productVariantId: string | null | undefined,
+    externalParentId?: string
   ): Promise<void> {
     const updatePayload = {
       schemaVersion: 1 as const,
@@ -411,6 +470,7 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       ...(observedAt ? { observedAt } : {}),
       // Recorded with the push, never sent to the channel (#4062).
       ...(productVariantId ? { productVariantId } : {}),
+      ...(externalParentId ? { externalParentId } : {}),
     };
 
     const updateJobRequest: SyncJobRequest = {

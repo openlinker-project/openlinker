@@ -9,6 +9,7 @@
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
+import { ContendedWriteError } from '@openlinker/core/sync';
 
 import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 import {
@@ -56,6 +57,7 @@ describe('ProductPublishExecutionService', () => {
     createMapping: jest.Mock;
     deleteMapping: jest.Mock;
   };
+  let syncLock: { acquire: jest.Mock; release: jest.Mock };
   let integrations: { getCapabilityAdapter: jest.Mock };
   let adapter: { publishProduct: jest.Mock };
   let service: ProductPublishExecutionService;
@@ -92,11 +94,16 @@ describe('ProductPublishExecutionService', () => {
     };
     integrations = { getCapabilityAdapter: jest.fn().mockResolvedValue(adapter) };
 
+    syncLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+    };
     service = new ProductPublishExecutionService(
       builder as never,
       records as never,
       identifierMapping as never,
-      integrations as never
+      integrations as never,
+      syncLock as never
     );
   });
 
@@ -311,6 +318,36 @@ describe('ProductPublishExecutionService', () => {
           groupAttributeValues: { Color: ['Red', 'Blue'] },
         },
       });
+    });
+
+    it('should serialise sibling publishes on one lock per connection and product (#3962)', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: VARIATION_EXT,
+        status: 'published',
+        externalParentProductId: PARENT_EXT,
+      });
+
+      await service.executePublish(input);
+
+      expect(syncLock.acquire).toHaveBeenCalledWith(`shop-publish-group:${CONN}:${GROUP_ID}`, expect.any(Number));
+      expect(syncLock.release).toHaveBeenCalledWith(`shop-publish-group:${CONN}:${GROUP_ID}`, 'lock-token');
+    });
+
+    it('should defer with ContendedWriteError and publish nothing when a sibling holds the lock (#3962)', async () => {
+      syncLock.acquire.mockResolvedValue(null);
+
+      await expect(service.executePublish(input)).rejects.toBeInstanceOf(ContendedWriteError);
+      expect(adapter.publishProduct).not.toHaveBeenCalled();
+      expect(syncLock.release).not.toHaveBeenCalled();
+    });
+
+    it('should release the lock when the publish throws (#3962)', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      adapter.publishProduct.mockRejectedValue(new Error('shop down'));
+
+      await expect(service.executePublish(input)).rejects.toThrow('shop down');
+      expect(syncLock.release).toHaveBeenCalled();
     });
 
     it('should resolve no existing parent, publish, and persist both variant + parent mappings on first publish', async () => {
