@@ -276,6 +276,12 @@ export interface ExtraConfigSectionProps {
   form: UseFormReturn<EditConnectionFormValues>;
   configIsParseable: boolean;
   syncSellerDefaultsToJson: () => void;
+  /**
+   * Whole-object serializer for `config.senderAddress` (the host's
+   * `inpostSenderAddress` form field). Optional: the Allegro Delivery sender
+   * section uses it; other plugins ignore it.
+   */
+  syncInpostSenderAddressToJson?: () => void;
 }
 
 /**

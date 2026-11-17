@@ -20,6 +20,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsEmail,
   IsIn,
   IsNotEmpty,
   IsObject,
@@ -144,8 +145,7 @@ export class AllegroSenderContactDto {
   @IsString()
   @MaxLength(200)
   company?: string;
-  @IsString()
-  @IsNotEmpty()
+  @IsEmail()
   @MaxLength(200)
   email!: string;
   @IsString()

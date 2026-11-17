@@ -17,6 +17,7 @@ import {
   formatCommandErrors,
   mapShipmentStateToStatus,
   normalizeAllegroCarrierId,
+  listMissingAllegroSenderFields,
   readAllegroSender,
   toGenerateLabelResult,
 } from '../allegro-shipment.mapper';
@@ -83,7 +84,15 @@ describe('buildCreateShipmentInput', () => {
     expect(input.deliveryMethodId).toBe('allegro-courier-uuid');
     expect(input.referenceNumber).toBe('ol_shipment_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     expect(input.labelFormat).toBe('PDF');
-    expect(input.sender).toBeUndefined(); // Allegro defaults sender from the account (#833 Q6)
+    expect(input.sender).toEqual({
+      name: 'Sklep',
+      email: 'sklep@sklep.pl',
+      phone: '+48123123123',
+      street: 'ul. Testowa 3',
+      postalCode: '02-222',
+      city: 'Warszawa',
+      countryCode: 'PL',
+    });
     expect(input.receiver).toEqual({
       name: 'Jan Kowalski',
       email: 'buyer@allegromail.pl',
@@ -367,5 +376,23 @@ describe('extractCarrierId (#769)', () => {
       ],
     };
     expect(extractCarrierId(resource)).toBe('dpd');
+  });
+});
+
+describe('listMissingAllegroSenderFields', () => {
+  it('names every missing field of a partly filled sender', () => {
+    expect(
+      listMissingAllegroSenderFields({
+        senderAddress: { email: 'a@b.pl', address: { street: 'x', city: '' } },
+      }),
+    ).toEqual(['phone', 'address.buildingNumber', 'address.city', 'address.postCode', 'address.countryCode']);
+  });
+
+  it('reports nothing when there is no sender at all', () => {
+    expect(listMissingAllegroSenderFields({})).toEqual([]);
+  });
+
+  it('puts the missing fields into the preflight message', () => {
+    expect(() => buildCreateShipmentInput(makeCommand(), null, ['phone'])).toThrow(/missing: phone/);
   });
 });

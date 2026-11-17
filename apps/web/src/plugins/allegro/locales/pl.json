@@ -8,9 +8,47 @@
       "intro": "Etykiety Allegro Delivery (\"Wysyłam z Allegro\") są wystawiane przez API zarządzania przesyłkami Allegro i śledzone automatycznie:",
       "labelCreation": "<strong>Tworzenie etykiety</strong> jest synchroniczne po stronie OpenLinker - etykietę generuje się w panelu szczegółów zamówienia, a OpenLinker czeka na zakończenie polecenia Allegro przed odpowiedzią.",
       "pickupPoints": "<strong>Punkty odbioru wybrane przez kupującego</strong> (Allegro One Box, Paczkomat, kurier) są wstępnie wpisywane w formularzu etykiety na podstawie danych zamówienia.",
-      "summary": "<strong>Konfiguracja nie jest potrzebna</strong> - jak działa śledzenie przesyłek",
+      "summary": "<strong>Wymagany adres nadawcy</strong> - jak działa tworzenie etykiet i śledzenie",
       "title": "Allegro Delivery",
       "trackingNumber": "<strong>Numer przesyłki</strong> pojawia się <em>asynchronicznie</em>. Allegro generuje list przewozowy z opóźnieniem; OpenLinker sprawdza co 15 minut i uzupełnia wiersz, gdy numer się pojawi (bez ręcznego odświeżania)."
+    },
+    "sender": {
+      "buildingNumber": {
+        "label": "Numer budynku"
+      },
+      "city": {
+        "label": "Miejscowość",
+        "placeholder": "Warszawa"
+      },
+      "company": {
+        "label": "Firma (opcjonalnie)"
+      },
+      "countryCode": {
+        "description": "ISO 3166-1 alpha-2 (np. PL).",
+        "label": "Kraj"
+      },
+      "description": "Allegro Delivery wymaga danych nadawcy na każdej etykiecie. Bez nich tworzenie etykiety jest odrzucane, zanim OpenLinker zapyta Allegro.",
+      "email": {
+        "label": "E-mail nadawcy",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "name": {
+        "label": "Nazwa nadawcy (opcjonalnie)",
+        "placeholder": "Sklep ACME"
+      },
+      "phone": {
+        "label": "Telefon nadawcy",
+        "placeholder": "+48123123123"
+      },
+      "postCode": {
+        "description": "Format polski NN-NNN (np. 00-001).",
+        "label": "Kod pocztowy"
+      },
+      "street": {
+        "label": "Ulica",
+        "placeholder": "ul. Magazynowa"
+      },
+      "title": "Adres nadawcy"
     }
   },
   "allegroSetupRoute": {

@@ -51,6 +51,7 @@ import { DEFAULT_ALLEGRO_SHIPMENT_POLL_CONFIG } from '../../domain/types/allegro
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import {
   buildCreateShipmentInput,
+  listMissingAllegroSenderFields,
   readAllegroSender,
   deriveCommandId,
   describeShipmentState,
@@ -119,6 +120,7 @@ export class AllegroDeliveryShippingAdapter
   private readonly logger = new Logger(AllegroDeliveryShippingAdapter.name);
   private readonly pollConfig: AllegroShipmentPollConfig;
   private readonly sender: AllegroSenderContact | null;
+  private readonly missingSenderFields: string[];
 
   constructor(
     private readonly connectionId: string,
@@ -127,6 +129,7 @@ export class AllegroDeliveryShippingAdapter
     pollConfig?: Partial<AllegroShipmentPollConfig>,
   ) {
     this.sender = readAllegroSender(connection.config);
+    this.missingSenderFields = listMissingAllegroSenderFields(connection.config);
     this.pollConfig = { ...DEFAULT_ALLEGRO_SHIPMENT_POLL_CONFIG, ...pollConfig };
   }
 
@@ -154,17 +157,19 @@ export class AllegroDeliveryShippingAdapter
 
     // Throws a readable validation error if the resolved deliveryMethodId or
     // parcel dimensions/weight are missing.
-    const input = buildCreateShipmentInput(cmd, this.sender);
+    const input = buildCreateShipmentInput(cmd, this.sender, this.missingSenderFields);
     // One command id per ATTEMPT, derived from the shipment id: a retry of the
     // same attempt (timeout, restart) reuses the id so Allegro de-duplicates it
     // and never buys a second label. But Allegro also remembers ids of commands
     // that FAILED, so a later attempt on the same shipment must mint a new one -
     // otherwise it is refused with COMMAND_EXISTS for ever.
     let result: AllegroShipmentCommandResult | null = null;
+    let lastCommandId = '';
     for (let generation = 0; generation <= MAX_COMMAND_GENERATIONS && !result; generation++) {
       const commandId = deriveCommandId(
         generation === 0 ? cmd.shipmentId : `${cmd.shipmentId}:retry:${generation}`,
       );
+      lastCommandId = commandId;
       const body: AllegroCreateShipmentCommandRequest = { commandId, input };
 
       this.logger.debug(
@@ -205,7 +210,7 @@ export class AllegroDeliveryShippingAdapter
       throw new ShippingProviderRejectionException(
         'allegro',
         'command.success-without-shipment-id',
-        `Allegro create-command succeeded without a shipmentId`,
+        `Allegro create-command ${lastCommandId} succeeded without a shipmentId`,
       );
     }
     return toGenerateLabelResult(result.shipmentId);

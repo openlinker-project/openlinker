@@ -88,12 +88,15 @@ function gramsToKg(grams: number): number {
 export function buildCreateShipmentInput(
   cmd: GenerateLabelCommand,
   sender: AllegroSenderContact | null,
+  missingSenderFields: readonly string[] = [],
 ): AllegroCreateShipmentInput {
   if (!sender) {
     throw new ShippingProviderRejectionException(
       'allegro',
       'preflight.missing-sender-address',
-      `The Allegro connection has no sender address (config.senderAddress); ` +
+      (missingSenderFields.length > 0
+        ? `The Allegro connection sender address (config.senderAddress) is incomplete, missing: ${missingSenderFields.join(', ')}; `
+        : `The Allegro connection has no sender address (config.senderAddress); `) +
         `Allegro Delivery requires one to create shipment ${cmd.shipmentId}`,
     );
   }
@@ -301,6 +304,29 @@ export function formatCommandErrors(errors: readonly AllegroShipmentCommandError
  * unless every field Allegro requires is present - a half-filled sender sent to
  * Allegro would be rejected with a less useful message than the pre-call refusal.
  */
+export function listMissingAllegroSenderFields(
+  config: Record<string, unknown> | undefined,
+): string[] {
+  const raw = config?.senderAddress;
+  if (typeof raw !== 'object' || raw === null) {
+    return [];
+  }
+  const sender = raw as Record<string, unknown>;
+  const addressRaw = sender.address;
+  const a =
+    typeof addressRaw === 'object' && addressRaw !== null
+      ? (addressRaw as Record<string, unknown>)
+      : {};
+  const present = (value: unknown): boolean => typeof value === 'string' && value.trim().length > 0;
+  const missing: string[] = [];
+  if (!present(sender.email)) missing.push('email');
+  if (!present(sender.phone)) missing.push('phone');
+  for (const key of ['street', 'buildingNumber', 'city', 'postCode', 'countryCode']) {
+    if (!present(a[key])) missing.push(`address.${key}`);
+  }
+  return missing;
+}
+
 export function readAllegroSender(config: Record<string, unknown> | undefined): AllegroSenderContact | null {
   const raw = config?.senderAddress;
   if (typeof raw !== 'object' || raw === null) {

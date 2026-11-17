@@ -111,6 +111,8 @@ const inpostAddressSchema = z.object({
 });
 
 const inpostSenderAddressSchema = z.object({
+  // Allegro Delivery only; InPost never sets it, so its saves are unchanged.
+  company: z.string().trim().max(200).optional(),
   name: z.string().trim().max(200).optional(),
   email: z.union([z.string().trim().email(msg('emailInvalid')), z.literal('')]).optional(),
   phone: z.string().trim().max(30).optional(),
@@ -1045,6 +1047,7 @@ function pruneEmptyInpostSenderAddress(
   values: InpostSenderAddressFormValues,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  if (values.company && values.company.length > 0) out.company = values.company;
   if (values.name && values.name.length > 0) out.name = values.name;
   if (values.email && values.email.length > 0) out.email = values.email;
   if (values.phone && values.phone.length > 0) out.phone = values.phone;
