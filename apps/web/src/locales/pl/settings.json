@@ -215,6 +215,29 @@
     "suggestedMax": "zalecane ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterSection": {
+    "backToEnv": "Wróć do .env lub domyślnej",
+    "eyebrow": "Co nowego",
+    "field": {
+      "ariaLabel": "Centrum nowości włączone lub wyłączone",
+      "description": "Po wyłączeniu okno nowości, dzwonek i wycieczka znikają dla wszystkich. Strona historii /whats-new zostaje, a stan przeczytania każdej osoby jest zachowany i wraca po ponownym włączeniu. Zmienną OL_RELEASE_CENTER_ENABLED czyta API, nie worker.",
+      "label": "Pokazuj centrum nowości"
+    },
+    "reset": "Cofnij",
+    "save": "Zapisz",
+    "saveFailed": "Nie udało się zapisać ustawienia centrum nowości.",
+    "savedOnItsOwn": "zapisywane osobno",
+    "savedToast": {
+      "description": "Zacznie działać po następnym załadowaniu strony.",
+      "title": "Zapisano ustawienie centrum nowości"
+    },
+    "sourceLine": {
+      "default": "Domyślnie (włączone). Nic nie ustawiono tutaj ani w środowisku.",
+      "env": "Z OL_RELEASE_CENTER_ENABLED w środowisku API.",
+      "setting": "Ustawione tutaj."
+    },
+    "title": "Centrum nowości"
+  },
   "salesDocumentsPage": {
     "adminOnly": {
       "description": "Dostęp tylko dla administratora.",

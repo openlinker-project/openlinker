@@ -45,6 +45,7 @@ function makeSettingsView(
     inventoryMovementRetentionDays: numberField(365),
     stockStaleSyncThresholdHours: numberField(6),
     deletionAuditCadence: { value: '0 * * * *', source: 'default', workerMayDiffer: true },
+    releaseCenterEnabled: { value: true, source: 'default', workerMayDiffer: true },
     catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
     inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
     deletionAuditAlwaysEnabled: true,
