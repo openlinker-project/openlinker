@@ -50,7 +50,7 @@ describe('Connection Capabilities Integration', () => {
     return response.body;
   }
 
-  it('defaults enabledCapabilities to the adapter full supported set', async () => {
+  it('defaults enabledCapabilities to the supported set minus ProductPublisher (master-only for the master+publisher pair, #3985)', async () => {
     const dto = createPrestashopConnectionDto({ name: 'Default caps store' });
     const created = await createConnection(dto);
 
@@ -62,7 +62,9 @@ describe('Connection Capabilities Integration', () => {
       'ProductMaster',
       'ProductPublisher',
     ]);
-    expect(created.enabledCapabilities.sort()).toEqual(created.supportedCapabilities.sort());
+    expect(created.enabledCapabilities.sort()).toEqual(
+      created.supportedCapabilities.filter((c) => c !== 'ProductPublisher').sort()
+    );
   });
 
   it('respects explicit enabledCapabilities on create and validates subset', async () => {

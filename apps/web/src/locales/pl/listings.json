@@ -316,6 +316,7 @@
     "chips": {
       "alreadyListed": "Już wystawiony",
       "cardCategoryDiffers": "katalog ≠ mapowanie",
+      "cardCategoryMismatch": "Karta w innej kategorii",
       "categoryNotSet": "Brak kategorii",
       "currencyMismatch": "Niezgodna waluta",
       "invalidBarcode": "Błędny kod kreskowy",
@@ -348,6 +349,10 @@
       "cardCategoryDiffers": {
         "detail": "Używamy Twojego mapowania, a produkt z katalogu nie zostanie powiązany. Otwórz, aby porównać obie kategorie.",
         "title": "Kod kreskowy {ean} pasuje do produktu z katalogu {destination} w innej kategorii niż Twoje mapowanie kategorii."
+      },
+      "cardCategoryMismatch": {
+        "detail": "Wybierz ponownie tę kategorię albo wyczyść kod kreskowy, aby wystawić ten wariant bez produktu z katalogu.",
+        "title": "Kod kreskowy {ean} to produkt z katalogu {destination} w innej kategorii niż ta, której użyje ta oferta."
       },
       "currencyMismatch": {
         "detail": "Ustaw jawną cenę w {currency} dla tego wariantu lub zmień walutę partii.",

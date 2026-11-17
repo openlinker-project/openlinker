@@ -80,6 +80,7 @@
     "CONNECTION_CONFIG_NOT_UNIQUE": "Połączenie {otherConnectionName} używa już tej wartości.",
     "CONNECTION_DISABLED": "To połączenie jest wyłączone lub zarchiwizowane.",
     "CONNECTION_IN_USE": "Inne połączenie wciąż zależy od tego połączenia. Najpierw zmień tamto połączenie.",
+    "CONNECTION_MASTER_PUBLISHER_CONFLICT": "Połączenie nie może jednocześnie być źródłem katalogu i miejscem publikacji produktów, bo opublikowane produkty wróciłyby jako duplikaty. Zostaw rolę katalogu tutaj, a publikuj przez inne połączenie, albo odwrotnie.",
     "CONNECTION_NOT_ARCHIVABLE": "Tego połączenia nie można zarchiwizować.",
     "CONNECTION_NOT_ARCHIVED": "Przywrócić można tylko zarchiwizowane połączenie.",
     "CONNECTION_NOT_DISABLED": "Przed archiwizacją wyłącz połączenie.",
