@@ -13,7 +13,7 @@
  *
  * @module features/release-center/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useMessages, usePlural } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
@@ -22,11 +22,40 @@ import { useReleaseActions } from '../hooks/use-release-actions';
 import { requestWhatsNew } from '../lib/release-center-requests';
 import { notificationStatusOf, stepStatusOf } from '../lib/release-notifications';
 import { useReleaseCenterView } from './release-center-provider';
-import { ReleaseBellIcon } from './release-bell-icon';
 import { ReleaseIcon } from './release-icon';
 import { ReleaseCard } from './release-card';
 
 type Tab = 'todo' | 'all' | 'archive';
+
+/** The panel hangs 6px under the topbar and 14px (8px on a phone) from the right edge. */
+const PANEL_GAP_BELOW_TOPBAR = 6;
+const PANEL_EDGE = 14;
+const PANEL_EDGE_COMPACT = 8;
+const COMPACT_MAX_WIDTH = 900;
+const FALLBACK_TOPBAR = 52;
+
+interface PanelPlacement {
+  side: number;
+  align: number;
+}
+
+/**
+ * Where the panel sits is fixed against the screen (under the topbar, at the
+ * right edge), not against the bell, so the offsets are measured from the bell
+ * when the panel opens.
+ */
+function measurePlacement(trigger: HTMLElement | null): PanelPlacement {
+  if (!trigger) return { side: 17, align: 0 };
+  const rect = trigger.getBoundingClientRect();
+  const topbar =
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--shell-topbar-height')) ||
+    FALLBACK_TOPBAR;
+  const edge = window.innerWidth <= COMPACT_MAX_WIDTH ? PANEL_EDGE_COMPACT : PANEL_EDGE;
+  return {
+    side: topbar + PANEL_GAP_BELOW_TOPBAR - rect.bottom,
+    align: -(window.innerWidth - edge - rect.right),
+  };
+}
 
 export function ReleaseBell(): ReactElement | null {
   const view = useReleaseCenterView();
@@ -37,6 +66,8 @@ export function ReleaseBell(): ReactElement | null {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('todo');
   const [ringing, setRinging] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [placement, setPlacement] = useState<PanelPlacement>({ side: 17, align: 0 });
   const ringSignal = view?.ringSignal ?? 0;
 
   useEffect(() => {
@@ -74,18 +105,23 @@ export function ReleaseBell(): ReactElement | null {
         : bell.srNone;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setPlacement(measurePlacement(triggerRef.current));
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           className="release-bell"
           data-ringing={ringing}
           aria-haspopup="dialog"
           aria-expanded={open}
         >
-          <span className="release-bell__icon" aria-hidden="true">
-            <ReleaseBellIcon />
-          </span>
+          <ReleaseIcon name="bell" />
           <span className="release-bell__label">{bell.label}</span>
           <span
             key={summary.count}
@@ -99,7 +135,13 @@ export function ReleaseBell(): ReactElement | null {
           <span className="sr-only">{srText}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="release-panel" aria-label={panel.title}>
+      <PopoverContent
+        align="end"
+        sideOffset={placement.side}
+        alignOffset={placement.align}
+        className="release-panel"
+        aria-label={panel.title}
+      >
         <header className="release-panel__head">
           <h2 className="release-panel__title">{panel.title}</h2>
           <div className="release-panel__head-actions">
