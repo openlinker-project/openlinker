@@ -40,6 +40,7 @@ describe('parseChangelog', () => {
       scope: 'web',
       text: 'explicit checkbox',
       refs: [4067, 4066],
+      commits: ['741725f'],
     });
   });
 

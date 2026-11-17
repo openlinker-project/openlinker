@@ -7,7 +7,7 @@ import { visibleSteps } from './visible-steps';
 
 const release = (version: string) => ({
   version,
-  groups: [{ title: 'Features', entries: [{ scope: null, text: 'x', refs: [] }] }],
+  groups: [{ title: 'Features', entries: [{ scope: null, text: 'x', refs: [], commits: [] }] }],
 });
 const step = (introducedIn: string) => ({ introducedIn });
 

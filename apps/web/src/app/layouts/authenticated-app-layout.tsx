@@ -9,6 +9,7 @@ import { useMessages } from '../../shared/i18n';
 import { useSystemConfigQuery } from '../../features/system';
 import {
   ReleaseCenterProvider,
+  ReleaseDialogHost,
   ReleaseStepObserver,
   TourProvider,
 } from '../../features/release-center';
@@ -116,6 +117,7 @@ export function AuthenticatedAppLayout(): ReactElement {
       <TourProvider>
         <AppShell>
           <ReleaseStepObserver />
+          <ReleaseDialogHost />
           <Outlet />
         </AppShell>
       </TourProvider>

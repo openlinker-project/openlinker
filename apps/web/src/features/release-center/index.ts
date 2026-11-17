@@ -15,6 +15,15 @@ export { compareVersions, isMinorOrMajorIncrease, isValidVersion } from './lib/c
 export { shouldOpenDialog, type DialogDecision } from './lib/should-open-dialog';
 export { visibleSteps } from './lib/visible-steps';
 export { ReleaseStepObserver } from './components/release-step-observer';
+export { ReleaseDialog, type ReleaseDialogProps } from './components/release-dialog';
+export { ReleaseDialogHost, WHATS_NEW_PATH, stepPath } from './components/release-dialog-host';
+export { WhatsNewContent } from './components/whats-new-content';
+export { useReleaseStepRows } from './hooks/use-release-step-rows';
+export {
+  buildDialogHighlights,
+  buildStepRows,
+  type ReleaseStepRow,
+} from './lib/release-dialog-content';
 export { useReleaseCenterAccess, type ReleaseCenterAccess } from './hooks/use-release-center-access';
 export { useReleaseStateQuery, useReleaseCenterEnabled } from './hooks/use-release-state-query';
 export { useReleaseCursorMutation } from './hooks/use-release-cursor-mutation';
