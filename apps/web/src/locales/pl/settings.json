@@ -217,26 +217,26 @@
   },
   "releaseCenterSection": {
     "backToEnv": "Wróć do .env lub domyślnej",
-    "eyebrow": "Co nowego",
     "field": {
-      "ariaLabel": "Centrum nowości włączone lub wyłączone",
-      "description": "Po wyłączeniu okno nowości, dzwonek i wycieczka znikają dla wszystkich. Strona historii /whats-new zostaje, a stan przeczytania każdej osoby jest zachowany i wraca po ponownym włączeniu. Zmienną OL_RELEASE_CENTER_ENABLED czyta API, nie worker.",
-      "label": "Pokazuj centrum nowości"
+      "ariaLabel": "Centrum zmian włączone lub wyłączone",
+      "description": "Po wyłączeniu znikają okno po aktualizacji, dzwonek i przewodnik. Historia zmian nadal jest na stronie „Co nowego”. Zmienną OL_RELEASE_CENTER_ENABLED czyta API, nie worker.",
+      "label": "Włącz centrum zmian"
     },
+    "lead": "Okno z listą zmian po aktualizacji, dzwonek powiadomień i przewodnik po nowych ustawieniach. Dotyczy wszystkich użytkowników instalacji.",
+    "newChip": "Nowe",
     "reset": "Cofnij",
-    "save": "Zapisz",
-    "saveFailed": "Nie udało się zapisać ustawienia centrum nowości.",
-    "savedOnItsOwn": "zapisywane osobno",
+    "save": "Zapisz zmiany",
+    "saveFailed": "Nie udało się zapisać ustawienia centrum zmian.",
     "savedToast": {
       "description": "Zacznie działać po następnym załadowaniu strony.",
-      "title": "Zapisano ustawienie centrum nowości"
+      "title": "Zapisano ustawienie centrum zmian"
     },
     "sourceLine": {
-      "default": "Domyślnie (włączone). Nic nie ustawiono tutaj ani w środowisku.",
-      "env": "Z OL_RELEASE_CENTER_ENABLED w środowisku API.",
-      "setting": "Ustawione tutaj."
+      "default": "Źródło wartości: domyślne. Kolejność: ustawienie w bazie, potem zmienna OL_RELEASE_CENTER_ENABLED w .env, potem domyślnie włączone.",
+      "env": "Źródło wartości: zmienna OL_RELEASE_CENTER_ENABLED w środowisku API.",
+      "setting": "Źródło wartości: ustawione tutaj."
     },
-    "title": "Centrum nowości"
+    "title": "Centrum zmian po aktualizacji"
   },
   "salesDocumentsPage": {
     "adminOnly": {

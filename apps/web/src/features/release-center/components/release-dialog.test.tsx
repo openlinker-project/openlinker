@@ -75,9 +75,9 @@ describe('ReleaseDialog', () => {
     const user = userEvent.setup();
     render(<Harness canWriteSteps />);
     await user.click(screen.getByText('opener'));
-    expect(await screen.findByLabelText("Don't show again")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Don't show the changes dialog after future updates")).toBeInTheDocument();
     await user.click(screen.getByText('Go to the guide'));
-    expect(screen.queryByLabelText("Don't show again")).toBeNull();
+    expect(screen.queryByLabelText("Don't show the changes dialog after future updates")).toBeNull();
   });
 
   it('should say an administrator is needed and offer no write wording to a non-admin', async () => {

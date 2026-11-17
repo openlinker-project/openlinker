@@ -27,7 +27,7 @@
     "optional": "Optional",
     "required": "Required",
     "showWhere": "Show me where",
-    "skipDialog": "Don't show again",
+    "skipDialog": "Don't show the changes dialog after future updates",
     "startGuide": "Start guide",
     "stepIndicator": "Step {current} of {total}",
     "title": "OpenLinker was updated to {version}",
@@ -69,7 +69,6 @@
     "showMe": "Show me",
     "snoozedChip": "We will remind you in 7 days",
     "stayAsIs": "Stays as it is",
-    "stepFor": "For {name}",
     "stepOptional": "Optional",
     "stepRequired": "Required",
     "stepperAdmin": "The step ticks itself after you save the change",
@@ -108,7 +107,7 @@
       "why": "When an external system, for example a warehouse one, packs the orders, OpenLinker hides its own \"Mark as packed\" button for them. By default the button is visible."
     },
     "shipping-routing": {
-      "title": "Assign carriers in this sales channel",
+      "title": "Assign carriers in the channel",
       "tourBody": "Check who ships each delivery method of this channel. Change what is needed and save the assignment.",
       "tourTitle": "Who ships the parcels from this channel?",
       "why": "The carrier assignment is set in Mappings, on the Fulfilment tab, under \"Who ships each delivery method\". Check each delivery method of this channel and click Save assignment."

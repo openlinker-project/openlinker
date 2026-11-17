@@ -12,7 +12,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { ChangelogEntry } from '../../../build-time/changelog-parser';
 import { useMessages, usePlural, interpolate } from '../../../shared/i18n';
-import { useFormat } from '../../../shared/i18n/use-format';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -24,6 +23,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { ReleaseStepRow } from '../lib/release-dialog-content';
+import { ReleaseIcon } from './release-icon';
 import { useStepCopy } from './release-step-copy';
 
 export interface ReleaseDialogProps {
@@ -57,12 +57,12 @@ export function ReleaseDialog({
   const copy = useMessages('release-center').dialog;
   const stepCopy = useStepCopy();
   const plural = usePlural();
-  const format = useFormat();
   const [step, setStep] = useState<0 | 1>(0);
   const [skip, setSkip] = useState(false);
   // The Radix Dialog restores focus to its Trigger only; this dialog has none
   // (the host opens it), so the element focused before it opened is kept here.
   const returnFocusTo = useRef<HTMLElement | null>(null);
+  const primaryRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (open && document.activeElement instanceof HTMLElement) {
       returnFocusTo.current = document.activeElement;
@@ -77,6 +77,13 @@ export function ReleaseDialog({
       <DialogContent
         className="release-dialog"
         aria-describedby="release-dialog-desc"
+        onOpenAutoFocus={(event) => {
+          // The primary action, not the close icon, is where a keyboard user starts.
+          if (primaryRef.current) {
+            event.preventDefault();
+            primaryRef.current.focus();
+          }
+        }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           returnFocusTo.current?.focus();
@@ -95,8 +102,12 @@ export function ReleaseDialog({
             ) : null}
           </div>
           <DialogClose asChild>
-            <Button tone="ghost" aria-label={copy.closeIcon}>
-              <span aria-hidden="true">×</span>
+            <Button
+              tone="ghost"
+              className="button--icon button--sm"
+              aria-label={copy.closeIcon}
+            >
+              <ReleaseIcon name="close" />
             </Button>
           </DialogClose>
         </div>
@@ -107,7 +118,7 @@ export function ReleaseDialog({
               <div className="release-dialog__hero">
                 <StatusBadge tone="success">{copy.newVersion}</StatusBadge>
                 <span className="release-dialog__version mono-text">{`v${version}`}</span>
-                {date ? <span className="release-dialog__date">{format.date(date)}</span> : null}
+                {date ? <span className="release-dialog__date">{date}</span> : null}
               </div>
               <DialogTitle className="release-dialog__title">
                 {interpolate(copy.title, { version })}
@@ -115,19 +126,27 @@ export function ReleaseDialog({
               <DialogDescription id="release-dialog-desc" className="release-dialog__sr">
                 {copy.highlightsLabel}
               </DialogDescription>
-              <ul className="release-dialog__changes" lang="en">
-                {highlights.map((entry) => (
-                  <li key={`${entry.scope ?? ''}:${entry.text}`}>
-                    {entry.scope ? <b className="mono-text">{entry.scope}: </b> : null}
-                    {entry.text}
-                  </li>
-                ))}
-              </ul>
-              {overflow > 0 ? (
-                <p className="release-dialog__more">
-                  {plural(overflow, copy.moreChanges, { n: overflow })}
-                </p>
-              ) : null}
+              <div className="release-dialog__group">
+                <h4>{copy.highlightsLabel}</h4>
+                <ul className="release-dialog__changes" lang="en">
+                  {highlights.map((entry) => (
+                    <li key={`${entry.scope ?? ''}:${entry.text}`} className="release-dialog__change">
+                      <span>
+                        {entry.scope ? <b className="mono-text">{entry.scope}: </b> : null}
+                        {entry.text}
+                      </span>
+                      {entry.commits[0] ? (
+                        <span className="release-dialog__hash">{entry.commits[0].slice(0, 7)}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {overflow > 0 ? (
+                  <p className="release-dialog__more">
+                    {plural(overflow, copy.moreChanges, { n: overflow })}
+                  </p>
+                ) : null}
+              </div>
               <label className="release-dialog__skip">
                 <input
                   type="checkbox"
@@ -152,6 +171,7 @@ export function ReleaseDialog({
                       key={row.key}
                       className={`release-dialog__step release-dialog__step--${row.importance}`}
                     >
+                      <span className="release-dialog__mark" aria-hidden="true" />
                       <span className="release-dialog__step-title">
                         {text.title}
                         {row.connection ? (
@@ -159,11 +179,13 @@ export function ReleaseDialog({
                         ) : null}
                       </span>
                       {canWriteSteps ? (
-                        <span className="release-dialog__chip">
+                        <span
+                          className={`release-chip${required ? ' release-chip--accent' : ''}`}
+                        >
                           {required ? copy.required : copy.optional}
                         </span>
                       ) : (
-                        <span className="release-dialog__chip">{copy.needsAdmin}</span>
+                        <span className="release-chip">{copy.needsAdmin}</span>
                       )}
                       <span className="release-dialog__step-why">{text.why}</span>
                     </li>
@@ -185,21 +207,29 @@ export function ReleaseDialog({
                   {copy.close}
                 </Button>
                 {hasGuide ? (
-                  <Button onClick={() => setStep(1)}>{copy.toGuide}</Button>
+                  <Button ref={primaryRef} onClick={() => setStep(1)}>
+                    {copy.toGuide} <ReleaseIcon name="arrow-right" size={14} />
+                  </Button>
                 ) : null}
               </div>
             </>
           ) : (
             <>
-              <Button tone="ghost" aria-label={copy.back} onClick={() => setStep(0)}>
-                <span aria-hidden="true">←</span>
+              <Button
+                tone="ghost"
+                className="button--icon"
+                aria-label={copy.back}
+                onClick={() => setStep(0)}
+              >
+                <ReleaseIcon name="arrow-left" />
               </Button>
               <div className="release-dialog__foot-right">
                 <Button tone="secondary" onClick={() => onClose(false)}>
                   {copy.later}
                 </Button>
-                <Button onClick={() => onStartGuide(openRows, false)}>
-                  {canWriteSteps ? copy.startGuide : copy.showWhere}
+                <Button ref={primaryRef} onClick={() => onStartGuide(openRows, false)}>
+                  {canWriteSteps ? copy.startGuide : copy.showWhere}{' '}
+                  <ReleaseIcon name="arrow-right" size={14} />
                 </Button>
               </div>
             </>

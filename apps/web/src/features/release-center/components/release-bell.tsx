@@ -23,6 +23,7 @@ import { requestWhatsNew } from '../lib/release-center-requests';
 import { notificationStatusOf, stepStatusOf } from '../lib/release-notifications';
 import { useReleaseCenterView } from './release-center-provider';
 import { ReleaseBellIcon } from './release-bell-icon';
+import { ReleaseIcon } from './release-icon';
 import { ReleaseCard } from './release-card';
 
 type Tab = 'todo' | 'all' | 'archive';
@@ -111,8 +112,12 @@ export function ReleaseBell(): ReactElement | null {
               {panel.markRead}
             </Button>
             <PopoverClose asChild>
-              <Button tone="ghost" className="button--sm" aria-label={panel.close}>
-                <span aria-hidden="true">✕</span>
+              <Button
+                tone="ghost"
+                className="button--icon button--sm"
+                aria-label={panel.close}
+              >
+                <ReleaseIcon name="close" />
               </Button>
             </PopoverClose>
           </div>
@@ -123,9 +128,27 @@ export function ReleaseBell(): ReactElement | null {
             value={tab}
             onChange={setTab}
             options={[
-              { value: 'todo', label: `${panel.tabTodo} ${todo.length}` },
-              { value: 'all', label: `${panel.tabAll} ${active.length}` },
-              { value: 'archive', label: `${panel.tabArchive} ${archived.length}` },
+              { value: 'todo', label: (
+                  <>
+                    {panel.tabTodo}
+                    <span className="sr-only"> {todo.length}</span>
+                  </>
+                ),
+                hint: todo.length },
+              { value: 'all', label: (
+                  <>
+                    {panel.tabAll}
+                    <span className="sr-only"> {active.length}</span>
+                  </>
+                ),
+                hint: active.length },
+              { value: 'archive', label: (
+                  <>
+                    {panel.tabArchive}
+                    <span className="sr-only"> {archived.length}</span>
+                  </>
+                ),
+                hint: archived.length },
             ]}
           />
         </div>

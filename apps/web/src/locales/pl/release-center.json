@@ -31,7 +31,7 @@
     "optional": "Opcjonalne",
     "required": "Wymagane",
     "showWhere": "Pokaż, gdzie to jest",
-    "skipDialog": "Nie pokazuj ponownie",
+    "skipDialog": "Nie pokazuj okna ze zmianami po kolejnych aktualizacjach",
     "startGuide": "Rozpocznij przewodnik",
     "stepIndicator": "Krok {current} z {total}",
     "title": "Zaktualizowano OpenLinker do wersji {version}",
@@ -48,7 +48,7 @@
     "ctaShowWhere": "Pokaż, gdzie to jest",
     "ctaWhatsNew": "Co nowego",
     "doneAuto": "Wykryto automatycznie",
-    "doneManual": "Oznaczono ręcznie",
+    "doneManual": "Zostaje bez zmian",
     "doneOf": "{done} z {total} gotowe",
     "emptyArchiveBody": "Zarchiwizowane powiadomienia pojawią się tutaj.",
     "emptyArchiveTitle": "Archiwum jest puste",
@@ -62,7 +62,7 @@
     "menuMarkAllDone": "Oznacz wszystkie kroki jako zrobione",
     "menuMarkRead": "Oznacz jako przeczytane",
     "menuRestore": "Przywróć z archiwum",
-    "naChip": "Oznaczono jako nie dotyczy",
+    "naChip": "Nie dotyczy",
     "needsAdmin": "Wymaga administratora",
     "notApplicable": "Nie dotyczy",
     "progressLabel": "Postęp konfiguracji",
@@ -70,14 +70,13 @@
     "remind": "Przypomnij za 7 dni",
     "requiredDone": "Wymagane kroki zrobione",
     "requiredLeft": "Wymagane do zrobienia: {n}",
-    "showMe": "Pokaż mi",
+    "showMe": "Pokaż mi to",
     "snoozedChip": "Przypomnimy za 7 dni",
-    "stayAsIs": "Zostaje jak jest",
-    "stepFor": "Dla: {name}",
-    "stepOptional": "Opcjonalny",
-    "stepRequired": "Wymagany",
-    "stepperAdmin": "Krok odhaczy się sam po zapisaniu zmiany",
-    "stepperViewer": "Ten krok wykonuje administrator. Możesz zobaczyć, gdzie on jest.",
+    "stayAsIs": "Zostaje tak, jak jest",
+    "stepOptional": "Opcjonalne",
+    "stepRequired": "Wymagane",
+    "stepperAdmin": "Krok zaznaczy się automatycznie po zapisaniu zmiany.",
+    "stepperViewer": "Ten krok wykonuje administrator. Możesz zobaczyć, gdzie jest.",
     "stepsHide": "Zwiń kroki",
     "stepsShow": "Pokaż kroki ({n})",
     "tabAll": "Wszystkie",
@@ -101,21 +100,21 @@
   "steps": {
     "inpost-notify-buyer": {
       "title": "Wybierz, kiedy kupujący dowie się o wysyłce",
-      "tourBody": "Wybierz moment, w którym marketplace pokaże kupującemu \"wysłano\". To ustawienie tego konta InPost.",
+      "tourBody": "Wybierz moment, w którym marketplace pokaże kupującemu „wysłano”. To ustawienie tego konta InPost.",
       "tourTitle": "Kiedy kupujący dowie się o wysyłce?",
-      "why": "Domyślnie kupujący dostaje \"wysłano\" dopiero po kliknięciu \"Oznacz jako wysłane\". W koncie InPost możesz zmienić to na moment kupienia etykiety."
+      "why": "Domyślnie kupujący dostaje „wysłano” dopiero po kliknięciu „Oznacz jako wysłane”. W koncie InPost możesz zmienić to na moment kupienia etykiety."
     },
     "packing-owner": {
       "title": "Wskaż, czy paczki pakuje inny system",
       "tourBody": "Zaznacz pole, jeśli paczki pakuje inny system. To zmienia tylko to, co widzisz w OpenLinker, niczego nie blokuje.",
       "tourTitle": "Kto pakuje zamówienia?",
-      "why": "Gdy zamówienia pakuje zewnętrzny system, np. magazynowy, OpenLinker ukryje własny przycisk \"Oznacz jako spakowane\" dla tych zamówień. Domyślnie przycisk jest widoczny."
+      "why": "Gdy zamówienia pakuje zewnętrzny system, np. magazynowy, OpenLinker ukryje własny przycisk „Oznacz jako spakowane” dla tych zamówień. Domyślnie przycisk jest widoczny."
     },
     "shipping-routing": {
-      "title": "Przypisz przewoźników w tym kanale sprzedaży",
+      "title": "Przypisz przewoźników w kanale",
       "tourBody": "Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału. Zmień to, co trzeba, i zapisz przypisanie.",
       "tourTitle": "Kto wysyła przesyłki z tego kanału?",
-      "why": "Przypisanie przewoźnika ustawiasz w Mapowaniach, w zakładce Realizacja, w sekcji \"Kto wysyła każdą metodę dostawy\". Sprawdź każdą metodę dostawy z tego kanału i kliknij Zapisz przypisanie."
+      "why": "Kierowanie wysyłek ustawiasz w Mapowaniach, w zakładce Realizacja. Sprawdź, kto wysyła każdą metodę dostawy z tego kanału, i zapisz."
     }
   },
   "tour": {
@@ -123,9 +122,9 @@
     "back": "Wstecz",
     "choices": {
       "externalPacking": "Pakuje inny system",
-      "notifyLater": "Po oznaczeniu jako wysłane",
-      "notifyNow": "W chwili zakupu etykiety",
-      "ownPacking": "Pakuje OpenLinker"
+      "notifyLater": "Dopiero po „Oznacz jako wysłane”",
+      "notifyNow": "Od razu po zakupie etykiety",
+      "ownPacking": "Pakujemy w OpenLinker"
     },
     "finish": "Zakończ",
     "later": "Zrobię to później",
