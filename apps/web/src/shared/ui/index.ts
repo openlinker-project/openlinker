@@ -173,3 +173,6 @@ export type {
   SegmentedSwitchProps,
 } from './segmented-switch';
 export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';
+
+export { SettingsPageTemplate } from './settings-page-template';
+export type { SettingsPageSection, SettingsPageTemplateProps } from './settings-page-template';

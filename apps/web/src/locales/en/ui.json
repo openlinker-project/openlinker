@@ -272,6 +272,12 @@
   "richTextView": {
     "empty": "No description"
   },
+  "settingsTemplate": {
+    "newBadge": "New",
+    "onThisPage": "On this page",
+    "readOnly": "You have read-only access. An administrator saves changes.",
+    "sections": "Page sections"
+  },
   "setupStepper": {
     "label": "Setup progress",
     "step": "Step {current} of {total}"
