@@ -32,6 +32,10 @@ export interface LabelDocumentReader {
    * (same shape as `cancelShipment` / `getTracking`). Throws (provider error)
    * when the provider rejects the fetch; the application service maps that to
    * a `ShippingProviderRejectionException`.
+   *
+   * A carrier that confirms shipments asynchronously and cannot yet render the
+   * document throws `LabelNotReadyException` instead - a pending label, not a
+   * refusal. Adapters that are always ready simply never throw it.
    */
   fetchLabel(input: { providerShipmentId: string }): Promise<LabelDocument>;
 }
