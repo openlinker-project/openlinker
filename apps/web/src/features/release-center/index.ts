@@ -32,3 +32,5 @@ export type {
   ReleaseState,
   UserReleaseItemChange,
 } from './api/release-state.types';
+export { TourProvider } from './tour/tour-provider';
+export { useTour, type TourController, type TourStepInput } from './tour/tour-context';
