@@ -711,6 +711,7 @@
   "listings:bulkBatchProgressTable.statusBadge.succeeded": 16,
   "listings:bulkBlockers.chips.alreadyListed": 23,
   "listings:bulkBlockers.chips.cardCategoryDiffers": 24,
+  "listings:bulkBlockers.chips.cardCategoryMismatch": 24,
   "listings:bulkBlockers.chips.categoryNotSet": 26,
   "listings:bulkBlockers.chips.currencyMismatch": 28,
   "listings:bulkBlockers.chips.invalidBarcode": 24,

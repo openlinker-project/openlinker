@@ -7,6 +7,7 @@
  *
  * @module apps/worker/src/sync/handlers
  */
+import type { ConfigService } from '@nestjs/config';
 import type { SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type {
@@ -32,7 +33,8 @@ describe('MarketplaceOrderSyncHandler', () => {
     observeSourceRefunds = jest.fn().mockResolvedValue({});
     handler = new MarketplaceOrderSyncHandler(
       { syncOrderFromSource } as unknown as IOrderIngestionService,
-      { observeSourceRefunds } as unknown as IOrderRefundObservationService
+      { observeSourceRefunds } as unknown as IOrderRefundObservationService,
+      { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService
     );
   });
 

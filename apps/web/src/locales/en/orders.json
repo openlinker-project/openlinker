@@ -1596,6 +1596,7 @@
     "retryQueuedDescription": "Sync queued for the failed destination.",
     "retryQueuedTitle": "Retry queued",
     "retrying": "Retrying…",
+    "routedNote": "This order is handled by OMS routing, so it is not copied to destinations and cannot be retried here.",
     "summary": {
       "buyerTaxId": "Buyer tax ID",
       "orderNumber": "Order #",

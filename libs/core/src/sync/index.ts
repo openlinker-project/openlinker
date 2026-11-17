@@ -187,6 +187,7 @@ export { ContendedWriteError } from './domain/exceptions/contended-write.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
+export type { IRetryClassifierRegistry } from './infrastructure/adapters/retry-classifier-registry.service.interface';
 export { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
 export { AuthFailureClassifierRegistryService } from './infrastructure/adapters/auth-failure-classifier-registry.service';
 export { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';

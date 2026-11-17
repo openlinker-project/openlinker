@@ -8,6 +8,7 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type {
   SyncJobHandler,
   SyncJobHandlerResult,
@@ -22,6 +23,7 @@ import {
   type IOrderRefundObservationService,
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
+import { parseMaxDeferredTotalSeconds } from '../deferral-budget';
 
 type SyncJob = SyncJobEntity;
 
@@ -33,7 +35,8 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
     @Inject(ORDER_INGESTION_SERVICE_TOKEN)
     private readonly orderIngestion: IOrderIngestionService,
     @Inject(ORDER_REFUND_OBSERVATION_SERVICE_TOKEN)
-    private readonly refundObservation: IOrderRefundObservationService
+    private readonly refundObservation: IOrderRefundObservationService,
+    private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -48,7 +51,16 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
         job.connectionId,
         payload.externalOrderId,
         payload.sourceEventId,
-        payload.eventType
+        payload.eventType,
+        // #3984: lets core rethrow a deferrable destination failure only while
+        // the runner can still grant the wait, and settle it as `failed` after.
+        {
+          spentMs: job.deferredTotalMs ?? 0,
+          maxMs:
+            parseMaxDeferredTotalSeconds(
+              this.configService.get<string>('OL_JOB_MAX_DEFERRED_WAIT_SECONDS')
+            ).seconds * 1000,
+        }
       );
 
       await this.observeSourceRefunds(job.connectionId, payload.externalOrderId);

@@ -488,6 +488,12 @@ export const JobOutcomeReasonValues = [
   // ambiguity is a persisted-state fact about the order, and blindly
   // retrying the same job cannot resolve it.
   'auto_dispatch_shipment_claimed_by_sibling_work',
+  // #3987: the carrier answered with a refusal (a 4xx / carrier code) or an
+  // adapter preflight failed on missing parcel data. Both are deterministic
+  // until an operator changes the order, connection or parcel, so retrying only
+  // burned the ladder. Transient carrier errors (5xx, 408, 429) still retry.
+  'auto_dispatch_carrier_refused',
+  'auto_dispatch_preflight_failed',
 ] as const;
 
 /**
