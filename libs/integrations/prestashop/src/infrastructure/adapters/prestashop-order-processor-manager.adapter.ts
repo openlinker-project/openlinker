@@ -127,6 +127,15 @@ interface PrestashopCarrierRow {
  */
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
+/** PrestaShop module technical names are lowercase `[a-z0-9_]` identifiers. */
+const PAYMENT_MODULE_NAME_PATTERN = /^[a-z0-9_]{1,64}$/;
+
+interface ResolvedPayment {
+  label: string;
+  /** Set only when the mapped value names a payment module (#3988). */
+  module?: string;
+}
+
 /**
  * The `payment_method` label sent when no payment mapping applies (#3474). It
  * matches the payment module the OL endpoint actually delegates to
@@ -721,7 +730,7 @@ export class PrestashopOrderProcessorManagerAdapter
 
         // Resolved BEFORE the try: it never throws, and a lookup failure must
         // not be mistaken for an import failure by the ambiguous-write handling.
-        const paymentMethodLabel = await this.resolvePaymentMethodLabel(order);
+        const payment = await this.resolvePayment(order);
 
         this.logger.debug(`Submitting order import (validateOrder) request to PrestaShop`);
         try {
@@ -729,11 +738,14 @@ export class PrestashopOrderProcessorManagerAdapter
             idCart: Number.parseInt(String(externalCartId), 10),
             idOrderState: stateId,
             amountPaid: order.totals.total,
-            // The module delegates to ps_checkpayment::validateOrder, so this is
-            // the order's display label (`orders.payment`) - it does not switch
-            // the payment module. The operator's payment mapping (#3474) decides
-            // it; `DEFAULT_PAYMENT_METHOD_LABEL` is what the WS path recorded.
-            paymentMethod: paymentMethodLabel,
+            // The order's display label (`orders.payment`). The operator's
+            // payment mapping (#3474) decides it; `DEFAULT_PAYMENT_METHOD_LABEL`
+            // is what the WS path recorded.
+            paymentMethod: payment.label,
+            // The mapped payment MODULE (#3988), so `orders.module` is it and
+            // not the endpoint's `ps_checkpayment` default. An older OL module
+            // ignores the field and keeps the default module.
+            ...(payment.module ? { paymentModule: payment.module } : {}),
             orderReference: referenceKey ?? '',
             ...(moduleWritesLinePins ? { linePrices: linePins } : {}),
           });
@@ -1690,6 +1702,19 @@ export class PrestashopOrderProcessorManagerAdapter
    * before the mapping was honoured. Logs carry ids and the source payment type
    * only - no buyer data.
    */
+  private async resolvePayment(order: OrderCreate): Promise<ResolvedPayment> {
+    const mapped = await this.resolvePaymentMethodLabel(order);
+    if (!PAYMENT_MODULE_NAME_PATTERN.test(mapped)) {
+      return { label: mapped };
+    }
+    // A module-shaped mapped value (what the Payments tab offers) names the
+    // module; the label is its readable curated name. Anything else is a
+    // free-text label from an older mapping and stays a label only.
+    const curated = PRESTASHOP_PAYMENT_MODULES.find((m) => m.value === mapped);
+    const label = curated ? curated.label.replace(/\s*\([a-z0-9_]+\)$/, '') : mapped;
+    return { label, module: mapped };
+  }
+
   private async resolvePaymentMethodLabel(order: OrderCreate): Promise<string> {
     const sourceConnectionId = order.source?.connectionId;
     const sourcePaymentMethod = order.sourcePaymentMethod;

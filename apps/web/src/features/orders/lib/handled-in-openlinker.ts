@@ -35,7 +35,7 @@ export const ORDER_WORK_STAGE_MARK = {
 /**
  * A held order's tone, keyed by the BACKEND's persisted value (`satisfies` ties
  * the keys to the frontend mirror, and `check-fulfillment-reason-mirror.mjs`
- * ties the copy keys to core); the three #3485 states. The other held states
+ * ties the copy keys to core); the three #3485 states and #4033's payment wait. The other held states
  * (`routing-in-doubt`, `routing-contended`, `routing-already-live-elsewhere`)
  * are deliberately absent: they are transient guards, not an order waiting on
  * the operator, so they render no badge rather than a misleading one.
@@ -44,7 +44,7 @@ export const WAITING_REASON_TONE = {
   'routing-refused': 'warning',
   'routing-no-shipping-address': 'warning',
   'routing-failed': 'error',
-  'awaiting-payment': 'warning',
+  'routing-awaiting-payment': 'warning',
 } as const satisfies Record<WaitingFulfillmentBlockReasonValue, 'warning' | 'error'>;
 
 function hasOwn<K extends string>(table: Readonly<Record<K, unknown>>, key: string): key is K {

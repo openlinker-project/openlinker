@@ -803,9 +803,9 @@
     "unassigned": "Nieprzypisane",
     "waitingOnFact": "Czeka na",
     "waitingReasons": {
-      "awaiting-payment": {
+      "routing-awaiting-payment": {
         "fact": "Płatność",
-        "hint": "Czeka na płatność: zamówienie jest wstrzymane i zostanie skierowane do realizacji zaraz po opłaceniu.",
+        "hint": "OpenLinker wstrzymuje to zamówienie: kupujący jeszcze nie zapłacił. Trafi do pakowania, gdy kanał przekaże płatność.",
         "label": "Czeka: płatność"
       },
       "routing-failed": {

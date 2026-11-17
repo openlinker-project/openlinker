@@ -361,6 +361,9 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   } else if (input.cardInOtherCategory) {
     blockers.push('card-category-differs');
   }
+  if (input.cardCategoryMismatch) {
+    blockers.push('card-category-mismatch');
+  }
 
   // Platform-specific blockers (#1096) - declared once per marketplace via its
   // `offerValidation` contribution and emitted as open-world namespaced ids

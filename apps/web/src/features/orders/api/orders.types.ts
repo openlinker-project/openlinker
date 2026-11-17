@@ -893,7 +893,7 @@ export const FulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
-  'awaiting-payment',
+  'routing-awaiting-payment',
 ] as const;
 export type FulfillmentBlockReasonValue = (typeof FulfillmentBlockReasonValues)[number];
 
@@ -923,7 +923,7 @@ export const WaitingFulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
-  'awaiting-payment',
+  'routing-awaiting-payment',
 ] as const satisfies readonly FulfillmentBlockReasonValue[];
 export type WaitingFulfillmentBlockReasonValue = (typeof WaitingFulfillmentBlockReasonValues)[number];
 

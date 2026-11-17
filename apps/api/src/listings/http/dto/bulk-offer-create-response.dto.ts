@@ -10,7 +10,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import type { OfferCreationError } from '@openlinker/core/listings';
+import type { OfferCreationError, OfferCreationRequestSnapshot } from '@openlinker/core/listings';
 import { BulkBatchStatusValues, OfferCreationStatusValues } from '@openlinker/core/listings';
 
 import { OfferCreationErrorDto } from './offer-creation-status-response.dto';
@@ -86,6 +86,14 @@ export class BulkBatchRecordSummaryDto {
       'OL product id owning this record\'s variant (#2234). Lets the operator reopen the bulk wizard on a failed batch\'s variants. Null when the variant no longer resolves.',
   })
   productId!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Object,
+    description:
+      'Snapshot of the create-offer request this record was submitted with (#4037): title, category, parameters and EAN choices. Lets "Fix and resubmit" reopen the wizard with the operator\'s edits. Null for records created before snapshots were persisted.',
+  })
+  request?: OfferCreationRequestSnapshot | null;
 }
 
 export class BulkBatchSummaryDto {
