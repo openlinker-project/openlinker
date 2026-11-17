@@ -6283,8 +6283,9 @@ a.delivery-rider-banner__button:focus-visible {
     width: 100%;
   }
 
-  .alert,
-  .toast {
+  /* The toast keeps its row on narrow screens: its controls are compact now, and
+     stacking them under the message made a short confirmation tall. */
+  .alert {
     flex-direction: column;
   }
 
