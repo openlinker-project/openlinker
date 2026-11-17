@@ -131,6 +131,14 @@
     "missing": "Nie znaleziono tego elementu na ekranie. Możesz pominąć ten krok.",
     "next": "Dalej",
     "optional": "Opcjonalne",
+    "railLabel": "Postęp przewodnika",
+    "railState": {
+      "current": "bieżący",
+      "done": "zakończony",
+      "skipped": "pominięty",
+      "todo": "jeszcze nie odwiedzony"
+    },
+    "railStep": "Krok {current} z {total}: {status}",
     "regionLabel": "Przewodnik",
     "required": "Wymagane",
     "requiredReason": "Wybierz opcję w tym wymaganym kroku, aby przejść dalej.",

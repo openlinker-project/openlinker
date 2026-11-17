@@ -127,6 +127,14 @@
     "missing": "We could not find this element on the screen. You can skip this step.",
     "next": "Next",
     "optional": "Optional",
+    "railLabel": "Tour progress",
+    "railState": {
+      "current": "current",
+      "done": "completed",
+      "skipped": "skipped",
+      "todo": "not visited yet"
+    },
+    "railStep": "Step {current} of {total}: {status}",
     "regionLabel": "Guided tour",
     "required": "Required",
     "requiredReason": "Make a choice for this required step to continue.",

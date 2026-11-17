@@ -71,7 +71,7 @@ describe('TourCard', () => {
     expect(next).toHaveAttribute('aria-disabled', 'true');
     expect(next.getAttribute('aria-describedby')).toBeTruthy();
     fireEvent.click(next);
-    expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument();
+    expect(screen.getByText(/^Step 1 of 2$/)).toBeInTheDocument();
   });
 
   it('should not block a viewer and should show the administrator chip', async () => {
@@ -80,7 +80,7 @@ describe('TourCard', () => {
     await screen.findByRole('region', { name: 'Guided tour' });
     expect(screen.getByText('Needs an administrator')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByText(/Step 2 of 2/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Step 2 of 2$/)).toBeInTheDocument();
   });
 
   it('should close the tour on Escape and return focus to the trigger', async () => {
@@ -101,6 +101,8 @@ describe('TourCard', () => {
     expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'I will do it later' })).toBeInTheDocument();
     fireEvent.click(skip);
-    expect(await screen.findByText(/Step 2 of 2/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Step 2 of 2$/)).toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 2: skipped')).toBeInTheDocument();
+    expect(screen.getByText('Step 2 of 2: current')).toBeInTheDocument();
   });
 });

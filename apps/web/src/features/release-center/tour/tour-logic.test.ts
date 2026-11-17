@@ -53,4 +53,23 @@ describe('tour choices', () => {
   it('should refuse an unknown choice', () => {
     expect(applyChoice(TOUR_CHOICES['packing-owner'], {}, 'nope')).toBeNull();
   });
+
+  it('should remember a skipped step across Back and forward, and reset it on a new run', () => {
+    let state = tourReducer(INITIAL_TOUR_STATE, { type: 'start', steps });
+    state = tourReducer(state, { type: 'skip' });
+    expect(state).toMatchObject({ index: 1, skipped: [0], target: 'waiting' });
+    state = tourReducer(state, { type: 'back' });
+    state = tourReducer(state, { type: 'next' });
+    expect(state.skipped).toEqual([0]);
+    expect(tourReducer(state, { type: 'start', steps }).skipped).toEqual([]);
+  });
+
+  it('should not record the same skip twice and should end the tour when skipping the last step', () => {
+    let state = tourReducer(INITIAL_TOUR_STATE, { type: 'start', steps });
+    state = tourReducer(state, { type: 'skip' });
+    state = tourReducer(state, { type: 'back' });
+    state = tourReducer(state, { type: 'skip' });
+    expect(state.skipped).toEqual([0]);
+    expect(tourReducer(state, { type: 'skip' })).toEqual(INITIAL_TOUR_STATE);
+  });
 });
