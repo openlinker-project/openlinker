@@ -43,6 +43,7 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { useSession } from '../../../shared/auth/use-session';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
@@ -437,6 +438,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const navigate = useNavigate();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
+  // Until the session resolves the permission list is empty, which is "not known yet", not "denied":
+  // locking the form then would flash a read-only form at every operator on each page load.
+  const { isReady: sessionReady } = useSession();
+  // The public demo deliberately shows editable inputs with a disabled Save (#1615), so only a real
+  // read-only session locks the whole form.
+  const readOnly = sessionReady && !write.canWrite && !demoMode;
   const [showRawJson, setShowRawJson] = useState(false);
   const plugin = usePlatform(connection.platformType);
   // #1330 — the platform's non-render structured-config half: Zod schema
@@ -872,10 +879,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           change; the backend refuses the save anyway (403), so offering it only
           produces a misleading failure. */}
       <fieldset
-        disabled={!write.canWrite}
+        disabled={readOnly}
         style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'contents' }}
       >
-      {write.canWrite ? null : <Alert tone="info">{copy.readOnlyNote}</Alert>}
+      {readOnly ? <Alert tone="info">{copy.readOnlyNote}</Alert> : null}
       <div className="panel__header">
         <div>
           <p className="eyebrow">{copy.eyebrow}</p>
@@ -1090,7 +1097,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button
             type="submit"
-            disabled={updateConnection.isPending || write.demoReadOnly || !write.canWrite}
+            disabled={updateConnection.isPending || write.demoReadOnly || readOnly}
           >
             {updateConnection.isPending ? copy.saving : copy.save}
           </Button>
