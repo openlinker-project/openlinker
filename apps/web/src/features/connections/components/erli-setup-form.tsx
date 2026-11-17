@@ -52,6 +52,7 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import { TargetShopRow } from './wizard-created-screen';
 import { ShippingNextStep } from './shipping-next-step';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
@@ -277,6 +278,9 @@ export function ErliSetupForm(): ReactElement {
 
         {createdConnectionId ? (
           <>
+            <dl className="definition-list">
+              <TargetShopRow connectionId={createdConnectionId} />
+            </dl>
             <ShippingNextStep connectionId={createdConnectionId} />
             {testResult ? (
               <Alert

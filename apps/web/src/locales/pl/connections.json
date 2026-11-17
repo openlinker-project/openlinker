@@ -1667,6 +1667,23 @@
     "unreachable": "Nie udało się połączyć z platformą. Sprawdź adres i czy platforma działa.",
     "unsupported": "Tego rodzaju połączenia nie da się jeszcze przetestować."
   },
+  "wizardCreated": {
+    "active": "Aktywne",
+    "assignChannel": {
+      "body": "Ten przewoźnik niczego nie wysyła, dopóki nie przypiszesz do niego metody dostawy kanału sprzedaży. Zrobisz to na stronie połączenia, w sekcji „Wysyła dla”.",
+      "link": "Przypisz to konto do kanału sprzedaży",
+      "title": "Przypisz to konto do kanału sprzedaży"
+    },
+    "editConnection": "Otwórz ustawienia połączenia",
+    "goToConnection": "Przejdź do połączenia",
+    "name": "Połączono jako",
+    "shopPacking": {
+      "body": "Gdy kanał sprzedaży zostanie połączony z tym sklepem, wybierz dla każdej metody dostawy, kto ją wysyła. Do tego czasu twój sklep wysyła każde zamówienie.",
+      "link": "Przypisz przewoźników do kanałów",
+      "title": "Dalej: pakowanie i przewoźnicy"
+    },
+    "targetShop": "Sklep docelowy"
+  },
   "woocommerceSetupForm": {
     "beforeYouStart": {
       "body": "W panelu administracyjnym {platform} przejdź do <strong>{platform} → Ustawienia → Zaawansowane → REST API</strong> i wygeneruj klucz z uprawnieniami <strong>Odczyt/Zapis</strong>. Skopiuj poniżej consumer key i consumer secret - są wyświetlane tylko raz.",

@@ -1627,6 +1627,23 @@
     "unreachable": "The platform could not be reached. Check the address and that it is online.",
     "unsupported": "This kind of connection cannot be tested yet."
   },
+  "wizardCreated": {
+    "active": "Active",
+    "assignChannel": {
+      "body": "This carrier ships nothing until a delivery method of a sales channel is assigned to it. Do it on the connection page, under \"Ships for\".",
+      "link": "Assign this account to a sales channel",
+      "title": "Assign this account to a sales channel"
+    },
+    "editConnection": "Open connection settings",
+    "goToConnection": "Go to connection",
+    "name": "Connected as",
+    "shopPacking": {
+      "body": "Once a sales channel is connected to this shop, choose per delivery method who ships it. Until then your shop ships every order.",
+      "link": "Assign carriers per channel",
+      "title": "Packing and carriers come next"
+    },
+    "targetShop": "Target shop"
+  },
   "woocommerceSetupForm": {
     "beforeYouStart": {
       "body": "In your {platform} admin, go to <strong>{platform} → Settings → Advanced → REST API</strong> and generate a key with <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret below - they are only shown once.",
