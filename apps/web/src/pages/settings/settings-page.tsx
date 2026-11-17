@@ -15,138 +15,101 @@ import { OrderTagsSettingsTile } from '../../features/orders/components/order-ta
 import { BuyerEmailsTile } from '../../features/buyer-emails';
 import { LoginPageSettingsTile } from '../../features/login-page-settings';
 import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
+import { SettingsIndexList, SettingsIndexRow } from '../../shared/ui/settings-index-row';
 import type { SettingsPageSection } from '../../shared/ui/settings-page-template';
-import { useMessages } from '../../shared/i18n';
+import { interpolate, useMessages } from '../../shared/i18n';
 
 /**
- * The settings hub. Areas are grouped by what an operator is trying to do, not
- * by who built them; a group with no tile the current role may open is left out
- * instead of rendering an empty heading.
+ * The settings hub (#4154): a scannable index. Rows are grouped by what an
+ * operator is trying to do, each with its current value and one action. A row
+ * the signed-in role may not open stays listed and locked, so nobody has to
+ * guess whether an area exists; only a group with nothing in it is left out.
  */
 export function SettingsPage(): ReactElement {
   const { isReady, session } = useSession();
   const copy = useMessages('settings').settingsPage;
-  const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
-  // #3634 - both OMS routing tiles are withheld unless the build opts in.
-  const omsRoutingUi = isOmsRoutingUiEnabled();
   const tpl = useMessages('settings').template;
+  const user = isReady && session.status === 'authenticated' ? session.user : null;
+  const locked = user?.role !== 'admin';
+  // #3634 - both OMS routing rows are withheld unless the build opts in.
+  const omsRoutingUi = isOmsRoutingUiEnabled();
 
   const group = (
     id: string,
     meta: { short: string; title: string; hint: string },
-    tiles: ReactNode[],
-  ): SettingsPageSection[] => {
-    const visible = tiles.filter(Boolean);
-    if (visible.length === 0) return [];
-    return [
-      {
-        id,
-        label: meta.short,
-        title: meta.title,
-        hint: meta.hint,
-        children: <div className="settings-hub__grid">{visible}</div>,
-      },
-    ];
-  };
+    rows: ReactNode[],
+    footer?: ReactNode,
+  ): SettingsPageSection => ({
+    id,
+    label: meta.short,
+    title: meta.title,
+    hint: meta.hint,
+    children: (
+      <>
+        <SettingsIndexList pending={!isReady}>{rows.filter(Boolean)}</SettingsIndexList>
+        {footer}
+      </>
+    ),
+  });
 
   const sections: SettingsPageSection[] = [
-    {
-      id: 'environment',
-      label: tpl.settingsEnv.short,
-      title: tpl.settingsEnv.title,
-      hint: tpl.settingsEnv.hint,
-      children: (
-        <>
-          {isReady && session.status === 'authenticated' && session.user !== null ? (
-            <dl className="settings-hub__facts">
-              <div>
-                <dt>{copy.environment.environment}</dt>
-                <dd className="mono-text">{env.VITE_APP_ENV}</dd>
-              </div>
-              <div>
-                <dt>{copy.environment.apiBaseUrl}</dt>
-                <dd className="mono-text">{env.VITE_API_BASE_URL}</dd>
-              </div>
-              <div>
-                <dt>{copy.account.username}</dt>
-                <dd>{session.user.username}</dd>
-              </div>
-              <div>
-                <dt>{copy.account.email}</dt>
-                <dd>{session.user.email ?? '—'}</dd>
-              </div>
-              <div>
-                <dt>{copy.account.role}</dt>
-                <dd>{session.user.role}</dd>
-              </div>
-            </dl>
-          ) : (
-            <>
-              <dl className="settings-hub__facts">
-                <div>
-                  <dt>{copy.environment.environment}</dt>
-                  <dd className="mono-text">{env.VITE_APP_ENV}</dd>
-                </div>
-                <div>
-                  <dt>{copy.environment.apiBaseUrl}</dt>
-                  <dd className="mono-text">{env.VITE_API_BASE_URL}</dd>
-                </div>
-              </dl>
-              {!isReady ? (
-                <p className="muted-text" aria-live="polite">
-                  {copy.account.loading}
-                </p>
-              ) : (
-                <p className="muted-text">{copy.account.anonymous}</p>
-              )}
-            </>
-          )}
-          {isReady && session.status === 'authenticated' && !isAdmin ? (
-            <p className="settings-hub__note">{copy.adminNote}</p>
-          ) : null}
-        </>
+    group('environment', tpl.settingsEnv, [
+      <SettingsIndexRow key="env" title={copy.environment.environment} value={env.VITE_APP_ENV} />,
+      <SettingsIndexRow key="api" title={copy.environment.apiBaseUrl} value={env.VITE_API_BASE_URL} mono />,
+      user ? (
+        <SettingsIndexRow
+          key="account"
+          title={copy.account.signedInAs}
+          value={user.username}
+          note={user.email ?? undefined}
+        />
+      ) : (
+        <SettingsIndexRow
+          key="account"
+          title={copy.account.title}
+          valueState={isReady ? 'ready' : 'loading'}
+          stateText={copy.account.loading}
+          value={copy.account.anonymous}
+        />
       ),
-    },
-    ...group('data', tpl.settingsGroups.data, [
-      isAdmin ? <SyncPacingTile key="sync" /> : null,
-      isAdmin ? <CurrencySettingsTile key="currency" /> : null,
-      omsRoutingUi ? <InventoryLocationsTile key="locations" /> : null,
-      omsRoutingUi && isAdmin ? <SourcingRulesTile key="sourcing" /> : null,
+      user ? <SettingsIndexRow key="role" title={copy.account.role} value={user.role} /> : null,
     ]),
-    ...group('orders', tpl.settingsGroups.orders, [
-      isAdmin ? <SalesDocumentsTile key="documents" /> : null,
-      // Deliberately NOT admin-gated - see `WhoDecidesTile`'s docblock.
+    group('data', tpl.settingsGroups.data, [
+      <SyncPacingTile key="sync" locked={locked} />,
+      <CurrencySettingsTile key="currency" locked={locked} />,
+      omsRoutingUi ? <InventoryLocationsTile key="locations" locked={locked} /> : null,
+      omsRoutingUi ? <SourcingRulesTile key="sourcing" locked={locked} /> : null,
+    ]),
+    group('orders', tpl.settingsGroups.orders, [
+      <SalesDocumentsTile key="documents" locked={locked} />,
+      // Deliberately NOT locked for a read-only role - see `WhoDecidesTile`'s docblock.
       <WhoDecidesTile key="who" />,
-      isAdmin ? <OrderTagsSettingsTile key="tags" /> : null,
-      isAdmin ? <BuyerEmailsTile key="emails" /> : null,
-      isAdmin ? <MailerSettingsTile key="mailer" /> : null,
+      <OrderTagsSettingsTile key="tags" locked={locked} />,
+      <BuyerEmailsTile key="emails" locked={locked} />,
+      <MailerSettingsTile key="mailer" locked={locked} />,
     ]),
-    ...group('access', tpl.settingsGroups.access, [
-      isAdmin ? <McpTokensTile key="mcp" /> : null,
-      isAdmin ? <LoginPageSettingsTile key="login" /> : null,
-      isAdmin ? <PosthogSettingsTile key="posthog" /> : null,
-    ]),
-    {
-      id: 'soon',
-      label: tpl.settingsSoon.short,
-      title: tpl.settingsSoon.title,
-      hint: tpl.settingsSoon.hint,
-      children: (
-        <ul className="settings-hub__planned">
-          {[copy.notifications, copy.organization, copy.preferences].map((item) => (
-            <li key={item.title}>
-              <h3>{item.title}</h3>
-              <p>{item.body}</p>
-            </li>
-          ))}
-        </ul>
-      ),
-    },
+    group(
+      'access',
+      tpl.settingsGroups.access,
+      [
+        <McpTokensTile key="mcp" locked={locked} />,
+        <LoginPageSettingsTile key="login" locked={locked} />,
+        <PosthogSettingsTile key="posthog" locked={locked} />,
+      ],
+      <p className="settings-index__soon">
+        {interpolate(copy.plannedLine, {
+          items: [copy.notifications.title, copy.organization.title, copy.preferences.title]
+            .map((item) => item.toLowerCase())
+            .join(', '),
+        })}
+      </p>,
+    ),
   ];
 
   return (
     <SettingsPageFrame
       wide
+      plain
       title={copy.title}
       short={tpl.settingsHome.short}
       description={copy.description}

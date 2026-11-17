@@ -255,27 +255,24 @@
       "email": "Email",
       "loading": "Loading session…",
       "role": "Role",
+      "signedInAs": "Signed in as",
       "title": "Account",
       "username": "Username"
     },
-    "adminNote": "Some areas are only available to administrators, so they are not listed here.",
-    "comingSoon": "Coming soon",
-    "description": "Platform configuration, session context, and upcoming operator preferences.",
+    "description": "Every area you can configure, grouped by what it does.",
     "environment": {
       "apiBaseUrl": "API base URL",
       "environment": "Environment",
       "title": "Environment"
     },
     "notifications": {
-      "body": "Sync failure alerts, manual-review triggers, and threshold notifications will be configurable here.",
       "title": "Notifications"
     },
     "organization": {
-      "body": "Team members, roles, and workspace-level settings will be managed here.",
       "title": "Organization"
     },
+    "plannedLine": "Also planned: {items}.",
     "preferences": {
-      "body": "Timezone, date format, and display density options will be available here.",
       "title": "Preferences"
     },
     "title": "Settings"
@@ -518,11 +515,6 @@
       "hint": "Every area you can configure.",
       "short": "Settings",
       "title": "Settings areas"
-    },
-    "settingsSoon": {
-      "hint": "Areas that are not available yet.",
-      "short": "Coming soon",
-      "title": "Planned"
     },
     "sourcingRules": {
       "hint": "The ordered rules that pick where an order is fulfilled from.",

@@ -97,10 +97,10 @@ describe('MailerSettingsTile', () => {
     renderWithProviders(<MailerSettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(await screen.findByText('SMTP')).toBeInTheDocument();
-    expect(screen.getByText('smtp.example.com')).toBeInTheDocument();
-    expect(screen.getByText('587')).toBeInTheDocument();
+    expect(screen.getByText('smtp.example.com:587')).toBeInTheDocument();
     expect(screen.getByText('orders@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Configured')).toBeInTheDocument();
+    // A configured password is the normal state, so only a missing one is said.
+    expect(screen.queryByText(/SMTP password/)).not.toBeInTheDocument();
   });
 
   it('opens the edit dialog when Edit is clicked', async () => {

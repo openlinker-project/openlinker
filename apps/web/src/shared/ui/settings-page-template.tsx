@@ -54,6 +54,8 @@ export interface SettingsPageTemplateProps extends Omit<HTMLAttributes<HTMLDivEl
   mark?: ReactNode;
   /** Wider card for screens that hold grids instead of one form column. */
   wide?: boolean;
+  /** Drops the card around the sections; for index screens made of rows. */
+  plain?: boolean;
   title: ReactNode;
   /** Condensed title shown above the contents once the big title scrolled away. */
   short: string;
@@ -81,7 +83,7 @@ function scrollBehavior(): ScrollBehavior {
 
 export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTemplateProps>(
   function SettingsPageTemplate(
-    { eyebrow, mark, wide = false, title, short, description, sections, actions, readOnly = false, className = '', ...rest },
+    { eyebrow, mark, wide = false, plain = false, title, short, description, sections, actions, readOnly = false, className = '', ...rest },
     ref,
   ): ReactElement {
     const copy = useMessages('ui').settingsTemplate;
@@ -196,7 +198,7 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
               ))}
             </div>
           </nav>
-          <div className="settings-page__card" data-wide={wide || undefined}>
+          <div className="settings-page__card" data-wide={wide || undefined} data-plain={plain || undefined}>
             {readOnly ? (
               <div className="settings-page__readonly" role="status">
                 <svg
