@@ -64,7 +64,8 @@ const UNKNOWN_CACHE_TTL_SECONDS = 900;
 const SCOPE_MISSING: TaxRateResolution = {
   kind: 'unknown',
   reason: 'unreadable',
-  detail: 'the app lacks the write_draft_orders scope',
+  detail:
+    'Shopify refused the tax read: the app lacks the write_draft_orders scope, or it is not approved for protected customer data',
 };
 
 interface DraftOrderTaxPayload {
@@ -165,8 +166,9 @@ export class ShopifyTaxRateReader {
         if (!this.scopeWarned) {
           this.scopeWarned = true;
           this.logger.warn(
-            `Shopify tax rates are not read: the app lacks the optional write_draft_orders scope ` +
-              `(connection: ${this.connectionId})`,
+            `Shopify tax rates are not read: Shopify refused the tax calculation. Either the app lacks ` +
+              `the optional write_draft_orders scope, or it is not approved for protected customer ` +
+              `data (Dev Dashboard, app settings) (connection: ${this.connectionId})`,
           );
         }
         return SCOPE_MISSING;

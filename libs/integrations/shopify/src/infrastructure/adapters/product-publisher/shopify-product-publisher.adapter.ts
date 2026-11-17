@@ -366,8 +366,9 @@ export class ShopifyProductPublisherAdapter
       throw this.refuse(
         'shopify_tax_rate_unknown',
         'The Shopify shop enters prices without tax and its VAT rate for this variant is unknown, so the ' +
-          'net price cannot be worked out. Grant the app the write_draft_orders scope, or turn on ' +
-          '"All prices include tax" in Shopify.',
+          'net price cannot be worked out. Grant the app the write_draft_orders scope and approve it for ' +
+          'protected customer data in the Shopify Dev Dashboard, or turn on "All prices include tax" ' +
+          'in Shopify.',
       );
     }
     return (amount) => toStoreAmount(Number(amount), factor, currency);
