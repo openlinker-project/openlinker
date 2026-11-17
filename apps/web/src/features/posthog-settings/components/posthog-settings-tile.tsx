@@ -1,105 +1,84 @@
 /**
  * PostHog Settings Tile
  *
- * Read-only summary of the current PostHog analytics configuration,
- * rendered on `/settings` next to the Environment, Account, and Mailer
- * tiles. Admin-only — the caller (`settings-page.tsx`) mounts this
- * component only for an authenticated admin session, so a non-admin never
- * even triggers the `GET /posthog-settings` request.
+ * Settings-index row for product analytics. The value is whether it is on; the
+ * quiet note says where the setting comes from (saved here, or the server
+ * environment) and what is captured, so the row answers "is this recording?"
+ * without opening the dialog.
  *
  * @module apps/web/src/features/posthog-settings/components
  */
 import { useState, type ReactElement } from 'react';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useMessages } from '../../../shared/i18n';
-import { Button } from '../../../shared/ui/button';
+import { SettingsIndexRow } from '../../../shared/ui/settings-index-row';
 import { usePosthogSettingsQuery } from '../hooks/use-posthog-settings-query';
 import { PosthogSettingsDialog } from './posthog-settings-dialog';
 
-export function PosthogSettingsTile(): ReactElement {
+function PosthogSettingsLive(): ReactElement {
   const copy = useMessages('posthog-settings').posthogSettingsTile;
   const query = usePosthogSettingsQuery();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const view = query.data;
+
+  const note = !view || !view.enabled ? undefined : (
+    <>
+      <span className="settings-row__line">
+        {view.wouldOverrideEnv ? copy.overridesEnv : copy.sourceEnvironment}
+      </span>
+      <span className="settings-row__line">{copy.region[view.region]}</span>
+      <span className="settings-row__line">
+        {copy.sessionRecordingLabel}: {view.sessionRecording ? copy.on : copy.off}
+      </span>
+      {view.apiKeyConfigured ? null : (
+        <span className="settings-row__line">
+          {copy.apiKeyLabel}: {copy.notSet}
+        </span>
+      )}
+    </>
+  );
 
   return (
-    <article className="panel panel--dense">
-      <div className="panel__header">
-        <div>
-          <p className="eyebrow">{copy.eyebrow}</p>
-          <h3 className="section-title">{copy.title}</h3>
-        </div>
-        <span className="panel__meta">{copy.adminOnly}</span>
-      </div>
-
-      {query.isLoading ? (
-        <p className="muted-text" aria-live="polite">
-          {copy.loading}
-        </p>
+    <SettingsIndexRow
+      title={copy.title}
+      description={copy.description}
+      valueState={query.isLoading ? 'loading' : query.isError ? 'error' : 'ready'}
+      stateText={
+        query.isError
+          ? `${copy.loadError} ${describeApiError(query.error, 'posthog-settings')}`
+          : copy.loading
+      }
+      value={view ? (view.enabled ? copy.enabled : copy.disabled) : undefined}
+      note={note}
+      action={
+        view
+          ? {
+              label: copy.edit,
+              onClick: (): void => {
+                setDialogOpen(true);
+              },
+            }
+          : undefined
+      }
+    >
+      {view ? (
+        <PosthogSettingsDialog
+          open={dialogOpen}
+          view={view}
+          onClose={() => {
+            setDialogOpen(false);
+          }}
+        />
       ) : null}
+    </SettingsIndexRow>
+  );
+}
 
-      {query.isError ? (
-        <p className="muted-text" role="alert">
-          {copy.loadError} {describeApiError(query.error, 'posthog-settings')}
-        </p>
-      ) : null}
-
-      {query.data ? (
-        <>
-          <div className="toolbar__group posthog-settings-tile__badges">
-            <span className={`context-chip context-chip--${query.data.enabled ? 'success' : 'neutral'}`}>
-              {query.data.enabled ? copy.enabled : copy.disabled}
-            </span>
-            {query.data.wouldOverrideEnv ? (
-              <span className="context-chip context-chip--warning">{copy.overridesEnv}</span>
-            ) : null}
-          </div>
-
-          {query.data.enabled ? (
-            <dl className="definition-list">
-              <div>
-                <dt>{copy.sourceLabel}</dt>
-                <dd>{query.data.wouldOverrideEnv ? copy.sourceSaved : copy.sourceEnvironment}</dd>
-              </div>
-              <div>
-                <dt>{copy.apiKeyLabel}</dt>
-                <dd>{query.data.apiKeyConfigured ? copy.configured : copy.notSet}</dd>
-              </div>
-              <div>
-                <dt>{copy.regionLabel}</dt>
-                <dd>{copy.region[query.data.region]}</dd>
-              </div>
-              <div>
-                <dt>{copy.autocaptureLabel}</dt>
-                <dd>{query.data.autocapture ? copy.on : copy.off}</dd>
-              </div>
-              <div>
-                <dt>{copy.sessionRecordingLabel}</dt>
-                <dd>{query.data.sessionRecording ? copy.on : copy.off}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="muted-text panel-copy">{copy.disabledMessage}</p>
-          )}
-
-          <Button
-            tone="secondary"
-            className="button--sm"
-            onClick={() => {
-              setDialogOpen(true);
-            }}
-          >
-            {copy.edit}
-          </Button>
-
-          <PosthogSettingsDialog
-            open={dialogOpen}
-            view={query.data}
-            onClose={() => {
-              setDialogOpen(false);
-            }}
-          />
-        </>
-      ) : null}
-    </article>
+export function PosthogSettingsTile({ locked = false }: { locked?: boolean }): ReactElement {
+  const copy = useMessages('posthog-settings').posthogSettingsTile;
+  return locked ? (
+    <SettingsIndexRow locked title={copy.title} description={copy.description} />
+  ) : (
+    <PosthogSettingsLive />
   );
 }

@@ -44,6 +44,7 @@
   "mailerSettingsTile": {
     "adminOnly": "Tylko administratorzy",
     "configured": "Skonfigurowane",
+    "description": "Jak OpenLinker wysyła e-maile: transport i adres nadawcy.",
     "edit": "Edytuj",
     "eyebrow": "Poczta wychodząca",
     "fromLabel": "Adres nadawcy",

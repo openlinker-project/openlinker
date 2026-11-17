@@ -294,6 +294,12 @@
   "richTextView": {
     "empty": "Brak opisu"
   },
+  "settingsIndex": {
+    "loading": "Wczytywanie…",
+    "lockedHint": "Tylko administratorzy mogą to otworzyć. Poproś administratora, jeśli potrzebujesz zmiany.",
+    "lockedLabel": "Tylko administratorzy",
+    "unavailable": "Niedostępne"
+  },
   "settingsTemplate": {
     "newBadge": "Nowe",
     "onThisPage": "Na tej stronie",

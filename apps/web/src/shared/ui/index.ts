@@ -176,5 +176,7 @@ export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './mo
 
 export { SettingsPageTemplate } from './settings-page-template';
 export type { SettingsPageSection, SettingsPageTemplateProps } from './settings-page-template';
+export { SettingsIndexList, SettingsIndexRow } from './settings-index-row';
+export type { SettingsIndexRowProps, SettingsRowAction } from './settings-index-row';
 export { SettingsPageFrame } from './settings-page-frame';
 export type { SettingsPageFrameProps } from './settings-page-frame';

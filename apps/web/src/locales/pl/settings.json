@@ -261,27 +261,24 @@
       "email": "E-mail",
       "loading": "Wczytywanie sesji…",
       "role": "Rola",
+      "signedInAs": "Zalogowano jako",
       "title": "Konto",
       "username": "Nazwa użytkownika"
     },
-    "adminNote": "Część obszarów jest dostępna tylko dla administratorów, dlatego nie ma ich na liście.",
-    "comingSoon": "Wkrótce",
-    "description": "Konfiguracja platformy, kontekst sesji i nadchodzące preferencje operatora.",
+    "description": "Wszystkie obszary konfiguracji, pogrupowane według tego, do czego służą.",
     "environment": {
       "apiBaseUrl": "Bazowy adres URL API",
       "environment": "Środowisko",
       "title": "Środowisko"
     },
     "notifications": {
-      "body": "Tu będzie można skonfigurować alerty o błędach synchronizacji, wyzwalacze ręcznej weryfikacji i powiadomienia o progach.",
       "title": "Powiadomienia"
     },
     "organization": {
-      "body": "Tu będzie można zarządzać członkami zespołu, rolami i ustawieniami obszaru roboczego.",
       "title": "Organizacja"
     },
+    "plannedLine": "W planach także: {items}.",
     "preferences": {
-      "body": "Tu pojawią się opcje strefy czasowej, formatu daty i gęstości wyświetlania.",
       "title": "Preferencje"
     },
     "title": "Ustawienia"
@@ -528,11 +525,6 @@
       "hint": "Każdy obszar, który możesz skonfigurować.",
       "short": "Ustawienia",
       "title": "Obszary ustawień"
-    },
-    "settingsSoon": {
-      "hint": "Obszary, które nie są jeszcze dostępne.",
-      "short": "Wkrótce",
-      "title": "Planowane"
     },
     "sourcingRules": {
       "hint": "Uporządkowane reguły wybierające, skąd realizowane jest zamówienie.",

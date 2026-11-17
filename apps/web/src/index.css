@@ -41348,61 +41348,172 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .settings-page__mark[data-channel='woocommerce'],
 .settings-page__mark[data-channel='shopify'] { --mark-hue: var(--channel-woocommerce); --mark-ink: oklch(18% 0.02 270); }
 .settings-page__mark[data-channel='amazon'] { --mark-hue: var(--channel-amazon); --mark-ink: oklch(18% 0.02 270); }
-.settings-hub__facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: var(--space-3) var(--space-5);
-  margin: 0;
-}
-.settings-hub__facts dt { font-size: 0.75rem; color: var(--text-muted); }
-.settings-hub__facts dd { margin: 2px 0 0; font-size: 0.875rem; color: var(--text-primary); overflow-wrap: anywhere; }
-.settings-hub__note { font-size: 0.8125rem; color: var(--text-muted); max-width: 56ch; }
-.settings-hub__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: var(--space-5) var(--space-6);
-  align-items: start;
-}
-/* Tiles keep their own markup (live counts, dialogs); inside the hub they lose
-   card chrome and are separated by a single structural rule instead. */
-.settings-hub__grid > .panel {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3) 0 0;
-  border: 0;
-  border-top: 1px solid var(--border-default);
-  border-radius: 0;
+/* ── Settings index (#4154) ──
+   The hub drops the card around its sections (`data-plain`) and lists each
+   setting as a row separated by hairlines. Boldness is spent once: the value
+   column. Everything else is quiet text on the page surface. */
+.settings-page__card[data-plain] {
+  max-width: 56rem;
   background: transparent;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
-  animation: none;
 }
-.settings-hub__grid > .panel .panel__header { display: grid; gap: 2px; width: 100%; margin: 0; padding: 0; border: 0; }
-.settings-hub__grid > .panel .eyebrow { display: none; }
-.settings-hub__grid > .panel .section-title { font-size: 0.9375rem; font-weight: 600; }
-.settings-hub__grid > .panel .panel__meta {
-  order: 3;
+.settings-page__card[data-plain] .settings-page__section {
+  padding: var(--space-6) 0 var(--space-5);
+  gap: var(--space-3);
+  border-bottom: 0;
+  border-top: 1px solid var(--border-default);
+}
+.settings-page__card[data-plain] .settings-page__fields > .settings-page__section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.settings-page__card[data-plain] .settings-page__section-head h3 { font-size: 1.125rem; letter-spacing: var(--tracking-tight); }
+.settings-page__card[data-plain] .settings-page__section-head { margin-bottom: var(--space-1); }
+.settings-index[data-pending] .settings-row__lock { visibility: hidden; }
+.settings-index { list-style: none; margin: 0; padding: 0; display: grid; }
+.settings-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 14rem) minmax(7rem, auto);
+  align-items: center;
+  column-gap: var(--space-5);
+  min-height: 3.25rem;
+  padding: var(--space-3);
+  margin: 0 calc(-1 * var(--space-3));
+  border-radius: var(--radius-md);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+/* The hairline is inset so it never meets the rounded hover surface. */
+.settings-row + .settings-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--space-3);
+  right: var(--space-3);
+  height: 1px;
+  background: var(--border-subtle);
+}
+.settings-row:hover:not([data-locked])::before,
+.settings-row:hover:not([data-locked]) + .settings-row::before { opacity: 0; }
+.settings-row:hover:not([data-locked]),
+.settings-row:has(.settings-row__link:focus-visible) { background: var(--bg-surface-muted); }
+.settings-row:active:not([data-locked]) { background: var(--bg-surface-hover); }
+.settings-row__text { display: grid; gap: 2px; min-width: 0; }
+.settings-row__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.settings-row[data-locked] .settings-row__title { color: var(--text-secondary); }
+.settings-row__description {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.settings-row__value {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+}
+.settings-row__figure {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.settings-row__figure[data-mono] {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.settings-row__note { font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.settings-row__value--error { font-size: 0.75rem; color: var(--status-error-fg); max-width: 14rem; }
+.settings-row__skeleton {
+  display: block;
+  width: 4.5rem;
+  height: 0.875rem;
+  border-radius: var(--radius-xs);
+  background: var(--bg-muted);
+}
+.settings-row__action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.settings-row__secondary { position: relative; z-index: 1; }
+.settings-row__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* The link covers the whole row so the row is one target, not a link plus
+   dead space; the focus ring is drawn on the row for the same reason. */
+.settings-row__link::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius-md); }
+.settings-row__link:focus-visible { outline: none; }
+.settings-row__link:focus-visible::after { box-shadow: var(--shadow-focus); }
+.settings-row__link svg { transition: transform var(--duration-fast) var(--ease-out); }
+.settings-row:hover .settings-row__link { color: var(--text-primary); }
+.settings-row:hover .settings-row__link svg { transform: translateX(2px); }
+.settings-row:active .settings-row__link svg { transform: translateX(4px); }
+.settings-row__lock {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   color: var(--text-muted);
-  border: 0;
-  padding: 0;
-  background: none;
+  cursor: default;
 }
-.settings-hub__grid > .panel .definition-list { margin: 0; width: 100%; }
-.settings-hub__grid > .panel .definition-list dt { color: var(--text-muted); font-size: 0.75rem; }
-.settings-hub__grid > .panel .definition-list dd { color: var(--text-primary); font-size: 0.875rem; }
-.settings-hub__grid > .panel .muted-text,
-.settings-hub__grid > .panel .panel-copy { font-size: 0.8125rem; line-height: 1.45; max-width: 44ch; }
-.settings-hub__planned {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--space-3);
+.settings-row__lock:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.settings-row__line { display: block; }
+.settings-row__warning { color: var(--status-warning-fg); }
+.settings-index__soon { margin: var(--space-3) 0 0; font-size: 0.8125rem; color: var(--text-muted); max-width: 62ch; }
+@media (max-width: 767px) {
+  .settings-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--space-2);
+    padding: var(--space-3);
+  }
+  .settings-row__text { grid-column: 1 / -1; }
+  .settings-row__value { justify-items: start; text-align: left; }
 }
-.settings-hub__planned h3 { font-size: 0.875rem; font-weight: 600; }
-.settings-hub__planned p { font-size: 0.8125rem; color: var(--text-muted); max-width: 56ch; }
+@media (hover: none) and (pointer: coarse) {
+  .settings-row { min-height: 44px; }
+  .settings-row__lock { min-width: 44px; min-height: 44px; justify-content: center; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .settings-row__skeleton { animation: settings-row-pulse 1.4s ease-in-out infinite; }
+}
+@keyframes settings-row-pulse { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .settings-row,
+  .settings-row__link svg { transition: none; }
+  .settings-row:hover .settings-row__link svg,
+  .settings-row:active .settings-row__link svg { transform: none; }
+}
 
 .whats-new__row-title .release-chip { margin-left: var(--space-2); }
 
