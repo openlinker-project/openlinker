@@ -50,6 +50,8 @@ function build(
     variantShips?: boolean;
     /** Delivery-method names the store's delivery profiles offer. */
     deliveryMethods?: string[];
+    /** Shipping codes the store's recent orders carry. */
+    seenCodes?: string[];
   } = {},
 ): Harness {
   // One mock for every read, answering by the operation the document names.
@@ -75,7 +77,14 @@ function build(
       });
     }
     if (document.includes('OlRecentOrderOptions')) {
-      return Promise.resolve({ orders: { nodes: [] } });
+      return Promise.resolve({
+        orders: {
+          nodes: (options.seenCodes ?? []).map((code) => ({
+            paymentGatewayNames: [],
+            shippingLines: { nodes: [{ code, title: code }] },
+          })),
+        },
+      });
     }
     return Promise.resolve({ orders: { nodes: options.existing ?? [] } });
   });
@@ -324,6 +333,22 @@ describe('ShopifyOrderProcessorAdapter', () => {
       const [, variables] = h.mutate.mock.calls[0] as [string, { order: Record<string, unknown> }];
       expect(variables.order.shippingLines).toEqual([expect.objectContaining({ title: 'm1', code: 'm1' })]);
       expect(variables.order.transactions).toEqual([expect.objectContaining({ gateway: 'manual' })]);
+    });
+
+    it('should title the shipping line with the readable source name when the mapped code is only seen on orders', async () => {
+      const mappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue('1'),
+        resolvePaymentMapping: jest.fn().mockResolvedValue(null),
+      } as unknown as IMappingConfigService;
+      const h = build({ mappingConfig, deliveryMethods: ['Standard'], seenCodes: ['1'] });
+      h.mutate.mockResolvedValueOnce(created());
+
+      await h.adapter.createOrder({ ...ORDER, shipping: { methodId: 'm1', methodName: 'Paczkomaty InPost' } });
+
+      const [, variables] = h.mutate.mock.calls[0] as [string, { order: Record<string, unknown> }];
+      expect(variables.order.shippingLines).toEqual([
+        expect.objectContaining({ title: 'Paczkomaty InPost', code: '1' }),
+      ]);
     });
 
     it('should throw when Shopify returns no order', async () => {

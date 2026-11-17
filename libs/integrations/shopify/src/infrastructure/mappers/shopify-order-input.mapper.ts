@@ -76,6 +76,13 @@ export interface ShopifyOrderDiscount {
  */
 export interface ShopifyOrderMappedOptions {
   readonly deliveryMethod?: string;
+  /**
+   * Whether `deliveryMethod` is a method the shop defines. `false` means it is
+   * only a code seen on orders (possibly another destination's carrier id), so
+   * it stays the line's code but the source's readable name is the title.
+   * Absent is read as configured.
+   */
+  readonly deliveryMethodIsConfigured?: boolean;
   readonly paymentGateway?: string;
 }
 
@@ -166,8 +173,10 @@ function pickupPointNote(point: OrderPickupPoint | undefined): string | null {
   return `Pickup point: ${attributes[0].value}${details.length > 0 ? ` - ${details.join(', ')}` : ''}`;
 }
 
-function shippingTitle(order: OrderCreate, mappedMethod: string | undefined): string {
-  const base = mappedMethod ?? order.shipping?.methodName ?? order.shipping?.methodId ?? 'Shipping';
+function shippingTitle(order: OrderCreate, mapped: ShopifyOrderMappedOptions): string {
+  const mappedTitle = mapped.deliveryMethodIsConfigured === false ? undefined : mapped.deliveryMethod;
+  const base =
+    mappedTitle ?? order.shipping?.methodName ?? mapped.deliveryMethod ?? order.shipping?.methodId ?? 'Shipping';
   const pointId = order.pickupPoint?.id.trim();
   return pointId && !base.includes(pointId) ? `${base} (${pointId})` : base;
 }
@@ -278,7 +287,7 @@ export function buildShopifyOrderCreateVariables(
       ? []
       : [
           {
-            title: shippingTitle(order, mapped.deliveryMethod),
+            title: shippingTitle(order, mapped),
             ...(shippingCode ? { code: shippingCode } : {}),
             source: 'openlinker',
             priceSet: money(shippingAmount, currencyCode),

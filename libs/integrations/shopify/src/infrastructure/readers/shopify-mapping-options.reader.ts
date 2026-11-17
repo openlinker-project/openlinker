@@ -134,6 +134,16 @@ export class ShopifyMappingOptionsReader {
     return [...options.values()].sort((a, b) => a.label.localeCompare(b.label));
   }
 
+  /**
+   * The delivery methods the shop itself defines (its delivery profiles), as
+   * opposed to codes merely seen on recent orders. A code seen on orders may be
+   * an echo of what OpenLinker wrote there earlier (a carrier id of another
+   * destination), so only a profile method is a name worth showing a buyer.
+   */
+  async listConfiguredDeliveryMethods(): Promise<string[]> {
+    return (await this.profileMethods()).map((option) => option.value);
+  }
+
   async listPaymentMethods(): Promise<MappingOption[]> {
     const options = new Map<string, MappingOption>(BUILT_IN_GATEWAYS.map((g) => [g.value, { ...g }]));
     for (const order of await this.recentOrders()) {

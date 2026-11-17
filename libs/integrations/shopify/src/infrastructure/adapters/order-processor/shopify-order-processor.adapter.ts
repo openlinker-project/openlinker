@@ -445,10 +445,22 @@ export class ShopifyOrderProcessorAdapter
       : undefined;
     const knownDelivery = deliveryMethod === undefined ? undefined : await this.ownValue('delivery', deliveryMethod);
     const knownPayment = paymentGateway === undefined ? undefined : await this.ownValue('payment', paymentGateway);
+    const deliveryIsConfigured =
+      knownDelivery === undefined ? undefined : await this.isConfiguredDelivery(knownDelivery);
     return {
       ...(knownDelivery === undefined ? {} : { deliveryMethod: knownDelivery }),
+      ...(deliveryIsConfigured === undefined ? {} : { deliveryMethodIsConfigured: deliveryIsConfigured }),
       ...(knownPayment === undefined ? {} : { paymentGateway: knownPayment }),
     };
+  }
+
+  /** True when the value is a delivery method the shop defines, not just a code seen on orders. */
+  private async isConfiguredDelivery(value: string): Promise<boolean> {
+    try {
+      return (await this.options.listConfiguredDeliveryMethods()).includes(value);
+    } catch {
+      return false;
+    }
   }
 
   /** The mapped value when this store offers it, otherwise undefined (warned). */
