@@ -41185,7 +41185,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .settings-page__toc-link:hover:not(:focus-visible) { color: var(--text-primary); background: var(--bg-surface-muted); box-shadow: none; }
 .settings-page__toc-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
-.settings-page__toc-link[aria-current='true'] {
+.settings-page__toc-link[data-visible='true'] {
   color: var(--text-primary);
   font-weight: 600;
 }

@@ -88,7 +88,11 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
     const baseId = useId();
     const headRef = useRef<HTMLElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const [active, setActive] = useState(sections[0]?.id ?? '');
+    // Every section that is on screen, in page order. The first one is the
+    // "current" entry (aria-current); the rest are marked as visible too, so
+    // the contents shows the whole span a reader is looking at.
+    const [visible, setVisible] = useState<readonly string[]>(sections[0] ? [sections[0].id] : []);
+    const active = visible[0] ?? '';
     const [condensed, setCondensed] = useState(false);
     const sectionKey = sections.map((s) => s.id).join('|');
     const anchor = (id: string): string => `${baseId}-sec-${id}`;
@@ -107,13 +111,23 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
     useEffect(() => {
       const ids = sectionKey ? sectionKey.split('|') : [];
       const onScroll = (): void => {
-        const line = topbarHeight() + ACTIVE_OFFSET_PX;
-        let current = ids[0] ?? '';
+        const top = topbarHeight() + ACTIVE_OFFSET_PX;
+        const bottom = window.innerHeight;
+        const inView: string[] = [];
+        let lastAbove = ids[0] ?? '';
         for (const id of ids) {
           const el = document.getElementById(`${baseId}-sec-${id}`);
-          if (el && el.getBoundingClientRect().top < line) current = id;
+          if (!el) continue;
+          const rect = el.getBoundingClientRect();
+          // A sliver at the edge does not count as "being looked at".
+          const overlap = Math.min(rect.bottom, bottom) - Math.max(rect.top, top);
+          if (overlap >= Math.min(24, rect.height / 2)) inView.push(id);
+          else if (rect.top < top) lastAbove = id;
         }
-        setActive(current);
+        const next = inView.length > 0 ? inView : lastAbove ? [lastAbove] : [];
+        setVisible((prev) =>
+          prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next
+        );
       };
       window.addEventListener('scroll', onScroll, { passive: true });
       onScroll();
@@ -124,13 +138,15 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
     // its own marker, so the eye follows a single moving thing.
     useLayoutEffect(() => {
       const list = listRef.current;
-      const el = list?.querySelector<HTMLElement>('[aria-current="true"]');
-      if (!list || !el) return;
-      list.style.setProperty('--toc-y', `${el.offsetTop}px`);
-      list.style.setProperty('--toc-h', `${el.offsetHeight}px`);
-      list.style.setProperty('--toc-x', `${el.offsetLeft}px`);
-      list.style.setProperty('--toc-w', `${el.offsetWidth}px`);
-    }, [active, sectionKey]);
+      const marked = list?.querySelectorAll<HTMLElement>('[data-visible="true"]');
+      if (!list || !marked || marked.length === 0) return;
+      const first = marked[0];
+      const last = marked[marked.length - 1];
+      list.style.setProperty('--toc-y', `${first.offsetTop}px`);
+      list.style.setProperty('--toc-h', `${last.offsetTop + last.offsetHeight - first.offsetTop}px`);
+      list.style.setProperty('--toc-x', `${first.offsetLeft}px`);
+      list.style.setProperty('--toc-w', `${last.offsetLeft + last.offsetWidth - first.offsetLeft}px`);
+    }, [visible, sectionKey]);
 
     const goTo = (id: string): void => {
       document.getElementById(anchor(id))?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'start' });
@@ -172,6 +188,7 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
                   type="button"
                   className="settings-page__toc-link"
                   aria-current={active === s.id ? 'true' : undefined}
+                  data-visible={visible.includes(s.id) ? 'true' : undefined}
                   onClick={() => goTo(s.id)}
                 >
                   {s.label}

@@ -76,6 +76,25 @@ describe('SettingsPageTemplate', () => {
     expect(screen.getByRole('button', { name: 'Beta' })).toHaveAttribute('aria-current', 'true');
   });
 
+  it('should mark every section that is on screen, not only the first', () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: 5000, bottom: 5200, height: 200 } as DOMRect);
+    renderTemplate();
+    const alpha = screen.getByRole('heading', { name: /Alpha title/ }).closest('section') as HTMLElement;
+    const beta = screen.getByRole('heading', { name: /Beta title/ }).closest('section') as HTMLElement;
+    vi.spyOn(alpha, 'getBoundingClientRect').mockReturnValue({ top: 200, bottom: 400, height: 200 } as DOMRect);
+    vi.spyOn(beta, 'getBoundingClientRect').mockReturnValue({ top: 400, bottom: 600, height: 200 } as DOMRect);
+    act(() => {
+      fireEvent.scroll(window);
+    });
+    const a = screen.getByRole('button', { name: 'Alpha' });
+    const b = screen.getByRole('button', { name: 'Beta' });
+    expect(a).toHaveAttribute('data-visible', 'true');
+    expect(b).toHaveAttribute('data-visible', 'true');
+    // Only the first visible entry is the current one for assistive tech.
+    expect(a).toHaveAttribute('aria-current', 'true');
+    expect(b).not.toHaveAttribute('aria-current');
+  });
+
   it('should show the condensed title once the heading leaves the viewport', () => {
     const { container } = renderTemplate();
     const pane = container.querySelector('.settings-page__toc-page') as HTMLElement;
