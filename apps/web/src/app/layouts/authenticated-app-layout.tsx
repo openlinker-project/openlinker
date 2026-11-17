@@ -7,6 +7,7 @@ import { AppShell } from '../app-shell';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useMessages } from '../../shared/i18n';
 import { useSystemConfigQuery } from '../../features/system';
+import { ReleaseStepObserver } from '../../features/release-center';
 
 /** The /login query string: the original params, plus `next` for a deep link. */
 function loginSearch(location: { pathname: string; search: string }): string {
@@ -108,6 +109,7 @@ export function AuthenticatedAppLayout(): ReactElement {
 
   return (
     <AppShell>
+      <ReleaseStepObserver />
       <Outlet />
     </AppShell>
   );

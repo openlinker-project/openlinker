@@ -930,6 +930,31 @@ module.exports = {
     },
 
     {
+      // #4146 / ADR-085: the release center keeps no state in browser storage.
+      // The server owns it (GET /release-state); a rejected cursor write is
+      // remembered in module memory only.
+      files: ['apps/web/src/features/release-center/**/*.{ts,tsx}'],
+      excludedFiles: ['**/*.test.{ts,tsx}'],
+      rules: {
+        'no-restricted-properties': [
+          'error',
+          ...['window', 'globalThis'].flatMap((object) =>
+            ['localStorage', 'sessionStorage'].map((property) => ({
+              object,
+              property,
+              message: 'The release center must not use browser storage (ADR-085); state comes from GET /release-state.',
+            }))
+          ),
+        ],
+        'no-restricted-globals': [
+          'error',
+          { name: 'localStorage', message: 'The release center must not use browser storage (ADR-085).' },
+          { name: 'sessionStorage', message: 'The release center must not use browser storage (ADR-085).' },
+        ],
+      },
+    },
+
+    {
       // Port, capability, and port-local type files form the public contract
       // surface plugin adapters implement. They must import cross-context
       // types via the top-level package barrel — never deep sub-paths — so
