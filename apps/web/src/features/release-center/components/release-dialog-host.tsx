@@ -66,7 +66,12 @@ export function ReleaseDialogHost(): ReactElement | null {
   );
 
   useEffect(
-    () => subscribeToWhatsNewRequests(() => void navigate(WHATS_NEW_PATH)),
+    () => subscribeToWhatsNewRequests(
+        (request) =>
+          void navigate(
+            request.minor ? `${WHATS_NEW_PATH}?v=${encodeURIComponent(request.minor)}` : WHATS_NEW_PATH
+          )
+      ),
     [navigate]
   );
 

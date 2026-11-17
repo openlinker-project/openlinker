@@ -40429,6 +40429,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xs);
 }
+.whats-new__card { scroll-margin-top: 16px; }
+.whats-new__card--target { border-color: var(--accent-primary); box-shadow: var(--shadow-focus); }
+.whats-new__lang:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
 .whats-new__head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .whats-new__head h3 { margin: 0; font-size: 1.125rem; font-weight: 600; }
 .whats-new__date {
