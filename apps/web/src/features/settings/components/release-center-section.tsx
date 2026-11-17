@@ -54,7 +54,7 @@ export function ReleaseCenterSection({ view }: ReleaseCenterSectionProps): React
 
   return (
     <section
-      className="panel release-settings"
+      className="panel pacing-card release-settings"
       id="release-center-toggle"
       aria-labelledby="release-center-toggle-title"
     >

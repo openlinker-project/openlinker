@@ -219,24 +219,24 @@
     "backToEnv": "Wróć do .env lub domyślnej",
     "field": {
       "ariaLabel": "Centrum zmian włączone lub wyłączone",
-      "label": "Włącz centrum zmian",
-      "description": "Po wyłączeniu znikają okno po aktualizacji, dzwonek i przewodnik. Historia zmian nadal jest na stronie „Co nowego”. Zmienną OL_RELEASE_CENTER_ENABLED czyta API, nie worker."
+      "description": "Po wyłączeniu znikają okno po aktualizacji, dzwonek i przewodnik. Historia zmian nadal jest na stronie „Co nowego”. Zmienną OL_RELEASE_CENTER_ENABLED czyta API, nie worker.",
+      "label": "Włącz centrum zmian"
     },
+    "lead": "Okno z listą zmian po aktualizacji, dzwonek powiadomień i przewodnik po nowych ustawieniach. Dotyczy wszystkich użytkowników instalacji.",
+    "newChip": "Nowe",
     "reset": "Cofnij",
     "save": "Zapisz zmiany",
     "saveFailed": "Nie udało się zapisać ustawienia centrum zmian.",
     "savedToast": {
-      "title": "Zapisano ustawienie centrum zmian",
-      "description": "Zacznie działać po następnym załadowaniu strony."
+      "description": "Zacznie działać po następnym załadowaniu strony.",
+      "title": "Zapisano ustawienie centrum zmian"
     },
     "sourceLine": {
       "default": "Źródło wartości: domyślne. Kolejność: ustawienie w bazie, potem zmienna OL_RELEASE_CENTER_ENABLED w .env, potem domyślnie włączone.",
       "env": "Źródło wartości: zmienna OL_RELEASE_CENTER_ENABLED w środowisku API.",
       "setting": "Źródło wartości: ustawione tutaj."
     },
-    "title": "Centrum zmian po aktualizacji",
-    "newChip": "Nowe",
-    "lead": "Okno z listą zmian po aktualizacji, dzwonek powiadomień i przewodnik po nowych ustawieniach. Dotyczy wszystkich użytkowników instalacji."
+    "title": "Centrum zmian po aktualizacji"
   },
   "salesDocumentsPage": {
     "adminOnly": {

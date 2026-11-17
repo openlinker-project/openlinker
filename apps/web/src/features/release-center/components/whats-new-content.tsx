@@ -11,7 +11,6 @@
 import type { ReactElement } from 'react';
 import changelog from 'virtual:openlinker-changelog';
 import { interpolate, useMessages } from '../../../shared/i18n';
-import { useFormat } from '../../../shared/i18n/use-format';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
@@ -20,13 +19,13 @@ import { compareVersions, isValidVersion } from '../lib/compare-versions';
 import { BaselineMarkdown } from './baseline-markdown';
 import { rowsToTourSteps } from './release-dialog-host';
 import { useTour } from '../tour/tour-context';
+import { ReleaseIcon } from './release-icon';
 import { useStepCopy } from './release-step-copy';
 
 export function WhatsNewContent(): ReactElement {
   const copy = useMessages('release-center').whatsNew;
   const dialogCopy = useMessages('release-center').dialog;
   const stepCopy = useStepCopy();
-  const format = useFormat();
   const tour = useTour();
   const { canWriteSteps } = useReleaseCenterAccess();
   const rows = useReleaseStepRows();
@@ -44,11 +43,11 @@ export function WhatsNewContent(): ReactElement {
         <div className="whats-new__head">
           <h3 id="whats-new-setup">{copy.setupTitle}</h3>
           {rows.length > 0 ? (
-            <StatusBadge tone={left === 0 ? 'success' : 'warning'}>
+            <span className={`release-chip ${left === 0 ? 'release-chip--success' : 'release-chip--accent'}`}>
               {left === 0
                 ? copy.allSet
                 : interpolate(copy.progress, { done: rows.length - left, total: rows.length })}
-            </StatusBadge>
+            </span>
           ) : null}
         </div>
         {rows.length === 0 ? <p>{copy.noSteps}</p> : null}
@@ -58,7 +57,9 @@ export function WhatsNewContent(): ReactElement {
               <span className="whats-new__row-title">
                 {stepCopy(row.step.id).title}
                 {row.connection ? <span> · {row.connection.name}</span> : null}
-                <span className="release-chip">
+                <span
+                  className={`release-chip${canWriteSteps && row.importance === 'required' ? ' release-chip--accent' : ''}`}
+                >
                   {canWriteSteps
                     ? row.importance === 'required'
                       ? dialogCopy.required
@@ -69,8 +70,13 @@ export function WhatsNewContent(): ReactElement {
               {row.done ? (
                 <StatusBadge tone="success">{copy.done}</StatusBadge>
               ) : (
-                <Button tone="secondary" onClick={() => tour.start(rowsToTourSteps([row]))}>
-                  {canWriteSteps ? copy.setNow : copy.showWhere}
+                <Button
+                  tone="secondary"
+                  className="button--sm"
+                  onClick={() => tour.start(rowsToTourSteps([row]))}
+                >
+                  {canWriteSteps ? copy.setNow : copy.showWhere}{' '}
+                  <ReleaseIcon name="arrow-right" size={12} />
                 </Button>
               )}
             </li>
@@ -89,7 +95,7 @@ export function WhatsNewContent(): ReactElement {
               </StatusBadge>
               <h3>{`v${release.version}`}</h3>
               {release.date ? (
-                <span className="whats-new__date">{format.date(release.date)}</span>
+                <span className="whats-new__date">{release.date}</span>
               ) : null}
             </div>
             {release.groups.map((group) => (
@@ -97,9 +103,14 @@ export function WhatsNewContent(): ReactElement {
                 <h4>{group.title}</h4>
                 <ul>
                   {group.entries.map((entry) => (
-                    <li key={`${entry.scope ?? ''}:${entry.text}`}>
-                      {entry.scope ? <b className="mono-text">{entry.scope}: </b> : null}
-                      {entry.text}
+                    <li key={`${entry.scope ?? ''}:${entry.text}`} className="whats-new__change">
+                      <span>
+                        {entry.scope ? <b className="mono-text">{entry.scope}: </b> : null}
+                        {entry.text}
+                      </span>
+                      {entry.commits[0] ? (
+                        <span className="release-dialog__hash">{entry.commits[0].slice(0, 7)}</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

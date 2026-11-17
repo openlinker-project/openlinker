@@ -213,24 +213,24 @@
     "backToEnv": "Back to .env or default",
     "field": {
       "ariaLabel": "Release center on or off",
-      "label": "Turn on the release center",
-      "description": "When off, the update dialog, the bell and the guide are hidden. The change history stays on the What's new page. The OL_RELEASE_CENTER_ENABLED variable is read by the API, not the worker."
+      "description": "When off, the update dialog, the bell and the guide are hidden. The change history stays on the What's new page. The OL_RELEASE_CENTER_ENABLED variable is read by the API, not the worker.",
+      "label": "Turn on the release center"
     },
+    "lead": "The what changed dialog after an update, the notification bell and the guide to new settings. Applies to every user of the installation.",
+    "newChip": "New",
     "reset": "Reset",
     "save": "Save changes",
     "saveFailed": "The release center setting could not be saved.",
     "savedToast": {
-      "title": "Release center setting saved",
-      "description": "It applies on the next page load."
+      "description": "It applies on the next page load.",
+      "title": "Release center setting saved"
     },
     "sourceLine": {
       "default": "Value source: default. Order: stored setting, then OL_RELEASE_CENTER_ENABLED in .env, then on by default.",
       "env": "Value source: OL_RELEASE_CENTER_ENABLED in the API environment.",
       "setting": "Value source: set here."
     },
-    "title": "Release center after an update",
-    "newChip": "New",
-    "lead": "The what changed dialog after an update, the notification bell and the guide to new settings. Applies to every user of the installation."
+    "title": "Release center after an update"
   },
   "salesDocumentsPage": {
     "adminOnly": {

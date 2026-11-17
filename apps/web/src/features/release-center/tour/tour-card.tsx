@@ -206,6 +206,11 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             <p className="tour-card__hint">{tour.viewerHint}</p>
           ) : null}
         </div>
+        {blocked ? (
+          <p id={reasonId} className="tour-card__reason">
+            {tour.requiredReason}
+          </p>
+        ) : null}
         <div className="tour-card__footer">
           <Button tone="ghost" className="button--sm" onClick={onClose}>
             {tour.later}
@@ -231,11 +236,6 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             </Button>
           </div>
         </div>
-        {blocked ? (
-          <p id={reasonId} className="tour-card__reason">
-            {tour.requiredReason}
-          </p>
-        ) : null}
       </section>
     </>
   );

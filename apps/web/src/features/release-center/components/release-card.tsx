@@ -78,7 +78,7 @@ export function ReleaseCard({
             {interpolate(copy.releaseTitle, { version: notification.version })}
           </p>
           <div className="release-card__meta">
-            <StatusBadge compact tone="info">
+            <StatusBadge compact withDot tone="info">
               {interpolate(copy.versionBadge, { version: notification.version })}
             </StatusBadge>
             {archived ? <span>{copy.archivedLabel}</span> : null}
@@ -188,7 +188,7 @@ export function ReleaseCard({
           </div>
         </>
       ) : null}
-      {!hasSteps ? (
+      {!hasSteps || archived ? (
         <div className="release-card__actions">
           <Button
             className="button--sm"
