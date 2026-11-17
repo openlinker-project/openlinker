@@ -24,7 +24,6 @@ import {
   forwardRef,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   type HTMLAttributes,
@@ -33,6 +32,7 @@ import {
 } from 'react';
 import { useMessages } from '../i18n/use-messages';
 import { StatusBadge } from './status-badge';
+import { mapViewportWindow, type RailSegment } from './settings-toc-rail';
 
 export interface SettingsPageSection {
   id: string;
@@ -90,6 +90,7 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
     const baseId = useId();
     const headRef = useRef<HTMLElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const markRef = useRef<HTMLSpanElement>(null);
     // Every section that is on screen, in page order. The first one is the
     // "current" entry (aria-current); the rest are marked as visible too, so
     // the contents shows the whole span a reader is looking at.
@@ -136,19 +137,59 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
       return () => window.removeEventListener('scroll', onScroll);
     }, [sectionKey, baseId]);
 
-    // One indicator slides to the current entry instead of each link fading
-    // its own marker, so the eye follows a single moving thing.
-    useLayoutEffect(() => {
+    // The marker is a continuous window onto the list: written straight to the
+    // element (no React state per frame), so it tracks the scroll exactly.
+    useEffect(() => {
       const list = listRef.current;
-      const marked = list?.querySelectorAll<HTMLElement>('[data-visible="true"]');
-      if (!list || !marked || marked.length === 0) return;
-      const first = marked[0];
-      const last = marked[marked.length - 1];
-      list.style.setProperty('--toc-y', `${first.offsetTop}px`);
-      list.style.setProperty('--toc-h', `${last.offsetTop + last.offsetHeight - first.offsetTop}px`);
-      list.style.setProperty('--toc-x', `${first.offsetLeft}px`);
-      list.style.setProperty('--toc-w', `${last.offsetLeft + last.offsetWidth - first.offsetLeft}px`);
-    }, [visible, sectionKey]);
+      const mark = markRef.current;
+      const ids = sectionKey ? sectionKey.split('|') : [];
+      if (!list || !mark || ids.length === 0) return;
+      let raf = 0;
+      const update = (): void => {
+        raf = 0;
+        const horizontal = window.matchMedia?.('(max-width: 767px)').matches ?? false;
+        const links = list.querySelectorAll<HTMLElement>('.settings-page__toc-link');
+        const scrollY = window.scrollY;
+        const segments: RailSegment[] = [];
+        ids.forEach((id, i) => {
+          const el = document.getElementById(`${baseId}-sec-${id}`);
+          const link = links[i];
+          if (!el || !link) return;
+          const rect = el.getBoundingClientRect();
+          const linkStart = horizontal ? link.offsetLeft : link.offsetTop;
+          segments.push({
+            start: rect.top + scrollY,
+            end: rect.bottom + scrollY,
+            linkStart,
+            linkEnd: linkStart + (horizontal ? link.offsetWidth : link.offsetHeight),
+          });
+        });
+        const win = mapViewportWindow(segments, scrollY + topbarHeight(), scrollY + window.innerHeight);
+        if (!win) return;
+        mark.style.transform = horizontal
+          ? `translate3d(${win.start}px,0,0)`
+          : `translate3d(0,${win.start}px,0)`;
+        mark.style[horizontal ? 'width' : 'height'] = `${win.size}px`;
+        mark.style[horizontal ? 'height' : 'width'] = '';
+        mark.style.opacity = '1';
+      };
+      const schedule = (): void => {
+        if (!raf) raf = requestAnimationFrame(update);
+      };
+      update();
+      window.addEventListener('scroll', schedule, { passive: true });
+      window.addEventListener('resize', schedule);
+      const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+      ro?.observe(list);
+      const card = list.closest('.settings-page')?.querySelector('.settings-page__card');
+      if (card) ro?.observe(card);
+      return () => {
+        window.removeEventListener('scroll', schedule);
+        window.removeEventListener('resize', schedule);
+        ro?.disconnect();
+        if (raf) cancelAnimationFrame(raf);
+      };
+    }, [sectionKey, baseId, visible]);
 
     const goTo = (id: string): void => {
       document.getElementById(anchor(id))?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'start' });
@@ -183,7 +224,7 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
             </div>
             <span className="settings-page__toc-title">{copy.onThisPage}</span>
             <div className="settings-page__toc-list" ref={listRef}>
-              <span className="settings-page__toc-mark" aria-hidden="true" />
+              <span className="settings-page__toc-mark" ref={markRef} aria-hidden="true" />
               {sections.map((s) => (
                 <button
                   key={s.id}
