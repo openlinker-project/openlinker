@@ -1,4 +1,13 @@
 {
+  "bell": {
+    "label": "Notifications",
+    "srNone": "(nothing new)",
+    "srOptional": "(optional steps waiting)",
+    "srTodo": {
+      "one": "({n} to do)",
+      "other": "({n} to do)"
+    }
+  },
   "dialog": {
     "back": "Back",
     "close": "Close",
@@ -23,15 +32,6 @@
     "stepIndicator": "Step {current} of {total}",
     "title": "OpenLinker was updated to {version}",
     "toGuide": "Go to the guide"
-  },
-  "bell": {
-    "label": "Notifications",
-    "srNone": "(nothing new)",
-    "srOptional": "(optional steps waiting)",
-    "srTodo": {
-      "one": "({n} to do)",
-      "other": "({n} to do)"
-    }
   },
   "panel": {
     "adminCompletes": "An administrator completes the steps",
@@ -114,23 +114,6 @@
       "why": "The carrier assignment is set in Mappings, on the Fulfilment tab, under \"Who ships each delivery method\". Check each delivery method of this channel and click Save assignment."
     }
   },
-  "whatsNew": {
-    "allSet": "All set",
-    "baselineTitle": "First tracked release",
-    "changelogLanguage": "The changelog below is written in English.",
-    "changelogUnavailable": "The changelog is not available in this build.",
-    "current": "Current",
-    "done": "Done",
-    "eyebrow": "Updates",
-    "intro": "Change history from CHANGELOG.md. Things you can set in the interface are in the block above the list.",
-    "noSteps": "Nothing to set up after this update.",
-    "older": "Older",
-    "progress": "{done} of {total}",
-    "setNow": "Set up now",
-    "setupTitle": "To set up after the update",
-    "showWhere": "Show me where",
-    "title": "What's new in OpenLinker"
-  },
   "tour": {
     "adminOnly": "Needs an administrator",
     "back": "Back",
@@ -152,5 +135,22 @@
     "saved": "Saved: {choice}",
     "stepOf": "Step {current} of {total}",
     "viewerHint": "You can look at this setting. Only an administrator can change it."
+  },
+  "whatsNew": {
+    "allSet": "All set",
+    "baselineTitle": "First tracked release",
+    "changelogLanguage": "The changelog below is written in English.",
+    "changelogUnavailable": "The changelog is not available in this build.",
+    "current": "Current",
+    "done": "Done",
+    "eyebrow": "Updates",
+    "intro": "Change history from CHANGELOG.md. Things you can set in the interface are in the block above the list.",
+    "noSteps": "Nothing to set up after this update.",
+    "older": "Older",
+    "progress": "{done} of {total}",
+    "setNow": "Set up now",
+    "setupTitle": "To set up after the update",
+    "showWhere": "Show me where",
+    "title": "What's new in OpenLinker"
   }
 }

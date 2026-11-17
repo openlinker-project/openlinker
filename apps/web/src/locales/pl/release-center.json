@@ -1,4 +1,15 @@
 {
+  "bell": {
+    "label": "Powiadomienia",
+    "srNone": "(brak nowych)",
+    "srOptional": "(opcjonalne kroki czekają)",
+    "srTodo": {
+      "few": "({n} do zrobienia)",
+      "many": "({n} do zrobienia)",
+      "one": "({n} do zrobienia)",
+      "other": "({n} do zrobienia)"
+    }
+  },
   "dialog": {
     "back": "Wstecz",
     "close": "Zamknij",
@@ -25,17 +36,6 @@
     "stepIndicator": "Krok {current} z {total}",
     "title": "Zaktualizowano OpenLinker do wersji {version}",
     "toGuide": "Przejdź do przewodnika"
-  },
-  "bell": {
-    "label": "Powiadomienia",
-    "srNone": "(brak nowych)",
-    "srOptional": "(opcjonalne kroki czekają)",
-    "srTodo": {
-      "few": "({n} do zrobienia)",
-      "many": "({n} do zrobienia)",
-      "one": "({n} do zrobienia)",
-      "other": "({n} do zrobienia)"
-    }
   },
   "panel": {
     "adminCompletes": "Kroki wykonuje administrator",
@@ -118,23 +118,6 @@
       "why": "Przypisanie przewoźnika ustawiasz w Mapowaniach, w zakładce Realizacja, w sekcji \"Kto wysyła każdą metodę dostawy\". Sprawdź każdą metodę dostawy z tego kanału i kliknij Zapisz przypisanie."
     }
   },
-  "whatsNew": {
-    "allSet": "Wszystko ustawione",
-    "baselineTitle": "Pierwsze śledzone wydanie",
-    "changelogLanguage": "Poniższy changelog jest po angielsku.",
-    "changelogUnavailable": "Changelog nie jest dostępny w tej wersji aplikacji.",
-    "current": "Bieżąca",
-    "done": "Gotowe",
-    "eyebrow": "Aktualizacje",
-    "intro": "Historia zmian z pliku CHANGELOG.md. To, co możesz ustawić w interfejsie, jest w osobnym bloku nad listą.",
-    "noSteps": "Po tej aktualizacji nie ma nic do ustawienia.",
-    "older": "Starsza",
-    "progress": "{done} z {total}",
-    "setNow": "Ustaw teraz",
-    "setupTitle": "Do ustawienia po aktualizacji",
-    "showWhere": "Pokaż, gdzie to jest",
-    "title": "Co nowego w OpenLinker"
-  },
   "tour": {
     "adminOnly": "Wymaga administratora",
     "back": "Wstecz",
@@ -156,5 +139,22 @@
     "saved": "Zapisano: {choice}",
     "stepOf": "Krok {current} z {total}",
     "viewerHint": "Możesz zobaczyć to ustawienie. Zmienić je może tylko administrator."
+  },
+  "whatsNew": {
+    "allSet": "Wszystko ustawione",
+    "baselineTitle": "Pierwsze śledzone wydanie",
+    "changelogLanguage": "Poniższy changelog jest po angielsku.",
+    "changelogUnavailable": "Changelog nie jest dostępny w tej wersji aplikacji.",
+    "current": "Bieżąca",
+    "done": "Gotowe",
+    "eyebrow": "Aktualizacje",
+    "intro": "Historia zmian z pliku CHANGELOG.md. To, co możesz ustawić w interfejsie, jest w osobnym bloku nad listą.",
+    "noSteps": "Po tej aktualizacji nie ma nic do ustawienia.",
+    "older": "Starsza",
+    "progress": "{done} z {total}",
+    "setNow": "Ustaw teraz",
+    "setupTitle": "Do ustawienia po aktualizacji",
+    "showWhere": "Pokaż, gdzie to jest",
+    "title": "Co nowego w OpenLinker"
   }
 }
