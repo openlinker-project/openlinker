@@ -739,9 +739,9 @@
       "description": "Gabaryt skrytki - wymagany dla przesyłki do automatu paczkowego.",
       "label": "Gabaryt skrytki",
       "options": {
-        "large": "duża",
-        "medium": "średnia",
-        "small": "mała"
+        "large": "Duża",
+        "medium": "Średnia",
+        "small": "Mała"
       }
     },
     "missing": {

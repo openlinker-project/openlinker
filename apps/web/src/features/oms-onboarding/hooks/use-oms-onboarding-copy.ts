@@ -24,6 +24,7 @@
 import { useMemo } from 'react';
 import {
   formatPlural,
+  getBcp47Locale,
   interpolate,
   messagesIn,
   useActiveLocale,
@@ -42,9 +43,14 @@ export interface WhatChangesItem {
 
 export function buildOmsOnboardingCopy(m: OmsOnboardingMessages, locale: SupportedLocale) {
   const { step1, step2, step3, step4, status, stopDialog } = m;
+  // Every number the operator reads goes through the language's number format,
+  // the same rule `formatPlural` applies to `{n}` and the pages to `useFormat`.
+  const numberFormat = new Intl.NumberFormat(getBcp47Locale(locale));
+  const num = (value: number): string => numberFormat.format(value);
   return {
     page: m.page,
-    stepOf: (step: number, total: number): string => interpolate(m.stepOf, { step, total }),
+    stepOf: (step: number, total: number): string =>
+      interpolate(m.stepOf, { step: num(step), total: num(total) }),
     salesDocumentsStep: m.salesDocumentsStep,
     setupSteps: m.setupSteps,
     back: m.back,
@@ -75,7 +81,7 @@ export function buildOmsOnboardingCopy(m: OmsOnboardingMessages, locale: Support
       ...step2,
       createdTitle: (name: string): string => interpolate(step2.createdTitle, { name }),
       createdBody: (login: string): string => interpolate(step2.createdBody, { login }),
-      listTitle: (count: number): string => interpolate(step2.listTitle, { count }),
+      listTitle: (count: number): string => interpolate(step2.listTitle, { count: num(count) }),
     },
 
     step3: {

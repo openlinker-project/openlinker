@@ -32,13 +32,14 @@ import { CurrencyCoverageDialog } from './currency-coverage-dialog';
 import { CurrencySettingsDialog } from './currency-settings-dialog';
 import type { ReportingCurrencySource } from '../api/currency-settings.types';
 
+
 export function CurrencySettingsTile(): ReactElement {
   const copy = useMessages('currency-settings').currencySettingsTile;
   const query = useCurrencySettingsQuery();
 
   const formatReportingValue = (
     reportingCurrency: string,
-    source: ReportingCurrencySource
+    source: ReportingCurrencySource,
   ): string => {
     if (source === 'setting') return reportingCurrency;
     return interpolate(copy.reportingValue, {
@@ -98,7 +99,9 @@ export function CurrencySettingsTile(): ReactElement {
             </div>
           </dl>
 
-          <p className="muted-text panel-copy">{copy.body}</p>
+          <p className="muted-text panel-copy">
+            {copy.body}
+          </p>
 
           <div className="currency-settings-tile__actions">
             <Button
