@@ -40335,8 +40335,18 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   box-shadow: var(--shadow-focus);
 }
 .release-bell__icon {
-  display: inline-block;
+  display: inline-flex;
   transform-origin: 50% 0;
+}
+.release-bell-icon { overflow: visible; }
+.release-bell-icon__wave { opacity: 0; }
+.release-bell-icon__clapper { transform-box: fill-box; transform-origin: 50% -900%; }
+.release-bell[data-ringing='true'] .release-bell-icon__wave {
+  animation: release-bell-wave 900ms var(--ease-out);
+}
+.release-bell[data-ringing='true'] .release-bell-icon__wave--far { animation-delay: 120ms; }
+.release-bell[data-ringing='true'] .release-bell-icon__clapper {
+  animation: release-bell-clapper 900ms var(--ease-out);
 }
 .release-bell[data-ringing='true'] .release-bell__icon {
   animation: release-bell-ring 900ms var(--ease-out);
@@ -40373,6 +40383,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   40% { transform: rotate(-11deg); }
   60% { transform: rotate(7deg); }
   80% { transform: rotate(-4deg); }
+}
+@keyframes release-bell-wave {
+  0% { opacity: 0; }
+  25% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+@keyframes release-bell-clapper {
+  0%, 100% { transform: rotate(0); }
+  30% { transform: rotate(-22deg); }
+  60% { transform: rotate(16deg); }
+  85% { transform: rotate(-6deg); }
 }
 @keyframes release-badge-pop {
   0% { transform: scale(0.6); }
@@ -40530,6 +40551,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-step__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 @media (prefers-reduced-motion: reduce) {
   .release-bell[data-ringing='true'] .release-bell__icon,
+  .release-bell[data-ringing='true'] .release-bell-icon__wave,
+  .release-bell[data-ringing='true'] .release-bell-icon__clapper,
   .release-bell__badge { animation: none; }
   .release-card__chevron { transition: none; }
 }

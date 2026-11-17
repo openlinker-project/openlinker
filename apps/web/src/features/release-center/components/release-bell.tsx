@@ -22,6 +22,7 @@ import { useReleaseActions } from '../hooks/use-release-actions';
 import { requestWhatsNew } from '../lib/release-center-requests';
 import { notificationStatusOf, stepStatusOf } from '../lib/release-notifications';
 import { useReleaseCenterView } from './release-center-provider';
+import { ReleaseBellIcon } from './release-bell-icon';
 import { ReleaseCard } from './release-card';
 
 type Tab = 'todo' | 'all' | 'archive';
@@ -82,7 +83,7 @@ export function ReleaseBell(): ReactElement | null {
           aria-expanded={open}
         >
           <span className="release-bell__icon" aria-hidden="true">
-            🔔
+            <ReleaseBellIcon />
           </span>
           <span className="release-bell__label">{bell.label}</span>
           <span
