@@ -41206,12 +41206,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   left: -1px;
   top: 0;
   width: 2px;
-  height: var(--toc-h, 0);
+  height: 0;
   background: var(--accent-primary);
-  transform: translateY(var(--toc-y, 0));
-  transition:
-    transform var(--duration-slow) var(--ease-spring),
-    height var(--duration-normal) var(--ease-out);
+  /* Driven per frame from scroll; any easing here would lag the page. */
+  opacity: 0;
+  will-change: transform;
 }
 .settings-page__toc-link {
   display: block;
@@ -41345,10 +41344,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     left: 0;
     top: auto;
     bottom: 0;
-    width: var(--toc-w, 0);
+    width: 0;
     height: 2px;
-    transform: translateX(var(--toc-x, 0));
-    transition: transform var(--duration-slow) var(--ease-spring), width var(--duration-normal) var(--ease-out);
   }
   .settings-page__section {
     scroll-margin-top: calc(var(--shell-topbar-height) + 3.25rem);
@@ -41361,8 +41358,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 @media (prefers-reduced-motion: reduce) {
   .settings-page__toc-page,
-  .settings-page__toc-link,
-  .settings-page__toc-mark { transition: none; }
+  .settings-page__toc-link { transition: none; }
 }
 
 /* ── Settings hub and platform mark (#4154) ── */
