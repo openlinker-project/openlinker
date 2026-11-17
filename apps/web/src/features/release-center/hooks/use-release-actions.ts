@@ -9,9 +9,10 @@
  *
  * @module features/release-center/hooks
  */
-import { useCallback, useMemo } from 'react';
+import { createElement, useCallback, useMemo } from 'react';
 import { useMessages } from '../../../shared/i18n';
-import { useToast } from '../../../shared/ui/toast-provider';
+import { useToast, type ToastAction } from '../../../shared/ui/toast-provider';
+import { ReleaseIcon } from '../components/release-icon';
 import type {
   InstallationReleaseItemChange,
   UserReleaseItemChange,
@@ -19,6 +20,8 @@ import type {
 import { SNOOZE_DAYS, type StepInstance } from '../lib/release-notifications';
 import { useReleaseItemStatesMutation } from './use-release-item-states-mutation';
 import { useReleaseStepsMutation } from './use-release-steps-mutation';
+
+const undoIcon = createElement(ReleaseIcon, { name: 'undo', size: 12 });
 
 export interface ReleaseActions {
   archive: (itemKey: string) => void;
@@ -35,6 +38,19 @@ export function useReleaseActions(): ReleaseActions {
   const items = useReleaseItemStatesMutation();
   const steps = useReleaseStepsMutation();
   const { showToast } = useToast();
+  // The confirmation toast of the approved mockup: it stays 6s when it offers
+  // Undo and 3.2s when it only informs.
+  const note = useCallback(
+    (description: string, action?: ToastAction): void =>
+      showToast({
+        tone: 'info',
+        variant: 'inverse',
+        description,
+        action,
+        durationMs: action ? 6000 : 3200,
+      }),
+    [showToast]
+  );
   const copy = useMessages('release-center').panel;
   const writeItems = items.mutate;
   const writeSteps = steps.mutate;
@@ -48,15 +64,9 @@ export function useReleaseActions(): ReleaseActions {
       writeItems(changes, {
         onError: () => showToast({ tone: 'error', description: copy.toastFailed }),
       });
-      showToast({
-        tone: 'info',
-        description: message,
-        action: undo
-          ? { label: copy.undo, onClick: () => writeItems(undo) }
-          : undefined,
-      });
+      note(message, undo ? { label: copy.undo, onClick: () => writeItems(undo), icon: undoIcon } : undefined);
     },
-    [writeItems, showToast, copy]
+    [writeItems, showToast, copy, note]
   );
 
   const installation = useCallback(
@@ -68,13 +78,9 @@ export function useReleaseActions(): ReleaseActions {
       writeSteps(changes, {
         onError: () => showToast({ tone: 'error', description: copy.toastFailed }),
       });
-      showToast({
-        tone: 'info',
-        description: message,
-        action: { label: copy.undo, onClick: () => writeSteps(undo) },
-      });
+      note(message, { label: copy.undo, onClick: () => writeSteps(undo), icon: undoIcon });
     },
-    [writeSteps, showToast, copy]
+    [writeSteps, showToast, copy, note]
   );
 
   return useMemo<ReleaseActions>(
@@ -120,7 +126,7 @@ export function useReleaseActions(): ReleaseActions {
         ),
       reopenStep: (key) => {
         writeSteps([{ itemKey: key, status: 'open', doneVia: null }]);
-        showToast({ tone: 'info', description: copy.toastReopened });
+        note(copy.toastReopened);
       },
       markAllDone: (instances) => {
         const keys = instances.map((instance) => instance.itemKey);

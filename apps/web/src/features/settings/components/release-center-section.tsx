@@ -61,10 +61,10 @@ export function ReleaseCenterSection({ view }: ReleaseCenterSectionProps): React
       <header className="release-settings__head">
         <h3 className="release-settings__title" id="release-center-toggle-title">
           {copy.title}
+          <span className="release-chip release-chip--accent">{copy.newChip}</span>
         </h3>
-        <span className="release-chip release-chip--accent">{copy.newChip}</span>
+        <p className="release-settings__lead">{copy.lead}</p>
       </header>
-      <p className="release-settings__lead">{copy.lead}</p>
 
       <label className="check-row release-settings__check">
         <input
