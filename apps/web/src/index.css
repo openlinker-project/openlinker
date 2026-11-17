@@ -40180,6 +40180,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .release-dialog__head { border-bottom: 1px solid var(--border-subtle); }
 .release-dialog__foot {
+  /* The shared .dialog__footer bleeds out with negative margins to cancel the
+     content padding; this dialog has no padding, so reset them or the footer
+     is clipped on the right and bottom. */
+  margin: 0;
+  border-radius: 0;
   border-top: 1px solid var(--border-subtle);
   flex-wrap: nowrap;
 }
