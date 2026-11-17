@@ -13,7 +13,7 @@ describe('SettingsPage', () => {
   it('shows environment info', () => {
     renderWithProviders(<SettingsPage />);
 
-    expect(screen.getByRole('heading', { name: 'Environment' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Environment and account' })).toBeInTheDocument();
     // env.ts defaults: 'development' and 'http://localhost:3000'
     expect(screen.getByText('development')).toBeInTheDocument();
     expect(screen.getByText('http://localhost:3000')).toBeInTheDocument();
@@ -67,7 +67,6 @@ describe('SettingsPage', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'Mailer' })).toBeInTheDocument();
-    expect(screen.getByText('Mailer', { selector: '.toolbar-chip' })).toBeInTheDocument();
   });
 
   it('never renders the Mailer tile for a non-admin session', async () => {
@@ -86,7 +85,6 @@ describe('SettingsPage', () => {
     // then assert the Mailer tile is fully absent — not disabled, not present.
     expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Mailer' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Mailer', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
 
   /**
@@ -116,9 +114,6 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Who decides what' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Who decides what', { selector: '.toolbar-chip' }),
-    ).toBeInTheDocument();
   });
 
   describe('with the OMS routing UI flag on (#3634)', () => {
@@ -136,7 +131,6 @@ describe('SettingsPage', () => {
       });
 
       expect(await screen.findByRole('heading', { name: 'Sourcing rules' })).toBeInTheDocument();
-      expect(screen.getByText('Sourcing rules', { selector: '.toolbar-chip' })).toBeInTheDocument();
     });
 
     /**
@@ -163,9 +157,6 @@ describe('SettingsPage', () => {
 
       expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
-      expect(
-        screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' }),
-      ).not.toBeInTheDocument();
     });
 
     /**
@@ -191,9 +182,6 @@ describe('SettingsPage', () => {
       expect(
         await screen.findByRole('heading', { name: 'Inventory locations' }),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText('Inventory locations', { selector: '.toolbar-chip' }),
-      ).toBeInTheDocument();
     });
   });
 
@@ -205,12 +193,6 @@ describe('SettingsPage', () => {
     expect(await screen.findByRole('heading', { name: 'Who decides what' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Inventory locations' })).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Inventory locations', { selector: '.toolbar-chip' }),
-    ).not.toBeInTheDocument();
   });
 
   it('shows the PostHog tile for an admin session', async () => {
@@ -219,7 +201,6 @@ describe('SettingsPage', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'PostHog' })).toBeInTheDocument();
-    expect(screen.getByText('PostHog', { selector: '.toolbar-chip' })).toBeInTheDocument();
   });
 
   it('never renders the PostHog tile for a non-admin session', async () => {
@@ -236,7 +217,6 @@ describe('SettingsPage', () => {
 
     expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'PostHog' })).not.toBeInTheDocument();
-    expect(screen.queryByText('PostHog', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
 
   it('never renders an analytics consent control, in demo mode or out of it (#1938)', async () => {
@@ -256,7 +236,6 @@ describe('SettingsPage', () => {
       // query left to await.
       await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument());
       expect(screen.queryByRole('heading', { name: 'Analytics' })).not.toBeInTheDocument();
-      expect(screen.queryByText('Privacy', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
       cleanup();
     }

@@ -1910,6 +1910,9 @@ textarea,
   flex: 1;
   padding: 20px 16px 32px;
   overflow-x: hidden;
+  /* `clip` does not make this a scroll container, so `position: sticky`
+     descendants (the settings contents rail) pin to the viewport. */
+  overflow-x: clip;
   /* Cross-fade + tiny upward translate on route change (#775). Keyed
      by location.pathname on the <main> element. Respects
      prefers-reduced-motion. */
@@ -13907,97 +13910,54 @@ a.kpi-card:focus-visible {
    AI Provider Settings — multi-provider table (#451 / #452)
    ============================================================ */
 
-.ai-provider-table-section {
-  margin-top: 1.5rem;
-}
-
-.ai-provider-table-section__head {
-  margin-bottom: 0.75rem;
-}
-
+.ai-provider-table-section { display: grid; gap: var(--space-3); }
 .ai-provider-table-section__caption {
-  margin: 0.25rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-}
-
-.ai-provider-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.ai-provider-table thead th {
-  text-align: left;
-  padding: 8px 12px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  margin: 0;
   color: var(--text-muted);
-  background: var(--bg-surface-elevated);
+  font-size: 0.8125rem;
+  max-width: 64ch;
+}
+.ai-provider-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ai-provider {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 15rem;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
-
-.ai-provider-table__th--actions {
-  width: 1%;
-  white-space: nowrap;
-}
-
-.ai-provider-table tbody td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-  font-size: 0.875rem;
-}
-
-.ai-provider-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.ai-provider-table__row:hover td {
-  background: var(--bg-surface-muted);
-}
-
-.ai-provider-table__row--active td {
-  box-shadow: inset 2px 0 0 var(--accent-primary);
-}
-
-.ai-provider-table__name {
+.ai-provider:hover { background: var(--bg-surface-muted); }
+.ai-provider[data-active] { box-shadow: inset 2px 0 0 var(--accent-primary); }
+.ai-provider__name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   font-weight: 600;
   color: var(--text-primary);
 }
-
-.ai-provider-table__hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.ai-provider-table__actions {
+.ai-provider__hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.ai-provider__key {
   display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  flex-wrap: nowrap;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
 }
-
-/* Local utility — operator-cockpit "n/a" / muted inline labels for the
-   table cells. Scoped to the table to avoid creating a global utility
-   that drifts. */
-.ai-provider-table .text-muted {
-  color: var(--text-muted);
-}
-
-/* Compact button modifier for table-row actions. Per the FE-002 density
-   table (28 px small / 32 px medium); kept local to this scope until
-   another surface needs the same compact size. */
-.ai-provider-table__actions .button.button--sm {
-  height: 28px;
-  padding: 0 0.625rem;
-  font-size: 0.8125rem;
+.ai-provider__key .text-muted { color: var(--text-muted); }
+.ai-provider__updated { font-size: 0.75rem; color: var(--text-muted); }
+.ai-provider__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+@media (max-width: 767px) {
+  .ai-provider { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding-inline: 0; }
+  .ai-provider__actions { justify-content: flex-start; }
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -41085,29 +41045,57 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 
 /* ── SettingsPageTemplate (#4132) ───────────────────────────────────────
    One layout for every settings screen. The sticky contents keep a
-   --space-5 gap below the sticky topbar so they never touch the navbar. */
-.settings-page__head { display: grid; gap: var(--space-1); margin-bottom: var(--space-5); }
-.settings-page__eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-muted);
-  transition: opacity var(--duration-slow) var(--ease-out);
+   --space-5 gap below the sticky topbar so they never touch the navbar.
+   Stickiness needs `.shell-content` to clip rather than scroll (overflow-x:
+   clip), otherwise it becomes the rail's scroll container and nothing pins. */
+.settings-page__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
+.settings-page__heading { display: grid; gap: var(--space-1); min-width: 0; }
+.settings-page__heading > *,
+.settings-page__section-head > *,
+.settings-page__section-head h3 { margin: 0; }
+.settings-page__slots { display: grid; gap: var(--space-4); min-width: 0; }
+.settings-page__slots:empty { display: none; }
 .settings-page__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: var(--tracking-tight);
-  transition: opacity var(--duration-slow) var(--ease-out);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
-.settings-page__description { color: var(--text-secondary); max-width: 62ch; }
-.settings-page__head[data-condensed='true'] .settings-page__title,
-.settings-page__head[data-condensed='true'] .settings-page__eyebrow { opacity: 0.35; }
+.settings-page__description {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+.settings-page__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-md);
+  background: var(--mark-hue, var(--bg-surface-muted));
+  color: var(--mark-ink, var(--text-primary));
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: 0.02em;
+}
 .settings-page__layout {
   display: grid;
   grid-template-columns: 11rem minmax(0, 1fr);
-  gap: var(--space-5);
+  gap: var(--space-6, 2rem);
   align-items: start;
 }
 .settings-page__toc {
@@ -41115,43 +41103,65 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   top: calc(var(--shell-topbar-height) + var(--space-5));
   align-self: start;
   display: grid;
+  justify-items: stretch;
   gap: 2px;
   font-size: 0.8125rem;
+  text-align: left;
 }
 .settings-page__toc-title {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--text-muted);
-  padding: 0 var(--space-2) var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
+}
+.settings-page__toc-list {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  border-left: 1px solid var(--border-subtle);
+}
+.settings-page__toc-mark {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 2px;
+  height: var(--toc-h, 0);
+  background: var(--accent-primary);
+  transform: translateY(var(--toc-y, 0));
+  transition:
+    transform var(--duration-slow) var(--ease-spring),
+    height var(--duration-normal) var(--ease-out);
 }
 .settings-page__toc-link {
+  display: block;
+  width: 100%;
   text-align: left;
   border: 0;
+  box-shadow: none;
+  appearance: none;
   background: transparent;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--text-secondary);
   cursor: pointer;
+  font: inherit;
   font-size: inherit;
-  box-shadow: inset 2px 0 0 transparent;
+  line-height: 1.4;
   transition:
-    box-shadow var(--duration-normal) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
 }
-.settings-page__toc-link:hover { color: var(--text-primary); background: var(--bg-surface-muted); }
+.settings-page__toc-link:hover:not(:focus-visible) { color: var(--text-primary); background: var(--bg-surface-muted); box-shadow: none; }
 .settings-page__toc-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .settings-page__toc-link[aria-current='true'] {
   color: var(--text-primary);
   font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--accent-primary);
 }
 .settings-page__toc-page {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transform: translateY(var(--space-2)) scale(0.96);
+  transform: translateY(var(--space-2));
   transform-origin: left top;
   transition:
     grid-template-rows var(--duration-slow) var(--ease-spring),
@@ -41162,9 +41172,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .settings-page__toc-page > div { overflow: hidden; min-height: 0; }
 .settings-page__toc-page-btn {
   display: grid;
+  justify-items: start;
+  box-shadow: none;
   gap: 1px;
   width: 100%;
-  padding: 2px var(--space-2) var(--space-3);
+  padding: 2px var(--space-3) var(--space-3);
   margin-bottom: var(--space-2);
   border: 0;
   border-bottom: 1px solid var(--border-subtle);
@@ -41178,14 +41190,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-weight: 600;
   letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
-.settings-page__toc-page-btn span {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
+.settings-page__toc-page-btn span { font-size: 0.75rem; color: var(--text-muted); }
 .settings-page__toc-page-btn:hover strong { color: var(--accent-primary); }
 .settings-page__card {
   max-width: 40rem;
@@ -41194,6 +41201,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xs);
 }
+.settings-page__card[data-wide] { max-width: 60rem; }
 .settings-page__fields { display: grid; min-width: 0; margin: 0; padding: 0; border: 0; }
 .settings-page__readonly {
   display: flex;
@@ -41232,15 +41240,112 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .settings-page__fields > .settings-page__section:last-child { border-bottom: 0; }
 @media (max-width: 767px) {
-  .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
-  .settings-page__toc { display: none; }
+  .settings-page__layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  /* The contents become a pinned strip of links under the topbar. */
+  .settings-page__toc {
+    top: var(--shell-topbar-height);
+    z-index: 5;
+    margin-inline: calc(var(--space-4) * -1);
+    padding: var(--space-1) var(--space-4);
+    background: var(--bg-canvas, var(--bg-surface));
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .settings-page__toc-title,
+  .settings-page__toc-page { display: none; }
+  .settings-page__toc-list {
+    display: flex;
+    gap: var(--space-1);
+    overflow-x: auto;
+    border-left: 0;
+    scrollbar-width: none;
+  }
+  .settings-page__toc-link { width: auto; flex: none; white-space: nowrap; border-radius: var(--radius-sm); }
+  .settings-page__toc-mark {
+    left: 0;
+    top: auto;
+    bottom: 0;
+    width: var(--toc-w, 0);
+    height: 2px;
+    transform: translateX(var(--toc-x, 0));
+    transition: transform var(--duration-slow) var(--ease-spring), width var(--duration-normal) var(--ease-out);
+  }
+  .settings-page__section {
+    scroll-margin-top: calc(var(--shell-topbar-height) + 3.25rem);
+    padding: var(--space-4);
+  }
+  .settings-page__head { align-items: flex-start; }
+}
+@media (hover: none) and (pointer: coarse) {
+  .settings-page__toc-link { min-height: 44px; display: flex; align-items: center; }
 }
 @media (prefers-reduced-motion: reduce) {
   .settings-page__toc-page,
   .settings-page__toc-link,
-  .settings-page__title,
-  .settings-page__eyebrow { transition: none; }
+  .settings-page__toc-mark { transition: none; }
 }
+
+/* ── Settings hub and platform mark (#4154) ── */
+.settings-page__mark[data-channel='allegro'] { --mark-hue: var(--channel-allegro); --mark-ink: oklch(18% 0.02 270); }
+.settings-page__mark[data-channel='prestashop'] { --mark-hue: var(--channel-prestashop); --mark-ink: oklch(98% 0.01 270); }
+.settings-page__mark[data-channel='erli'] { --mark-hue: var(--channel-erli); --mark-ink: oklch(18% 0.02 270); }
+.settings-page__mark[data-channel='woocommerce'],
+.settings-page__mark[data-channel='shopify'] { --mark-hue: var(--channel-woocommerce); --mark-ink: oklch(18% 0.02 270); }
+.settings-page__mark[data-channel='amazon'] { --mark-hue: var(--channel-amazon); --mark-ink: oklch(18% 0.02 270); }
+.settings-hub__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+}
+.settings-hub__facts dt { font-size: 0.75rem; color: var(--text-muted); }
+.settings-hub__facts dd { margin: 2px 0 0; font-size: 0.875rem; color: var(--text-primary); overflow-wrap: anywhere; }
+.settings-hub__note { font-size: 0.8125rem; color: var(--text-muted); max-width: 56ch; }
+.settings-hub__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--space-5) var(--space-6);
+  align-items: start;
+}
+/* Tiles keep their own markup (live counts, dialogs); inside the hub they lose
+   card chrome and are separated by a single structural rule instead. */
+.settings-hub__grid > .panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-default);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+.settings-hub__grid > .panel .panel__header { display: grid; gap: 2px; width: 100%; margin: 0; padding: 0; border: 0; }
+.settings-hub__grid > .panel .eyebrow { display: none; }
+.settings-hub__grid > .panel .section-title { font-size: 0.9375rem; font-weight: 600; }
+.settings-hub__grid > .panel .panel__meta {
+  order: 3;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.settings-hub__grid > .panel .definition-list { margin: 0; width: 100%; }
+.settings-hub__grid > .panel .definition-list dt { color: var(--text-muted); font-size: 0.75rem; }
+.settings-hub__grid > .panel .definition-list dd { color: var(--text-primary); font-size: 0.875rem; }
+.settings-hub__grid > .panel .muted-text,
+.settings-hub__grid > .panel .panel-copy { font-size: 0.8125rem; line-height: 1.45; max-width: 44ch; }
+.settings-hub__planned {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.settings-hub__planned h3 { font-size: 0.875rem; font-weight: 600; }
+.settings-hub__planned p { font-size: 0.8125rem; color: var(--text-muted); max-width: 56ch; }
 
 .whats-new__row-title .release-chip { margin-left: var(--space-2); }
 

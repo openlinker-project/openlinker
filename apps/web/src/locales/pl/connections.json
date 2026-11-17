@@ -866,6 +866,10 @@
   "editConnectionPage": {
     "backLabel": "Połączenie",
     "description": "Zmień nazwę połączenia, konfigurację i ustawienia adaptera.",
+    "environment": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
     "error": {
       "title": "Nie udało się wczytać połączenia"
     },

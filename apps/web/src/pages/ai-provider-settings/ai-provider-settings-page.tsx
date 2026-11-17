@@ -37,7 +37,7 @@ export function AiProviderSettingsPage(): ReactElement {
 
   return (
     <SettingsPageFrame
-      eyebrow={copy.eyebrow}
+      wide
       title={copy.title}
       short={tpl.short}
       description={copy.description}

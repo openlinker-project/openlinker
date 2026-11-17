@@ -259,52 +259,29 @@
     "account": {
       "anonymous": "Brak aktywnej sesji.",
       "email": "E-mail",
-      "eyebrow": "Sesja",
       "loading": "Wczytywanie sesji…",
-      "meta": "Tylko do odczytu",
       "role": "Rola",
       "title": "Konto",
       "username": "Nazwa użytkownika"
     },
-    "chips": {
-      "account": "Konto",
-      "buyerEmails": "E-maile kupujących",
-      "currency": "Waluta",
-      "environment": "Środowisko",
-      "inventoryLocations": "Lokalizacje magazynowe",
-      "mailer": "Poczta",
-      "mcpTokens": "Tokeny MCP",
-      "orderTags": "Tagi zamówień",
-      "posthog": "PostHog",
-      "salesDocuments": "Kierowanie dokumentów sprzedaży",
-      "sourcingRules": "Reguły lokalizacji",
-      "syncPacing": "Tempo synchr.",
-      "upcoming": "Wkrótce",
-      "whoDecides": "Kto o czym decyduje"
-    },
+    "adminNote": "Część obszarów jest dostępna tylko dla administratorów, dlatego nie ma ich na liście.",
     "comingSoon": "Wkrótce",
     "description": "Konfiguracja platformy, kontekst sesji i nadchodzące preferencje operatora.",
     "environment": {
       "apiBaseUrl": "Bazowy adres URL API",
       "environment": "Środowisko",
-      "eyebrow": "Środowisko uruchomieniowe",
-      "meta": "Konfiguracja z kompilacji",
       "title": "Środowisko"
     },
-    "eyebrow": "Ustawienia",
     "notifications": {
       "body": "Tu będzie można skonfigurować alerty o błędach synchronizacji, wyzwalacze ręcznej weryfikacji i powiadomienia o progach.",
-      "eyebrow": "Alerty",
       "title": "Powiadomienia"
     },
     "organization": {
       "body": "Tu będzie można zarządzać członkami zespołu, rolami i ustawieniami obszaru roboczego.",
-      "eyebrow": "Obszar roboczy",
       "title": "Organizacja"
     },
     "preferences": {
       "body": "Tu pojawią się opcje strefy czasowej, formatu daty i gęstości wyświetlania.",
-      "eyebrow": "Wyświetlanie",
       "title": "Preferencje"
     },
     "title": "Ustawienia"
@@ -529,6 +506,23 @@
       "hint": "Instalacja, do której jesteś zalogowany.",
       "short": "Środowisko",
       "title": "Środowisko i konto"
+    },
+    "settingsGroups": {
+      "access": {
+        "hint": "Kto może łączyć się z tą instalacją i co widzą odwiedzający.",
+        "short": "Dostęp",
+        "title": "Dostęp i wygląd"
+      },
+      "data": {
+        "hint": "Jak często czytamy katalog i stany oraz w jakiej walucie raportujemy.",
+        "short": "Dane",
+        "title": "Dane i synchronizacja"
+      },
+      "orders": {
+        "hint": "Jak zamówienia są rozstrzygane, dokumentowane i komunikowane.",
+        "short": "Zamówienia",
+        "title": "Zamówienia i dokumenty"
+      }
     },
     "settingsHome": {
       "hint": "Każdy obszar, który możesz skonfigurować.",

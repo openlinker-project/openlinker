@@ -1,7 +1,7 @@
 /**
  * SettingsPageTemplate (#4132)
  *
- * The one layout every settings screen renders through: eyebrow + title +
+ * The one layout every settings screen renders through: title +
  * description, a sticky "On this page" contents on the left, one card of
  * sections on the right and the actions at the bottom. Operators find a
  * setting in the same place on every screen.
@@ -24,6 +24,7 @@ import {
   forwardRef,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type HTMLAttributes,
@@ -47,7 +48,12 @@ export interface SettingsPageSection {
 }
 
 export interface SettingsPageTemplateProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
-  eyebrow: string;
+  /** Optional plain-sentence line under the condensed title; never shown in the big header. */
+  eyebrow?: string;
+  /** Identity mark (platform tile) shown left of the title. */
+  mark?: ReactNode;
+  /** Wider card for screens that hold grids instead of one form column. */
+  wide?: boolean;
   title: ReactNode;
   /** Condensed title shown above the contents once the big title scrolled away. */
   short: string;
@@ -75,12 +81,13 @@ function scrollBehavior(): ScrollBehavior {
 
 export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTemplateProps>(
   function SettingsPageTemplate(
-    { eyebrow, title, short, description, sections, actions, readOnly = false, className = '', ...rest },
+    { eyebrow, mark, wide = false, title, short, description, sections, actions, readOnly = false, className = '', ...rest },
     ref,
   ): ReactElement {
     const copy = useMessages('ui').settingsTemplate;
     const baseId = useId();
     const headRef = useRef<HTMLElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
     const [active, setActive] = useState(sections[0]?.id ?? '');
     const [condensed, setCondensed] = useState(false);
     const sectionKey = sections.map((s) => s.id).join('|');
@@ -113,6 +120,18 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
       return () => window.removeEventListener('scroll', onScroll);
     }, [sectionKey, baseId]);
 
+    // One indicator slides to the current entry instead of each link fading
+    // its own marker, so the eye follows a single moving thing.
+    useLayoutEffect(() => {
+      const list = listRef.current;
+      const el = list?.querySelector<HTMLElement>('[aria-current="true"]');
+      if (!list || !el) return;
+      list.style.setProperty('--toc-y', `${el.offsetTop}px`);
+      list.style.setProperty('--toc-h', `${el.offsetHeight}px`);
+      list.style.setProperty('--toc-x', `${el.offsetLeft}px`);
+      list.style.setProperty('--toc-w', `${el.offsetWidth}px`);
+    }, [active, sectionKey]);
+
     const goTo = (id: string): void => {
       document.getElementById(anchor(id))?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'start' });
     };
@@ -123,9 +142,11 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
     return (
       <div ref={ref} className={['settings-page', className].filter(Boolean).join(' ')} {...rest}>
         <header className="settings-page__head" ref={headRef} data-condensed={condensed}>
-          <p className="settings-page__eyebrow">{eyebrow}</p>
-          <h2 className="settings-page__title">{title}</h2>
-          {description ? <p className="settings-page__description">{description}</p> : null}
+          {mark ? <div className="settings-page__mark">{mark}</div> : null}
+          <div className="settings-page__heading">
+            <h2 className="settings-page__title">{title}</h2>
+            {description ? <p className="settings-page__description">{description}</p> : null}
+          </div>
         </header>
         <div className="settings-page__layout">
           <nav className="settings-page__toc" aria-label={copy.sections}>
@@ -138,24 +159,27 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
               <div>
                 <button type="button" className="settings-page__toc-page-btn" onClick={toTop}>
                   <strong>{short}</strong>
-                  <span>{eyebrow}</span>
+                  {eyebrow ? <span>{eyebrow}</span> : null}
                 </button>
               </div>
             </div>
             <span className="settings-page__toc-title">{copy.onThisPage}</span>
-            {sections.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className="settings-page__toc-link"
-                aria-current={active === s.id ? 'true' : undefined}
-                onClick={() => goTo(s.id)}
-              >
-                {s.label}
-              </button>
-            ))}
+            <div className="settings-page__toc-list" ref={listRef}>
+              <span className="settings-page__toc-mark" aria-hidden="true" />
+              {sections.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="settings-page__toc-link"
+                  aria-current={active === s.id ? 'true' : undefined}
+                  onClick={() => goTo(s.id)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </nav>
-          <div className="settings-page__card">
+          <div className="settings-page__card" data-wide={wide || undefined}>
             {readOnly ? (
               <div className="settings-page__readonly" role="status">
                 <svg

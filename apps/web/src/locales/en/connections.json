@@ -840,6 +840,10 @@
   "editConnectionPage": {
     "backLabel": "Connection",
     "description": "Update the connection name, configuration, and adapter settings.",
+    "environment": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
     "error": {
       "title": "Unable to load connection"
     },
