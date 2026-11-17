@@ -238,19 +238,33 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
         aria-label={tour.regionLabel}
         tabIndex={-1}
       >
-        <ol className="tour-card__rail" aria-hidden="true">
+        <ol className="tour-card__rail" aria-label={tour.railLabel}>
           {state.steps.map((other, index) => {
             const otherDone =
               installationStatusOf(releaseState.data, releaseStepItemKey(other.stepId, other.connectionId)) ===
               'done';
-            const dotState = otherDone ? 'done' : index === state.index ? 'current' : 'todo';
+            const dotState = otherDone
+              ? 'done'
+              : index === state.index
+                ? 'current'
+                : state.skipped.includes(index)
+                  ? 'skipped'
+                  : 'todo';
             return (
               <li
                 key={`${other.stepId}:${other.connectionId ?? ''}`}
                 className={`tour-card__dot tour-card__dot--${dotState}${
                   other.importance === 'optional' ? ' tour-card__dot--optional' : ''
                 }`}
-              />
+              >
+                <span className="sr-only">
+                  {interpolate(tour.railStep, {
+                    current: index + 1,
+                    total: state.steps.length,
+                    status: tour.railState[dotState],
+                  })}
+                </span>
+              </li>
             );
           })}
         </ol>
@@ -318,7 +332,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             ) : null}
             {state.target === 'missing' ? (
               // A step that cannot be shown must never trap the walk: skipping always moves on.
-              <Button tone="primary" className="button--sm" onClick={() => (isLast ? onClose() : dispatch({ type: 'next' }))}>
+              <Button tone="primary" className="button--sm" onClick={() => (isLast ? onClose() : dispatch({ type: 'skip' }))}>
                 {tour.skip} <ReleaseIcon name="arrow-right" size={14} />
               </Button>
             ) : (

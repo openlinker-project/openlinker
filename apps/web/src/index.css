@@ -41023,6 +41023,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   transition: transform 480ms var(--ease-out);
 }
 .tour-card__dot--done::after { transform: scaleX(1); }
+/* Skipped: a solid grey bar with a diagonal hatch, so it differs from the dashed unvisited segments without relying on colour alone. */
+.tour-card__dot--skipped,
+.tour-card__dot--skipped.tour-card__dot--optional {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in oklab, var(--bg-surface) 45%, transparent) 3px 5px),
+    var(--border-strong);
+}
 .tour-card__dot--current::after { transform: scaleX(0.35); }
 
 .tour-card__top {
