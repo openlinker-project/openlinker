@@ -58,6 +58,18 @@ Mints an access token and calls `GET /sellers/v1/marketplaceParticipations`.
 - A `403 Unauthorized` from SP-API is reported as that error and **not** as bad credentials: Amazon
   answers it for a missing role too, and re-authorizing would not help.
 
+## Buyer data retention
+
+Amazon's Data Protection Policy requires buyer personal data to be deleted no later than 30 days after
+delivery. The manifest declares `buyerDataRetentionDays: 30`, and the worker's `maintenance` role runs
+the order buyer-data retention pass hourly: 30 days after an order's ship-by deadline (or its placement
+when it has none, both earlier than delivery) its addresses are reduced to the country, and its email,
+buyer note, tax id and any operator address edit are removed, as is the buyer from the search text.
+Lines, amounts, statuses and ids stay. A later re-import of the order stores none of it again.
+
+Not covered yet: customer projections, a shipment's recipient, the history of an address edit and the
+recipient on an email delivery record keep their copy. Issued sales documents keep theirs by law.
+
 ## Errors and retries
 
 | Failure | Retry | Notes |
@@ -75,6 +87,5 @@ will pace each operation.
 
 ## Not yet built
 
-Offers and stock (`OfferManager`, Listings Items), the SQS / EventBridge inbound transport, the buyer shipping
-address (restricted Direct-to-Consumer Shipping role), tracking write-back, the 30-day PII deletion
-Amazon's DPP requires, the public-app OAuth flow and a web setup form. Epic #4176 lists them.
+Offers and stock (`OfferManager`, Listings Items), the SQS / EventBridge inbound transport, the public-app OAuth
+flow and a web setup form. Epic #4176 lists them.

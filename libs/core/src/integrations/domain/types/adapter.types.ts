@@ -277,6 +277,21 @@ export interface AdapterMetadata {
   defaultEnabledCapabilities?: string[];
 
   /**
+   * How long OpenLinker may keep buyer personal data on orders from this
+   * source, in days (#4178). Absent means the platform imposes no limit, which
+   * is every source except those whose terms require deletion (Amazon's Data
+   * Protection Policy: 30 days after delivery).
+   *
+   * Counted from the order's ship-by deadline, or its placement when it has
+   * none, both of which precede delivery, so deleting at that point is never
+   * later than the platform's own limit. After that the buyer's addresses,
+   * email, note and tax id are removed from the order
+   * (`IOrderBuyerDataRetentionService`), and a later re-import of the order
+   * stores none of them again.
+   */
+  buyerDataRetentionDays?: number;
+
+  /**
    * Config keys that must be unique across every ACTIVE connection sharing
    * this `adapterKey` (#3391). Absent means no such constraint — same
    * declared-field, safe-default posture as `variantGrouping?` /

@@ -49,8 +49,12 @@ export const amazonAdapterManifest: AdapterMetadata = {
   // A capability name enters this list together with the adapter that delivers it.
   supportedCapabilities: ['OrderSource'],
   // Opt-in: ingesting a seller's Amazon orders creates them in every
-  // destination, and buyer-data retention must be in place first (#4178).
+  // destination.
   defaultEnabledCapabilities: [],
+  // Amazon's Data Protection Policy: buyer personal data is deleted no later
+  // than 30 days after delivery. Enforced by the order buyer-data retention
+  // pass (#4178).
+  buyerDataRetentionDays: 30,
   displayName: 'Amazon Selling Partner API',
   version: '0.1.0',
   isDefault: true,

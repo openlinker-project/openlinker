@@ -171,6 +171,20 @@ export class OrderRecordService implements IOrderRecordService {
    * @param sourceConnectionId - Source connection ID (where order originated)
    * @param sourceEventId - Optional source event ID
    */
+  /**
+   * The PII mode for one order write. An order whose buyer data was already
+   * removed because its source's retention period passed (#4178) is written as
+   * under `OL_STORE_PII=false`, so a re-import never restores what was removed.
+   */
+  private async resolvePiiConfig(internalOrderId: string): Promise<ReturnType<typeof getPiiConfig>> {
+    const piiConfig = getPiiConfig();
+    if (!piiConfig.storePii) {
+      return piiConfig;
+    }
+    const redacted = await this.repository.isBuyerDataRedacted(internalOrderId);
+    return redacted ? { ...piiConfig, storePii: false } : piiConfig;
+  }
+
   async persistOrder(
     order: Order,
     sourceConnectionId: string,
@@ -178,7 +192,7 @@ export class OrderRecordService implements IOrderRecordService {
     sourceExternalUrl: string | null = null,
     lineCostCandidates: ReadonlyMap<string, LineCostCandidate> = new Map()
   ): Promise<OrderRecord> {
-    const piiConfig = getPiiConfig();
+    const piiConfig = await this.resolvePiiConfig(order.id);
     const now = new Date();
 
     // Create PII-aware order snapshot
@@ -521,7 +535,7 @@ export class OrderRecordService implements IOrderRecordService {
     sourceConnectionId: string,
     sourceEventId: string | null
   ): Promise<OrderRecord> {
-    const piiConfig = getPiiConfig();
+    const piiConfig = await this.resolvePiiConfig(internalOrderId);
     const now = new Date();
 
     const snapshot: Record<string, unknown> = {

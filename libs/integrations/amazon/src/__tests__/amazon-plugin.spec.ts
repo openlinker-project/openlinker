@@ -44,6 +44,7 @@ describe('Amazon plugin', () => {
       platformType: 'amazon',
       supportedCapabilities: ['OrderSource'],
       defaultEnabledCapabilities: [],
+      buyerDataRetentionDays: 30,
       isDefault: true,
     });
     expect(createAmazonPlugin().manifest).toBe(amazonAdapterManifest);

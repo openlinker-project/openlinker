@@ -3,8 +3,9 @@
  *
  * `amazon-orders-poll` reads the order feed (`marketplace.orders.poll`). OFF by
  * default (`OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED`): ingesting a seller's
- * Amazon orders creates them in every destination, and Amazon requires its
- * buyer-data retention to be in place first (#4178). `searchOrders` allows
+ * Amazon orders creates them in every destination, so an operator turns it on.
+ * Buyer data is removed 30 days after the ship-by deadline by the order
+ * buyer-data retention pass (`buyerDataRetentionDays` on the manifest). `searchOrders` allows
  * 0.0056 req/s with a burst of 20, so one tick every five minutes reading up to
  * a few pages stays inside the quota.
  *
