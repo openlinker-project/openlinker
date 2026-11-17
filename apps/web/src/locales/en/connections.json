@@ -101,7 +101,8 @@
     "ReturnsAuthority": "Decides what happens to goods a customer sends back - whether they go back on sale, and who approves that."
   },
   "capabilityMetadata": {
-    "conflict": "Unavailable while {capability} is selected - the inventory source of truth cannot also be a stock write-back target."
+    "conflict": "Unavailable while {capability} is selected - the inventory source of truth cannot also be a stock write-back target.",
+    "conflictMasterPublisher": "Unavailable while {capability} is selected - published products would be read back from this shop as duplicates. Use a separate connection for the other role."
   },
   "catalogTrustPanel": {
     "cycleNone": "None open",
@@ -196,6 +197,10 @@
     "enabledToast": "{capability} enabled.",
     "errorTitle": "Unable to update capabilities",
     "eyebrow": "Capabilities",
+    "legacyMasterPublisher": {
+      "body": "This connection is both a catalog source and a publish target, so its published products can come back as duplicates. Turn one of the two off.",
+      "title": "Catalog and publishing on one connection"
+    },
     "none": "This connection has no capabilities available to toggle here.",
     "noneEnabled": {
       "body": "This connection is inactive for every capability. No sync jobs will use it.",
@@ -1663,7 +1668,7 @@
     "title": "Connect {platform}"
   },
   "woocommerceSetupSchema": {
-    "capabilityConflict": "The inventory source of truth and stock write-back to this shop cannot both be enabled on the same connection.",
+    "capabilityConflict": "The inventory source of truth and stock write-back to this shop cannot both be enabled on the same connection, and neither can the product catalog and product publishing.",
     "consumerKeyPrefix": "Consumer key must start with ck_",
     "consumerKeyRequired": "Consumer key is required",
     "consumerSecretPrefix": "Consumer secret must start with cs_",

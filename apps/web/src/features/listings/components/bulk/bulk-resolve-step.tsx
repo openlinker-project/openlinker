@@ -45,6 +45,7 @@ import {
   effectiveVariantEan,
   imageCountForVariant,
   isValidGtin,
+  isCardInOtherCategoryThanChosen,
   operatorPickedCategory,
   productCategoryIdOf,
   siblingStockBlockers,
@@ -329,6 +330,22 @@ export function BulkResolveStep({
             categoryResult.kind === 'matched' &&
             categoryResult.overriddenCard !== undefined &&
             !operatorPickedCategory(row, variant),
+          cardCategoryMismatch: isCardInOtherCategoryThanChosen(
+            {
+              ...variant,
+              resolvedCategoryId:
+                categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null,
+              resolvedProductCardId:
+                categoryResult.kind === 'matched' && categoryResult.productCardId !== ''
+                  ? categoryResult.productCardId
+                  : null,
+              resolutionMethod:
+                categoryResult.kind === 'matched' ? (categoryResult.method ?? 'auto_detect') : null,
+            },
+            variant.override.overrides?.categoryId ??
+              productCategoryIdOf(row) ??
+              (categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null),
+          ),
         });
         if (isMulti) blockers = siblingStockBlockers(blockers, masterStock);
         // A supplied-but-invalid barcode is a hard GS1 gate (plan §10.1 / B5) and

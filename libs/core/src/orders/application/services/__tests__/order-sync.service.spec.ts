@@ -25,6 +25,7 @@ import type { IOrderRecordService } from '../../interfaces/order-record.service.
 import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderHold } from '../../../domain/entities/order-hold.entity';
+import type { IRetryClassifierRegistry } from '@openlinker/core/sync';
 import { ORDER_CREATE_LOCK_TTL_MS } from '../order-create-lock';
 import {
   DuplicateIdentifierMappingError,
@@ -41,6 +42,7 @@ describe('OrderSyncService', () => {
   let orderHoldService: jest.Mocked<IOrderHoldService>;
   let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
   let masterAbsorbedReservations: jest.Mocked<IMasterAbsorbedReservationService>;
+  let retryClassifierRegistry: jest.Mocked<IRetryClassifierRegistry>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -174,6 +176,7 @@ describe('OrderSyncService', () => {
       // #2397 tests assert on: three failures that named the warn count and
       // said nothing about the real cause.
       markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
+      updateSyncStatus: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     orderHoldService = {
@@ -201,6 +204,11 @@ describe('OrderSyncService', () => {
       }),
     };
 
+    retryClassifierRegistry = {
+      isNonRetryable: jest.fn().mockReturnValue(false),
+      resolveRetryDeferral: jest.fn().mockReturnValue(null),
+    };
+
     service = new OrderSyncService(
       integrationsService,
       mappingConfigService,
@@ -209,7 +217,8 @@ describe('OrderSyncService', () => {
       orderRecordService,
       orderHoldService,
       postSaleInventoryRefresh,
-      masterAbsorbedReservations
+      masterAbsorbedReservations,
+      retryClassifierRegistry
     );
   });
 
@@ -574,6 +583,127 @@ describe('OrderSyncService', () => {
       });
     });
 
+    it('should rethrow when a destination failure is classified deferrable, after siblings finish (#3984)', async () => {
+      const ok = makeAdapter({ orderId: 'ok-1' });
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([
+        { connectionId: 'dest-ok', adapter: ok },
+        { connectionId: 'dest-bad', adapter: failing },
+      ]);
+      retryClassifierRegistry.resolveRetryDeferral.mockImplementation((cause) =>
+        cause === throttled ? { delaySeconds: 60, reason: 'throttled' } : null
+      );
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          deferralBudget: { spentMs: 0, maxMs: 86_400_000 },
+        })
+      ).rejects.toBe(throttled);
+      expect(ok.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should settle a deferrable failure as failed when the caller passes no budget (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'throttled',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0].status).toBe('failed');
+    });
+
+    it('should settle as failed instead of rethrowing once the deferral budget is spent (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'throttled',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        // 86_400_000 - 59_000 + 60_000 overruns by one second.
+        deferralBudget: { spentMs: 86_341_000, maxMs: 86_400_000 },
+      });
+
+      expect(results[0]).toMatchObject({ destinationConnectionId: 'dest-bad', status: 'failed' });
+    });
+
+    it('should persist the permanent failure before rethrowing for a transient sibling (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const permanent = new Error('validation failed');
+      const transientAdapter = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      const permanentAdapter = {
+        createOrder: jest.fn().mockRejectedValue(permanent),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([
+        { connectionId: 'dest-transient', adapter: transientAdapter },
+        { connectionId: 'dest-permanent', adapter: permanentAdapter },
+      ]);
+      retryClassifierRegistry.resolveRetryDeferral.mockImplementation((cause) =>
+        cause === throttled ? { delaySeconds: 60, reason: 'throttled' } : null
+      );
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          deferralBudget: { spentMs: 0, maxMs: 86_400_000 },
+        })
+      ).rejects.toBe(throttled);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_123',
+        'dest-permanent',
+        {
+          destinationConnectionId: 'dest-permanent',
+          status: 'failed',
+          error: 'validation failed',
+        }
+      );
+    });
+
+    it('should keep a non-retryable failure as failed even if also deferrable (#3984)', async () => {
+      const boom = new Error('validation');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(boom),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.isNonRetryable.mockReturnValue(true);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'x',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0].status).toBe('failed');
+    });
+
     it('should exclude the source connection from destinations', async () => {
       const selfAdapter = makeAdapter();
       const otherAdapter = makeAdapter({ orderId: 'other-1' });
@@ -857,7 +987,7 @@ describe('OrderSyncService', () => {
       // that a two-file edit with no reason recorded in either.
       expect(syncLock.acquire).toHaveBeenCalledWith(
         'order:create:dest-a:ol_order_123',
-        ORDER_CREATE_LOCK_TTL_MS,
+        ORDER_CREATE_LOCK_TTL_MS
       );
       expect(adapter.createOrder).toHaveBeenCalledTimes(1);
       expect(syncLock.release).toHaveBeenCalledWith(
@@ -918,7 +1048,12 @@ describe('OrderSyncService', () => {
       });
 
       expect(results).toEqual([
-        { destinationConnectionId: 'dest-a', status: 'success', orderRef: { orderId: 'dest-1' }, created: true },
+        {
+          destinationConnectionId: 'dest-a',
+          status: 'success',
+          orderRef: { orderId: 'dest-1' },
+          created: true,
+        },
       ]);
     });
 

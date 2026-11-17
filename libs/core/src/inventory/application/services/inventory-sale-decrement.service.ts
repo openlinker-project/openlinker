@@ -68,6 +68,7 @@ import {
 } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
+import { isRequestNotSentError } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 
 import { InventoryItem } from '../../domain/entities/inventory-item.entity';
@@ -109,9 +110,7 @@ import type {
 } from './inventory-sale-decrement.service.interface';
 
 /** An owner's adapter, or the reason it could not be built. */
-type AdapterResolution =
-  | { readonly adapter: InventoryMasterPort }
-  | { readonly error: string };
+type AdapterResolution = { readonly adapter: InventoryMasterPort } | { readonly error: string };
 
 @Injectable()
 export class InventorySaleDecrementService implements IInventorySaleDecrementService {
@@ -313,6 +312,16 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         await this.refreshFromMaster(adapter.adapter, resolution.position, owner, line);
       }
 
+      if (settlement.status === 'retryable' && settlement.reason === 'request-not-sent') {
+        // A persistently wrong host keeps landing here until the job attempts
+        // run out, so make each occurrence visible to an operator.
+        this.logger.warn(
+          `Sale decrement request never left the process, will retry: orderId=${input.orderId} ` +
+            `workId=${input.workId} line=${line.orderLineId} owner=${owner} ` +
+            `connection=${owner} reason=request-not-sent`
+        );
+      }
+
       if (settlement.status !== 'applied' && settlement.status !== 'deduplicated') {
         this.logger.error(
           `Sale decrement did not lower the product master's stock: orderId=${input.orderId} ` +
@@ -363,6 +372,13 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         // The platform reports the product absent — there is nothing to lower,
         // so this is a refusal, not an unknown.
         return this.failed('blocked', 'master-product-not-found', detail);
+      }
+      if (isRequestNotSentError(error)) {
+        // The adapter's HTTP client proved the request never left (DNS failure,
+        // connection refused), so the master applied nothing and the line is
+        // safe to claim again - the one `in_doubt` exception (#4041). The mark
+        // is set only when EVERY attempt the client made was provably unsent.
+        return this.failed('retryable', 'request-not-sent', detail);
       }
       return this.failed('in_doubt', 'master-error', detail);
     }
@@ -416,7 +432,7 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
   }
 
   private failed(
-    status: 'blocked' | 'in_doubt',
+    status: 'blocked' | 'in_doubt' | 'retryable',
     reason: SaleDecrementSettlement['reason'],
     detail: string
   ): SaleDecrementSettlement {

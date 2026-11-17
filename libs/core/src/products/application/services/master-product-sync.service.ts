@@ -173,6 +173,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         failures.push({
           externalId,
           message: error instanceof Error ? error.message : String(error),
+          error,
         });
       }
     }
@@ -198,6 +199,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         failures.push({
           externalId,
           message: error instanceof Error ? error.message : String(error),
+          error,
         });
       }
     }
