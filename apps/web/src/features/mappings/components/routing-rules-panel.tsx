@@ -251,7 +251,7 @@ export function RoutingRulesPanel({
 
   // Routing-split buckets (#1739): methods-per-processor derived from the
   // CURRENT selections (not the saved rules), so the bar moves live while the
-  // operator edits and before "Save routing". One bucket per live divert
+  // operator edits and before "Save assignment". One bucket per live divert
   // candidate (kept even at 0 so its colour slot stays stable), one bucket per
   // saved-but-unavailable selection, and the default bucket last.
   const splitBuckets = useMemo<RoutingSplitBucket[]>(() => {

@@ -64,7 +64,7 @@
     "saveAndContinue": "Save and continue",
     "saveFailedTitle": "Could not save the label settings",
     "saving": "Saving…",
-    "unsavedBody": "You changed which carrier ships some delivery methods and did not click Save routing. If you go on, those changes are lost.",
+    "unsavedBody": "You changed which carrier ships some delivery methods and did not click Save assignment. If you go on, those changes are lost.",
     "unsavedTitle": "Routing for {name} is not saved",
     "weightDescription": "Per product, used only when a product has no weight. The parcel weight is the sum of its products.",
     "weightRequired": "Enter a weight for products that have none.",

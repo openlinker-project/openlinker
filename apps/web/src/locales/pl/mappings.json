@@ -263,9 +263,9 @@
       "source_brokered": "Dostawa przez marketplace"
     },
     "processorSelectLabel": "Obsługa realizacji dla {method}",
-    "save": "Zapisz kierowanie",
+    "save": "Zapisz przypisanie",
     "saving": "Zapisywanie…",
-    "title": "Kierowanie realizacji",
+    "title": "Kto wysyła każdą metodę dostawy",
     "tryAgain": "Spróbuj ponownie",
     "unavailableBucket": "{name} (niedostępne)",
     "unavailableOption": "{kind} · {name} (niedostępne)",

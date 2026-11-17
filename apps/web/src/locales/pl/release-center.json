@@ -113,9 +113,9 @@
     },
     "shipping-routing": {
       "title": "Przypisz przewoźników w tym kanale sprzedaży",
-      "tourBody": "Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału. Zmień to, co trzeba, i zapisz kierowanie.",
+      "tourBody": "Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału. Zmień to, co trzeba, i zapisz przypisanie.",
       "tourTitle": "Kto wysyła przesyłki z tego kanału?",
-      "why": "Kierowanie wysyłek ustawiasz w Mapowaniach, w zakładce Realizacja. Sprawdź, kto wysyła każdą metodę dostawy z tego kanału, i zapisz."
+      "why": "Przypisanie przewoźnika ustawiasz w Mapowaniach, w zakładce Realizacja, w sekcji \"Kto wysyła każdą metodę dostawy\". Sprawdź każdą metodę dostawy z tego kanału i kliknij Zapisz przypisanie."
     }
   },
   "whatsNew": {
