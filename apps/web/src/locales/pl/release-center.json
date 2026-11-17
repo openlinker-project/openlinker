@@ -1,4 +1,31 @@
 {
+  "dialog": {
+    "back": "Wstecz",
+    "close": "Zamknij",
+    "closeIcon": "Zamknij okno",
+    "fullChangelog": "Pełny changelog",
+    "guideLeadAdmin": "Przejdziemy przez ekrany, na których warto coś sprawdzić. Kroki wymagane są oznaczone: bez Twojej decyzji system może działać inaczej, niż oczekujesz.",
+    "guideLeadReadOnly": "Te zmiany wykonuje administrator. Możesz zobaczyć, gdzie się znajdują.",
+    "guideTitle": "Co warto ustawić po aktualizacji",
+    "highlightsLabel": "Najważniejsze zmiany",
+    "later": "Zrobię to później",
+    "moreChanges": {
+      "few": "i {n} inne zmiany w pełnym changelogu (po angielsku)",
+      "many": "i {n} innych zmian w pełnym changelogu (po angielsku)",
+      "one": "i {n} inna zmiana w pełnym changelogu (po angielsku)",
+      "other": "i {n} innej zmiany w pełnym changelogu (po angielsku)"
+    },
+    "needsAdmin": "Wymaga administratora",
+    "newVersion": "Nowa wersja",
+    "optional": "Opcjonalne",
+    "required": "Wymagane",
+    "showWhere": "Pokaż, gdzie to jest",
+    "skipDialog": "Nie pokazuj ponownie",
+    "startGuide": "Rozpocznij przewodnik",
+    "stepIndicator": "Krok {current} z {total}",
+    "title": "Zaktualizowano OpenLinker do wersji {version}",
+    "toGuide": "Przejdź do przewodnika"
+  },
   "steps": {
     "inpost-notify-buyer": {
       "title": "Wybierz, kiedy kupujący dowie się o wysyłce",
@@ -18,5 +45,22 @@
       "tourTitle": "Kto wysyła przesyłki z tego kanału?",
       "why": "Kierowanie wysyłek ustawiasz w Mapowaniach, w zakładce Realizacja. Sprawdź, kto wysyła każdą metodę dostawy z tego kanału, i zapisz."
     }
+  },
+  "whatsNew": {
+    "allSet": "Wszystko ustawione",
+    "baselineTitle": "Pierwsze śledzone wydanie",
+    "changelogLanguage": "Poniższy changelog jest po angielsku.",
+    "changelogUnavailable": "Changelog nie jest dostępny w tej wersji aplikacji.",
+    "current": "Bieżąca",
+    "done": "Gotowe",
+    "eyebrow": "Aktualizacje",
+    "intro": "Historia zmian z pliku CHANGELOG.md. To, co możesz ustawić w interfejsie, jest w osobnym bloku nad listą.",
+    "noSteps": "Po tej aktualizacji nie ma nic do ustawienia.",
+    "older": "Starsza",
+    "progress": "{done} z {total}",
+    "setNow": "Ustaw teraz",
+    "setupTitle": "Do ustawienia po aktualizacji",
+    "showWhere": "Pokaż, gdzie to jest",
+    "title": "Co nowego w OpenLinker"
   }
 }

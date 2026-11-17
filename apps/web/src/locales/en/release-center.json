@@ -1,4 +1,29 @@
 {
+  "dialog": {
+    "back": "Back",
+    "close": "Close",
+    "closeIcon": "Close the window",
+    "fullChangelog": "Full changelog",
+    "guideLeadAdmin": "We will walk you through the screens where a setting is worth checking. Required steps are marked: without your decision the system may behave differently than you expect.",
+    "guideLeadReadOnly": "An administrator makes these changes. You can see where they are.",
+    "guideTitle": "What to set up after the update",
+    "highlightsLabel": "Highlights",
+    "later": "Later",
+    "moreChanges": {
+      "one": "and {n} more change in the full changelog (English)",
+      "other": "and {n} more changes in the full changelog (English)"
+    },
+    "needsAdmin": "Needs an administrator",
+    "newVersion": "New version",
+    "optional": "Optional",
+    "required": "Required",
+    "showWhere": "Show me where",
+    "skipDialog": "Don't show again",
+    "startGuide": "Start guide",
+    "stepIndicator": "Step {current} of {total}",
+    "title": "OpenLinker was updated to {version}",
+    "toGuide": "Go to the guide"
+  },
   "steps": {
     "inpost-notify-buyer": {
       "title": "Choose when the buyer learns about the shipment",
@@ -18,5 +43,22 @@
       "tourTitle": "Who ships the parcels from this channel?",
       "why": "Shipping routing is set in Mappings, on the Fulfilment tab. Check who ships each delivery method of this channel and save."
     }
+  },
+  "whatsNew": {
+    "allSet": "All set",
+    "baselineTitle": "First tracked release",
+    "changelogLanguage": "The changelog below is written in English.",
+    "changelogUnavailable": "The changelog is not available in this build.",
+    "current": "Current",
+    "done": "Done",
+    "eyebrow": "Updates",
+    "intro": "Change history from CHANGELOG.md. Things you can set in the interface are in the block above the list.",
+    "noSteps": "Nothing to set up after this update.",
+    "older": "Older",
+    "progress": "{done} of {total}",
+    "setNow": "Set up now",
+    "setupTitle": "To set up after the update",
+    "showWhere": "Show me where",
+    "title": "What's new in OpenLinker"
   }
 }

@@ -1,6 +1,6 @@
 declare module 'virtual:openlinker-changelog' {
-  import type { ChangelogData } from './changelog-parser';
-
-  const changelog: ChangelogData;
+  // An import type, not an import declaration: ambient modules may not import
+  // by relative path, and the failed import silently typed the module as `any`.
+  const changelog: import('./changelog-parser').ChangelogData;
   export default changelog;
 }

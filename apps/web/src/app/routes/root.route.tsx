@@ -59,6 +59,7 @@ import { salesDocumentBatchRoute } from './sales-document-batch.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
 import { omsOnboardingRoute } from './oms-onboarding.route';
 import { whoDecidesRoute } from './who-decides.route';
+import { whatsNewRoute } from './whats-new.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
 import { usersRoute } from './users.route';
@@ -114,6 +115,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     ...(omsRoutingUiEnabled ? [sourcingRulesRoute] : []),
     omsOnboardingRoute,
     whoDecidesRoute,
+    whatsNewRoute,
     promptTemplatesListRoute,
     promptTemplateDetailRoute,
     promptTemplatesLegacyListRedirectRoute,

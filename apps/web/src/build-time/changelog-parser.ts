@@ -14,6 +14,8 @@ export interface ChangelogEntry {
   text: string;
   /** Issue and PR numbers cited by the entry, in order of appearance. */
   refs: number[];
+  /** Commit hashes cited by the entry (as written, at least 7 hex characters); the update dialog matches curated highlights on them. */
+  commits: string[];
 }
 
 export interface ChangelogGroup {
@@ -56,10 +58,12 @@ const LINKED_REF = /\s*\(\[(?:#\d+|[0-9a-f]{7,40})\]\([^)]*\)\)/g;
 const CLOSES_CLAUSE = /,?\s*closes\s+\[#\d+\]\([^)]*\)(?:,\s*\[#\d+\]\([^)]*\))*/gi;
 const BARE_ISSUE_LINK = /\[#(\d+)\]\([^)]*\)/g;
 const ISSUE_NUMBER = /\[#(\d+)\]\(/g;
+const COMMIT_LINK = /\[([0-9a-f]{7,40})\]\([^)]*\/commit\/[0-9a-f]+\)/g;
 
 function parseEntry(line: string): ChangelogEntry {
   const body = line.replace(/^\*\s+/, '');
   const refs = [...body.matchAll(ISSUE_NUMBER)].map((m) => Number(m[1]));
+  const commits = [...body.matchAll(COMMIT_LINK)].map((m) => m[1]);
   const scoped = /^\*\*([^*]+):\*\*\s*(.*)$/.exec(body);
   const scope = scoped ? scoped[1].trim() : null;
   const rest = scoped ? scoped[2] : body;
@@ -69,7 +73,7 @@ function parseEntry(line: string): ChangelogEntry {
     .replace(BARE_ISSUE_LINK, '#$1')
     .replace(/\s+/g, ' ')
     .trim();
-  return { scope, text, refs };
+  return { scope, text, refs, commits };
 }
 
 export function parseChangelog(markdown: string): ChangelogData {
