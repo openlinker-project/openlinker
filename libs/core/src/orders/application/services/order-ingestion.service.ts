@@ -46,7 +46,10 @@ import {
   IOrderCustomerProjectionUpdaterService,
   ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
 } from '@openlinker/core/customers';
-import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
+import {
+  IOrderSyncService,
+  type OrderSyncRequest,
+} from '../interfaces/order-sync.service.interface';
 import type {
   IOrderIngestionService,
   OrderIngestionOptions,
@@ -444,7 +447,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     externalOrderId: string,
     sourceEventId?: string,
-    eventType?: OrderFeedEventType
+    eventType?: OrderFeedEventType,
+    deferralBudget?: OrderSyncRequest['deferralBudget']
   ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
     // Inbound cancellation (#1158): a source `cancelled` event must NOT re-run the
     // create/update path (which would re-create the order — the #1132 bug). Route
@@ -927,6 +931,8 @@ export class OrderIngestionService implements IOrderIngestionService {
           order,
           sourceConnectionId: connectionId,
           sourceEventId,
+          // #3984: only a job the runner can defer passes this.
+          ...(deferralBudget ? { deferralBudget } : {}),
           // Only when a bundle expanded anything, so an order without one sends
           // the byte-identical request it always did.
           ...(physicalItems.some(
