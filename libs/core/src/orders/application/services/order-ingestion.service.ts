@@ -14,7 +14,11 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  CapabilityNotSupportedException,
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import {
   ISyncCursorsService,
@@ -24,7 +28,14 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type Connection, type ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+  CONNECTION_PORT_TOKEN,
+  type Connection,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import {
   IAutoIssueTriggerService,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
@@ -129,11 +140,7 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
-import {
-  describeMultipackHold,
-  hasBundleDefinition,
-  isMultipackLine,
-} from './multipack-hold';
+import { describeMultipackHold, hasBundleDefinition, isMultipackLine } from './multipack-hold';
 import {
   projectOrderForRouting,
   type OrderRoutingProjection,
@@ -373,7 +380,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // backwards. Enforced only for cursor shapes core can order - see
       // `compareOrderCursors`.
       if (nextCursor && nextCursor.trim() !== '') {
-        if (fromCursor && this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)) {
+        if (
+          fromCursor &&
+          this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)
+        ) {
           this.logger.warn(
             `Cursor regression detected; not committing cursor. cursorKey=${cursorKey}, fromCursor=${fromCursor}, nextCursor=${nextCursor} (connection: ${connectionId})`
           );
@@ -573,7 +583,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // will carry variantIds; if items never resolve, OfferStockRestoreService
     // will no-op (no variantIds in the raw snapshot) and the job stays visible
     // in the dead-letter queue for operator inspection.
-    if ((incoming.status === 'cancelled' || cancelledFromEarlySignal) && priorStatus !== 'cancelled') {
+    if (
+      (incoming.status === 'cancelled' || cancelledFromEarlySignal) &&
+      priorStatus !== 'cancelled'
+    ) {
       try {
         await this.jobQueue.enqueue({
           type: 'marketplace.offer.stockRestore',
@@ -589,23 +602,25 @@ export class OrderIngestionService implements IOrderIngestionService {
       } catch (error) {
         this.logger.error(
           `Failed to enqueue stock-restore job (early-fire) for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
       }
     }
 
     // Step 3: attempt item resolution (non-throwing)
     const resolvedItems: Order['items'] = [];
-    const unresolvedRefs: Array<{ itemId: string; reason: string; kind: ItemResolutionFailureKind }> =
-      [];
+    const unresolvedRefs: Array<{
+      itemId: string;
+      reason: string;
+      kind: ItemResolutionFailureKind;
+    }> = [];
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
       // A ready order with a frozen expansion was already decided: re-asking the
       // LIVE definitions would flip a (possibly shipped) order back to held
       // the day a definition or confirmation is retired.
-      const alreadyFrozen =
-        existing?.recordStatus === 'ready' && existing.lineExpansion != null;
+      const alreadyFrozen = existing?.recordStatus === 'ready' && existing.lineExpansion != null;
       if (result.resolved && !alreadyFrozen && isMultipackLine(item)) {
         // #3929: held BEFORE anything reserves. Treating the line as one unit
         // would reserve and ship a single unit for the price of several. The
@@ -834,7 +849,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // error so the missed restore is loud and actionable.
         this.logger.error(
           `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
       }
     }
@@ -1216,9 +1231,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (skipReason !== null) {
         // `log`, not `debug`: the answer to "why is this order not on the pack
         // bench?", invisible at `debug` on a normal deployment (#3490 / #3496 review).
-        this.logger.log(
-          `Not routing order ${orderId}: ${skipReason}; following today's path.`
-        );
+        this.logger.log(`Not routing order ${orderId}: ${skipReason}; following today's path.`);
         return { kind: 'skip', reason: skipReason };
       }
 
@@ -1855,46 +1868,90 @@ export class OrderIngestionService implements IOrderIngestionService {
    *
    * Deliberately the snapshot write ONLY: no item resolution, routing, reservation,
    * destination mirror, document or stock restore - nothing was reserved,
-   * decremented or issued for an order that never went live. Best-effort: when
-   * the source cannot hydrate it (genuinely unknown, or a transient failure) the
-   * signal alone stands, exactly as before.
+   * decremented or issued for an order that never went live. The buyer is
+   * resolved through the ordinary `resolveCustomerId` path (which honours
+   * OL_STORE_PII inside the identity resolver); it only writes OL's own
+   * customer mapping/projection and provisions nothing in a destination.
+   *
+   * Failure policy: the feed keeps only this one event, so a transient failure
+   * (timeout, 5xx, rate limit) must NOT be swallowed or the order is never
+   * listed. Only two conditions mean "keep the signal alone": the connection
+   * is not an order source (a cancel echoed on a destination), and the source
+   * answers 404/410 for the order. Core has no neutral order-not-found type,
+   * so the latter is recognised by an HTTP status carried on the error.
+   * Everything else, including a persist failure, rethrows so the job retries;
+   * re-recording the signal is first-write-wins and the snapshot write is
+   * idempotent, so a retry is safe.
    */
   private async persistCancelledOrderNeverIngested(
     connectionId: string,
     externalOrderId: string,
     sourceEventId: string | undefined
   ): Promise<void> {
+    let orderSource: OrderSourcePort;
     try {
-      const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+      orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
         connectionId,
         'OrderSource'
       );
-      const incoming = await orderSource.getOrder({ externalOrderId });
-      if (!incoming) {
+    } catch (error) {
+      if (error instanceof CapabilityNotSupportedException) {
+        this.logger.warn(
+          `Connection ${connectionId} is not an order source; cancelled unknown order ` +
+            `${externalOrderId} keeps only the pending cancellation signal`
+        );
         return;
       }
-      const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
-        CORE_ENTITY_TYPE.Order,
-        incoming.externalOrderId,
-        connectionId
-      );
-      await this.orderRecordService.persistIncomingSnapshot(
-        incoming,
-        internalOrderId,
-        null,
-        connectionId,
-        sourceEventId ?? null
-      );
-      this.logger.log(
-        `Persisted cancelled order ${internalOrderId} (external ${externalOrderId}) that was ` +
-          `never ingested before its cancellation; no routing, mirror or documents created`
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Could not hydrate cancelled unknown order ${externalOrderId} on connection ${connectionId}; ` +
-          `only the pending cancellation signal is kept: ${(error as Error).message}`
-      );
+      throw error;
     }
+
+    let incoming: Awaited<ReturnType<OrderSourcePort['getOrder']>> | null | undefined;
+    try {
+      incoming = await orderSource.getOrder({ externalOrderId });
+    } catch (error) {
+      if (this.isSourceOrderNotFound(error)) {
+        this.logger.warn(
+          `Source reports cancelled order ${externalOrderId} on connection ${connectionId} as ` +
+            `not found; only the pending cancellation signal is kept: ${(error as Error).message}`
+        );
+        return;
+      }
+      throw error;
+    }
+    if (!incoming) {
+      return;
+    }
+
+    const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Order,
+      incoming.externalOrderId,
+      connectionId
+    );
+    const internalCustomerId = await this.resolveCustomerId(
+      incoming,
+      connectionId,
+      internalOrderId
+    );
+    await this.orderRecordService.persistIncomingSnapshot(
+      incoming,
+      internalOrderId,
+      internalCustomerId ?? null,
+      connectionId,
+      sourceEventId ?? null
+    );
+    this.logger.log(
+      `Persisted cancelled order ${internalOrderId} (external ${externalOrderId}) that was ` +
+        `never ingested before its cancellation; no routing, mirror or documents created`
+    );
+  }
+
+  private isSourceOrderNotFound(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) {
+      return false;
+    }
+    const candidate = error as { statusCode?: unknown; status?: unknown };
+    const status = candidate.statusCode ?? candidate.status;
+    return status === 404 || status === 410;
   }
 
   /**
@@ -1926,26 +1983,20 @@ export class OrderIngestionService implements IOrderIngestionService {
     if (!internalOrderId) {
       // #2069: a cancel for an order OL has not yet ingested must still leave
       // a durable trace, or the later create provisions the order as active
-      // at every destination. No internal id exists yet, and minting one via
-      // getOrCreateInternalId would point every downstream trigger at a
-      // phantom order before any real order data arrives (the #2328 lesson
-      // for returns attribution) — so the signal is keyed on
-      // (sourceConnectionId, externalOrderId) instead, and consumed by
+      // at every destination. No internal id exists yet, so the signal is
+      // keyed on (sourceConnectionId, externalOrderId) and consumed by
       // OrderRecordService.persistIncomingSnapshot the moment the order is
-      // genuinely first ingested. Left unguarded (not try/caught): the only
-      // action on this branch is the write, so a DB failure here should
-      // retry the job rather than be silently swallowed — unlike the
-      // known-order branch below, where a relay to already-resolved
-      // destinations must proceed regardless.
+      // first ingested. Unguarded (not try/caught): the write is the only
+      // action here, so a DB failure should retry the job rather than be
+      // swallowed, unlike the known-order branch below where a relay to
+      // already-resolved destinations must proceed regardless.
       //
-      // Sits above the ADR-017 destination-echo guard further down (which
-      // needs an existing record to compare `sourceConnectionId` against): a
-      // cancel arriving on a *destination* connection whose `Order` mapping
-      // is not yet written records a signal keyed to that destination
-      // connection's id — permanently unconsumable, since the echo guard
-      // would early-return before `persistIncomingSnapshot` ever runs for
-      // that connection. Narrow and self-limiting (the signal never affects
-      // provisioning, it just sits there), not worth a second lookup here.
+      // #4032: after the signal, `persistCancelledOrderNeverIngested` hydrates
+      // the order and persists its snapshot (minting the internal id only once
+      // real order data exists, which avoids the phantom-order concern from
+      // #2328). It requires the OrderSource capability, so a cancel echoed on
+      // a destination connection keeps only the signal. Transient hydrate or
+      // persist failures propagate so the job retries.
       await this.orderRecordService.recordEarlyCancellationSignal(
         connectionId,
         externalOrderId,
@@ -2239,7 +2290,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.warn(
         `Source amended order ${internalOrderId} on connection ${connectionId} after ingestion: ` +
           changes
-            .map((c) => (c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`))
+            .map((c) =>
+              c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`
+            )
             .join('; ')
       );
       await this.orderRecordService.recordAmendment(internalOrderId, new Date(), changes);
@@ -2383,9 +2436,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    * first: sources such as WooCommerce truncate `placedAt` to the second, so a
    * cost saved a few hundred ms before the sale must not look "after" it.
    */
-  private async resolveLineCostCandidates(
-    order: Order
-  ): Promise<Map<string, LineCostCandidate>> {
+  private async resolveLineCostCandidates(order: Order): Promise<Map<string, LineCostCandidate>> {
     const variantIds = [
       ...new Set(
         order.items.map((item) => item.variantId).filter((id): id is string => Boolean(id))
