@@ -31,8 +31,15 @@
  *
  * Body (JSON):
  *   { id_cart: int, id_order_state: int, amount_paid: number,
- *     payment_method?: string, order_reference?: string,
+ *     payment_method?: string, payment_module?: string, order_reference?: string,
  *     line_prices?: [{ id_product: int, id_product_attribute?: int, price: string }] }
+ *
+ * `payment_module` (#3988) names the PrestaShop payment module the order is
+ * imported with (e.g. `ps_wirepayment`): the order's `module` column records it
+ * and `payment` becomes the module's display name. A module that is absent,
+ * inactive or not a PaymentModule is ignored with a log line and the import
+ * proceeds through `ps_checkpayment` as before - a payment label is not worth
+ * an order. An older build ignores the field.
  *
  * `line_prices` carries the buyer-paid tax-EXCLUSIVE unit price of every line
  * (#2597). When present the module pins them as cart-scoped `specific_prices`
@@ -251,6 +258,24 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         $this->context->language = new Language((int) $cart->id_lang);
 
         $payment = Module::getInstanceByName(self::PAYMENT_MODULE);
+        $requestedModule = PaymentModuleGate::normalizeRequestedModule(
+            isset($data['payment_module']) ? $data['payment_module'] : null
+        );
+        if ($requestedModule !== null && $requestedModule !== self::PAYMENT_MODULE) {
+            $requested = Module::getInstanceByName($requestedModule);
+            $requestedProblem = PaymentModuleGate::reasonUnusable($requested);
+            if ($requestedProblem === null) {
+                $payment = $requested;
+                $paymentMethod = PaymentModuleGate::displayLabel($requested, $paymentMethod);
+            } else {
+                PrestaShopLogger::addLog(
+                    'OpenLinker: requested payment module "' . $requestedModule . '" not usable ('
+                        . $requestedProblem . ', id_cart=' . $idCart . '); importing via "'
+                        . self::PAYMENT_MODULE . '"',
+                    2, null, 'Cart', $idCart
+                );
+            }
+        }
         $paymentProblem = PaymentModuleGate::reasonUnusable($payment);
         if ($paymentProblem !== null) {
             PrestaShopLogger::addLog(

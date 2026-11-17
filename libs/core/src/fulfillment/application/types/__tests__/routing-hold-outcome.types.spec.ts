@@ -63,6 +63,14 @@ describe('deriveRoutingHoldOutcome', () => {
 
   // The case #3485 exists for: out of stock at every location. Held, named, and
   // raised as UF-L so it counts in "Needs attention".
+  it('should hold an unpaid order as waiting for payment and leave the lines alone (#4033)', () => {
+    expect(deriveRoutingHoldOutcome({ status: 'skipped', reason: 'awaiting-payment' })).toEqual({
+      held: true,
+      block: { reason: 'routing-awaiting-payment', detail: null },
+      lineAttention: { kind: 'indeterminate' },
+    });
+  });
+
   it('should hold a refused order and raise line-unfulfillable when the plan carried unfulfillable lines', () => {
     const result = deriveRoutingHoldOutcome({
       status: 'refused',

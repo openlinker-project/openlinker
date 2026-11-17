@@ -278,6 +278,7 @@ export class BulkListingController {
       updatedAt: record.updatedAt.toISOString(),
       errors: record.errors,
       productId: summary.productIdByVariantId[record.internalVariantId] ?? null,
+      request: record.request,
     }));
     return {
       id: summary.batch.id,

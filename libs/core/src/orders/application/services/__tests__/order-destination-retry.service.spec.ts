@@ -16,6 +16,8 @@ import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
 import { OrderDestinationNotFoundException } from '../../../domain/exceptions/order-destination-not-found.exception';
 import { OrderDestinationNotRetryableException } from '../../../domain/exceptions/order-destination-not-retryable.exception';
+import { OrderDestinationHandledByRoutingException } from '../../../domain/exceptions/order-destination-handled-by-routing.exception';
+import type { IFulfillmentWorkQueryService } from '@openlinker/core/fulfillment';
 import { MissingSourceExternalIdException } from '../../../domain/exceptions/missing-source-external-id.exception';
 
 describe('OrderDestinationRetryService', () => {
@@ -24,6 +26,7 @@ describe('OrderDestinationRetryService', () => {
   let recordService: jest.Mocked<IOrderRecordService>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
+  let workQuery: jest.Mocked<Pick<IFulfillmentWorkQueryService, 'resolveLinkForOrder'>>;
 
   const INTERNAL_ORDER_ID = 'ol_order_123';
   const SOURCE_CONN = 'conn-source';
@@ -80,15 +83,43 @@ describe('OrderDestinationRetryService', () => {
       enqueueJob: jest.fn(),
     } as unknown as jest.Mocked<JobEnqueuePort>;
 
+    workQuery = { resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }) };
+
     service = new OrderDestinationRetryService(
       orderRepo,
       recordService,
       identifierMapping,
-      jobEnqueue
+      jobEnqueue,
+      workQuery as unknown as IFulfillmentWorkQueryService
     );
   });
 
   describe('retry', () => {
+    it('should refuse without claiming the row when the order has routed work (#3990)', async () => {
+      orderRepo.findById.mockResolvedValue(buildOrder());
+      workQuery.resolveLinkForOrder.mockResolvedValue({ kind: 'unique', workId: 'w1' });
+
+      await expect(
+        service.retry({ internalOrderId: INTERNAL_ORDER_ID, destinationConnectionId: DEST_CONN })
+      ).rejects.toBeInstanceOf(OrderDestinationHandledByRoutingException);
+
+      expect(recordService.updateSyncStatus).not.toHaveBeenCalled();
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should refuse when the router holds the order with a block (#3990)', async () => {
+      const held = buildOrder();
+      Object.assign(held, {
+        fulfillmentBlock: { reason: 'routing-failed', detail: null },
+      });
+      orderRepo.findById.mockResolvedValue(held);
+
+      await expect(
+        service.retry({ internalOrderId: INTERNAL_ORDER_ID, destinationConnectionId: DEST_CONN })
+      ).rejects.toBeInstanceOf(OrderDestinationHandledByRoutingException);
+      expect(recordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
     it('should claim slot, enqueue, and return job id on the happy path', async () => {
       orderRepo.findById.mockResolvedValue(buildOrder());
       identifierMapping.getExternalIds.mockResolvedValue([

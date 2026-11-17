@@ -446,11 +446,14 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
   });
 
   // ── S5b: negative — unmapped item leaves the order awaiting_mapping ─────────
-  it('S5b: an order whose item has no variant mapping persists awaiting_mapping + throws', async () => {
+  it('S5b: an order whose item has no offer mapping persists awaiting_mapping without throwing (#4040)', async () => {
     // No seedReadyItem — the line item's productRef cannot be resolved.
     erli.fake.setRawGet(orderPath(ORDER_AWAITING), buildErliOrder(ORDER_AWAITING));
 
-    await expect(ingestion().syncOrderFromSource(connectionId, ORDER_AWAITING)).rejects.toThrow();
+    // Erli items are `offer` refs; an unlisted offer is not retried (#4040).
+    await expect(
+      ingestion().syncOrderFromSource(connectionId, ORDER_AWAITING)
+    ).resolves.toEqual([]);
 
     const record = await findOrderRecord(ORDER_AWAITING);
     expect(record).not.toBeNull();
