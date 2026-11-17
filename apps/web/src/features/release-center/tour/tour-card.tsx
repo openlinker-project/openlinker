@@ -8,6 +8,7 @@
  *
  * @module features/release-center/tour
  */
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type Dispatch, type ReactElement } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
@@ -22,7 +23,7 @@ import { useReleaseStepsMutation } from '../hooks/use-release-steps-mutation';
 import { installationStatusOf, releaseStepItemKey } from '../lib/release-state-merge';
 import { applyChoice, readChoice, TOUR_CHOICES } from './tour-choices';
 import type { TourAction, TourState } from './tour-reducer';
-import { bottomReserve, computeTourLayout, RING_PADDING } from './tour-geometry';
+import { bottomReserve, chooseDock, RING_PADDING, ringBoxInDocument, type TourDock } from './tour-geometry';
 import { useTourTarget } from './use-tour-target';
 
 function readTopInset(): number {
@@ -80,34 +81,53 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     const card = cardRef.current;
     if (!card) return undefined;
     let frame = 0;
+    let dockFrame = 0;
     let scrolled = false;
+    let dock: TourDock = 'bottom';
 
-    const place = (): void => {
+    const applyDock = (): void => {
       const rect = element.getBoundingClientRect();
       const cardRect = card.getBoundingClientRect();
       const topInset = readTopInset();
-      const layout = computeTourLayout({
+      dock = chooseDock({
         target: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
         viewport: { width: window.innerWidth, height: window.innerHeight },
         card: { width: cardRect.width, height: cardRect.height },
         topInset,
+        current: dock,
       });
-      card.dataset.dock = layout.dock;
+      card.dataset.dock = dock;
       card.style.setProperty('--tour-card-top', `${Math.round(topInset)}px`);
-      // Room under the page content so the last rows can still scroll above a bottom-docked card.
+    };
+
+    // The ring lives in document coordinates, so scrolling moves it natively and
+    // it is measured only when the layout changes, never per scroll event.
+    const place = (): void => {
+      const rect = element.getBoundingClientRect();
+      const box = ringBoxInDocument(
+        { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        { x: window.scrollX, y: window.scrollY }
+      );
+      ring.style.width = `${box.width}px`;
+      ring.style.height = `${box.height}px`;
+      ring.style.top = `${box.top}px`;
+      ring.style.left = `${box.left}px`;
       document.documentElement.style.setProperty(
         '--tour-card-space',
-        layout.dock === 'bottom' ? `${bottomReserve(cardRect.height)}px` : '0px'
+        `${bottomReserve(card.getBoundingClientRect().height)}px`
       );
-      ring.style.width = `${layout.lit.width}px`;
-      ring.style.height = `${layout.lit.height}px`;
-      ring.style.top = `${layout.lit.top}px`;
-      ring.style.left = `${layout.lit.left}px`;
-      ring.style.visibility = 'visible';
+      applyDock();
+      if (ring.style.visibility !== 'visible') {
+        ring.style.visibility = 'visible';
+        // The first placement must not tween in from wherever the previous step left the ring.
+        requestAnimationFrame(() => {
+          ring.style.transition = '';
+        });
+      }
       if (!scrolled) {
         scrolled = true;
-        // Put the target's top just under the bar; the lit box is then clamped to what fits.
-        const delta = rect.top - topInset;
+        // Once: put the target's top just under the bar. The user's own scrolling is never undone.
+        const delta = rect.top - readTopInset();
         if (Math.abs(delta) > 2) {
           window.scrollBy({ top: delta, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
         }
@@ -117,20 +137,40 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(place);
     };
-    // Hidden until the first measurement so the ring never flashes at the origin or a stale rect.
+    // Only the card's side depends on what is on screen; it is cheap and the ring is untouched.
+    const scheduleDock = (): void => {
+      cancelAnimationFrame(dockFrame);
+      dockFrame = requestAnimationFrame(applyDock);
+    };
+    // Hidden and un-tweened until the first measurement so the ring never flashes at the origin or a stale rect.
     ring.style.visibility = 'hidden';
+    ring.style.transition = 'none';
     place();
-    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('scroll', scheduleDock, { capture: true, passive: true });
     window.addEventListener('resize', schedule);
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
     resizeObserver?.observe(element);
     resizeObserver?.observe(card);
+    // Content loading above the target shifts it without resizing it.
+    resizeObserver?.observe(document.body);
+    // A section expanding or an image or font arriving can move the target without resizing anything observed.
+    const mutationObserver = new MutationObserver((records) => {
+      // The ring and the card write their own styles; reacting to those would loop.
+      if (records.every((record) => ring.contains(record.target) || card.contains(record.target))) return;
+      schedule();
+    });
+    mutationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+    window.addEventListener('load', schedule, true);
+    void document.fonts?.ready.then(schedule);
     return () => {
       document.documentElement.style.removeProperty('--tour-card-space');
       cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', schedule, true);
+      cancelAnimationFrame(dockFrame);
+      window.removeEventListener('scroll', scheduleDock, true);
       window.removeEventListener('resize', schedule);
       resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('load', schedule, true);
     };
   }, [element]);
 
@@ -184,7 +224,10 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
 
   return (
     <>
-      <div ref={ringRef} className="tour-ring" aria-hidden="true" hidden={!element} />
+      {createPortal(
+        <div ref={ringRef} className="tour-ring" aria-hidden="true" hidden={!element} />,
+        document.body
+      )}
       <section
         ref={cardRef}
         className="tour-card"
