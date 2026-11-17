@@ -34,4 +34,10 @@ export interface AmazonCredentials {
   readonly source?: AmazonCredentialSource;
   /** Seller id Amazon returns on an OAuth authorization; informational. */
   readonly sellingPartnerId?: string;
+  /**
+   * AWS access key allowed to read and delete messages on the notification
+   * queue (#4179). Both or neither; needed only with a notification queue.
+   */
+  readonly awsAccessKeyId?: string;
+  readonly awsSecretAccessKey?: string;
 }

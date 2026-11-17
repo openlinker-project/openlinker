@@ -25,7 +25,7 @@ import {
   AmazonRegionValues,
   type AmazonRegion,
 } from '../../amazon.constants';
-import type { AmazonConnectionConfig } from '../types/amazon-config.types';
+import type { AmazonConnectionConfig, AmazonNotificationQueue } from '../types/amazon-config.types';
 
 /** SP-API marketplace ids are 10-14 upper-case letters and digits (`A1PA6795UKMFR9`). */
 const MARKETPLACE_ID_PATTERN = /^[A-Z0-9]{10,14}$/;
@@ -49,11 +49,42 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
   }
 
   const marketplaceIds = readMarketplaceIds(config.marketplaceIds, region, issues);
+  const notificationQueue = readNotificationQueue(config.notificationQueueUrl, issues);
 
   if (issues.length > 0 || region === null || environment === null) {
     return { ok: false, issues };
   }
-  return { ok: true, config: { region, environment, marketplaceIds } };
+  return {
+    ok: true,
+    config: { region, environment, marketplaceIds, ...(notificationQueue ? { notificationQueue } : {}) },
+  };
+}
+
+/** `https://sqs.{region}.amazonaws.com/{account}/{name}`, the form SQS shows a queue URL in. */
+const SQS_QUEUE_URL_PATTERN = /^https:\/\/sqs\.([a-z0-9-]+)\.amazonaws\.com\/(\d{12})\/([A-Za-z0-9_-]{1,80}(?:\.fifo)?)$/;
+
+/**
+ * Optional `notificationQueueUrl` (#4179). Empty or absent means no queue; a
+ * value that is not an SQS queue URL is refused, since the ARN Amazon needs
+ * and the region the requests are signed for are both read from it.
+ */
+export function readNotificationQueue(
+  value: unknown,
+  issues: FlatValidationIssue[] = [],
+): AmazonNotificationQueue | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  const match = typeof value === 'string' ? SQS_QUEUE_URL_PATTERN.exec(value.trim()) : null;
+  if (match === null) {
+    issues.push({
+      path: 'notificationQueueUrl',
+      message: 'must be an SQS queue URL such as https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications',
+    });
+    return undefined;
+  }
+  const [, region, account, name] = match;
+  return { url: (value as string).trim(), region, arn: `arn:aws:sqs:${region}:${account}:${name}` };
 }
 
 /** The SP-API host a connection talks to. */

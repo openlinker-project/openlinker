@@ -72,3 +72,28 @@ describe('resolveAmazonSpApiHost', () => {
     );
   });
 });
+
+describe('parseAmazonConfig notification queue (#4179)', () => {
+  it('should read the region and ARN from an SQS queue URL', () => {
+    const result = parseAmazonConfig({
+      marketplaceIds: ['A1PA6795UKMFR9'],
+      notificationQueueUrl: 'https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications',
+    });
+    expect(result.ok && result.config.notificationQueue).toEqual({
+      url: 'https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications',
+      region: 'eu-west-1',
+      arn: 'arn:aws:sqs:eu-west-1:123456789012:amazon-notifications',
+    });
+  });
+
+  it('should treat an empty queue URL as no queue', () => {
+    const result = parseAmazonConfig({ marketplaceIds: ['A1PA6795UKMFR9'], notificationQueueUrl: '' });
+    expect(result.ok && result.config.notificationQueue).toBeUndefined();
+  });
+
+  it('should refuse a URL that is not an SQS queue', () => {
+    const result = parseAmazonConfig({ marketplaceIds: ['A1PA6795UKMFR9'], notificationQueueUrl: 'https://example.com/q' });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.issues[0].path).toBe('notificationQueueUrl');
+  });
+});

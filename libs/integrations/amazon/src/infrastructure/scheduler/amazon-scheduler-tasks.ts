@@ -22,8 +22,27 @@ export const AMAZON_ORDERS_POLL_LIMIT = 100;
 
 export const AMAZON_ORDERS_CURSOR_KEY = 'amazon.orders.feedCursor';
 
+/** SQS returns at most 10 messages per receive. */
+export const AMAZON_NOTIFICATIONS_DRAIN_MAX_MESSAGES = 10;
+
 export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
   return [
+    // #4179: drains the operator's SQS queue every minute, so an order arrives
+    // within about a minute instead of on the next orders poll. OFF by default
+    // (`OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED`): it needs a queue and
+    // its AWS key on the connection. The orders poll stays as the backstop.
+    {
+      taskId: 'amazon-notifications-drain',
+      platformType: AMAZON_PLATFORM_TYPE,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.notifications.drain',
+      cronExpression: '* * * * *',
+      enabledEnvVar: 'OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: () => ({ schemaVersion: 1, maxMessages: AMAZON_NOTIFICATIONS_DRAIN_MAX_MESSAGES }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:notifications:drain:${timestamp}`,
+    },
     {
       taskId: 'amazon-orders-poll',
       platformType: AMAZON_PLATFORM_TYPE,

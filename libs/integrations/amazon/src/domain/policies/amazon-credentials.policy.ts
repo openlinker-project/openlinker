@@ -47,6 +47,14 @@ export function parseAmazonCredentials(raw: Record<string, unknown> | null | und
     issues.push('`sellingPartnerId` must be a string when present');
   }
 
+  const awsKeyId = value.awsAccessKeyId;
+  const awsSecret = value.awsSecretAccessKey;
+  const awsPresent = [awsKeyId, awsSecret].filter((entry) => entry !== undefined && entry !== null && entry !== '');
+  const awsValid = isNonEmptyString(awsKeyId) && isNonEmptyString(awsSecret);
+  if (awsPresent.length > 0 && !awsValid) {
+    issues.push('must include both `awsAccessKeyId` and `awsSecretAccessKey` as non-empty strings, or neither');
+  }
+
   if (issues.length > 0) {
     return { ok: false, issues };
   }
@@ -59,6 +67,13 @@ export function parseAmazonCredentials(raw: Record<string, unknown> | null | und
       refreshToken: (value.refreshToken as string).trim(),
       source,
       ...(typeof value.sellingPartnerId === 'string' ? { sellingPartnerId: value.sellingPartnerId } : {}),
+      ...(awsValid
+        ? { awsAccessKeyId: awsKeyId.trim(), awsSecretAccessKey: awsSecret.trim() }
+        : {}),
     },
   };
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }

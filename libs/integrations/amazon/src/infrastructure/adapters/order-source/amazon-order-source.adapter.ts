@@ -29,6 +29,7 @@
  * @module libs/integrations/amazon/src/infrastructure/adapters/order-source
  * @implements {OrderSourcePort}
  */
+import type { InboundQueueMessage, InboundQueueReader } from '@openlinker/core/integrations';
 import type {
   IncomingOrder,
   MappingOption,
@@ -52,6 +53,7 @@ import {
 } from '../../../domain/policies/amazon-order-feed-cursor.policy';
 import { amazonPackageReferenceId } from '../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
+import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import { AmazonNetworkError } from '../../../domain/exceptions/amazon-network.error';
 import {
   AmazonFulfillmentStatusValues,
@@ -63,6 +65,8 @@ import {
 } from '../../../domain/types/amazon-order.types';
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
 import { mapAmazonOrderToIncomingOrder } from '../../mappers/amazon-incoming-order.mapper';
+import { mapAmazonNotificationMessage } from '../../mappers/amazon-notification.mapper';
+import type { AmazonSqsClient } from '../../http/amazon-sqs-client';
 import { resolveAmazonCarrier } from './amazon-carrier-code';
 
 const SEARCH_ORDERS_PATH = '/orders/2026-01-01/orders';
@@ -74,7 +78,9 @@ const GET_ORDER_INCLUDED_DATA = ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT'
 /** Payment method names the Orders API documents (`PaymentExecution.paymentMethod`). */
 const DOCUMENTED_PAYMENT_METHODS = ['CashOnDelivery', 'ConvenienceStore', 'CreditCard', 'Invoice', 'Pix'];
 
-export class AmazonOrderSourceAdapter implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader {
+export class AmazonOrderSourceAdapter
+  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader, InboundQueueReader
+{
   private readonly logger = new Logger(AmazonOrderSourceAdapter.name);
 
   constructor(
@@ -82,7 +88,34 @@ export class AmazonOrderSourceAdapter implements OrderSourcePort, OrderStatusWri
     private readonly client: AmazonSpApiClient,
     private readonly config: AmazonConnectionConfig,
     private readonly now: () => Date = (): Date => new Date(),
+    /** Present when the connection names a notification queue and AWS keys (#4179). */
+    private readonly notificationQueue?: AmazonSqsClient,
   ) {}
+
+  /**
+   * `InboundQueueReader` (#4179): Amazon notifications from the operator's SQS
+   * queue, translated by `mapAmazonNotificationMessage`. A connection without a
+   * queue is a configuration fact, raised as such.
+   */
+  async receiveInboundMessages(input: { readonly maxMessages: number }): Promise<InboundQueueMessage[]> {
+    const queue = this.requireNotificationQueue();
+    const messages = await queue.receiveMessages(input.maxMessages);
+    return messages.map((message) => mapAmazonNotificationMessage(message));
+  }
+
+  async acknowledgeInboundMessages(receiptHandles: readonly string[]): Promise<void> {
+    await this.requireNotificationQueue().deleteMessages(receiptHandles);
+  }
+
+  private requireNotificationQueue(): AmazonSqsClient {
+    if (this.notificationQueue === undefined) {
+      throw new AmazonConfigException(
+        this.connectionId,
+        'no notification queue: set notificationQueueUrl and the AWS access key',
+      );
+    }
+    return this.notificationQueue;
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     const now = this.now();

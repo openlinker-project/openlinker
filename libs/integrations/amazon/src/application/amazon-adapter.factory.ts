@@ -22,6 +22,7 @@ import { parseAmazonConfig, resolveAmazonSpApiHost } from '../domain/policies/am
 import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.policy';
 import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-token.provider';
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
+import { AmazonSqsClient } from '../infrastructure/http/amazon-sqs-client';
 import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
 
@@ -50,15 +51,32 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
     }
 
     const tokens = new AmazonAccessTokenProvider(credentials.credentials, fetchImpl, cache);
+    const queue = config.config.notificationQueue;
+    const { awsAccessKeyId, awsSecretAccessKey } = credentials.credentials;
     return {
       connection,
       config: config.config,
       credentialSource: credentials.source,
       client: new AmazonSpApiClient(resolveAmazonSpApiHost(config.config), tokens, fetchImpl),
+      ...(queue && awsAccessKeyId && awsSecretAccessKey
+        ? {
+            notificationQueue: new AmazonSqsClient(
+              queue,
+              { accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretAccessKey },
+              fetchImpl,
+            ),
+          }
+        : {}),
     };
   }
 
   createOrderSource(resolution: AmazonResolution): AmazonOrderSourceAdapter {
-    return new AmazonOrderSourceAdapter(resolution.connection.id, resolution.client, resolution.config);
+    return new AmazonOrderSourceAdapter(
+      resolution.connection.id,
+      resolution.client,
+      resolution.config,
+      undefined,
+      resolution.notificationQueue,
+    );
   }
 }

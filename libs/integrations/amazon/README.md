@@ -58,6 +58,24 @@ Mints an access token and calls `GET /sellers/v1/marketplaceParticipations`.
 - A `403 Unauthorized` from SP-API is reported as that error and **not** as bad credentials: Amazon
   answers it for a missing role too, and re-authorizing would not help.
 
+## Notifications (SQS)
+
+Amazon delivers change notifications only to Amazon SQS or EventBridge, never over HTTP. With a queue
+configured, the `amazon-notifications-drain` task (every minute, off by default,
+`OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED`) reads it and turns each `ORDER_CHANGE` into an
+ordinary order sync, so an order arrives within about a minute; the orders poll stays as the backstop.
+
+- Config: `"notificationQueueUrl": "https://sqs.<region>.amazonaws.com/<account>/<queue>"`.
+- Credentials: `awsAccessKeyId` and `awsSecretAccessKey` of an IAM user allowed `sqs:ReceiveMessage`
+  and `sqs:DeleteMessage` on that queue. Requests are signed with SigV4; no AWS SDK.
+- The queue's access policy must also let Amazon's SP-API notification principal send to it (Amazon's
+  setup guide for the Notifications API).
+- A message is deleted only after its events were routed; a duplicate dedups on Amazon's
+  `NotificationId`. Other notification types are acknowledged and ignored for now.
+
+Registering the queue with Amazon (destination + `ORDER_CHANGE` subscription) is the "Configure
+webhooks" action, added in the next commit of #4179.
+
 ## Buyer data retention
 
 Amazon's Data Protection Policy requires buyer personal data to be deleted no later than 30 days after
@@ -87,5 +105,5 @@ will pace each operation.
 
 ## Not yet built
 
-Offers and stock (`OfferManager`, Listings Items), the SQS / EventBridge inbound transport, the public-app OAuth
+Offers and stock (`OfferManager`, Listings Items), EventBridge delivery, the public-app OAuth
 flow and a web setup form. Epic #4176 lists them.

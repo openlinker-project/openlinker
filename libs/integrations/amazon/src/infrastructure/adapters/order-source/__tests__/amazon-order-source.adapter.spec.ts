@@ -175,3 +175,34 @@ describe('AmazonOrderSourceAdapter options', () => {
     expect((await source.listPaymentMethods()).map((option) => option.value)).toContain('CashOnDelivery');
   });
 });
+
+describe('AmazonOrderSourceAdapter as InboundQueueReader (#4179)', () => {
+  it('should read the queue and translate each message', async () => {
+    const { client } = clientStub();
+    const queue = {
+      receiveMessages: jest.fn().mockResolvedValue([
+        {
+          MessageId: 'm1',
+          ReceiptHandle: 'h1',
+          Body: JSON.stringify({
+            NotificationType: 'ORDER_CHANGE',
+            Payload: { OrderChangeNotification: { AmazonOrderId: '302-1', OrderChangeType: 'OrderStatusChange' } },
+          }),
+        },
+      ]),
+      deleteMessages: jest.fn().mockResolvedValue(undefined),
+    };
+    const source = new AmazonOrderSourceAdapter('conn-1', client, CONFIG, () => NOW, queue as never);
+
+    const messages = await source.receiveInboundMessages({ maxMessages: 10 });
+    await source.acknowledgeInboundMessages(['h1']);
+
+    expect(messages[0].events[0]).toMatchObject({ domain: 'order', externalId: '302-1' });
+    expect(queue.deleteMessages).toHaveBeenCalledWith(['h1']);
+  });
+
+  it('should raise a configuration error when the connection names no queue', async () => {
+    const { client } = clientStub();
+    await expect(adapter(client).receiveInboundMessages({ maxMessages: 10 })).rejects.toThrow(/no notification queue/);
+  });
+});
