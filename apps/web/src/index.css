@@ -40920,8 +40920,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .popover__content.release-panel { z-index: 62; }
 /* Release center layers, low to high: popover 50, tour ring 60, tour card 61,
    bell panel 62 (stays readable and clickable above the highlight), toast 70. */
+/* Document coordinates (#4154): the ring scrolls with the content and is never re-measured per scroll event. */
 .tour-ring {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   z-index: 60;
