@@ -40972,6 +40972,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @media (min-width: 1180px) {
   .tour-card { right: 16px; left: auto; margin-inline: 0; width: 340px; }
 }
+/* Free side: the card moves beside a target that leaves room, so it never covers it (#4154). */
+@media (min-width: 640px) {
+  .tour-card[data-dock='right'] { top: var(--tour-card-top, 72px); bottom: auto; right: 16px; left: auto; margin-inline: 0; width: 340px; }
+}
+/* Phone: a full-width sheet flush with the bottom edge; the lit area shrinks to what remains above it. */
+@media (max-width: 639px) {
+  .tour-card { left: 0; right: 0; bottom: 0; width: 100%; margin-inline: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; border-bottom: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+}
 .tour-card:focus-visible { outline: none; box-shadow: var(--shadow-overlay), var(--shadow-focus); }
 
 .tour-card__rail { display: flex; gap: 5px; margin: 0; padding: 0; list-style: none; }

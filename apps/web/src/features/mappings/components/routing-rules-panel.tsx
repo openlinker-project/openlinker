@@ -501,18 +501,18 @@ export function RoutingRulesPanel({
   ) : null;
 
   return (
-    <div className={embedded ? 'routing-panel routing-panel--embedded' : 'panel panel--dense routing-panel'}>
+    <div
+      className={embedded ? 'routing-panel routing-panel--embedded' : 'panel panel--dense routing-panel'}
+      // The release tour lights the whole assignment area; the card clamps it to what fits.
+      data-tour={embedded ? undefined : 'label-master'}
+    >
       {embedded ? null : (
-        // The release tour points at the heading and its one-line explanation, not
-        // at the whole panel: a highlight as tall as the table says nothing.
-        <div data-tour="label-master">
-          <div className="panel__header">
-            <h3 className="section-title">{routeCopy.panelTitle}</h3>
-            {dirtyBadge}
-          </div>
-          <p className="muted-text routing-panel__intro">{routeCopy.intro(sourceLabel, shopName)}</p>
+        <div className="panel__header">
+          <h3 className="section-title">{routeCopy.panelTitle}</h3>
+          {dirtyBadge}
         </div>
       )}
+      {embedded ? null : <p className="muted-text routing-panel__intro">{routeCopy.intro(sourceLabel, shopName)}</p>}
 
       {divertOptions.length === 0 && (
         <p
