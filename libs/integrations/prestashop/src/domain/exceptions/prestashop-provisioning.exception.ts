@@ -16,8 +16,9 @@ export class PrestashopProvisioningException extends Error {
     public readonly connectionId?: string,
     public readonly emailHash?: string,
     public readonly normalizedEmail?: string,
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, cause === undefined ? undefined : { cause });
     this.name = 'PrestashopProvisioningException';
     Error.captureStackTrace(this, this.constructor);
   }

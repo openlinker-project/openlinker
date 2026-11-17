@@ -23,6 +23,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import type { RetryClassifierPort, RetryDeferral } from '../../domain/ports/retry-classifier.port';
+import type { IRetryClassifierRegistry } from './retry-classifier-registry.service.interface';
 
 /**
  * Hard ceiling on a single classifier-reported deferral (#2613 review).
@@ -33,7 +34,7 @@ import type { RetryClassifierPort, RetryDeferral } from '../../domain/ports/retr
 const MAX_DEFERRAL_DELAY_SECONDS = 3600;
 
 @Injectable()
-export class RetryClassifierRegistryService {
+export class RetryClassifierRegistryService implements IRetryClassifierRegistry {
   private readonly classifiers: Map<string, RetryClassifierPort> = new Map();
 
   register(adapterKey: string, classifier: RetryClassifierPort): void {

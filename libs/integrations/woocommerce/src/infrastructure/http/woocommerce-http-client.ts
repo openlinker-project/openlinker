@@ -28,7 +28,12 @@
  */
 import type { RetryConfig } from './woocommerce-http-client.types';
 import type { IWooCommerceHttpClient, WooCommerceRequestOptions } from './woocommerce-http-client.interface';
-import type { FetchLike } from '@openlinker/shared/http';
+import {
+  clearRequestNotSent,
+  isProvablyUnsentTransportError,
+  markRequestNotSent,
+  type FetchLike,
+} from '@openlinker/shared/http';
 import { WooCommerceUnauthorizedException } from '../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from './woocommerce-http-response.exception';
@@ -127,6 +132,11 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
     idempotent: boolean,
   ): Promise<T> {
     let delay = this.retryConfig.initialDelayMs;
+    // True only while every attempt so far failed before the request was
+    // written (DNS / refused). A response, a timeout or any other transport
+    // error may mean WooCommerce received it, so one such attempt makes the
+    // final failure ambiguous for good (#4041).
+    let everyAttemptUnsent = true;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       const controller = new AbortController();
@@ -150,9 +160,24 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           redirect: 'manual',
         });
 
+        everyAttemptUnsent = false;
+
         // 3xx with a Location — SSRF-guard the target before following it.
         if (response.status >= 300 && response.status < 400) {
-          return this.followRedirect<T>(response, method, url, body, redirectCount, idempotent);
+          // Not awaited inside this try on purpose: a redirect failure must keep
+          // bypassing the retry catch below, as it did before. The first hop was
+          // answered, so a later hop never connecting does not prove the
+          // request was not processed.
+          return this.followRedirect<T>(
+            response,
+            method,
+            url,
+            body,
+            redirectCount,
+            idempotent,
+          ).catch((redirectError: unknown) => {
+            throw clearRequestNotSent(redirectError);
+          });
         }
 
         if (response.ok) {
@@ -223,6 +248,8 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           throw new WooCommerceNetworkException('WooCommerce request timed out', err as Error);
         }
 
+        everyAttemptUnsent = everyAttemptUnsent && isProvablyUnsentTransportError(err);
+
         // A network error is ambiguous — the request may have reached
         // WooCommerce and committed. Retry only when the call is idempotent
         // (#3469); a non-idempotent POST/PATCH surfaces immediately instead
@@ -236,19 +263,21 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
         // Raised as WooCommerceAmbiguousWriteException for a non-idempotent
         // call (#3469 IMPORTANT-1 review) — see the 5xx branch above for why.
         if (!idempotent) {
-          throw new WooCommerceAmbiguousWriteException(
+          const ambiguous = new WooCommerceAmbiguousWriteException(
             `WooCommerce network error (not retried — non-idempotent call): ${(err as Error).message}`,
             method,
             url,
             undefined,
             err,
           );
+          throw everyAttemptUnsent ? markRequestNotSent(ambiguous) : ambiguous;
         }
 
-        throw new WooCommerceNetworkException(
+        const exhausted = new WooCommerceNetworkException(
           `WooCommerce network error after ${this.retryConfig.maxRetries} retries`,
           err as Error,
         );
+        throw everyAttemptUnsent ? markRequestNotSent(exhausted) : exhausted;
       } finally {
         clearTimeout(timeout);
       }

@@ -8,7 +8,7 @@
  */
 
 import type { OrderFeedEventType } from '@openlinker/core/orders';
-import type { OrderSyncResult } from './order-sync.service.interface';
+import type { OrderSyncRequest, OrderSyncResult } from './order-sync.service.interface';
 
 export interface OrderIngestionOptions {
   cursorKey: string;
@@ -40,6 +40,7 @@ export interface IOrderIngestionService {
     connectionId: string,
     externalOrderId: string,
     sourceEventId?: string,
-    eventType?: OrderFeedEventType
+    eventType?: OrderFeedEventType,
+    deferralBudget?: OrderSyncRequest['deferralBudget']
   ): Promise<OrderSyncResult[]>;
 }

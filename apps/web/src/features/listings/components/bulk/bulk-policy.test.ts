@@ -364,6 +364,8 @@ import {
   distinguishingLabel,
   duplicateEanVariantIds,
   effectiveVariantEan,
+  hasExplicitNoBarcode,
+  variantProductCardIdOf,
   imageCountForVariant,
   isValidGtin,
   operatorPickedCategory,
@@ -452,6 +454,87 @@ describe('effectiveVariantEan', () => {
         makeVariant('ol_variant_1', { override: { overrides: { ean: '4006381333931' } } })
       )
     ).toBe('4006381333931');
+  });
+});
+
+describe('a cleared barcode is an explicit "no barcode" (#4036)', () => {
+  const cleared = (): BulkVariantRow =>
+    makeVariant('ol_variant_1', { override: { overrides: { ean: '' } } });
+
+  it('should read an empty ean override as no barcode, not as inherit', () => {
+    expect(hasExplicitNoBarcode(cleared())).toBe(true);
+    expect(hasExplicitNoBarcode(makeVariant('ol_variant_1'))).toBe(false);
+    expect(effectiveVariantEan(cleared())).toBeNull();
+  });
+
+  it('should drop the catalogue card together with the barcode', () => {
+    expect(variantProductCardIdOf(makeVariant('ol_variant_1'))).toBe('card-1');
+    expect(variantProductCardIdOf(cleared())).toBeNull();
+    expect(
+      variantProductCardIdOf(
+        makeVariant('ol_variant_1', { override: { overrides: { ean: '', productCardId: 'card-2' } } }),
+      ),
+    ).toBeNull();
+  });
+
+  it('should require product parameters once the card link is gone', () => {
+    const row = makeWizardRow([cleared()]);
+    const blockers = recomputeVariantBlockers(
+      row,
+      row.variants[0],
+      CONFIG,
+      new Map([['cat-1', ['p1']]]),
+      allegroValidate,
+    );
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+});
+
+describe('a card-linked variant moved to another category (#4035)', () => {
+  const blockersFor = (variant: BulkVariantRow): string[] => {
+    const row = makeWizardRow([variant]);
+    return recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+  };
+
+  it('should block the row when the chosen category differs from the card category', () => {
+    const moved = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-2' } } });
+    expect(blockersFor(moved)).toContain('card-category-mismatch');
+  });
+
+  it('should stay ready when the chosen category is the card category', () => {
+    const same = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-1' } } });
+    expect(blockersFor(same)).not.toContain('card-category-mismatch');
+    expect(blockersFor(makeVariant('ol_variant_1'))).not.toContain('card-category-mismatch');
+  });
+
+  it('should not block once the barcode is cleared or the card was picked explicitly', () => {
+    const cleared = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', ean: '' } },
+    });
+    const picked = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', productCardId: 'card-9' } },
+    });
+    expect(blockersFor(cleared)).not.toContain('card-category-mismatch');
+    expect(blockersFor(picked)).not.toContain('card-category-mismatch');
+  });
+});
+
+describe('a sibling card in another category than the resolved one (#4035 review)', () => {
+  const card = { id: 'card-1', name: 'Card' } as unknown as BulkVariantRow['overriddenCard'];
+
+  it('should block a resolved-only mismatch with no operator pick', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+  });
+
+  it('should never show the advisory chip next to the gating one', () => {
+    const variant = makeVariant('ol_variant_1', { overriddenCard: card });
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+    expect(blockers).not.toContain('card-category-differs');
   });
 });
 
