@@ -736,6 +736,12 @@ export class ReturnWritesController {
       };
     }
 
+    // Only a refund executor moves money. `operator_out_of_band` means the operator
+    // refunded elsewhere (or the connection's refund relay is off) and OpenLinker
+    // merely records it, so reporting `true` there would tell a client money left
+    // the shop when nothing was sent (#4194).
+    const moneyMoved = intent.executedBy === 'refund_executor';
+
     try {
       const record = await this.orderRefunds.recordRefund(
         {
@@ -768,7 +774,7 @@ export class ReturnWritesController {
 
       return {
         ...base,
-        moneyMoved: true,
+        moneyMoved,
         refundRecordWritten: true,
         refundRecordId: record.id,
         refundRecordError: null,
@@ -785,7 +791,7 @@ export class ReturnWritesController {
 
       return {
         ...base,
-        moneyMoved: true,
+        moneyMoved,
         refundRecordWritten: false,
         refundRecordId: null,
         refundRecordError: message,
