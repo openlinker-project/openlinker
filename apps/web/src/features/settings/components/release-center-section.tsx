@@ -10,7 +10,6 @@
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
-import { Toggle } from '../../../shared/ui/toggle';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useMessages } from '../../../shared/i18n';
 import type { OperationalSettingsView } from '../api/operational-settings.types';
@@ -55,47 +54,44 @@ export function ReleaseCenterSection({ view }: ReleaseCenterSectionProps): React
 
   return (
     <section
-      className="panel pacing-card"
+      className="panel release-settings"
       id="release-center-toggle"
       aria-labelledby="release-center-toggle-title"
     >
-      <header className="pacing-card__header">
-        <div>
-          <p className="eyebrow">{copy.eyebrow}</p>
-          <h3 className="section-title" id="release-center-toggle-title">
-            {copy.title}
-          </h3>
-        </div>
-        <span className="panel__meta">{copy.savedOnItsOwn}</span>
+      <header className="release-settings__head">
+        <h3 className="release-settings__title" id="release-center-toggle-title">
+          {copy.title}
+        </h3>
+        <span className="release-chip release-chip--accent">{copy.newChip}</span>
       </header>
+      <p className="release-settings__lead">{copy.lead}</p>
 
-      <div className="pacing-card__fields">
-        <div className="pacing-field">
-          <div className="pacing-field__head">
-            <span className="form-field__label">{copy.field.label}</span>
-            <Toggle
-              checked={value}
-              onChange={setValue}
-              aria-label={copy.field.ariaLabel}
-              data-testid="release-center-toggle"
-            />
-          </div>
-          <p className="form-field__hint">{copy.field.description}</p>
-          <p className="form-field__hint" data-testid="release-center-source">
-            {copy.sourceLine[saved.source]}
-          </p>
-          {saved.source === 'setting' ? (
-            <button
-              type="button"
-              className="link-button"
-              disabled={mutation.isPending}
-              onClick={() => save(null)}
-            >
-              {copy.backToEnv}
-            </button>
-          ) : null}
-        </div>
-      </div>
+      <label className="check-row release-settings__check">
+        <input
+          type="checkbox"
+          checked={value}
+          onChange={(event) => setValue(event.target.checked)}
+          aria-label={copy.field.ariaLabel}
+          data-testid="release-center-toggle"
+        />
+        <span>
+          {copy.field.label}
+          <small>{copy.field.description}</small>
+        </span>
+      </label>
+      <p className="release-settings__source" data-testid="release-center-source">
+        {copy.sourceLine[saved.source]}
+      </p>
+      {saved.source === 'setting' ? (
+        <button
+          type="button"
+          className="link-button"
+          disabled={mutation.isPending}
+          onClick={() => save(null)}
+        >
+          {copy.backToEnv}
+        </button>
+      ) : null}
 
       {mutation.error ? (
         <p className="form-field__error" role="alert">
@@ -103,16 +99,16 @@ export function ReleaseCenterSection({ view }: ReleaseCenterSectionProps): React
         </p>
       ) : null}
 
-      {changed ? (
-        <div className="pacing-save">
+      <div className="release-settings__actions">
+        <Button disabled={!changed || mutation.isPending} onClick={() => save(value)}>
+          {copy.save}
+        </Button>
+        {changed ? (
           <Button tone="secondary" onClick={() => setValue(saved.value)}>
             {copy.reset}
           </Button>
-          <Button disabled={mutation.isPending} onClick={() => save(value)}>
-            {copy.save}
-          </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </section>
   );
 }
