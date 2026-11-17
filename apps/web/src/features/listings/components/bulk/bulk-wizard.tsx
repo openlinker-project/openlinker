@@ -46,7 +46,6 @@ import { publishDestinationKind } from '../../lib/publish-destinations';
 import { DuplicateGuardModal } from '../duplicate-guard-modal';
 import type {
   BulkOfferCreateRequest,
-  BulkOfferOverrides,
   BulkPerProductOverride,
 } from '../../api/bulk-listings.types';
 import type { BulkShopPublishItemRequest } from '../../api/listings.types';
@@ -1266,20 +1265,6 @@ function reblockRows(
  * rejects the WHOLE request with `property pricingPolicy should not exist` -
  * after the wizard has already shown the row as ready.
  */
-/**
- * An empty `ean` is the wizard's marker for "list without a barcode" (#4036). On
- * the wire that is the absence of the field, and the catalogue card goes with it:
- * a card is bound to a barcode, so sending one for an offer that has none links
- * the offer to a product it does not match.
- */
-function withoutClearedBarcode(overrides: BulkOfferOverrides): BulkOfferOverrides {
-  if (overrides.ean === undefined || overrides.ean.trim() !== '') return overrides;
-  const rest: BulkOfferOverrides = { ...overrides };
-  delete rest.ean;
-  delete rest.productCardId;
-  return rest;
-}
-
 function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverride {
   // Built by allow-list rather than by omission, so a future FE-only field
   // added to `BulkPerProductOverride` cannot silently reach the wire and
@@ -1292,7 +1277,7 @@ function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverrid
   }
   if (override.price !== undefined) wire.price = override.price;
   if (override.overrides !== undefined) {
-    wire.overrides = withoutClearedBarcode(override.overrides);
+    wire.overrides = override.overrides;
   }
   return wire;
 }

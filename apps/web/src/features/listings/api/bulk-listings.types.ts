@@ -54,6 +54,7 @@ export interface BulkOfferOverrides {
    * from absent (inherit the master barcode). It never reaches the wire - the
    * submit drops the field and the catalogue card with it.
    */
+  /** An empty string means "list without a barcode" (#4036); absent inherits the master's. */
   ean?: string;
   /**
    * Operator confirmation that the EFFECTIVE EAN - the `ean` override above
