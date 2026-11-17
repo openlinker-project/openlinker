@@ -41,6 +41,7 @@ import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openl
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { ShoperIntegrationModule } from '@openlinker/integrations-shoper';
+import { AmazonIntegrationModule } from '@openlinker/integrations-amazon';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
 
@@ -75,6 +76,9 @@ export const workerPlugins: PluginEntry[] = [
   // #3639: Shoper shop platform, registered worker-side so its sync jobs
   // (catalogue, stock, orders, publish) and auth failure classifier run here.
   ShoperIntegrationModule,
+  // #3741: Amazon SP-API foundation, registered worker-side so its retry and
+  // auth-failure classifiers see the errors its future sync jobs raise.
+  AmazonIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB), registered into the
   // core currency registry at boot. Load-bearing here: order ingestion and the
   // FX retry / reconcile-sweep handlers are worker-side. NOT a plugin - no

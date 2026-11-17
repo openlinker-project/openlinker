@@ -48,6 +48,7 @@ import { CoreCapabilityValues } from '@openlinker/core/integrations';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 
 import { allegroAdapterManifest } from '@openlinker/integrations-allegro';
+import { amazonAdapterManifest } from '@openlinker/integrations-amazon';
 import { dpdAdapterManifest } from '@openlinker/integrations-dpd-polska';
 import { eparagonyAdapterManifest } from '@openlinker/integrations-eparagony';
 import { erliAdapterManifest } from '@openlinker/integrations-erli';
@@ -64,6 +65,7 @@ const DEFERRED_CAPABILITY = 'MasterReservationWriter';
 /** Every in-tree adapter manifest, by the name an operator would recognise. */
 const MANIFESTS: ReadonlyArray<readonly [string, AdapterMetadata]> = [
   ['allegro', allegroAdapterManifest],
+  ['amazon', amazonAdapterManifest],
   ['dpd-polska', dpdAdapterManifest],
   ['eparagony', eparagonyAdapterManifest],
   ['erli', erliAdapterManifest],
