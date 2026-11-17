@@ -38,6 +38,7 @@ import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { PacingValueField } from '../../features/settings/components/pacing-value-field';
 import { InventoryMovementRetentionSection } from '../../features/settings/components/inventory-movement-retention-section';
+import { ReleaseCenterSection } from '../../features/settings/components/release-center-section';
 import { StockStalenessSection } from '../../features/settings/components/stock-staleness-section';
 import { SyncJobRetentionSection } from '../../features/settings/components/sync-job-retention-section';
 import { SyncPacingConfirmDialog } from '../../features/settings/components/sync-pacing-confirm-dialog';
@@ -735,6 +736,8 @@ export function OperationalSettingsPage(): ReactElement {
             <InventoryMovementRetentionSection view={view} retention={historyRetention} />
 
             <StockStalenessSection view={view} />
+
+            <ReleaseCenterSection view={view} />
           </div>
 
           <SyncPacingRail

@@ -209,6 +209,29 @@
     "suggestedMax": "suggested ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterSection": {
+    "backToEnv": "Back to .env or default",
+    "eyebrow": "What's new",
+    "field": {
+      "ariaLabel": "Release center on or off",
+      "description": "When off, the what's-new dialog, the bell and the tour are hidden for everyone. The /whats-new history page stays, and each person's read state is kept and returns when you switch it back on. The OL_RELEASE_CENTER_ENABLED variable is read by the API, not the worker.",
+      "label": "Show the release center"
+    },
+    "reset": "Reset",
+    "save": "Save",
+    "saveFailed": "The release center setting could not be saved.",
+    "savedOnItsOwn": "saved on its own",
+    "savedToast": {
+      "description": "It applies on the next page load.",
+      "title": "Release center setting saved"
+    },
+    "sourceLine": {
+      "default": "Default (on). Nothing is set here or in the environment.",
+      "env": "Taken from OL_RELEASE_CENTER_ENABLED in the API's environment.",
+      "setting": "You set this here."
+    },
+    "title": "Release center"
+  },
   "salesDocumentsPage": {
     "adminOnly": {
       "description": "Admin-only access.",
