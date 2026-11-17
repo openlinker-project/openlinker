@@ -786,6 +786,14 @@ export interface PlatformContribution {
   requiresExternalAuthRedirect?: boolean;
   /** Edit-connection: default value for the OL callback URL field. */
   getCallbackUrlDefault?: () => string | undefined;
+  /**
+   * Edit-connection: name of this plugin's settings in the page contents
+   * (#4133). Already resolved in the operator's language, from the plugin's
+   * own namespace (use a getter, like `setupCard.description`). Omitted, the
+   * contents shows one generic "Platform settings" entry. Additive: a plugin
+   * that does not set it behaves exactly as before.
+   */
+  sectionTitle?: string;
   /** Edit-connection: render the platform-specific structured config inputs. */
   StructuredConfigSection?: ComponentType<StructuredConfigSectionProps>;
   /**

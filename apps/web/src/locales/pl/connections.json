@@ -847,6 +847,16 @@
     },
     "save": "Zapisz zmiany",
     "saving": "Zapisywanie...",
+    "sections": {
+      "advanced": "Zaawansowane",
+      "fulfilment": "Realizacja zamówień",
+      "general": "Ogólne",
+      "paymentWriteback": "Zapis płatności",
+      "platform": "Ustawienia platformy",
+      "rateLimit": "Limit zapytań",
+      "salesDocuments": "Dokumenty sprzedaży",
+      "stockPricing": "Stany i ceny"
+    },
     "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
     "updatedDescription": "Ustawienia połączenia zostały zapisane.",
     "updatedTitle": "Połączenie zaktualizowane",

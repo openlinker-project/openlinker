@@ -821,6 +821,16 @@
     },
     "save": "Save changes",
     "saving": "Saving...",
+    "sections": {
+      "advanced": "Advanced",
+      "fulfilment": "Fulfilment ownership",
+      "general": "General",
+      "paymentWriteback": "Payment writeback",
+      "platform": "Platform settings",
+      "rateLimit": "Request rate limit",
+      "salesDocuments": "Sales documents",
+      "stockPricing": "Stock and pricing"
+    },
     "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
     "updatedDescription": "Connection settings have been saved.",
     "updatedTitle": "Connection updated",
