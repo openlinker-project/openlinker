@@ -31,6 +31,11 @@ interface TourCardProps {
 }
 
 const RING_PADDING = 8;
+// Clearance kept below the sticky top bar and above the card, so a scrolled
+// target is never tucked under either.
+const TOP_CLEARANCE = 88;
+const CARD_GAP = 24;
+const CARD_EDGE = 16;
 
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -53,7 +58,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
   const cardRef = useRef<HTMLElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
   const reasonId = useId();
-  const target = useTourTarget(entry?.target ?? null, state.active);
+  const target = useTourTarget(entry?.target ?? null, state.active, state.index);
 
   useEffect(() => {
     if (target.state === 'found') dispatch({ type: 'target', state: 'found' });
@@ -66,12 +71,26 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     cardRef.current?.focus();
   }, [state.index]);
 
-  const element = target.state === 'found' ? target.element : null;
+  // A node the router already removed is as good as missing; measuring it parks the ring at the origin.
+  const element = target.state === 'found' && target.element.isConnected ? target.element : null;
 
   useEffect(() => {
     const ring = ringRef.current;
     if (!element || !ring) return undefined;
-    element.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    const card = cardRef.current;
+    const cardSpace = card ? card.getBoundingClientRect().height + CARD_EDGE + CARD_GAP : 0;
+    // Room below the page content for the card, so the last rows can still scroll clear of it.
+    document.documentElement.style.setProperty('--tour-card-space', `${Math.ceil(cardSpace)}px`);
+    const rectNow = element.getBoundingClientRect();
+    const fitsAboveCard = rectNow.top >= TOP_CLEARANCE && rectNow.bottom <= window.innerHeight - cardSpace;
+    if (!fitsAboveCard) {
+      // Align the target's top under the bar: the card owns the lower edge, so
+      // centring would park the target right behind it on short viewports.
+      window.scrollBy({
+        top: rectNow.top - TOP_CLEARANCE,
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      });
+    }
     let frame = 0;
     const place = (): void => {
       const rect = element.getBoundingClientRect();
@@ -90,6 +109,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
     resizeObserver?.observe(element);
     return () => {
+      document.documentElement.style.removeProperty('--tour-card-space');
       cancelAnimationFrame(frame);
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);

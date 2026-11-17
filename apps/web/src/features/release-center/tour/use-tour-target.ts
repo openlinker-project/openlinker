@@ -20,7 +20,12 @@ export function findTourTarget(target: string): HTMLElement | null {
 
 export type TargetResult = { state: 'waiting' | 'missing' } | { state: 'found'; element: HTMLElement };
 
-export function useTourTarget(target: string | null, enabled: boolean): TargetResult {
+export function useTourTarget(
+  target: string | null,
+  enabled: boolean,
+  /** Changes per step: two steps can share a target name while pointing at different screens. */
+  stepKey: string | number
+): TargetResult {
   const queryClient = useQueryClient();
   const [result, setResult] = useState<TargetResult>({ state: 'waiting' });
 
@@ -28,45 +33,57 @@ export function useTourTarget(target: string | null, enabled: boolean): TargetRe
     setResult({ state: 'waiting' });
     if (!enabled || !target) return undefined;
 
-    let settled = false;
+    let current: HTMLElement | null = null;
+    let missing = false;
     let extensions = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const observer = new MutationObserver(() => check());
 
-    const finish = (next: TargetResult): void => {
-      if (settled) return;
-      settled = true;
-      observer.disconnect();
-      if (timer) clearTimeout(timer);
-      setResult(next);
-    };
-    function check(): void {
-      const element = findTourTarget(target as string);
-      if (element) finish({ state: 'found', element });
-    }
     const arm = (): void => {
-      timer = setTimeout(() => {
-        if (settled) return;
+      if (timer) clearTimeout(timer);
+      extensions = 0;
+      const tick = (): void => {
+        if (current || missing) return;
         if (queryClient.isFetching() > 0 && extensions < MAX_EXTENSIONS) {
           extensions += 1;
-          arm();
+          timer = setTimeout(tick, BASE_TIMEOUT_MS);
           return;
         }
-        finish({ state: 'missing' });
-      }, BASE_TIMEOUT_MS);
+        missing = true;
+        setResult({ state: 'missing' });
+      };
+      timer = setTimeout(tick, BASE_TIMEOUT_MS);
     };
 
+    // The observer outlives the first hit: the router navigates AFTER the step
+    // changes, so the first match can be the previous screen's node. When that
+    // node is detached, look again instead of keeping a ring on nothing.
+    const check = (): void => {
+      if (current?.isConnected) return;
+      const element = findTourTarget(target);
+      if (!element) {
+        if (current) {
+          current = null;
+          missing = false;
+          setResult({ state: 'waiting' });
+          arm();
+        }
+        return;
+      }
+      current = element;
+      missing = false;
+      if (timer) clearTimeout(timer);
+      setResult({ state: 'found', element });
+    };
+
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
     check();
-    if (!settled) {
-      observer.observe(document.body, { childList: true, subtree: true });
-      arm();
-    }
+    if (!current) arm();
     return () => {
-      settled = true;
       observer.disconnect();
       if (timer) clearTimeout(timer);
     };
-  }, [target, enabled, queryClient]);
+  }, [target, enabled, stepKey, queryClient]);
 
   return result;
 }
