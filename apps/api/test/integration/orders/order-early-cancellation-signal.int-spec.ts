@@ -179,6 +179,11 @@ describe('Order early-cancellation signal (#2069)', () => {
     const afterCancel = new Date();
     expect(cancelResult).toEqual([]);
 
+    // #4032: the source can hydrate the order, so it is persisted as a
+    // cancelled order right away (snapshot only) and the pending signal is
+    // consumed into `cancelledAt`. Nothing was routed, mirrored or created.
+    expect(createOrderCalls).toHaveLength(0);
+
     const mappingAfterCancel = await mappingRepo.findOne({
       where: {
         entityType: 'Order',
@@ -186,19 +191,23 @@ describe('Order early-cancellation signal (#2069)', () => {
         connectionId: sourceConnection.id,
       },
     });
-    expect(mappingAfterCancel).toBeNull();
+    expect(mappingAfterCancel).not.toBeNull();
+
+    const recordAfterCancel = await recordRepo.findOne({
+      where: { internalOrderId: mappingAfterCancel!.internalId },
+    });
+    expect(recordAfterCancel).not.toBeNull();
+    // The cancelledAt is the instant the cancel-handling branch stamped, not
+    // a sentinel: pin the value rather than only its non-nullness.
+    expect(recordAfterCancel!.cancelledAt).not.toBeNull();
+    const cancelledAtMs = recordAfterCancel!.cancelledAt!.getTime();
+    expect(cancelledAtMs).toBeGreaterThanOrEqual(beforeCancel.getTime());
+    expect(cancelledAtMs).toBeLessThanOrEqual(afterCancel.getTime());
 
     const signalAfterCancel = await signalRepo.findOne({
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
     });
-    expect(signalAfterCancel).not.toBeNull();
-    // The signal carries the instant the cancel-handling branch stamped
-    // (`new Date()` at the time of the call), not a sentinel — pin the value
-    // rather than only its non-nullness.
-    expect(signalAfterCancel!.cancelledAt.getTime()).toBeGreaterThanOrEqual(
-      beforeCancel.getTime()
-    );
-    expect(signalAfterCancel!.cancelledAt.getTime()).toBeLessThanOrEqual(afterCancel.getTime());
+    expect(signalAfterCancel).toBeNull();
 
     // Act 2: the create/sync job now runs — the ordinary path, no eventType.
     const syncResult = await ingestion.syncOrderFromSource(
@@ -223,12 +232,9 @@ describe('Order early-cancellation signal (#2069)', () => {
     const record = await recordRepo.findOne({
       where: { internalOrderId: mappingAfterSync!.internalId },
     });
-    // Pin the VALUE, not just non-nullness: `cancelledAt` must be the
-    // signal's own consumed instant (`earlySignalAt`), never `now` at
-    // ingestion time — proving `consume()`'s returned timestamp actually
-    // reached `markCancelled` rather than merely triggering it.
+    // The later sync must not move the cancelledAt stamped by the cancel.
     expect(record!.cancelledAt).not.toBeNull();
-    expect(record!.cancelledAt!.getTime()).toBe(signalAfterCancel!.cancelledAt.getTime());
+    expect(record!.cancelledAt!.getTime()).toBe(cancelledAtMs);
 
     const signalAfterSync = await signalRepo.findOne({
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
@@ -259,7 +265,7 @@ describe('Order early-cancellation signal (#2069)', () => {
     });
     expect(recordAfterThirdPoll!.cancelledAt).not.toBeNull();
     expect(recordAfterThirdPoll!.cancelledAt!.getTime()).toBe(
-      signalAfterCancel!.cancelledAt.getTime()
+      cancelledAtMs
     );
   });
 
@@ -345,10 +351,22 @@ describe('Order early-cancellation signal (#2069)', () => {
     );
     expect(firstCancel).toEqual([]);
 
-    const signalAfterFirst = await signalRepo.findOne({
-      where: { sourceConnectionId: sourceConnection.id, externalOrderId },
+    const mappingRepo = dataSource.getRepository(IdentifierMappingOrmEntity);
+    const recordRepo = dataSource.getRepository(OrderRecordOrmEntity);
+    // #4032: the first cancel hydrates and persists the order (consuming the
+    // signal), so first-write-wins is now observed on the order record.
+    const mapping = await mappingRepo.findOne({
+      where: {
+        entityType: 'Order',
+        externalId: externalOrderId,
+        connectionId: sourceConnection.id,
+      },
     });
-    expect(signalAfterFirst).not.toBeNull();
+    expect(mapping).not.toBeNull();
+    const recordAfterFirst = await recordRepo.findOne({
+      where: { internalOrderId: mapping!.internalId },
+    });
+    expect(recordAfterFirst!.cancelledAt).not.toBeNull();
 
     // Force the two calls' `new Date()` stamps onto DISTINCT milliseconds —
     // without this, two `ingestion.syncOrderFromSource` calls back-to-back can
@@ -369,13 +387,17 @@ describe('Order early-cancellation signal (#2069)', () => {
     );
     expect(secondCancel).toEqual([]);
 
-    const signalAfterSecond = await signalRepo.findOne({
-      where: { sourceConnectionId: sourceConnection.id, externalOrderId },
+    const recordAfterSecond = await recordRepo.findOne({
+      where: { internalOrderId: mapping!.internalId },
     });
-    expect(signalAfterSecond).not.toBeNull();
-    expect(signalAfterSecond!.id).toBe(signalAfterFirst!.id);
-    expect(signalAfterSecond!.cancelledAt.getTime()).toBe(
-      signalAfterFirst!.cancelledAt.getTime()
+    expect(recordAfterSecond!.cancelledAt).not.toBeNull();
+    expect(recordAfterSecond!.cancelledAt!.getTime()).toBe(
+      recordAfterFirst!.cancelledAt!.getTime()
     );
+    expect(
+      await signalRepo.findOne({
+        where: { sourceConnectionId: sourceConnection.id, externalOrderId },
+      })
+    ).toBeNull();
   });
 });

@@ -39,7 +39,7 @@ export interface SaleDecrementUnclaimedOutcome {
 export interface SaleDecrementSettlement {
   readonly status: Extract<
     InventorySaleDecrementStatus,
-    'applied' | 'deduplicated' | 'blocked' | 'in_doubt'
+    'applied' | 'deduplicated' | 'blocked' | 'in_doubt' | 'retryable'
   >;
   readonly reason: InventorySaleDecrementReason | null;
   readonly detail: string | null;
