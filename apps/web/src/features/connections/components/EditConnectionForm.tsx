@@ -39,6 +39,7 @@ import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
 import { PaymentWritebackSection } from './payment-writeback-section';
+import { ChannelShippingSummarySection } from './channel-shipping-summary-section';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
@@ -1069,6 +1070,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           syncPaymentWritebackToJson={syncPaymentWritebackToJson}
         />
       ),
+    });
+  }
+
+  if (connection.enabledCapabilities.includes('OrderSource') || connection.enabledCapabilities.includes('ProductMaster')) {
+    sections.push({
+      id: 'shipping',
+      label: copy.sections.shipping,
+      children: <ChannelShippingSummarySection connection={connection} />,
     });
   }
 

@@ -855,6 +855,7 @@
       "platform": "Ustawienia platformy",
       "rateLimit": "Limit zapytań",
       "salesDocuments": "Dokumenty sprzedaży",
+      "shipping": "Kto wysyła",
       "stockPricing": "Stany i ceny"
     },
     "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
@@ -1443,6 +1444,16 @@
       "other": "{n} metody dostawy (nie wczytano nazw)"
     }
   },
+  "shippingNextStep": {
+    "body": "Dopóki nie przypiszesz przewoźnika, twój sklep wysyła każde zamówienie z tego kanału, tak jak przed OpenLinker. Aby OpenLinker kupował etykiety, wybierz przewoźnika dla każdej metody dostawy w Mapowaniach.",
+    "link": "Przypisz, kto wysyła",
+    "title": "Co dalej: kto wysyła z tego kanału"
+  },
+  "shippingSummary": {
+    "configure": "Skonfiguruj w Mapowaniach",
+    "intro": "Kto wysyła każdą metodę dostawy, według kanału sprzedaży. Metody bez przewoźnika wysyła twój sklep.",
+    "noChannels": "Z tym sklepem nie połączono jeszcze żadnego kanału sprzedaży. Połącz kanał, a potem przypisz, kto wysyła jego metody dostawy."
+  },
   "shoperSetupForm": {
     "beforeYouStart": {
       "body": "W panelu administracyjnym {platform} otwórz <strong>Dodaj integrację</strong> i utwórz integrację. {platform} wyda <strong>Token API</strong>; OpenLinker wysyła go jako token bearer w każdym zapytaniu. Nadaj integracji dostęp do: produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki, statusy zamówień, klienci, webhooki, dostawy i płatności.",
@@ -1477,6 +1488,7 @@
     "latency": "({ms} ms)",
     "ordersNextStep": {
       "body": "Do utworzenia zamówienia {platform} potrzebuje domyślnej metody dostawy, metody płatności i statusu zamówienia. Wybierz je z list sklepu w <link>ustawieniach połączenia</link>.",
+      "shipping": "Pakowanie: gdy kanał sprzedaży zostanie połączony z tym sklepem, wybierz dla każdej metody dostawy, kto ją wysyła. <link>Przypisz przewoźników do kanałów</link>.",
       "title": "Jeszcze jeden krok do przyjmowania zamówień"
     },
     "platformFallback": "sklep",
@@ -1654,6 +1666,23 @@
     "unexpected-status": "Platforma odpowiedziała w nieoczekiwany sposób.",
     "unreachable": "Nie udało się połączyć z platformą. Sprawdź adres i czy platforma działa.",
     "unsupported": "Tego rodzaju połączenia nie da się jeszcze przetestować."
+  },
+  "wizardCreated": {
+    "active": "Aktywne",
+    "assignChannel": {
+      "body": "Ten przewoźnik niczego nie wysyła, dopóki nie przypiszesz do niego metody dostawy kanału sprzedaży. Zrobisz to na stronie połączenia, w sekcji „Wysyła dla”.",
+      "link": "Przypisz to konto do kanału sprzedaży",
+      "title": "Przypisz to konto do kanału sprzedaży"
+    },
+    "editConnection": "Otwórz ustawienia połączenia",
+    "goToConnection": "Przejdź do połączenia",
+    "name": "Połączono jako",
+    "shopPacking": {
+      "body": "Gdy kanał sprzedaży zostanie połączony z tym sklepem, wybierz dla każdej metody dostawy, kto ją wysyła. Do tego czasu twój sklep wysyła każde zamówienie.",
+      "link": "Przypisz przewoźników do kanałów",
+      "title": "Dalej: pakowanie i przewoźnicy"
+    },
+    "targetShop": "Sklep docelowy"
   },
   "woocommerceSetupForm": {
     "beforeYouStart": {
