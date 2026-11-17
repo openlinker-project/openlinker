@@ -849,7 +849,7 @@
     "saving": "Zapisywanie...",
     "sections": {
       "advanced": "Zaawansowane",
-      "fulfilment": "Realizacja zamówień",
+      "fulfilment": "Pakowanie",
       "general": "Ogólne",
       "paymentWriteback": "Zapis płatności",
       "platform": "Ustawienia platformy",
@@ -983,8 +983,12 @@
     "name": "Nazwa"
   },
   "fulfilmentOwnershipSection": {
+    "description": "Decyduje, czy OpenLinker pokazuje własne elementy pakowania dla zamówień trafiających do tego systemu. Nie wybiera przewoźnika ani nie generuje etykiet.",
     "heading": "Kto pakuje zamówienia",
     "help": "Włącz, gdy to ten system pakuje paczkę i ją wysyła (np. zewnętrzny system magazynowy). OpenLinker ukryje wtedy własny przycisk „Oznacz jako spakowane” i znacznik spakowania dla trafiających tu zamówień. Zmienia to tylko widok: nic nie jest blokowane, a ten system nadal może zgłosić zamówienie jako spakowane.",
+    "hintLabel": "Przykład: pakuje zewnętrzny magazyn",
+    "hintTerm": "Przykład",
+    "hintText": "Paczkę pakuje zewnętrzny system magazynowy. Po włączeniu OpenLinker ukrywa własny przycisk „Oznacz jako spakowane” i znacznik spakowania dla tych zamówień, bo pakuje magazyn. Etykiety i przewoźników ustawia się osobno w sekcji Kto wysyła.",
     "toggle": "Ten system sam pakuje i wysyła zamówienia"
   },
   "inpostSetupForm": {
@@ -1096,6 +1100,7 @@
     "wizardsChip": "Kreatory dla każdej platformy"
   },
   "paymentWriteback": {
+    "description": "Określa, czy OpenLinker oznacza zamówienie jako opłacone w tym sklepie po zapłacie kupującego. Nie zmienia pakowania ani wysyłki.",
     "factCod": "Zamówienia za pobraniem i anulowane nigdy nie są oznaczane jako opłacone.",
     "factFailure": "Jeśli sklep tego nie przyjmie, zamówienie pojawi się w Zamówieniach pod filtrem „Płatność nie trafiła do sklepu”.",
     "factFromNow": "Dotyczy płatności od tej chwili.",
@@ -1451,7 +1456,7 @@
   },
   "shippingSummary": {
     "configure": "Skonfiguruj w Mapowaniach",
-    "intro": "Kto wysyła każdą metodę dostawy, według kanału sprzedaży. Metody bez przewoźnika wysyła twój sklep.",
+    "intro": "Kto tworzy etykietę przewozową (przewoźnik) dla każdej metody dostawy, osobno dla kanału sprzedaży. Dotyczy etykiet i przewoźników, nie tego, kto pakuje paczkę. Metody bez przewoźnika wysyła Twój sklep.",
     "noChannels": "Z tym sklepem nie połączono jeszcze żadnego kanału sprzedaży. Połącz kanał, a potem przypisz, kto wysyła jego metody dostawy."
   },
   "shoperSetupForm": {
