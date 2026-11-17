@@ -13,6 +13,8 @@ export function EditConnectionPage(): ReactElement {
   const connectionQuery = useConnectionQuery(connectionId);
   const copy = useMessages('connections').editConnectionPage;
   const common = useMessages('ui').common;
+  // Same convention as the other connection pages: a session without
+  // connections:write must not be offered a form whose save it cannot perform.
   const canWrite = usePermission('connections:write');
 
   return (

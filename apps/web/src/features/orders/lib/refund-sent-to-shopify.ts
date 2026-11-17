@@ -11,14 +11,14 @@
  */
 import { useConnectionQuery } from '../../connections';
 
+/**
+ * Read from `publicConfig`, the adapter-declared role-safe projection of the
+ * config (the adapter lists the key in its manifest `publicConfigKeys`). The raw
+ * `config` is `{}` for every non-admin role, so reading it here would show an
+ * operator the "recording only" copy on an opted-in connection. No platform
+ * branch: an adapter that does not declare the key simply reads false.
+ */
 export function useRefundSentToShopify(sourceConnectionId: string | null | undefined): boolean {
   const query = useConnectionQuery(sourceConnectionId ?? '');
-  const connection = query.data;
-  if (!connection || connection.platformType !== 'shopify') return false;
-  const config: unknown = connection.config;
-  return (
-    typeof config === 'object' &&
-    config !== null &&
-    (config as Record<string, unknown>).refundsThroughShopify === true
-  );
+  return query.data?.publicConfig?.refundsThroughShopify === true;
 }

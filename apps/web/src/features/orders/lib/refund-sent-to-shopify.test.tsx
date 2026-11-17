@@ -7,8 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiClientProvider } from '../../../app/api/api-client-provider';
 import { useRefundSentToShopify } from './refund-sent-to-shopify';
 
-function shopify(config: Record<string, unknown>): Connection {
-  return { ...sampleConnection, platformType: 'shopify', config };
+function shopify(publicConfig: Record<string, boolean>): Connection {
+  return { ...sampleConnection, platformType: 'shopify', config: {}, publicConfig };
 }
 
 describe('useRefundSentToShopify', () => {
@@ -17,14 +17,14 @@ describe('useRefundSentToShopify', () => {
     expect(result.current).toBe(false);
   });
 
-  it('should be true only for a Shopify connection that opted in', async () => {
+  it('should be true when the adapter reports the opt-in in publicConfig, even with an empty config', async () => {
     const { result } = renderHook(() => useRefundSentToShopify('c1'), {
       wrapper: wrap(shopify({ refundsThroughShopify: true })),
     });
     await waitFor(() => expect(result.current).toBe(true));
   });
 
-  it('should stay false for a Shopify connection that did not opt in', async () => {
+  it('should stay false when publicConfig does not report the opt-in', async () => {
     const getById = vi.fn<(connectionId: string) => Promise<Connection>>().mockResolvedValue(shopify({}));
     const { result } = renderHook(() => useRefundSentToShopify('c1'), { wrapper: wrapWith(getById) });
     await waitFor(() => expect(getById).toHaveBeenCalled());
