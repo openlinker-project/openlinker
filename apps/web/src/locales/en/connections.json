@@ -1381,12 +1381,15 @@
   },
   "shipping": {
     "backToOmsSetup": "Back to OMS setup",
+    "carrierMappingsMessage": "Which delivery methods it labels is set on the sales channel, not here. Open the channel and use its fulfillment routing tab.",
+    "carrierMappingsNoChannels": "No sales channel is connected yet. Connect one first.",
+    "carrierMappingsOpenChannel": "Open {channel}",
+    "carrierMappingsTitle": "{carrier} is a carrier account, not a sales channel",
     "createdAction": "Choose delivery methods",
     "createdBody": "Next, choose which delivery methods {carrier} ships. Until then no order goes to it.",
     "createdTitle": "{carrier} is connected.",
-    "rowChange": "Change",
-    "rowChoose": "Choose",
     "rowLoading": "Loading delivery methods...",
+    "rowOpenChannel": "Open on the sales channel",
     "rowUnavailable": "Could not load who ships these delivery methods.",
     "shippingAllLabelled": "Every delivery method gets a label from OpenLinker.",
     "shippingChange": "Change who ships what",
@@ -1411,7 +1414,9 @@
     "shipsForUnnamed": {
       "one": "{n} delivery method (name not loaded)",
       "other": "{n} delivery methods (names not loaded)"
-    }
+    },
+    "shipsForUnusedBody": "No delivery method goes to this account. Assignment is set on the sales channel: open one below and choose which of its delivery methods this carrier ships.",
+    "shipsForUnusedTitle": "{carrier} is not used yet"
   },
   "shippingNextStep": {
     "body": "Until you assign a carrier, your shop ships every order from this channel, the way it did before OpenLinker. To have OpenLinker buy labels, choose a carrier per delivery method in Mappings.",
