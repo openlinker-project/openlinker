@@ -823,7 +823,7 @@
     "saving": "Saving...",
     "sections": {
       "advanced": "Advanced",
-      "fulfilment": "Fulfilment ownership",
+      "fulfilment": "Packing",
       "general": "General",
       "paymentWriteback": "Payment writeback",
       "platform": "Platform settings",
@@ -957,8 +957,12 @@
     "name": "Name"
   },
   "fulfilmentOwnershipSection": {
+    "description": "Decides whether OpenLinker shows its own packing controls for orders that go to this system. It does not choose a carrier or generate labels.",
     "heading": "Who packs the orders",
     "help": "Turn this on when the system packs the box and ships it (for example an external warehouse system). OpenLinker then hides its own \"Mark packed\" button and packed tick for orders that go here. It only changes what you see: nothing is blocked, and that system can still report an order as packed.",
+    "hintLabel": "Example: an external warehouse packs the order",
+    "hintTerm": "Example",
+    "hintText": "An external warehouse system packs the parcel. Turn this on and OpenLinker hides its own \"Mark packed\" button and packed tick for these orders, because the warehouse does the packing. Labels and carriers are set separately under Who ships.",
     "toggle": "This system packs and ships orders itself"
   },
   "inpostSetupForm": {
@@ -1070,6 +1074,7 @@
     "wizardsChip": "Per-platform wizards"
   },
   "paymentWriteback": {
+    "description": "Controls whether OpenLinker marks an order as paid in this shop after the buyer pays. It does not change packing or shipping.",
     "factCod": "Cash on delivery and cancelled orders are never marked paid.",
     "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",
     "factFromNow": "Applies to payments from now on.",
@@ -1415,7 +1420,7 @@
   },
   "shippingSummary": {
     "configure": "Configure in Mappings",
-    "intro": "Who ships each delivery method, per sales channel. Methods without a carrier are shipped by your shop.",
+    "intro": "Who creates the shipping label (the carrier) for each delivery method, per sales channel. This is about labels and carriers, not about who packs the box. Methods without a carrier are shipped by your shop.",
     "noChannels": "No sales channel is connected to this shop yet. Connect one, then assign who ships its delivery methods."
   },
   "shoperSetupForm": {

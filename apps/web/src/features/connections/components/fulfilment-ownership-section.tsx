@@ -18,6 +18,7 @@
 import type { ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { useMessages } from '../../../shared/i18n';
+import { Infotip } from '../../../shared/ui/infotip';
 import type { EditConnectionFormValues } from './edit-connection.schema';
 
 export interface FulfilmentOwnershipSectionProps {
@@ -43,7 +44,16 @@ export function FulfilmentOwnershipSection({
 
   return (
     <section className="rate-limit-section" data-testid="fulfilment-ownership-section">
-      <h3 className="rate-limit-section__title">{copy.heading}</h3>
+      <h3 className="rate-limit-section__title">
+        {copy.heading}{' '}
+        <Infotip
+          ariaLabel={copy.hintLabel}
+          definitions={[{ term: copy.hintTerm, text: copy.hintText }]}
+        />
+      </h3>
+      <p className="muted-text" data-testid="fulfilment-ownership-description">
+        {copy.description}
+      </p>
       <label className="rate-limit-section__toggle">
         <input
           type="checkbox"
