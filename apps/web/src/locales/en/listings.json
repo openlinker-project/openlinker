@@ -1959,6 +1959,85 @@
   "requiredToSell": {
     "outOfStock": "Out of stock - it will publish but cannot be purchased until restocked."
   },
+  "salesChannels": {
+    "backAtSource": "Back in {source}, not on sale anywhere",
+    "banner": {
+      "body": "OpenLinker could not stop the sale on every channel. Open the product to see where and what to do.",
+      "link": "Show these listings",
+      "loadFailed": "Could not check whether deleted products are still on sale.",
+      "title": {
+        "one": "{n} product deleted at the source is still on sale",
+        "other": "{n} products deleted at the source are still on sale"
+      }
+    },
+    "cannotBeBought": "cannot be bought",
+    "checked": "Checked {time}",
+    "hideChannels": "Hide channels",
+    "inStockAtSource": "Stock comes from {source}.",
+    "kicker": "Sales channels",
+    "loadFailed": {
+      "body": "Do not assume it is off sale. Try again.",
+      "retry": "Try again",
+      "title": "Could not check where this product is on sale"
+    },
+    "needsAction": "Needs action",
+    "noOrdersSince": "No orders since deletion",
+    "offSaleEverywhere": {
+      "one": "Off sale on all {n} channel",
+      "other": "Off sale on all {n} channels"
+    },
+    "offerRef": "Offer {id}",
+    "onSale": {
+      "one": "On sale on {selling} of {n} channel",
+      "other": "On sale on {selling} of {n} channels"
+    },
+    "onSaleSubject": {
+      "one": "{subject} is on sale on {selling} of {n} channel",
+      "other": "{subject} is on sale on {selling} of {n} channels"
+    },
+    "ordersSince": {
+      "one": "{n} order since deletion",
+      "other": "{n} orders since deletion"
+    },
+    "platformRef": "{platform}, {ref}",
+    "productRef": "Product #{id}",
+    "putBack": {
+      "one": "Put back on sale on {n} channel",
+      "other": "Put back on sale on {n} channels"
+    },
+    "putBackBusy": "Putting back on sale...",
+    "putBackFailed": "Could not put it back on sale on {channels}. Try again.",
+    "putBackFailedUnknown": "Some channels could not be put back on sale. Try again.",
+    "putBackPick": "Put back on sale on {channel}",
+    "quantity": "{n} in stock",
+    "reason": {
+      "error": "Could not stop the sale. OpenLinker tries again every hour.",
+      "noStockWrite": "OpenLinker can not change stock in {platform}",
+      "notYet": "Not stopped yet. OpenLinker checks every hour.",
+      "stockSyncOff": "Stock sync is off"
+    },
+    "showChannels": "Show channels",
+    "since": "since {date}",
+    "sizeNote": "A shop can only hide the whole product, so the deleted variant is set to 0",
+    "status": {
+      "activating": "Activating",
+      "active": "Active",
+      "draft": "Draft",
+      "ended": "Ended",
+      "inactivating": "Deactivating",
+      "inactive": "Inactive",
+      "notChecked": "Not checked yet",
+      "onSale": "On sale",
+      "outOfStock": "Out of stock",
+      "published": "On sale",
+      "removed": "Removed",
+      "unpublished": "Turned off"
+    },
+    "stopped": "Stopped",
+    "turnOffIn": "Turn off in {platform}",
+    "turnOnStockSync": "Turn on stock sync",
+    "variantsLabel": "Variants"
+  },
   "shopAttributePicker": {
     "add": "Add attribute",
     "attributes": {

@@ -770,6 +770,20 @@ export function createMockApiClient(
         .fn()
         .mockRejectedValue(new ApiError('Adapter does not support live offer reading', 422, null)),
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      // #3962 - a live product with nothing held: the product page's sales
+      // channels section renders nothing and the products banner stays away.
+      getProductSaleStatus: vi.fn().mockResolvedValue({
+        productId: '',
+        deletedAtSource: false,
+        deletedAt: null,
+        staleVariantIds: [],
+        staleSkus: [],
+        ordersSinceDeletion: null,
+        checkedAt: null,
+        rows: [],
+      }),
+      getSaleHoldAttentionCount: vi.fn().mockResolvedValue({ productsStillOnSale: 0 }),
+      releaseSaleHolds: vi.fn().mockResolvedValue({ released: [], failed: [] }),
       // ADR-046: the frontend holds no default format, so a component that
       // mounts a description editor renders a disabled placeholder until this
       // read resolves. Defaulting it permissively here keeps every existing

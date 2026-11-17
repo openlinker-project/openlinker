@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { ListingSaleRow, ProductSaleStatusResponse } from '../api/listings.types';
 import { SalesChannelsSection, type SalesChannelsVariant } from './sales-channels-section';
@@ -126,5 +127,65 @@ describe('SalesChannelsSection', () => {
     );
     await waitFor(() => expect(read).toHaveBeenCalledWith('p1'));
     expect(container.querySelector('.sales-channels')).toBeNull();
+  });
+
+  const cameBack = (): ProductSaleStatusResponse =>
+    status({
+      deletedAtSource: false,
+      staleVariantIds: [],
+      staleSkus: [],
+      ordersSinceDeletion: null,
+      rows: [row({})],
+    });
+
+  it('should say the read failed instead of staying silent when sale status cannot be loaded', async () => {
+    const apiClient = createMockApiClient({
+      listings: { getProductSaleStatus: vi.fn().mockRejectedValue(new Error('down')) } as never,
+      connections: { list: vi.fn().mockResolvedValue(connections) } as never,
+    });
+    renderWithProviders(
+      <SalesChannelsSection productId="p1" variants={variants} sourceName="PrestaShop" canWrite />,
+      { apiClient },
+    );
+    expect(await screen.findByText('Could not check where this product is on sale')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+
+  it('should not offer to put a product back on sale to a viewer', async () => {
+    const apiClient = createMockApiClient({
+      listings: { getProductSaleStatus: vi.fn().mockResolvedValue(cameBack()) } as never,
+      connections: { list: vi.fn().mockResolvedValue(connections) } as never,
+    });
+    renderWithProviders(
+      <SalesChannelsSection productId="p1" variants={variants} sourceName="PrestaShop" canWrite={false} />,
+      { apiClient },
+    );
+    expect(await screen.findByText('Back in PrestaShop, not on sale anywhere')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Put back on sale/ })).not.toBeInTheDocument();
+  });
+
+  it('should show the coded refusal when the product is still deleted at the source', async () => {
+    const release = vi
+      .fn()
+      .mockRejectedValue(new ApiError('refused', 409, { code: 'SALE_HOLD_RELEASE_REFUSED' }));
+    setup(cameBack(), { releaseSaleHolds: release });
+    await userEvent.click(await screen.findByRole('button', { name: 'Put back on sale on 1 channel' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('still deleted at the source');
+  });
+
+  it('should name the channels that could not be put back when the release answers partially', async () => {
+    const release = vi
+      .fn()
+      .mockResolvedValue({ released: [], failed: [{ holdId: 'h1', message: 'x' }] });
+    setup(cameBack(), { releaseSaleHolds: release });
+    await userEvent.click(await screen.findByRole('button', { name: 'Put back on sale on 1 channel' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Konto główne');
+  });
+
+  it('should disable the button while the release is running', async () => {
+    const release = vi.fn().mockReturnValue(new Promise(() => undefined));
+    setup(cameBack(), { releaseSaleHolds: release });
+    await userEvent.click(await screen.findByRole('button', { name: 'Put back on sale on 1 channel' }));
+    expect(await screen.findByRole('button', { name: 'Putting back on sale...' })).toBeDisabled();
   });
 });

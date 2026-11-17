@@ -2139,6 +2139,97 @@
   "requiredToSell": {
     "outOfStock": "Brak w magazynie - zostanie opublikowany, ale nie będzie można go kupić do czasu uzupełnienia stanu."
   },
+  "salesChannels": {
+    "backAtSource": "Wrócił w {source}, nie jest na sprzedaż nigdzie",
+    "banner": {
+      "body": "OpenLinker nie zatrzymał sprzedaży w każdym kanale. Otwórz produkt, żeby zobaczyć gdzie i co zrobić.",
+      "link": "Pokaż te oferty",
+      "loadFailed": "Nie udało się sprawdzić, czy usunięte produkty są nadal na sprzedaż.",
+      "title": {
+        "few": "{n} produkty usunięte w źródle nadal są na sprzedaż",
+        "many": "{n} produktów usuniętych w źródle nadal jest na sprzedaż",
+        "one": "{n} produkt usunięty w źródle nadal jest na sprzedaż",
+        "other": "{n} produktu usuniętego w źródle nadal jest na sprzedaż"
+      }
+    },
+    "cannotBeBought": "nie można kupić",
+    "checked": "Sprawdzono {time}",
+    "hideChannels": "Ukryj kanały",
+    "inStockAtSource": "Stan magazynowy pochodzi z {source}.",
+    "kicker": "Kanały sprzedaży",
+    "loadFailed": {
+      "body": "Nie zakładaj, że jest wycofany ze sprzedaży. Spróbuj ponownie.",
+      "retry": "Spróbuj ponownie",
+      "title": "Nie udało się sprawdzić, gdzie ten produkt jest na sprzedaż"
+    },
+    "needsAction": "Wymaga działania",
+    "noOrdersSince": "Brak zamówień od usunięcia",
+    "offSaleEverywhere": {
+      "few": "Wycofane ze sprzedaży we wszystkich {n} kanałach",
+      "many": "Wycofane ze sprzedaży we wszystkich {n} kanałach",
+      "one": "Wycofane ze sprzedaży we wszystkich {n} kanale",
+      "other": "Wycofane ze sprzedaży we wszystkich {n} kanału"
+    },
+    "offerRef": "Oferta {id}",
+    "onSale": {
+      "few": "Na sprzedaż w {selling} z {n} kanałów",
+      "many": "Na sprzedaż w {selling} z {n} kanałów",
+      "one": "Na sprzedaż w {selling} z {n} kanału",
+      "other": "Na sprzedaż w {selling} z {n} kanału"
+    },
+    "onSaleSubject": {
+      "few": "{subject} jest na sprzedaż w {selling} z {n} kanałów",
+      "many": "{subject} jest na sprzedaż w {selling} z {n} kanałów",
+      "one": "{subject} jest na sprzedaż w {selling} z {n} kanału",
+      "other": "{subject} jest na sprzedaż w {selling} z {n} kanału"
+    },
+    "ordersSince": {
+      "few": "{n} zamówienia od usunięcia",
+      "many": "{n} zamówień od usunięcia",
+      "one": "{n} zamówienie od usunięcia",
+      "other": "{n} zamówienia od usunięcia"
+    },
+    "platformRef": "{platform}, {ref}",
+    "productRef": "Produkt #{id}",
+    "putBack": {
+      "few": "Przywróć do sprzedaży w {n} kanałach",
+      "many": "Przywróć do sprzedaży w {n} kanałach",
+      "one": "Przywróć do sprzedaży w {n} kanale",
+      "other": "Przywróć do sprzedaży w {n} kanału"
+    },
+    "putBackBusy": "Przywracanie do sprzedaży...",
+    "putBackFailed": "Nie udało się przywrócić do sprzedaży w: {channels}. Spróbuj ponownie.",
+    "putBackFailedUnknown": "Nie w każdym kanale udało się przywrócić sprzedaż. Spróbuj ponownie.",
+    "putBackPick": "Przywróć do sprzedaży w kanale {channel}",
+    "quantity": "{n} szt. na stanie",
+    "reason": {
+      "error": "Nie udało się zatrzymać sprzedaży. OpenLinker ponawia próbę co godzinę.",
+      "noStockWrite": "OpenLinker nie może zmienić stanu w {platform}",
+      "notYet": "Jeszcze nie zatrzymano. OpenLinker sprawdza co godzinę.",
+      "stockSyncOff": "Synchronizacja stanów jest wyłączona"
+    },
+    "showChannels": "Pokaż kanały",
+    "since": "od {date}",
+    "sizeNote": "Sklep może ukryć tylko cały produkt, więc usunięty wariant ma stan 0",
+    "status": {
+      "activating": "Aktywowanie",
+      "active": "Aktywna",
+      "draft": "Szkic",
+      "ended": "Zakończona",
+      "inactivating": "Dezaktywowanie",
+      "inactive": "Nieaktywna",
+      "notChecked": "Jeszcze nie sprawdzono",
+      "onSale": "Na sprzedaż",
+      "outOfStock": "Brak na stanie",
+      "published": "Na sprzedaż",
+      "removed": "Usunięty",
+      "unpublished": "Wyłączony"
+    },
+    "stopped": "Zatrzymane",
+    "turnOffIn": "Wyłącz w {platform}",
+    "turnOnStockSync": "Włącz synchronizację stanów",
+    "variantsLabel": "Warianty"
+  },
   "shopAttributePicker": {
     "add": "Dodaj atrybut",
     "attributes": {
