@@ -66,10 +66,18 @@
       "sandbox": "Sandbox",
       "unset": "- nie ustawiono -"
     },
+    "notifyMarketplace": {
+      "hint": "Przykład: etykiety drukujesz rano, a paczki odbiera kurier po południu. Zostaw wyłączone, aby kupujący dostał informację „wysłano” dopiero po oznaczeniu paczki jako wysłanej.",
+      "hintLabel": "O: powiadamianiu marketplace po zakupie etykiety",
+      "label": "Powiadom marketplace od razu po zakupie etykiety",
+      "scope": "Dotyczy etykiet kupionych na koncie InPost „{account}”, niezależnie od kanału sprzedaży, z którego pochodzi zamówienie.",
+      "title": "Powiadomienie marketplace o wysyłce"
+    },
     "organizationId": {
       "description": "ID organizacji ShipX - parametr ścieżki URL w każdym punkcie końcowym przesyłek.",
       "label": "ID organizacji"
     },
+    "sectionTitle": "Ustawienia InPost",
     "sender": {
       "buildingNumber": {
         "label": "Numer budynku"
