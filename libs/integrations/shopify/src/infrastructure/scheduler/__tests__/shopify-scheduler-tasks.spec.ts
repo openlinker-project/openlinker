@@ -25,4 +25,20 @@ describe('buildShopifySchedulerTasks', () => {
       requiredCapability: 'OrderProcessorManager',
     });
   });
+
+  it('should reconcile published product status hourly under its own cursor, gated on ProductPublisher', () => {
+    const task = byId.get('shopify-product-status-sync');
+
+    expect(task).toMatchObject({
+      jobType: 'shop.product.statusSync',
+      requiredCapability: 'ProductPublisher',
+      cronExpression: '0 * * * *',
+      enabledEnvVar: 'OL_SHOPIFY_PRODUCT_STATUS_SYNC_SCHEDULER_ENABLED',
+    });
+    expect(task?.enabledDefault).toBeUndefined();
+    expect(task?.generatePayload({ id: 'c1' } as Connection)).toMatchObject({
+      cursorKey: 'shop.productStatus.scanOffset',
+      limit: 100,
+    });
+  });
 });

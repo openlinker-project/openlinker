@@ -128,6 +128,28 @@ export const PRODUCT_STATUS_UPDATE_MUTATION = `mutation OlProductStatus($product
   }
 }`;
 
+/**
+ * Live status of a published product (#4192). `node(id:)` answers for either
+ * id a mapping can carry: a simple publish maps the PRODUCT, a grouped one the
+ * VARIANT (whose product's status is the one that matters). A deleted node, or
+ * a variant whose product is gone, reads `null`.
+ */
+export const PRODUCT_LIVE_STATUS_QUERY = `query OlProductLiveStatus($id: ID!) {
+  node(id: $id) {
+    __typename
+    ... on Product { status }
+    ... on ProductVariant { product { status } }
+  }
+}`;
+
+export interface ProductLiveStatusQuery {
+  node:
+    | { __typename: 'Product'; status: string }
+    | { __typename: 'ProductVariant'; product: { status: string } | null }
+    | { __typename: string }
+    | null;
+}
+
 export const VARIANT_PRICE_UPDATE_MUTATION = `mutation OlPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
   productVariantsBulkUpdate(productId: $productId, variants: $variants) {
     userErrors { field message code }

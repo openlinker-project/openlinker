@@ -34,6 +34,7 @@ describe('createShopifyPlugin', () => {
         'ShopCategoryBrowser',
         'ShopAttributeReader',
         'ShopProductVisibilityWriter',
+        'ShopProductStatusReader',
       ],
       // OrderSource and OrderProcessorManager are opt-in: one sends the store's
       // orders to every destination, the other brings every marketplace order in.
