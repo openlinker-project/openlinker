@@ -84,6 +84,9 @@ export class OrderDestinationRetryService implements IOrderDestinationRetryServi
     // ingestion for it would be routed or held again and the claimed row below
     // would stay `pending` for ever. Refused BEFORE the claim, so nothing is
     // written. Routed = a work object exists, or the router holds it with a block.
+    // Check-then-claim is not atomic: routing could create work between this read
+    // and the claim below. The window is accepted - ingestion is the only writer of
+    // work/blocks and it is rare for it to land inside one retry click.
     if (await this.isHandledByRouting(order)) {
       throw new OrderDestinationHandledByRoutingException(
         internalOrderId,
