@@ -3,10 +3,11 @@
 OpenLinker adapter for the [Amazon Selling Partner API](https://developer-docs.amazon.com/sp-api)
 (SP-API). Target markets for the first release: **DE first, then FR and PL** (#3741).
 
-**Status: plugin foundation only.** The package registers the connection, the credentials, the
-connection test and the retry and auth-failure classifiers. It advertises **no capability yet**:
-`OrderSource` and `OfferManager` enter the manifest together with the adapters that deliver them,
-in their own children of the epic (#4176; foundation: #4177).
+**Status:** foundation (#4177) and `OrderSource` (#4178): the order feed over Orders API v2026-01-01
+`searchOrders`, the order read over `getOrder`, the tracking write-back over v0 `confirmShipment`, the
+option lists for the mapping UI and the `amazon-orders-poll` task (off by default,
+`OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED`). `OrderSource` is opt-in on a connection. The remaining
+capabilities arrive with their own children of the epic (#4176).
 Evidence base: `docs/plans/analysis/SPIKE-2881-amazon-sp-api.md` and the product spec
 `docs/specs/product-spec-2881-amazon-marketplace-integration.md`.
 
@@ -74,7 +75,6 @@ will pace each operation.
 
 ## Not yet built
 
-Everything that needs a capability: order ingestion (`OrderSource`, Orders API v2026-01-01), offers and
-stock (`OfferManager`, Listings Items), the SQS / EventBridge inbound transport, the buyer shipping
+Offers and stock (`OfferManager`, Listings Items), the SQS / EventBridge inbound transport, the buyer shipping
 address (restricted Direct-to-Consumer Shipping role), tracking write-back, the 30-day PII deletion
 Amazon's DPP requires, the public-app OAuth flow and a web setup form. Epic #4176 lists them.
