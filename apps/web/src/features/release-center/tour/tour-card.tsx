@@ -148,7 +148,14 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
   return (
     <>
       <div ref={ringRef} className="tour-ring" aria-hidden="true" hidden={!element} />
-      <section ref={cardRef} className="tour-card" role="region" aria-label={tour.regionLabel} tabIndex={-1}>
+      <section
+        ref={cardRef}
+        className="tour-card"
+        data-parity={state.index % 2}
+        role="region"
+        aria-label={tour.regionLabel}
+        tabIndex={-1}
+      >
         <ol className="tour-card__rail" aria-hidden="true">
           {state.steps.map((other, index) => {
             const otherDone =
@@ -194,7 +201,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             ))}
           </div>
         ) : null}
-        <div role="status" aria-live="polite">
+        <div className="tour-card__live" role="status" aria-live="polite">
           {status && shownChoice && state.target !== 'missing' && !saveFailed ? (
             <div className="tour-done">
               <ReleaseIcon name="check" size={14} />
