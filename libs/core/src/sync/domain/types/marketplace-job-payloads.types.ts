@@ -16,6 +16,15 @@ export interface MarketplaceOrdersPollPayloadV1 {
   eventTypes?: OrderFeedEventType[];
 }
 
+/**
+ * `marketplace.notifications.drain` (#4179): read up to `maxMessages` from the
+ * connection's inbound queue and route each notification.
+ */
+export interface MarketplaceNotificationsDrainPayloadV1 {
+  schemaVersion: 1;
+  maxMessages: number;
+}
+
 export interface MarketplaceOrderSyncPayloadV1 {
   schemaVersion: 1;
   externalOrderId: string;
