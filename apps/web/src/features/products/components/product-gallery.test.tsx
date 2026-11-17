@@ -29,11 +29,11 @@ describe('ProductGallery', () => {
     });
   });
 
-  it('should fall back to the stored url when the proxy has no picture', async () => {
+  it('should show the placeholder, never the stored url, when the proxy has no picture', async () => {
     const requestBlob = vi.fn().mockRejectedValue(new Error('404'));
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <ProductGallery
-        images={['https://cdn.example.com/1.jpg']}
+        images={['http://prestashop/img/1.jpg']}
         name="Mug"
         productId="ol_product_2"
       />,
@@ -41,9 +41,27 @@ describe('ProductGallery', () => {
     );
 
     await waitFor(() => {
-      expect(requestBlob).toHaveBeenCalled();
+      expect(requestBlob).toHaveBeenCalledWith('/products/ol_product_2/images/0');
     });
-    expect(screen.getByAltText('Mug')).toHaveAttribute('src', 'https://cdn.example.com/1.jpg');
+    expect(screen.queryByAltText('Mug')).toBeNull();
+    expect(container.querySelector('img[src="http://prestashop/img/1.jpg"]')).toBeNull();
+    expect(container.querySelector('.product-gallery__placeholder')).toHaveTextContent('M');
+  });
+
+  it('should not render the stored url while the proxy is still loading', () => {
+    const requestBlob = vi.fn(() => new Promise<Blob>(() => undefined));
+    const { container } = renderWithProviders(
+      <ProductGallery
+        images={['http://prestashop/img/1.jpg', 'http://prestashop/img/2.jpg']}
+        name="Lamp"
+        productId="ol_product_3"
+      />,
+      { apiClient: createMockApiClient({ requestBlob }) }
+    );
+
+    expect(requestBlob).toHaveBeenCalledWith('/products/ol_product_3/images/0');
+    expect(requestBlob).toHaveBeenCalledWith('/products/ol_product_3/images/1');
+    expect(container.querySelector('img')).toBeNull();
   });
 
   it('should use the stored url directly without a product id', () => {

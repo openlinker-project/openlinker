@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from '../../../shared/ui/dialog';
 import { interpolate, useMessages } from '../../../shared/i18n';
+import { productImageProxyPath } from '../lib/product-image-path';
 
 interface ProductGalleryProps {
   images: string[];
@@ -34,22 +35,32 @@ interface GalleryImgProps extends Omit<ComponentPropsWithoutRef<'img'>, 'src'> {
   index: number;
 }
 
-/** One gallery picture: proxied with the session's token when a product id is known. */
-function GalleryImg({ src, productId, index, onError, ...props }: GalleryImgProps): ReactElement {
+/**
+ * One gallery picture: proxied with the session's token when a product id is known.
+ *
+ * With a product id the stored url is never handed to the browser (#3915), not
+ * even while the proxy is loading or after it failed: on a Docker install it
+ * names a container host the browser cannot resolve, so it would only cost a
+ * failed request. Nothing renders then, and the caller's placeholder shows.
+ */
+function GalleryImg({
+  src,
+  productId,
+  index,
+  onError,
+  ...props
+}: GalleryImgProps): ReactElement | null {
   const apiClient = useApiClient();
   const fetchImage = useCallback((path: string) => apiClient.requestBlob(path), [apiClient]);
   const proxied = useAuthenticatedImage(
-    productId ? `/products/${encodeURIComponent(productId)}/images/${String(index)}` : null,
+    productId ? productImageProxyPath(productId, index) : null,
     fetchImage,
   );
-  if (proxied.status === 'ready') {
-    // The proxied bytes loaded, so a broken mark the stored url earned does not apply.
-    const { className, ...rest } = props;
-    const kept = className?.split(' ').filter((c) => c !== 'is-broken').join(' ') || undefined;
-    return <img src={proxied.objectUrl} className={kept} {...rest} />;
+  if (productId) {
+    return proxied.status === 'ready' ? <img src={proxied.objectUrl} {...props} /> : null;
   }
-  // No product id, or the proxy has nothing (yet): the stored url, hidden by
-  // the caller's `onError` when the browser cannot load it either.
+  // No product id: the stored url, hidden by the caller's `onError` when the
+  // browser cannot load it.
   return <img src={src} onError={onError} {...props} />;
 }
 

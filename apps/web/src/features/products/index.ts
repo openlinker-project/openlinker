@@ -63,6 +63,7 @@ export {
 // #3567 - a stock correction invalidates the products list and detail caches.
 export { productsQueryKeys } from './api/products.query-keys';
 export { VariantThumbnail, type VariantThumbnailProps } from './components/variant-thumbnail';
+export { productImagePath, productImageProxyPath } from './lib/product-image-path';
 export {
   useCostCoverageQuery,
   useCostSummaryQuery,
