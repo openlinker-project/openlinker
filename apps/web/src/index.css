@@ -40962,8 +40962,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   bottom: 16px;
   margin-inline: auto;
   width: min(430px, calc(100% - 24px));
+  box-sizing: border-box;
   display: grid;
+  /* A grid track defaults to min-content, so one unbreakable row (the footer) used to
+     stretch the whole card past its box; the explicit track keeps it inside (#4154). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
+  overflow-wrap: anywhere;
   padding: 14px 16px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
@@ -41102,14 +41107,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   justify-content: space-between;
   gap: 8px;
 }
-/* One row on every step, including the last (Back + Finish are the widest pair);
-   only a very narrow phone may wrap. */
-.tour-card__footer .button { white-space: nowrap; }
+/* Quiet action left, Back as an icon, primary right, on one row. Where even that does not fit
+   (a very narrow phone in a long language) the row wraps and the actions stay right-aligned; nothing clips. */
+.tour-card__footer { flex-wrap: wrap; }
+.tour-card > *, .tour-card__top > *, .tour-card__nav { min-width: 0; }
+.tour-card__footer .button { white-space: nowrap; max-width: 100%; }
 .tour-card__footer > .button { padding-inline: 8px; }
-@media (max-width: 359px) {
-  .tour-card__footer { flex-wrap: wrap; }
-}
-.tour-card__nav { display: flex; gap: 6px; }
+.tour-card__nav { display: flex; gap: 6px; flex: 1 1 auto; justify-content: flex-end; }
+.tour-card__back { padding-inline: 8px; }
 .tour-card .button[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; }
 
 /* ── SettingsPageTemplate (#4132) ───────────────────────────────────────

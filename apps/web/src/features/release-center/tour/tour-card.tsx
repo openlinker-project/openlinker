@@ -300,7 +300,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             {tour.requiredReason}
           </p>
         ) : null}
-        <div className="tour-card__footer">
+        <div className={`tour-card__footer${state.index > 0 ? ' tour-card__footer--three' : ''}`}>
           <Button tone="ghost" className="button--sm" onClick={onClose}>
             {tour.later}
           </Button>
@@ -308,10 +308,12 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             {state.index > 0 ? (
               <Button
                 tone="secondary"
-                className="button--sm"
+                className="button--sm tour-card__back"
+                aria-label={tour.back}
+                title={tour.back}
                 onClick={() => dispatch({ type: 'back' })}
               >
-                <ReleaseIcon name="arrow-left" size={14} /> {tour.back}
+                <ReleaseIcon name="arrow-left" size={14} />
               </Button>
             ) : null}
             {state.target === 'missing' ? (
