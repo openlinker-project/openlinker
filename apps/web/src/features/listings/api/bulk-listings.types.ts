@@ -50,11 +50,11 @@ export interface BulkOfferOverrides {
    * threaded to both barcode sites in the core `OfferBuilderService` (catalog
    * self-link + EanCategoryMatcher). The BE strips it from perVariant/perProduct
    * maps only for `categoryId`; `ean` is kept. Must be a GS1-valid GTIN-8/13.
-   * An empty string is wizard-local (#4036): "list without a barcode", distinct
-   * from absent (inherit the master barcode). It never reaches the wire - the
-   * submit drops the field and the catalogue card with it.
+   * An empty string means "list without a barcode" (#4036), distinct from absent
+   * (inherit the master barcode). It is sent as-is: the backend treats it as no
+   * barcode for category resolution and the catalogue link, instead of falling
+   * back to the master's.
    */
-  /** An empty string means "list without a barcode" (#4036); absent inherits the master's. */
   ean?: string;
   /**
    * Operator confirmation that the EFFECTIVE EAN - the `ean` override above
@@ -185,6 +185,19 @@ export interface BulkBatchRecordSummary {
    * Kept optional so a response from an older API still type-checks.
    */
   productId?: string | null;
+  /**
+   * The request this record was submitted with (#4037): title, category,
+   * parameters and EAN choices. Drives the "Fix and resubmit" prefill. Null for
+   * records that predate snapshots; absent from an older API.
+   */
+  request?: BulkBatchRecordRequest | null;
+}
+
+/** The slice of the persisted create-offer snapshot the wizard prefill reads. */
+export interface BulkBatchRecordRequest {
+  schemaVersion: number;
+  internalVariantId: string;
+  overrides?: BulkOfferOverrides;
 }
 
 export interface BulkBatchSummary {

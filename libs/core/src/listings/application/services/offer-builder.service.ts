@@ -194,7 +194,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       });
     }
 
-    const price = this.resolvePrice(input, product, connection.config, issues);
+    const price = this.resolvePrice(input, product, variant, connection.config, issues);
 
     // Gate 1 — category / price. Throw before projection: projection needs a
     // resolved category, and surfacing all field problems at once is the
@@ -818,7 +818,9 @@ export class OfferBuilderService implements IOfferBuilderService {
    * Resolve `command.price`. An explicit `input.price` always wins (per-item
    * operator/UI-resolved price, e.g. the bulk wizard's client-side pricing
    * policy) and is used verbatim — no rule applies to it. Otherwise falls back
-   * to the master catalog price, run through the connection's pricing-resolution
+   * to the variant's own master price (siblings of a multi-variant product can
+   * differ, #4039), then to the product price when the variant carries none,
+   * run through the connection's pricing-resolution
    * rule (#1843, `pricing-rule.types.ts`) — markup/margin formula + rounding.
    * A connection with no configured rule is untouched (`applyPricingRule`
    * returns the master price unchanged), preserving the pre-#1843 passthrough.
@@ -826,13 +828,14 @@ export class OfferBuilderService implements IOfferBuilderService {
   private resolvePrice(
     input: BuildCreateOfferCommandInput,
     product: { price: number | null; currency: string | null },
+    variant: { price?: number },
     connectionConfig: Parameters<typeof readPricingRule>[0],
     issues: OfferBuilderValidationIssue[]
   ): { amount: number; currency: string } | null {
     if (input.price) {
       return input.price;
     }
-    const amount = product.price;
+    const amount = variant.price ?? product.price;
     const currency = product.currency;
     if (typeof amount !== 'number') {
       issues.push({

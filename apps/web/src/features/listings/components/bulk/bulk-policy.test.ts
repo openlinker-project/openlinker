@@ -490,6 +490,54 @@ describe('a cleared barcode is an explicit "no barcode" (#4036)', () => {
   });
 });
 
+describe('a card-linked variant moved to another category (#4035)', () => {
+  const blockersFor = (variant: BulkVariantRow): string[] => {
+    const row = makeWizardRow([variant]);
+    return recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+  };
+
+  it('should block the row when the chosen category differs from the card category', () => {
+    const moved = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-2' } } });
+    expect(blockersFor(moved)).toContain('card-category-mismatch');
+  });
+
+  it('should stay ready when the chosen category is the card category', () => {
+    const same = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-1' } } });
+    expect(blockersFor(same)).not.toContain('card-category-mismatch');
+    expect(blockersFor(makeVariant('ol_variant_1'))).not.toContain('card-category-mismatch');
+  });
+
+  it('should not block once the barcode is cleared or the card was picked explicitly', () => {
+    const cleared = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', ean: '' } },
+    });
+    const picked = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', productCardId: 'card-9' } },
+    });
+    expect(blockersFor(cleared)).not.toContain('card-category-mismatch');
+    expect(blockersFor(picked)).not.toContain('card-category-mismatch');
+  });
+});
+
+describe('a sibling card in another category than the resolved one (#4035 review)', () => {
+  const card = { id: 'card-1', name: 'Card' } as unknown as BulkVariantRow['overriddenCard'];
+
+  it('should block a resolved-only mismatch with no operator pick', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+  });
+
+  it('should never show the advisory chip next to the gating one', () => {
+    const variant = makeVariant('ol_variant_1', { overriddenCard: card });
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+    expect(blockers).not.toContain('card-category-differs');
+  });
+});
+
 describe('distinguishingLabel', () => {
   it('uses attributes, falling back to Variant {n}', () => {
     expect(distinguishingLabel(makeVariant('ol_variant_1'), 0)).toBe('Rozmiar: M');

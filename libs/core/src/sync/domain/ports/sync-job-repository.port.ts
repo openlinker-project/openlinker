@@ -108,6 +108,27 @@ export interface SyncJobRepositoryPort {
   }): Promise<SyncJob[]>;
 
   /**
+   * Claim queued jobs of ONE type and connection as peers of a running job
+   * (#3986 drain-claim batching).
+   *
+   * `FOR UPDATE SKIP LOCKED` in one transaction, so two drainers never take the
+   * same peer. Claimed rows are flipped to `running` under the CLAIMER's
+   * `lockedBy` with `lockedAt = now`, which is exactly what stuck-job recovery
+   * keys on: if the claimer dies, the peers are requeued by the ordinary
+   * lock-timeout sweep with no attempt consumed. Only due, `queued` rows are
+   * taken; `excludeJobId` keeps the claimer itself out.
+   *
+   * @returns The claimed peers, oldest first (possibly empty)
+   */
+  claimQueuedPeers(input: {
+    jobType: JobType;
+    connectionId: string;
+    limit: number;
+    workerId: string;
+    excludeJobId: string;
+  }): Promise<SyncJob[]>;
+
+  /**
    * Mark job as succeeded and record its business outcome.
    *
    * The outcome captures whether the underlying business operation

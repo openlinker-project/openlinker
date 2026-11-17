@@ -73,10 +73,17 @@ export interface ImportOrderInput {
    * sends the operator's payment mapping for the source payment type (#3474)
    * and otherwise `'Check payment'`, which matches the payment module the
    * endpoint delegates to (`ps_checkpayment`) and the pre-ADR-016 WS path. It
-   * is only a label: the module stays `ps_checkpayment`. The controller falls
+   * is only a label; the module comes from {@link paymentModule}. The controller falls
    * back to `'OpenLinker'` if absent.
    */
   paymentMethod: string;
+  /**
+   * Payment module technical name (e.g. `ps_wirepayment`) the order is imported
+   * with (#3988); the endpoint then records it as `orders.module` and replaces
+   * the label with the module's display name. Omit for the default
+   * `ps_checkpayment`. A module build that predates the field ignores it.
+   */
+  paymentModule?: string;
   /** OL order reference, used as the PS order `reference` + retry dedup key. */
   orderReference: string;
   /**

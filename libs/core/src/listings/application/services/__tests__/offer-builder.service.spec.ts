@@ -822,6 +822,59 @@ describe('OfferBuilderService', () => {
       expect(result.price).toEqual({ amount: 99.99, currency: 'EUR' });
     });
 
+    it("uses the variant's own price over the product price when no input.price (#4039)", async () => {
+      productsService.getVariant.mockResolvedValue({
+        ...defaultVariant,
+        price: 84.99,
+      } as ProductVariant);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.price).toEqual({ amount: 84.99, currency: 'PLN' });
+    });
+
+    it("applies the pricing rule to the variant's own price (#4039)", async () => {
+      productsService.getVariant.mockResolvedValue({
+        ...defaultVariant,
+        price: 100,
+      } as ProductVariant);
+      connectionPort.get.mockResolvedValue({
+        ...defaultConnection,
+        config: {
+          masterCatalogConnectionId: MASTER_CONN_ID,
+          pricingRule: { type: 'markup', percent: 10 },
+        },
+      } as Connection);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.price).toEqual({ amount: 110, currency: 'PLN' });
+    });
+
+    it('lets an explicit input.price win over the variant price (#4039)', async () => {
+      productsService.getVariant.mockResolvedValue({
+        ...defaultVariant,
+        price: 84.99,
+      } as ProductVariant);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        price: { amount: 10, currency: 'PLN' },
+      });
+
+      expect(result.price).toEqual({ amount: 10, currency: 'PLN' });
+    });
+
     it('throws when no input.price and master product has no currency', async () => {
       productMaster.getProduct.mockResolvedValue({
         id: 'ol_product_456',

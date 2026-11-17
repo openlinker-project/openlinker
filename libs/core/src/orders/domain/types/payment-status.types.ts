@@ -35,3 +35,22 @@ export const PAYMENT_STATUS = {
 export function isPaymentStatus(value: unknown): value is PaymentStatus {
   return typeof value === 'string' && (PaymentStatusValues as readonly string[]).includes(value);
 }
+
+/**
+ * Whether fulfilment routing must wait for the buyer's payment (#4033).
+ *
+ * A routed order goes on the pack bench and lowers the product master's stock
+ * (#3453), so routing an order nobody has paid for lets a packer pack it and
+ * keeps stock taken for an order the marketplace may still cancel. Only
+ * `awaiting` and `refunded` wait. `cod` is paid on delivery and ships now.
+ * `undefined` means the source does not report payment at all, so it routes as
+ * before - holding it would stop every order from such a source for good.
+ *
+ * This only decides whether a NEW routing decision may be made. A refund that
+ * arrives after the order was routed is deliberately left alone: the routing
+ * commit's `already-routed` guard runs first, so existing work is never
+ * withdrawn here. Undoing a routed order is the cancellation path's job.
+ */
+export function isRoutingAwaitingPayment(status: PaymentStatus | undefined): boolean {
+  return status === PAYMENT_STATUS.Awaiting || status === PAYMENT_STATUS.Refunded;
+}

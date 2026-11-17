@@ -44,6 +44,7 @@ import type {
 import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
 import { publishDestinationKind } from '../../lib/publish-destinations';
 import { DuplicateGuardModal } from '../duplicate-guard-modal';
+import type { RecoveryPrefillEntry } from '../../lib/batch-recovery';
 import type {
   BulkOfferCreateRequest,
   BulkPerProductOverride,
@@ -117,6 +118,12 @@ interface BulkWizardProps {
    * informational - nothing in the submit path consumes it.
    */
   resumedFromBatchId?: string;
+  /**
+   * The failed variants' saved requests, keyed by variant id (#4037). Seeds the
+   * resumed wizard with the title, category, parameters and EAN choices the
+   * operator had already entered, instead of the auto-resolved defaults.
+   */
+  recoveryPrefill?: ReadonlyMap<string, RecoveryPrefillEntry>;
 }
 
 const WIZARD_STEPS: { id: BulkWizardStep }[] = [
@@ -144,6 +151,7 @@ export function BulkWizard({
   preselectedConnectionId,
   preSelectedVariantIds,
   resumedFromBatchId,
+  recoveryPrefill,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -171,7 +179,7 @@ export function BulkWizard({
   const canGenerateDescription = write.canWrite;
   const [step, setStep] = useState<BulkWizardStep>('config');
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
-  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds));
+  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds, recoveryPrefill));
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Whether the operator changed anything the wizard would lose on leaving
   // (#3851). Set by the three row-editing callbacks rather than diffed against
@@ -237,9 +245,9 @@ export function BulkWizard({
   useEffect(() => {
     setRows((prev) => {
       const byId = new Map(prev.map((r) => [r.productId, r]));
-      return dedupedProducts.map((p) => byId.get(p.id) ?? seedRow(p, preSelectedVariantIds));
+      return dedupedProducts.map((p) => byId.get(p.id) ?? seedRow(p, preSelectedVariantIds, recoveryPrefill));
     });
-  }, [productsSignature, dedupedProducts, preSelectedVariantIds]);
+  }, [productsSignature, dedupedProducts, preSelectedVariantIds, recoveryPrefill]);
 
   // Distinct submit categories of every INCLUDED variant (#810 / #1741 / #2243).
   // This used to be card-LESS rows only, because the schema was read for one
@@ -1427,8 +1435,11 @@ export function mergeResolveOutcomes(
 export function seedRows(
   products: Product[],
   preSelectedVariantIds?: ReadonlySet<string>,
+  recoveryPrefill?: ReadonlyMap<string, RecoveryPrefillEntry>,
 ): BulkWizardRow[] {
-  return dedupById(products).map((product) => seedRow(product, preSelectedVariantIds));
+  return dedupById(products).map((product) =>
+    seedRow(product, preSelectedVariantIds, recoveryPrefill),
+  );
 }
 
 function seedVariantRow(
@@ -1457,7 +1468,33 @@ function seedVariantRow(
   };
 }
 
-function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>): BulkWizardRow {
+/**
+ * The product-tier override a recovered product opens with. A simple product has
+ * no per-variant scope - its barcode, card and images live on the base - so it
+ * takes the whole saved request; a family takes only the shared fields.
+ */
+function recoveredBaseOverride(
+  base: RecoveryPrefillEntry,
+  isSimpleProduct: boolean,
+): BulkPerProductOverride {
+  const o = base.overrides;
+  if (isSimpleProduct) return { overrides: { ...o } };
+  return {
+    overrides: {
+      ...(o.title !== undefined ? { title: o.title } : {}),
+      ...(o.description !== undefined ? { description: o.description } : {}),
+      ...(o.categoryId ? { categoryId: o.categoryId } : {}),
+      ...(o.parameters ? { parameters: o.parameters } : {}),
+      ...(o.platformParams ? { platformParams: o.platformParams } : {}),
+    },
+  };
+}
+
+function seedRow(
+  product: Product,
+  preSelectedVariantIds?: ReadonlySet<string>,
+  recoveryPrefill?: ReadonlyMap<string, RecoveryPrefillEntry>,
+): BulkWizardRow {
   // A variant deleted at the master (#1599 `isStale`) is never listed - the
   // submit drops it too - so seeding it would count it, block the batch on it
   // and show it in the editor as a variant the operator cannot list.
@@ -1478,11 +1515,22 @@ function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>):
   // first INCLUDED variant so a variant-scoped product represents a checked one.
   const primaryVariant: ProductVariant | null =
     variants.find(isIncluded) ?? variants[0] ?? null;
+  const seededVariants = variants.map((v) => {
+    const seeded = seedVariantRow(v, product, isIncluded(v));
+    const prefill = recoveryPrefill?.get(v.id);
+    return prefill ? { ...seeded, override: { overrides: prefill.overrides } } : seeded;
+  });
+  // The product-tier override carries what the editor shows as the shared
+  // base (title, category, parameters); the first recovered variant speaks for
+  // the product, since a family shares one category (#4037).
+  const base = variants
+    .map((v) => recoveryPrefill?.get(v.id))
+    .find((entry): entry is RecoveryPrefillEntry => entry !== undefined);
   return {
     productId: product.id,
     product,
     primaryVariant,
-    variants: variants.map((v) => seedVariantRow(v, product, isIncluded(v))),
+    variants: seededVariants,
     blockers: primaryVariant ? [] : ['no-variant'],
     resolvedCategoryId: null,
     resolvedProductCardId: null,
@@ -1491,6 +1539,7 @@ function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>):
     masterStock: null,
     masterCurrency: null,
     categoryCandidates: [],
-    override: {},
+    override: base ? recoveredBaseOverride(base, variants.length === 1) : {},
+    ...(base ? { editFormValues: { parameters: base.formParameters } } : {}),
   };
 }

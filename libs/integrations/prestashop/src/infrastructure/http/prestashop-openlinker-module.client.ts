@@ -204,6 +204,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       id_order_state: input.idOrderState,
       amount_paid: input.amountPaid,
       payment_method: input.paymentMethod,
+      ...(input.paymentModule ? { payment_module: input.paymentModule } : {}),
       order_reference: input.orderReference,
       ...(input.linePrices && input.linePrices.length > 0
         ? {
