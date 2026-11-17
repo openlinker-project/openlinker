@@ -519,6 +519,25 @@ describe('a card-linked variant moved to another category (#4035)', () => {
   });
 });
 
+describe('a sibling card in another category than the resolved one (#4035 review)', () => {
+  const card = { id: 'card-1', name: 'Card' } as unknown as BulkVariantRow['overriddenCard'];
+
+  it('should block a resolved-only mismatch with no operator pick', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+  });
+
+  it('should never show the advisory chip next to the gating one', () => {
+    const variant = makeVariant('ol_variant_1', { overriddenCard: card });
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+    expect(blockers).not.toContain('card-category-differs');
+  });
+});
+
 describe('distinguishingLabel', () => {
   it('uses attributes, falling back to Variant {n}', () => {
     expect(distinguishingLabel(makeVariant('ol_variant_1'), 0)).toBe('Rozmiar: M');
