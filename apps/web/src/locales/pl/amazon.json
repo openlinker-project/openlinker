@@ -1,4 +1,54 @@
 {
+  "actions": {
+    "description": "Rejestruje w Amazonie kolejkę powiadomień o zamówieniach i subskrybuje ją do zmian zamówień. Można uruchomić ponownie.",
+    "needsQueue": "Najpierw zapisz adres kolejki SQS.",
+    "register": "Zarejestruj kolejkę",
+    "registering": "Rejestrowanie...",
+    "title": "Powiadomienia o zamówieniach",
+    "toast": {
+      "failedTitle": "Kolejka nie została zarejestrowana",
+      "notAccepted": "Amazon nie przyjął rejestracji.",
+      "registered": "Amazon zgłasza teraz zmiany zamówień do kolejki.",
+      "registeredTitle": "Kolejka zarejestrowana"
+    }
+  },
+  "credentials": {
+    "awsAccessKeyId": "Identyfikator klucza AWS (opcjonalnie)",
+    "awsHint": "Zostaw klucz AWS pusty, jeśli powiadomienia mają być czytane bez klucza.",
+    "awsPaired": "Podaj oba klucze AWS albo żadnego.",
+    "awsSecretAccessKey": "Tajny klucz AWS",
+    "cancel": "Anuluj",
+    "clientId": "Client ID aplikacji LWA",
+    "clientSecret": "Client secret aplikacji LWA",
+    "environment": "Dostarczane przez środowisko serwera",
+    "label": "Dane dostępowe",
+    "missing": "Brak zapisanych danych dostępowych. Autoryzuj ponownie, żeby korzystać z połączenia.",
+    "missingShort": "Brak",
+    "reauthorize": "Autoryzuj ponownie",
+    "refreshToken": "Refresh token",
+    "save": "Zapisz dane",
+    "saving": "Zapisywanie...",
+    "stored": "Przechowywane w postaci zaszyfrowanej. Autoryzuj ponownie, gdy Amazon zgłosi taką potrzebę albo po zmianie secretu aplikacji.",
+    "storedShort": "Zapisane",
+    "toast": {
+      "description": "Od teraz połączenie używa nowych danych dostępowych.",
+      "title": "Zapisano dane dostępowe"
+    }
+  },
+  "edit": {
+    "account": {
+      "description": "Ustawione przy tworzeniu połączenia. Inny region lub środowisko wymaga nowego połączenia.",
+      "label": "Selling Partner API",
+      "value": "{region}, {environment}"
+    },
+    "marketplaces": {
+      "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
+      "label": "Rynki",
+      "unlisted": "Rynek {id}"
+    },
+    "queueUrlDescription": "Amazon dostarcza zmiany zamówień do tej kolejki. Po zapisaniu zarejestruj ją poniżej.",
+    "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać ofert."
+  },
   "plugin": {
     "setupCardBadge": "Marketplace",
     "setupCardDescription": "Sprzedawaj na Amazonie: importuj zamówienia, łącz i wystawiaj oferty, synchronizuj stany i ceny."

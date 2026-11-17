@@ -1,4 +1,54 @@
 {
+  "actions": {
+    "description": "Registers the order-notification queue with Amazon and subscribes it to order changes. Safe to run again.",
+    "needsQueue": "Save an SQS queue URL first.",
+    "register": "Register queue",
+    "registering": "Registering...",
+    "title": "Order notifications",
+    "toast": {
+      "failedTitle": "The queue was not registered",
+      "notAccepted": "Amazon did not accept the registration.",
+      "registered": "Amazon now reports order changes to the queue.",
+      "registeredTitle": "Queue registered"
+    }
+  },
+  "credentials": {
+    "awsAccessKeyId": "AWS access key id (optional)",
+    "awsHint": "Leave the AWS key empty to keep reading notifications without a key.",
+    "awsPaired": "Enter both AWS keys, or neither.",
+    "awsSecretAccessKey": "AWS secret access key",
+    "cancel": "Cancel",
+    "clientId": "LWA client id",
+    "clientSecret": "LWA client secret",
+    "environment": "Supplied by the server environment",
+    "label": "Credentials",
+    "missing": "No credentials are stored. Re-authorize to use this connection.",
+    "missingShort": "Not stored",
+    "reauthorize": "Re-authorize",
+    "refreshToken": "Refresh token",
+    "save": "Save credentials",
+    "saving": "Saving...",
+    "stored": "Stored encrypted. Re-authorize when Amazon reports the connection needs it, or after you rotate the app secret.",
+    "storedShort": "Stored",
+    "toast": {
+      "description": "The connection uses the new credentials from now on.",
+      "title": "Credentials saved"
+    }
+  },
+  "edit": {
+    "account": {
+      "description": "Set when the connection was created. A different region or environment needs a new connection.",
+      "label": "Selling Partner API",
+      "value": "{region}, {environment}"
+    },
+    "marketplaces": {
+      "description": "Orders are read and offers written on these marketplaces.",
+      "label": "Marketplaces",
+      "unlisted": "Marketplace {id}"
+    },
+    "queueUrlDescription": "Amazon delivers order changes to this queue. Register it below after saving.",
+    "sellerIdMissing": "Without the merchant token, offers cannot be read or written."
+  },
   "plugin": {
     "setupCardBadge": "Marketplace",
     "setupCardDescription": "Sell on Amazon: import orders, link and publish listings, keep stock and prices in sync."
