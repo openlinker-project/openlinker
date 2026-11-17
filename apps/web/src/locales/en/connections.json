@@ -1062,6 +1062,12 @@
       "manual": "Manual"
     }
   },
+  "labelPurchaseNotificationSection": {
+    "heading": "When a label is bought",
+    "help": "The shop or marketplace gets the tracking number and marks the order as shipped as soon as the label is bought. The buyer may then be told the order shipped when the label is bought, not when the parcel physically leaves. Turn this on only if you buy labels and hand parcels to the carrier at the same time.",
+    "manualDispatch": "\"Mark dispatched\" works either way: when this is off, use it once the parcel has been handed over.",
+    "toggle": "Notify the shop or marketplace when a label is bought"
+  },
   "newConnectionPage": {
     "backLabel": "Connections",
     "description": "Pick the platform you want to connect. Each platform has a guided setup flow - no raw adapter keys or config JSON required.",

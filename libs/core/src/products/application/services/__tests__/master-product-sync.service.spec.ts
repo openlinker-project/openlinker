@@ -803,7 +803,9 @@ describe('MasterProductSyncService', () => {
       const result = await service.syncFromMasterByExternalIds(connectionId, ['1', '2', '3']);
 
       expect(result.results).toHaveLength(2);
-      expect(result.failures).toEqual([{ externalId: '2', message: 'read timeout' }]);
+      expect(result.failures).toEqual([
+        { externalId: '2', message: 'read timeout', error: expect.any(Error) },
+      ]);
     });
 
     it('keeps the deletion signal per product', async () => {
