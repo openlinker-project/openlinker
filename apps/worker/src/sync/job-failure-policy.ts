@@ -23,7 +23,7 @@ export const RETRY_MAX_DELAY_SECONDS = 6 * 60 * 60;
 export const RETRY_MULTIPLIER = 2;
 export const RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS = 30;
 export const CONTENDED_WRITE_DEFERRAL_SECONDS = 15;
-export const MAX_DEFERRED_TOTAL_SECONDS_DEFAULT = 24 * 60 * 60;
+export { MAX_DEFERRED_TOTAL_SECONDS_DEFAULT } from './deferral-budget';
 
 /** Exponential backoff for a 1-based attempt number, capped at 6 h. */
 export function calculateRetryBackoffSeconds(attemptNumber: number): number {

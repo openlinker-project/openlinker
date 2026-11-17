@@ -21,6 +21,7 @@ import {
   CAPABILITY_HELP,
   capabilityConflictMessage,
   getCapabilityConflict,
+  hasMasterPublisherConflict,
 } from '../lib/capability-metadata';
 import { MCP_TOOL_CAPABILITIES, useMcpConnectionChangeHint } from '../../mcp-tokens';
 import { AccessGate } from '../../../shared/ui/access-gate';
@@ -83,7 +84,7 @@ export function capabilityRowTestId(capability: string): string {
  */
 function salesDocumentKind(
   supportsInvoicing: boolean,
-  supportsFiscalization: boolean,
+  supportsFiscalization: boolean
 ): 'both' | 'invoices' | 'receipts' {
   if (supportsInvoicing && supportsFiscalization) return 'both';
   return supportsInvoicing ? 'invoices' : 'receipts';
@@ -127,9 +128,7 @@ export function ConnectionCapabilitiesPanel({
   // hand-maintained mirror of the backend's McpToolCapabilityValues fails to COMPILE
   // if it ever drifts to a non-core capability. The reverse iteration would need a
   // `readonly string[]` cast and would silently accept the same drift.
-  const backsMcpTools = MCP_TOOL_CAPABILITIES.some((capability) =>
-    supported.includes(capability),
-  );
+  const backsMcpTools = MCP_TOOL_CAPABILITIES.some((capability) => supported.includes(capability));
 
   // Keyed on SUPPORTED, not ENABLED, for the same reason the MCP hint above
   // is: the note explains what enabling a role does and does NOT do, so it has
@@ -138,7 +137,7 @@ export function ConnectionCapabilitiesPanel({
   const supportsInvoicing = supported.includes('Invoicing');
   const supportsFiscalization = supported.includes('Fiscalization');
   const supportsSalesDocument = SALES_DOCUMENT_CAPABILITIES.some((capability) =>
-    supported.includes(capability),
+    supported.includes(capability)
   );
 
   async function handleToggle(capability: CoreCapability, checked: boolean): Promise<void> {
@@ -265,18 +264,26 @@ export function ConnectionCapabilitiesPanel({
        * the reader to go and reconnect an agent, whereas this states how the
        * system decides, which is as true for a viewer as for an admin. */}
       {supportsSalesDocument ? (
-        <Alert
-          tone="info"
-          data-testid="capability-routing-note"
-          title={copy.routingNote.title}
-        >
+        <Alert tone="info" data-testid="capability-routing-note" title={copy.routingNote.title}>
           {renderRich(
             copy.routingNote.body[salesDocumentKind(supportsInvoicing, supportsFiscalization)],
             {
               em: (text) => <em>{text}</em>,
               link: (text) => <Link to="/settings/sales-documents">{text}</Link>,
-            },
+            }
           )}
+        </Alert>
+      ) : null}
+
+      {/* A connection saved before the master/publisher exclusion (#3985) can
+       * still hold both. Saves are not refused for it, so say so once. */}
+      {hasMasterPublisherConflict(Array.from(enabled)) ? (
+        <Alert
+          tone="warning"
+          data-testid="capability-legacy-conflict"
+          title={copy.legacyMasterPublisher.title}
+        >
+          {copy.legacyMasterPublisher.body}
         </Alert>
       ) : null}
 

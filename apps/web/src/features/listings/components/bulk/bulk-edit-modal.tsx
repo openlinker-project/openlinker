@@ -1125,6 +1125,7 @@ function BulkEditModalForm({
     // the lone variant's master barcode - a blank or unchanged value inherits.
     const baseEan = values.ean.trim();
     const primaryMasterBarcode = masterBarcodeOf(row.variants[0]);
+    const baseEanCleared = !isMultiVariant && baseEan === '' && primaryMasterBarcode !== '';
     // Simple-product acknowledgement (#3492) - only for a genuine single-variant
     // product; a multi-variant base carries no offer-EAN of its own (see the
     // comment above `baseParameters`).
@@ -1156,8 +1157,15 @@ function BulkEditModalForm({
         title: values.title,
         description: values.description === '' ? null : values.description,
         ...(values.categoryId ? { categoryId: values.categoryId } : {}),
-        ...(values.productCardId ? { productCardId: values.productCardId } : {}),
-        ...(baseEan !== '' && baseEan !== primaryMasterBarcode ? { ean: baseEan } : {}),
+        // A simple product whose barcode the operator cleared lists without one
+        // (#4036): an empty `ean` is stored as that explicit choice, and the card
+        // is bound to the barcode so it goes too.
+        ...(values.productCardId && !baseEanCleared ? { productCardId: values.productCardId } : {}),
+        ...(baseEanCleared
+          ? { ean: '' }
+          : baseEan !== '' && baseEan !== primaryMasterBarcode
+            ? { ean: baseEan }
+            : {}),
         ...(simpleEanAck ? { eanOverrideAcknowledged: true } : {}),
         ...(baseImageUrls !== undefined ? { imageUrls: baseImageUrls } : {}),
         ...(baseParameters.length > 0 ? { parameters: baseParameters } : {}),
@@ -1173,7 +1181,11 @@ function BulkEditModalForm({
         const overrides: BulkOfferOverrides = {};
 
         const eanTrimmed = edit.ean.trim();
-        if (eanTrimmed !== '' && eanTrimmed !== masterBarcodeOf(variant)) overrides.ean = eanTrimmed;
+        // Cleared on purpose (#4036): an empty override is "no barcode", kept
+        // distinct from an absent one, which would inherit the master barcode.
+        const eanCleared = eanTrimmed === '' && masterBarcodeOf(variant) !== '';
+        if (eanCleared) overrides.ean = '';
+        else if (eanTrimmed !== '' && eanTrimmed !== masterBarcodeOf(variant)) overrides.ean = eanTrimmed;
         if (isEanAcknowledged(edit.eanAcknowledgedFor, eanTrimmed)) {
           overrides.eanOverrideAcknowledged = true;
         }
@@ -1183,7 +1195,9 @@ function BulkEditModalForm({
         if (edit.description !== undefined) overrides.description = edit.description;
         if (edit.imageUrls !== undefined) overrides.imageUrls = edit.imageUrls;
         if (edit.categoryId !== undefined) overrides.categoryId = edit.categoryId;
-        if (edit.productCardId !== undefined) overrides.productCardId = edit.productCardId;
+        if (edit.productCardId !== undefined && !eanCleared) {
+          overrides.productCardId = edit.productCardId;
+        }
 
         // Emit the effective parameters array whole (base ∪ per-variant param
         // overrides) so the BE whole-array-replaces (plan §7). The schema is the
@@ -3797,6 +3811,7 @@ function applyEditsToRow(
           overrides: {
             ...v.override.overrides,
             ...(eanTrimmed !== '' ? { ean: eanTrimmed } : {}),
+            ...(eanTrimmed === '' && masterBarcodeOf(v) !== '' ? { ean: '' } : {}),
           },
         },
       };

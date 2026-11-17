@@ -19,6 +19,10 @@
 import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  MAX_DEFERRED_TOTAL_SECONDS_DEFAULT,
+  parseMaxDeferredTotalSeconds,
+} from './deferral-budget';
 import type {
   RetryDeferral,
   SyncJobEntity,
@@ -42,7 +46,6 @@ import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
 import { runWithPriority } from '@openlinker/shared/rate-limit';
 import {
-  MAX_DEFERRED_TOTAL_SECONDS_DEFAULT,
   RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS,
   calculateRetryBackoffSeconds,
   isNonRetryableFailure,
@@ -781,18 +784,13 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    */
   private resolveMaxDeferredTotalSeconds(): number {
     const raw = this.configService.get<string>('OL_JOB_MAX_DEFERRED_WAIT_SECONDS');
-    if (raw === undefined || raw === null || raw === '') {
-      return MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
-    }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 1) {
+    const { seconds, invalid } = parseMaxDeferredTotalSeconds(raw);
+    if (invalid) {
       this.logger.warn(
-        `Ignoring invalid OL_JOB_MAX_DEFERRED_WAIT_SECONDS=${raw} - using default ` +
-          `${MAX_DEFERRED_TOTAL_SECONDS_DEFAULT}`
+        `Ignoring invalid OL_JOB_MAX_DEFERRED_WAIT_SECONDS=${raw} - using default ${seconds}`
       );
-      return MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
     }
-    return Math.round(parsed);
+    return seconds;
   }
 
   /**
@@ -817,9 +815,10 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    *
    * Retryable cases intentionally left out (registry classifiers must
    * also leave them out):
-   *   - `MissingOrderItemMappingError` — offer→variant mappings are
-   *     created by a separate sync cadence and may simply not exist yet
-   *     when the order job first fires.
+   *   - `MissingOrderItemMappingError` - a mapping may simply not exist yet
+   *     when the order job first fires (e.g. a variant mapping behind a
+   *     resolved offer). Since #4040 a missing OFFER mapping no longer reaches
+   *     the runner: ingestion records `awaiting_mapping` and returns instead.
    *
    * @param error - Error to check
    * @returns True if error is non-retryable

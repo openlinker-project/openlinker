@@ -46,6 +46,7 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import { isRequestNotSentError } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 
 import { InventoryItem } from '../../domain/entities/inventory-item.entity';
@@ -183,7 +184,9 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
 
   async reverseLineToTarget(input: ReverseLineToTargetInput): Promise<ReverseLineQuantityResult> {
     if (!Number.isInteger(input.targetUnits) || input.targetUnits < 0) {
-      throw new RangeError(`targetUnits must be a non-negative integer, got ${String(input.targetUnits)}`);
+      throw new RangeError(
+        `targetUnits must be a non-negative integer, got ${String(input.targetUnits)}`
+      );
     }
     const forLine = await this.lineRows(input.internalOrderId, input.orderLineId);
     // One key per (line, target): a repeated reconcile toward the same target
@@ -274,7 +277,12 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       const take = Math.min(remaining, source.quantity);
       const key = first ? ownKey : `${ownKey}:${source.workId}`;
       first = false;
-      const outcome = await this.reverseLine(this.withQuantity(source, take), positions, adapters, key);
+      const outcome = await this.reverseLine(
+        this.withQuantity(source, take),
+        positions,
+        adapters,
+        key
+      );
       if (outcome.status !== 'applied' && outcome.status !== 'deduplicated') {
         return {
           status: 'failed',
@@ -412,6 +420,13 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       }
     }
 
+    if (settlement.status === 'retryable' && settlement.reason === 'request-not-sent') {
+      this.logger.warn(
+        `Sale reversal request never left the process, will retry: orderId=${row.orderId} ` +
+          `workId=${row.workId} line=${row.orderLineId} owner=${owner} reason=request-not-sent`
+      );
+    }
+
     if (settlement.status !== 'applied' && settlement.status !== 'deduplicated') {
       this.logger.error(
         `Sale reversal did not raise the product master's stock: orderId=${row.orderId} ` +
@@ -452,6 +467,12 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       if (error instanceof MasterProductNotFoundError) {
         return this.failed('blocked', 'master-product-not-found', detail);
       }
+      if (isRequestNotSentError(error)) {
+        // Provably never left the process, so nothing was raised and the line
+        // is safe to claim again under the same key (#4041). Only the marked
+        // error gets this; every other throw stays in doubt.
+        return this.failed('retryable', 'request-not-sent', detail);
+      }
       return this.failed('in_doubt', 'master-error', detail);
     }
 
@@ -488,7 +509,7 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
   }
 
   private failed(
-    status: 'blocked' | 'in_doubt',
+    status: 'blocked' | 'in_doubt' | 'retryable',
     reason: SaleDecrementSettlement['reason'],
     detail: string
   ): SaleDecrementSettlement {
