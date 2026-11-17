@@ -1,0 +1,79 @@
+{
+  "plugin": {
+    "setupCardBadge": "Marketplace",
+    "setupCardDescription": "Sell on Amazon: import orders, link and publish listings, keep stock and prices in sync."
+  },
+  "setup": {
+    "awsAccessKeyId": "AWS access key id",
+    "awsSecretAccessKey": "AWS secret access key",
+    "clientId": "LWA client id",
+    "clientSecret": "LWA client secret",
+    "connectionName": "Connection name",
+    "connectionNamePlaceholder": "Amazon EU",
+    "countries": {
+      "DE": "Germany",
+      "FR": "France",
+      "PL": "Poland"
+    },
+    "createFailed": "The connection was not created: {message}",
+    "created": "The connection is saved. Run the connection test to check the credentials with Amazon.",
+    "createdTitle": "Amazon connection created",
+    "creating": "Creating...",
+    "crumb": "Amazon",
+    "description": "Connect a Seller Central account through the Selling Partner API.",
+    "done": "Open the connection",
+    "environment": "Environment",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "errors": {
+      "awsKeysPaired": "Enter both AWS keys, or neither.",
+      "capabilityRequired": "Choose at least one of orders or offers.",
+      "marketplaceOtherRegion": "A marketplace is served by another region. Choose marketplaces of the selected region only.",
+      "marketplaceRequired": "Choose at least one marketplace.",
+      "queueUrlInvalid": "Enter an SQS queue URL, such as https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications.",
+      "required": "This field is required.",
+      "sellerIdInvalid": "Enter the merchant token from Seller Central: 8 to 20 capital letters and digits.",
+      "sellerIdRequired": "The merchant token is required to manage offers."
+    },
+    "marketplaceOption": "{country} ({currency})",
+    "marketplaces": "Marketplaces",
+    "marketplacesHint": "Orders are read and offers written on the marketplaces you choose.",
+    "marketplacesNone": "OpenLinker does not list marketplaces for this region yet.",
+    "notifications": "Order notifications (optional)",
+    "notificationsHint": "With an SQS queue, Amazon reports order changes within a minute instead of at the next poll. You can add it later.",
+    "offers": "Offers",
+    "offersHint": "Link existing listings, publish new ones, and keep stock and prices up to date.",
+    "orders": "Orders",
+    "ordersHint": "Import Amazon orders and send tracking numbers back.",
+    "queueUrl": "SQS queue URL",
+    "readOnly": "Your account can view connections but not create them. Ask an administrator to connect Amazon.",
+    "readOnlyTitle": "Read-only access",
+    "refreshToken": "Refresh token",
+    "refreshTokenHint": "Issued when you authorize the app in Seller Central. It is stored encrypted.",
+    "region": "Region",
+    "regionHint": "The Selling Partner API region that serves your marketplaces.",
+    "regions": {
+      "eu": "Europe (EU)",
+      "fe": "Far East (FE)",
+      "na": "North America (NA)"
+    },
+    "role": "What Amazon does in OpenLinker",
+    "roleMaster": "Catalogue master",
+    "roleMasterHint": "Coming soon: take products and stock from Amazon to sell elsewhere.",
+    "roleSalesChannel": "Sales channel",
+    "roleSalesChannelHint": "Products come from your catalogue; Amazon receives offers and sends orders.",
+    "sandboxNotice": "The sandbox answers with Amazon's sample data only. No real orders or listings are read or changed.",
+    "sellerId": "Merchant token",
+    "sellerIdHint": "Seller Central: Settings, Account info, Merchant token.",
+    "sellerIdHintRequired": "Required for offers. Seller Central: Settings, Account info, Merchant token.",
+    "submit": "Create connection",
+    "test": "Test connection",
+    "testFailed": "The connection test failed",
+    "testPassed": "The connection works",
+    "testUnavailable": "The connection test could not run",
+    "testing": "Testing...",
+    "title": "Connect Amazon"
+  }
+}

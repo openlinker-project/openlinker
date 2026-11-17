@@ -41,6 +41,7 @@
  */
 import type { OpenLinkerPlugin } from '../shared/plugins';
 import { allegroPlugin } from './allegro';
+import { amazonPlugin } from './amazon';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { dpdPlugin } from './dpd';
 import { eparagonyPlugin } from './eparagony';
@@ -63,6 +64,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   inpostPlugin,
   woocommercePlugin,
   erliPlugin,
+  amazonPlugin,
   subiektPlugin,
   subiektNexoPlugin,
   ksefPlugin,

@@ -1,0 +1,79 @@
+{
+  "plugin": {
+    "setupCardBadge": "Marketplace",
+    "setupCardDescription": "Sprzedawaj na Amazonie: importuj zamówienia, łącz i wystawiaj oferty, synchronizuj stany i ceny."
+  },
+  "setup": {
+    "awsAccessKeyId": "Identyfikator klucza AWS",
+    "awsSecretAccessKey": "Tajny klucz AWS",
+    "clientId": "Client ID aplikacji LWA",
+    "clientSecret": "Client secret aplikacji LWA",
+    "connectionName": "Nazwa połączenia",
+    "connectionNamePlaceholder": "Amazon EU",
+    "countries": {
+      "DE": "Niemcy",
+      "FR": "Francja",
+      "PL": "Polska"
+    },
+    "createFailed": "Połączenie nie zostało utworzone: {message}",
+    "created": "Połączenie jest zapisane. Uruchom test połączenia, żeby sprawdzić dane dostępowe w Amazonie.",
+    "createdTitle": "Utworzono połączenie z Amazonem",
+    "creating": "Tworzenie...",
+    "crumb": "Amazon",
+    "description": "Połącz konto Seller Central przez Selling Partner API.",
+    "done": "Otwórz połączenie",
+    "environment": "Środowisko",
+    "environments": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "errors": {
+      "awsKeysPaired": "Podaj oba klucze AWS albo żadnego.",
+      "capabilityRequired": "Wybierz co najmniej zamówienia albo oferty.",
+      "marketplaceOtherRegion": "Któryś rynek obsługuje inny region. Wybierz tylko rynki wybranego regionu.",
+      "marketplaceRequired": "Wybierz co najmniej jeden rynek.",
+      "queueUrlInvalid": "Podaj adres kolejki SQS, np. https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications.",
+      "required": "To pole jest wymagane.",
+      "sellerIdInvalid": "Podaj merchant token z Seller Central: od 8 do 20 wielkich liter i cyfr.",
+      "sellerIdRequired": "Merchant token jest potrzebny do zarządzania ofertami."
+    },
+    "marketplaceOption": "{country} ({currency})",
+    "marketplaces": "Rynki",
+    "marketplacesHint": "Zamówienia są pobierane, a oferty wystawiane na wybranych rynkach.",
+    "marketplacesNone": "OpenLinker nie ma jeszcze rynków dla tego regionu.",
+    "notifications": "Powiadomienia o zamówieniach (opcjonalnie)",
+    "notificationsHint": "Z kolejką SQS Amazon zgłasza zmiany zamówień w ciągu minuty, a nie przy następnym odpytaniu. Możesz ją dodać później.",
+    "offers": "Oferty",
+    "offersHint": "Łącz istniejące oferty, wystawiaj nowe i aktualizuj stany oraz ceny.",
+    "orders": "Zamówienia",
+    "ordersHint": "Importuj zamówienia z Amazona i odsyłaj numery przesyłek.",
+    "queueUrl": "Adres kolejki SQS",
+    "readOnly": "Twoje konto może przeglądać połączenia, ale nie może ich tworzyć. Poproś administratora o podłączenie Amazona.",
+    "readOnlyTitle": "Dostęp tylko do odczytu",
+    "refreshToken": "Refresh token",
+    "refreshTokenHint": "Wydawany przy autoryzacji aplikacji w Seller Central. Jest przechowywany w postaci zaszyfrowanej.",
+    "region": "Region",
+    "regionHint": "Region Selling Partner API, który obsługuje Twoje rynki.",
+    "regions": {
+      "eu": "Europa (EU)",
+      "fe": "Daleki Wschód (FE)",
+      "na": "Ameryka Północna (NA)"
+    },
+    "role": "Rola Amazona w OpenLinkerze",
+    "roleMaster": "Katalog główny",
+    "roleMasterHint": "Wkrótce: produkty i stany z Amazona do sprzedaży w innych kanałach.",
+    "roleSalesChannel": "Kanał sprzedaży",
+    "roleSalesChannelHint": "Produkty pochodzą z Twojego katalogu; Amazon dostaje oferty i wysyła zamówienia.",
+    "sandboxNotice": "Sandbox odpowiada tylko przykładowymi danymi Amazona. Żadne prawdziwe zamówienia ani oferty nie są czytane ani zmieniane.",
+    "sellerId": "Merchant token",
+    "sellerIdHint": "Seller Central: Ustawienia, Informacje o koncie, Merchant token.",
+    "sellerIdHintRequired": "Wymagany do ofert. Seller Central: Ustawienia, Informacje o koncie, Merchant token.",
+    "submit": "Utwórz połączenie",
+    "test": "Testuj połączenie",
+    "testFailed": "Test połączenia nie powiódł się",
+    "testPassed": "Połączenie działa",
+    "testUnavailable": "Nie udało się uruchomić testu połączenia",
+    "testing": "Testowanie...",
+    "title": "Połącz z Amazonem"
+  }
+}
