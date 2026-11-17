@@ -123,7 +123,7 @@ section); Erli implements a reconciliation-first subset
 `OfferCurrencyDeclarer` (both Allegro and Erli declare `'PLN'`, matching the
 PL-first / PLN-only assumptions already baked into each adapter).
 
-### `ShopProductManagerPort` (listings) — 5
+### `ShopProductManagerPort` (listings) — 6
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -132,6 +132,7 @@ PL-first / PLN-only assumptions already baked into each adapter).
 | `ShopAttributeReader` | Read the shop's store-wide global product attributes + their predefined terms so an operator can pick a structured attribute (linked on publish as `pa_*` + term ids), with free-text custom attributes as the fallback. Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `listAttributes`, `listAttributeTerms` | `isShopAttributeReader` |
 | `ShopProductStatusReader` | Read a previously-published product's live shop-side publication status for the steady-state `ShopStatusSyncService` reconcile (#1845) — the shop-side sibling of `OfferStatusReader`. Optional `getShopVariationStatus` reads a grouped/multi-variant publish's CHILD variation status scoped under its parent (a variation lives at a different shop-native resource than a standalone simple product). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `getShopProductStatus`, `getShopVariationStatus?` | `isShopProductStatusReader` |
 | `ShopCurrencyDeclarer` | Declare the shop's configured currency, the shop-side sibling of `OfferCurrencyDeclarer` (#3203). Kept optional rather than folded onto the base port, and ASYNC (`Promise<string \| null>`) unlike its marketplace sibling — a shop's real currency typically needs a live read (e.g. a store-settings call), so no in-tree shop adapter implements it yet. | `getDestinationCurrency` | `isShopCurrencyDeclarer` |
+| `ShopProductPriceUpdater` | Change the price of an already-published product WITHOUT re-sending the rest of it (#3505). `publishProduct` is a full upsert, so a price-only change through it would overwrite the shop's stock, title and description; `PriceChangeApplyService` uses this whenever the adapter has it and falls back to the guarded publish otherwise. Guard-only (not advertised, not in `CoreCapabilityValues`). | `updateShopProductPrice` | `isShopProductPriceUpdater` |
 
 **Adapter coverage:** WooCommerce implements `CategoryProvisioner` (write),
 `ShopCategoryBrowser` (read, #1834), `ShopAttributeReader` (read, #1835), and
@@ -223,11 +224,12 @@ adapter, not yet implemented by any shipped one.
 See [ADR-042](./architecture/adrs/042-fiscalization-capability.md) for the
 fiscalization capability design.
 
-### `ProductMasterPort` (products) — 1
+### `ProductMasterPort` (products) — 2
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `ModifiedProductLister` | The **modified-since rung** of the master capability ladder — enumerate only the external ids whose product record changed after a caller-supplied watermark, instead of the whole catalog. | `listExternalIdsModifiedSince` | `isModifiedProductLister` |
+| `ProductTaxRateReader` | State the tax rate a product (or variant) carries in the master (ADR-063). MUST answer `unknown` rather than a `'0'` code when the read did not establish the rate; `inherited` says a variant defers to its product. Optional `readsTaxRatePerVariant` says whether the master keys tax per variant (PrestaShop does not). Guard-only, resolved by narrowing the dispatched `ProductMaster` adapter. | `readProductTaxRate`, `readsTaxRatePerVariant?` | `isProductTaxRateReader` |
 
 **Adapter coverage:** WooCommerce only (`modified_after` + `dates_are_gmt=true`,
 WC ≥ 5.8). PrestaShop deliberately does **not** declare it: a combination write
