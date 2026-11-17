@@ -10,6 +10,33 @@
       "other": "({n} do zrobienia)"
     }
   },
+  "dialog": {
+    "back": "Wstecz",
+    "close": "Zamknij",
+    "closeIcon": "Zamknij okno",
+    "fullChangelog": "Pełny changelog",
+    "guideLeadAdmin": "Przejdziemy przez ekrany, na których warto coś sprawdzić. Kroki wymagane są oznaczone: bez Twojej decyzji system może działać inaczej, niż oczekujesz.",
+    "guideLeadReadOnly": "Te zmiany wykonuje administrator. Możesz zobaczyć, gdzie się znajdują.",
+    "guideTitle": "Co warto ustawić po aktualizacji",
+    "highlightsLabel": "Najważniejsze zmiany",
+    "later": "Zrobię to później",
+    "moreChanges": {
+      "few": "i {n} inne zmiany w pełnym changelogu (po angielsku)",
+      "many": "i {n} innych zmian w pełnym changelogu (po angielsku)",
+      "one": "i {n} inna zmiana w pełnym changelogu (po angielsku)",
+      "other": "i {n} innej zmiany w pełnym changelogu (po angielsku)"
+    },
+    "needsAdmin": "Wymaga administratora",
+    "newVersion": "Nowa wersja",
+    "optional": "Opcjonalne",
+    "required": "Wymagane",
+    "showWhere": "Pokaż, gdzie to jest",
+    "skipDialog": "Nie pokazuj ponownie",
+    "startGuide": "Rozpocznij przewodnik",
+    "stepIndicator": "Krok {current} z {total}",
+    "title": "Zaktualizowano OpenLinker do wersji {version}",
+    "toGuide": "Przejdź do przewodnika"
+  },
   "panel": {
     "adminCompletes": "Kroki wykonuje administrator",
     "archivedLabel": "Archiwum",
@@ -71,33 +98,6 @@
     "undo": "Cofnij",
     "versionBadge": "v{version}"
   },
-  "dialog": {
-    "back": "Wstecz",
-    "close": "Zamknij",
-    "closeIcon": "Zamknij okno",
-    "fullChangelog": "Pełny changelog",
-    "guideLeadAdmin": "Przejdziemy przez ekrany, na których warto coś sprawdzić. Kroki wymagane są oznaczone: bez Twojej decyzji system może działać inaczej, niż oczekujesz.",
-    "guideLeadReadOnly": "Te zmiany wykonuje administrator. Możesz zobaczyć, gdzie się znajdują.",
-    "guideTitle": "Co warto ustawić po aktualizacji",
-    "highlightsLabel": "Najważniejsze zmiany",
-    "later": "Zrobię to później",
-    "moreChanges": {
-      "few": "i {n} inne zmiany w pełnym changelogu (po angielsku)",
-      "many": "i {n} innych zmian w pełnym changelogu (po angielsku)",
-      "one": "i {n} inna zmiana w pełnym changelogu (po angielsku)",
-      "other": "i {n} innej zmiany w pełnym changelogu (po angielsku)"
-    },
-    "needsAdmin": "Wymaga administratora",
-    "newVersion": "Nowa wersja",
-    "optional": "Opcjonalne",
-    "required": "Wymagane",
-    "showWhere": "Pokaż, gdzie to jest",
-    "skipDialog": "Nie pokazuj ponownie",
-    "startGuide": "Rozpocznij przewodnik",
-    "stepIndicator": "Krok {current} z {total}",
-    "title": "Zaktualizowano OpenLinker do wersji {version}",
-    "toGuide": "Przejdź do przewodnika"
-  },
   "steps": {
     "inpost-notify-buyer": {
       "title": "Wybierz, kiedy kupujący dowie się o wysyłce",
@@ -113,9 +113,9 @@
     },
     "shipping-routing": {
       "title": "Przypisz przewoźników w tym kanale sprzedaży",
-      "tourBody": "Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału. Zmień to, co trzeba, i zapisz kierowanie.",
+      "tourBody": "Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału. Zmień to, co trzeba, i zapisz przypisanie.",
       "tourTitle": "Kto wysyła przesyłki z tego kanału?",
-      "why": "Kierowanie wysyłek ustawiasz w Mapowaniach, w zakładce Realizacja. Sprawdź, kto wysyła każdą metodę dostawy z tego kanału, i zapisz."
+      "why": "Przypisanie przewoźnika ustawiasz w Mapowaniach, w zakładce Realizacja, w sekcji \"Kto wysyła każdą metodę dostawy\". Sprawdź każdą metodę dostawy z tego kanału i kliknij Zapisz przypisanie."
     }
   },
   "tour": {

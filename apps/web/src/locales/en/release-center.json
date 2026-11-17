@@ -8,6 +8,31 @@
       "other": "({n} to do)"
     }
   },
+  "dialog": {
+    "back": "Back",
+    "close": "Close",
+    "closeIcon": "Close the window",
+    "fullChangelog": "Full changelog",
+    "guideLeadAdmin": "We will walk you through the screens where a setting is worth checking. Required steps are marked: without your decision the system may behave differently than you expect.",
+    "guideLeadReadOnly": "An administrator makes these changes. You can see where they are.",
+    "guideTitle": "What to set up after the update",
+    "highlightsLabel": "Highlights",
+    "later": "Later",
+    "moreChanges": {
+      "one": "and {n} more change in the full changelog (English)",
+      "other": "and {n} more changes in the full changelog (English)"
+    },
+    "needsAdmin": "Needs an administrator",
+    "newVersion": "New version",
+    "optional": "Optional",
+    "required": "Required",
+    "showWhere": "Show me where",
+    "skipDialog": "Don't show again",
+    "startGuide": "Start guide",
+    "stepIndicator": "Step {current} of {total}",
+    "title": "OpenLinker was updated to {version}",
+    "toGuide": "Go to the guide"
+  },
   "panel": {
     "adminCompletes": "An administrator completes the steps",
     "archivedLabel": "Archived",
@@ -69,31 +94,6 @@
     "undo": "Undo",
     "versionBadge": "v{version}"
   },
-  "dialog": {
-    "back": "Back",
-    "close": "Close",
-    "closeIcon": "Close the window",
-    "fullChangelog": "Full changelog",
-    "guideLeadAdmin": "We will walk you through the screens where a setting is worth checking. Required steps are marked: without your decision the system may behave differently than you expect.",
-    "guideLeadReadOnly": "An administrator makes these changes. You can see where they are.",
-    "guideTitle": "What to set up after the update",
-    "highlightsLabel": "Highlights",
-    "later": "Later",
-    "moreChanges": {
-      "one": "and {n} more change in the full changelog (English)",
-      "other": "and {n} more changes in the full changelog (English)"
-    },
-    "needsAdmin": "Needs an administrator",
-    "newVersion": "New version",
-    "optional": "Optional",
-    "required": "Required",
-    "showWhere": "Show me where",
-    "skipDialog": "Don't show again",
-    "startGuide": "Start guide",
-    "stepIndicator": "Step {current} of {total}",
-    "title": "OpenLinker was updated to {version}",
-    "toGuide": "Go to the guide"
-  },
   "steps": {
     "inpost-notify-buyer": {
       "title": "Choose when the buyer learns about the shipment",
@@ -109,9 +109,9 @@
     },
     "shipping-routing": {
       "title": "Assign carriers in this sales channel",
-      "tourBody": "Check who ships each delivery method of this channel. Change what is needed and save the routing.",
+      "tourBody": "Check who ships each delivery method of this channel. Change what is needed and save the assignment.",
       "tourTitle": "Who ships the parcels from this channel?",
-      "why": "Shipping routing is set in Mappings, on the Fulfilment tab. Check who ships each delivery method of this channel and save."
+      "why": "The carrier assignment is set in Mappings, on the Fulfilment tab, under \"Who ships each delivery method\". Check each delivery method of this channel and click Save assignment."
     }
   },
   "tour": {
