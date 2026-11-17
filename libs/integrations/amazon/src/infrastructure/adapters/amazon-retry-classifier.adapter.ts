@@ -10,6 +10,8 @@
  *     operator edit changes that.
  *   - `AmazonAuthenticationError` - Login with Amazon refused the credentials;
  *     also surfaced as `needs_reauth` by the auth-failure classifier.
+ *   - `AmazonNotSupportedException` - a request this integration does not
+ *     carry out (an FBA listing's stock, a field it does not write).
  *   - `AmazonApiError` 4xx other than 408 and 429 - Amazon understood the
  *     request and refused it (`400 InvalidInput`, `403 Unauthorized` for a
  *     missing role, `404 NotFound`, `413`, `415`).
@@ -35,6 +37,7 @@ import type { RetryClassifierPort, RetryDeferral } from '@openlinker/core/sync';
 import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 import { AmazonAuthenticationError } from '../../domain/exceptions/amazon-authentication.error';
 import { AmazonConfigException } from '../../domain/exceptions/amazon-config.exception';
+import { AmazonNotSupportedException } from '../../domain/exceptions/amazon-not-supported.exception';
 
 const RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
 
@@ -47,7 +50,11 @@ const MAX_CAUSE_DEPTH = 5;
 
 export class AmazonRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
-    if (cause instanceof AmazonConfigException || cause instanceof AmazonAuthenticationError) {
+    if (
+      cause instanceof AmazonConfigException ||
+      cause instanceof AmazonAuthenticationError ||
+      cause instanceof AmazonNotSupportedException
+    ) {
       return true;
     }
     if (cause instanceof AmazonApiError) {

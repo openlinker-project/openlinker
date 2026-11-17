@@ -7,7 +7,8 @@ OpenLinker adapter for the [Amazon Selling Partner API](https://developer-docs.a
 `searchOrders`, the order read over `getOrder`, the tracking write-back over v0 `confirmShipment`, the
 option lists for the mapping UI and the `amazon-orders-poll` task (off by default,
 `OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED`). `OrderSource` is opt-in on a connection. The remaining
-capabilities arrive with their own children of the epic (#4176).
+capabilities arrive with their own children of the epic (#4176). `OfferManager` (#4180) links the seller's
+listings by SKU and writes stock and price to them; see "Offers" below.
 Evidence base: `docs/plans/analysis/SPIKE-2881-amazon-sp-api.md` and the product spec
 `docs/specs/product-spec-2881-amazon-marketplace-integration.md`.
 
@@ -57,6 +58,28 @@ Mints an access token and calls `GET /sellers/v1/marketplaceParticipations`.
   `unauthorized_client`) reports `unauthorized`.
 - A `403 Unauthorized` from SP-API is reported as that error and **not** as bad credentials: Amazon
   answers it for a missing role too, and re-authorizing would not help.
+
+## Offers
+
+An Amazon offer is addressed by the seller's SKU, so the offer id in OpenLinker is the SKU. Needs the
+merchant token in the config (`"sellerId": "A2..."`, Seller Central > Settings > Account Info > Your
+Merchant Token): no SP-API call returns it to a self-authorized app.
+
+- **Linking**: `amazon-offers-sync` (hourly, off by default, `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED`)
+  lists the listings and the offer mapping sync links them to variants by SKU. Linking by EAN is not
+  done: listings carry no EAN, only the ASIN.
+- **Stock**: `patchListingsItem` replacing `fulfillment_availability` on the seller channel (`DEFAULT`).
+  A listing Amazon fulfils (FBA) is refused, never written. Quantity 0 pauses a listing; listings are
+  never deleted.
+- **Price**: `patchListingsItem` replacing `purchasable_offer`, gross, for each configured marketplace
+  whose currency is the price's (FR / DE: EUR, PL: PLN). Title, description and tax rate are refused.
+- **Status**: `amazon-offer-status-sync` (hourly, off by default,
+  `OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED`) reads `BUYABLE` as active, Amazon's ERROR issues as
+  validation errors, and the live price and seller quantity.
+- Every write reads the listing first (a patch must name its product type); a patch Amazon answers
+  `INVALID` is rejected with its issue. `putListingsItem` is never used for an update.
+- Not verified on a live account: the `replace` operation on both attributes follows Amazon's use-case
+  guide; #3741 mentions `merge`, which the model also allows.
 
 ## Notifications (SQS)
 
@@ -121,5 +144,5 @@ will pace each operation.
 
 ## Not yet built
 
-Offers and stock (`OfferManager`, Listings Items), EventBridge delivery, the public-app OAuth
+Creating new listings (#4181), EventBridge delivery, the public-app OAuth
 flow and a web setup form. Epic #4176 lists them.

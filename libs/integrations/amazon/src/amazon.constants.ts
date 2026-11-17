@@ -50,11 +50,11 @@ export const AMAZON_SPAPI_HOSTS: Readonly<Record<AmazonEnvironment, Readonly<Rec
  * by format alone: the list names what we target, not every Amazon market.
  */
 export const AMAZON_KNOWN_MARKETPLACES: Readonly<
-  Record<string, { readonly country: string; readonly region: AmazonRegion }>
+  Record<string, { readonly country: string; readonly region: AmazonRegion; readonly currency: string }>
 > = {
-  A13V1IB3VIYZZH: { country: 'FR', region: 'eu' },
-  A1PA6795UKMFR9: { country: 'DE', region: 'eu' },
-  A1C3SOZRARQ6R3: { country: 'PL', region: 'eu' },
+  A13V1IB3VIYZZH: { country: 'FR', region: 'eu', currency: 'EUR' },
+  A1PA6795UKMFR9: { country: 'DE', region: 'eu', currency: 'EUR' },
+  A1C3SOZRARQ6R3: { country: 'PL', region: 'eu', currency: 'PLN' },
 };
 
 /** Probe used by the connection tester; needs no role beyond the app's base access. */

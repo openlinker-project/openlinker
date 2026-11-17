@@ -24,6 +24,7 @@ import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.po
 import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-token.provider';
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
 import { AmazonSqsClient } from '../infrastructure/http/amazon-sqs-client';
+import { AmazonOfferManagerAdapter } from '../infrastructure/adapters/offer-manager/amazon-offer-manager.adapter';
 import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
 import { AmazonQueuedOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-queued-order-source.adapter';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
@@ -89,5 +90,9 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
     return notificationQueue === undefined
       ? new AmazonOrderSourceAdapter(connection.id, client, config)
       : new AmazonQueuedOrderSourceAdapter(connection.id, client, config, notificationQueue);
+  }
+
+  createOfferManager(resolution: AmazonResolution): AmazonOfferManagerAdapter {
+    return new AmazonOfferManagerAdapter(resolution.connection.id, resolution.client, resolution.config);
   }
 }

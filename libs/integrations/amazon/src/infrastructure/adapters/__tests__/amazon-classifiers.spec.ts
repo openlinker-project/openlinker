@@ -7,6 +7,7 @@ import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonAuthenticationError } from '../../../domain/exceptions/amazon-authentication.error';
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import { AmazonNetworkError } from '../../../domain/exceptions/amazon-network.error';
+import { AmazonNotSupportedException } from '../../../domain/exceptions/amazon-not-supported.exception';
 import { AmazonAuthFailureClassifierAdapter } from '../amazon-auth-failure-classifier.adapter';
 import { AmazonRetryClassifierAdapter } from '../amazon-retry-classifier.adapter';
 
@@ -18,6 +19,7 @@ describe('AmazonRetryClassifierAdapter', () => {
   it('should make config, credential and deterministic 4xx failures terminal', () => {
     expect(classifier.isNonRetryable(new AmazonConfigException('c1', 'no marketplace'))).toBe(true);
     expect(classifier.isNonRetryable(new AmazonAuthenticationError('invalid_grant'))).toBe(true);
+    expect(classifier.isNonRetryable(new AmazonNotSupportedException('FBA stock'))).toBe(true);
     for (const status of [400, 403, 404, 413, 415]) {
       expect(classifier.isNonRetryable(api(status))).toBe(true);
     }

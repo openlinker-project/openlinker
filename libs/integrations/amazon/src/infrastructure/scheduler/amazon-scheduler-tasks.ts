@@ -27,8 +27,54 @@ export const AMAZON_ORDERS_CURSOR_KEY = 'amazon.orders.feedCursor';
 /** SQS returns at most 10 messages per receive. */
 export const AMAZON_NOTIFICATIONS_DRAIN_MAX_MESSAGES = 10;
 
+/** The connection's master catalogue, which the offer mapping sync links listings against. */
+function readMasterCatalogConnectionId(connection: Connection): string | null {
+  const value = (connection.config ?? {}).masterCatalogConnectionId;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** `searchListingsItems` and the status reads page by 20. */
+const AMAZON_OFFERS_PAGE_LIMIT = 20;
+
 export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
   return [
+    // #4180: links the seller's Amazon listings to variants by SKU. Off by
+    // default (`OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED`); needs sellerId.
+    {
+      taskId: 'amazon-offers-sync',
+      platformType: AMAZON_PLATFORM_TYPE,
+      requiredCapability: 'OfferManager',
+      jobType: 'marketplace.offers.sync',
+      cronExpression: '15 * * * *',
+      enabledEnvVar: 'OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: (connection) => ({
+        schemaVersion: 1,
+        limit: AMAZON_OFFERS_PAGE_LIMIT,
+        cursor: null,
+        feedType: 'offers',
+        masterConnectionId: readMasterCatalogConnectionId(connection),
+      }),
+      generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:offers:sync:${timestamp}`,
+    },
+    // #4180: refreshes each linked listing's live status, price and quantity,
+    // and Amazon's issues on it. Off by default
+    // (`OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED`).
+    {
+      taskId: 'amazon-offer-status-sync',
+      platformType: AMAZON_PLATFORM_TYPE,
+      requiredCapability: 'OfferManager',
+      jobType: 'marketplace.offer.statusSync',
+      cronExpression: '45 * * * *',
+      enabledEnvVar: 'OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: AMAZON_OFFERS_PAGE_LIMIT,
+        cursorKey: 'amazon.offerStatus.scanOffset',
+      }),
+      generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
+    },
     {
       taskId: 'amazon-orders-poll',
       platformType: AMAZON_PLATFORM_TYPE,
