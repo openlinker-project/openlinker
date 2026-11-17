@@ -34,3 +34,13 @@ export type {
 } from './api/release-state.types';
 export { TourProvider } from './tour/tour-provider';
 export { useTour, type TourController, type TourStepInput } from './tour/tour-context';
+export { ReleaseBell } from './components/release-bell';
+export { ReleaseCenterProvider, useReleaseCenterView } from './components/release-center-provider';
+export {
+  requestReleaseTour,
+  requestWhatsNew,
+  subscribeToTourRequests,
+  subscribeToWhatsNewRequests,
+  type TourRequest,
+  type WhatsNewRequest,
+} from './lib/release-center-requests';
