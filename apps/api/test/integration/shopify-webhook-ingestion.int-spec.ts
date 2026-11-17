@@ -149,8 +149,10 @@ describe('Shopify Webhook Ingestion Integration (#3981)', () => {
     );
     const deliveries = await readDeliveries(harness, connection.id);
     expect(deliveries).toHaveLength(1);
+    // The key is the webhook id plus a digest of the verified body, so an
+    // identical delivery collides and a different body does not.
+    expect(deliveries[0].eventId).toMatch(new RegExp(`^${webhookId}:[0-9a-f]{16}$`));
     expect(deliveries[0]).toMatchObject({
-      eventId: webhookId,
       status: 'job_enqueued',
       signatureValid: true,
     });

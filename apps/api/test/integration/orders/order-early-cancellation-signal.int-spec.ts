@@ -27,7 +27,9 @@ import {
 } from '@openlinker/core/integrations';
 import {
   ORDER_INGESTION_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
   type IOrderIngestionService,
+  type IOrderRecordService,
   type IncomingOrder,
   type OrderCreate,
   type OrderProcessorManagerPort,
@@ -177,7 +179,13 @@ describe('Order early-cancellation signal (#2069)', () => {
       'cancelled'
     );
     const afterCancel = new Date();
-    expect(cancelResult).toEqual([]);
+    // #4032: the feed keeps one event per order, so a cancel for an order OL
+    // has never seen is ingested at once, with the signal it just wrote making
+    // the ordinary path persist the order as cancelled. No destination order is
+    // created, and the signal is consumed by that very ingestion.
+    expect(cancelResult).toHaveLength(1);
+    expect(cancelResult[0].status).toBe('skipped_cancelled');
+    expect(createOrderCalls).toHaveLength(0);
 
     const mappingAfterCancel = await mappingRepo.findOne({
       where: {
@@ -186,21 +194,25 @@ describe('Order early-cancellation signal (#2069)', () => {
         connectionId: sourceConnection.id,
       },
     });
-    expect(mappingAfterCancel).toBeNull();
+    expect(mappingAfterCancel).not.toBeNull();
 
     const signalAfterCancel = await signalRepo.findOne({
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
     });
-    expect(signalAfterCancel).not.toBeNull();
-    // The signal carries the instant the cancel-handling branch stamped
-    // (`new Date()` at the time of the call), not a sentinel — pin the value
-    // rather than only its non-nullness.
-    expect(signalAfterCancel!.cancelledAt.getTime()).toBeGreaterThanOrEqual(
-      beforeCancel.getTime()
-    );
-    expect(signalAfterCancel!.cancelledAt.getTime()).toBeLessThanOrEqual(afterCancel.getTime());
+    expect(signalAfterCancel).toBeNull();
 
-    // Act 2: the create/sync job now runs — the ordinary path, no eventType.
+    const recordAfterCancel = await recordRepo.findOne({
+      where: { internalOrderId: mappingAfterCancel!.internalId },
+    });
+    // The instant is the signal's own (`new Date()` stamped by the cancel
+    // branch), never a sentinel and never a later ingestion time.
+    expect(recordAfterCancel!.cancelledAt).not.toBeNull();
+    const firstCancelledAt = recordAfterCancel!.cancelledAt!.getTime();
+    expect(firstCancelledAt).toBeGreaterThanOrEqual(beforeCancel.getTime());
+    expect(firstCancelledAt).toBeLessThanOrEqual(afterCancel.getTime());
+
+    // Act 2: the create/sync job that follows runs the ordinary path with no
+    // eventType and must not provision the order either.
     const syncResult = await ingestion.syncOrderFromSource(
       sourceConnection.id,
       externalOrderId,
@@ -211,39 +223,10 @@ describe('Order early-cancellation signal (#2069)', () => {
     expect(syncResult[0].status).toBe('skipped_cancelled');
     expect(createOrderCalls).toHaveLength(0);
 
-    const mappingAfterSync = await mappingRepo.findOne({
-      where: {
-        entityType: 'Order',
-        externalId: externalOrderId,
-        connectionId: sourceConnection.id,
-      },
-    });
-    expect(mappingAfterSync).not.toBeNull();
-
-    const record = await recordRepo.findOne({
-      where: { internalOrderId: mappingAfterSync!.internalId },
-    });
-    // Pin the VALUE, not just non-nullness: `cancelledAt` must be the
-    // signal's own consumed instant (`earlySignalAt`), never `now` at
-    // ingestion time — proving `consume()`'s returned timestamp actually
-    // reached `markCancelled` rather than merely triggering it.
-    expect(record!.cancelledAt).not.toBeNull();
-    expect(record!.cancelledAt!.getTime()).toBe(signalAfterCancel!.cancelledAt.getTime());
-
-    const signalAfterSync = await signalRepo.findOne({
-      where: { sourceConnectionId: sourceConnection.id, externalOrderId },
-    });
-    expect(signalAfterSync).toBeNull();
-
-    // Act 3: a THIRD poll, after the signal has already been consumed and the
-    // source's order resource is still lagging (`incoming.status: 'pending'`
-    // from `makeIncomingOrder`, unchanged). `persistIncomingSnapshot` no longer
-    // has a signal to consume, so `snapshotRecord.cancelledAt` alone would read
-    // `null` here (`upsert()`'s `fromRawRow` excludes `cancelledAt` from its
-    // write set on this non-writing path) — this is the exact regression the
-    // #2069 re-review found: without the `existing.cancelledAt` fallback in
-    // `OrderIngestionService`, this poll would silently re-provision an order
-    // OL already recorded as cancelled.
+    // Act 3: a third poll while the source's order resource still lags
+    // (`incoming.status: 'pending'`) and the signal is long gone. The
+    // `existing.cancelledAt` fallback in `OrderIngestionService` is what keeps
+    // this from re-provisioning an order OL already recorded as cancelled.
     const thirdPoll = await ingestion.syncOrderFromSource(
       sourceConnection.id,
       externalOrderId,
@@ -255,12 +238,10 @@ describe('Order early-cancellation signal (#2069)', () => {
     expect(createOrderCalls).toHaveLength(0);
 
     const recordAfterThirdPoll = await recordRepo.findOne({
-      where: { internalOrderId: mappingAfterSync!.internalId },
+      where: { internalOrderId: mappingAfterCancel!.internalId },
     });
     expect(recordAfterThirdPoll!.cancelledAt).not.toBeNull();
-    expect(recordAfterThirdPoll!.cancelledAt!.getTime()).toBe(
-      signalAfterCancel!.cancelledAt.getTime()
-    );
+    expect(recordAfterThirdPoll!.cancelledAt!.getTime()).toBe(firstCancelledAt);
   });
 
   // #2069 review — the exact race the signal exists for: the source's order
@@ -320,62 +301,51 @@ describe('Order early-cancellation signal (#2069)', () => {
   // same key against real Postgres: the unit spec mocks `Repository.query`
   // to resolve, which asserts nothing about the conflict clause and would
   // pass identically against a plain `INSERT`.
-  it('first-write-wins: two cancel events for the same order keep the EARLIER cancelledAt', async () => {
+  it('first-write-wins: two early cancellation signals for the same order keep the EARLIER cancelledAt', async () => {
     const dataSource = harness.getDataSource();
     const signalRepo = dataSource.getRepository(OrderCancellationSignalOrmEntity);
+    const orderRecordService = harness
+      .getApp()
+      .get<IOrderRecordService>(ORDER_RECORD_SERVICE_TOKEN);
     const externalOrderId = 'early-cancel-repeat-1';
-    const sourceAdapterKey = registerSourceStub(
-      harness,
-      externalOrderId,
-      makeIncomingOrder(externalOrderId)
-    );
 
     const sourceConnection = await createTestConnection(dataSource, {
       platformType: 'allegro',
       name: 'Allegro source',
-      adapterKey: sourceAdapterKey,
+      adapterKey: 'allegro.test.unused',
       enabledCapabilities: ['OrderSource'],
     });
 
-    const firstCancel = await ingestion.syncOrderFromSource(
+    // Written through the service directly: since #4032 an ingested cancel
+    // consumes its own signal at once, so ingestion can no longer leave a signal
+    // standing for a second write to collide with.
+    const firstAt = new Date('2026-08-01T10:00:00.000Z');
+    await orderRecordService.recordEarlyCancellationSignal(
       sourceConnection.id,
       externalOrderId,
-      'cancel-evt-1',
-      'cancelled'
+      firstAt
     );
-    expect(firstCancel).toEqual([]);
 
     const signalAfterFirst = await signalRepo.findOne({
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
     });
     expect(signalAfterFirst).not.toBeNull();
 
-    // Force the two calls' `new Date()` stamps onto DISTINCT milliseconds —
-    // without this, two `ingestion.syncOrderFromSource` calls back-to-back can
-    // land in the same millisecond, and the equality assertion below would
-    // pass trivially (by timestamp coincidence) even against a `DO UPDATE`
-    // that overwrote the row with the second cancel's instant.
-    await new Promise((resolve) => setTimeout(resolve, 5));
-
-    // A second, later-arriving cancel event for the SAME
-    // (sourceConnectionId, externalOrderId) — e.g. a duplicate delivery or a
-    // reconciliation poll re-observing the cancel. `ON CONFLICT DO NOTHING`
-    // must leave the row — and its earlier `cancelledAt` — untouched.
-    const secondCancel = await ingestion.syncOrderFromSource(
+    // A second, later-arriving signal for the SAME
+    // (sourceConnectionId, externalOrderId), e.g. a duplicate delivery.
+    // `ON CONFLICT DO NOTHING` must leave the row, and its earlier
+    // `cancelledAt`, untouched - a plain INSERT or a `DO UPDATE` would not.
+    await orderRecordService.recordEarlyCancellationSignal(
       sourceConnection.id,
       externalOrderId,
-      'cancel-evt-2',
-      'cancelled'
+      new Date('2026-08-01T10:05:00.000Z')
     );
-    expect(secondCancel).toEqual([]);
 
     const signalAfterSecond = await signalRepo.findOne({
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
     });
     expect(signalAfterSecond).not.toBeNull();
     expect(signalAfterSecond!.id).toBe(signalAfterFirst!.id);
-    expect(signalAfterSecond!.cancelledAt.getTime()).toBe(
-      signalAfterFirst!.cancelledAt.getTime()
-    );
+    expect(signalAfterSecond!.cancelledAt.getTime()).toBe(firstAt.getTime());
   });
 });

@@ -95,7 +95,16 @@ export class ShopifyController {
     // for any other caller, and a missing connection answers 404 from `get`.
     const connection = await this.connections.get(connectionId);
     if (connection.platformType !== SHOPIFY_PLATFORM_TYPE) {
-      throw new BadRequestException(`Connection ${connectionId} is not a Shopify connection.`);
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'OAUTH_CONNECTION_PLATFORM_MISMATCH',
+        `Connection ${connectionId} is not a Shopify connection.`,
+        {
+          connectionId,
+          expectedPlatformType: SHOPIFY_PLATFORM_TYPE,
+          platformType: connection.platformType,
+        },
+      );
     }
     try {
       return { locations: await this.locationReader.listLocations(connectionId) };

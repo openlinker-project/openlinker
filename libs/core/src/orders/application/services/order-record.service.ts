@@ -722,8 +722,8 @@ export class OrderRecordService implements IOrderRecordService {
    * re-read here would be immediately stale. The caller owns the single
    * refresh.
    *
-   * @returns whether THIS call made the cancelled transition (false when the order
-   * was already stamped, e.g. by a concurrent cancel event)
+   * @returns whether the returned record is now behind the row (a refresh is
+   * owed): true whenever the order is cancelled, false otherwise
    */
   private async recordCancellationIfNeeded(
     internalOrderId: string,
@@ -733,7 +733,13 @@ export class OrderRecordService implements IOrderRecordService {
     if (!isCancelled) {
       return false;
     }
-    return this.repository.markCancelled(internalOrderId, cancelledAt);
+    // The boolean from the repository says whether THIS call made the transition
+    // (the public `markCancelled` relies on it to relay a cancellation once). Here
+    // the answer owed to the caller is different: `upsert()`'s record never
+    // carries `cancelledAt`, so it is behind the row on EVERY cancelled
+    // ingestion, including a re-poll of an order that was already stamped.
+    await this.repository.markCancelled(internalOrderId, cancelledAt);
+    return true;
   }
 
   /**
