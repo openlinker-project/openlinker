@@ -2979,3 +2979,15 @@ repositories.
 **Applies to**: `apps/api/src/main.ts`, any reverse proxy in front of the API, CORS bug reports.
 
 **Source**: #4058
+
+## Prove parity with an approved mockup by measuring both pages, not by looking at screenshots
+
+**Context**: the release center was ported from a mockup (`docs/plans/mockups/release-center.html`) and declared "matched" after a pass of eyeballing screenshots. It still was not: the dialog was 448px wide against the mockup's 480px (a later rule in the mockup's stylesheet overrode the first), text was 16px where the mockup renders 14px, buttons carried a 1.5 line height the mockup's do not, and none of the entrance animations ran.
+
+**Problem**: a mockup's stylesheet is cascaded like any other, so the number you read first is often not the number that applies, and a portalled dialog or popover inherits the page's 16px rather than the mockup's 14px. None of this is visible at a glance; all of it is visible in `getBoundingClientRect` and `getComputedStyle`.
+
+**Rule**: load the mockup state and the live page at the same viewport, dump the rect (relative to the component root) and a fixed list of computed styles for each pair of elements, and diff them; compare `animation-*` and `transition-*` per element and the `@keyframes` text the same way. Neutralise copy differences in the page under test (set the live text to the mockup's) so the numbers measure CSS, not wording. A flex child that holds a long wrapping title needs `min-width: 0`, and the button beside it `flex-shrink: 0`, or the button is squeezed; the measurement found that one too.
+
+**Applies to**: any surface built from a `docs/plans/mockups/*.html` design; portalled UI (Radix dialog, popover, dropdown) most of all.
+
+**Source**: #4154

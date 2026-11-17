@@ -94,28 +94,36 @@ export function ReleaseCard({
               <ReleaseIcon name="dots" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="release-card__menu">
             {hasSteps && !archived && canWriteSteps && left > 0 ? (
               <DropdownMenuItem onSelect={() => actions.markAllDone(open_)}>
+                <ReleaseIcon name="check" />
                 {copy.menuMarkAllDone}
               </DropdownMenuItem>
             ) : null}
             {unread && !archived ? (
               <DropdownMenuItem onSelect={() => actions.markRead([notification.itemKey])}>
+                <ReleaseIcon name="check" />
                 {copy.menuMarkRead}
               </DropdownMenuItem>
             ) : null}
             {archived ? (
               <DropdownMenuItem onSelect={() => actions.restore(notification.itemKey)}>
+                <ReleaseIcon name="undo" />
                 {copy.menuRestore}
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem onSelect={() => actions.archive(notification.itemKey)}>
+                <ReleaseIcon name="archive" />
                 {copy.menuArchive}
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => actions.remove(notification.itemKey)}>
+            <DropdownMenuItem
+              className="release-card__menu-danger"
+              onSelect={() => actions.remove(notification.itemKey)}
+            >
+              <ReleaseIcon name="trash" />
               {copy.menuDelete}
             </DropdownMenuItem>
           </DropdownMenuContent>

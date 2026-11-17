@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MotionGlobalConfig } from 'motion/react';
 import { useState, type ReactElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReleaseStepRow } from '../lib/release-dialog-content';
 import { ReleaseDialog } from './release-dialog';
 
@@ -78,6 +79,34 @@ describe('ReleaseDialog', () => {
     expect(await screen.findByLabelText("Don't show the changes dialog after future updates")).toBeInTheDocument();
     await user.click(screen.getByText('Go to the guide'));
     expect(screen.queryByLabelText("Don't show the changes dialog after future updates")).toBeNull();
+  });
+
+  describe('size between steps', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      MotionGlobalConfig.skipAnimations = false;
+    });
+
+    it('should resize the body to the visible pane when the step changes', async () => {
+      // Skipping the spring makes the settled height what is asserted.
+      MotionGlobalConfig.skipAnimations = true;
+      vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
+        this: HTMLElement
+      ) {
+        if (!this.classList.contains('release-dialog__pane')) return 0;
+        return this.querySelector('.release-dialog__steplist') ? 480 : 300;
+      });
+      const user = userEvent.setup();
+      render(<Harness canWriteSteps />);
+      await user.click(screen.getByText('opener'));
+      const dialog = await screen.findByRole('dialog');
+      const body = dialog.querySelector<HTMLElement>('.release-dialog__body');
+      await waitFor(() => expect(body?.style.height).toBe('300px'), { timeout: 3000 });
+      await user.click(screen.getByText('Go to the guide'));
+      await waitFor(() => expect(body?.style.height).toBe('480px'), { timeout: 3000 });
+      await user.click(screen.getByLabelText('Back'));
+      await waitFor(() => expect(body?.style.height).toBe('300px'), { timeout: 3000 });
+    });
   });
 
   it('should say an administrator is needed and offer no write wording to a non-admin', async () => {

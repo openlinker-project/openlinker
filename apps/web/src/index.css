@@ -6112,6 +6112,51 @@ a.delivery-rider-banner__button:focus-visible {
   animation: toast-slide-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Release center confirmation toast (ADR-085): the mockup's dark pill under the
+   topbar. It is fixed to the screen rather than stacked in the corner region. */
+.toast.toast--inverse {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--shell-topbar-height) + 12px);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 24px);
+  z-index: 60;
+  align-items: center;
+  justify-content: normal;
+  gap: 12px;
+  padding: 9px 12px 9px 14px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-overlay);
+}
+.toast.toast--inverse .toast__content { display: block; flex: 0 1 auto; }
+.toast.toast--inverse .toast__description { color: inherit; font-size: inherit; }
+.toast.toast--inverse .toast__action {
+  display: block;
+  height: auto;
+  padding: 1px 6px;
+  border-radius: 0;
+  box-shadow: none;
+  gap: normal;
+  align-items: normal;
+  justify-content: normal;
+  font-size: inherit;
+  line-height: normal;
+}
+.toast.toast--inverse[data-state='open'] {
+  animation: toast-in-inverse 380ms var(--ease-spring) both;
+}
+.toast.toast--inverse[data-state='closed'] { animation: toast-fade-out 120ms ease-in both; }
+.toast.toast--inverse[data-swipe='move'],
+.toast.toast--inverse[data-swipe='cancel'] { transform: translateX(-50%); }
+@keyframes toast-in-inverse {
+  from { opacity: 0; transform: translate(-50%, -12px) scale(0.96); }
+}
+
 .toast[data-state='closed'] {
   animation: toast-fade-out 120ms ease-in;
 }
@@ -40170,13 +40215,22 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .dialog__content.release-dialog {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(28rem, 92vw);
-  max-height: min(90dvh, 720px);
+  width: min(30rem, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
   padding: 0;
   overflow: hidden;
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: 0.75rem;
+  /* The dialog sets its own text size: the approved mockup renders it at the
+     app's 14px body size, not the 16px a portalled dialog would inherit. */
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+/* The mockup's scrim is a plain wash: no blur behind this dialog. */
+.dialog__overlay.release-dialog__overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .release-dialog__head,
 .release-dialog__foot {
@@ -40195,11 +40249,18 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: 0;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-surface-elevated);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   gap: 10px;
 }
-.release-dialog__foot-right { display: flex; gap: 8px; flex-wrap: wrap; }
+.release-dialog__foot-right { display: flex; gap: 8px; flex-wrap: nowrap; margin-left: auto; }
+@media (max-width: 520px) {
+  .release-dialog__foot-right .button { padding-inline: 10px; }
+  /* The approved mockup clips its footer at phone width (nowrap, wider than the
+     card); here the footer wraps instead so no action is cut off. */
+  .release-dialog__foot,
+  .release-dialog__foot-right { flex-wrap: wrap; }
+}
 .release-dialog__steps {
   display: flex;
   align-items: center;
@@ -40221,20 +40282,23 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-dialog__dots i[data-on='true'] { width: 18px; background: var(--accent-primary); }
 .release-dialog__body {
   display: grid;
+  align-content: start;
   min-height: 0;
+  max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 .release-dialog__pane {
   min-width: 0;
+  align-self: start;
   padding: 20px;
   display: grid;
   gap: 16px;
   align-content: start;
 }
 .release-dialog__hero { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
-.release-dialog__version { font-size: 0.8125rem; font-weight: 600; }
+.release-dialog__version { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 600; }
 .release-dialog__date { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
 .release-dialog__title {
   margin: 0;
@@ -40255,7 +40319,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .release-dialog__group { display: grid; gap: 6px; }
 .release-dialog__group h4 { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
-.release-dialog__changes { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; }
+.release-dialog__changes { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .release-dialog__change {
   display: flex;
   justify-content: space-between;
@@ -40266,8 +40330,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-size: 0.8125rem;
 }
 .release-dialog__change:first-child { border-top: 0; }
+.release-dialog__change b { font-family: var(--font-mono); }
 .release-dialog__hash { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
-.release-dialog__more { margin: 0; color: var(--text-secondary); font-size: 0.75rem; }
+.release-dialog__more { margin: 0; max-width: 52ch; color: var(--text-secondary); font-size: 0.75rem; }
 .release-dialog__skip { display: flex; align-items: flex-start; gap: 10px; font-size: 0.8125rem; cursor: pointer; }
 .release-dialog__steplist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .release-dialog__step {
@@ -40286,6 +40351,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   height: 18px;
   border-radius: 50%;
   border: 1.5px solid var(--accent-primary);
+  display: grid;
+  place-items: center;
 }
 .release-dialog__step--required {
   border-color: var(--accent-primary);
@@ -40320,22 +40387,29 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--accent-primary-soft-strong);
 }
 
-@media (max-width: 480px) {
-  .dialog__content.release-dialog {
-    width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
-    border-radius: 0;
-  }
-  .release-dialog__foot { padding: 12px 14px; }
-}
-
 @media (prefers-reduced-motion: no-preference) {
+  .dialog__overlay.release-dialog__overlay { animation: release-fade-in 220ms var(--ease-out) both; }
+  .dialog__content.release-dialog { animation: release-dialog-in 420ms var(--ease-spring) both; }
   .release-dialog__pane { animation: release-pane-in 380ms var(--ease-out) both; }
+  .release-dialog__pane[data-dir='back'] { animation-name: release-pane-in-back; }
   .release-dialog__step { animation: release-fade-up 420ms var(--ease-out) both; }
+}
+@keyframes release-fade-in { from { opacity: 0; } }
+/* The shared dialog is centred with translate(-50% -50%), so the entrance has to
+   carry that translate or it would jump while it plays. */
+@keyframes release-dialog-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 14px)) scale(0.95); }
 }
 @keyframes release-pane-in {
   from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes release-pane-in-back {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes release-fade-up-b {
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
 }
 @keyframes release-fade-up {
@@ -40396,6 +40470,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .whats-new__baseline h4,
 .whats-new__baseline p { margin: 0; }
 
+/* Buttons on the release surfaces keep the browser's own line height, as the
+   approved mockup's do: a 1.5 inherited from the surface shifts the label by half
+   a pixel inside the fixed-height button. */
+.release-dialog button,
+.release-panel button,
+.tour-card button { line-height: normal; }
+
 /* ── Release center: bell and panel (#4148) ── */
 .release-bell {
   position: relative;
@@ -40410,6 +40491,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-secondary);
   font-size: 0.78rem;
   font-weight: 500;
+  line-height: normal;
+  justify-content: normal;
+  box-shadow: none;
   cursor: pointer;
   transition:
     background var(--duration-fast) var(--ease-out),
@@ -40425,22 +40509,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   outline: none;
   box-shadow: var(--shadow-focus);
 }
-.release-bell__icon {
-  display: inline-flex;
-  transform-origin: 50% 0;
-}
-.release-bell-icon { overflow: visible; }
-.release-bell-icon__wave { opacity: 0; }
-.release-bell-icon__clapper { transform-box: fill-box; transform-origin: 50% -900%; }
-.release-bell[data-ringing='true'] .release-bell-icon__wave {
-  animation: release-bell-wave 900ms var(--ease-out);
-}
-.release-bell[data-ringing='true'] .release-bell-icon__wave--far { animation-delay: 120ms; }
-.release-bell[data-ringing='true'] .release-bell-icon__clapper {
-  animation: release-bell-clapper 900ms var(--ease-out);
-}
-.release-bell[data-ringing='true'] .release-bell__icon {
+.release-bell[data-ringing='true'] svg {
   animation: release-bell-ring 900ms var(--ease-out);
+  transform-origin: 50% 0;
 }
 .release-bell__badge {
   min-width: 18px;
@@ -40454,8 +40525,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-weight: 600;
   display: inline-grid;
   place-items: center;
-  font-variant-numeric: tabular-nums;
-  animation: release-badge-pop 420ms var(--ease-out) both;
+  animation: release-badge-pop 520ms var(--ease-spring) both;
 }
 .release-bell__badge[data-zero='true'] {
   background: var(--bg-strong);
@@ -40476,23 +40546,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   60% { transform: rotate(7deg); }
   80% { transform: rotate(-4deg); }
 }
-@keyframes release-bell-wave {
-  0% { opacity: 0; }
-  25% { opacity: 0.9; }
-  100% { opacity: 0; }
-}
-@keyframes release-bell-clapper {
-  0%, 100% { transform: rotate(0); }
-  30% { transform: rotate(-22deg); }
-  60% { transform: rotate(16deg); }
-  85% { transform: rotate(-6deg); }
-}
 @keyframes release-badge-pop {
-  0% { transform: scale(0.6); }
-  60% { transform: scale(1.15); }
+  0% { transform: scale(0.4); }
   100% { transform: scale(1); }
 }
-@media (max-width: 767px) {
+@media (max-width: 900px) {
   /* Visually hidden, not display:none, so the button keeps its accessible name. */
   .release-bell__label {
     position: absolute;
@@ -40504,8 +40562,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   }
 }
 .release-panel {
-  width: min(460px, calc(100vw - var(--space-4)));
-  max-height: min(640px, 80vh);
+  width: min(460px, calc(100vw - 28px));
+  max-height: calc(100dvh - var(--shell-topbar-height) - 20px);
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   padding: 0;
@@ -40514,6 +40572,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: var(--radius-xl);
   background: var(--bg-surface);
   box-shadow: var(--shadow-overlay);
+  /* The panel renders at the app's 14px body size, as in the approved mockup;
+     a portalled popover would otherwise inherit 16px. */
+  font-size: 0.875rem;
+  line-height: 1.5;
+  transform-origin: 92% 0;
 }
 .release-panel__head {
   display: flex;
@@ -40525,7 +40588,29 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-panel__title { font-size: 1rem; font-weight: 600; margin: 0; }
 .release-panel__head-actions { display: flex; gap: 4px; }
 .release-panel__tabs { padding: 0 16px 10px; }
-.release-panel__tabs .segmented-control__option { text-transform: none; white-space: nowrap; gap: var(--space-2); }
+.release-panel__tabs .segmented-control { background: var(--bg-surface); max-width: 100%; overflow-x: auto; }
+.release-panel__tabs .segmented-control__option {
+  text-transform: none;
+  white-space: nowrap;
+  gap: var(--space-2);
+  border-radius: 0;
+  box-shadow: none;
+  font-weight: 400;
+  justify-content: normal;
+  height: auto;
+  line-height: normal;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.release-panel__tabs .segmented-control__option:first-child {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+.release-panel__tabs .segmented-control__option:last-child {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+.release-panel__tabs .segmented-control__option--active { font-weight: 600; }
+.release-panel__tabs .segmented-control__option:focus-visible { box-shadow: inset var(--shadow-focus); }
 .release-panel__tabs .segmented-control__hint { font-size: 0.6875rem; opacity: 0.85; }
 .release-panel__list {
   overflow-y: auto;
@@ -40572,6 +40657,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   box-shadow: none;
   height: auto;
   color: var(--text-link);
+  border-radius: 0;
+  font-weight: 400;
+  line-height: normal;
+  display: block;
+  justify-content: normal;
 }
 .release-panel__link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .release-card {
@@ -40584,7 +40674,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   position: relative;
 }
 @media (prefers-reduced-motion: no-preference) {
+  .release-panel { animation: release-panel-in 360ms var(--ease-out) both; }
   .release-card { animation: release-fade-up 360ms var(--ease-out) both; }
+}
+@keyframes release-panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
 }
 .release-card[data-unread='true'] {
   border-color: var(--accent-primary-border);
@@ -40592,6 +40686,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .release-card[data-archived='true'] { background: var(--bg-surface-elevated); }
 .release-card__top { display: flex; align-items: flex-start; gap: 10px; justify-content: space-between; }
+/* A long title wraps; it must not squeeze the actions button. */
+.release-card__top > div { min-width: 0; }
+.release-card__top > button { flex-shrink: 0; }
 .release-card__title { margin: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.35; }
 .release-card__meta {
   display: flex;
@@ -40607,7 +40704,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 44px;
+  height: auto;
   padding: 9px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -40615,6 +40712,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-primary);
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: normal;
   cursor: pointer;
   box-shadow: none;
   transition:
@@ -40628,6 +40726,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-primary);
 }
 .release-card__toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* The 44px target is a touch concern, so it follows the pointer rather than the width. */
+@media (hover: none) and (pointer: coarse) {
+  .release-card__toggle { min-height: 44px; }
+}
 .release-card__chevron {
   display: inline-flex;
   color: var(--text-secondary);
@@ -40643,6 +40745,37 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-card__collapse[data-open='true'] { grid-template-rows: 1fr; opacity: 1; }
 .release-card__collapse > div { overflow: hidden; min-height: 0; }
 .release-card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* The item menu of the approved mockup: a compact card with icon rows. */
+.dropdown-menu__content.release-card__menu {
+  width: 224px;
+  min-width: 224px;
+  padding: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.release-card__menu .dropdown-menu__item { gap: 8px; padding: 7px 9px; line-height: normal; }
+.release-card__menu .release-card__menu-danger { color: var(--status-error-fg); }
+.release-card__menu .release-card__menu-danger[data-highlighted] { color: var(--status-error-fg); }
+.release-card__menu svg { flex-shrink: 0; }
+.release-card__menu .dropdown-menu__separator {
+  height: 0;
+  margin: 4px 0;
+  background: none;
+  border-top: 1px solid var(--border-subtle);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dropdown-menu__content.release-card__menu {
+    animation: release-menu-in 180ms var(--ease-out) both;
+    transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  }
+}
+@keyframes release-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
 .release-progress { display: grid; gap: 6px; }
 .release-progress__bar { display: flex; gap: 4px; }
 .release-progress__seg {
@@ -40717,8 +40850,18 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--text-primary);
-  transition: background 260ms var(--ease-out), border-color 260ms var(--ease-out);
+  transition:
+    background 260ms var(--ease-out),
+    border-color 260ms var(--ease-out),
+    transform 420ms var(--ease-spring);
 }
+.release-step__check path {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  transition: stroke-dashoffset 360ms var(--ease-out) 120ms;
+}
+.release-step[data-status='done'] .release-step__check path,
+.release-step[data-status='not_applicable'] .release-step__check path { stroke-dashoffset: 0; }
 .release-step[data-importance='optional'] .release-step__ind {
   border-style: dashed;
   border-color: var(--border-strong);
@@ -40733,7 +40876,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   transform: scale(1.06);
 }
 .release-step__body { display: grid; gap: 6px; min-width: 0; }
-.release-step__title { margin: 0; font-size: 0.8125rem; font-weight: 600; line-height: 1.35; }
+.release-step__title { margin: 0; font-size: 0.8125rem; font-weight: 600; line-height: 1.35; transition: color 200ms; }
 .release-step__conn { font-weight: 400; color: var(--text-secondary); }
 .release-step[data-status='done'] .release-step__title,
 .release-step[data-status='not_applicable'] .release-step__title {
@@ -40756,9 +40899,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--status-info-strong);
 }
 @media (prefers-reduced-motion: reduce) {
-  .release-bell[data-ringing='true'] .release-bell__icon,
-  .release-bell[data-ringing='true'] .release-bell-icon__wave,
-  .release-bell[data-ringing='true'] .release-bell-icon__clapper,
+  .release-bell[data-ringing='true'] svg,
   .release-bell__badge { animation: none; }
   .release-card__chevron,
   .release-card__collapse,
@@ -40789,8 +40930,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .tour-ring { transition: top 560ms var(--ease-out), left 560ms var(--ease-out), width 560ms var(--ease-out), height 560ms var(--ease-out); }
+  .tour-ring { transition: top 560ms var(--ease-out), left 560ms var(--ease-out), width 560ms var(--ease-out), height 560ms var(--ease-out), opacity 300ms; }
   .tour-card { animation: release-fade-up 380ms var(--ease-out) both; }
+  /* Same keyframes under a second name: the card is not remounted between steps, and a changed animation-name is what plays the entrance again. */
+  .tour-card[data-parity='1'] { animation-name: release-fade-up-b; }
 }
 
 .tour-card {
@@ -40809,6 +40952,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: var(--bg-surface);
   box-shadow: var(--shadow-overlay);
   color: var(--text-primary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+/* The status region stays mounted so a screen reader announces what lands in it,
+   which makes it a grid row; while empty it leaves the flow so no gap is left behind. */
+.tour-card__live:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 @media (min-width: 1180px) {
   .tour-card { right: 16px; left: auto; margin-inline: 0; width: 340px; }
@@ -40817,6 +40971,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 
 .tour-card__rail { display: flex; gap: 5px; margin: 0; padding: 0; list-style: none; }
 .tour-card__dot {
+  display: block;
   flex: 1;
   height: 5px;
   border-radius: 99px;
@@ -40859,7 +41014,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   align-items: center;
   gap: 10px;
   width: 100%;
-  justify-content: flex-start;
+  justify-content: normal;
   padding: 9px 12px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -40868,6 +41023,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-family: inherit;
   font-size: 0.8125rem;
   font-weight: 500;
+  line-height: normal;
   text-align: left;
   cursor: pointer;
   transition:
@@ -41086,10 +41242,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .whats-new__row-title .release-chip { margin-left: var(--space-2); }
 
 /* ── Release center settings section (#4143) ── */
-.release-settings { gap: var(--space-3); }
-.release-settings__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.release-settings__title { margin: 0; font-size: 1.125rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
-.release-settings__lead { margin: 0; color: var(--text-secondary); font-size: 0.875rem; max-width: 62ch; }
+.release-settings { gap: 16px; padding: 22px 24px; font-size: 0.875rem; line-height: 1.5; }
+.release-settings__head { display: grid; gap: 2px; }
+.release-settings__title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1rem; font-weight: 600; }
+.release-settings__lead { margin: 0; color: var(--text-muted); font-size: 0.8125rem; max-width: 56ch; }
 .release-settings__check { display: flex; align-items: flex-start; gap: 10px; font-size: 0.8125rem; cursor: pointer; }
 .release-settings__check small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.75rem; }
 .release-settings__source { margin: 0; color: var(--text-muted); font-size: 0.75rem; }

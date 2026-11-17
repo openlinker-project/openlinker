@@ -13,6 +13,7 @@ export type ReleaseIconName =
   | 'archive'
   | 'arrow-left'
   | 'arrow-right'
+  | 'bell'
   | 'check'
   | 'chevron'
   | 'close'
@@ -31,6 +32,12 @@ const PATHS: Record<ReleaseIconName, ReactNode> = {
   ),
   'arrow-left': <path d="M13 8H3M7 4L3 8l4 4" />,
   'arrow-right': <path d="M3 8h10M9 4l4 4-4 4" />,
+  bell: (
+    <>
+      <path d="M4 11a4 4 0 0 1 8 0c0 3 1.2 3.8 1.2 3.8H2.8S4 14 4 11Z" />
+      <path d="M6.5 14.8a1.6 1.6 0 0 0 3 0" />
+    </>
+  ),
   check: <path d="M3 8.5l3.2 3.2L13 4.8" />,
   chevron: <path d="M4 6l4 4 4-4" />,
   close: <path d="M4 4l8 8M12 4l-8 8" />,

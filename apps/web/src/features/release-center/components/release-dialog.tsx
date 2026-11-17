@@ -9,7 +9,8 @@
  *
  * @module features/release-center/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import type { ChangelogEntry } from '../../../build-time/changelog-parser';
 import { useMessages, usePlural, interpolate } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
@@ -58,6 +59,32 @@ export function ReleaseDialog({
   const stepCopy = useStepCopy();
   const plural = usePlural();
   const [step, setStep] = useState<0 | 1>(0);
+  const [direction, setDirection] = useState<'fwd' | 'back'>('fwd');
+  const reduceMotion = useReducedMotion();
+  // The card follows the visible pane's height the way the sign-in card follows
+  // its active view (auth-card.tsx): the same measured height and the same
+  // spring, so moving between the steps resizes the dialog instead of snapping.
+  // A state, not a ref object: the pane only mounts once the Radix portal has,
+  // and the effect has to run again when it does and on every step change.
+  const [pane, setPane] = useState<HTMLDivElement | null>(null);
+  const [paneHeight, setPaneHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!pane) return undefined;
+    setPaneHeight(pane.offsetHeight);
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    // The observer reports the layout height with its fraction (offsetHeight
+    // rounds), and unlike getBoundingClientRect it ignores the entrance scale.
+    const observer = new ResizeObserver((entries) => {
+      const size = entries[0]?.borderBoxSize?.[0]?.blockSize;
+      setPaneHeight(size ?? pane.offsetHeight);
+    });
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [pane]);
+  const goTo = (next: 0 | 1): void => {
+    setDirection(next > step ? 'fwd' : 'back');
+    setStep(next);
+  };
   const [skip, setSkip] = useState(false);
   // The Radix Dialog restores focus to its Trigger only; this dialog has none
   // (the host opens it), so the element focused before it opened is kept here.
@@ -76,6 +103,7 @@ export function ReleaseDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose(skip)}>
       <DialogContent
         className="release-dialog"
+        overlayClassName="release-dialog__overlay"
         aria-describedby="release-dialog-desc"
         onOpenAutoFocus={(event) => {
           // The primary action, not the close icon, is where a keyboard user starts.
@@ -112,12 +140,21 @@ export function ReleaseDialog({
           </DialogClose>
         </div>
 
-        <div className="release-dialog__body">
+        <motion.div
+          className="release-dialog__body"
+          initial={false}
+          animate={{ height: paneHeight ?? 'auto' }}
+          transition={
+            reduceMotion ? { duration: 0 } : { type: 'spring', bounce: 0, visualDuration: 0.4 }
+          }
+        >
           {step === 0 ? (
-            <div className="release-dialog__pane" key="changelog">
+            <div className="release-dialog__pane" key="changelog" data-dir={direction} ref={setPane}>
               <div className="release-dialog__hero">
-                <StatusBadge tone="success">{copy.newVersion}</StatusBadge>
-                <span className="release-dialog__version mono-text">{`v${version}`}</span>
+                <StatusBadge tone="success" compact withDot>
+                  {copy.newVersion}
+                </StatusBadge>
+                <span className="release-dialog__version">{`v${version}`}</span>
                 {date ? <span className="release-dialog__date">{date}</span> : null}
               </div>
               <DialogTitle className="release-dialog__title">
@@ -132,7 +169,7 @@ export function ReleaseDialog({
                   {highlights.map((entry) => (
                     <li key={`${entry.scope ?? ''}:${entry.text}`} className="release-dialog__change">
                       <span>
-                        {entry.scope ? <b className="mono-text">{entry.scope}: </b> : null}
+                        {entry.scope ? <b>{entry.scope}: </b> : null}
                         {entry.text}
                       </span>
                       {entry.commits[0] ? (
@@ -157,19 +194,20 @@ export function ReleaseDialog({
               </label>
             </div>
           ) : (
-            <div className="release-dialog__pane" key="guide">
+            <div className="release-dialog__pane" key="guide" data-dir={direction} ref={setPane}>
               <DialogTitle className="release-dialog__title">{copy.guideTitle}</DialogTitle>
               <DialogDescription id="release-dialog-desc" className="release-dialog__lead">
                 {canWriteSteps ? copy.guideLeadAdmin : copy.guideLeadReadOnly}
               </DialogDescription>
               <ul className="release-dialog__steplist">
-                {openRows.map((row) => {
+                {openRows.map((row, index) => {
                   const text = stepCopy(row.step.id);
                   const required = row.importance === 'required';
                   return (
                     <li
                       key={row.key}
                       className={`release-dialog__step release-dialog__step--${row.importance}`}
+                      style={{ animationDelay: `${index * 70}ms` }}
                     >
                       <span className="release-dialog__mark" aria-hidden="true" />
                       <span className="release-dialog__step-title">
@@ -194,7 +232,7 @@ export function ReleaseDialog({
               </ul>
             </div>
           )}
-        </div>
+        </motion.div>
 
         <DialogFooter className="release-dialog__foot">
           {step === 0 ? (
@@ -207,7 +245,7 @@ export function ReleaseDialog({
                   {copy.close}
                 </Button>
                 {hasGuide ? (
-                  <Button ref={primaryRef} onClick={() => setStep(1)}>
+                  <Button ref={primaryRef} onClick={() => goTo(1)}>
                     {copy.toGuide} <ReleaseIcon name="arrow-right" size={14} />
                   </Button>
                 ) : null}
@@ -219,7 +257,7 @@ export function ReleaseDialog({
                 tone="ghost"
                 className="button--icon"
                 aria-label={copy.back}
-                onClick={() => setStep(0)}
+                onClick={() => goTo(0)}
               >
                 <ReleaseIcon name="arrow-left" />
               </Button>

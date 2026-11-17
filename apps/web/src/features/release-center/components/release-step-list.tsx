@@ -53,7 +53,26 @@ export function ReleaseStepList({
             data-importance={instance.importance}
           >
             <span className="release-step__ind">
-              {closed ? <ReleaseIcon name="check" size={12} /> : index + 1}
+              {closed ? (
+                <svg
+                  className="release-step__check"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 6.2l2.6 2.6L10 3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                index + 1
+              )}
             </span>
             <div className="release-step__body">
               <p className="release-step__title">
