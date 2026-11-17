@@ -503,13 +503,15 @@ export function RoutingRulesPanel({
   return (
     <div className={embedded ? 'routing-panel routing-panel--embedded' : 'panel panel--dense routing-panel'}>
       {embedded ? null : (
-        <>
+        // The release tour points at the heading and its one-line explanation, not
+        // at the whole panel: a highlight as tall as the table says nothing.
+        <div data-tour="label-master">
           <div className="panel__header">
             <h3 className="section-title">{routeCopy.panelTitle}</h3>
             {dirtyBadge}
           </div>
           <p className="muted-text routing-panel__intro">{routeCopy.intro(sourceLabel, shopName)}</p>
-        </>
+        </div>
       )}
 
       {divertOptions.length === 0 && (

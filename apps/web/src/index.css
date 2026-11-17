@@ -20042,7 +20042,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-secondary);
   font-family: var(--font-sans);
   font-size: 0.8125rem;
-  text-transform: capitalize;
+  /* Labels are authored in their final case; `capitalize` title-cased every word of a phrase ("Nie Drukuj"). */
+  text-transform: none;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-standard);
 }
@@ -40252,6 +40253,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
      card); here the footer wraps instead so no action is cut off. */
   .release-dialog__foot,
   .release-dialog__foot-right { flex-wrap: wrap; }
+  /* The shared footer stretches every button at this width; the icon-only Back
+     must stay a compact square at the start edge, not a centred full-width bar. */
+  .release-dialog__foot .button--icon { width: auto; align-self: flex-start; }
 }
 .release-dialog__steps {
   display: flex;
@@ -40739,6 +40743,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 /* The item menu of the approved mockup: a compact card with icon rows. */
 .dropdown-menu__content.release-card__menu {
+  /* Above the bell panel (62); Radix copies this onto its positioning wrapper,
+     so the default 50 would paint the menu under the panel that opened it. */
+  z-index: 63;
   width: 224px;
   min-width: 224px;
   padding: 4px;
@@ -40921,7 +40928,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: var(--radius-lg);
   box-shadow:
     0 0 0 1.5px var(--accent-primary),
-    0 0 0 9999px color-mix(in oklab, var(--overlay-scrim) 55%, transparent);
+    0 0 0 9999px var(--overlay-scrim);
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -40931,6 +40938,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .tour-card[data-parity='1'] { animation-name: release-fade-up-b; }
 }
 
+/* While a tour card is up the page gains room under its last row, so every
+   target can scroll clear of the card. The value is set from the card height. */
+.shell-content::after { content: ""; display: block; height: var(--tour-card-space, 0px); }
 .tour-card {
   position: fixed;
   z-index: 61;
@@ -41070,7 +41080,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
+}
+/* One row on every step, including the last (Back + Finish are the widest pair);
+   only a very narrow phone may wrap. */
+.tour-card__footer .button { white-space: nowrap; }
+.tour-card__footer > .button { padding-inline: 8px; }
+@media (max-width: 359px) {
+  .tour-card__footer { flex-wrap: wrap; }
 }
 .tour-card__nav { display: flex; gap: 6px; }
 .tour-card .button[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; }
