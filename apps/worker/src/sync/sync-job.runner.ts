@@ -778,9 +778,10 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    *
    * Retryable cases intentionally left out (registry classifiers must
    * also leave them out):
-   *   - `MissingOrderItemMappingError` — offer→variant mappings are
-   *     created by a separate sync cadence and may simply not exist yet
-   *     when the order job first fires.
+   *   - `MissingOrderItemMappingError` - a mapping may simply not exist yet
+   *     when the order job first fires (e.g. a variant mapping behind a
+   *     resolved offer). Since #4040 a missing OFFER mapping no longer reaches
+   *     the runner: ingestion records `awaiting_mapping` and returns instead.
    *
    * @param error - Error to check
    * @returns True if error is non-retryable

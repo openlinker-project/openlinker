@@ -24,7 +24,14 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type Connection, type ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+  CONNECTION_PORT_TOKEN,
+  type Connection,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import {
   IAutoIssueTriggerService,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
@@ -129,11 +136,7 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
-import {
-  describeMultipackHold,
-  hasBundleDefinition,
-  isMultipackLine,
-} from './multipack-hold';
+import { describeMultipackHold, hasBundleDefinition, isMultipackLine } from './multipack-hold';
 import {
   projectOrderForRouting,
   type OrderRoutingProjection,
@@ -373,7 +376,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // backwards. Enforced only for cursor shapes core can order - see
       // `compareOrderCursors`.
       if (nextCursor && nextCursor.trim() !== '') {
-        if (fromCursor && this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)) {
+        if (
+          fromCursor &&
+          this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)
+        ) {
           this.logger.warn(
             `Cursor regression detected; not committing cursor. cursorKey=${cursorKey}, fromCursor=${fromCursor}, nextCursor=${nextCursor} (connection: ${connectionId})`
           );
@@ -499,8 +505,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     // Two properties depend on the placement:
     //   - `persistIncomingSnapshot` overwrites `orderSnapshot`, so after it the
     //     prior state this diff needs no longer exists anywhere;
-    //   - Step 4 throws `MissingOrderItemMappingError` before `persistOrder` is
-    //     ever reached, so writing the fact later would lose it permanently on
+    //   - Step 4 throws `MissingOrderItemMappingError` (or, for unlisted offers,
+    //     returns early, #4040) before `persistOrder` is ever reached, so writing the fact later would lose it permanently on
     //     exactly the orders most likely to have been amended (a line the source
     //     changed is a line whose mapping may well have gone with it).
     // The fact is an observation about the SOURCE and is true whether or not
@@ -573,7 +579,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // will carry variantIds; if items never resolve, OfferStockRestoreService
     // will no-op (no variantIds in the raw snapshot) and the job stays visible
     // in the dead-letter queue for operator inspection.
-    if ((incoming.status === 'cancelled' || cancelledFromEarlySignal) && priorStatus !== 'cancelled') {
+    if (
+      (incoming.status === 'cancelled' || cancelledFromEarlySignal) &&
+      priorStatus !== 'cancelled'
+    ) {
       try {
         await this.jobQueue.enqueue({
           type: 'marketplace.offer.stockRestore',
@@ -589,23 +598,25 @@ export class OrderIngestionService implements IOrderIngestionService {
       } catch (error) {
         this.logger.error(
           `Failed to enqueue stock-restore job (early-fire) for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
       }
     }
 
     // Step 3: attempt item resolution (non-throwing)
     const resolvedItems: Order['items'] = [];
-    const unresolvedRefs: Array<{ itemId: string; reason: string; kind: ItemResolutionFailureKind }> =
-      [];
+    const unresolvedRefs: Array<{
+      itemId: string;
+      reason: string;
+      kind: ItemResolutionFailureKind;
+    }> = [];
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
       // A ready order with a frozen expansion was already decided: re-asking the
       // LIVE definitions would flip a (possibly shipped) order back to held
       // the day a definition or confirmation is retired.
-      const alreadyFrozen =
-        existing?.recordStatus === 'ready' && existing.lineExpansion != null;
+      const alreadyFrozen = existing?.recordStatus === 'ready' && existing.lineExpansion != null;
       if (result.resolved && !alreadyFrozen && isMultipackLine(item)) {
         // #3929: held BEFORE anything reserves. Treating the line as one unit
         // would reserve and ship a single unit for the price of several. The
@@ -670,13 +681,15 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
     }
 
-    // Step 4: if any unresolved, persist the honest record state (#1689) then
-    // throw so the job runner retries with backoff (except for unlisted offers,
-    // see below). A `source_deleted` ref is
-    // a permanently unresolvable state (deleted at the master, #1599) — distinct
-    // from the ordinary, self-healing `awaiting_mapping` gap; the retry itself
-    // is unchanged (review #11 — routing a stale line to a terminal outcome
-    // and partial-order fulfilment — is out of scope for this issue).
+    // Step 4: if any unresolved, persist the honest record state (#1689), then
+    // end one of two ways:
+    //   - every unresolved line is a `missing_mapping` on an `offer` ref
+    //     (#4040): return early WITHOUT throwing, so the job is not retried;
+    //   - anything else: throw so the job runner retries with backoff.
+    // A `source_deleted` ref is a permanently unresolvable state (deleted at the
+    // master, #1599) - distinct from the ordinary `awaiting_mapping` gap - and
+    // keeps the throw (review #11 - routing a stale line to a terminal outcome
+    // and partial-order fulfilment - is out of scope).
     if (unresolvedRefs.length > 0) {
       const first = unresolvedRefs[0];
       const firstItem = incoming.items.find((i) => i.id === first.itemId);
@@ -692,14 +705,18 @@ export class OrderIngestionService implements IOrderIngestionService {
       // connected account every historic order is in this state, so retrying
       // holds the connection's realtime lane for hours. The record already
       // carries `awaiting_mapping` and its reason, which is the operator's
-      // signal; the order is re-ingested by the next event for it.
+      // signal. Known limitation: nothing re-drives the order once the offer is
+      // later mapped (cursor-based feeds never re-deliver the event); the
+      // operator remedy is a manual re-sync of the order.
+      // A line missing from `incoming.items` fails the check and falls through
+      // to the throw, the safe direction.
       const onlyUnlistedOffers = unresolvedRefs.every(
         (ref) =>
           ref.kind === 'missing_mapping' &&
           incoming.items.find((i) => i.id === ref.itemId)?.productRef.type === 'offer'
       );
       if (onlyUnlistedOffers) {
-        this.logger.warn(
+        this.logger.debug(
           `Order ${internalOrderId} awaits an offer mapping (connectionId=${connectionId}); ` +
             `recorded as awaiting_mapping without retrying`
         );
@@ -854,7 +871,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // error so the missed restore is loud and actionable.
         this.logger.error(
           `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
       }
     }
@@ -1236,9 +1253,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (skipReason !== null) {
         // `log`, not `debug`: the answer to "why is this order not on the pack
         // bench?", invisible at `debug` on a normal deployment (#3490 / #3496 review).
-        this.logger.log(
-          `Not routing order ${orderId}: ${skipReason}; following today's path.`
-        );
+        this.logger.log(`Not routing order ${orderId}: ${skipReason}; following today's path.`);
         return { kind: 'skip', reason: skipReason };
       }
 
@@ -2203,7 +2218,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.warn(
         `Source amended order ${internalOrderId} on connection ${connectionId} after ingestion: ` +
           changes
-            .map((c) => (c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`))
+            .map((c) =>
+              c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`
+            )
             .join('; ')
       );
       await this.orderRecordService.recordAmendment(internalOrderId, new Date(), changes);
@@ -2347,9 +2364,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    * first: sources such as WooCommerce truncate `placedAt` to the second, so a
    * cost saved a few hundred ms before the sale must not look "after" it.
    */
-  private async resolveLineCostCandidates(
-    order: Order
-  ): Promise<Map<string, LineCostCandidate>> {
+  private async resolveLineCostCandidates(order: Order): Promise<Map<string, LineCostCandidate>> {
     const variantIds = [
       ...new Set(
         order.items.map((item) => item.variantId).filter((id): id is string => Boolean(id))
