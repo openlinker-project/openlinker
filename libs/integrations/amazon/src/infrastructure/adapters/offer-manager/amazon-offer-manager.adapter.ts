@@ -29,7 +29,15 @@
  *     variant so a retry addresses the same listing, and an existing listing
  *     under that SKU is reported as already existing rather than overwritten.
  *     Amazon checks the listing after it answers `ACCEPTED`, so the create
- *     reports `validating` and the status read reports the outcome.
+ *     reports `validating` and the status read reports the outcome. With no
+ *     ASIN, a new catalogue item (`LISTING`) under the chosen product type,
+ *     with title, brand, EAN, description, images and the product type's
+ *     attributes; a product without a barcode is refused (Amazon's GTIN
+ *     exemption is granted in Seller Central only).
+ *   - `CategoryBrowser` + `TaxonomyIdentityProvider` + `CategoryParametersReader`
+ *     (#4181): a marketplace's product types are its categories, a flat list
+ *     (one tree per marketplace and environment); a type's parameters are the
+ *     required simple attributes of its JSON Schema.
  *   - `OfferStatusReader`: `getListingsItem` with summaries, offers,
  *     fulfilment and issues: `BUYABLE` is active, otherwise inactive; ERROR
  *     issues are the validation errors; the live price and quantity are the
@@ -48,6 +56,7 @@
  * @module libs/integrations/amazon/src/infrastructure/adapters/offer-manager
  */
 import {
+  amazonTaxonomyOwner,
   CatalogProductNotFoundException,
   CONSERVATIVE_DESCRIPTION_FORMAT,
   type BatchCategoryByEanInput,
@@ -55,13 +64,18 @@ import {
   type CatalogProductMatchResult,
   type CatalogProductReader,
   type CatalogProductSummary,
+  type CategoryBrowser,
+  type CategoryParameter,
+  type CategoryParametersReader,
   type CreateOfferCommand,
   type CreateOfferResult,
   type DescriptionFormat,
   type EanCategoryMatcher,
   type EanMatchResult,
   type FindProductsByBarcodeInput,
+  type OfferCategory,
   type OfferCreator,
+  type OfferParameter,
   type OfferFeedInput,
   type OfferFeedOutput,
   type OfferFieldUpdater,
@@ -69,10 +83,13 @@ import {
   type OfferManagerPort,
   type OfferStatusReadResult,
   type OfferStatusReader,
+  type TaxonomyIdentityProvider,
+  type TaxonomyOwner,
   type UpdateOfferFieldsCommand,
   type UpdateOfferFieldsReport,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import type { FetchLike } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 
 import { AMAZON_KNOWN_MARKETPLACES } from '../../../amazon.constants';
@@ -90,11 +107,14 @@ import {
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
 import {
   AMAZON_OFFER_ONLY_PRODUCT_TYPE,
+  composeFullListing,
   composeOfferOnlyListing,
   resolveAmazonSku,
   type AmazonListingPlan,
 } from '../../mappers/amazon-listing-composer';
-import { AmazonCatalogReader } from './amazon-catalog-reader';
+import { mapProductTypeSchemaToParameters } from '../../mappers/amazon-product-type-schema.mapper';
+import { AmazonCatalogReader, normalizeEan } from './amazon-catalog-reader';
+import { AmazonProductTypeReader } from './amazon-product-type-reader';
 
 const LISTINGS_PATH = '/listings/2021-08-01/items';
 /** `searchListingsItems` returns at most 20 items a page. */
@@ -108,17 +128,40 @@ export class AmazonOfferManagerAdapter
     OfferFieldUpdater,
     CatalogProductReader,
     EanCategoryMatcher,
-    OfferCreator
+    OfferCreator,
+    CategoryBrowser,
+    CategoryParametersReader,
+    TaxonomyIdentityProvider
 {
   private readonly logger = new Logger(AmazonOfferManagerAdapter.name);
   private readonly catalog: AmazonCatalogReader;
+  private readonly productTypes: AmazonProductTypeReader;
 
   constructor(
     private readonly connectionId: string,
     private readonly client: AmazonSpApiClient,
     private readonly config: AmazonConnectionConfig,
+    fetchImpl: FetchLike,
   ) {
     this.catalog = new AmazonCatalogReader(client, config.marketplaceIds[0]);
+    this.productTypes = new AmazonProductTypeReader(client, fetchImpl, config.marketplaceIds[0]);
+  }
+
+  getTaxonomyIdentity(): TaxonomyOwner {
+    return amazonTaxonomyOwner(this.primaryMarketplace(), this.config.environment === 'sandbox');
+  }
+
+  async fetchCategories(parentId?: string): Promise<OfferCategory[]> {
+    // Product types are a flat list: nothing sits under one.
+    if (parentId !== undefined) {
+      return [];
+    }
+    const types = await this.productTypes.listProductTypes();
+    return types.map((type) => ({ id: type.name, name: type.displayName ?? type.name, parentId: null, leaf: true }));
+  }
+
+  async fetchCategoryParameters(input: { categoryId: string }): Promise<CategoryParameter[]> {
+    return mapProductTypeSchemaToParameters(await this.productTypes.getSchema(input.categoryId));
   }
 
   async findProductsByBarcode(input: FindProductsByBarcodeInput): Promise<CatalogProductMatchResult> {
@@ -196,9 +239,7 @@ export class AmazonOfferManagerAdapter
 
     const asin = cmd.productCardId ?? cmd.overrides?.productCardId ?? null;
     if (asin === null) {
-      throw new AmazonNotSupportedException(
-        'creating a new catalogue item: no Amazon product (ASIN) matches this barcode',
-      );
+      return this.submit(this.planNewItem(cmd));
     }
     const plan = composeOfferOnlyListing({
       cmd,
@@ -328,6 +369,42 @@ export class AmazonOfferManagerAdapter
     };
   }
 
+  private planNewItem(cmd: CreateOfferCommand): AmazonListingPlan {
+    const productType = cmd.overrides?.categoryId;
+    if (productType === undefined || productType.trim().length === 0) {
+      throw new AmazonNotSupportedException('a new catalogue item with no product type: choose a category');
+    }
+    const barcode = cmd.variantBarcode ?? cmd.overrides?.ean ?? null;
+    const ean = barcode === null ? null : normalizeEan(barcode);
+    if (ean === null) {
+      throw new AmazonNotSupportedException(
+        'a new catalogue item without a valid EAN; a GTIN exemption is granted in Seller Central only',
+      );
+    }
+    const title = cmd.overrides?.title?.trim();
+    if (title === undefined || title.length === 0) {
+      throw new AmazonNotSupportedException('a new catalogue item without a title');
+    }
+    const parameters = cmd.parameters ?? cmd.overrides?.parameters ?? [];
+    const brand = readBrand(cmd, parameters);
+    if (brand === null) {
+      throw new AmazonNotSupportedException('a new catalogue item without a brand: set the brand parameter');
+    }
+    return composeFullListing({
+      cmd,
+      productType,
+      marketplaceIds: this.config.marketplaceIds,
+      content: {
+        title,
+        brand,
+        ean,
+        description: cmd.overrides?.description ?? null,
+        imageUrls: cmd.overrides?.imageUrls ?? [],
+        parameters: parameters.filter((parameter) => parameter.id !== 'brand'),
+      },
+    });
+  }
+
   private async submit(plan: AmazonListingPlan): Promise<CreateOfferResult> {
     const response = await this.client.put<AmazonListingSubmissionResponse>(
       `${LISTINGS_PATH}/${this.sellerPath()}/${encodeURIComponent(plan.sku)}`,
@@ -428,4 +505,19 @@ function toCatalogProduct(entry: AmazonCatalogEntry): CatalogProduct {
     images: [...entry.images],
     parameters: entry.brand ? [{ parameterId: 'brand', name: 'Brand', valueStrings: [entry.brand] }] : [],
   };
+}
+
+const BRAND_ATTRIBUTE_PATTERN = /^(brand|marka|manufacturer|producent|hersteller|marque)$/i;
+
+/**
+ * The brand: the `brand` parameter, else `platformParams.brand`, else the
+ * master's brand or manufacturer attribute.
+ */
+function readBrand(cmd: CreateOfferCommand, parameters: readonly OfferParameter[]): string | null {
+  const parameter = parameters.find((entry) => entry.id === 'brand');
+  const fromParameter = parameter?.values?.[0] ?? parameter?.valuesIds?.[0];
+  const fromParams = cmd.overrides?.platformParams?.['brand'];
+  const fromSource = cmd.sourceAttributes?.find((attribute) => BRAND_ATTRIBUTE_PATTERN.test(attribute.name.trim()))?.value;
+  const brand = fromParameter ?? (typeof fromParams === 'string' ? fromParams : undefined) ?? fromSource;
+  return brand !== undefined && brand.trim().length > 0 ? brand.trim() : null;
 }

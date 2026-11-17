@@ -13,7 +13,7 @@
  * `OrderSource` arrived with #4178 (order feed, tracking write-back, mapping
  * options, the `amazon-orders-poll` task and the email normalizer);
  * `OfferManager` with #4180 (listing link by SKU, FBM stock, price, status);
- * `EanCategoryMatcher` + `OfferCreator` with #4181, advertised-without-dispatch
+ * `CategoryBrowser`, `EanCategoryMatcher` and `OfferCreator` with #4181, advertised-without-dispatch
  * like Allegro's: resolved by narrowing the `OfferManager` adapter with their
  * guards, never through `getCapabilityAdapter`.
  *
@@ -51,7 +51,7 @@ export const amazonAdapterManifest: AdapterMetadata = {
   adapterKey: AMAZON_ADAPTER_KEY,
   platformType: AMAZON_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['OrderSource', 'OfferManager', 'EanCategoryMatcher', 'OfferCreator'],
+  supportedCapabilities: ['OrderSource', 'OfferManager', 'CategoryBrowser', 'EanCategoryMatcher', 'OfferCreator'],
   // Opt-in: ingesting a seller's Amazon orders creates them in every
   // destination.
   defaultEnabledCapabilities: [],

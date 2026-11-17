@@ -32,7 +32,7 @@ function setup(config = CONFIG): { adapter: AmazonOfferManagerAdapter; get: jest
     .fn()
     .mockResolvedValue({ status: 200, data: { sku: 'MUG-BLUE', status: 'ACCEPTED', submissionId: 's1' }, requestId: 'r' });
   const client = { get, patch } as unknown as AmazonSpApiClient;
-  return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, config), get, patch };
+  return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, config, jest.fn()), get, patch };
 }
 
 describe('AmazonOfferManagerAdapter.listOffers', () => {
@@ -310,7 +310,7 @@ describe('AmazonOfferManagerAdapter.createOffer', () => {
       .fn()
       .mockResolvedValue({ status: 200, data: { sku: 'OL-abc', status: 'ACCEPTED', submissionId: 's1' }, requestId: 'r' });
     const client = { get, put } as unknown as AmazonSpApiClient;
-    return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, CONFIG), get, put };
+    return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, CONFIG, jest.fn()), get, put };
   }
 
   it('should list an offer on the matched ASIN and report it validating', async () => {
@@ -358,10 +358,52 @@ describe('AmazonOfferManagerAdapter.createOffer', () => {
     expect(put).not.toHaveBeenCalled();
   });
 
-  it('should refuse a variant with no Amazon catalogue item', async () => {
+  const newItem = {
+    ...cmd,
+    productCardId: null,
+    variantBarcode: '5901234123457',
+    overrides: { categoryId: 'KITCHEN', title: 'Blue mug', imageUrls: ['https://shop.example/1.jpg'] },
+    parameters: [{ id: 'color', values: ['Blue'], section: 'product' as const }],
+    sourceAttributes: [{ name: 'Manufacturer', value: 'Acme' }],
+  };
+
+  it('should create a new catalogue item when no ASIN matches', async () => {
     const { adapter, put } = createSetup();
 
-    await expect(adapter.createOffer({ ...cmd, productCardId: undefined })).rejects.toThrow(AmazonNotSupportedException);
+    await expect(adapter.createOffer(newItem)).resolves.toEqual({ externalOfferId: 'OL-abc', status: 'validating' });
+    const body = (put.mock.calls as unknown[][])[0][1] as { requirements: string; productType: string; attributes: Record<string, unknown> };
+    expect(body.requirements).toBe('LISTING');
+    expect(body.productType).toBe('KITCHEN');
+    expect(body.attributes).toMatchObject({
+      brand: [{ value: 'Acme', language_tag: 'de_DE', marketplace_id: 'A1PA6795UKMFR9' }, {}],
+      externally_assigned_product_identifier: [{ type: 'ean', value: '5901234123457' }, {}],
+      color: [{ value: 'Blue' }],
+    });
+  });
+
+  it('should refuse a new item without a barcode, a product type or a brand', async () => {
+    const { adapter, put } = createSetup();
+
+    await expect(adapter.createOffer({ ...newItem, variantBarcode: null })).rejects.toThrow(/GTIN exemption/);
+    await expect(adapter.createOffer({ ...newItem, overrides: { title: 'Blue mug' } })).rejects.toThrow(/product type/);
+    await expect(adapter.createOffer({ ...newItem, sourceAttributes: [] })).rejects.toThrow(/brand/);
     expect(put).not.toHaveBeenCalled();
+  });
+});
+
+describe('AmazonOfferManagerAdapter taxonomy', () => {
+  it('should name one tree per marketplace and environment', () => {
+    expect(setup().adapter.getTaxonomyIdentity()).toBe('amazon:A1PA6795UKMFR9');
+    expect(setup({ ...CONFIG, environment: 'sandbox' } as unknown as typeof CONFIG).adapter.getTaxonomyIdentity()).toBe(
+      'amazon:sandbox:A1PA6795UKMFR9',
+    );
+  });
+
+  it('should list product types as a flat list of leaves', async () => {
+    const { adapter, get } = setup();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { productTypes: [{ name: 'KITCHEN', displayName: 'Kitchen' }] } });
+
+    await expect(adapter.fetchCategories()).resolves.toEqual([{ id: 'KITCHEN', name: 'Kitchen', parentId: null, leaf: true }]);
+    await expect(adapter.fetchCategories('KITCHEN')).resolves.toEqual([]);
   });
 });

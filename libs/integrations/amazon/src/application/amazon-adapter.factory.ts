@@ -60,6 +60,7 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       connection,
       config: config.config,
       credentialSource: credentials.source,
+      fetchImpl,
       client: new AmazonSpApiClient(resolveAmazonSpApiHost(config.config), tokens, fetchImpl),
       notificationsClient: new AmazonSpApiClient(
         resolveAmazonSpApiHost(config.config),
@@ -93,6 +94,11 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
   }
 
   createOfferManager(resolution: AmazonResolution): AmazonOfferManagerAdapter {
-    return new AmazonOfferManagerAdapter(resolution.connection.id, resolution.client, resolution.config);
+    return new AmazonOfferManagerAdapter(
+      resolution.connection.id,
+      resolution.client,
+      resolution.config,
+      resolution.fetchImpl,
+    );
   }
 }
