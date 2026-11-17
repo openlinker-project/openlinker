@@ -23,9 +23,10 @@ import { DetailSection } from '../../../shared/ui/detail-section';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { formatAbsoluteDate, formatAbsoluteTime } from '../../../shared/format/format-date';
 import { usePlatforms } from '../../../shared/plugins';
+import { ApiError } from '../../../shared/api/api-error';
 import { useConnectionsQuery, type Connection } from '../../connections';
 import { findPlatformDisplayName } from '../../mappings';
-import { buildShopProductUrl } from '../../products/lib/shop-product-url';
+import { buildShopProductUrl } from '../../products';
 import type { ListingSaleRow, ProductSaleStatusResponse } from '../api/listings.types';
 import { useProductSaleStatusQuery } from '../hooks/use-product-sale-status-query';
 import { useReleaseSaleHoldsMutation } from '../hooks/use-release-sale-holds-mutation';
@@ -342,7 +343,7 @@ export function SalesChannelsSection({
             <footer className="sales-channels__footer">
               <span className="sales-channels__footer-note">
                 {release.isError
-                  ? release.error.message.includes('409')
+                  ? release.error instanceof ApiError && release.error.status === 409
                     ? COPY.putBackRefused
                     : COPY.putBackFailed
                   : release.data && release.data.failed.length > 0
