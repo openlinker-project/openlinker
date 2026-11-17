@@ -22,20 +22,20 @@ import { useReleaseStepsMutation } from '../hooks/use-release-steps-mutation';
 import { installationStatusOf, releaseStepItemKey } from '../lib/release-state-merge';
 import { applyChoice, readChoice, TOUR_CHOICES } from './tour-choices';
 import type { TourAction, TourState } from './tour-reducer';
+import { bottomReserve, computeTourLayout, RING_PADDING } from './tour-geometry';
 import { useTourTarget } from './use-tour-target';
+
+function readTopInset(): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--shell-topbar-height');
+  const bar = Number.parseFloat(raw);
+  return (Number.isFinite(bar) ? bar : 56) + 12 + RING_PADDING;
+}
 
 interface TourCardProps {
   state: TourState;
   dispatch: Dispatch<TourAction>;
   onClose: () => void;
 }
-
-const RING_PADDING = 8;
-// Clearance kept below the sticky top bar and above the card, so a scrolled
-// target is never tucked under either.
-const TOP_CLEARANCE = 88;
-const CARD_GAP = 24;
-const CARD_EDGE = 16;
 
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -78,36 +78,53 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     const ring = ringRef.current;
     if (!element || !ring) return undefined;
     const card = cardRef.current;
-    const cardSpace = card ? card.getBoundingClientRect().height + CARD_EDGE + CARD_GAP : 0;
-    // Room below the page content for the card, so the last rows can still scroll clear of it.
-    document.documentElement.style.setProperty('--tour-card-space', `${Math.ceil(cardSpace)}px`);
-    const rectNow = element.getBoundingClientRect();
-    const fitsAboveCard = rectNow.top >= TOP_CLEARANCE && rectNow.bottom <= window.innerHeight - cardSpace;
-    if (!fitsAboveCard) {
-      // Align the target's top under the bar: the card owns the lower edge, so
-      // centring would park the target right behind it on short viewports.
-      window.scrollBy({
-        top: rectNow.top - TOP_CLEARANCE,
-        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-      });
-    }
+    if (!card) return undefined;
     let frame = 0;
+    let scrolled = false;
+
     const place = (): void => {
       const rect = element.getBoundingClientRect();
-      ring.style.width = `${rect.width + RING_PADDING * 2}px`;
-      ring.style.height = `${rect.height + RING_PADDING * 2}px`;
-      ring.style.top = `${rect.top - RING_PADDING}px`;
-      ring.style.left = `${rect.left - RING_PADDING}px`;
+      const cardRect = card.getBoundingClientRect();
+      const topInset = readTopInset();
+      const layout = computeTourLayout({
+        target: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        card: { width: cardRect.width, height: cardRect.height },
+        topInset,
+      });
+      card.dataset.dock = layout.dock;
+      card.style.setProperty('--tour-card-top', `${Math.round(topInset)}px`);
+      // Room under the page content so the last rows can still scroll above a bottom-docked card.
+      document.documentElement.style.setProperty(
+        '--tour-card-space',
+        layout.dock === 'bottom' ? `${bottomReserve(cardRect.height)}px` : '0px'
+      );
+      ring.style.width = `${layout.lit.width}px`;
+      ring.style.height = `${layout.lit.height}px`;
+      ring.style.top = `${layout.lit.top}px`;
+      ring.style.left = `${layout.lit.left}px`;
+      ring.style.visibility = 'visible';
+      if (!scrolled) {
+        scrolled = true;
+        // Put the target's top just under the bar; the lit box is then clamped to what fits.
+        const delta = rect.top - topInset;
+        if (Math.abs(delta) > 2) {
+          window.scrollBy({ top: delta, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+        }
+      }
     };
     const schedule = (): void => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(place);
     };
+    // Hidden until the first measurement so the ring never flashes at the origin or a stale rect.
+    ring.style.visibility = 'hidden';
     place();
     window.addEventListener('scroll', schedule, true);
     window.addEventListener('resize', schedule);
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
     resizeObserver?.observe(element);
+    resizeObserver?.observe(card);
     return () => {
       document.documentElement.style.removeProperty('--tour-card-space');
       cancelAnimationFrame(frame);
