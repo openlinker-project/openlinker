@@ -48,6 +48,7 @@ import {
   isParameterVisible,
   visibleDictionaryEntries,
 } from './category-parameter-visibility';
+import { dictionaryEntryFormValue } from './category-parameters-to-offer-parameters';
 
 const NATIVE_SELECT_THRESHOLD = 50;
 
@@ -403,7 +404,11 @@ export function toComboboxValue(
     const matched = parameter.dictionary?.find(
       (e) => e.value.trim().toLowerCase() === raw.trim().toLowerCase(),
     );
-    return matched ? { kind: 'dictionary', ids: [matched.id] } : { kind: 'custom', text: raw };
+    if (matched) return { kind: 'dictionary', ids: [matched.id] };
+    // An entry stored by its id (a writer that predates #4038) is still that
+    // entry - mirrors the id fallback in `categoryParametersToOfferParameters`.
+    const byId = parameter.dictionary?.find((e) => e.id === raw.trim());
+    return byId ? { kind: 'dictionary', ids: [byId.id] } : { kind: 'custom', text: raw };
   }
   // Plain dict single — RHF stores the entry id
   return { kind: 'dictionary', ids: [raw] };
@@ -421,11 +426,8 @@ export function fromComboboxValue(
     // A custom-values field stores TEXT (submit resolves it back to an entry
     // by its spelling); storing the picked id there sent the id as free text,
     // which the marketplace reads as the parameter being missing (#4038).
-    if (parameter.restrictions.customValuesEnabled) {
-      const entry = parameter.dictionary?.find((e) => e.id === value.ids[0]);
-      return entry?.value ?? value.ids[0];
-    }
-    return value.ids[0];
+    const entry = parameter.dictionary?.find((e) => e.id === value.ids[0]);
+    return entry ? dictionaryEntryFormValue(parameter, entry) : value.ids[0];
   }
   // custom-text — only meaningful when customValuesEnabled
   return value.text;

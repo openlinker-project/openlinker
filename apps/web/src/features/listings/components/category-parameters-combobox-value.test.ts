@@ -26,6 +26,26 @@ const material = param({
   dictionary: [{ id: '201017_2317', value: 'bawełna' }],
 });
 
+describe('toComboboxValue', () => {
+  it('shows a custom-values entry stored by its text as the picked entry', () => {
+    expect(toComboboxValue(material, 'bawełna')).toEqual({
+      kind: 'dictionary',
+      ids: ['201017_2317'],
+    });
+  });
+
+  it('shows a custom-values entry stored by its id as the picked entry, not as text', () => {
+    expect(toComboboxValue(material, '201017_2317')).toEqual({
+      kind: 'dictionary',
+      ids: ['201017_2317'],
+    });
+  });
+
+  it('shows free text that names no entry as custom text', () => {
+    expect(toComboboxValue(material, 'len')).toEqual({ kind: 'custom', text: 'len' });
+  });
+});
+
 describe('fromComboboxValue', () => {
   it('stores a dictionary pick on a custom-values field as the entry text', () => {
     expect(fromComboboxValue(material, { kind: 'dictionary', ids: ['201017_2317'] })).toBe('bawełna');
@@ -51,5 +71,28 @@ describe('fromComboboxValue', () => {
     expect(categoryParametersToOfferParameters({ '201017': stored }, [material])).toEqual([
       { id: '201017', valuesIds: ['201017_2317'], section: 'product' },
     ]);
+  });
+
+  // Review of #4099: two entries with the same label. Text would resolve to the
+  // first one, so the pick is stored by id and resolves back to the exact entry.
+  it('keeps the exact entry when two entries share a label', () => {
+    const duplicate = param({
+      id: '201017',
+      restrictions: { customValuesEnabled: true },
+      dictionary: [
+        { id: '201017_1', value: 'Bawełna' },
+        { id: '201017_2', value: 'bawełna ' },
+        { id: '201017_3', value: 'len' },
+      ],
+    });
+
+    const stored = fromComboboxValue(duplicate, { kind: 'dictionary', ids: ['201017_2'] });
+    expect(stored).toBe('201017_2');
+    expect(toComboboxValue(duplicate, stored)).toEqual({ kind: 'dictionary', ids: ['201017_2'] });
+    expect(categoryParametersToOfferParameters({ '201017': stored }, [duplicate])).toEqual([
+      { id: '201017', valuesIds: ['201017_2'], section: 'product' },
+    ]);
+    // A label that names one entry is still stored as its text.
+    expect(fromComboboxValue(duplicate, { kind: 'dictionary', ids: ['201017_3'] })).toBe('len');
   });
 });

@@ -27,6 +27,30 @@ import type { CategoryParameterFormValues } from './category-parameter-form.type
 import { isFormValueEmpty, isParameterVisible } from './category-parameter-visibility';
 
 /**
+ * The form value for a picked dictionary entry on a single-choice parameter
+ * (#4038), shared by every writer (the combobox and both prefill paths).
+ *
+ * A custom-values field stores the entry's TEXT, which submit resolves back to
+ * the entry by its spelling. That only works while the spelling names one
+ * entry: when two entries share a label, the text would resolve to the first
+ * one, so the entry id is stored instead and resolved by the id fallback in
+ * `mapOne` / `toComboboxValue`. Any other dictionary field stores the id.
+ */
+export function dictionaryEntryFormValue(
+  param: CategoryParameter,
+  entry: { id: string; value: string }
+): string {
+  if (!param.restrictions.customValuesEnabled) return entry.id;
+  const label = normalizeLabel(entry.value);
+  const sameLabel = (param.dictionary ?? []).filter((e) => normalizeLabel(e.value) === label);
+  return sameLabel.length > 1 ? entry.id : entry.value;
+}
+
+function normalizeLabel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/**
  * Thrown when a `CategoryParameter` arrives without a `section` value — a
  * contract violation that signals a stale browser cache predating #417. The
  * wizard / bulk-edit submit handlers catch this to render an actionable
@@ -94,7 +118,11 @@ function mapOne(
         (entry) => entry.value.trim().toLowerCase() === trimmed.toLowerCase(),
       );
       if (match) return { id: param.id, valuesIds: [match.id] };
-      // A value saved before #4038 holds the picked entry's id, not its text.
+      // A custom-values field normally holds the entry's text, but a writer may
+      // still store the entry id (one that predates #4038, or a new one that
+      // forgets the rule). Sending that id as free text makes the marketplace
+      // read the parameter as missing, so an id that names an entry is that
+      // entry. Keep this even once every writer stores text.
       const byId = param.dictionary?.find((entry) => entry.id === trimmed);
       return byId
         ? { id: param.id, valuesIds: [byId.id] }
