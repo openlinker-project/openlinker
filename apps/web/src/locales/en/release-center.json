@@ -130,5 +130,27 @@
     "setupTitle": "To set up after the update",
     "showWhere": "Show me where",
     "title": "What's new in OpenLinker"
+  },
+  "tour": {
+    "adminOnly": "Needs an administrator",
+    "back": "Back",
+    "choices": {
+      "externalPacking": "Another system packs",
+      "notifyLater": "After I mark it as shipped",
+      "notifyNow": "When the label is bought",
+      "ownPacking": "OpenLinker packs"
+    },
+    "finish": "Finish",
+    "later": "I will do it later",
+    "missing": "We could not find this element on the screen. You can skip this step.",
+    "next": "Next",
+    "optional": "Optional",
+    "regionLabel": "Guided tour",
+    "required": "Required",
+    "requiredReason": "Make a choice for this required step to continue.",
+    "saveFailed": "Could not save. Try again.",
+    "saved": "Saved: {choice}",
+    "stepOf": "Step {current} of {total}",
+    "viewerHint": "You can look at this setting. Only an administrator can change it."
   }
 }

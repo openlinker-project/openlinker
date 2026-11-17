@@ -11,6 +11,7 @@ import {
   ReleaseCenterProvider,
   ReleaseDialogHost,
   ReleaseStepObserver,
+  TourProvider,
 } from '../../features/release-center';
 
 /** The /login query string: the original params, plus `next` for a deep link. */
@@ -113,11 +114,13 @@ export function AuthenticatedAppLayout(): ReactElement {
 
   return (
     <ReleaseCenterProvider>
-      <AppShell>
-        <ReleaseStepObserver />
-        <ReleaseDialogHost />
-        <Outlet />
-      </AppShell>
+      <TourProvider>
+        <AppShell>
+          <ReleaseStepObserver />
+          <ReleaseDialogHost />
+          <Outlet />
+        </AppShell>
+      </TourProvider>
     </ReleaseCenterProvider>
   );
 }

@@ -615,10 +615,12 @@ export function ConnectionMappingsPage(): ReactElement {
 
         {supportsOrderSource && (
           <TabsContent value="fulfillment">
-            <FulfillmentRoutingSection
-              sourceConnectionId={sourceConnectionId}
-              onDirtyChange={dirtyHandlers.fulfillment}
-            />
+            <div data-tour="label-master">
+              <FulfillmentRoutingSection
+                sourceConnectionId={sourceConnectionId}
+                onDirtyChange={dirtyHandlers.fulfillment}
+              />
+            </div>
           </TabsContent>
         )}
 

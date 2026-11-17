@@ -51,3 +51,5 @@ export {
   type TourRequest,
   type WhatsNewRequest,
 } from './lib/release-center-requests';
+export { TourProvider } from './tour/tour-provider';
+export { useTour, type TourController, type TourStepInput } from './tour/tour-context';
