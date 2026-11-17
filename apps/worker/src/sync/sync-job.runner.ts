@@ -33,19 +33,26 @@ import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
   SyncJobExecutionError,
-  ContendedWriteError,
   RetryClassifierRegistryService,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   AuthFailureClassifierRegistryService,
   AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
   SyncJobLaneValues,
   resolveJobScope,
+  hookScopeClass,
 } from '@openlinker/core/sync';
-import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
-import { runWithPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
+import { runWithPriority } from '@openlinker/shared/rate-limit';
+import {
+  RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS,
+  calculateRetryBackoffSeconds,
+  isNonRetryableFailure,
+  isRateLimitTimeoutFailure,
+  resolveFailureDeferral,
+  unwrapJobFailureCause,
+} from './job-failure-policy';
 
 /** A single lane's concurrency bounds. `Readonly` in typed code; frozen at runtime below. */
 type LaneCap = Readonly<{ total: number; perScope: number }>;
@@ -97,18 +104,19 @@ const LANE_CAP_DEFAULTS: LaneCaps = Object.freeze({
   'fan-out': Object.freeze({ total: 8, perScope: 4 }),
 });
 
+/**
+ * Default per-scope cap of the hook-sync class (#3986, ADR-050 amendment): one
+ * webhook-driven product/inventory sync per connection at a time. The drain in
+ * `MasterProductSyncHandler` makes that one slot-turn sync a whole burst.
+ */
+const HOOK_SCOPE_CAP_DEFAULT = 1;
+
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SyncJobRunner.name);
   private readonly WORKER_ID = `worker-${process.pid}-${Date.now()}`;
   private readonly POLL_INTERVAL_MS = 1000; // Poll interval when no jobs available
   private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
-  private readonly RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS = 30; // Fixed short requeue delay for RateLimitTimeoutError — not exponential, since attempts never increments (#1810 review follow-up)
-
-  // Retry policy constants
-  private readonly RETRY_BASE_DELAY_SECONDS = 30; // 30 seconds
-  private readonly RETRY_MAX_DELAY_SECONDS = 6 * 60 * 60; // 6 hours
-  private readonly RETRY_MULTIPLIER = 2; // Exponential multiplier
 
   /**
    * Bound on the penalty-free deferral path (#2613/#2617 review).
@@ -126,9 +134,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    */
   private maxDeferredTotalSeconds = MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
 
-  /** Fixed short deferral for a write refused because a peer held the lock (#2617). */
-  private readonly CONTENDED_WRITE_DEFERRAL_SECONDS = 15;
-
   private abortController: AbortController | null = null;
   private isRunning = false;
   private restartTimer: NodeJS.Timeout | null = null;
@@ -141,6 +146,28 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * disabled runner, a unit test constructing the class directly).
    */
   private laneCaps: LaneCaps = LANE_CAP_DEFAULTS;
+
+  /**
+   * Per-scope cap of the hook-sync workload class (#3986), i.e. webhook-driven
+   * product/inventory syncs of one connection. Their scope is class-qualified
+   * (`resolveJobScope`), so this cap bounds them without touching the slots the
+   * same connection's orders use. Env: OL_LANE_REALTIME_HOOK_SCOPE_CAP.
+   */
+  private hookScopeCap = HOOK_SCOPE_CAP_DEFAULT;
+
+  /** Per-scope cap of the inventory hook-sync class. Env: OL_LANE_REALTIME_HOOK_INVENTORY_SCOPE_CAP. */
+  private hookInventoryScopeCap = HOOK_SCOPE_CAP_DEFAULT;
+
+  private perScopeCapFor(lane: SyncJobLane, scope: string): number {
+    switch (hookScopeClass(scope)) {
+      case 'product':
+        return this.hookScopeCap;
+      case 'inventory':
+        return this.hookInventoryScopeCap;
+      default:
+        return this.laneCaps[lane].perScope;
+    }
+  }
 
   /** In-flight job counts per lane, keyed by scope. */
   private readonly inFlightByLane = new Map<SyncJobLane, Map<string, number>>(
@@ -172,6 +199,10 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     this.laneCaps = this.resolveLaneCaps();
+    this.hookScopeCap = this.resolveHookScopeCap('OL_LANE_REALTIME_HOOK_SCOPE_CAP');
+    this.hookInventoryScopeCap = this.resolveHookScopeCap(
+      'OL_LANE_REALTIME_HOOK_INVENTORY_SCOPE_CAP'
+    );
     this.maxDeferredTotalSeconds = this.resolveMaxDeferredTotalSeconds();
     this.logger.log(`Starting sync job runner with worker ID: ${this.WORKER_ID}`);
     this.startRunner();
@@ -184,6 +215,21 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * or non-positive value is IGNORED rather than honoured (a zero cap would
    * silently stall a whole lane — the #2229 clamp posture).
    */
+  private resolveHookScopeCap(envVar: string): number {
+    const raw = this.configService.get<string>(envVar);
+    if (raw === undefined || raw === null || raw === '') {
+      return HOOK_SCOPE_CAP_DEFAULT;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      this.logger.warn(
+        `Ignoring invalid ${envVar}=${raw} — using default ${HOOK_SCOPE_CAP_DEFAULT}`
+      );
+      return HOOK_SCOPE_CAP_DEFAULT;
+    }
+    return Math.floor(parsed);
+  }
+
   private resolveLaneCaps(): LaneCaps {
     const read = (envVar: string, fallback: number): number => {
       const raw = this.configService.get<string>(envVar);
@@ -384,7 +430,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     const excludedScopes = Array.from(laneInFlight.entries())
-      .filter(([, count]) => count >= cap.perScope)
+      .filter(([scope, count]) => count >= this.perScopeCapFor(lane, scope))
       .map(([scope]) => scope);
 
     const jobs = await this.jobRepository.findAndLockDueJobsForLane({
@@ -403,7 +449,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     for (const job of jobs) {
       const scope = resolveJobScope(job);
       const current = laneInFlight.get(scope) ?? 0;
-      if (current >= cap.perScope) {
+      if (current >= this.perScopeCapFor(lane, scope)) {
         // Intra-batch surplus: the claim's scope exclusion is pre-claim only,
         // so a same-scope burst can exceed the per-scope cap within one
         // batch. Release the surplus back with no attempt penalty.
@@ -575,7 +621,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     // isNonRetryableError() does, since a handler may wrap the original
     // RateLimitTimeoutError before it reaches the runner.
     if (this.isRateLimitTimeout(error)) {
-      const nextRunAt = new Date(Date.now() + this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS * 1000);
+      const nextRunAt = new Date(Date.now() + RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS * 1000);
       // The duration is cleared, not omitted: the job spent that time waiting
       // for a rate-limit slot rather than executing, and an earlier attempt's
       // number must not be left describing this state (#2611 review).
@@ -584,7 +630,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       });
       this.logger.warn(
         `Job ${job.id} (${job.jobType}) timed out waiting for a rate-limit slot — requeued in ` +
-          `${this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS}s without counting against maxAttempts ` +
+          `${RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS}s without counting against maxAttempts ` +
           `(attempt stays ${job.attempts}/${job.maxAttempts})`
       );
       return;
@@ -719,14 +765,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * classifier could. Everything else is asked of the platform classifiers.
    */
   private resolveDeferral(error: unknown): RetryDeferral | null {
-    const cause = this.unwrapCause(error);
-    if (cause instanceof ContendedWriteError) {
-      return {
-        delaySeconds: this.CONTENDED_WRITE_DEFERRAL_SECONDS,
-        reason: 'Write contended by a peer',
-      };
-    }
-    return this.retryClassifierRegistry.resolveRetryDeferral(cause);
+    return resolveFailureDeferral(error, { retry: this.retryClassifierRegistry });
   }
 
   /**
@@ -735,7 +774,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * cannot get the condition subtly different (#2613 review).
    */
   private unwrapCause(error: unknown): unknown {
-    return error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+    return unwrapJobFailureCause(error);
   }
 
   /**
@@ -785,13 +824,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * @returns True if error is non-retryable
    */
   private isNonRetryableError(error: unknown): boolean {
-    const cause = this.unwrapCause(error);
-
-    if (cause instanceof OfferCreationInvariantException) {
-      return true;
-    }
-
-    return this.retryClassifierRegistry.isNonRetryable(cause);
+    return isNonRetryableFailure(error, { retry: this.retryClassifierRegistry });
   }
 
   /**
@@ -802,8 +835,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * does, since a handler may re-throw the original error wrapped.
    */
   private isRateLimitTimeout(error: unknown): boolean {
-    const cause = this.unwrapCause(error);
-    return cause instanceof RateLimitTimeoutError;
+    return isRateLimitTimeoutFailure(error);
   }
 
   /**
@@ -857,15 +889,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * @returns Backoff delay in seconds
    */
   private calculateBackoff(attemptNumber: number): number {
-    // attemptNumber is 1-based (first attempt = 1)
-    // For attempt 1, we want baseDelay (30s)
-    // For attempt 2, we want baseDelay * multiplier (60s)
-    // Formula: baseDelay * (multiplier ^ (attemptNumber - 1))
-    const delay =
-      this.RETRY_BASE_DELAY_SECONDS * Math.pow(this.RETRY_MULTIPLIER, attemptNumber - 1);
-
-    // Cap at max delay
-    return Math.min(delay, this.RETRY_MAX_DELAY_SECONDS);
+    return calculateRetryBackoffSeconds(attemptNumber);
   }
 
   /**
