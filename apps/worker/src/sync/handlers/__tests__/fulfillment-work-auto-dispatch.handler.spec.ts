@@ -312,7 +312,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
     });
   });
 
-  it.each(['api.http-503', 'api.http-429', 'api.http-408', 'api.http-unknown'])(
+  it.each(['api.http-503', 'api.http-429'])(
     'should keep a transient carrier rejection (%s) RETRYABLE',
     async (code) => {
       shipmentDispatch.dispatch.mockRejectedValue(
@@ -322,6 +322,20 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       await expect(handler.execute(job(validPayload))).rejects.toBeInstanceOf(
         SyncJobExecutionError
       );
+    }
+  );
+
+  it.each([null, 'shipx.something', 'api.http-unknown', 'api.http-408', 'api.http-401'])(
+    'should end a rejection with code %s as TERMINAL (core does not class it transient)',
+    async (code) => {
+      shipmentDispatch.dispatch.mockRejectedValue(
+        new ShippingProviderRejectionException('inpost', code as string, 'refused')
+      );
+
+      expect(await handler.execute(job(validPayload))).toEqual({
+        outcome: 'business_failure',
+        outcomeReason: 'auto_dispatch_carrier_refused',
+      });
     }
   );
 
