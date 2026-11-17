@@ -823,12 +823,13 @@
     "saving": "Saving...",
     "sections": {
       "advanced": "Advanced",
-      "fulfilment": "Fulfilment ownership",
+      "fulfilment": "Packing",
       "general": "General",
       "paymentWriteback": "Payment writeback",
       "platform": "Platform settings",
       "rateLimit": "Request rate limit",
       "salesDocuments": "Sales documents",
+      "shipping": "Who ships",
       "stockPricing": "Stock and pricing"
     },
     "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
@@ -956,8 +957,12 @@
     "name": "Name"
   },
   "fulfilmentOwnershipSection": {
+    "description": "Decides whether OpenLinker shows its own packing controls for orders that go to this system. It does not choose a carrier or generate labels.",
     "heading": "Who packs the orders",
     "help": "Turn this on when the system packs the box and ships it (for example an external warehouse system). OpenLinker then hides its own \"Mark packed\" button and packed tick for orders that go here. It only changes what you see: nothing is blocked, and that system can still report an order as packed.",
+    "hintLabel": "Example: an external warehouse packs the order",
+    "hintTerm": "Example",
+    "hintText": "An external warehouse system packs the parcel. Turn this on and OpenLinker hides its own \"Mark packed\" button and packed tick for these orders, because the warehouse does the packing. Labels and carriers are set separately under Who ships.",
     "toggle": "This system packs and ships orders itself"
   },
   "inpostSetupForm": {
@@ -1069,6 +1074,7 @@
     "wizardsChip": "Per-platform wizards"
   },
   "paymentWriteback": {
+    "description": "Controls whether OpenLinker marks an order as paid in this shop after the buyer pays. It does not change packing or shipping.",
     "factCod": "Cash on delivery and cancelled orders are never marked paid.",
     "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",
     "factFromNow": "Applies to payments from now on.",
@@ -1407,6 +1413,16 @@
       "other": "{n} delivery methods (names not loaded)"
     }
   },
+  "shippingNextStep": {
+    "body": "Until you assign a carrier, your shop ships every order from this channel, the way it did before OpenLinker. To have OpenLinker buy labels, choose a carrier per delivery method in Mappings.",
+    "link": "Assign who ships",
+    "title": "What next: who ships from this channel"
+  },
+  "shippingSummary": {
+    "configure": "Configure in Mappings",
+    "intro": "Who creates the shipping label (the carrier) for each delivery method, per sales channel. This is about labels and carriers, not about who packs the box. Methods without a carrier are shipped by your shop.",
+    "noChannels": "No sales channel is connected to this shop yet. Connect one, then assign who ships its delivery methods."
+  },
   "shoperSetupForm": {
     "beforeYouStart": {
       "body": "In your {platform} admin panel open <strong>Dodaj integrację</strong> and create an integration. {platform} issues a <strong>Token API</strong>; OpenLinker sends it as a bearer token on every request. Grant the integration access to: produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki, statusy zamówień, klienci, webhooki, dostawy and płatności.",
@@ -1441,6 +1457,7 @@
     "latency": "({ms}ms)",
     "ordersNextStep": {
       "body": "{platform} needs a default delivery method, payment method and order status to create an order. Pick them from the shop's own lists in <link>the connection settings</link>.",
+      "shipping": "Packing: once a sales channel is connected to this shop, choose per delivery method who ships it. <link>Assign carriers per channel</link>.",
       "title": "One more step to receive orders"
     },
     "platformFallback": "the shop",
@@ -1614,6 +1631,23 @@
     "unexpected-status": "The platform answered in an unexpected way.",
     "unreachable": "The platform could not be reached. Check the address and that it is online.",
     "unsupported": "This kind of connection cannot be tested yet."
+  },
+  "wizardCreated": {
+    "active": "Active",
+    "assignChannel": {
+      "body": "This carrier ships nothing until a delivery method of a sales channel is assigned to it. Do it on the connection page, under \"Ships for\".",
+      "link": "Assign this account to a sales channel",
+      "title": "Assign this account to a sales channel"
+    },
+    "editConnection": "Open connection settings",
+    "goToConnection": "Go to connection",
+    "name": "Connected as",
+    "shopPacking": {
+      "body": "Once a sales channel is connected to this shop, choose per delivery method who ships it. Until then your shop ships every order.",
+      "link": "Assign carriers per channel",
+      "title": "Packing and carriers come next"
+    },
+    "targetShop": "Target shop"
   },
   "woocommerceSetupForm": {
     "beforeYouStart": {
