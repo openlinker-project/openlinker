@@ -110,6 +110,15 @@ export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
     advisory: true,
     field: 'category',
   }),
+  // #4035 - the barcode is a catalogue product in a category other than the one
+  // the operator chose. Gating, unlike the advisory chip above: a card-linked
+  // offer skips the product-parameter checks, so an unflagged row reads READY and
+  // the marketplace refuses it as a category/product mismatch.
+  'card-category-mismatch': chip('cardCategoryMismatch', {
+    tone: 'error',
+    fixable: true,
+    field: 'category',
+  }),
   'no-master-price': chip('noMasterPrice', { tone: 'error', fixable: true, field: 'price' }),
   'no-master-stock': chip('noMasterStock', { tone: 'error', fixable: true }),
   'stock-unknown': chip('stockUnknown', { tone: 'error', fixable: true }),
@@ -276,6 +285,11 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
       return {
         title: interpolate(copy.cardCategoryDiffers.title, params),
         detail: copy.cardCategoryDiffers.detail,
+      };
+    case 'card-category-mismatch':
+      return {
+        title: interpolate(copy.cardCategoryMismatch.title, params),
+        detail: copy.cardCategoryMismatch.detail,
       };
     case 'no-master-price':
       return { title: copy.noMasterPrice.title, detail: copy.noMasterPrice.detail };

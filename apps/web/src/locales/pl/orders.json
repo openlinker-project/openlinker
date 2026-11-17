@@ -1680,6 +1680,7 @@
     "retryQueuedDescription": "Synchronizacja z kanałem docelowym z błędem jest w kolejce.",
     "retryQueuedTitle": "Ponowienie w kolejce",
     "retrying": "Ponawianie…",
+    "routedNote": "To zamówienie obsługuje routing OMS, więc nie jest kopiowane do miejsc docelowych i nie można go tu ponowić.",
     "summary": {
       "buyerTaxId": "NIP kupującego",
       "orderNumber": "Nr zamówienia",

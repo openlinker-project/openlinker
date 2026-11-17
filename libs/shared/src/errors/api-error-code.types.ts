@@ -44,6 +44,7 @@ export const ApiErrorCodeValues = [
   'CONNECTION_CONFIG_NOT_UNIQUE',
   /** Stock master and stock write-back cannot both be on. params: `capabilities`. */
   'CONNECTION_CAPABILITIES_CONFLICT',
+  'CONNECTION_MASTER_PUBLISHER_CONFLICT',
   /** The adapter does not offer these capabilities. params: `adapterKey`, `capabilities`. */
   'CONNECTION_CAPABILITIES_UNSUPPORTED',
   /** Fulfilment routing needs an active inventory location first. */
@@ -161,6 +162,8 @@ export const ApiErrorCodeValues = [
   'ORDER_DESTINATION_NOT_FOUND',
   /** Only a failed destination sync can be retried. params: `orderId`, `connectionId`, `status`. */
   'ORDER_DESTINATION_NOT_RETRYABLE',
+  /** OMS routing owns the order, so a destination mirror is not retryable. params: `orderId`, `connectionId`. */
+  'ORDER_HANDLED_BY_ROUTING',
   /** The order has no source external id for the connection (500). params: `orderId`, `connectionId`. */
   'ORDER_SOURCE_ID_MISSING',
   /** The routing retry could not be queued; try again. params: `orderId`. */
