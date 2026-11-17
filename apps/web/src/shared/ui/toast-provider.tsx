@@ -113,31 +113,34 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
                 {toast.description}
               </RadixToast.Description>
             </div>
-            {toast.action ? (
-              <RadixToast.Action asChild altText={toast.action.label}>
-                <button
-                  type="button"
-                  className="toast__action"
-                  onClick={() => {
-                    toast.action?.onClick();
-                    removeToast(toast.id);
-                  }}
+            <div className="toast__controls">
+              {toast.action ? (
+                <RadixToast.Action asChild altText={toast.action.label}>
+                  <button
+                    type="button"
+                    className="toast__action"
+                    onClick={() => {
+                      toast.action?.onClick();
+                      removeToast(toast.id);
+                    }}
+                  >
+                    {toast.action.icon ? <>{toast.action.icon} </> : null}
+                    {toast.action.label}
+                  </button>
+                </RadixToast.Action>
+              ) : null}
+              {toast.variant === 'inverse' ? null : (
+                <RadixToast.Close
+                  aria-label={interpolate(copy.dismissNamed, {
+                    title: toast.title ?? copy.notification,
+                  })}
+                  className="toast__dismiss"
                 >
-                  {toast.action.icon ? <>{toast.action.icon} </> : null}
-                  {toast.action.label}
-                </button>
-              </RadixToast.Action>
-            ) : null}
-            {toast.variant === 'inverse' ? null : (
-              <RadixToast.Close
-                aria-label={interpolate(copy.dismissNamed, {
-                  title: toast.title ?? copy.notification,
-                })}
-                className="toast__dismiss"
-              >
-                {copy.dismiss}
-              </RadixToast.Close>
-            )}
+                  <span aria-hidden="true">&times;</span>
+                  <span className="sr-only">{copy.dismiss}</span>
+                </RadixToast.Close>
+              )}
+            </div>
           </RadixToast.Root>
         ))}
         <RadixToast.Viewport className="toast-region" />

@@ -6052,7 +6052,7 @@ a.delivery-rider-banner__button:focus-visible {
  */
 .toast {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   border: 1px solid var(--border-subtle);
@@ -6092,24 +6092,55 @@ a.delivery-rider-banner__button:focus-visible {
   min-width: 0;
 }
 
-.toast__dismiss {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
+.toast__controls {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-1);
+  align-self: center;
 }
 
-/* Inline toast action, e.g. "Undo" (#3148). */
-.toast__action {
+/* Quiet by design: the message is the content, the controls only answer it.
+   Selectors carry `.toast` so the global `button` rules cannot turn them into
+   filled buttons. */
+.toast .toast__dismiss {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-height: 0;
   border: 0;
+  border-radius: var(--radius-md);
   padding: 0;
   background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.toast .toast__dismiss:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.toast .toast__dismiss:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+/* Inline toast action, e.g. "Undo" (#3148). */
+.toast .toast__action {
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  box-shadow: none;
   color: var(--accent-primary);
+  font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
+.toast .toast__action:hover { background: color-mix(in oklab, var(--accent-primary) 14%, transparent); }
+.toast .toast__action:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 
 .toast[data-state='open'] {
   animation: toast-slide-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
