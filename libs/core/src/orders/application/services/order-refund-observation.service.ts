@@ -30,6 +30,7 @@ import {
 } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '../../domain/ports/order-source.port';
 import { isRefundSourceReader } from '../../domain/ports/capabilities/refund-source-reader.capability';
+import { isRefundObservationEnabled } from '../../domain/types/refund-observation-flag.types';
 import { PAYMENT_STATUS } from '../../domain/types/payment-status.types';
 import { DuplicateRefundRecordException } from '../../domain/exceptions/duplicate-refund-record.exception';
 import {
@@ -63,6 +64,9 @@ export function buildObservedRefundIdempotencyKey(
 @Injectable()
 export class OrderRefundObservationService implements IOrderRefundObservationService {
   private readonly logger = new Logger(OrderRefundObservationService.name);
+  // A channel token that cannot read refunds fails identically on every sync, so
+  // it is warned once per connection and then demoted to debug.
+  private readonly warnedReadFailure = new Set<string>();
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
@@ -81,6 +85,7 @@ export class OrderRefundObservationService implements IOrderRefundObservationSer
     connectionId: string,
     externalOrderId: string
   ): Promise<RefundObservationResult> {
+    if (!isRefundObservationEnabled()) return NO_OBSERVATION;
     const internalOrderId = await this.identifierMapping.getInternalId(
       CORE_ENTITY_TYPE.Order,
       externalOrderId,
@@ -107,7 +112,21 @@ export class OrderRefundObservationService implements IOrderRefundObservationSer
     );
     if (!isRefundSourceReader(orderSource)) return NO_OBSERVATION;
 
-    const observations = await orderSource.listRefunds({ externalOrderId });
+    let observations: SourceRefundObservation[];
+    try {
+      observations = await orderSource.listRefunds({ externalOrderId });
+    } catch (error) {
+      const message = `Could not read refunds of order ${externalOrderId} on connection ${connectionId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      if (this.warnedReadFailure.has(connectionId)) {
+        this.logger.debug(message);
+      } else {
+        this.warnedReadFailure.add(connectionId);
+        this.logger.warn(`${message} (further failures on this connection logged at debug)`);
+      }
+      return NO_OBSERVATION;
+    }
     const result: RefundObservationResult = { ...NO_OBSERVATION, observed: observations.length };
     // Relayed whether newly recorded or already recorded: a relay that failed or
     // never ran on an earlier poll is retried here, and the destination answers

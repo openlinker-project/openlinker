@@ -2982,14 +2982,19 @@ export class OrderRecordRepository
    * `Repository.update()`'s partial-entity API cannot express a `COALESCE(...)`
    * right-hand side without an unsafe string-interpolated function value.
    * No-op (no throw, no rows affected) when the order row doesn't exist yet.
+   * Returns true only when this call wrote the instant (the first transition).
    */
-  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
-    await this.repository.query(
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean> {
+    // `WHERE "cancelledAt" IS NULL` keeps first-write-wins and makes the affected
+    // count the answer to "did THIS call make the transition"; for a raw UPDATE
+    // the count is `result[1]` (rows.length is always 2 on this driver).
+    const result = (await this.repository.query(
       `UPDATE "order_records"
-       SET "cancelledAt" = COALESCE("cancelledAt", $1)
-       WHERE "internalOrderId" = $2`,
+       SET "cancelledAt" = $1
+       WHERE "internalOrderId" = $2 AND "cancelledAt" IS NULL`,
       [cancelledAt, internalOrderId]
-    );
+    )) as [unknown, number];
+    return result[1] > 0;
   }
 
   /**

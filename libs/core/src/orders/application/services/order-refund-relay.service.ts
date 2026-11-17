@@ -33,7 +33,7 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
-import type { OrderSourcePort } from '../../domain/ports/order-source.port';
+import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
 import {
   isRefundExecutor,
   type RefundExecutor,
@@ -61,6 +61,8 @@ export function buildRelayedRefundIdempotencyKey(
 @Injectable()
 export class OrderRefundRelayService implements IOrderRefundRelayService {
   private readonly logger = new Logger(OrderRefundRelayService.name);
+  // Warn once per (order, destination); later polls repeat the same fact at debug.
+  private readonly warnedUnresolved = new Set<string>();
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
@@ -110,23 +112,31 @@ export class OrderRefundRelayService implements IOrderRefundRelayService {
     result: RefundRelayResult
   ): Promise<RefundExecutor | null> {
     try {
-      const adapter = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+      const adapter = await this.integrationsService.getCapabilityAdapter<OrderProcessorManagerPort>(
         destinationConnectionId,
-        'OrderSource'
+        'OrderProcessorManager'
       );
       if (isRefundExecutor(adapter)) return adapter;
       result.unsupportedDestinations += 1;
-      this.logger.warn(
+      // Expected for destinations that cannot refund (PrestaShop, WooCommerce) and
+      // repeated on every poll, so it is debug, never warn.
+      this.logger.debug(
         `Refund observed on order ${input.internalOrderId} was not relayed to destination ` +
           `${destinationConnectionId}: it holds a copy but cannot refund it (no refund capability, ` +
           'or refunding through it is not enabled on the connection).'
       );
     } catch (error) {
       result.unsupportedDestinations += 1;
-      this.logger.warn(
+      const key = `${input.internalOrderId}:${destinationConnectionId}`;
+      const message =
         `Refund observed on order ${input.internalOrderId} was not relayed to destination ` +
-          `${destinationConnectionId}: its adapter could not be resolved (${errorMessage(error)}).`
-      );
+        `${destinationConnectionId}: its adapter could not be resolved (${errorMessage(error)}).`;
+      if (this.warnedUnresolved.has(key)) {
+        this.logger.debug(message);
+      } else {
+        this.warnedUnresolved.add(key);
+        this.logger.warn(message);
+      }
     }
     return null;
   }

@@ -100,6 +100,7 @@ describe('OrdersController', () => {
   let sourceAmendment: { reconcile: jest.Mock; accept: jest.Mock };
   let parcelClosureNotifier: { notifyParcelClosed: jest.Mock; relayRecordedClose: jest.Mock };
   let paymentWritebackMock: { retry: jest.Mock; markHandled: jest.Mock };
+  let orderRefundsMock: { getRefundSummariesForOrders: jest.Mock };
   let listOpenReturnOrderIds: jest.Mock;
   let findOrderIdsNeedingAttention: jest.Mock;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
@@ -440,6 +441,7 @@ describe('OrdersController', () => {
 
     controller = module.get<OrdersController>(OrdersController);
     paymentWritebackMock = module.get(PAYMENT_WRITEBACK_SERVICE_TOKEN);
+    orderRefundsMock = module.get(ORDER_REFUND_SERVICE_TOKEN);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
     orderRecordService = module.get(ORDER_RECORD_SERVICE_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
@@ -1031,6 +1033,61 @@ describe('OrdersController', () => {
 
       expect(result.items[0].deliveryRider).toEqual({ rider: 'none' });
       expect(result.items[0].deliveryRider).not.toHaveProperty('candidateCarrier');
+    });
+  });
+
+  describe('refundState (#4100)', () => {
+    const refunded = orderRecordWith({
+      internalOrderId: 'ol_order_001',
+      totalAmount: 100,
+      currency: 'PLN',
+    });
+    const summaries = (amount: string): Map<string, { count: number; totalAmount: string; currency: string }> =>
+      new Map([['ol_order_001', { count: 1, totalAmount: amount, currency: 'PLN' }]]);
+
+    it('should carry a partial refundState on a list row from one batched read', async () => {
+      repository.findMany.mockResolvedValue({ items: [refunded], total: 1 });
+      orderRefundsMock.getRefundSummariesForOrders.mockResolvedValue(summaries('40.00'));
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(orderRefundsMock.getRefundSummariesForOrders).toHaveBeenCalledTimes(1);
+      expect(orderRefundsMock.getRefundSummariesForOrders).toHaveBeenCalledWith(['ol_order_001']);
+      expect(result.items[0].refundState).toEqual({
+        state: 'partial',
+        refundedAmount: '40.00',
+        currency: 'PLN',
+      });
+    });
+
+    it('should carry a full refundState on the detail read', async () => {
+      repository.findById.mockResolvedValue(refunded);
+      orderRefundsMock.getRefundSummariesForOrders.mockResolvedValue(summaries('100.00'));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.refundState).toEqual({ state: 'full', refundedAmount: '100.00', currency: 'PLN' });
+    });
+
+    it('should leave refundState absent on both reads when nothing was refunded', async () => {
+      repository.findMany.mockResolvedValue({ items: [refunded], total: 1 });
+      repository.findById.mockResolvedValue(refunded);
+
+      const list = await controller.listOrders({ limit: 20, offset: 0 });
+      const detail = await controller.getOrder('ol_order_001');
+
+      expect(list.items[0].refundState).toBeUndefined();
+      expect(detail.refundState).toBeUndefined();
+    });
+
+    it('should not fail the list and should claim nothing when the refund read throws', async () => {
+      repository.findMany.mockResolvedValue({ items: [refunded], total: 1 });
+      orderRefundsMock.getRefundSummariesForOrders.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].refundState).toBeUndefined();
     });
   });
 

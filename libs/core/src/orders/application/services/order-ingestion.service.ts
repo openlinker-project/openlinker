@@ -855,9 +855,12 @@ export class OrderIngestionService implements IOrderIngestionService {
       // change, a re-read) used to reach only the stock restore: the relay to
       // destinations ran solely for a feed event typed `cancelled`, so a copy
       // already created in a destination stayed live and its stock stayed
-      // consumed. Relay here too, on the same transition gate; a record already
-      // stamped cancelled was handled by the event path.
-      if (!existing?.isCancelled) {
+      // consumed. Relay here too, but only where THIS call made the cancelled
+      // transition: `persistIncomingSnapshot` returns a record carrying
+      // `cancelledAt` only when its `markCancelled` reported the transition, so a
+      // concurrent cancel event that stamped first (and relays itself) is not
+      // relayed a second time from here.
+      if (!existing?.isCancelled && snapshotRecord.cancelledAt != null) {
         try {
           const relayed = await this.orderLifecycleRelay.relay({
             internalOrderId,

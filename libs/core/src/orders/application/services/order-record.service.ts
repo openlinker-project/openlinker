@@ -722,7 +722,8 @@ export class OrderRecordService implements IOrderRecordService {
    * re-read here would be immediately stale. The caller owns the single
    * refresh.
    *
-   * @returns whether a cancellation instant was written
+   * @returns whether THIS call made the cancelled transition (false when the order
+   * was already stamped, e.g. by a concurrent cancel event)
    */
   private async recordCancellationIfNeeded(
     internalOrderId: string,
@@ -732,8 +733,7 @@ export class OrderRecordService implements IOrderRecordService {
     if (!isCancelled) {
       return false;
     }
-    await this.repository.markCancelled(internalOrderId, cancelledAt);
-    return true;
+    return this.repository.markCancelled(internalOrderId, cancelledAt);
   }
 
   /**
@@ -898,8 +898,8 @@ export class OrderRecordService implements IOrderRecordService {
    * pass-through to the repository's first-write-wins absolute-set — see
    * {@link OrderRecordRepositoryPort.markCancelled}.
    */
-  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
-    await this.repository.markCancelled(internalOrderId, cancelledAt);
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean> {
+    return this.repository.markCancelled(internalOrderId, cancelledAt);
   }
 
   async recordEarlyCancellationSignal(

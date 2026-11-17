@@ -626,8 +626,11 @@ export interface OrderRecordRepositoryPort {
    * No-op (no throw) when the order row doesn't exist yet — mirrors
    * {@link updateFulfillmentState}'s residual-race tolerance (#1160: a cancel
    * event racing ahead of the order's own create/sync job).
+   *
+   * @returns true only when THIS call made the transition (the column was NULL),
+   * so a caller that must act once per cancellation can gate on it.
    */
-  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean>;
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this

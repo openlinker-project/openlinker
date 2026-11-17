@@ -2911,24 +2911,29 @@ describe('OrderRecordRepository', () => {
   });
 
   describe('markCancelled (#1984)', () => {
-    it('should issue a COALESCE update carrying the given instant and order id', async () => {
+    it('should issue a first-write-wins update and report the transition from the affected count', async () => {
       (ormRepository.query as jest.Mock).mockResolvedValue([[], 1]);
       const cancelledAt = new Date('2026-08-11T09:00:00Z');
 
-      await repository.markCancelled('order-123', cancelledAt);
+      const transitioned = await repository.markCancelled('order-123', cancelledAt);
 
       expect(ormRepository.query).toHaveBeenCalledWith(
-        expect.stringContaining('COALESCE("cancelledAt", $1)'),
+        expect.stringContaining('"cancelledAt" IS NULL'),
         [cancelledAt, 'order-123']
       );
+      expect(transitioned).toBe(true);
+    });
+
+    it('should report no transition when the order was already cancelled', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([[], 0]);
+
+      await expect(repository.markCancelled('order-123', new Date())).resolves.toBe(false);
     });
 
     it('should not throw when no row matches the given order id', async () => {
       (ormRepository.query as jest.Mock).mockResolvedValue([[], 0]);
 
-      await expect(
-        repository.markCancelled('non-existent-order', new Date())
-      ).resolves.toBeUndefined();
+      await expect(repository.markCancelled('non-existent-order', new Date())).resolves.toBe(false);
     });
   });
 

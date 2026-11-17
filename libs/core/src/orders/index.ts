@@ -571,6 +571,10 @@ export { OrderRefundRelayService } from './application/services/order-refund-rel
 export type { SourceRefundObservation } from './domain/types/source-refund-observation.types';
 export type { RefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
 export { isRefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
+export {
+  isRefundObservationEnabled,
+  REFUND_OBSERVATION_ENV_VAR,
+} from './domain/types/refund-observation-flag.types';
 export type {
   ITaxRateBackfillService,
   TaxRateBackfillPageInput,

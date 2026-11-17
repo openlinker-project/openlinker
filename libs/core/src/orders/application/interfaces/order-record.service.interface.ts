@@ -287,7 +287,7 @@ export interface IOrderRecordService {
    * cancel event or a later re-poll can never overwrite an already-recorded
    * instant. No-op (no throw) when no record exists yet for `internalOrderId`.
    */
-  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean>;
 
   /**
    * Durably record that a cancellation arrived for an order OL has not yet

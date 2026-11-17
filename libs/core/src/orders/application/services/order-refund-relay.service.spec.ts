@@ -73,6 +73,12 @@ describe('OrderRefundRelayService', () => {
     expect(new Set(keys).size).toBe(1);
   });
 
+  it('should resolve the destination through OrderProcessorManager, not OrderSource', async () => {
+    await service.relayObservedRefunds(input([synced('d1')]));
+
+    expect(getCapabilityAdapter).toHaveBeenCalledWith('d1', 'OrderProcessorManager');
+  });
+
   it('should report a destination without a refund capability and not call anything', async () => {
     getCapabilityAdapter.mockResolvedValue({});
 

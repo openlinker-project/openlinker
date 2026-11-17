@@ -1729,6 +1729,8 @@ describe('OrderIngestionService', () => {
 
     it('should relay the cancellation to destinations when an update moves an order to cancelled', async () => {
       orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      // The record carries `cancelledAt` only when this call's markCancelled made the transition.
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({ cancelledAt: new Date() } as never);
       orderRecordService.getOrderRecord.mockResolvedValue({
         sourceConnectionId: connectionId,
         orderSnapshot: { status: 'BOUGHT' },
@@ -1743,6 +1745,20 @@ describe('OrderIngestionService', () => {
         originConnectionId: connectionId,
         event: { type: 'cancelled' },
       });
+    });
+
+    it('should NOT relay when a concurrent cancel event stamped first and this update made no transition', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+      } as unknown as OrderRecord);
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({ cancelledAt: null } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
     });
 
     it('should NOT relay again when the record was already stamped cancelled by the event path', async () => {

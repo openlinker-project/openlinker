@@ -24,7 +24,14 @@ describe('OrderRefundObservationService', () => {
   let service: OrderRefundObservationService;
   const paidRecord = { sourceConnectionId: 'c1', paymentStatus: 'paid', syncStatus: [] };
 
+  const originalFlag = process.env.OL_REFUND_OBSERVATION_ENABLED;
+  afterEach(() => {
+    if (originalFlag === undefined) delete process.env.OL_REFUND_OBSERVATION_ENABLED;
+    else process.env.OL_REFUND_OBSERVATION_ENABLED = originalFlag;
+  });
+
   beforeEach(() => {
+    process.env.OL_REFUND_OBSERVATION_ENABLED = 'true';
     listRefunds = jest.fn().mockResolvedValue([observation('r1')]);
     integrations = {
       getCapabilityAdapter: jest.fn().mockResolvedValue({ listRefunds }),
@@ -134,5 +141,26 @@ describe('OrderRefundObservationService', () => {
     const result = await service.observeSourceRefunds('c1', 'ext-1');
 
     expect(result.recorded).toBe(1);
+  });
+
+  it('should do nothing and call no channel when the switch is off (the default)', async () => {
+    delete process.env.OL_REFUND_OBSERVATION_ENABLED;
+
+    const result = await service.observeSourceRefunds('c1', 'ext-1');
+
+    expect(result).toEqual({ observed: 0, recorded: 0, alreadyRecorded: 0, rejected: 0 });
+    expect(listRefunds).not.toHaveBeenCalled();
+    expect(mapping.getInternalId).not.toHaveBeenCalled();
+  });
+
+  it('should report a refund read failure as nothing observed instead of throwing', async () => {
+    listRefunds.mockRejectedValue(new Error('403 payments scope'));
+
+    const first = await service.observeSourceRefunds('c1', 'ext-1');
+    const second = await service.observeSourceRefunds('c1', 'ext-2');
+
+    expect(first.observed).toBe(0);
+    expect(second.observed).toBe(0);
+    expect(refunds.recordRefund).not.toHaveBeenCalled();
   });
 });
