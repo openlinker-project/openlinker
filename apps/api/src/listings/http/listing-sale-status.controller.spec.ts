@@ -213,6 +213,9 @@ describe('ListingSaleStatusController', () => {
       await expect(
         controller.release('ol_product_a', { holdIds: ['hold-1'] }, USER)
       ).rejects.toBeInstanceOf(ConflictException);
+      await expect(
+        controller.release('ol_product_a', { holdIds: ['hold-1'] }, USER)
+      ).rejects.toMatchObject({ response: { code: 'SALE_HOLD_RELEASE_REFUSED' } });
     });
 
     it('should rethrow any other error unchanged when the release fails', async () => {

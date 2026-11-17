@@ -14,7 +14,6 @@
  */
 import {
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -36,6 +35,7 @@ import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import type {
   ListingSaleRowDto} from './dto/listing-sale-status.dto';
 import {
@@ -121,7 +121,9 @@ export class ListingSaleStatusController {
       return await this.saleStatus.releaseHolds(productId, dto.holdIds, user.id);
     } catch (error) {
       if (error instanceof SaleHoldReleaseRefusedException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'SALE_HOLD_RELEASE_REFUSED', error.message, {
+          productId: error.productId,
+        });
       }
       throw error;
     }

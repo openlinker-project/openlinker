@@ -164,6 +164,8 @@ export const ApiErrorCodeValues = [
   'ORDER_DESTINATION_NOT_RETRYABLE',
   /** OMS routing owns the order, so a destination mirror is not retryable. params: `orderId`, `connectionId`. */
   'ORDER_HANDLED_BY_ROUTING',
+  /** A product deleted at the source cannot be put back on sale (409). params: `productId`. */
+  'SALE_HOLD_RELEASE_REFUSED',
   /** The order has no source external id for the connection (500). params: `orderId`, `connectionId`. */
   'ORDER_SOURCE_ID_MISSING',
   /** The routing retry could not be queued; try again. params: `orderId`. */
