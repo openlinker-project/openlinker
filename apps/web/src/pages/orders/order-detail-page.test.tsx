@@ -352,6 +352,22 @@ describe('OrderDetailPage', () => {
       expect(retryButtons).toHaveLength(1);
     });
 
+    it('hides Retry and explains why when OMS routing owns the order', async () => {
+      const api = createMockApiClient({
+        orders: {
+          getById: vi.fn().mockResolvedValue({
+            ...orderWithFailure,
+            fulfillmentBlockReason: 'routing-refused',
+          }),
+        },
+      });
+
+      renderDetail(api);
+
+      await screen.findByText(/handled by OMS routing/);
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+
     it('calls retryDestination with the right ids on click', async () => {
       const retryFn = vi.fn().mockResolvedValue({
         internalOrderId: 'ol_order_abc123',

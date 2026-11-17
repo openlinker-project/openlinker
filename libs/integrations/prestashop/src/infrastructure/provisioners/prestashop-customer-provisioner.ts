@@ -351,7 +351,8 @@ export class PrestashopCustomerProvisioner {
         internalCustomerId,
         destinationConnectionId,
         emailHash,
-        normalizedEmail
+        normalizedEmail,
+        error
       );
     } finally {
       // Step 7: Release lock

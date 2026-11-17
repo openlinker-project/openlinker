@@ -9,6 +9,7 @@ import {
   capabilityConflictMessage,
   getCapabilityConflict,
   hasCapabilityConflict,
+  hasMasterPublisherConflict,
 } from './capability-metadata';
 
 describe('getCapabilityConflict', () => {
@@ -18,7 +19,7 @@ describe('getCapabilityConflict', () => {
 
   it('should report OfferManager as the blocker for InventoryMaster when selected', () => {
     expect(getCapabilityConflict(new Set(['OfferManager']), 'InventoryMaster')).toBe(
-      'OfferManager',
+      'OfferManager'
     );
   });
 
@@ -46,10 +47,29 @@ describe('hasCapabilityConflict', () => {
   });
 });
 
+describe('master and publisher exclusion (#3985)', () => {
+  it('should block each of ProductMaster and ProductPublisher while the other is selected', () => {
+    expect(getCapabilityConflict(['ProductMaster'], 'ProductPublisher')).toBe('ProductMaster');
+    expect(getCapabilityConflict(['ProductPublisher'], 'ProductMaster')).toBe('ProductPublisher');
+    expect(hasCapabilityConflict(['ProductMaster', 'ProductPublisher'])).toBe(true);
+  });
+
+  it('should explain the catalog conflict in its own words', () => {
+    expect(capabilityConflictMessage('ProductMaster')).toContain('duplicates');
+  });
+});
+
 describe('capabilityConflictMessage', () => {
   it('should name the conflicting capability', () => {
     expect(capabilityConflictMessage('InventoryMaster')).toContain(
-      'Unavailable while InventoryMaster is selected',
+      'Unavailable while InventoryMaster is selected'
     );
+  });
+});
+
+describe('hasMasterPublisherConflict', () => {
+  it('should match only the ProductMaster/ProductPublisher pair', () => {
+    expect(hasMasterPublisherConflict(['ProductMaster', 'ProductPublisher'])).toBe(true);
+    expect(hasMasterPublisherConflict(['InventoryMaster', 'OfferManager'])).toBe(false);
   });
 });
