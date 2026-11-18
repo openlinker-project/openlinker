@@ -236,6 +236,13 @@ export class RoutingCommitService implements IRoutingCommitService {
       return { decision: null, outcome: { status: 'skipped', reason: 'already-routed' } };
     }
 
+    // #4033: a new decision is claimed only for a paid order. Checked after the
+    // two guards above on purpose: a live decision may already be committed on
+    // the router's side, and existing work belongs to an order routed earlier.
+    if (await input.isAwaitingPayment()) {
+      return { decision: null, outcome: { status: 'skipped', reason: 'awaiting-payment' } };
+    }
+
     try {
       return {
         decision: await this.decisions.claimIntent({

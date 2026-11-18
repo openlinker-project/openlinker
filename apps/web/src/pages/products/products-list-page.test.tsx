@@ -259,7 +259,11 @@ describe('ProductsListPage', () => {
     // unresolved connection; what must never carry it is a stock badge.
     const unknownLabels = within(table)
       .queryAllByText('Unknown')
-      .filter((el) => !el.classList.contains('connection-chip__name'));
+      .filter(
+        (el) =>
+          !el.classList.contains('connection-chip__label') &&
+          !el.classList.contains('connection-chip__name'),
+      );
     expect(unknownLabels).toHaveLength(0);
     expect(within(table).queryByText('Out of stock')).toBeNull();
   });
@@ -1202,7 +1206,9 @@ describe('ProductsListPage', () => {
       const chip = cell.querySelector('.connection-chip');
       expect(chip).not.toBeNull();
       expect(chip).toHaveAttribute('data-channel', 'prestashop');
-      expect(chip!.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      // #4232: the name leads the face; the integration slides out.
+      expect(chip!.querySelector('.connection-chip__face')).toHaveTextContent('PrestaShop Terra Store');
+      expect(chip!.querySelector('.connection-chip__reveal')).toHaveTextContent('PrestaShop');
       expect(within(cell).getAllByRole('link')).toHaveLength(1);
 
       // Name over a shortened, copyable id — the fact the old cell dropped.
@@ -1310,7 +1316,7 @@ describe('ProductsListPage', () => {
       expect(getById).not.toHaveBeenCalled();
       // The pill still resolves: its platformType is on the product's own
       // external-id row, not on the connection the page could not find.
-      expect(cell.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      expect(cell.querySelector('.connection-chip__reveal')).toHaveTextContent('PrestaShop');
     });
 
     it('renders erli and woocommerce source pills through the plugin registry, not the lowercase slug', async () => {

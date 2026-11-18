@@ -78,9 +78,10 @@ function mapOne(
 
   if (param.type === 'dictionary') {
     if (param.restrictions.multipleChoices) {
-      const ids = Array.isArray(raw)
-        ? raw.filter((s) => s !== '' && isKnownDictionaryId(param, s))
-        : [];
+      // A lone string is one selection: a prefill from a saved request cannot
+      // tell a one-value multi-choice from a single choice (#4037).
+      const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [];
+      const ids = list.filter((s) => s !== '' && isKnownDictionaryId(param, s));
       return ids.length > 0 ? { id: param.id, valuesIds: ids } : null;
     }
     if (typeof raw !== 'string') return null;

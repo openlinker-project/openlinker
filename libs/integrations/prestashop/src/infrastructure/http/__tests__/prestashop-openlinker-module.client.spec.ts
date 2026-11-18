@@ -320,6 +320,26 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       orderReference: 'OLREF01',
     };
 
+    it('should send payment_module only when a module is given (#3988)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 77, reference: 'ABCDEFGHI', already_existed: false })
+        ),
+      });
+
+      await client.importOrder({ ...input, paymentModule: 'ps_wirepayment' });
+      await client.importOrder(input);
+
+      const bodies = (
+        (global.fetch as jest.Mock).mock.calls as Array<[string, RequestInit]>
+      ).map(
+        (c) => JSON.parse(c[1].body as string) as Record<string, unknown>
+      );
+      expect(bodies[0].payment_module).toBe('ps_wirepayment');
+      expect(bodies[1]).not.toHaveProperty('payment_module');
+    });
+
     it('should return the created order on a well-formed envelope', async () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({

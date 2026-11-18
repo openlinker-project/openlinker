@@ -301,7 +301,7 @@ describe('OrdersListPage filter bar', () => {
     });
     const search = await screen.findByRole('searchbox', { name: 'Search orders' });
     await waitFor(() => {
-      expect(search).toHaveAttribute('placeholder', 'Search by order number, SKU or tracking number…');
+      expect(search).toHaveAttribute('placeholder', 'Search by order number, SKU, tracking number or OpenLinker ID…');
     });
   });
 
@@ -315,7 +315,7 @@ describe('OrdersListPage filter bar', () => {
     });
     expect(await screen.findByRole('searchbox', { name: 'Search orders' })).toHaveAttribute(
       'placeholder',
-      'Search by order number, buyer, email, SKU or tracking number…',
+      'Search by order number, buyer, email, SKU, tracking number or OpenLinker ID…',
     );
   });
 

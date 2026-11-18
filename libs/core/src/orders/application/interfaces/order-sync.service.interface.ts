@@ -63,6 +63,19 @@ export interface OrderSyncRequest {
    * `syncOrder`'s `@throws`.
    */
   readonly destinationConnectionIds?: readonly string[];
+
+  /**
+   * The calling job's remaining penalty-free deferral budget (#3984).
+   *
+   * Present only when the caller is a job the runner can requeue without
+   * spending an attempt. When a destination answers with a failure its plugin
+   * classifies as deferrable AND `spentMs + delay <= maxMs`, `syncOrder`
+   * rethrows so the runner defers the job. When absent, or when the deferral
+   * would overrun the budget, the destination settles as `failed` instead, so
+   * the operator keeps a per-order failure and a Retry action rather than a
+   * dead job nobody sees from the order.
+   */
+  readonly deferralBudget?: { readonly spentMs: number; readonly maxMs: number };
 }
 
 /**

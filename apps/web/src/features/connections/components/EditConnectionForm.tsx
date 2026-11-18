@@ -40,6 +40,8 @@ import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
 import { PaymentWritebackSection } from './payment-writeback-section';
 import { ChannelShippingSummarySection } from './channel-shipping-summary-section';
+import { LabelPurchaseNotificationSection } from './label-purchase-notification-section';
+import { readNotifyOnLabelPurchase } from '../lib/label-purchase-notification';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
@@ -537,6 +539,8 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
       // "When the buyer pays later" (#3963) — platform-neutral.
       paymentWriteback: readPaymentWritebackForm(connection.config),
+      // "Tell the shop when a label is bought" (#4097) — carrier connections.
+      notifyOnLabelPurchase: readNotifyOnLabelPurchase(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -780,6 +784,18 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       paymentWriteback: form.getValues('paymentWriteback'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #4097 — re-serialize `config.shipping.notifyMarketplaceOnLabelPurchase` into
+  // configText. Same shape as `syncFulfilmentOwnershipToJson`: the section sets
+  // the value FIRST; the merge keeps the namespace's other keys.
+  function syncLabelPurchaseNotificationToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      notifyOnLabelPurchase: form.getValues('notifyOnLabelPurchase'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -1087,6 +1103,26 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
           form={form}
           configIsParseable={configIsParseable}
           syncPaymentWritebackToJson={syncPaymentWritebackToJson}
+        />
+      ),
+    });
+  }
+
+  // #4097 - read only by the label-purchase dispatch path: a carrier connection. InPost renders its own
+  // wording of the same key in its platform section, so a second checkbox would be two controls for one value.
+  if (
+    connection.enabledCapabilities.includes('ShippingProviderManager') &&
+    connection.platformType !== 'inpost'
+  ) {
+    sections.push({
+      id: 'label-purchase',
+      label: copy.sections.labelPurchase,
+      children: (
+        <LabelPurchaseNotificationSection
+          form={form}
+          configIsParseable={configIsParseable}
+          canWrite={write.canWrite}
+          syncLabelPurchaseNotificationToJson={syncLabelPurchaseNotificationToJson}
         />
       ),
     });

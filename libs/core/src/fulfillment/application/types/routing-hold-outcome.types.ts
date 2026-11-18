@@ -72,8 +72,8 @@ const LINE_ATTENTION_UNTOUCHED: AuthorityAttentionOutcome<'routing'> = { kind: '
  * **Not the complete mapping (#3503 review):** this maps a `RoutingCommitOutcome`
  * and therefore cannot produce `routing-failed`. That block is spelled at each
  * call site's catch - an error AFTER selection means the commit may already have
- * happened, so holding is right - so "one rule, two sites" covers four of the
- * five reachable block reasons, and the fifth is written by the intercept and by
+ * happened, so holding is right - so "one rule, two sites" covers five of the
+ * six reachable block reasons, and the fifth is written by the intercept and by
  * `FulfillmentWorkRouteHandler` themselves.
  */
 export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): RoutingHoldOutcome {
@@ -107,6 +107,16 @@ export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): Routing
       if (outcome.reason === 'order-cancelled') {
         // A cancelled order needs no hold and has no line decision left to make.
         return { held: false, block: null, lineAttention: LINE_ATTENTION_CLEARED };
+      }
+      if (outcome.reason === 'awaiting-payment') {
+        // #4033 — held, not mirrored: the OMS is this order's router, so it
+        // waits in OpenLinker for the payment. Nothing was routed, so there is
+        // no line decision to report.
+        return {
+          held: true,
+          block: { reason: 'routing-awaiting-payment', detail: null },
+          lineAttention: LINE_ATTENTION_UNTOUCHED,
+        };
       }
       // The #2047 guard: some route already owns this order.
       return {
