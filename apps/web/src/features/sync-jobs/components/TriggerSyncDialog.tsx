@@ -103,7 +103,7 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
           name: 'cursorKey',
           label: fields.cursorKey,
           required: false,
-          defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
+          description: fields.cursorKeyHelp,
         },
         {
           name: 'limit',
@@ -155,15 +155,10 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
 }
 
 /** Build initial payload values from field defaults. */
-function buildDefaultValues(
-  fields: PayloadField[],
-  context: { platformType: string },
-): Record<string, string> {
+function buildDefaultValues(fields: PayloadField[]): Record<string, string> {
   const defaults: Record<string, string> = {};
   for (const field of fields) {
-    if (field.defaultValueFactory !== undefined) {
-      defaults[field.name] = field.defaultValueFactory(context);
-    } else if (field.defaultValue !== undefined) {
+    if (field.defaultValue !== undefined) {
       defaults[field.name] = field.defaultValue;
     }
   }
@@ -208,7 +203,7 @@ export function TriggerSyncDialog({
       const firstJob = triggerableJobs[0];
       setSelectedJobType(firstJob?.jobType ?? '');
       setPayloadValues(
-        firstJob ? buildDefaultValues(firstJob.payloadFields, connection) : {},
+        firstJob ? buildDefaultValues(firstJob.payloadFields) : {},
       );
       setFieldErrors({});
       setIntentKey(crypto.randomUUID());
@@ -219,7 +214,7 @@ export function TriggerSyncDialog({
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
     setSelectedJobType(jobType);
-    setPayloadValues(job ? buildDefaultValues(job.payloadFields, connection) : {});
+    setPayloadValues(job ? buildDefaultValues(job.payloadFields) : {});
     setFieldErrors({});
     enqueueSyncJob.reset();
   };
@@ -324,6 +319,7 @@ export function TriggerSyncDialog({
               label={field.required ? interpolate(copy.requiredField, { field: field.label }) : field.label}
               name={field.name}
               error={fieldErrors[field.name]}
+              description={field.description}
             >
               <Input
                 value={payloadValues[field.name] ?? ''}

@@ -32,6 +32,12 @@ export interface ISyncCursorsService {
   advanceCursor(connectionId: string, cursorKey: string, value: string): Promise<void>;
 
   /**
+   * Remove a cursor row. Idempotent: deleting a missing row is not an error.
+   * For one-shot intent rows (#4228) that must not be replayed once consumed.
+   */
+  deleteCursor(connectionId: string, cursorKey: string): Promise<void>;
+
+  /**
    * Advance the cursor only when `value` sorts strictly after the stored one.
    *
    * The monotonic counterpart to `advanceCursor`, for a cursor read as a

@@ -7,7 +7,11 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
-import { checkPaymentFactsConsistency, diffOrderAmendment } from '@openlinker/core/orders';
+import {
+  checkPaymentFactsConsistency,
+  diffOrderAmendment,
+  OrderSyncStartUnavailableError,
+} from '@openlinker/core/orders';
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
 import { DEFAULT_INSTALL_ORDER_STATES } from '../../../__tests__/fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
@@ -603,7 +607,9 @@ describe('PrestashopOrderSourceAdapter', () => {
           )
         );
 
-      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow(/cannot start from a date/);
+      const refusal = adapter.cursorForDate('2026-10-01');
+      await expect(refusal).rejects.toThrow(/cannot start from a date/);
+      await expect(refusal).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
 
       // The refusal is remembered, so the next attempt fails without a request.
       mockHttpClient.listResources = jest.fn();
@@ -618,6 +624,9 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
 
     it('should refuse an unreadable date', async () => {
+      await expect(adapter.cursorForDate('soon')).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError
+      );
       await expect(adapter.cursorForDate('soon')).rejects.toThrow('expected an ISO date');
     });
   });

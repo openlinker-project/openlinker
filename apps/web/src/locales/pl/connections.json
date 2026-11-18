@@ -1156,9 +1156,9 @@
     "slow": "Wolno",
     "title": "Od których zamówień zacząć import?",
     "unsupported": {
-      "all": "To źródło nie umie zaimportować całej historii.",
-      "from": "To źródło nie umie filtrować zamówień po dacie.",
-      "now": "To źródło nie umie zacząć od teraz."
+      "all": "OpenLinker nie potrafi jeszcze zaimportować całej historii tego źródła.",
+      "from": "Start od daty nie jest jeszcze dostępny dla tego źródła.",
+      "now": "Start od teraz nie jest jeszcze dostępny dla tego źródła."
     }
   },
   "orderSyncStartSchema": {

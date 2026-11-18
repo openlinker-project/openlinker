@@ -216,7 +216,8 @@
     "enqueuing": "Enqueuing…",
     "fieldRequired": "{field} is required",
     "fields": {
-      "cursorKey": "Cursor key",
+      "cursorKey": "Sync position key",
+      "cursorKeyHelp": "Leave empty to continue from this connection's own order feed. Fill it in only to read from a different saved position.",
       "externalId": "External ID",
       "maxInvoices": "Max invoices",
       "objectType": "Object type",

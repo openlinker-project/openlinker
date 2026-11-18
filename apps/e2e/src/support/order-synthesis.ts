@@ -249,11 +249,23 @@ async function pickDriverProduct(
  * connection on the stack — throws with a clear message when either is
  * missing so a spec's `test.skip` reads a precise reason.
  */
-export async function synthesizeOrder(
-  ctx: { api: ApiClient; world: World; jobs: SyncJobs; poll: Poller },
+/**
+ * Create the PrestaShop customer, address, cart and order WITHOUT waiting for
+ * OpenLinker to ingest it. `synthesizeOrder` waits on top of this; a caller that
+ * must control WHEN ingestion first runs (the order-sync-start suite seeds
+ * orders before the connection that should or should not import them exists)
+ * calls this directly.
+ */
+export async function createSourceOrder(
+  ctx: { api: ApiClient; world: World },
   options: SynthesizeOrderOptions = {},
-): Promise<SynthesizedOrder> {
-  const { api, world, jobs } = ctx;
+): Promise<{
+  prestashop: Connection;
+  externalOrderId: string;
+  product: Product;
+  variant: ProductVariant;
+}> {
+  const { api, world } = ctx;
   const prestashop = resolvePrestashopStore(world);
   if (!prestashop) {
     throw new Error('synthesizeOrder found no active PrestaShop connection to sell through');
@@ -396,6 +408,17 @@ export async function synthesizeOrder(
     ],
   });
 
+  return { prestashop, externalOrderId: created.id, product, variant };
+}
+
+/** Create a PrestaShop order and wait for OpenLinker to ingest it (see `createSourceOrder`). */
+export async function synthesizeOrder(
+  ctx: { api: ApiClient; world: World; jobs: SyncJobs; poll: Poller },
+  options: SynthesizeOrderOptions = {},
+): Promise<SynthesizedOrder> {
+  const { api, jobs } = ctx;
+  const { prestashop, externalOrderId, product, variant } = await createSourceOrder(ctx, options);
+
   // Match the ingested order by the PrestaShop id we just created, not by
   // "an order id absent from a snapshot". The snapshot could only be taken
   // AFTER the create returned, and PrestaShop's webhook often ingests the
@@ -405,15 +428,15 @@ export async function synthesizeOrder(
   const ingestConnection = options.ingestConnection ?? prestashop;
   const order = await waitForOrderByExternalId(api, {
     sourceConnectionId: ingestConnection.id,
-    externalOrderId: created.id,
+    externalOrderId,
     timeoutMs: options.timeoutMs ?? 180_000,
     intervalMs: 3_000,
     // The webhook is the fast path; re-triggering a direct per-order sync is
     // the backstop for a dropped delivery. See `retriggerDirectOrderSync`.
-    retriggerPoll: jobs.retriggerDirectOrderSync(ingestConnection.id, created.id),
+    retriggerPoll: jobs.retriggerDirectOrderSync(ingestConnection.id, externalOrderId),
   });
 
-  return { order, externalOrderId: created.id, product, variant };
+  return { order, externalOrderId, product, variant };
 }
 
 function externalIdFor(product: Product, connectionId: string): string | undefined {

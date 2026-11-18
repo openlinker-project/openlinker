@@ -345,8 +345,33 @@ describe('ConnectionService', () => {
         expect(created.config).toEqual(payload.config);
       });
 
-      it('should store nothing when no choice was made', async () => {
+      it('should store a now intent when an order-importing connection made no choice', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create(payload);
+
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          mockConnection.id,
+          'orders.syncStart',
+          '{"mode":"now"}'
+        );
+      });
+
+      it('should store nothing when the connection does not import orders', async () => {
+        connectionPort.create.mockResolvedValue(
+          new Connection(
+            'connection-456',
+            'prestashop',
+            'No orders',
+            'active',
+            { baseUrl: 'https://example.com' },
+            'cred_123',
+            new Date(),
+            new Date(),
+            undefined,
+            ['ProductMaster']
+          )
+        );
 
         await service.create(payload);
 

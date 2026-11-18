@@ -1446,8 +1446,12 @@ export class ConnectionService implements IConnectionService {
       }
 
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
-      if (orderSyncStart !== undefined) {
-        await this.storeOrderSyncStart(connection, orderSyncStart);
+      // The intent row is also what tells the first poll this connection was
+      // created AFTER the feature: an absent row means a legacy connection that
+      // keeps reading its history. So every order-importing connection gets one,
+      // defaulting to "now".
+      if (orderSyncStart !== undefined || connection.enabledCapabilities.includes('OrderSource')) {
+        await this.storeOrderSyncStart(connection, orderSyncStart ?? { mode: 'now' });
       }
       await this.enqueueInitialCatalogSync(connection);
       await this.enqueueInitialTaxonomySync(connection);

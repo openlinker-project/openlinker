@@ -35,6 +35,10 @@ export class SyncCursorsService implements ISyncCursorsService {
     await this.cursorRepository.set(connectionId, cursorKey, value);
   }
 
+  async deleteCursor(connectionId: string, cursorKey: string): Promise<void> {
+    await this.cursorRepository.delete(connectionId, cursorKey);
+  }
+
   async advanceCursorIfNewer(
     connectionId: string,
     cursorKey: string,

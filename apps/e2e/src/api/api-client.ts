@@ -44,6 +44,7 @@ import type {
   Connection,
   ConnectionFilters,
   CreateConnectionInput,
+  ConnectionSyncStatus,
   UpdateConnectionInput,
   InstallWebhooksResult,
   DispatchResult,
@@ -532,6 +533,12 @@ export class ApiClient {
         method: 'PATCH',
         body: JSON.stringify(input),
       }),
+    /** `GET /connections/:id/sync-status` - queue health plus `orderSyncStartedAt` (#4228). */
+    getSyncStatus: (connectionId: string): Promise<ConnectionSyncStatus> =>
+      this.request<ConnectionSyncStatus>(`/connections/${connectionId}/sync-status`),
+    /** Soft-delete a DISABLED connection (`PATCH /connections/:id/archive`); idempotent. */
+    archive: (connectionId: string): Promise<unknown> =>
+      this.request<unknown>(`/connections/${connectionId}/archive`, { method: 'PATCH' }),
     /**
      * Rotate the connection's webhook secret (admin). Returns the new plaintext
      * secret ONCE — the E2E webhook spec uses it to compute the OL-HMAC

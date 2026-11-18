@@ -727,6 +727,7 @@ export {
 
 // Domain exceptions
 export { OrderRecordNotFoundException } from './domain/exceptions/order-record-not-found.exception';
+export { OrderSyncStartUnavailableError } from './domain/exceptions/order-sync-start-unavailable.error';
 export { NoBuyerNoteException } from './domain/exceptions/no-buyer-note.exception';
 export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-item-mapping.error';
 export { OrderDestinationNotFoundException } from './domain/exceptions/order-destination-not-found.exception';

@@ -162,44 +162,25 @@ describe('TriggerSyncDialog', () => {
       expect(screen.getByLabelText(/object type/i)).toBeInTheDocument();
     });
 
-    it('should default cursorKey to platform-scoped value for marketplace.orders.poll', () => {
-      const allegroConnection = {
-        ...sampleConnection,
-        platformType: 'allegro' as const,
-        supportedCapabilities: ['OfferManager' as const, 'OfferEventReader' as const, 'OrderSource' as const],
-        enabledCapabilities: ['OfferManager' as const],
-      };
-      const mockApi = createMockApiClient();
-      renderWithProviders(
-        <TriggerSyncDialog connection={allegroConnection} open onOpenChange={vi.fn()} />,
-        { apiClient: mockApi },
-      );
-
-      const select = screen.getByRole('combobox', { name: /job type/i });
-      fireEvent.change(select, { target: { value: 'marketplace.orders.poll' } });
-
-      const cursorKeyInput = screen.getByLabelText(/cursor key/i);
-      expect(cursorKeyInput).toHaveValue('allegro.orders.lastEventId');
-    });
-
-    it('should scope cursorKey default to the connection platform type', () => {
-      const prestashopMarketplaceConnection = {
+    it('should leave the sync position key empty and explain that for marketplace.orders.poll', () => {
+      const prestashopConnection = {
         ...sampleConnection,
         platformType: 'prestashop' as const,
-        supportedCapabilities: ['OfferManager' as const, 'OfferEventReader' as const, 'OrderSource' as const],
-        enabledCapabilities: ['OfferManager' as const],
+        supportedCapabilities: ['OrderSource' as const],
+        enabledCapabilities: ['OrderSource' as const],
       };
-      const mockApi = createMockApiClient();
       renderWithProviders(
-        <TriggerSyncDialog connection={prestashopMarketplaceConnection} open onOpenChange={vi.fn()} />,
-        { apiClient: mockApi },
+        <TriggerSyncDialog connection={prestashopConnection} open onOpenChange={vi.fn()} />,
+        { apiClient: createMockApiClient() },
       );
 
-      const select = screen.getByRole('combobox', { name: /job type/i });
-      fireEvent.change(select, { target: { value: 'marketplace.orders.poll' } });
+      fireEvent.change(screen.getByRole('combobox', { name: /job type/i }), {
+        target: { value: 'marketplace.orders.poll' },
+      });
 
-      const cursorKeyInput = screen.getByLabelText(/cursor key/i);
-      expect(cursorKeyInput).toHaveValue('prestashop.orders.lastEventId');
+      const keyInput = screen.getByLabelText(/sync position key/i);
+      expect(keyInput).toHaveValue('');
+      expect(screen.getByText(/leave empty to continue/i)).toBeInTheDocument();
     });
 
     it('should clear payload fields when job type changes', () => {
@@ -277,6 +258,31 @@ describe('TriggerSyncDialog', () => {
                 `^manual:${sampleConnection.id}:master\\.product\\.syncAll:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
               ),
             ),
+          }),
+        );
+      });
+    });
+
+    it('should omit an empty sync position key from the marketplace.orders.poll payload', async () => {
+      const mockApi = createMockApiClient();
+      renderWithProviders(
+        <TriggerSyncDialog
+          connection={{ ...sampleConnection, supportedCapabilities: ['OrderSource' as const] }}
+          open
+          onOpenChange={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+      fireEvent.change(screen.getByRole('combobox', { name: /job type/i }), {
+        target: { value: 'marketplace.orders.poll' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
+
+      await waitFor(() => {
+        expect(mockApi.syncJobs.enqueue).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobType: 'marketplace.orders.poll',
+            payload: { schemaVersion: 1, limit: 100 },
           }),
         );
       });

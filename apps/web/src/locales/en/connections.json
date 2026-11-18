@@ -1130,9 +1130,9 @@
     "slow": "Slow",
     "title": "Which orders should we import first?",
     "unsupported": {
-      "all": "This source cannot import its whole history.",
-      "from": "This source cannot filter orders by date.",
-      "now": "This source cannot start from now."
+      "all": "OpenLinker cannot import the whole history of this source yet.",
+      "from": "Starting from a date is not available for this source yet.",
+      "now": "Starting from now is not available for this source yet."
     }
   },
   "orderSyncStartSchema": {

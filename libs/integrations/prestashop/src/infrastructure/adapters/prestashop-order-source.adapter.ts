@@ -43,6 +43,7 @@ import {
   decodeHtmlNoteText,
   readSourceBuyerTaxId,
   toCodToCollect,
+  OrderSyncStartUnavailableError,
 } from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import type {
@@ -293,11 +294,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
   async cursorForDate(date: string): Promise<string> {
     const wallClock = normalizeWallClock(`${date.trim().slice(0, 10)} 00:00:00`);
     if (wallClock === null) {
-      throw new Error(
+      throw new OrderSyncStartUnavailableError(
         `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
       );
     }
-    const unsupported = new Error(
+    // Typed so the poll job reports a business failure: a shop that refuses the
+    // filter will refuse it on every retry.
+    const unsupported = new OrderSyncStartUnavailableError(
       `This PrestaShop shop does not allow filtering orders by \`date_upd\`, so the order feed cannot start from a date. Use "from now" or "all orders" instead (connection: ${this.connection.id})`
     );
     if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {

@@ -179,7 +179,7 @@ const ROWS: readonly CatalogueRow[] = [
     rewind: null,
   },
   {
-    match: /\.seededAt$/,
+    match: /^[a-z][a-z0-9-]*\.orders\.[A-Za-z]+\.seededAt$/,
     family: 'completion-stamp',
     writerJobType: null,
     rewind: null,

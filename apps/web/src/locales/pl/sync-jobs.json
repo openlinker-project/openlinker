@@ -218,7 +218,8 @@
     "enqueuing": "Dodawanie do kolejki…",
     "fieldRequired": "Pole {field} jest wymagane",
     "fields": {
-      "cursorKey": "Klucz kursora",
+      "cursorKey": "Klucz pozycji synchronizacji",
+      "cursorKeyHelp": "Zostaw puste, aby kontynuować od własnego kanału zamówień tego połączenia. Wypełnij tylko po to, by czytać z innej zapisanej pozycji.",
       "externalId": "ID zewnętrzne",
       "maxInvoices": "Maks. liczba faktur",
       "objectType": "Typ obiektu",

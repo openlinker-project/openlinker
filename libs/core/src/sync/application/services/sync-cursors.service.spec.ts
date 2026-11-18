@@ -11,13 +11,14 @@ import { SyncCursorsService } from './sync-cursors.service';
 import type { ConnectionCursorRepositoryPort } from '../../domain/ports/connection-cursor-repository.port';
 
 describe('SyncCursorsService', () => {
-  let repository: jest.Mocked<Pick<ConnectionCursorRepositoryPort, 'get' | 'set'>>;
+  let repository: jest.Mocked<Pick<ConnectionCursorRepositoryPort, 'get' | 'set' | 'delete'>>;
   let service: SyncCursorsService;
 
   beforeEach(() => {
     repository = {
       get: jest.fn(),
       set: jest.fn(),
+      delete: jest.fn(),
     };
     service = new SyncCursorsService(repository as unknown as ConnectionCursorRepositoryPort);
   });
@@ -52,6 +53,16 @@ describe('SyncCursorsService', () => {
         'allegro.orders.lastEventId',
         'cursor-99'
       );
+    });
+  });
+
+  describe('deleteCursor', () => {
+    it('forwards (connectionId, cursorKey) to repository.delete', async () => {
+      repository.delete.mockResolvedValue(undefined);
+
+      await service.deleteCursor('conn-1', 'orders.syncStart');
+
+      expect(repository.delete).toHaveBeenCalledWith('conn-1', 'orders.syncStart');
     });
   });
 });

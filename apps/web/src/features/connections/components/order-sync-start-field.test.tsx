@@ -74,7 +74,7 @@ describe('OrderSyncStartField', () => {
     renderWithProviders(<Harness supportedModes={['now', 'all']} onValue={onValue} />);
     const card = screen.getByRole('radio', { name: /Orders from a date/ });
     expect(card).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText(/cannot filter orders by date/)).toBeInTheDocument();
+    expect(screen.getByText(/not available for this source yet/)).toBeInTheDocument();
     fireEvent.click(card);
     expect(onValue).not.toHaveBeenCalled();
   });
