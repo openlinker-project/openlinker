@@ -4,7 +4,9 @@
  * Plugin-owned inputs rendered inside `EditConnectionForm` for Amazon
  * connections: the environment and the region the connection was created for
  * (shown, not editable), the marketplaces of that region, the merchant token
- * when offers are enabled and the order-notification queue when orders are.
+ * when offers are enabled, the order-notification queue when orders are, and
+ * the rates of the account's product tax codes when the catalogue or offers
+ * are (#4182): Amazon carries a tax code, never a rate.
  *
  * The region is fixed because another region is another Amazon seller account
  * with its own refresh token and merchant token; the API refuses the change.
@@ -32,9 +34,15 @@ import { usePermission } from '../../../shared/auth/use-permission';
 import { interpolate } from '../../../shared/i18n';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
-import { splitMarketplaceIds } from '../amazon-connection-config';
+import {
+  formatTaxCodeRows,
+  parseTaxCodeRows,
+  splitMarketplaceIds,
+  type AmazonTaxCodeRow,
+} from '../amazon-connection-config';
 import { useAmazonMessages } from '../messages';
 
 export function AmazonStructuredSection({
@@ -56,6 +64,13 @@ export function AmazonStructuredSection({
   const environment = config.environment === 'sandbox' ? 'sandbox' : 'production';
   const ordersEnabled = connection.enabledCapabilities.includes('OrderSource');
   const offersEnabled = connection.enabledCapabilities.includes('OfferManager');
+  const catalogueEnabled = connection.enabledCapabilities.includes('ProductMaster');
+
+  const taxRows = parseTaxCodeRows(form.watch('amazonTaxCodeRates') ?? '');
+  const writeTaxRows = (rows: readonly AmazonTaxCodeRow[]): void =>
+    syncStructuredToJson('amazonTaxCodeRates', formatTaxCodeRows(rows));
+  const editTaxRow = (index: number, change: Partial<AmazonTaxCodeRow>): void =>
+    writeTaxRows(taxRows.map((row, at) => (at === index ? { ...row, ...change } : row)));
 
   const selected = splitMarketplaceIds(form.watch('amazonMarketplaceIds') ?? '');
   const offered = marketplacesForRegion(region);
@@ -132,6 +147,56 @@ export function AmazonStructuredSection({
         <Alert tone="warning" density="compact">
           {copy.sellerIdMissing}
         </Alert>
+      ) : null}
+
+      {catalogueEnabled || offersEnabled ? (
+        <fieldset className="form-field">
+          <legend className="form-field__label">{copy.taxCodes.label}</legend>
+          <p className="form-field__description">{copy.taxCodes.description}</p>
+          {taxRows.length === 0 ? <p className="text-muted">{copy.taxCodes.empty}</p> : null}
+          {taxRows.map((row, index) => (
+            <div key={index} className="amazon-tax-codes__row">
+              <Input
+                className="mono-text"
+                aria-label={copy.taxCodes.code}
+                value={row.code}
+                onChange={(event) => editTaxRow(index, { code: event.target.value.toUpperCase() })}
+                placeholder="A_GEN_STANDARD"
+                disabled={disabled}
+              />
+              <Input
+                aria-label={copy.taxCodes.rate}
+                value={row.rate}
+                onChange={(event) => editTaxRow(index, { rate: event.target.value })}
+                placeholder="23"
+                disabled={disabled}
+                className="amazon-tax-codes__rate"
+              />
+              <Button
+                type="button"
+                tone="ghost"
+                onClick={() => writeTaxRows(taxRows.filter((_, at) => at !== index))}
+                disabled={disabled}
+                aria-label={interpolate(copy.taxCodes.remove, { code: row.code })}
+              >
+                ×
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            tone="secondary"
+            onClick={() => writeTaxRows([...taxRows, { code: '', rate: '' }])}
+            disabled={disabled}
+          >
+            {copy.taxCodes.add}
+          </Button>
+          {errors.amazonTaxCodeRates ? (
+            <p className="form-field__error" role="alert">
+              {errors.amazonTaxCodeRates.message}
+            </p>
+          ) : null}
+        </fieldset>
       ) : null}
 
       {ordersEnabled ? (

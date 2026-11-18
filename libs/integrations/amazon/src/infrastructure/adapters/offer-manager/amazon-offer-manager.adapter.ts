@@ -100,6 +100,7 @@ import { AMAZON_KNOWN_MARKETPLACES } from '../../../amazon.constants';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import { AmazonNotSupportedException } from '../../../domain/exceptions/amazon-not-supported.exception';
+import { resolveAmazonTaxCode } from '../../../domain/policies/amazon-tax-code.policy';
 import type { AmazonCatalogEntry } from '../../../domain/types/amazon-catalog.types';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import {
@@ -145,6 +146,7 @@ export class AmazonOfferManagerAdapter
     TaxonomyIdentityProvider
 {
   private readonly logger = new Logger(AmazonOfferManagerAdapter.name);
+
   private readonly catalog: AmazonCatalogReader;
   private readonly productTypes: AmazonProductTypeReader;
 
@@ -271,6 +273,7 @@ export class AmazonOfferManagerAdapter
       return this.submit(this.planNewItem(cmd));
     }
     const plan = composeOfferOnlyListing({
+      taxCode: this.taxCodeFor(cmd.taxRate),
       cmd,
       asin,
       productType: cmd.overrides?.categoryId ?? null,
@@ -330,9 +333,12 @@ export class AmazonOfferManagerAdapter
   }
 
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<UpdateOfferFieldsReport | void> {
-    const unsupported = (['title', 'description', 'taxRate'] as const).filter((field) => cmd.fields[field] !== undefined);
+    const unsupported = (['title', 'description'] as const).filter((field) => cmd.fields[field] !== undefined);
     if (unsupported.length > 0) {
       throw new AmazonNotSupportedException(`updating ${unsupported.join(', ')} of a listing`);
+    }
+    if (cmd.fields.taxRate !== undefined) {
+      await this.updateTaxCode(cmd.externalOfferId, cmd.fields.taxRate);
     }
     const price = cmd.fields.price;
     if (price === undefined) {
@@ -356,6 +362,48 @@ export class AmazonOfferManagerAdapter
           currency: price.currency,
           our_price: [{ schedule: [{ value_with_tax: Number(price.amount) }] }],
         })),
+      },
+    ]);
+  }
+
+  /**
+   * The `product_tax_code` the catalogue rate maps to through the connection's
+   * `taxCodeRates`, or `null` (the listing then keeps Amazon's account
+   * default). An unmapped or ambiguous rate is logged, never guessed.
+   */
+  private taxCodeFor(rate: string | undefined): string | null {
+    const resolution = resolveAmazonTaxCode(rate, this.config.taxCodeRates);
+    if (resolution.kind === 'resolved') {
+      return resolution.code;
+    }
+    if (resolution.reason !== 'no-rate') {
+      this.logger.warn(
+        `Amazon tax code not sent for rate ${rate ?? ''}: ${
+          resolution.reason === 'ambiguous'
+            ? `codes ${resolution.codes?.join(', ')} map to it`
+            : 'no tax code is mapped to it on the connection'
+        }`,
+      );
+    }
+    return null;
+  }
+
+  /** A tax rate change is a tax CODE change on Amazon; a rate no code maps to is refused. */
+  private async updateTaxCode(externalOfferId: string, rate: string): Promise<void> {
+    const resolution = resolveAmazonTaxCode(rate, this.config.taxCodeRates);
+    if (resolution.kind !== 'resolved') {
+      throw new AmazonNotSupportedException(
+        resolution.reason === 'ambiguous'
+          ? `the tax rate ${rate}: Amazon tax codes ${resolution.codes?.join(', ')} all map to it on this connection`
+          : `the tax rate ${rate}: no Amazon tax code is mapped to it on this connection`,
+      );
+    }
+    const item = await this.readListing(externalOfferId);
+    await this.patch(item, this.config.marketplaceIds, [
+      {
+        op: 'replace',
+        path: '/attributes/product_tax_code',
+        value: this.config.marketplaceIds.map((marketplaceId) => ({ value: resolution.code, marketplace_id: marketplaceId })),
       },
     ]);
   }
@@ -420,6 +468,7 @@ export class AmazonOfferManagerAdapter
       throw new AmazonNotSupportedException('a new catalogue item without a brand: set the brand parameter');
     }
     return composeFullListing({
+      taxCode: this.taxCodeFor(cmd.taxRate),
       cmd,
       productType,
       marketplaceIds: this.config.marketplaceIds,

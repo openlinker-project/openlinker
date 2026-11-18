@@ -8,6 +8,7 @@ import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../../domain/exceptions/amazon-config.exception';
 import { AmazonNotSupportedException } from '../../../../domain/exceptions/amazon-not-supported.exception';
+import type { AmazonConnectionConfig } from '../../../../domain/types/amazon-config.types';
 import type { AmazonListingItem } from '../../../../domain/types/amazon-listing.types';
 import type { AmazonSpApiClient } from '../../../http/amazon-spapi-client';
 import { AmazonOfferManagerAdapter } from '../amazon-offer-manager.adapter';
@@ -28,7 +29,7 @@ const fbmListing = (overrides: Partial<AmazonListingItem> = {}): AmazonListingIt
   ...overrides,
 });
 
-function setup(config = CONFIG): { adapter: AmazonOfferManagerAdapter; get: jest.Mock; patch: jest.Mock } {
+function setup(config: AmazonConnectionConfig = CONFIG): { adapter: AmazonOfferManagerAdapter; get: jest.Mock; patch: jest.Mock } {
   const get = jest.fn().mockResolvedValue({ status: 200, data: fbmListing(), requestId: 'r' });
   const patch = jest
     .fn()
@@ -167,6 +168,27 @@ describe('AmazonOfferManagerAdapter.updateOfferFields', () => {
     await expect(
       adapter.updateOfferFields({ externalOfferId: 'MUG-BLUE', fields: { title: 'New title' } }),
     ).rejects.toThrow(/title/);
+  });
+
+  it('should write a tax rate as the Amazon tax code mapped to it', async () => {
+    const { adapter, patch } = setup({ ...CONFIG, taxCodeRates: { A_GEN_STANDARD: '23', A_BOOKS_GEN: '5' } });
+
+    await adapter.updateOfferFields({ externalOfferId: 'MUG-BLUE', fields: { taxRate: '5' } });
+
+    const [, body] = patch.mock.calls[0] as [string, { patches: { path: string; value: unknown }[] }];
+    expect(body.patches[0]).toMatchObject({
+      op: 'replace',
+      path: '/attributes/product_tax_code',
+      value: CONFIG.marketplaceIds.map((marketplace_id) => ({ value: 'A_BOOKS_GEN', marketplace_id })),
+    });
+  });
+
+  it('should refuse a tax rate no Amazon tax code is mapped to', async () => {
+    const { adapter, patch } = setup({ ...CONFIG, taxCodeRates: { A_GEN_STANDARD: '23' } });
+    await expect(
+      adapter.updateOfferFields({ externalOfferId: 'MUG-BLUE', fields: { taxRate: '8' } }),
+    ).rejects.toThrow(/no Amazon tax code is mapped/);
+    expect(patch).not.toHaveBeenCalled();
   });
 });
 

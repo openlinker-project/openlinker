@@ -40157,3 +40157,15 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .sync-progress__confirm,
   .sync-guide__item[data-focus='true'] { animation: none; }
 }
+
+/* ── Amazon tax code rates (#4182) ── */
+.amazon-tax-codes__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.amazon-tax-codes__rate {
+  max-width: 6rem;
+}

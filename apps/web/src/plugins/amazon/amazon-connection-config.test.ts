@@ -19,7 +19,28 @@ describe('amazonConnectionConfig', () => {
       amazonMarketplaceIds: 'A1PA6795UKMFR9,A1C3SOZRARQ6R3',
       amazonSellerId: 'A2EXAMPLE12345',
       amazonNotificationQueueUrl: '',
+      amazonTaxCodeRates: '',
     });
+  });
+
+  it('should read and write the tax code rates as one CODE=rate per line', () => {
+    expect(
+      amazonConnectionConfig.readConfigToForm({ marketplaceIds: [], taxCodeRates: { A_GEN_STANDARD: '23', A_BOOKS_GEN: '5' } })
+        .amazonTaxCodeRates,
+    ).toBe('A_GEN_STANDARD=23\nA_BOOKS_GEN=5');
+    expect(
+      amazonConnectionConfig.applyToConfig({}, { amazonTaxCodeRates: 'a_gen_standard=23\n=\nA_EXEMPT=ZW' }),
+    ).toEqual({ taxCodeRates: { A_GEN_STANDARD: '23', A_EXEMPT: 'zw' } });
+    expect(amazonConnectionConfig.applyToConfig({ taxCodeRates: { A: '23' } }, { amazonTaxCodeRates: '' })).toEqual({
+      taxCodeRates: null,
+    });
+  });
+
+  it('should refuse a tax code row without a valid rate, and allow a row still being added', () => {
+    expect(schema.safeParse({ amazonTaxCodeRates: 'A_GEN_STANDARD=' }).success).toBe(false);
+    expect(schema.safeParse({ amazonTaxCodeRates: 'A_GEN_STANDARD=23%' }).success).toBe(false);
+    expect(schema.safeParse({ amazonTaxCodeRates: '=23' }).success).toBe(false);
+    expect(schema.safeParse({ amazonTaxCodeRates: 'A_GEN_STANDARD=23\n=' }).success).toBe(true);
   });
 
   it('should write a patch without dropping other keys, and clear with null', () => {

@@ -3,10 +3,11 @@
  *
  * The non-render half of the Amazon edit section: the marketplaces OpenLinker
  * reads orders from and writes offers to, the merchant token the listings API
- * needs, and the SQS queue Amazon delivers order notifications to. Region and
- * environment are fixed at create and only shown: another region is another
- * seller account with its own refresh token, so the API refuses the change
- * and another region is a new connection.
+ * needs, the SQS queue Amazon delivers order notifications to, and the rates
+ * the account's product tax codes carry (#4182). Region and environment are
+ * fixed at create and only shown: another region is another seller account
+ * with its own refresh token, so the API refuses the change and another
+ * region is a new connection.
  *
  * A marketplace added here is picked up by the order feed, which rewinds its
  * watermark for it (`scopeAmazonOrderFeedCursor`).
@@ -34,7 +35,45 @@ declare module '../../shared/plugins/plugin.types' {
     amazonSellerId?: string;
     /** `config.notificationQueueUrl`. */
     amazonNotificationQueueUrl?: string;
+    /** `config.taxCodeRates`, one `CODE=rate` per line (#4182). */
+    amazonTaxCodeRates?: string;
   }
+}
+
+/** Mirrors `TAX_RATE_CODE_PATTERN` in `amazon-config.policy.ts`. */
+const TAX_RATE = /^(\d{1,2}(\.\d{1,2})?|zw|np|oo)$/;
+
+export interface AmazonTaxCodeRow {
+  readonly code: string;
+  readonly rate: string;
+}
+
+/**
+ * The tax-code rows the field holds, one `CODE=rate` per line. A row being
+ * typed (code or rate still empty) is kept, so the editor can show it.
+ */
+export function parseTaxCodeRows(value: string): AmazonTaxCodeRow[] {
+  return value
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const cut = line.indexOf('=');
+      return cut === -1
+        ? { code: line.trim(), rate: '' }
+        : { code: line.slice(0, cut).trim(), rate: line.slice(cut + 1).trim() };
+    });
+}
+
+export function formatTaxCodeRows(rows: readonly AmazonTaxCodeRow[]): string {
+  return rows.map((row) => `${row.code}=${row.rate}`).join('\n');
+}
+
+function isBlankRow(row: AmazonTaxCodeRow): boolean {
+  return row.code === '' && row.rate === '';
+}
+
+function isValidTaxCodeRow(row: AmazonTaxCodeRow): boolean {
+  return isBlankRow(row) || (row.code !== '' && TAX_RATE.test(row.rate.toLowerCase()));
 }
 
 export function splitMarketplaceIds(value: string): string[] {
@@ -80,6 +119,12 @@ const amazonSchemaShape: ConnectionConfigContribution['schemaShape'] = {
     SQS_QUEUE_URL,
     () => getAmazonMessages().setup.errors.queueUrlInvalid,
   ),
+  amazonTaxCodeRates: z
+    .string()
+    .refine((value) => parseTaxCodeRows(value).every(isValidTaxCodeRow), {
+      error: () => getAmazonMessages().edit.taxCodes.invalid,
+    })
+    .optional(),
 };
 
 function readAmazonConfig(config: Record<string, unknown>): Record<string, string> {
@@ -91,7 +136,17 @@ function readAmazonConfig(config: Record<string, unknown>): Record<string, strin
     amazonSellerId: typeof config.sellerId === 'string' ? config.sellerId : '',
     amazonNotificationQueueUrl:
       typeof config.notificationQueueUrl === 'string' ? config.notificationQueueUrl : '',
+    amazonTaxCodeRates: formatTaxCodeRows(readTaxCodeRates(config.taxCodeRates)),
   };
+}
+
+function readTaxCodeRates(value: unknown): AmazonTaxCodeRow[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return [];
+  }
+  return Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+    .map(([code, rate]) => ({ code, rate }));
 }
 
 function applyAmazonConfig(
@@ -115,6 +170,15 @@ function applyAmazonConfig(
   if (queue !== undefined) {
     const text = queue.trim();
     next.notificationQueueUrl = text === '' ? null : text;
+  }
+
+  const taxCodes = readOptionalConfigString(patch, 'amazonTaxCodeRates');
+  if (taxCodes !== undefined) {
+    const rows = parseTaxCodeRows(taxCodes).filter((row) => !isBlankRow(row));
+    next.taxCodeRates =
+      rows.length === 0
+        ? null
+        : Object.fromEntries(rows.map((row) => [row.code.toUpperCase(), row.rate.toLowerCase()]));
   }
 
   return next;

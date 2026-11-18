@@ -77,6 +77,8 @@ export function composeOfferOnlyListing(input: {
   readonly asin: string;
   readonly productType: string | null;
   readonly marketplaceIds: readonly string[];
+  /** The Amazon `product_tax_code` the catalogue rate maps to, when one does. */
+  readonly taxCode?: string | null;
 }): AmazonListingPlan {
   const marketplaces = marketplacesForCurrency(input.marketplaceIds, input.cmd.price.currency);
   return {
@@ -87,7 +89,7 @@ export function composeOfferOnlyListing(input: {
       requirements: 'LISTING_OFFER_ONLY',
       attributes: {
         merchant_suggested_asin: marketplaces.map((marketplace_id) => ({ value: input.asin, marketplace_id })),
-        ...offerAttributes(input.cmd, marketplaces),
+        ...offerAttributes(input.cmd, marketplaces, input.taxCode ?? null),
       },
     },
   };
@@ -107,6 +109,8 @@ export function composeFullListing(input: {
   readonly productType: string;
   readonly content: AmazonFullListingContent;
   readonly marketplaceIds: readonly string[];
+  /** The Amazon `product_tax_code` the catalogue rate maps to, when one does. */
+  readonly taxCode?: string | null;
 }): AmazonListingPlan {
   const marketplaces = marketplacesForCurrency(input.marketplaceIds, input.cmd.price.currency);
   const { content } = input;
@@ -148,7 +152,7 @@ export function composeFullListing(input: {
     })),
     ...(content.description ? { product_description: text(stripHtml(content.description)) } : {}),
     ...imageAttributes(content.imageUrls, marketplaces),
-    ...offerAttributes(input.cmd, marketplaces),
+    ...offerAttributes(input.cmd, marketplaces, input.taxCode ?? null),
   });
 
   return {
@@ -158,9 +162,14 @@ export function composeFullListing(input: {
   };
 }
 
-function offerAttributes(cmd: CreateOfferCommand, marketplaces: readonly string[]): Record<string, unknown> {
+function offerAttributes(
+  cmd: CreateOfferCommand,
+  marketplaces: readonly string[],
+  taxCode: string | null,
+): Record<string, unknown> {
   const condition = cmd.condition === 'used' ? 'used_good' : 'new_new';
   return {
+    ...(taxCode ? { product_tax_code: marketplaces.map((marketplace_id) => ({ value: taxCode, marketplace_id })) } : {}),
     condition_type: marketplaces.map((marketplace_id) => ({ value: condition, marketplace_id })),
     purchasable_offer: marketplaces.map((marketplace_id) => ({
       marketplace_id,

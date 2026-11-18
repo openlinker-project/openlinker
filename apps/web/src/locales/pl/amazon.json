@@ -61,7 +61,17 @@
       "description": "Ustawiony przy tworzeniu połączenia. Inny region to inne konto Amazon i wymaga nowego połączenia.",
       "label": "Region"
     },
-    "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać ofert."
+    "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać ofert.",
+    "taxCodes": {
+      "add": "Dodaj kod podatkowy",
+      "code": "Kod podatkowy",
+      "description": "Amazon nadaje listingowi kod podatkowy (np. A_GEN_STANDARD), a nie stawkę. Ustaw stawkę każdego kodu, którego używa Twoje konto: OpenLinker odczyta z niej stawkę VAT produktu i wyśle kod z każdą wystawianą ofertą.",
+      "empty": "Żaden kod podatkowy nie ma jeszcze stawki, więc stawka VAT produktów z Amazona jest nieznana.",
+      "invalid": "Każdy wiersz musi mieć kod podatkowy i stawkę, np. 23, 8, 0 albo zw.",
+      "label": "Stawki VAT kodów podatkowych Amazona",
+      "rate": "Stawka",
+      "remove": "Usuń kod podatkowy {code}"
+    }
   },
   "plugin": {
     "setupCardBadge": "Marketplace",
