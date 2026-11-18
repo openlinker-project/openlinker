@@ -1236,8 +1236,8 @@
     "scopeItem": "{label} {value}",
     "search": {
       "label": "Szukaj zamówień",
-      "placeholderNoPii": "Szukaj po numerze zamówienia, SKU lub numerze przesyłki…",
-      "placeholderWithPii": "Szukaj po numerze zamówienia, kupującym, e-mailu, SKU lub numerze przesyłki…"
+      "placeholderNoPii": "Szukaj po numerze zamówienia, SKU, numerze przesyłki lub ID OpenLinker…",
+      "placeholderWithPii": "Szukaj po numerze zamówienia, kupującym, e-mailu, SKU, numerze przesyłki lub ID OpenLinker…"
     },
     "sectionAny": "Dowolne",
     "sectionNone": "Brak",

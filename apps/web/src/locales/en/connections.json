@@ -235,6 +235,7 @@
     "ariaLabel": "{name}, {platform}",
     "sandboxFace": "{platform} sandbox",
     "sandboxLabel": "{platform} (sandbox)",
+    "sandboxTag": "sandbox",
     "title": "{name} - {platform}"
   },
   "connectionConfigPanel": {

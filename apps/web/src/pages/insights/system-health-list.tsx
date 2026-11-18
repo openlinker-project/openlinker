@@ -214,6 +214,7 @@ export function SystemHealthList({
                   statusLabel={copy.status}
                   chip={
                     <ConnectionChip
+                      lead="platform"
                       connectionId={entry.connectionId}
                       name={entry.name ?? connection?.name ?? null}
                       channel={{
