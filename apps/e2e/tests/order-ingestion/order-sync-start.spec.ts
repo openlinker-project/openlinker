@@ -225,6 +225,40 @@ test.describe('order ingestion: order sync start (#4228)', () => {
     expect(JSON.stringify(apiError.body)).toContain('orderSyncStart');
   });
 
+  test('restart: a connection started "now" can be restarted to import the history', async ({
+    api,
+    jobs,
+  }) => {
+    requireSeeded();
+    const connection = await createThrowaway(api, 'restart', { mode: 'now' });
+    await pollOnce(jobs, connection.id);
+    expect(await ordersOf(api, connection.id), 'starts without the history').toHaveLength(0);
+
+    const tomorrow = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const refusal = await api.connections
+      .restartOrderSync(connection.id, { mode: 'from', from: tomorrow })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(refusal, 'a future start date must be refused').toBeInstanceOf(ApiError);
+    expect((refusal as ApiError).status).toBe(400);
+
+    await api.connections.restartOrderSync(connection.id, { mode: 'all' });
+    await pollUntil(
+      async () => {
+        await pollOnce(jobs, connection.id);
+        return ordersOf(api, connection.id);
+      },
+      (list) => oldExternalIds.every((id) => list.some((o) => matchesExternalOrderId(o, id))),
+      {
+        timeoutMs: POLL_BUDGET_MS,
+        intervalMs: 3_000,
+        message: 'the old orders to be imported after restarting from "all"',
+      },
+    );
+  });
+
   test('the connection health tab shows the Order sync panel with a Live row', async ({
     page,
     pages,

@@ -100,6 +100,7 @@ export function OrderSyncRestartDialog({
             onChange={setValue}
             supportedModes={supportedModes}
             error={showDateError}
+            restart
           />
           {value.mode === 'now' ? <Alert tone="warning">{copy.gapNote}</Alert> : null}
         </div>

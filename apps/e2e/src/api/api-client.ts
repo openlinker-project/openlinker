@@ -109,6 +109,7 @@ import type {
   SalesDocumentBatchOverview,
   SalesDocumentBatchRun,
   SalesDocumentBatchRunDetail,
+  OrderSyncStartInput,
 } from './api.types';
 
 const API_VERSION_PREFIX = '/v1';
@@ -536,6 +537,12 @@ export class ApiClient {
     /** `GET /connections/:id/sync-status` - queue health plus `orderSyncStartedAt` (#4228). */
     getSyncStatus: (connectionId: string): Promise<ConnectionSyncStatus> =>
       this.request<ConnectionSyncStatus>(`/connections/${connectionId}/sync-status`),
+    /** `POST /connections/:id/order-sync/restart` - restart the order sync from a new start (#4228). */
+    restartOrderSync: (connectionId: string, start: OrderSyncStartInput): Promise<unknown> =>
+      this.request<unknown>(`/connections/${connectionId}/order-sync/restart`, {
+        method: 'POST',
+        body: JSON.stringify(start),
+      }),
     /** Soft-delete a DISABLED connection (`PATCH /connections/:id/archive`); idempotent. */
     archive: (connectionId: string): Promise<unknown> =>
       this.request<unknown>(`/connections/${connectionId}/archive`, { method: 'PATCH' }),

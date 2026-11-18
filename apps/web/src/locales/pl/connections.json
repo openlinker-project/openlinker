@@ -1159,6 +1159,7 @@
       }
     },
     "recommended": "Zalecane",
+    "restartIntro": "Zamówienia, które już zaimportowano, zostają bez zmian. Zmienia się tylko to, które zamówienia przeczyta następne sprawdzenie.",
     "review": {
       "all": "Cała historia",
       "from": "Od {date}",

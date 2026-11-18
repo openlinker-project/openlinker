@@ -30,6 +30,8 @@ interface OrderSyncStartFieldProps {
   supportedModes: readonly OrderSyncStartMode[];
   /** Message for the date input, when the chosen date is not acceptable. */
   error?: string;
+  /** Restarting an existing connection: the intro must not claim the choice is final. */
+  restart?: boolean;
 }
 
 export function OrderSyncStartField({
@@ -37,6 +39,7 @@ export function OrderSyncStartField({
   onChange,
   supportedModes,
   error,
+  restart = false,
 }: OrderSyncStartFieldProps): ReactElement {
   const copy = useMessages('connections').orderSyncStart;
   const format = useFormat();
@@ -76,7 +79,7 @@ export function OrderSyncStartField({
     <div className="order-sync-start">
       <div className="order-sync-start__intro">
         <h3 className="order-sync-start__title">{copy.title}</h3>
-        <p className="muted-text">{copy.intro}</p>
+        <p className="muted-text">{restart ? copy.restartIntro : copy.intro}</p>
       </div>
 
       <div

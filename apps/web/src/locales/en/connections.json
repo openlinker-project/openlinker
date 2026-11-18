@@ -1133,6 +1133,7 @@
       }
     },
     "recommended": "Recommended",
+    "restartIntro": "Orders already imported stay as they are. This only changes which orders the next check reads.",
     "review": {
       "all": "All history",
       "from": "From {date}",
