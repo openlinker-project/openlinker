@@ -114,7 +114,7 @@ describe('AmazonConnectionTesterAdapter', () => {
     expect(result.message).not.toContain(credentials.refreshToken);
   });
 
-  it('should report a missing role as the API error, not as bad credentials', async () => {
+  it('should report a missing role as misconfigured, not as bad credentials', async () => {
     const { http } = transport(
       json(200, { access_token: 'Atza|1' }),
       json(403, { errors: [{ code: 'Unauthorized', message: 'Access to requested resource is denied.' }] }),
@@ -124,8 +124,8 @@ describe('AmazonConnectionTesterAdapter', () => {
       resolver(uniqueCredentials()),
     );
 
-    expect(result).toMatchObject({ success: false, status: 403 });
-    expect(result.outcome).toBeUndefined();
+    expect(result).toMatchObject({ success: false, status: 403, outcome: 'misconfigured' });
+    expect(result.message).toContain('lacks a role');
   });
 
   it('should explain a throttled test instead of passing the Amazon message through', async () => {

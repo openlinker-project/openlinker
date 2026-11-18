@@ -123,4 +123,48 @@ describe('AmazonAccessTokenProvider', () => {
     const provider = new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => 0, new Map());
     await expect(provider.getAccessToken()).rejects.toBeInstanceOf(AmazonNetworkError);
   });
+  it('should share one LWA call between concurrent callers when no token is cached', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { access_token: 'Atza|shared', expires_in: 3600 }));
+    const memo = new Map();
+    const inFlight = new Map();
+    const providers = [1, 2, 3].map(
+      () => new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => 0, memo, inFlight),
+    );
+
+    const tokens = await Promise.all(providers.map((provider) => provider.getAccessToken()));
+
+    expect(tokens).toEqual(['Atza|shared', 'Atza|shared', 'Atza|shared']);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(inFlight.size).toBe(0);
+  });
+
+  it('should let the next caller mint again when a shared mint fails', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(503, { error: 'server_error' }))
+      .mockResolvedValueOnce(jsonResponse(200, { access_token: 'Atza|retry', expires_in: 3600 }));
+    const inFlight = new Map();
+    const provider = new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => 0, new Map(), inFlight);
+
+    await expect(provider.getAccessToken()).rejects.toBeInstanceOf(AmazonApiError);
+    await expect(provider.getAccessToken()).resolves.toBe('Atza|retry');
+    expect(inFlight.size).toBe(0);
+  });
+
+  it('should drop an expired memo entry instead of keeping it', async () => {
+    let nowMs = 0;
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { access_token: 'Atza|old', expires_in: 3600 }))
+      .mockRejectedValueOnce(new TypeError('network down'));
+    const memo = new Map();
+    const provider = new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => nowMs, memo, new Map());
+
+    await provider.getAccessToken();
+    expect(memo.size).toBe(1);
+
+    nowMs = 3600 * 1000;
+    await expect(provider.getAccessToken()).rejects.toBeInstanceOf(AmazonNetworkError);
+    expect(memo.size).toBe(0);
+  });
 });

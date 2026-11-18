@@ -32,24 +32,13 @@ import { AMAZON_USER_AGENT } from '../../amazon.constants';
 import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 import { AmazonNetworkError } from '../../domain/exceptions/amazon-network.error';
 import type { AmazonSpApiErrorBody } from '../../domain/types/amazon-api.types';
-import type { AmazonAccessTokenSource } from './amazon-access-token.provider';
+import type { AmazonAccessTokenSource } from './amazon-access-token.types';
 import { parseAmazonJson, readAmazonBody } from './amazon-response-body';
+import type { AmazonHttpMethod, AmazonQuery, AmazonSpApiResponse } from './amazon-spapi-client.types';
+
+export type { AmazonHttpMethod, AmazonQuery, AmazonSpApiResponse } from './amazon-spapi-client.types';
 
 const REQUEST_TIMEOUT_MS = 30_000;
-
-/**
- * Query parameters. An array is sent comma-joined, which is how SP-API takes
- * list parameters such as `marketplaceIds`.
- */
-export type AmazonQuery = Readonly<Record<string, string | number | boolean | readonly string[] | undefined>>;
-
-export interface AmazonSpApiResponse<T> {
-  readonly status: number;
-  readonly data: T;
-  readonly requestId: string | undefined;
-}
-
-export type AmazonHttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export class AmazonSpApiClient {
   /**

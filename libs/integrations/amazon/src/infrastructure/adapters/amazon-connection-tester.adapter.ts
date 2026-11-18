@@ -117,6 +117,18 @@ function toFailure(error: unknown, latencyMs: number): ConnectionTestResult {
       latencyMs,
     };
   }
+  if (error instanceof AmazonApiError && error.statusCode === 403) {
+    // The token was just minted, so a 403 is the app lacking a role for this
+    // API, not a rejected credential (see the auth-failure classifier).
+    return {
+      success: false,
+      status: 403,
+      outcome: 'misconfigured',
+      message:
+        'Amazon refused the call: the app lacks a role for this API. Add the roles in Developer Central, then authorize the app again.',
+      latencyMs,
+    };
+  }
   if (error instanceof AmazonApiError) {
     return { success: false, status: error.statusCode, message: error.message, latencyMs };
   }

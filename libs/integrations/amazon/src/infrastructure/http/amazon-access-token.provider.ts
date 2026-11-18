@@ -10,6 +10,8 @@
  *   - an in-process memo shared by every resolution (the adapter bag is built
  *     per call, so a per-instance memo alone would mint a token per job);
  *   - the host `CachePort` when wired, so replicas share one token.
+ *   Concurrent callers that find no valid token share ONE mint in flight, so
+ *   a token expiring under several parallel jobs costs a single LWA call.
  *   The cache key is a FINGERPRINT of the three credential values, never a
  *   secret: re-authorizing or rotating the client secret changes it, so a
  *   token minted from old credentials is never reused. A cached token is
@@ -40,7 +42,10 @@ import { AmazonAuthenticationError } from '../../domain/exceptions/amazon-authen
 import { AmazonNetworkError } from '../../domain/exceptions/amazon-network.error';
 import type { AmazonLwaTokenResponse } from '../../domain/types/amazon-api.types';
 import type { AmazonCredentials } from '../../domain/types/amazon-credentials.types';
+import type { AmazonAccessTokenEntry, AmazonAccessTokenSource } from './amazon-access-token.types';
 import { parseAmazonJson, readAmazonBody } from './amazon-response-body';
+
+export type { AmazonAccessTokenSource } from './amazon-access-token.types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -59,17 +64,11 @@ const CREDENTIAL_GRANT_ERRORS: ReadonlySet<string> = new Set([
 
 const CACHE_KEY_PREFIX = 'amazon:lwa-token:';
 
-interface MemoEntry {
-  readonly token: string;
-  readonly expiresAtMs: number;
-}
-
 /** Shared by every provider in the process; keyed by credential fingerprint. */
-const processMemo = new Map<string, MemoEntry>();
+const processMemo = new Map<string, AmazonAccessTokenEntry>();
 
-export interface AmazonAccessTokenSource {
-  getAccessToken(): Promise<string>;
-}
+/** Mints in flight, shared by every provider in the process; keyed by credential fingerprint. */
+const processInFlight = new Map<string, Promise<AmazonAccessTokenEntry>>();
 
 export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
   private readonly fingerprint: string;
@@ -79,7 +78,8 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
     private readonly fetchImpl: FetchLike,
     private readonly cache?: CachePort,
     private readonly now: () => number = Date.now,
-    private readonly memo: Map<string, MemoEntry> = processMemo,
+    private readonly memo: Map<string, AmazonAccessTokenEntry> = processMemo,
+    private readonly inFlight: Map<string, Promise<AmazonAccessTokenEntry>> = processInFlight,
   ) {
     this.fingerprint = fingerprintAmazonCredentials(credentials);
   }
@@ -87,15 +87,33 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
   async getAccessToken(): Promise<string> {
     const nowMs = this.now();
     const memoed = this.memo.get(this.fingerprint);
-    if (memoed !== undefined && memoed.expiresAtMs > nowMs) {
-      return memoed.token;
+    if (memoed !== undefined) {
+      if (memoed.expiresAtMs > nowMs) {
+        return memoed.token;
+      }
+      // Rotated or re-authorized credentials leave their old entry behind; drop it once expired.
+      this.memo.delete(this.fingerprint);
     }
 
+    const pending = this.inFlight.get(this.fingerprint);
+    if (pending !== undefined) {
+      return (await pending).token;
+    }
+    const resolving = this.resolveToken(nowMs);
+    this.inFlight.set(this.fingerprint, resolving);
+    try {
+      return (await resolving).token;
+    } finally {
+      this.inFlight.delete(this.fingerprint);
+    }
+  }
+
+  private async resolveToken(nowMs: number): Promise<AmazonAccessTokenEntry> {
     const cacheKey = `${CACHE_KEY_PREFIX}${this.fingerprint}`;
     const cached = await this.readCache(cacheKey);
     if (cached !== null && cached.expiresAtMs > nowMs) {
       this.memo.set(this.fingerprint, cached);
-      return cached.token;
+      return cached;
     }
 
     const minted = await this.mint();
@@ -104,21 +122,21 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
     if (this.cache !== undefined && ttlSeconds > 0) {
       await this.cache.set(cacheKey, minted, ttlSeconds).catch(() => undefined);
     }
-    return minted.token;
+    return minted;
   }
 
-  private async readCache(key: string): Promise<MemoEntry | null> {
+  private async readCache(key: string): Promise<AmazonAccessTokenEntry | null> {
     if (this.cache === undefined) {
       return null;
     }
     // A cache outage must not stop the connection: mint instead.
-    const value = await this.cache.get<MemoEntry>(key).catch(() => null);
+    const value = await this.cache.get<AmazonAccessTokenEntry>(key).catch(() => null);
     return value !== null && typeof value.token === 'string' && typeof value.expiresAtMs === 'number'
       ? value
       : null;
   }
 
-  private async mint(): Promise<MemoEntry> {
+  private async mint(): Promise<AmazonAccessTokenEntry> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let response: Response;
