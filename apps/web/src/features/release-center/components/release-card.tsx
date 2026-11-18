@@ -239,7 +239,7 @@ export function ReleaseCard({
                   onNavigate();
                 }}
               >
-                {copy.ctaWhatsNew}
+                {copy.ctaChangelog}
               </Button>
             )}
           </div>
