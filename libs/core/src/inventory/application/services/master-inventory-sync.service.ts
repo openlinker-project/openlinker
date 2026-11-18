@@ -29,7 +29,8 @@ import {
 } from '@openlinker/core/products';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
-import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
+import { INVENTORY_SERVICE_TOKEN, LOCATION_SERVICE_TOKEN } from '../../inventory.tokens';
+import { ILocationService } from './location.service.interface';
 import { IInventoryService } from './inventory.service.interface';
 import type {
   InventoryMasterPort,
@@ -91,7 +92,11 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // runs for it and nothing would propagate. The enqueue below closes that
     // transition gap.
     @Inject(SYNC_JOB_QUEUE_TOKEN)
-    private readonly jobQueue: SyncJobQueuePort
+    private readonly jobQueue: SyncJobQueuePort,
+    // A master that names its own locations (`Inventory.masterLocation`) has
+    // them resolved - and provisioned on first sight - to OL locations here.
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locationService: ILocationService
   ) {}
 
   async syncFromMasterByExternalId(
@@ -745,7 +750,14 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // `readStockLocationOverride`'s docblock. Computed once, and both sites
     // below (the lookup and the constructed row) must use this SAME value or
     // the upsert would look up one location and write another.
-    const effectiveLocationId = inventory.locationId ?? overrideLocationId ?? null;
+    // A master-named location (`masterLocation`) ranks between the two: it is
+    // the master's own answer, resolved to an OL row, and the operator's
+    // override only fills the gap when the master says nothing.
+    const effectiveLocationId =
+      inventory.locationId ??
+      (await this.resolveMasterLocationId(inventory, connectionId)) ??
+      overrideLocationId ??
+      null;
 
     // Provenance-scoped (#2320) and load-bearing: `existing?.id` below is
     // reused as the row identity, so an unscoped lookup would hand this
@@ -777,6 +789,23 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       false,
       connectionId
     );
+  }
+
+  private async resolveMasterLocationId(
+    inventory: InventoryPortInterface,
+    connectionId: string
+  ): Promise<string | null> {
+    if (inventory.masterLocation === undefined) {
+      return null;
+    }
+    const { connection } = await this.integrationsService.getAdapter(connectionId);
+    const location = await this.locationService.resolveMasterLocation({
+      connectionId,
+      platformType: connection.platformType,
+      externalRef: inventory.masterLocation.ref,
+      name: inventory.masterLocation.name,
+    });
+    return location.id;
   }
 
   /**

@@ -142,6 +142,10 @@ export interface ShopifyInventoryVariant {
     readonly id: string;
     readonly tracked: boolean;
     readonly inventoryLevel?: ShopifyInventoryLevel | null;
+    /** Every level of the item; present only when read with `allLocations`. */
+    readonly levels?: {
+      readonly nodes: readonly (ShopifyInventoryLevel & { readonly location: { readonly id: string } })[];
+    };
   };
 }
 

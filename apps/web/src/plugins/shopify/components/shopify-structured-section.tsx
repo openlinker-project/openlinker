@@ -44,6 +44,7 @@ export function ShopifyStructuredSection({
     connection.enabledCapabilities.includes('ProductMaster') ||
     connection.enabledCapabilities.includes('InventoryMaster');
   const locationId = form.watch('shopifyLocationId') ?? '';
+  const allLocationsOn = form.watch('shopifyStockLocations') === 'all';
   const refundsOn = form.watch('shopifyRefundsThroughShopify') === 'true';
 
   const locations = locationsQuery.data ?? [];
@@ -136,6 +137,23 @@ export function ShopifyStructuredSection({
           {copy.location.unknownWarning}
         </Alert>
       ) : null}
+
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={allLocationsOn}
+          disabled={!configIsParseable}
+          onChange={(event) =>
+            syncStructuredToJson('shopifyStockLocations', event.target.checked ? 'all' : '')
+          }
+        />
+        <span>
+          {copy.stockLocations.label}
+          <small className="text-muted" style={{ display: 'block' }}>
+            {copy.stockLocations.description}
+          </small>
+        </span>
+      </label>
 
       <FormField
         label={copy.unmanagedStock.label}

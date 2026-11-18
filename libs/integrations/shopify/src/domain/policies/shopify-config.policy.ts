@@ -97,6 +97,15 @@ export function parseShopifyConfig(
     }
   }
 
+  let stockLocations: 'configured' | 'all' = 'configured';
+  if (present(config.stockLocations)) {
+    if (config.stockLocations !== 'configured' && config.stockLocations !== 'all') {
+      issues.push({ path: 'stockLocations', message: 'must be "configured" or "all"' });
+    } else {
+      stockLocations = config.stockLocations;
+    }
+  }
+
   let unmanagedStockQuantity: number | null = null;
   if (present(config.unmanagedStockQuantity)) {
     const value = config.unmanagedStockQuantity;
@@ -144,6 +153,7 @@ export function parseShopifyConfig(
           storeDomain,
           apiVersion,
           locationGid,
+          stockLocations,
           unmanagedStockQuantity,
           salesCountryIso2,
           refundsThroughShopify,

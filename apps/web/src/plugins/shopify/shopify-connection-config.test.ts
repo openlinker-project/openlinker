@@ -24,6 +24,7 @@ describe('shopifyConnectionConfig', () => {
       }),
     ).toEqual({
       shopifyLocationId: '42',
+      shopifyStockLocations: '',
       shopifyUnmanagedStockQuantity: '0',
       shopifySalesCountryIso2: 'PL',
       shopifyRefundsThroughShopify: 'true',
@@ -33,6 +34,7 @@ describe('shopifyConnectionConfig', () => {
   it('should read an empty config as empty fields', () => {
     expect(readConfigToForm({ storeDomain: 'x.myshopify.com' })).toEqual({
       shopifyLocationId: '',
+      shopifyStockLocations: '',
       shopifyUnmanagedStockQuantity: '',
       shopifySalesCountryIso2: '',
       shopifyRefundsThroughShopify: '',
@@ -105,5 +107,13 @@ describe('shopifyConnectionConfig', () => {
   it('should read a numeric location id stored as a number', () => {
     expect(readLocationId(7)).toBe('7');
     expect(readLocationId(null)).toBe('');
+  });
+
+  it('should round-trip stockLocations and write an explicit configured when cleared', () => {
+    expect(applyToConfig({}, { shopifyStockLocations: 'all' })).toEqual({ stockLocations: 'all' });
+    expect(applyToConfig({ stockLocations: 'all' }, { shopifyStockLocations: '' })).toEqual({
+      stockLocations: 'configured',
+    });
+    expect(schemaShape.shopifyStockLocations?.safeParse('some').success).toBe(false);
   });
 });

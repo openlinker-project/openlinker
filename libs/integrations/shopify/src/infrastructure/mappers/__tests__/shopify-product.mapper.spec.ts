@@ -16,6 +16,7 @@ const GROSS_SHOP: ShopifyShopContext = {
   taxesIncluded: true,
   locationGid: 'gid://shopify/Location/1',
   locationName: 'Main',
+  activeLocations: [],
   shopAddress: null,
 };
 

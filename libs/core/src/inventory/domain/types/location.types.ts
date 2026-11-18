@@ -58,6 +58,20 @@ export interface CreateInventoryLocationInput {
 }
 
 /**
+ * What `ILocationService.resolveMasterLocation` needs to find or provision the
+ * OL location standing for one of a master's own locations.
+ */
+export interface ResolveMasterLocationInput {
+  readonly connectionId: string;
+  /** Namespaces the generated `code`; never used to decide anything else. */
+  readonly platformType: string;
+  /** The master's own id for the location (stored as `externalRef`). */
+  readonly externalRef: string;
+  /** The master's name for it; the initial `name` only, never re-applied. */
+  readonly name: string;
+}
+
+/**
  * Partial update. Every field is optional; an omitted field is left untouched,
  * while an explicit `null` clears a nullable column.
  *

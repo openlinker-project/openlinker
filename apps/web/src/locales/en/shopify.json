@@ -67,6 +67,10 @@
       "description": "The country whose VAT rate is read for products. Leave empty to use the store's billing country.",
       "label": "Sales country"
     },
+    "stockLocations": {
+      "description": "Report stock for every active Shopify location instead of only the one above. Each location becomes an OpenLinker location (created on the next stock sync, you can rename it). Stock written back from OpenLinker still goes to the location above.",
+      "label": "Track stock at all locations"
+    },
     "unmanagedStock": {
       "description": "The quantity reported for a variant whose stock Shopify does not track. Leave empty for 1000.",
       "label": "Quantity for untracked stock"

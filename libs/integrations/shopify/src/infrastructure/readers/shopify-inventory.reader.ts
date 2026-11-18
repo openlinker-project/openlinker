@@ -36,6 +36,7 @@ export class ShopifyInventoryReader {
   constructor(
     private readonly client: ShopifyGraphqlClient,
     private readonly connectionId: string,
+    private readonly allLocations: boolean = false,
   ) {}
 
   /** Prime the memo with a product a bulk read returned; an existing entry wins. */
@@ -62,6 +63,7 @@ export class ShopifyInventoryReader {
           id: toShopifyGid('Product', externalId),
           locationId: locationGid,
           after: null,
+          allLocations: this.allLocations,
         })
         .then((data) => (data.product === null ? null : this.complete(data.product, locationGid)));
       this.remember(externalId, read);
@@ -90,7 +92,7 @@ export class ShopifyInventoryReader {
     for (let page = 0; page < MAX_VARIANT_PAGES && pageInfo?.hasNextPage === true; page += 1) {
       const data: { product: ShopifyInventoryProduct | null } = await this.client.query(
         PRODUCT_INVENTORY_QUERY,
-        { id: product.id, locationId: locationGid, after: pageInfo.endCursor },
+        { id: product.id, locationId: locationGid, after: pageInfo.endCursor, allLocations: this.allLocations },
       );
       if (data.product === null) {
         // Deleted between the two reads: the first page already answered, the

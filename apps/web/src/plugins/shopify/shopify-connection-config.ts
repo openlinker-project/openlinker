@@ -2,7 +2,7 @@
  * Shopify Connection-Config Contribution (#3982)
  *
  * The non-render half of the Shopify edit section: the four top-level config
- * keys an operator sets once a store is connected - `locationId`,
+ * keys an operator sets once a store is connected - `locationId`, `stockLocations`,
  * `unmanagedStockQuantity`, `salesCountryIso2` and `refundsThroughShopify`.
  * The callback URL is the host-level `openlinkerCallbackBaseUrl` field.
  *
@@ -26,6 +26,8 @@ declare module '../../shared/plugins/plugin.types' {
   interface PluginEditConnectionFields {
     /** `config.locationId` as a numeric id, `''` for the primary location. */
     shopifyLocationId?: string;
+    /** `config.stockLocations`, `'all'` or `''` (the configured location only). */
+    shopifyStockLocations?: string;
     /** `config.unmanagedStockQuantity`, entered as a string. */
     shopifyUnmanagedStockQuantity?: string;
     /** `config.salesCountryIso2`. */
@@ -66,6 +68,7 @@ const shopifySchemaShape: ConnectionConfigContribution['schemaShape'] = {
     (value) => ISO2.test(value),
     () => getShopifyMessages().connectionConfig.salesCountryInvalid,
   ),
+  shopifyStockLocations: z.union([z.literal('all'), z.literal('')]).optional(),
   shopifyRefundsThroughShopify: z.union([z.literal('true'), z.literal('')]).optional(),
 };
 
@@ -87,6 +90,7 @@ function readShopifyConfig(config: Record<string, unknown>): Record<string, stri
         ? String(unmanaged)
         : '',
     shopifySalesCountryIso2: typeof country === 'string' ? country : '',
+    shopifyStockLocations: config.stockLocations === 'all' ? 'all' : '',
     shopifyRefundsThroughShopify: config.refundsThroughShopify === true ? 'true' : '',
   };
 }
@@ -101,6 +105,12 @@ function applyShopifyConfig(
   if (location !== undefined) {
     const id = readLocationId(location);
     next.locationId = NUMERIC_ID.test(id) ? id : null;
+  }
+
+  const stockLocations = readOptionalConfigString(patch, 'shopifyStockLocations');
+  if (stockLocations !== undefined) {
+    // An explicit 'configured' (not a deleted key) survives the shallow merge.
+    next.stockLocations = stockLocations === 'all' ? 'all' : 'configured';
   }
 
   const unmanaged = readOptionalConfigString(patch, 'shopifyUnmanagedStockQuantity');
