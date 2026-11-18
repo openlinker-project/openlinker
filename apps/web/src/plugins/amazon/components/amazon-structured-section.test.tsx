@@ -5,7 +5,8 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
 import type { ReactElement } from 'react';
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Connection } from '../../../features/connections';
@@ -50,9 +51,11 @@ describe('AmazonStructuredSection', () => {
     const sync = vi.fn();
     renderWithProviders(<Harness sync={sync} />, admin);
 
-    const germany = await screen.findByRole('checkbox', { name: /Germany/ });
-    expect(germany).toBeChecked();
-    fireEvent.click(screen.getByRole('checkbox', { name: /Poland/ }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('combobox', { name: 'Marketplaces' }));
+    expect(screen.getByRole('option', { name: /Germany/ })).toHaveAttribute('aria-selected', 'true');
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(16);
+    await user.click(screen.getByRole('option', { name: /Poland/ }));
 
     expect(sync).toHaveBeenCalledWith('amazonMarketplaceIds', 'A1PA6795UKMFR9,A1C3SOZRARQ6R3');
   });
@@ -60,7 +63,7 @@ describe('AmazonStructuredSection', () => {
   it('should keep a stored marketplace this browser does not list', async () => {
     renderWithProviders(<Harness values={{ amazonMarketplaceIds: 'A1PA6795UKMFR9,A9NEWMARKET01' }} />, admin);
 
-    expect(await screen.findByRole('checkbox', { name: /Marketplace A9NEWMARKET01/ })).toBeChecked();
+    expect(await screen.findByText('Marketplace A9NEWMARKET01')).toBeInTheDocument();
   });
 
   it('should show the merchant token with offers and the queue with orders only', async () => {
@@ -87,7 +90,7 @@ describe('AmazonStructuredSection', () => {
     });
     renderWithProviders(<Harness />, { sessionAdapter: viewer });
 
-    expect(await screen.findByRole('checkbox', { name: /Germany/ })).toBeDisabled();
+    expect(await screen.findByRole('combobox', { name: 'Marketplaces' })).toBeDisabled();
     expect(screen.getByLabelText('Merchant token')).toBeDisabled();
   });
 
@@ -104,14 +107,16 @@ describe('AmazonStructuredSection', () => {
   it('should offer the marketplaces of the chosen region and warn about a region change', async () => {
     renderWithProviders(<Harness values={{ amazonRegion: 'na', amazonMarketplaceIds: 'ATVPDKIKX0DER' }} />, admin);
 
-    expect(await screen.findByRole('checkbox', { name: /United States \(USD\)/ })).toBeChecked();
-    expect(screen.queryByRole('checkbox', { name: /Germany/ })).toBeNull();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('combobox', { name: 'Marketplaces' }));
+    expect(screen.getByRole('option', { name: /United States \(USD\)/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('option', { name: /Germany/ })).toBeNull();
     expect(screen.getByText(/moves this connection to another Amazon region/)).toBeInTheDocument();
   });
 
-  it('should keep a stored marketplace of another region visible so it can be unticked', async () => {
+  it('should keep a stored marketplace of another region visible as a chip so it can be removed', async () => {
     renderWithProviders(<Harness values={{ amazonMarketplaceIds: 'A1PA6795UKMFR9,ATVPDKIKX0DER' }} />, admin);
 
-    expect(await screen.findByRole('checkbox', { name: /United States \(USD\) ATVPDKIKX0DER/ })).toBeChecked();
+    expect(await screen.findByText('United States (USD)')).toBeInTheDocument();
   });
 });

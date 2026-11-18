@@ -2,13 +2,17 @@
  * AmazonSetupForm tests (#4186)
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { AmazonSetupForm } from './amazon-setup-form';
 
-function fill(): void {
+async function fill(): Promise<void> {
+  const user = userEvent.setup();
   fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'Amazon EU' } });
-  fireEvent.click(screen.getByLabelText(/Germany/));
+  await user.click(screen.getByRole('combobox', { name: 'Marketplaces' }));
+  await user.click(screen.getByRole('option', { name: /Germany/ }));
+  await user.keyboard('{Escape}');
   fireEvent.change(screen.getByLabelText('Merchant token'), { target: { value: 'A2EXAMPLE12345' } });
   fireEvent.change(screen.getByLabelText('LWA client id'), { target: { value: 'amzn1.application-oa2-client.abc' } });
   fireEvent.change(screen.getByLabelText('LWA client secret'), { target: { value: 'secret' } });
@@ -18,16 +22,20 @@ function fill(): void {
 describe('AmazonSetupForm', () => {
   afterEach(cleanup);
 
-  it('should offer only the marketplaces of the chosen region', () => {
+  it('should offer only the marketplaces of the chosen region', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<AmazonSetupForm />);
 
-    expect(screen.getByLabelText(/Germany/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Poland/)).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Marketplaces' }));
+    expect(screen.getByRole('option', { name: /Germany/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Poland/ })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
 
     fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'na' } });
 
-    expect(screen.queryByLabelText(/Germany/)).toBeNull();
-    expect(screen.getByLabelText(/United States \(USD\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Marketplaces' }));
+    expect(screen.queryByRole('option', { name: /Germany/ })).toBeNull();
+    expect(screen.getByRole('option', { name: /United States \(USD\)/ })).toBeInTheDocument();
   });
 
   it('should show the sandbox notice and keep the master role unavailable', () => {
@@ -57,7 +65,7 @@ describe('AmazonSetupForm', () => {
     vi.mocked(apiClient.connections.create).mockClear();
     renderWithProviders(<AmazonSetupForm />, { apiClient });
 
-    fill();
+    await fill();
     fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
 
     expect(await screen.findByText('Amazon connection created')).toBeInTheDocument();

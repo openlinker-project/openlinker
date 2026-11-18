@@ -12,6 +12,14 @@
       "registeredTitle": "Kolejka zarejestrowana"
     }
   },
+  "bulk": {
+    "currency": {
+      "description": "Każda oferta trafia na rynki tego połączenia, które sprzedają w tej walucie.",
+      "label": "Waluta ofert"
+    },
+    "marketplaces": "Oferty trafią na: {countries}.",
+    "noMarketplace": "To połączenie nie ma rynku znanego OpenLinker, więc nie da się wystawić żadnej oferty. Wybierz jego rynki na stronie połączenia."
+  },
   "credentials": {
     "awsAccessKeyId": "Identyfikator klucza AWS (opcjonalnie)",
     "awsHint": "Zostaw klucz AWS pusty, jeśli powiadomienia mają być czytane bez klucza.",
@@ -43,6 +51,7 @@
     "marketplaces": {
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
       "label": "Rynki",
+      "placeholder": "Wybierz rynki",
       "unlisted": "Rynek {id}"
     },
     "queueUrlDescription": "Amazon dostarcza zmiany zamówień do tej kolejki. Po zapisaniu zarejestruj ją poniżej.",
@@ -115,6 +124,7 @@
     "marketplaces": "Rynki",
     "marketplacesHint": "Zamówienia są pobierane, a oferty wystawiane na wybranych rynkach.",
     "marketplacesNone": "OpenLinker nie ma jeszcze rynków dla tego regionu.",
+    "marketplacesPlaceholder": "Wybierz rynki",
     "notifications": "Powiadomienia o zamówieniach (opcjonalnie)",
     "notificationsHint": "Z kolejką SQS Amazon zgłasza zmiany zamówień w ciągu minuty, a nie przy następnym odpytaniu. Możesz ją dodać później.",
     "offers": "Oferty",

@@ -12,6 +12,14 @@
       "registeredTitle": "Queue registered"
     }
   },
+  "bulk": {
+    "currency": {
+      "description": "Each offer is listed on the connection's marketplaces that sell in this currency.",
+      "label": "Offer currency"
+    },
+    "marketplaces": "Offers go to: {countries}.",
+    "noMarketplace": "This connection has no marketplace OpenLinker knows, so no offer can be listed. Choose its marketplaces on the connection page."
+  },
   "credentials": {
     "awsAccessKeyId": "AWS access key id (optional)",
     "awsHint": "Leave the AWS key empty to keep reading notifications without a key.",
@@ -43,6 +51,7 @@
     "marketplaces": {
       "description": "Orders are read and offers written on these marketplaces.",
       "label": "Marketplaces",
+      "placeholder": "Choose marketplaces",
       "unlisted": "Marketplace {id}"
     },
     "queueUrlDescription": "Amazon delivers order changes to this queue. Register it below after saving.",
@@ -115,6 +124,7 @@
     "marketplaces": "Marketplaces",
     "marketplacesHint": "Orders are read and offers written on the marketplaces you choose.",
     "marketplacesNone": "OpenLinker does not list marketplaces for this region yet.",
+    "marketplacesPlaceholder": "Choose marketplaces",
     "notifications": "Order notifications (optional)",
     "notificationsHint": "With an SQS queue, Amazon reports order changes within a minute instead of at the next poll. You can add it later.",
     "offers": "Offers",

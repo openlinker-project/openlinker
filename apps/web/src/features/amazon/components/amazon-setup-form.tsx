@@ -33,6 +33,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { marketplacesForRegion, type AmazonRegion } from '../lib/amazon-marketplaces';
+import { AmazonMarketplacePicker } from './amazon-marketplace-picker';
 import {
   AMAZON_SETUP_DEFAULT_VALUES,
   AmazonSetupErrorKeyValues,
@@ -72,14 +73,6 @@ export function AmazonSetupForm(): ReactElement {
     form.setValue(
       'marketplaceIds',
       selected.filter((id) => served.has(id)),
-      { shouldValidate: form.formState.submitCount > 0 },
-    );
-  };
-
-  const toggleMarketplace = (id: string, checked: boolean): void => {
-    form.setValue(
-      'marketplaceIds',
-      checked ? [...selected, id] : selected.filter((entry) => entry !== id),
       { shouldValidate: form.formState.submitCount > 0 },
     );
   };
@@ -182,35 +175,29 @@ export function AmazonSetupForm(): ReactElement {
         </Alert>
       ) : null}
 
-      <fieldset className="form-field" aria-describedby="amazon-marketplaces-hint">
-        <legend className="form-field__label">{copy.marketplaces}</legend>
-        <p className="form-field__description" id="amazon-marketplaces-hint">
-          {marketplaces.length > 0 ? copy.marketplacesHint : copy.marketplacesNone}
-        </p>
-        {marketplaces.map((marketplace) => (
-          <label key={marketplace.id} className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={selected.includes(marketplace.id)}
-              onChange={(event) => toggleMarketplace(marketplace.id, event.target.checked)}
-            />
-            <span>
-              {interpolate(copy.marketplaceOption, {
-                country: copy.countries[marketplace.country as keyof typeof copy.countries] ?? marketplace.country,
-                currency: marketplace.currency,
-              })}
-              <small className="text-muted mono-text" style={{ display: 'block' }}>
-                {marketplace.id}
-              </small>
-            </span>
-          </label>
-        ))}
-        {errors.marketplaceIds ? (
-          <p className="form-field__error" role="alert">
-            {errorText(errors.marketplaceIds.message)}
-          </p>
-        ) : null}
-      </fieldset>
+      <FormField
+        label={copy.marketplaces}
+        name="amazon-marketplaces"
+        description={marketplaces.length > 0 ? copy.marketplacesHint : copy.marketplacesNone}
+        error={errorText(errors.marketplaceIds?.message)}
+      >
+        <AmazonMarketplacePicker
+          marketplaces={marketplaces}
+          selected={selected}
+          onChange={(ids) =>
+            form.setValue('marketplaceIds', ids, { shouldValidate: form.formState.submitCount > 0 })
+          }
+          labelOf={(marketplace) =>
+            interpolate(copy.marketplaceOption, {
+              country: copy.countries[marketplace.country as keyof typeof copy.countries] ?? marketplace.country,
+              currency: marketplace.currency,
+            })
+          }
+          placeholder={copy.marketplacesPlaceholder}
+          invalid={Boolean(errors.marketplaceIds)}
+          disabled={marketplaces.length === 0}
+        />
+      </FormField>
 
       <fieldset className="form-field">
         <legend className="form-field__label">{copy.role}</legend>

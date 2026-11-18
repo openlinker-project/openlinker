@@ -17,6 +17,7 @@
  */
 import type { ReactElement } from 'react';
 import {
+  AmazonMarketplacePicker,
   AmazonRegionValues,
   findMarketplace,
   isAmazonRegion,
@@ -58,11 +59,6 @@ export function AmazonStructuredSection({
   // A stored id outside the offered list (a marketplace this browser does not
   // know, or one of another region) stays visible so it can be unticked.
   const unlisted = selected.filter((id) => !offered.some((marketplace) => marketplace.id === id));
-
-  const toggle = (id: string, checked: boolean): void => {
-    const next = checked ? [...selected, id] : selected.filter((entry) => entry !== id);
-    syncStructuredToJson('amazonMarketplaceIds', next.join(','));
-  };
 
   const countryName = (country: string): string =>
     countries[country as keyof typeof countries] ?? country;
@@ -108,45 +104,28 @@ export function AmazonStructuredSection({
         </Alert>
       ) : null}
 
-      <fieldset className="form-field">
-        <legend className="form-field__label">{copy.marketplaces.label}</legend>
-        <p className="form-field__description">{copy.marketplaces.description}</p>
-        {offered.map((marketplace) => (
-          <label key={marketplace.id} className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={selected.includes(marketplace.id)}
-              disabled={disabled}
-              onChange={(event) => toggle(marketplace.id, event.target.checked)}
-            />
-            <span>
-              {interpolate(messages.setup.marketplaceOption, {
-                country: countryName(marketplace.country),
-                currency: marketplace.currency,
-              })}
-              <small className="text-muted mono-text" style={{ display: 'block' }}>
-                {marketplace.id}
-              </small>
-            </span>
-          </label>
-        ))}
-        {unlisted.map((id) => (
-          <label key={id} className="checkbox-row">
-            <input type="checkbox" checked disabled={disabled} onChange={() => toggle(id, false)} />
-            <span>
-              {unlistedLabel(id)}
-              <small className="text-muted mono-text" style={{ display: 'block' }}>
-                {id}
-              </small>
-            </span>
-          </label>
-        ))}
-        {errors.amazonMarketplaceIds ? (
-          <p className="form-field__error" role="alert">
-            {errors.amazonMarketplaceIds.message}
-          </p>
-        ) : null}
-      </fieldset>
+      <FormField
+        label={copy.marketplaces.label}
+        name="amazonMarketplaceIds"
+        description={copy.marketplaces.description}
+        error={errors.amazonMarketplaceIds?.message}
+      >
+        <AmazonMarketplacePicker
+          marketplaces={offered}
+          selected={selected}
+          extra={unlisted.map((id) => ({ id, label: unlistedLabel(id) }))}
+          onChange={(ids) => syncStructuredToJson('amazonMarketplaceIds', ids.join(','))}
+          labelOf={(marketplace) =>
+            interpolate(messages.setup.marketplaceOption, {
+              country: countryName(marketplace.country),
+              currency: marketplace.currency,
+            })
+          }
+          placeholder={copy.marketplaces.placeholder}
+          disabled={disabled}
+          invalid={Boolean(errors.amazonMarketplaceIds)}
+        />
+      </FormField>
 
       {offersEnabled ? (
         <FormField
