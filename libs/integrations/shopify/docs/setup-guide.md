@@ -49,7 +49,7 @@ A Shopify store can play four roles. Enable the capabilities on the connection p
 | The store is your catalogue and stock | Product master, Inventory master | On by default for a new connection. |
 | Orders from the store come into OpenLinker | Order source | Opt-in. Returns come with it. |
 | Marketplace orders go to the store | Order processor manager | Opt-in. The store lowers its own stock for each order. |
-| You publish products from another master to the store | Product publisher, Offer manager | Opt-in. Use a **separate publish-only connection** with Product master and Inventory master turned **off**: the publisher refuses a connection that is also the master, because the catalogue sync would read every published product back as a new master product. |
+| You publish products from another master to the store | Product publisher, Offer manager | Opt-in. Use a **separate publish-only connection** with Product master and Inventory master turned **off**: OpenLinker refuses to enable the publisher on a connection that is also the master, because the catalogue sync would read every published product back as a new master product. |
 
 ## 3. Connection options
 

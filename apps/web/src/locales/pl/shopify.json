@@ -45,11 +45,11 @@
       "label": "Adres URL zwrotny OpenLinker"
     },
     "location": {
-      "description": "Jedyna lokalizacja magazynowa, z której OpenLinker odczytuje i w której zapisuje stan magazynowy. Stan w innych lokalizacjach nie jest liczony.",
+      "description": "Jedyna lokalizacja, w której OpenLinker czyta i zapisuje stan magazynowy. Stan w innych lokalizacjach nie jest liczony. Lokalizacja główna podąża za główną lokalizacją sklepu; wybór lokalizacji z listy przypina ją, nawet gdy główna się zmieni.",
       "label": "Lokalizacja magazynowa",
       "loadFailed": "Nie udało się odczytać lokalizacji sklepu. Wpisz ID lokalizacji ręcznie.",
       "loading": "Wczytywanie lokalizacji...",
-      "primaryOption": "Lokalizacja główna ({name})",
+      "primaryOption": "{name} (główna)",
       "primaryUnnamed": "Lokalizacja główna",
       "unknownOption": "Lokalizacja {id} (nie znaleziono w sklepie)",
       "unknownWarning": "Zapisana lokalizacja nie jest aktywną lokalizacją tego sklepu. Stanu magazynowego nie da się odczytać ani zapisać, dopóki nie wybierzesz innej."

@@ -73,9 +73,23 @@ describe('ShopifyStructuredSection', () => {
     renderAsAdmin(<Harness sync={sync} />);
 
     // The session resolves asynchronously, and the live locations are only read once it grants write access.
-    expect(await screen.findByRole('option', { name: 'Primary location (Main)' })).toBeTruthy();
+    expect(await screen.findByRole('option', { name: 'Main (primary)' })).toBeTruthy();
+    // The primary location is listed once: no second plain "Main" entry.
+    expect(screen.queryByRole('option', { name: 'Main' })).toBeNull();
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect((screen.getByRole('option', { name: 'Main (primary)' })).value).toBe('');
     fireEvent.change(screen.getByLabelText('Stock location'), { target: { value: '2' } });
     expect(sync).toHaveBeenCalledWith('shopifyLocationId', '2');
+  });
+
+  it('should write an empty value when the primary option is chosen again', async () => {
+    locationsQuery.mockReturnValue({ data: LOCATIONS, isSuccess: true, isLoading: false, isError: false });
+    const sync = vi.fn();
+    renderAsAdmin(<Harness sync={sync} values={{ shopifyLocationId: '2' }} />);
+
+    await screen.findByRole('option', { name: 'Main (primary)' });
+    fireEvent.change(screen.getByLabelText('Stock location'), { target: { value: '' } });
+    expect(sync).toHaveBeenCalledWith('shopifyLocationId', '');
   });
 
   it('should keep a saved location the store no longer has and warn about it', async () => {
