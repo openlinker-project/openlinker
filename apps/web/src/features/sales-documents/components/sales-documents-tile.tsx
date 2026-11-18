@@ -9,13 +9,14 @@
 import type { ReactElement } from 'react';
 import { useSalesDocumentRows } from '../hooks/use-sales-document-rows';
 import { detectSalesDocumentConflict } from '../lib/detect-sales-document-conflict';
-import { useMessages } from '../../../shared/i18n';
+import { usePlural, useMessages } from '../../../shared/i18n';
 import { SettingsIndexRow } from '../../../shared/ui/settings-index-row';
 
 function SalesDocumentsLive(): ReactElement {
   const { connectionsQuery, rows } = useSalesDocumentRows();
   const copy = useMessages('sales-documents').salesDocumentsTile;
   const conflict = detectSalesDocumentConflict(rows);
+  const plural = usePlural();
 
   return (
     <SettingsIndexRow
@@ -32,8 +33,7 @@ function SalesDocumentsLive(): ReactElement {
         )
       }
       valueState={connectionsQuery.isLoading ? 'loading' : connectionsQuery.isError ? 'error' : 'ready'}
-      value={rows.length}
-      note={copy.connections}
+      value={plural(rows.length, copy.connectionCount)}
       action={{ label: copy.manage, to: '/settings/sales-documents' }}
     />
   );

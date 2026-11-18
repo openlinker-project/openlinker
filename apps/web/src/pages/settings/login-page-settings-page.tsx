@@ -46,6 +46,7 @@ export function LoginPageSettingsPage(): ReactElement {
   const tpl = useMessages('settings').template.loginPage;
   return (
     <SettingsPageFrame
+      wide
       backTo={{ to: '/settings', label: copy.back }}
       eyebrow={copy.eyebrow}
       title={copy.title}

@@ -20,30 +20,19 @@
  */
 import { useState, type ReactElement } from 'react';
 import { describeApiError } from '../../../shared/api/describe-api-error';
-import { interpolate, useMessages } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { SettingsIndexRow } from '../../../shared/ui/settings-index-row';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { useCurrencySettingsQuery } from '../hooks/use-currency-settings-query';
 import { CurrencyCoverageDialog } from './currency-coverage-dialog';
 import { CurrencySettingsDialog } from './currency-settings-dialog';
-import type { ReportingCurrencySource } from '../api/currency-settings.types';
 
 function CurrencySettingsLive(): ReactElement {
   const copy = useMessages('currency-settings').currencySettingsTile;
   const query = useCurrencySettingsQuery();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [coverageOpen, setCoverageOpen] = useState(false);
-
-  const formatReportingValue = (
-    reportingCurrency: string,
-    source: ReportingCurrencySource,
-  ): string => {
-    if (source === 'setting') return reportingCurrency;
-    return interpolate(copy.reportingValue, {
-      currency: reportingCurrency,
-      qualifier: copy.sourceQualifier[source],
-    });
-  };
 
   return (
     <SettingsIndexRow
@@ -57,8 +46,9 @@ function CurrencySettingsLive(): ReactElement {
           ? `${copy.loadError} ${describeApiError(query.error, 'currency-settings')}`
           : copy.loading
       }
-      value={query.data ? formatReportingValue(query.data.reportingCurrency, query.data.source) : undefined}
-      note={query.data ? copy.reportingIn : undefined}
+      value={query.data?.reportingCurrency}
+      suffix={query.data && query.data.source !== 'setting' ? copy.sourceQualifier[query.data.source] : undefined}
+      caption={query.data ? copy.reportingIn : undefined}
       action={
         query.data
           ? {
@@ -71,15 +61,20 @@ function CurrencySettingsLive(): ReactElement {
       }
       secondary={
         query.data ? (
-          <Button
-            tone="ghost"
-            className="button--sm"
-            onClick={() => {
-              setCoverageOpen(true);
-            }}
-          >
-            {copy.actions.coverage}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                tone="secondary"
+                className="button--sm"
+                onClick={() => {
+                  setCoverageOpen(true);
+                }}
+              >
+                {copy.actions.coverage}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{copy.actions.coverageHint}</TooltipContent>
+          </Tooltip>
         ) : undefined
       }
     >

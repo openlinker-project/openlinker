@@ -21,22 +21,9 @@ function PosthogSettingsLive(): ReactElement {
   const [dialogOpen, setDialogOpen] = useState(false);
   const view = query.data;
 
-  const note = !view || !view.enabled ? undefined : (
-    <>
-      <span className="settings-row__line">
-        {view.wouldOverrideEnv ? copy.overridesEnv : copy.sourceEnvironment}
-      </span>
-      <span className="settings-row__line">{copy.region[view.region]}</span>
-      <span className="settings-row__line">
-        {copy.sessionRecordingLabel}: {view.sessionRecording ? copy.on : copy.off}
-      </span>
-      {view.apiKeyConfigured ? null : (
-        <span className="settings-row__line">
-          {copy.apiKeyLabel}: {copy.notSet}
-        </span>
-      )}
-    </>
-  );
+  const suffix = !view || !view.enabled ? undefined : view.wouldOverrideEnv ? copy.overridesEnv : copy.sourceEnvironment;
+  const notice =
+    view && view.enabled && !view.apiKeyConfigured ? `${copy.apiKeyLabel}: ${copy.notSet}` : undefined;
 
   return (
     <SettingsIndexRow
@@ -51,7 +38,9 @@ function PosthogSettingsLive(): ReactElement {
           : copy.loading
       }
       value={view ? (view.enabled ? copy.enabled : copy.disabled) : undefined}
-      note={note}
+      suffix={suffix}
+      notice={notice}
+      dot
       action={
         view
           ? {

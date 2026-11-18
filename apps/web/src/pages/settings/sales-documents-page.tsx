@@ -59,6 +59,7 @@ export function SalesDocumentsPage(): ReactElement {
       footerExtra={<HelpLink surfaceKey="sales-documents-routing" />}
     >
     <SettingsPageFrame
+      wide
       eyebrow={copy.eyebrow}
       title={copy.title}
       short={tpl.salesMarkets.short}

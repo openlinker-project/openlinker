@@ -44,6 +44,7 @@ export function SalesDocumentBatchPage(): ReactElement {
   const name = connection.data?.name;
   return (
     <SettingsPageFrame
+      wide
       eyebrow={copy.eyebrow}
       title={name ? interpolate(copy.titleFor, { name }) : copy.title}
       short={tpl.short}

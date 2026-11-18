@@ -163,6 +163,7 @@ export function BuyerEmailsPage(): ReactElement {
 
   return (
     <SettingsPageFrame
+      wide
       backTo={{ to: '/settings', label: COPY.settings }}
       eyebrow={COPY.settings}
       title={COPY.title}
