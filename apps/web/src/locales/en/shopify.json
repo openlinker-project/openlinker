@@ -45,11 +45,11 @@
       "label": "OpenLinker callback URL"
     },
     "location": {
-      "description": "The one location OpenLinker reads and writes stock at. Stock at other locations is not counted.",
+      "description": "The one location OpenLinker reads and writes stock at. Stock at other locations is not counted. The primary location follows the store's primary; choosing a location by name pins it even if the primary changes.",
       "label": "Stock location",
       "loadFailed": "The store's locations could not be read. Enter the location ID instead.",
       "loading": "Loading locations...",
-      "primaryOption": "Primary location ({name})",
+      "primaryOption": "{name} (primary)",
       "primaryUnnamed": "Primary location",
       "unknownOption": "Location {id} (not found in the store)",
       "unknownWarning": "The saved location is not an active location of this store. Stock cannot be read or written until you pick another one."

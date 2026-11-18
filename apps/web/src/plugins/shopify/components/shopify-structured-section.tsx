@@ -82,11 +82,13 @@ export function ShopifyStructuredSection({
             {interpolate(copy.location.unknownOption, { id: locationId })}
           </option>
         ) : null}
-        {locations.map((location) => (
-          <option key={location.id} value={location.id}>
-            {location.name}
-          </option>
-        ))}
+        {locations
+          .filter((location) => !location.isPrimary || location.id === locationId)
+          .map((location) => (
+            <option key={location.id} value={location.id}>
+              {location.name}
+            </option>
+          ))}
       </Select>
     );
   }
@@ -101,7 +103,9 @@ export function ShopifyStructuredSection({
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
-          onChange={(event) => syncStructuredToJson('openlinkerCallbackBaseUrl', event.target.value)}
+          onChange={(event) =>
+            syncStructuredToJson('openlinkerCallbackBaseUrl', event.target.value)
+          }
           placeholder="https://api.openlinker.example"
           disabled={!configIsParseable}
           invalid={Boolean(errors.openlinkerCallbackBaseUrl)}
