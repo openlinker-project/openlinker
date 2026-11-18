@@ -57,9 +57,15 @@
       "description": "Stany, które Amazon trzyma w swoich magazynach (FBA), są wczytywane do tej lokalizacji. OpenLinker nigdy ich nie zapisuje.",
       "label": "Lokalizacja stanów FBA",
       "needsFbmLocation": "Włącz też „Przypisz lokalizację do stanu tego połączenia” z inną lokalizacją, inaczej stanów FBA nie da się trzymać osobno.",
+      "needsFbmLocationHere": "Wybierz też lokalizację stanów wysyłanych przez Ciebie, inną niż lokalizacja FBA, inaczej stanów FBA nie da się trzymać osobno.",
       "none": "Nie wczytuj stanów FBA",
       "sellsOnOtherChannels": "Stany FBA wliczają się do tego, co mogą sprzedawać inne kanały. Dopóki Amazon nie wysyła tych zamówień za Ciebie, trzymaj je w lokalizacji, z której nie sprzedajesz.",
       "unknown": "Lokalizacja {id}"
+    },
+    "fbm": {
+      "description": "Gdzie leży stan, który wysyłasz sam. Stany FBA trafiają do innej lokalizacji, więc nigdy się nie sumują.",
+      "label": "Lokalizacja stanów wysyłanych przez Ciebie (FBM)",
+      "none": "Bez lokalizacji"
     },
     "marketplaces": {
       "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",

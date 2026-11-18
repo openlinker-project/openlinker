@@ -43,6 +43,12 @@ declare module '../../shared/plugins/plugin.types' {
     amazonCatalogueMarketplaceId?: string;
     /** `config.fbaLocationId`, the location FBA stock is read into (#4183). */
     amazonFbaLocationId?: string;
+    /**
+     * `config.stockLocationOverride` when the Amazon section edits it (#4183):
+     * the location of the stock the seller ships, which FBA stock needs to be
+     * kept apart from. Only rendered while the host's own control is hidden.
+     */
+    amazonFbmLocationId?: string;
   }
 }
 
@@ -140,6 +146,7 @@ const amazonSchemaShape: ConnectionConfigContribution['schemaShape'] = {
     })
     .optional(),
   amazonFbaLocationId: z.string().optional(),
+  amazonFbmLocationId: z.string().optional(),
 };
 
 function readAmazonConfig(config: Record<string, unknown>): Record<string, string> {
@@ -155,6 +162,7 @@ function readAmazonConfig(config: Record<string, unknown>): Record<string, strin
     amazonCatalogueMarketplaceId:
       typeof config.catalogueMarketplaceId === 'string' ? config.catalogueMarketplaceId : '',
     amazonFbaLocationId: typeof config.fbaLocationId === 'string' ? config.fbaLocationId : '',
+    amazonFbmLocationId: typeof config.stockLocationOverride === 'string' ? config.stockLocationOverride : '',
   };
 }
 
@@ -208,6 +216,12 @@ function applyAmazonConfig(
   if (fbaLocation !== undefined) {
     const text = fbaLocation.trim();
     next.fbaLocationId = text === '' ? null : text;
+  }
+
+  const fbmLocation = readOptionalConfigString(patch, 'amazonFbmLocationId');
+  if (fbmLocation !== undefined) {
+    const text = fbmLocation.trim();
+    next.stockLocationOverride = text === '' ? null : text;
   }
 
   return next;

@@ -57,9 +57,15 @@
       "description": "Stock Amazon keeps in its warehouses (FBA) is read into this location. It is never written from OpenLinker.",
       "label": "FBA stock location",
       "needsFbmLocation": "Also turn on \"Assign a location to this connection's stock\" with a different location, or the FBA stock cannot be kept apart.",
+      "needsFbmLocationHere": "Also choose the location of the stock you ship yourself, different from the FBA location, or FBA stock cannot be kept apart.",
       "none": "Do not read FBA stock",
       "sellsOnOtherChannels": "FBA stock counts toward what other channels may sell. Until Amazon ships those orders for you, keep it at a location you do not sell from.",
       "unknown": "Location {id}"
+    },
+    "fbm": {
+      "description": "Where the stock you ship yourself is kept. FBA stock is read into a different location, so the two are never added up.",
+      "label": "Location of the stock you ship (FBM)",
+      "none": "No location"
     },
     "marketplaces": {
       "addedNote": "Orders from a marketplace you add are read from the last 7 days.",

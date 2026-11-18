@@ -22,6 +22,7 @@ describe('amazonConnectionConfig', () => {
       amazonTaxCodeRates: '',
       amazonCatalogueMarketplaceId: '',
       amazonFbaLocationId: '',
+      amazonFbmLocationId: '',
     });
   });
 
@@ -34,6 +35,18 @@ describe('amazonConnectionConfig', () => {
     });
     expect(amazonConnectionConfig.applyToConfig(config, { amazonFbaLocationId: '' })).toMatchObject({
       fbaLocationId: null,
+    });
+  });
+
+  it('should read and write the seller-shipped stock location as stockLocationOverride (#4183)', () => {
+    const config = { region: 'eu', marketplaceIds: ['A1PA6795UKMFR9'], stockLocationOverride: 'ol_location_main' };
+
+    expect(amazonConnectionConfig.readConfigToForm(config)).toMatchObject({ amazonFbmLocationId: 'ol_location_main' });
+    expect(amazonConnectionConfig.applyToConfig(config, { amazonFbmLocationId: 'ol_location_b' })).toMatchObject({
+      stockLocationOverride: 'ol_location_b',
+    });
+    expect(amazonConnectionConfig.applyToConfig(config, { amazonFbmLocationId: '' })).toMatchObject({
+      stockLocationOverride: null,
     });
   });
 
