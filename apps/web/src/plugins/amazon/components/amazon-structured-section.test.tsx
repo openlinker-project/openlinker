@@ -58,9 +58,9 @@ describe('AmazonStructuredSection', () => {
   });
 
   it('should keep a stored marketplace this browser does not list', async () => {
-    renderWithProviders(<Harness values={{ amazonMarketplaceIds: 'A1PA6795UKMFR9,A1RKKUPIHCS9HS' }} />, admin);
+    renderWithProviders(<Harness values={{ amazonMarketplaceIds: 'A1PA6795UKMFR9,A9NEWMARKET01' }} />, admin);
 
-    expect(await screen.findByRole('checkbox', { name: 'Marketplace A1RKKUPIHCS9HS' })).toBeChecked();
+    expect(await screen.findByRole('checkbox', { name: /Marketplace A9NEWMARKET01/ })).toBeChecked();
   });
 
   it('should show the merchant token with offers and the queue with orders only', async () => {
@@ -89,5 +89,29 @@ describe('AmazonStructuredSection', () => {
 
     expect(await screen.findByRole('checkbox', { name: /Germany/ })).toBeDisabled();
     expect(screen.getByLabelText('Merchant token')).toBeDisabled();
+  });
+
+  it('should change the region and drop the marketplaces of the old one', async () => {
+    const sync = vi.fn();
+    renderWithProviders(<Harness sync={sync} />, admin);
+
+    fireEvent.change(await screen.findByLabelText('Region'), { target: { value: 'na' } });
+
+    expect(sync).toHaveBeenCalledWith('amazonRegion', 'na');
+    expect(sync).toHaveBeenCalledWith('amazonMarketplaceIds', '');
+  });
+
+  it('should offer the marketplaces of the chosen region and warn about a region change', async () => {
+    renderWithProviders(<Harness values={{ amazonRegion: 'na', amazonMarketplaceIds: 'ATVPDKIKX0DER' }} />, admin);
+
+    expect(await screen.findByRole('checkbox', { name: /United States \(USD\)/ })).toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: /Germany/ })).toBeNull();
+    expect(screen.getByText(/moves this connection to another Amazon region/)).toBeInTheDocument();
+  });
+
+  it('should keep a stored marketplace of another region visible so it can be unticked', async () => {
+    renderWithProviders(<Harness values={{ amazonMarketplaceIds: 'A1PA6795UKMFR9,ATVPDKIKX0DER' }} />, admin);
+
+    expect(await screen.findByRole('checkbox', { name: /United States \(USD\) ATVPDKIKX0DER/ })).toBeChecked();
   });
 });

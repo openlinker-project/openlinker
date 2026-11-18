@@ -10,6 +10,7 @@ export { AmazonSetupForm } from './components/amazon-setup-form';
 export { SQS_QUEUE_URL } from './components/amazon-setup.schema';
 export {
   AMAZON_MARKETPLACES,
+  AmazonRegionValues,
   findMarketplace,
   isAmazonRegion,
   marketplacesForRegion,

@@ -27,7 +27,7 @@ describe('AmazonSetupForm', () => {
     fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'na' } });
 
     expect(screen.queryByLabelText(/Germany/)).toBeNull();
-    expect(screen.getByText('OpenLinker does not list marketplaces for this region yet.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/United States \(USD\)/)).toBeInTheDocument();
   });
 
   it('should show the sandbox notice and keep the master role unavailable', () => {

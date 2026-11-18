@@ -37,9 +37,8 @@
   },
   "edit": {
     "account": {
-      "description": "Ustawione przy tworzeniu połączenia. Inny region lub środowisko wymaga nowego połączenia.",
-      "label": "Selling Partner API",
-      "value": "{region}, {environment}"
+      "description": "Ustawione przy tworzeniu połączenia. Inne środowisko wymaga nowego połączenia.",
+      "label": "Środowisko Selling Partner API"
     },
     "marketplaces": {
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
@@ -47,6 +46,11 @@
       "unlisted": "Rynek {id}"
     },
     "queueUrlDescription": "Amazon dostarcza zmiany zamówień do tej kolejki. Po zapisaniu zarejestruj ją poniżej.",
+    "region": {
+      "changed": "Zapis przeniesie to połączenie do innego regionu Amazona. Wybierz poniżej jego rynki; Twoje konto sprzedawcy musi na nich sprzedawać.",
+      "description": "Serwer Amazona, z którym rozmawia to połączenie. Zmiana usuwa rynki poprzedniego regionu.",
+      "label": "Region"
+    },
     "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać ofert."
   },
   "plugin": {
@@ -61,9 +65,29 @@
     "connectionName": "Nazwa połączenia",
     "connectionNamePlaceholder": "Amazon EU",
     "countries": {
+      "AE": "Zjednoczone Emiraty Arabskie",
+      "AU": "Australia",
+      "BE": "Belgia",
+      "BR": "Brazylia",
+      "CA": "Kanada",
       "DE": "Niemcy",
+      "EG": "Egipt",
+      "ES": "Hiszpania",
       "FR": "Francja",
-      "PL": "Polska"
+      "GB": "Wielka Brytania",
+      "IE": "Irlandia",
+      "IN": "Indie",
+      "IT": "Włochy",
+      "JP": "Japonia",
+      "MX": "Meksyk",
+      "NL": "Holandia",
+      "PL": "Polska",
+      "SA": "Arabia Saudyjska",
+      "SE": "Szwecja",
+      "SG": "Singapur",
+      "TR": "Turcja",
+      "US": "Stany Zjednoczone",
+      "ZA": "Republika Południowej Afryki"
     },
     "createFailed": "Połączenie nie zostało utworzone: {message}",
     "created": "Połączenie jest zapisane. Uruchom test połączenia, żeby sprawdzić dane dostępowe w Amazonie.",

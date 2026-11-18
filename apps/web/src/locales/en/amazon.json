@@ -37,9 +37,8 @@
   },
   "edit": {
     "account": {
-      "description": "Set when the connection was created. A different region or environment needs a new connection.",
-      "label": "Selling Partner API",
-      "value": "{region}, {environment}"
+      "description": "Set when the connection was created. A different environment needs a new connection.",
+      "label": "Selling Partner API environment"
     },
     "marketplaces": {
       "description": "Orders are read and offers written on these marketplaces.",
@@ -47,6 +46,11 @@
       "unlisted": "Marketplace {id}"
     },
     "queueUrlDescription": "Amazon delivers order changes to this queue. Register it below after saving.",
+    "region": {
+      "changed": "Saving moves this connection to another Amazon region. Choose its marketplaces below; your seller account must sell there.",
+      "description": "The Amazon server this connection talks to. Changing it removes the marketplaces of the old region.",
+      "label": "Region"
+    },
     "sellerIdMissing": "Without the merchant token, offers cannot be read or written."
   },
   "plugin": {
@@ -61,9 +65,29 @@
     "connectionName": "Connection name",
     "connectionNamePlaceholder": "Amazon EU",
     "countries": {
+      "AE": "United Arab Emirates",
+      "AU": "Australia",
+      "BE": "Belgium",
+      "BR": "Brazil",
+      "CA": "Canada",
       "DE": "Germany",
+      "EG": "Egypt",
+      "ES": "Spain",
       "FR": "France",
-      "PL": "Poland"
+      "GB": "United Kingdom",
+      "IE": "Ireland",
+      "IN": "India",
+      "IT": "Italy",
+      "JP": "Japan",
+      "MX": "Mexico",
+      "NL": "Netherlands",
+      "PL": "Poland",
+      "SA": "Saudi Arabia",
+      "SE": "Sweden",
+      "SG": "Singapore",
+      "TR": "Turkey",
+      "US": "United States",
+      "ZA": "South Africa"
     },
     "createFailed": "The connection was not created: {message}",
     "created": "The connection is saved. Run the connection test to check the credentials with Amazon.",

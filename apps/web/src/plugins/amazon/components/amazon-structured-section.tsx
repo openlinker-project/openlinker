@@ -2,8 +2,8 @@
  * Amazon Structured Section (#4186)
  *
  * Plugin-owned inputs rendered inside `EditConnectionForm` for Amazon
- * connections: the region and environment the connection was created for
- * (shown, not editable), the marketplaces of that region, the merchant token
+ * connections: the environment the connection was created for (shown, not
+ * editable), the region, the marketplaces of that region, the merchant token
  * when offers are enabled and the order-notification queue when orders are.
  *
  * Every section follows `enabledCapabilities`, never `platformType`. A
@@ -16,13 +16,19 @@
  * @module plugins/amazon/components
  */
 import type { ReactElement } from 'react';
-import { findMarketplace, isAmazonRegion, marketplacesForRegion } from '../../../features/amazon';
+import {
+  AmazonRegionValues,
+  findMarketplace,
+  isAmazonRegion,
+  marketplacesForRegion,
+} from '../../../features/amazon';
 import { usePermission } from '../../../shared/auth/use-permission';
 import { interpolate } from '../../../shared/i18n';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
 import { splitMarketplaceIds } from '../amazon-connection-config';
 import { useAmazonMessages } from '../messages';
 
@@ -40,14 +46,18 @@ export function AmazonStructuredSection({
   const errors = form.formState.errors;
 
   const config = connection.config;
-  const region = isAmazonRegion(config.region) ? config.region : 'eu';
+  const savedRegion = isAmazonRegion(config.region) ? config.region : 'eu';
+  const watchedRegion = form.watch('amazonRegion');
+  const region = isAmazonRegion(watchedRegion) ? watchedRegion : savedRegion;
   const environment = config.environment === 'sandbox' ? 'sandbox' : 'production';
   const ordersEnabled = connection.enabledCapabilities.includes('OrderSource');
   const offersEnabled = connection.enabledCapabilities.includes('OfferManager');
 
   const selected = splitMarketplaceIds(form.watch('amazonMarketplaceIds') ?? '');
   const offered = marketplacesForRegion(region);
-  const unlisted = selected.filter((id) => findMarketplace(id) === undefined);
+  // A stored id outside the offered list (a marketplace this browser does not
+  // know, or one of another region) stays visible so it can be unticked.
+  const unlisted = selected.filter((id) => !offered.some((marketplace) => marketplace.id === id));
 
   const toggle = (id: string, checked: boolean): void => {
     const next = checked ? [...selected, id] : selected.filter((entry) => entry !== id);
@@ -57,17 +67,41 @@ export function AmazonStructuredSection({
   const countryName = (country: string): string =>
     countries[country as keyof typeof countries] ?? country;
 
+  // Another region is another Amazon server: the old region's marketplaces
+  // would be refused there, so they are dropped with the change.
+  const changeRegion = (next: string): void => {
+    if (!isAmazonRegion(next)) return;
+    syncStructuredToJson('amazonRegion', next);
+    const kept = selected.filter((id) => findMarketplace(id)?.region === next);
+    syncStructuredToJson('amazonMarketplaceIds', kept.join(','));
+  };
+
+  const unlistedLabel = (id: string): string => {
+    const known = findMarketplace(id);
+    return known === undefined
+      ? interpolate(copy.marketplaces.unlisted, { id })
+      : interpolate(messages.setup.marketplaceOption, { country: countryName(known.country), currency: known.currency });
+  };
+
   return (
     <>
       <FormField label={copy.account.label} name="amazonAccount" description={copy.account.description}>
-        <Input
-          value={interpolate(copy.account.value, {
-            region: messages.setup.regions[region],
-            environment: messages.setup.environments[environment],
-          })}
-          disabled
-        />
+        <Input value={messages.setup.environments[environment]} disabled />
       </FormField>
+      <FormField label={copy.region.label} name="amazonRegion" description={copy.region.description}>
+        <Select value={region} onChange={(event) => changeRegion(event.target.value)} disabled={disabled}>
+          {AmazonRegionValues.map((value) => (
+            <option key={value} value={value}>
+              {messages.setup.regions[value]}
+            </option>
+          ))}
+        </Select>
+      </FormField>
+      {region !== savedRegion ? (
+        <Alert tone="warning" density="compact">
+          {copy.region.changed}
+        </Alert>
+      ) : null}
       {environment === 'sandbox' ? (
         <Alert tone="warning" density="compact">
           {messages.setup.sandboxNotice}
@@ -100,7 +134,10 @@ export function AmazonStructuredSection({
           <label key={id} className="checkbox-row">
             <input type="checkbox" checked disabled={disabled} onChange={() => toggle(id, false)} />
             <span>
-              {interpolate(copy.marketplaces.unlisted, { id })}
+              {unlistedLabel(id)}
+              <small className="text-muted mono-text" style={{ display: 'block' }}>
+                {id}
+              </small>
             </span>
           </label>
         ))}

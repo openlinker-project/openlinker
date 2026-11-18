@@ -6,7 +6,7 @@
  * so what a save accepts is exactly what a job can use.
  *
  * Rules:
- *   - `region` defaults to `eu` (FR / DE / PL); any other value is refused.
+ *   - `region` defaults to `eu`; a value outside `eu`, `na`, `fe` is refused.
  *   - `environment` defaults to `production`; `sandbox` points at Amazon's
  *     static sandbox, which answers from canned fixtures (#2881).
  *   - `marketplaceIds` must be a non-empty list of SP-API marketplace ids.

@@ -47,8 +47,14 @@ describe('parseAmazonConfig', () => {
     expect(!result.ok && result.issues[0].message).toContain('eu region');
   });
 
+  it('should refuse the US marketplace on a European connection, and accept it on North America', () => {
+    const eu = parseAmazonConfig({ region: 'eu', marketplaceIds: ['ATVPDKIKX0DER'] });
+    expect(!eu.ok && eu.issues[0].message).toContain('na region');
+    expect(parseAmazonConfig({ region: 'na', marketplaceIds: ['ATVPDKIKX0DER'] }).ok).toBe(true);
+  });
+
   it('should accept an unknown marketplace id by format alone', () => {
-    const result = parseAmazonConfig({ region: 'na', marketplaceIds: ['ATVPDKIKX0DER'] });
+    const result = parseAmazonConfig({ region: 'eu', marketplaceIds: ['A9NEWMARKET01'] });
     expect(result.ok).toBe(true);
   });
 

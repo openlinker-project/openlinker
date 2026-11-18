@@ -19,6 +19,7 @@ describe('amazonConnectionConfig', () => {
       amazonMarketplaceIds: 'A1PA6795UKMFR9,A1C3SOZRARQ6R3',
       amazonSellerId: 'A2EXAMPLE12345',
       amazonNotificationQueueUrl: '',
+      amazonRegion: 'eu',
     });
   });
 
@@ -33,6 +34,8 @@ describe('amazonConnectionConfig', () => {
       sellerId: 'A2NEW1234',
     });
     expect(amazonConnectionConfig.applyToConfig(config, { amazonSellerId: '' })).toMatchObject({ sellerId: null });
+    expect(amazonConnectionConfig.applyToConfig(config, { amazonRegion: 'na' })).toMatchObject({ region: 'na' });
+    expect(amazonConnectionConfig.applyToConfig(config, { amazonRegion: 'mars' })).toMatchObject({ region: 'eu' });
     expect(amazonConnectionConfig.applyToConfig(config, { amazonNotificationQueueUrl: '' })).toMatchObject({
       notificationQueueUrl: null,
     });

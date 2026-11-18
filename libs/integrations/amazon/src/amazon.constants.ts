@@ -43,11 +43,13 @@ export const AMAZON_SPAPI_HOSTS: Readonly<Record<AmazonEnvironment, Readonly<Rec
 };
 
 /**
- * Marketplaces the first release targets (#3741), with the region whose host
- * serves them. Listings and Catalog refuse a marketplace from another region
+ * Every SP-API marketplace, with the region whose host serves it, the
+ * currency it sells in and the language of its listings (Amazon's marketplace
+ * id table). Listings and Catalog refuse a marketplace from another region
  * (`"... not valid for region"`, #2881 Evidence #5), so the config validator
- * checks the pairing for the ids it knows. An id not listed here is accepted
- * by format alone: the list names what we target, not every Amazon market.
+ * checks the pairing; a price read from a marketplace is stored in that
+ * marketplace's currency. An id not listed here (a marketplace Amazon opens
+ * later) is accepted by format alone.
  */
 export const AMAZON_KNOWN_MARKETPLACES: Readonly<
   Record<
@@ -61,9 +63,32 @@ export const AMAZON_KNOWN_MARKETPLACES: Readonly<
     }
   >
 > = {
+  // North America
+  A2EUQ1WTGCTBG2: { country: 'CA', region: 'na', currency: 'CAD', languageTag: 'en_CA' },
+  ATVPDKIKX0DER: { country: 'US', region: 'na', currency: 'USD', languageTag: 'en_US' },
+  A1AM78C64UM0Y8: { country: 'MX', region: 'na', currency: 'MXN', languageTag: 'es_MX' },
+  A2Q3Y263D00KWC: { country: 'BR', region: 'na', currency: 'BRL', languageTag: 'pt_BR' },
+  // Europe, Middle East, Africa, India
+  A28R8C7NBKEWEA: { country: 'IE', region: 'eu', currency: 'EUR', languageTag: 'en_IE' },
+  A1RKKUPIHCS9HS: { country: 'ES', region: 'eu', currency: 'EUR', languageTag: 'es_ES' },
+  A1F83G8C2ARO7P: { country: 'GB', region: 'eu', currency: 'GBP', languageTag: 'en_GB' },
   A13V1IB3VIYZZH: { country: 'FR', region: 'eu', currency: 'EUR', languageTag: 'fr_FR' },
+  AMEN7PMS3EDWL: { country: 'BE', region: 'eu', currency: 'EUR', languageTag: 'fr_BE' },
+  A1805IZSGTT6HS: { country: 'NL', region: 'eu', currency: 'EUR', languageTag: 'nl_NL' },
   A1PA6795UKMFR9: { country: 'DE', region: 'eu', currency: 'EUR', languageTag: 'de_DE' },
+  APJ6JRA9NG5V4: { country: 'IT', region: 'eu', currency: 'EUR', languageTag: 'it_IT' },
+  A2NODRKZP88ZB9: { country: 'SE', region: 'eu', currency: 'SEK', languageTag: 'sv_SE' },
+  AE08WJ6YKNBMC: { country: 'ZA', region: 'eu', currency: 'ZAR', languageTag: 'en_ZA' },
   A1C3SOZRARQ6R3: { country: 'PL', region: 'eu', currency: 'PLN', languageTag: 'pl_PL' },
+  ARBP9OOSHTCHU: { country: 'EG', region: 'eu', currency: 'EGP', languageTag: 'en_AE' },
+  A33AVAJ2PDY3EV: { country: 'TR', region: 'eu', currency: 'TRY', languageTag: 'tr_TR' },
+  A17E79C6D8DWNP: { country: 'SA', region: 'eu', currency: 'SAR', languageTag: 'en_AE' },
+  A2VIGQ35RCS4UG: { country: 'AE', region: 'eu', currency: 'AED', languageTag: 'en_AE' },
+  A21TJRUUN4KGV: { country: 'IN', region: 'eu', currency: 'INR', languageTag: 'en_IN' },
+  // Far East
+  A19VAU5U5O7RUS: { country: 'SG', region: 'fe', currency: 'SGD', languageTag: 'en_SG' },
+  A39IBJ37TRP1C6: { country: 'AU', region: 'fe', currency: 'AUD', languageTag: 'en_AU' },
+  A1VC38T7YXB528: { country: 'JP', region: 'fe', currency: 'JPY', languageTag: 'ja_JP' },
 };
 
 /** Probe used by the connection tester; needs no role beyond the app's base access. */
