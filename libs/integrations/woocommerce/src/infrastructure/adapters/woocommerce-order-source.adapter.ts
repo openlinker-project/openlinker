@@ -20,6 +20,7 @@ import type {
   IncomingOrderTotals,
   OrderFeedEventType,
   PaymentStatus,
+  OrderFeedBootstrap,
 } from '@openlinker/core/orders';
 import {
   readSourceBuyerNote,
@@ -62,13 +63,59 @@ const COD_DEAD_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'failed', '
  */
 const COD_SETTLED_STATUSES: ReadonlySet<string> = new Set(['completed']);
 
-export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
+export class WooCommerceOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap {
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
 
   constructor(
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly connection: Connection,
   ) {}
+
+  /**
+   * Seconds the seeded cursor is moved behind the newest order's modification
+   * time (#4228). WC treats `modified_after` as exclusive and has second
+   * granularity, so an order written in the same second as the newest one would
+   * otherwise fall behind the seed. Ingestion is idempotent, so a re-read of
+   * the last moments is free.
+   */
+  private static readonly SEED_SAFETY_MARGIN_MS = 2000;
+
+  /**
+   * Where a fresh connection's feed should start (#4228).
+   *
+   * The operator's explicit `orders.initialSyncFrom` window wins: it is returned
+   * as the exact instant `listOrderFeed` would have started from, so seeding
+   * never narrows or contradicts a backfill the operator asked for. Otherwise
+   * it is the newest order's modification time (minus a small margin), or null
+   * for a shop with no orders. Errors propagate so core retries the poll.
+   */
+  async headCursor(): Promise<string | null> {
+    const config = (this.connection.config ?? {}) as unknown as WooCommerceConnectionConfig;
+    const initial = config.orders?.initialSyncFrom;
+    if (initial) {
+      return new Date(initial).toISOString();
+    }
+
+    const orders = await this.httpClient.get<WooCommerceOrder[]>('/wp-json/wc/v3/orders', {
+      per_page: 1,
+      orderby: 'modified',
+      order: 'desc',
+    });
+    const newest = orders[0];
+    if (!newest) {
+      return null;
+    }
+
+    const modifiedAt = new Date(normGmt(newest.date_modified_gmt, newest.date_modified));
+    if (Number.isNaN(modifiedAt.getTime()) || modifiedAt.getTime() === 0) {
+      throw new Error(
+        `Cannot seed the order cursor: newest WooCommerce order ${String(newest.id)} has no readable modification time (connection: ${this.connection.id})`
+      );
+    }
+    return new Date(
+      modifiedAt.getTime() - WooCommerceOrderSourceAdapter.SEED_SAFETY_MARGIN_MS
+    ).toISOString();
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.logger.debug('Listing WooCommerce order feed', {

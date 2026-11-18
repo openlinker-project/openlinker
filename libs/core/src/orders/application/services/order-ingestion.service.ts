@@ -20,6 +20,7 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
+import { isOrderFeedBootstrap } from '../../domain/ports/capabilities/order-feed-bootstrap.capability';
 import {
   ISyncCursorsService,
   SYNC_CURSORS_SERVICE_TOKEN,
@@ -27,6 +28,7 @@ import {
   SYNC_JOB_QUEUE_TOKEN,
   SyncLockPort,
   SYNC_LOCK_TOKEN,
+  orderFeedSeededAtCursorKey,
 } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
@@ -352,6 +354,32 @@ export class OrderIngestionService implements IOrderIngestionService {
         connectionId,
         'OrderSource'
       );
+
+      // #4228: a connection that has never polled starts from "now". A throw from
+      // headCursor propagates so the job retries; falling back to listOrderFeed
+      // here would import the source's whole history, which is what this prevents.
+      if (!fromCursor && isOrderFeedBootstrap(orderSource)) {
+        const seededKey = orderFeedSeededAtCursorKey(cursorKey);
+        const seededAt = await this.syncCursors.getCursor(connectionId, seededKey);
+        if (!seededAt) {
+          const head = await orderSource.headCursor();
+          if (head !== null && head.trim() !== '') {
+            await this.syncCursors.advanceCursor(connectionId, cursorKey, head);
+          }
+          await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+          this.logger.log(
+            `Seeded order cursor at the source head; nothing imported from history. cursorKey=${cursorKey}, head=${head ?? 'none'} (connection: ${connectionId})`
+          );
+          const seeded = head !== null && head.trim() !== '';
+          return {
+            fetched: 0,
+            enqueued: 0,
+            nextCursor: seeded ? head : null,
+            committed: seeded,
+            skippedDueToLock: false,
+          };
+        }
+      }
 
       const feed = await orderSource.listOrderFeed({
         fromCursor,

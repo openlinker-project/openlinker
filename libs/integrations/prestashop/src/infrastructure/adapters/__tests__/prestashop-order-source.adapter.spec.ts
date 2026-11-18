@@ -504,6 +504,71 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
+  describe('headCursor (#4228)', () => {
+    it('should return the newest order as a cursor moved back by the safety margin', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([
+          { id: '42', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:10:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 08:08:00|42');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        { sort: ['date_upd_DESC', 'id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should return null when the shop has no orders', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should fall back to id ordering when the shop refuses date_upd sorting', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        )
+        .mockResolvedValueOnce([
+          { id: '7', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:00:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 07:58:00|7');
+      expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
+        'orders',
+        { sort: ['id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should throw when the newest row is unreadable', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: '9', date_add: 'x', date_upd: 'garbage' }]);
+
+      await expect(adapter.headCursor()).rejects.toThrow('unreadable');
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.headCursor()).rejects.toThrow('boom');
+    });
+  });
+
   describe('listOrderFeed — date_upd sort/filter fallback (#2877)', () => {
     /**
      * PrestaShop's own refusal, verified live on 9.0.2: `date_upd` is not on

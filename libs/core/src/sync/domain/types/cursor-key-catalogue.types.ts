@@ -172,6 +172,12 @@ const ROWS: readonly CatalogueRow[] = [
     rewind: null,
   },
   {
+    match: /\.seededAt$/,
+    family: 'completion-stamp',
+    writerJobType: null,
+    rewind: null,
+  },
+  {
     match: /^inventory\.offerQuantity\.observedAt:offer:/,
     family: 'write-order',
     writerJobType: null,

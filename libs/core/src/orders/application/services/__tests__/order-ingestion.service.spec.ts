@@ -934,6 +934,104 @@ describe('OrderIngestionService', () => {
       ]);
     });
 
+    describe('first-poll seeding (#4228)', () => {
+      const seededKey = `${cursorKey}.seededAt`;
+      let headCursor: jest.Mock;
+
+      beforeEach(() => {
+        lock.acquire.mockResolvedValue('token-1');
+        lock.release.mockResolvedValue(true);
+        headCursor = jest.fn();
+        (orderSource as unknown as { headCursor: jest.Mock }).headCursor = headCursor;
+        syncCursors.getCursor.mockResolvedValue(null);
+      });
+
+      it('should seed the cursor at the head and enqueue nothing on the first poll', async () => {
+        headCursor.mockResolvedValue('event-900');
+
+        const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        expect(jobQueue.enqueueBulk).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(connectionId, cursorKey, 'event-900');
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          connectionId,
+          seededKey,
+          expect.any(String)
+        );
+        expect(result).toEqual({
+          fetched: 0,
+          enqueued: 0,
+          nextCursor: 'event-900',
+          committed: true,
+          skippedDueToLock: false,
+        });
+      });
+
+      it('should poll normally when the seeded marker already exists', async () => {
+        syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+          Promise.resolve(key === seededKey ? '2026-01-01T00:00:00.000Z' : null)
+        );
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(headCursor).not.toHaveBeenCalled();
+        expect(orderSource.listOrderFeed).toHaveBeenCalled();
+      });
+
+      it('should propagate the error and commit nothing when the head read fails', async () => {
+        headCursor.mockRejectedValue(new Error('head failed'));
+
+        await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toThrow(
+          'head failed'
+        );
+
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+      });
+
+      it('should write only the marker when the source has no orders yet', async () => {
+        headCursor.mockResolvedValue(null);
+
+        const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(1);
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          connectionId,
+          seededKey,
+          expect.any(String)
+        );
+        expect(result.committed).toBe(false);
+        expect(result.nextCursor).toBeNull();
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+      });
+
+      it('should not seed when the connection already has a cursor', async () => {
+        syncCursors.getCursor.mockResolvedValue('event-100');
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(headCursor).not.toHaveBeenCalled();
+        expect(orderSource.listOrderFeed).toHaveBeenCalled();
+      });
+
+      it('should keep today behaviour when the adapter has no bootstrap capability', async () => {
+        delete (orderSource as unknown as { headCursor?: jest.Mock }).headCursor;
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
+          expect.objectContaining({ fromCursor: null })
+        );
+      });
+    });
+
     it('does not commit cursor when enqueueBulk fails', async () => {
       lock.acquire.mockResolvedValueOnce('token-1');
       lock.release.mockResolvedValueOnce(true);

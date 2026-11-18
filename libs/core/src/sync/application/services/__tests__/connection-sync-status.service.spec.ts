@@ -32,20 +32,41 @@ describe('ConnectionSyncStatusService', () => {
   let service: ConnectionSyncStatusService;
   let getConnectionBacklogStats: jest.Mock;
   let getMostRecentCursorUpdate: jest.Mock;
+  let getCursorValuesByKeySuffix: jest.Mock;
 
   beforeEach(async () => {
     getConnectionBacklogStats = jest.fn().mockResolvedValue(stats());
     getMostRecentCursorUpdate = jest.fn().mockResolvedValue(null);
+    getCursorValuesByKeySuffix = jest.fn().mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionSyncStatusService,
         { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: { getConnectionBacklogStats } },
-        { provide: SYNC_CURSORS_SERVICE_TOKEN, useValue: { getMostRecentCursorUpdate } },
+        { provide: SYNC_CURSORS_SERVICE_TOKEN, useValue: { getMostRecentCursorUpdate, getCursorValuesByKeySuffix }, },
       ],
     }).compile();
 
     service = module.get(ConnectionSyncStatusService);
+  });
+
+  it('should report the order sync start from the seed marker', async () => {
+    getCursorValuesByKeySuffix.mockResolvedValue(['2026-11-18T08:00:00.000Z']);
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(getCursorValuesByKeySuffix).toHaveBeenCalledWith(CONNECTION_ID, '.seededAt');
+    expect(result.orderSyncStartedAt).toEqual(new Date('2026-11-18T08:00:00.000Z'));
+  });
+
+  it('should report no order sync start when there is no marker, an unparseable one, or the read fails', async () => {
+    expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderSyncStartedAt).toBeNull();
+
+    getCursorValuesByKeySuffix.mockResolvedValue(['not-a-date']);
+    expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderSyncStartedAt).toBeNull();
+
+    getCursorValuesByKeySuffix.mockRejectedValue(new Error('boom'));
+    expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderSyncStartedAt).toBeNull();
   });
 
   it('should report idle with no alert when the connection has no queued jobs', async () => {

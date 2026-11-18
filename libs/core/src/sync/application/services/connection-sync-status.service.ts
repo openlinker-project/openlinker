@@ -32,6 +32,7 @@ import {
   BACKLOG_HISTORY_WINDOW_MS,
   BACKLOG_OBSERVATION_WINDOW_MS,
 } from '../../domain/types/connection-sync-status.types';
+import { ORDER_FEED_SEEDED_AT_SUFFIX } from '../../domain/types/order-feed-seed-cursor.types';
 import { deriveBacklogSignal } from '../../domain/domain-services/connection-backlog.domain-service';
 import type { IConnectionSyncStatusService } from './connection-sync-status.service.interface';
 
@@ -51,9 +52,10 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
     const windowStart = new Date(now.getTime() - BACKLOG_OBSERVATION_WINDOW_MS);
     const historyStart = new Date(now.getTime() - BACKLOG_HISTORY_WINDOW_MS);
 
-    const [stats, lastCursorAdvanceAt] = await Promise.all([
+    const [stats, lastCursorAdvanceAt, orderSyncStartedAt] = await Promise.all([
       this.readStatsSafely(connectionId, windowStart, historyStart, now),
       this.readCursorSafely(connectionId),
+      this.readOrderSyncStartSafely(connectionId),
     ]);
 
     if (stats === null) {
@@ -79,6 +81,7 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
         averageAttemptDurationMs: null,
         attemptDurationSampleSize: 0,
         lastCursorAdvanceAt,
+        orderSyncStartedAt,
         observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
         alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
         historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
@@ -111,6 +114,7 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
       averageAttemptDurationMs: stats.averageAttemptDurationMs,
       attemptDurationSampleSize: stats.attemptDurationSampleSize,
       lastCursorAdvanceAt,
+      orderSyncStartedAt,
       observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
       alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
       historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
@@ -148,6 +152,29 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
     } catch (error) {
       this.logger.warn(
         `Could not read cursor recency for connection ${connectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
+  }
+
+  private async readOrderSyncStartSafely(connectionId: string): Promise<Date | null> {
+    // Supplementary like the cursor recency: a failed or malformed read yields
+    // an honest absence rather than breaking the panel.
+    try {
+      const values = await this.cursors.getCursorValuesByKeySuffix(
+        connectionId,
+        ORDER_FEED_SEEDED_AT_SUFFIX
+      );
+      const instants = values
+        .map((value) => new Date(value))
+        .filter((date) => !Number.isNaN(date.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+      return instants[0] ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read order sync start for connection ${connectionId}: ${
           error instanceof Error ? error.message : String(error)
         }`
       );

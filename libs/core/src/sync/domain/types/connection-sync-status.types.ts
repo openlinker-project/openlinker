@@ -202,6 +202,12 @@ export interface ConnectionSyncStatus {
    * webhook-fed connection legitimately never keeps one.
    */
   lastCursorAdvanceAt: Date | null;
+  /**
+   * When this connection's order sync was started from "now" (#4228), or
+   * null when no start was recorded: a connection that predates the feature,
+   * or one whose adapter has no order feed. Null is an absence, never a date.
+   */
+  orderSyncStartedAt: Date | null;
   /** The observation window used, so a consumer can state what the rates are over. */
   observationWindowMs: number;
   /** The alert horizon used, for the same reason. */

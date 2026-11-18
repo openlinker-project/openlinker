@@ -221,6 +221,14 @@ export interface AllegroOrderEventsResponse {
 }
 
 /**
+ * Allegro order event statistics (from GET /order/event-stats, #4228).
+ * `latestEvent` is absent when the seller has no order events yet.
+ */
+export interface AllegroOrderEventStatsResponse {
+  latestEvent?: { id: string; occurredAt: string };
+}
+
+/**
  * Allegro offer event (from GET /sale/offer-events)
  */
 export interface AllegroOfferEvent {

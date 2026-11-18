@@ -7776,6 +7776,69 @@ html:has(.login-stage) {
   color: var(--text-muted);
 }
 
+/* ── Order sync panel (#4228) ── */
+.order-sync-panel__rows {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.order-sync-panel__row {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.order-sync-panel__row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.order-sync-panel__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.order-sync-panel__lane {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+
+.order-sync-panel__fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent-primary);
+  animation: order-sync-panel-fill 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.order-sync-panel__caption {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+@keyframes order-sync-panel-fill {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-sync-panel__fill {
+    animation: none;
+  }
+}
+
 /* ── Connection sync-status panel (#2615) ── */
 .connection-sync-status__headline {
   margin: var(--space-2) 0 0;

@@ -216,6 +216,12 @@ export {
   masterSweepLockKey,
 } from './domain/types/master-sweep-cursor.types';
 
+// Order feed seed marker key (#4228)
+export {
+  ORDER_FEED_SEEDED_AT_SUFFIX,
+  orderFeedSeededAtCursorKey,
+} from './domain/types/order-feed-seed-cursor.types';
+
 // Cursor overview + guarded rewind (#4023)
 export type {
   CursorFamily,

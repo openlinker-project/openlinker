@@ -122,6 +122,15 @@ export class ConnectionSyncStatusResponseDto {
   })
   lastCursorAdvanceAt!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'ISO timestamp at which order sync was started from "now" for this connection. Null when ' +
+      'no start was recorded (a connection that predates start dates, or one with no order feed).',
+  })
+  orderSyncStartedAt!: string | null;
+
   @ApiProperty({ description: 'Observation window used for the rate figures, in ms' })
   observationWindowMs!: number;
 

@@ -10,6 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
+import type { OrderFeedBootstrap } from '@openlinker/core/orders';
 import { PAYMENT_STATUS, readSourceBuyerNote, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
@@ -61,6 +62,7 @@ import type {
   AllegroCheckoutForm,
   AllegroDeliveryMethodsResponse,
   AllegroOrderEventsResponse,
+  AllegroOrderEventStatsResponse,
   AllegroShippingRatesResponse,
   AllegroShippingRateDetailResponse,
 } from '../../domain/types/allegro-api.types';
@@ -138,7 +140,8 @@ export class AllegroOrderSourceAdapter
     ReturnSourceReader,
     ReturnDecliner,
     OrderBillingDocumentUploader,
-    OrderBillingDocumentLinker
+    OrderBillingDocumentLinker,
+    OrderFeedBootstrap
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -482,6 +485,19 @@ export class AllegroOrderSourceAdapter
    * Uses cursor-based pagination; cursor is the Allegro-assigned event ID
    * (opaque to the caller, monotonic per seller).
    */
+  /**
+   * Id of the seller's newest order event (#4228), so a fresh connection starts
+   * from "now". `/order/event-stats` is Allegro's own "where does the journal
+   * end" read; `null` when the journal is empty. Errors propagate: core retries
+   * the poll rather than importing history.
+   */
+  async headCursor(): Promise<string | null> {
+    const response = await this.httpClient.get<AllegroOrderEventStatsResponse>(
+      '/order/event-stats'
+    );
+    return response.data.latestEvent?.id ?? null;
+  }
+
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.logger.debug(
       `Listing Allegro order feed (connection: ${this.connectionId}, fromCursor: ${input.fromCursor || 'none'}, limit: ${input.limit})`

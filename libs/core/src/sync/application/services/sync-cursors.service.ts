@@ -46,4 +46,12 @@ export class SyncCursorsService implements ISyncCursorsService {
   async getMostRecentCursorUpdate(connectionId: string): Promise<Date | null> {
     return this.cursorRepository.findMostRecentUpdate(connectionId);
   }
+
+  async getCursorValuesByKeySuffix(connectionId: string, keySuffix: string): Promise<string[]> {
+    const page = await this.cursorRepository.findMany(
+      { connectionId, keySuffix },
+      { limit: 20, offset: 0 }
+    );
+    return page.items.map((item) => item.value);
+  }
 }

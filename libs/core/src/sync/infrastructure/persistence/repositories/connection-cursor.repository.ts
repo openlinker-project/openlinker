@@ -222,6 +222,11 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
         excludeKeyPrefix: `${escapeLike(filters.excludeKeyPrefix)}%`,
       });
     }
+    if (filters?.keySuffix) {
+      qb.andWhere("c.cursorKey LIKE :keySuffix ESCAPE '\\'", {
+        keySuffix: `%${escapeLike(filters.keySuffix)}`,
+      });
+    }
   }
 
   async findMostRecentUpdate(connectionId: string): Promise<Date | null> {

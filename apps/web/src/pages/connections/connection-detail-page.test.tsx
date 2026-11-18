@@ -373,6 +373,58 @@ describe('ConnectionDetailPage', () => {
     });
   });
 
+  describe('order sync panel on the Health tab (#4228)', () => {
+    async function openHealth(connection: Connection): Promise<void> {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        connections: {
+          getById: vi.fn().mockResolvedValue(connection),
+          getSyncStatus: vi.fn().mockResolvedValue({
+            connectionId: connection.id,
+            generatedAt: '2026-11-18T10:00:00.000Z',
+            status: 'idle',
+            alerting: false,
+            queuedCount: 0,
+            deferredCount: 0,
+            runningCount: 0,
+            deadCount: 0,
+            deadInWindow: 0,
+            lastSucceededAt: null,
+            arrivalRatePerHour: 0,
+            drainRatePerHour: 0,
+            alertThresholdJobs: 0,
+            estimatedClearanceMs: null,
+            oldestQueuedWaitMs: null,
+            averageAttemptDurationMs: null,
+            attemptDurationSampleSize: 0,
+            lastCursorAdvanceAt: null,
+            orderSyncStartedAt: '2026-11-18T08:00:00.000Z',
+            observationWindowMs: 3600000,
+            alertHorizonMs: 86400000,
+            historyWindowMs: 604800000,
+          }),
+        },
+      });
+      await renderDetailPage(connection, apiClient);
+      await user.click(screen.getByRole('tab', { name: 'Health' }));
+      await screen.findByRole('heading', { name: 'Diagnostics' });
+    }
+
+    it('should show the order sync panel for an order source connection', async () => {
+      await openHealth(
+        makeAllegro({ enabledCapabilities: ['OfferManager', 'OrderSource'] }),
+      );
+
+      expect(await screen.findByRole('heading', { name: 'Order sync' })).toBeInTheDocument();
+    });
+
+    it('should not show the order sync panel for a connection that is not an order source', async () => {
+      await openHealth(makeAllegro());
+
+      expect(screen.queryByRole('heading', { name: 'Order sync' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('routing readiness panel on the Health tab (#3634)', () => {
     afterEach(() => {
       vi.unstubAllEnvs();

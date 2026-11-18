@@ -8,6 +8,8 @@ import {
 } from './cursor-key-catalogue.types';
 import { masterSweepCompletedAtCursorKey, masterSweepCursorKey } from './master-sweep-cursor.types';
 
+import { orderFeedSeededAtCursorKey } from './order-feed-seed-cursor.types';
+
 describe('resolveCursorCatalogueEntry', () => {
   it.each([
     ['allegro.orders.lastEventId', 'event-bookmark', 'marketplace.orders.poll', null],
@@ -44,6 +46,7 @@ describe('resolveCursorCatalogueEntry', () => {
       'restart-pass',
     ],
     [masterSweepCompletedAtCursorKey('product', 'c1'), 'completion-stamp', null, null],
+    [orderFeedSeededAtCursorKey('marketplace.orders.lastEventId'), 'completion-stamp', null, null],
     [`${OFFER_QUANTITY_WRITE_MARK_PREFIX}9`, 'write-order', null, null],
   ])('should classify %s', (key, family, writerJobType, rewind) => {
     expect(resolveCursorCatalogueEntry(key)).toEqual({ family, writerJobType, rewind });

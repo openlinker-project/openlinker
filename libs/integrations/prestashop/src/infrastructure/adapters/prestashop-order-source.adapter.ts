@@ -34,6 +34,7 @@ import type {
   IncomingOrderItem,
   IncomingOrderAddress,
   OrderPickupPoint,
+  OrderFeedBootstrap,
 } from '@openlinker/core/orders';
 import {
   PAYMENT_STATUS,
@@ -83,6 +84,7 @@ import {
   parseOrderFeedCursor,
   shiftWallClockSeconds,
 } from '../../domain/types/prestashop-order-feed-cursor.types';
+import type { PrestashopSort } from '../http/prestashop-query.builder';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -95,7 +97,7 @@ import { Logger } from '@openlinker/shared/logging';
  * why the id is part of the read position and why the timestamp is never
  * interpreted. `null` input means "start from the beginning".
  */
-export class PrestashopOrderSourceAdapter implements OrderSourcePort {
+export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap {
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
 
   /**
@@ -216,6 +218,65 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const echoedCursor = fromCursor === null ? null : formatOrderFeedCursor(fromCursor);
 
     return { items: filtered, nextCursor: nextCursor ?? echoedCursor };
+  }
+
+  /**
+   * Seconds the seeded cursor is moved BEHIND the newest order's `date_upd`
+   * (#4228). An order written in the same second as the newest one, or just
+   * after the read, must not fall behind the seed; ingestion is idempotent, so
+   * re-reading the last couple of minutes costs nothing.
+   */
+  private static readonly SEED_SAFETY_MARGIN_SECONDS = 120;
+
+  /**
+   * Cursor of the shop's newest order, so a fresh connection starts from "now"
+   * (#4228). Mirrors the poll's own two read modes: `date_upd` sort, falling
+   * back to `id` on a shop that refuses it. The row's `id` rides in the cursor
+   * so the same value stays valid if the connection later flips read mode.
+   *
+   * @throws when the read fails or the newest row is unreadable - core retries
+   * the poll rather than importing history.
+   */
+  async headCursor(): Promise<string | null> {
+    let rows: PrestashopOrder[];
+    if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {
+      rows = await this.readNewestOrderRow(['id_DESC']);
+    } else {
+      try {
+        rows = await this.readNewestOrderRow(['date_upd_DESC', 'id_DESC']);
+      } catch (error) {
+        if (!this.isDateUpdSortUnsupportedError(error)) {
+          throw error;
+        }
+        this.orderFeedCapabilityCache.markDateUpdSortUnsupported(this.connection.id);
+        rows = await this.readNewestOrderRow(['id_DESC']);
+      }
+    }
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const orderId = Number.parseInt(String(row.id), 10);
+    const updatedAt = normalizeWallClock(row.date_upd);
+    if (!Number.isFinite(orderId) || updatedAt === null) {
+      throw new Error(
+        `Cannot seed the order cursor: newest PrestaShop order ${String(row.id)} has an unreadable id/date_upd (connection: ${this.connection.id})`
+      );
+    }
+
+    return formatOrderFeedCursor({
+      updatedAt: shiftWallClockSeconds(
+        updatedAt,
+        -PrestashopOrderSourceAdapter.SEED_SAFETY_MARGIN_SECONDS
+      ),
+      lastOrderId: orderId,
+    });
+  }
+
+  private readNewestOrderRow(sort: PrestashopSort[]): Promise<PrestashopOrder[]> {
+    return this.httpClient.listResources<PrestashopOrder>('orders', { sort }, 1, 0);
   }
 
   /**

@@ -53,4 +53,11 @@ export interface ISyncCursorsService {
    * legitimately never keeps one, so a consumer must not read null as stale.
    */
   getMostRecentCursorUpdate(connectionId: string): Promise<Date | null>;
+
+  /**
+   * Values of this connection's cursors whose key ends with `keySuffix`
+   * (#4228). Used to read the order-feed seed marker without knowing the
+   * adapter-defined order cursor key. Empty when none exists.
+   */
+  getCursorValuesByKeySuffix(connectionId: string, keySuffix: string): Promise<string[]>;
 }

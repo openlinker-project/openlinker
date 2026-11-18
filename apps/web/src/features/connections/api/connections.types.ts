@@ -422,6 +422,8 @@ export interface ConnectionSyncStatus {
   attemptDurationSampleSize: number;
   /** Null is normal for a webhook-fed connection, which keeps no cursor. */
   lastCursorAdvanceAt: string | null;
+  /** When order sync was started from now; null means no start was recorded. */
+  orderSyncStartedAt: string | null;
   observationWindowMs: number;
   alertHorizonMs: number;
   historyWindowMs: number;

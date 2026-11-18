@@ -10,6 +10,7 @@ import { ConnectionCapabilitiesPanel } from '../../features/connections/componen
 import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import { CatalogTrustPanel } from '../../features/connections/components/catalog-trust-panel';
+import { OrderSyncPanel } from '../../features/connections/components/order-sync-panel';
 import { ConnectionSyncStatusPanel } from '../../features/connections/components/connection-sync-status-panel';
 import { RouterReadinessPanel } from '../../features/connections/components/router-readiness-panel';
 import {
@@ -570,6 +571,7 @@ export function ConnectionDetailPage(): ReactElement {
           <TabsContent value="health">
             <ConnectionDiagnosticsPanel connectionId={connection.id} />
             <ConnectionSyncStatusPanel connectionId={connection.id} />
+            {isOrderSource && !isOms ? <OrderSyncPanel connectionId={connection.id} /> : null}
             {connection.enabledCapabilities.includes('ProductMaster') ? (
               <CatalogTrustPanel connectionId={connection.id} />
             ) : null}

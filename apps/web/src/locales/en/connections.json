@@ -1069,6 +1069,28 @@
     "title": "Add a connection",
     "wizardsChip": "Per-platform wizards"
   },
+  "orderSyncPanel": {
+    "errorTitle": "Could not load order sync",
+    "eyebrow": "Orders",
+    "history": {
+      "badge": "Not imported",
+      "caption": "Orders placed before the start date were not imported.",
+      "label": "History"
+    },
+    "live": {
+      "badge": "Syncing",
+      "badgeBefore": "Started before tracking",
+      "before": "This connection has been syncing since before start dates were recorded.",
+      "from": "From {date}",
+      "label": "Live",
+      "lastActivity": "Last activity {when}",
+      "noActivity": "No activity yet"
+    },
+    "loadingMessage": "Checking where order sync starts.",
+    "loadingTitle": "Loading order sync",
+    "retry": "Retry",
+    "title": "Order sync"
+  },
   "paymentWriteback": {
     "factCod": "Cash on delivery and cancelled orders are never marked paid.",
     "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",

@@ -143,7 +143,7 @@ read) on its `ProductPublisher` adapter. Shoper implements `CategoryProvisioner`
 `Connection.config.currency` (or an operator-set value) for the price-change
 currency-mismatch guard.
 
-### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 7
+### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 8
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -154,6 +154,7 @@ currency-mismatch guard.
 | `SourceOptionsReader` | List a source's order-statuses / delivery-methods / payment-methods for mapping. | `listOrderStatuses` · `listDeliveryMethods` · `listPaymentMethods` | `isSourceOptionsReader` |
 | `OrderCreateStockEffect` | Declare that creating an order on this destination lowered the shop's own stock, so core may consume the order's holds on positions that destination masters. Probed after the create; anything but a declared `true` keeps the holds until dispatch. Shoper answers from its `shopping_update_stock_on_buy` setting; PrestaShop from the state `validateOrder` created the order in (not `PS_STOCK_MANAGEMENT`, which does not gate the decrement), refusing packs and legacy `depends_on_stock` rows; WooCommerce from the `_reduced_stock` item meta on the created order's lines (stock drops only for a paid-like status on a stock-managed product). PrestaShop and WooCommerce answer for the order the same adapter instance just created, so a skipped create answers `false`. | `lowersStockOnOrderCreate` | `isOrderCreateStockEffect` |
 | `OrderContactRefresher` | Reconcile an order the destination already holds with contact details the source revealed only later. Called best-effort on the create-skip path (the order is already mapped), never after a fresh create; a throw is warn-logged and does not change the sync result. Shoper replaces the placeholder phone it had to create the order with, but only while the shop order still carries it. | `refreshOrderContact` | `isOrderContactRefresher` |
+| `OrderFeedBootstrap` | Report where the source's order feed stands now, so a connection with no order cursor starts from "now" instead of importing history (#4228). Guard-only (advertised-without-dispatch, never a manifest entry). Throws on a failed read; core retries the poll and never falls back to history. Allegro (`/order/event-stats`), PrestaShop, WooCommerce and Erli implement it. | `headCursor` | `isOrderFeedBootstrap` |
 
 The canonical OL-owned order-lifecycle state machine (authoritative
 `updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders`) is

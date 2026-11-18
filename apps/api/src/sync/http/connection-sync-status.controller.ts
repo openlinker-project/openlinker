@@ -72,6 +72,8 @@ export class ConnectionSyncStatusController {
     dto.attemptDurationSampleSize = status.attemptDurationSampleSize;
     dto.lastCursorAdvanceAt =
       status.lastCursorAdvanceAt === null ? null : status.lastCursorAdvanceAt.toISOString();
+    dto.orderSyncStartedAt =
+      status.orderSyncStartedAt === null ? null : status.orderSyncStartedAt.toISOString();
     dto.observationWindowMs = status.observationWindowMs;
     dto.alertHorizonMs = status.alertHorizonMs;
     dto.historyWindowMs = status.historyWindowMs;
