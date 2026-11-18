@@ -1215,6 +1215,27 @@ export class ConnectionService implements IConnectionService {
     return provisioner.install(connectionId, actorUserId);
   }
 
+  /**
+   * Restart a connection's order sync from a new start (#4228): drop the order
+   * cursor and its seed marker, store the new intent, and let the next poll seed
+   * from it. Orders already imported stay; the restart only decides what the next
+   * poll reads. `from`/`all` can re-read orders already stored, which is
+   * idempotent, and `now` leaves a gap between the old cursor and now.
+   */
+  async restartOrderSync(connectionId: string, start: OrderSyncStart): Promise<void> {
+    const connection = await this.get(connectionId);
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    this.assertOrderSyncStart(start, metadata.orderSyncStartModes, connection.enabledCapabilities);
+    const removed = await this.syncCursors.deleteOrderFeedCursors(connectionId);
+    await this.storeOrderSyncStart(connection, start);
+    this.logger.log(
+      `Restarted order sync for connection ${connectionId} (mode: ${start.mode}); removed cursors: ${removed.join(', ') || 'none'}`
+    );
+  }
+
   async testConnection(connectionId: string): Promise<ConnectionTestResult> {
     // Disabled connections are intentionally still testable: operators use the
     // probe to diagnose *why* a connection was disabled (expired credentials,

@@ -66,4 +66,10 @@ export interface ISyncCursorsService {
    * adapter-defined order cursor key. Empty when none exists.
    */
   getCursorValuesByKeySuffix(connectionId: string, keySuffix: string): Promise<string[]>;
+
+  /**
+   * Remove the connection's order-feed cursor and seed marker (#4228), so the
+   * next poll seeds again from a stored start intent. Returns the removed keys.
+   */
+  deleteOrderFeedCursors(connectionId: string): Promise<string[]>;
 }

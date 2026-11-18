@@ -1089,6 +1089,18 @@
     },
     "loadingMessage": "Checking where order sync starts.",
     "loadingTitle": "Loading order sync",
+    "restart": {
+      "action": "Restart order sync…",
+      "cancel": "Cancel",
+      "confirm": "Restart sync",
+      "confirming": "Restarting…",
+      "description": "Choose where order sync starts from now on. Orders already imported stay as they are.",
+      "failedTitle": "Could not restart order sync",
+      "gapNote": "Orders placed since the last check and before now will not be imported.",
+      "successMessage": "The next order check starts from your choice.",
+      "successTitle": "Order sync restarted",
+      "title": "Restart order sync"
+    },
     "retry": "Retry",
     "title": "Order sync"
   },

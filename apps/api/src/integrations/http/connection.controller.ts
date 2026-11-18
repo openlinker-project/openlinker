@@ -51,7 +51,8 @@ import {
   RATE_LIMIT_STATUS_SERVICE_TOKEN,
 } from '../application/interfaces/rate-limit-status.service.interface';
 import { CreateConnectionDto } from './dto/create-connection.dto';
-import { toOrderSyncStart } from './dto/order-sync-start.dto';
+import { OrderSyncStartDto, toOrderSyncStart } from './dto/order-sync-start.dto';
+import type { OrderSyncStart } from '@openlinker/core/sync';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
@@ -442,6 +443,26 @@ export class ConnectionController {
   ): Promise<InstallWebhooksResponseDto> {
     const result = await this.connectionService.installWebhooks(id, user?.id);
     return InstallWebhooksResponseDto.fromDomain(result);
+  }
+
+  /**
+   * Restart the order sync from a new start (#4228): only new orders, orders
+   * since a date, or the whole history. Replaces the old cursor; see
+   * `ConnectionService.restartOrderSync`.
+   */
+  @Roles('admin')
+  @Post(':id/order-sync/restart')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Restart the order sync from a new start (#4228)' })
+  @ApiResponse({ status: 204, description: 'The next poll starts from the new start' })
+  @ApiResponse({ status: 400, description: 'Mode not supported by the adapter, or invalid date' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  async restartOrderSync(
+    @Param('id') id: string,
+    @Body() dto: OrderSyncStartDto
+  ): Promise<void> {
+    await this.connectionService.restartOrderSync(id, toOrderSyncStart(dto) as OrderSyncStart);
   }
 
   @Roles('admin')

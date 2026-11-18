@@ -1115,6 +1115,18 @@
     },
     "loadingMessage": "Sprawdzamy, od kiedy synchronizowane są zamówienia.",
     "loadingTitle": "Wczytywanie synchronizacji zamówień",
+    "restart": {
+      "action": "Uruchom synchronizację zamówień od nowa…",
+      "cancel": "Anuluj",
+      "confirm": "Uruchom od nowa",
+      "confirming": "Uruchamianie…",
+      "description": "Wybierz, od kiedy ma działać synchronizacja zamówień. Zamówienia, które już zaimportowano, zostają bez zmian.",
+      "failedTitle": "Nie udało się uruchomić synchronizacji od nowa",
+      "gapNote": "Zamówienia złożone od ostatniego sprawdzenia do teraz nie zostaną zaimportowane.",
+      "successMessage": "Następne sprawdzenie zamówień zacznie się od Twojego wyboru.",
+      "successTitle": "Synchronizacja zamówień uruchomiona od nowa",
+      "title": "Uruchom synchronizację zamówień od nowa"
+    },
     "retry": "Ponów",
     "title": "Synchronizacja zamówień"
   },

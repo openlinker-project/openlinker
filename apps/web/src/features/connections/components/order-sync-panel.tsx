@@ -14,18 +14,27 @@
  *
  * @module features/connections/components
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { useDemoMode } from '../../system';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { Button } from '../../../shared/ui/button';
+import type { Connection } from '../api/connections.types';
+import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
 
 interface OrderSyncPanelProps {
-  connectionId: string;
+  connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'>;
 }
 
-export function OrderSyncPanel({ connectionId }: OrderSyncPanelProps): ReactElement {
+export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElement {
+  const connectionId = connection.id;
+  const [restartOpen, setRestartOpen] = useState(false);
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
   const copy = useMessages('connections').orderSyncPanel;
   const format = useFormat();
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
@@ -39,6 +48,15 @@ export function OrderSyncPanel({ connectionId }: OrderSyncPanelProps): ReactElem
           <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title">{copy.title}</h3>
         </div>
+        {write.visible ? (
+          <Button
+            tone="secondary"
+            onClick={() => setRestartOpen(true)}
+            disabled={write.demoReadOnly}
+          >
+            {copy.restart.action}
+          </Button>
+        ) : null}
       </div>
 
       {statusQuery.isLoading ? (
@@ -100,6 +118,11 @@ export function OrderSyncPanel({ connectionId }: OrderSyncPanelProps): ReactElem
           </div>
         </div>
       ) : null}
+      <OrderSyncRestartDialog
+        connection={connection}
+        open={restartOpen}
+        onOpenChange={setRestartOpen}
+      />
     </div>
   );
 }

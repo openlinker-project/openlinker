@@ -6,7 +6,11 @@
 import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
 import { OrderSyncPanel } from './order-sync-panel';
 import type { ConnectionSyncStatus } from '../api/connections.types';
 
@@ -38,11 +42,16 @@ function makeStatus(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSy
   };
 }
 
+const CONNECTION = { id: 'conn_1', platformType: 'prestashop', adapterKey: 'prestashop.webservice.v1' };
+
 type GetSyncStatus = (connectionId: string) => Promise<ConnectionSyncStatus>;
 
 function renderPanel(getSyncStatus: Mock<GetSyncStatus>): void {
   const apiClient = createMockApiClient({ connections: { getSyncStatus } });
-  renderWithProviders(<OrderSyncPanel connectionId="conn_1" />, { apiClient });
+  renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 }
 
 afterEach(() => {
@@ -105,5 +114,67 @@ describe('OrderSyncPanel', () => {
       screen.getByText('Orders placed before the start date were not imported.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /import/i })).not.toBeInTheDocument();
+  });
+
+  describe('restart', () => {
+    it('restarts the sync from the chosen start and confirms', async () => {
+      const user = userEvent.setup();
+      const restartOrderSync = vi.fn().mockResolvedValue(undefined);
+      const apiClient = createMockApiClient({
+        connections: {
+          getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()),
+          restartOrderSync,
+        },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'prestashop.webservice.v1',
+              platformType: 'prestashop',
+              orderSyncStartModes: ['now', 'from', 'all'],
+            },
+          ]),
+        },
+      });
+      renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await user.click(await screen.findByRole('button', { name: /Restart order sync/ }));
+      await user.click(await screen.findByRole('radio', { name: /All order history/ }));
+      await user.click(screen.getByRole('button', { name: 'Restart sync' }));
+
+      expect(restartOrderSync).toHaveBeenCalledWith('conn_1', { mode: 'all' });
+    });
+
+    it('does not send a start date that is not acceptable', async () => {
+      const user = userEvent.setup();
+      const restartOrderSync = vi.fn().mockResolvedValue(undefined);
+      const apiClient = createMockApiClient({
+        connections: {
+          getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()),
+          restartOrderSync,
+        },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'prestashop.webservice.v1',
+              platformType: 'prestashop',
+              orderSyncStartModes: ['now', 'from', 'all'],
+            },
+          ]),
+        },
+      });
+      renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await user.click(await screen.findByRole('button', { name: /Restart order sync/ }));
+      await user.click(await screen.findByRole('radio', { name: /Orders from a date/ }));
+
+      expect(screen.getByRole('button', { name: 'Restart sync' })).toBeDisabled();
+      expect(restartOrderSync).not.toHaveBeenCalled();
+    });
   });
 });

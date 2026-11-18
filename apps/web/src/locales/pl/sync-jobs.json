@@ -267,6 +267,8 @@
     },
     "noTriggers": "Dla tego połączenia nie ma dostępnych synchronizacji do uruchomienia.",
     "requiredField": "{field} *",
+    "restartHint": "Aby zmienić, od kiedy działa synchronizacja zamówień (tylko nowe, od daty albo cała historia), użyj",
+    "restartHintLink": "Uruchom synchronizację zamówień od nowa",
     "title": "Uruchom synchronizację",
     "toast": {
       "description": "Uruchomiono „{job}” dla „{connection}”. ID zadania w tle: {jobId}",

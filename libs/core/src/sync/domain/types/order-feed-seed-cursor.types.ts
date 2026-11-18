@@ -24,3 +24,12 @@ export const ORDER_FEED_SEEDED_AT_SUFFIX = '.seededAt';
 export function orderFeedSeededAtCursorKey(cursorKey: string): string {
   return `${cursorKey}${ORDER_FEED_SEEDED_AT_SUFFIX}`;
 }
+
+/**
+ * True for a connection's order-feed cursor (`<platform>.orders.<name>`) and its
+ * seed marker. Used to restart the order sync (#4228): both must go together,
+ * or the marker would make the next poll skip seeding.
+ */
+export function isOrderFeedCursorKey(cursorKey: string): boolean {
+  return /^[a-z][a-z0-9-]*\.orders\.[A-Za-z]+(\.seededAt)?$/.test(cursorKey);
+}

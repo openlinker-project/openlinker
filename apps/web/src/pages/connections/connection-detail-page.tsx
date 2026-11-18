@@ -571,7 +571,7 @@ export function ConnectionDetailPage(): ReactElement {
           <TabsContent value="health">
             <ConnectionDiagnosticsPanel connectionId={connection.id} />
             <ConnectionSyncStatusPanel connectionId={connection.id} />
-            {isOrderSource && !isOms ? <OrderSyncPanel connectionId={connection.id} /> : null}
+            {isOrderSource && !isOms ? <OrderSyncPanel connection={connection} /> : null}
             {connection.enabledCapabilities.includes('ProductMaster') ? (
               <CatalogTrustPanel connectionId={connection.id} />
             ) : null}

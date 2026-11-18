@@ -14,6 +14,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { CONNECTION_CURSOR_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { ConnectionCursorRepositoryPort } from '../../domain/ports/connection-cursor-repository.port';
+import { isOrderFeedCursorKey } from '../../domain/types/order-feed-seed-cursor.types';
 import type { ISyncCursorsService } from './sync-cursors.service.interface';
 
 @Injectable()
@@ -57,5 +58,14 @@ export class SyncCursorsService implements ISyncCursorsService {
       { limit: 20, offset: 0 }
     );
     return page.items.map((item) => item.value);
+  }
+
+  async deleteOrderFeedCursors(connectionId: string): Promise<string[]> {
+    const page = await this.cursorRepository.findMany({ connectionId }, { limit: 200, offset: 0 });
+    const keys = page.items.map((item) => item.cursorKey).filter(isOrderFeedCursorKey);
+    for (const key of keys) {
+      await this.cursorRepository.delete(connectionId, key);
+    }
+    return keys;
   }
 }

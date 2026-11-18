@@ -7,6 +7,7 @@
  * @module apps/api/src/integrations/application/interfaces
  * @see {@link ConnectionService} for the implementation
  */
+import type { OrderSyncStart } from '@openlinker/core/sync';
 import type {
   Connection,
   ConnectionUpdate,
@@ -91,6 +92,9 @@ export interface IConnectionService {
    * @returns Structured result with `webhooksConfigured`, `testPingTriggered`, optional `warning`
    */
   installWebhooks(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult>;
+
+  /** Restart the order sync from a new start: only new, from a date, or all history (#4228). */
+  restartOrderSync(connectionId: string, start: OrderSyncStart): Promise<void>;
 
   /**
    * Disable a connection

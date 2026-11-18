@@ -313,6 +313,20 @@ export function TriggerSyncDialog({
             <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
           ) : null}
 
+          {selectedJob?.jobType === 'marketplace.orders.poll' ? (
+            <p className="trigger-sync-dialog__description muted-text">
+              {copy.restartHint}{' '}
+              <Link
+                to={`/connections/${connection.id}?tab=health`}
+                onClick={() => onOpenChange(false)}
+                className="link"
+              >
+                {copy.restartHintLink}
+              </Link>
+              .
+            </p>
+          ) : null}
+
           {selectedJob?.payloadFields.map((field) => (
             <FormField
               key={field.name}

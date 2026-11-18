@@ -8,6 +8,7 @@ import type {
   ConnectionTestResult,
   CreateConnectionInput,
   InstallWebhooksResult,
+  OrderSyncStart,
   RateLimitStatus,
   RotateWebhookSecretResult,
   SubiektBankAccount,
@@ -27,6 +28,7 @@ export interface ConnectionsApi {
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   installWebhooks: (connectionId: string) => Promise<InstallWebhooksResult>;
+  restartOrderSync: (connectionId: string, start: OrderSyncStart) => Promise<void>;
   rotateWebhookSecret: (connectionId: string) => Promise<RotateWebhookSecretResult>;
   setWebhookSecret: (connectionId: string, secret: string) => Promise<void>;
   getWebhookStatus: (connectionId: string) => Promise<WebhookStatus>;
@@ -108,6 +110,12 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     getById(connectionId): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}`);
+    },
+    restartOrderSync(connectionId, start): Promise<void> {
+      return request<void>(`/connections/${connectionId}/order-sync/restart`, {
+        method: 'POST',
+        body: JSON.stringify(start),
+      });
     },
     installWebhooks(connectionId): Promise<InstallWebhooksResult> {
       return request<InstallWebhooksResult>(`/connections/${connectionId}/webhooks/install`, {

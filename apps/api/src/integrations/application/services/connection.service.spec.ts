@@ -74,7 +74,7 @@ describe('ConnectionService', () => {
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let destinationTaxonomy: jest.Mocked<IDestinationTaxonomyService>;
   let locations: jest.Mocked<ILocationService>;
-  let syncCursors: { advanceCursor: jest.Mock };
+  let syncCursors: { advanceCursor: jest.Mock; deleteOrderFeedCursors: jest.Mock };
   let credentials: jest.Mocked<ICredentialsService>;
   let testerRegistry: ConnectionTesterRegistryService;
   let mockTester: jest.Mocked<ConnectionTesterPort>;
@@ -232,7 +232,10 @@ describe('ConnectionService', () => {
       getLocation: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ILocationService>;
 
-    const mockSyncCursors = { advanceCursor: jest.fn().mockResolvedValue(undefined) };
+    const mockSyncCursors = {
+      advanceCursor: jest.fn().mockResolvedValue(undefined),
+      deleteOrderFeedCursors: jest.fn().mockResolvedValue(['prestashop.orders.dateUpd']),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -2696,6 +2699,35 @@ describe('ConnectionService', () => {
       });
 
       await expect(service.testConnection('connection-999')).rejects.toThrow(/not supported/);
+    });
+  });
+
+  describe('restartOrderSync (#4228)', () => {
+    const orderConnection = (): Connection =>
+      new Connection('connection-123', 'prestashop', 'Shop', 'active', {}, 'db:ref', new Date(), new Date(), undefined, ['OrderSource']);
+
+    it('should drop the order cursors and store the new start', async () => {
+      connectionPort.get.mockResolvedValue(orderConnection());
+
+      await service.restartOrderSync('connection-123', { mode: 'all' });
+
+      expect(syncCursors.deleteOrderFeedCursors).toHaveBeenCalledWith('connection-123');
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+        'connection-123',
+        'orders.syncStart',
+        expect.stringContaining('all')
+      );
+    });
+
+    it('should refuse a start the adapter cannot honour and leave the cursors alone', async () => {
+      connectionPort.get.mockResolvedValue(orderConnection());
+
+      await expect(
+        service.restartOrderSync('connection-123', { mode: 'from', from: '2999-01-01' })
+      ).rejects.toThrow(BadRequestException);
+
+      expect(syncCursors.deleteOrderFeedCursors).not.toHaveBeenCalled();
+      expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
     });
   });
 
