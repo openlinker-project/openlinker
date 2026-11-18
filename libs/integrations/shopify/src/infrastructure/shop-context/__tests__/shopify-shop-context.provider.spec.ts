@@ -29,6 +29,7 @@ describe('ShopifyShopContextProvider', () => {
       taxesIncluded: true,
       locationGid: 'gid://shopify/Location/1',
       locationName: 'Main',
+      activeLocations: [{ gid: 'gid://shopify/Location/1', name: 'Main' }],
       shopAddress: { countryCodeV2: 'PL', provinceCode: null, zip: '00-001' },
     });
   });

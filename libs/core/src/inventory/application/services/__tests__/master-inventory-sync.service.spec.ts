@@ -23,6 +23,7 @@ import { MasterInventorySyncService } from '../master-inventory-sync.service';
 import type { IEntityClaimService, IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IInventoryService } from '../inventory.service.interface';
+import type { ILocationService } from '../location.service.interface';
 import type {
   InventoryMasterPort,
   Inventory as InventoryPortInterface,
@@ -48,12 +49,16 @@ describe('MasterInventorySyncService', () => {
   let entityClaims: jest.Mocked<IEntityClaimService>;
   let jobQueue: jest.Mocked<SyncJobQueuePort>;
   let masterProductSync: jest.Mocked<IMasterProductSyncService>;
+  let locationService: { resolveMasterLocation: jest.Mock };
 
   const connectionId = 'connection-123';
   const externalId = 'ext-product-9';
   const internalProductId = 'ol_product_abc';
 
   beforeEach(() => {
+    locationService = {
+      resolveMasterLocation: jest.fn().mockResolvedValue({ id: 'ol_location_provisioned' }),
+    };
     inventoryAdapter = {
       getInventory: jest.fn(),
       listInventory: jest.fn(),
@@ -137,7 +142,8 @@ describe('MasterInventorySyncService', () => {
       eventPublisher,
       entityClaims,
       masterProductSync,
-      jobQueue
+      jobQueue,
+      locationService as unknown as ILocationService
     );
   });
 
@@ -1289,6 +1295,40 @@ describe('MasterInventorySyncService', () => {
         internalProductId,
         ['ol_variant_a'],
         expect.anything()
+      );
+    });
+  });
+
+  describe('master-named locations', () => {
+    it('should resolve a master location to an OL location and write the position located', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { platformType: 'shopify', config: { stockLocationOverride: 'ol_location_main' } },
+        metadata: {},
+      } as never);
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-1',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          masterLocation: { ref: '42', name: 'Warsaw' },
+          quantity: 3,
+          reserved: 0,
+          available: 3,
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(locationService.resolveMasterLocation).toHaveBeenCalledWith({
+        connectionId,
+        platformType: 'shopify',
+        externalRef: '42',
+        name: 'Warsaw',
+      });
+      // The master's own location outranks the operator override.
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ locationId: 'ol_location_provisioned' }),
+        connectionId
       );
     });
   });

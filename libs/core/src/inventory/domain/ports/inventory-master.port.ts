@@ -26,6 +26,17 @@ export interface Inventory {
   productId: string;
   variantId?: string;
   locationId?: string;
+  /**
+   * The master's OWN location for this position, when it can name one but
+   * cannot know an OpenLinker location id. Core resolves it to an OL location
+   * (provisioning one on first sight, matched by `externalRef`), so the
+   * position is located without the adapter needing core services.
+   *
+   * `locationId` wins when both are set, and the connection's
+   * `stockLocationOverride` only applies when neither is. Absent keeps the
+   * position pooled (ADR-058 decision 2).
+   */
+  masterLocation?: { readonly ref: string; readonly name: string };
   quantity: number;
   reserved: number;
   available: number;

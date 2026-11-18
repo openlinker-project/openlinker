@@ -94,10 +94,11 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
       client,
       identifierMapping,
       shopContext,
-      new ShopifyInventoryReader(client, connection.id),
+      new ShopifyInventoryReader(client, connection.id, config.stockLocations === 'all'),
       connection,
       config.unmanagedStockQuantity,
       cache,
+      config.stockLocations === 'all',
     );
   }
 

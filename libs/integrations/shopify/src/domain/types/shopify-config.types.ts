@@ -20,6 +20,13 @@ export interface ShopifyConnectionConfig {
    */
   readonly locationId?: string;
   /**
+   * Which Shopify locations OpenLinker reports stock for (ADR-058). `configured`
+   * (the default, and the behaviour before this key existed) reads the ONE
+   * location above as a pooled position. `all` reports one position per ACTIVE
+   * shop location, each located at the OpenLinker location provisioned for it.
+   */
+  readonly stockLocations?: 'configured' | 'all';
+  /**
    * Quantity reported for a variant whose inventory Shopify does not track
    * (`tracked: false`, "always available"). Absent means
    * `SHOPIFY_DEFAULT_UNMANAGED_STOCK_QUANTITY` (1000, the WooCommerce
@@ -61,6 +68,7 @@ export interface ShopifyResolvedConfig {
   readonly apiVersion: string;
   /** Location GID, or null when the primary location is resolved at runtime. */
   readonly locationGid: string | null;
+  readonly stockLocations: 'configured' | 'all';
   readonly unmanagedStockQuantity: number | null;
   readonly salesCountryIso2: string | null;
   readonly refundsThroughShopify: boolean;

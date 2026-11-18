@@ -18,6 +18,9 @@ export const SHOPIFY_INVENTORY_VARIANT_PAGE_SIZE = 100;
 /** The quantity names read; `available` is the sellable figure and the one written. */
 export const SHOPIFY_INVENTORY_QUANTITY_NAMES = ['available', 'on_hand', 'committed'] as const;
 
+/** Levels read per inventory item in the all-locations mode (a shop with more locations is read in part and warned about). */
+export const SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE = 50;
+
 const INVENTORY_VARIANT_FIELDS = `
   id
   inventoryItem {
@@ -25,6 +28,13 @@ const INVENTORY_VARIANT_FIELDS = `
     inventoryLevel(locationId: $locationId) {
       updatedAt
       quantities(names: ["available", "on_hand", "committed"]) { name quantity }
+    }
+    levels: inventoryLevels(first: ${SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE}) @include(if: $allLocations) {
+      nodes {
+        location { id }
+        updatedAt
+        quantities(names: ["available", "on_hand", "committed"]) { name quantity }
+      }
     }
   }
 `;
@@ -38,12 +48,12 @@ const INVENTORY_PRODUCT_FIELDS = `
 `;
 
 /** One product's variants at the location, one page (`$after` null for the first). */
-export const PRODUCT_INVENTORY_QUERY = `query OlProductInventory($id: ID!, $locationId: ID!, $after: String) {
+export const PRODUCT_INVENTORY_QUERY = `query OlProductInventory($id: ID!, $locationId: ID!, $after: String, $allLocations: Boolean!) {
   product(id: $id) { ${INVENTORY_PRODUCT_FIELDS} }
 }`;
 
 /** Several products' first variant page at the location (bulk prefetch); an unknown id answers null. */
-export const PRODUCTS_INVENTORY_BY_IDS_QUERY = `query OlProductsInventory($ids: [ID!]!, $locationId: ID!, $after: String) {
+export const PRODUCTS_INVENTORY_BY_IDS_QUERY = `query OlProductsInventory($ids: [ID!]!, $locationId: ID!, $after: String, $allLocations: Boolean!) {
   nodes(ids: $ids) { ... on Product { ${INVENTORY_PRODUCT_FIELDS} } }
 }`;
 

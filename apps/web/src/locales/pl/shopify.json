@@ -67,6 +67,10 @@
       "description": "Kraj, którego stawka VAT jest odczytywana dla produktów. Zostaw puste, aby użyć kraju z adresu rozliczeniowego sklepu.",
       "label": "Kraj sprzedaży"
     },
+    "stockLocations": {
+      "description": "Zgłaszaj stan dla każdej aktywnej lokalizacji Shopify, a nie tylko dla wybranej powyżej. Każda lokalizacja staje się lokalizacją w OpenLinker (tworzoną przy następnej synchronizacji stanów, możesz zmienić jej nazwę). Zapis stanu z OpenLinker nadal trafia do lokalizacji wybranej powyżej.",
+      "label": "Śledź stan we wszystkich lokalizacjach"
+    },
     "unmanagedStock": {
       "description": "Ilość zgłaszana dla wariantu, którego stanu magazynowego Shopify nie śledzi. Zostaw puste, aby użyć 1000.",
       "label": "Ilość dla nieśledzonego stanu"

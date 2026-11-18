@@ -1,6 +1,13 @@
 /**
  * Shopify Inventory Master Adapter
  *
+ * All-locations mode (`config.stockLocations: 'all'`, opt-in): `listInventory`
+ * reports one position per active shop location, each named by the master's
+ * own location (`Inventory.masterLocation`) which core resolves to - and
+ * provisions on first sight - an OL `inventory_locations` row. Writes
+ * (`adjustInventory`) still target the configured / primary location only
+ * (mapping an OL location back to a Shopify one is deferred).
+ *
  * Implements `InventoryMasterPort` over the Admin GraphQL API (2026-10)
  * against ONE Shopify location: the connection's `config.locationId`, or the
  * shop's primary location (`ShopifyShopContextProvider`). OpenLinker runs as a
@@ -84,6 +91,7 @@ import { resolveShopifyExternalId } from '../../readers/shopify-external-id';
 import {
   ADJUST_AVAILABLE_MUTATION,
   INVENTORY_ITEM_PRODUCT_QUERY,
+  SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE,
   PRODUCTS_INVENTORY_BY_IDS_QUERY,
 } from '../../readers/shopify-inventory.queries';
 import type { ShopifyInventoryReader } from '../../readers/shopify-inventory.reader';
@@ -119,6 +127,11 @@ export function readShopifyLevel(level: ShopifyInventoryLevel | null | undefined
   };
 }
 
+/** Level id of a variant at one location; the pooled id stays `level:{variant}` so a mode switch keeps it. */
+function locatedLevelExternalId(variantExternalId: string, locationGid: string): string {
+  return `level:${variantExternalId}:${fromShopifyGid(locationGid)}`;
+}
+
 export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkInventoryReader, InventoryEventTargetResolver {
   private readonly logger = new Logger(ShopifyInventoryMasterAdapter.name);
   private readonly batchSizer = new ShopifyBatchSizer(SHOPIFY_PRODUCT_BATCH_SIZE);
@@ -131,6 +144,8 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
     private readonly connection: Connection,
     private readonly unmanagedStockQuantity: number | null,
     private readonly cache: CachePort | undefined,
+    /** `config.stockLocations === 'all'`: one located position per active shop location. */
+    private readonly allLocations: boolean = false,
   ) {}
 
   // ─── Reads ─────────────────────────────────────────────────────────────────
@@ -140,7 +155,69 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
     const { product } = await this.readProduct(productId);
     const variants = product.variants.nodes;
     const ids = await this.mintIds(productId, variants.map((v) => fromShopifyGid(v.id)));
-    return variants.map((variant) => this.toInventory(productId, variant, ids, this.levelOf(variant)));
+    if (!this.allLocations) {
+      return variants.map((variant) => this.toInventory(productId, variant, ids, this.levelOf(variant)));
+    }
+    return this.listLocatedInventory(productId, variants, ids);
+  }
+
+  /**
+   * All-locations mode: one position per tracked variant per ACTIVE shop
+   * location, located by the master's own location (core resolves it to an OL
+   * location). A location the variant has no level at reports an explicit 0
+   * rather than nothing: the sync prunes per variant, so an absent position
+   * would leave the last quantity it reported live after the merchant removed
+   * the variant from that location. An untracked variant has no per-location
+   * stock, so it stays one pooled position at the unmanaged cap.
+   */
+  private async listLocatedInventory(
+    productId: string,
+    variants: readonly ShopifyInventoryVariant[],
+    ids: MintedIds,
+  ): Promise<Inventory[]> {
+    const { activeLocations } = await this.shopContext.get();
+    const tracked = variants.filter((v) => v.inventoryItem.tracked);
+    const levelIds = await this.identifierMapping.batchGetOrCreateInternalIds(
+      tracked.flatMap((variant) =>
+        activeLocations.map((location) => ({
+          entityType: CORE_ENTITY_TYPE.Inventory,
+          externalId: locatedLevelExternalId(fromShopifyGid(variant.id), location.gid),
+          connectionId: this.connection.id,
+          context: { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: productId },
+        })),
+      ),
+    );
+    const result: Inventory[] = [];
+    for (const variant of variants) {
+      if (!variant.inventoryItem.tracked) {
+        result.push(this.toInventory(productId, variant, ids, this.levelOf(variant)));
+        continue;
+      }
+      const levels = variant.inventoryItem.levels?.nodes ?? [];
+      if (levels.length >= SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE) {
+        this.logger.warn(
+          `Shopify inventory item ${variant.inventoryItem.id} has ${levels.length}+ levels; only the first ` +
+            `${SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE} are read (connection: ${this.connection.id})`,
+        );
+      }
+      for (const location of activeLocations) {
+        const level = levels.find((l) => l.location.id === location.gid);
+        const variantExternalId = fromShopifyGid(variant.id);
+        const base = this.toInventory(productId, variant, ids, readShopifyLevel(level));
+        const levelId = levelIds.get(`${locatedLevelExternalId(variantExternalId, location.gid)}:${this.connection.id}`);
+        if (levelId === undefined) {
+          throw new Error(
+            `Missing internal id for Shopify variant ${variantExternalId} at ${location.gid} on connection ${this.connection.id}`,
+          );
+        }
+        result.push({
+          ...base,
+          id: levelId,
+          masterLocation: { ref: fromShopifyGid(location.gid), name: location.name },
+        });
+      }
+    }
+    return result;
   }
 
   /**
@@ -182,7 +259,12 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
           const ids = externalIds.slice(position, position + size);
           const data = await this.client.query<{ nodes: ReadonlyArray<ShopifyInventoryProduct | null> }>(
             PRODUCTS_INVENTORY_BY_IDS_QUERY,
-            { ids: ids.map((id) => toShopifyGid('Product', id)), locationId: locationGid, after: null },
+            {
+              ids: ids.map((id) => toShopifyGid('Product', id)),
+              locationId: locationGid,
+              after: null,
+              allLocations: this.allLocations,
+            },
           );
           return { count: ids.length, nodes: data.nodes };
         });
@@ -215,9 +297,13 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
     if (target === null) {
       return eventExternalId;
     }
-    const { locationGid } = await this.shopContext.get();
-    if (fromShopifyGid(locationGid) !== target.locationId) {
-      return null;
+    // All-locations mode reports every active location, so a level change at
+    // any of them is a stock event; otherwise only the configured one is read.
+    if (!this.allLocations) {
+      const { locationGid } = await this.shopContext.get();
+      if (fromShopifyGid(locationGid) !== target.locationId) {
+        return null;
+      }
     }
     const data = await this.client.query<{
       inventoryItem: { variant: { product: { id: string } | null } | null } | null;
@@ -498,7 +584,8 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
       id: inventoryId,
       productId,
       variantId,
-      // Pooled on purpose - see the file header.
+      // Pooled on purpose - see the file header (all-locations mode sets
+      // `masterLocation` on the result instead).
       locationId: undefined,
       quantity: level.onHand,
       reserved: level.committed,

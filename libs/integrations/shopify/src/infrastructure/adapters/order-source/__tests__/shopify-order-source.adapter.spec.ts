@@ -266,6 +266,7 @@ describe('ShopifyAdapterFactory.createOrderSource', () => {
         storeDomain: 'dev.myshopify.com',
         apiVersion: '2026-10',
         locationGid: null,
+        stockLocations: 'configured' as const,
         unmanagedStockQuantity: null,
         salesCountryIso2: null,
         refundsThroughShopify,

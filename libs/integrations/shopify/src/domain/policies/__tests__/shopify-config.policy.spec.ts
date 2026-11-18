@@ -10,6 +10,7 @@ describe('parseShopifyConfig', () => {
         storeDomain: 'my-shop.myshopify.com',
         apiVersion: '2026-10',
         locationGid: null,
+        stockLocations: 'configured',
         unmanagedStockQuantity: null,
         salesCountryIso2: null,
         refundsThroughShopify: false,
@@ -100,5 +101,16 @@ describe('parseShopifyConfig', () => {
     const result = parseShopifyConfig({ storeDomain: 'x', apiVersion: 'y', locationId: 'z' });
 
     expect(!result.ok && result.issues.map((i) => i.path)).toEqual(['storeDomain', 'apiVersion', 'locationId']);
+  });
+
+  it('should accept stockLocations "all" and refuse any other value', () => {
+    expect(parseShopifyConfig({ storeDomain: 'a.myshopify.com', stockLocations: 'all' })).toMatchObject({
+      ok: true,
+      config: { stockLocations: 'all' },
+    });
+    expect(parseShopifyConfig({ storeDomain: 'a.myshopify.com', stockLocations: 'some' })).toMatchObject({
+      ok: false,
+      issues: [{ path: 'stockLocations' }],
+    });
   });
 });

@@ -47,6 +47,8 @@ export interface ShopifyShopContext {
   /** GID and name of the single location OpenLinker works against. */
   readonly locationGid: string;
   readonly locationName: string;
+  /** Every ACTIVE location of the shop (multi-location stock reads). */
+  readonly activeLocations: readonly { readonly gid: string; readonly name: string }[];
   /** The shop's own billing address (country, province, zip), or null when it states none. */
   readonly shopAddress: ShopifyShopAddress | null;
 }
@@ -97,7 +99,8 @@ export class ShopifyShopContextProvider {
       if (
         cached !== null &&
         cached.configuredLocationGid === this.configuredLocationGid &&
-        cached.shopAddress !== undefined
+        cached.shopAddress !== undefined &&
+        cached.activeLocations !== undefined
       ) {
         return stripCacheFields(cached);
       }
@@ -110,6 +113,9 @@ export class ShopifyShopContextProvider {
       taxesIncluded: data.shop.taxesIncluded,
       locationGid: location.id,
       locationName: location.name,
+      activeLocations: data.locations.nodes
+        .filter((l) => l.isActive)
+        .map((l) => ({ gid: l.id, name: l.name })),
       shopAddress: data.shop.billingAddress ?? null,
     };
     if (this.cache !== undefined) {
@@ -176,6 +182,7 @@ function stripCacheFields(cached: CachedShopContext): ShopifyShopContext {
     taxesIncluded: cached.taxesIncluded,
     locationGid: cached.locationGid,
     locationName: cached.locationName,
+    activeLocations: cached.activeLocations,
     shopAddress: cached.shopAddress,
   };
 }
