@@ -4,7 +4,7 @@
  * The steps of one release, each with its state and the actions the viewer may
  * take. Installation actions are for admins only; everyone else sees them
  * disabled with a reason (the registered exception to hide-write-affordance,
- * ADR-085 decision 8). "Remind me" is the viewer's own row and stays enabled.
+ * ADR-085 decision 8).
  * Required and optional steps differ by a text label, not by colour alone.
  *
  * @module features/release-center/components
@@ -13,12 +13,6 @@ import type { ReactElement } from 'react';
 import { useMessages } from '../../../shared/i18n';
 import { usePlatforms } from '../../../shared/plugins';
 import { Button } from '../../../shared/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../../shared/ui/dropdown-menu';
 import {
   ConnectionChip,
   readConnectionEnvironment,
@@ -189,30 +183,6 @@ export function ReleaseStepList({
                         {panel.stayAsIs}
                       </Button>
                     </ReadOnlyLock>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          tone="ghost"
-                          className="button--icon button--xs"
-                          aria-label={panel.moreActions}
-                        >
-                          <ReleaseIcon name="dots" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="release-card__menu">
-                        {status === 'open' ? (
-                          <DropdownMenuItem onSelect={() => actions.snoozeStep(instance.itemKey)}>
-                            {panel.remind}
-                          </DropdownMenuItem>
-                        ) : null}
-                        <DropdownMenuItem
-                          disabled={!canWriteSteps}
-                          onSelect={() => actions.markStep(instance.itemKey, 'not_applicable')}
-                        >
-                          {panel.notApplicable}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                   </>
                 )}
               </div>
