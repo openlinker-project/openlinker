@@ -365,6 +365,7 @@ export function OperationalSettingsPage(): ReactElement {
 
   return (
     <SettingsPageFrame
+      wide
       eyebrow={copy.eyebrow}
       title={copy.title}
       short={tpl.short}

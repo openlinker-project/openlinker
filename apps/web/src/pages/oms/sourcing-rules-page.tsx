@@ -80,6 +80,7 @@ export function SourcingRulesPage(): ReactElement {
 
   const shell = (children: ReactElement): ReactElement => (
     <SettingsPageFrame
+      wide
       eyebrow={copy.crumbGroup}
       title={copy.crumbTitle}
       short={tpl.short}

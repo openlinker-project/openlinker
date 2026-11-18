@@ -16,7 +16,7 @@ describe('SettingsIndexRow', () => {
         title="Sync pacing"
         description="How hard OpenLinker works your shop."
         value="500"
-        note="Products per run"
+        caption="Products per run"
         action={{ label: 'Adjust pacing', to: '/settings/sync-pacing' }}
       />,
     );
@@ -73,9 +73,21 @@ describe('SettingsIndexRow', () => {
   });
 
   it('should render the value as a toned status chip with a quiet note', () => {
-    renderRow(<SettingsIndexRow title="Mailer" value="Console" tone="warning" note="Not for production" />);
+    renderRow(
+      <SettingsIndexRow
+        title="Mailer"
+        value="Console"
+        tone="warning"
+        caption="Transport"
+        suffix="from environment"
+        notice="Not for production"
+      />,
+    );
 
     expect(screen.getByText('Console')).toHaveAttribute('data-tone', 'warning');
-    expect(screen.getByText('Not for production')).toBeInTheDocument();
+    expect(screen.getByText('Transport')).toBeInTheDocument();
+    expect(screen.getByText('from environment')).toBeInTheDocument();
+    // The warning lives with the description, not in the value column.
+    expect(screen.getByText('Not for production').closest('.settings-row__notice')).not.toBeNull();
   });
 });

@@ -20,23 +20,18 @@ function MailerSettingsLive(): ReactElement {
   const [dialogOpen, setDialogOpen] = useState(false);
   const view = query.data;
 
-  const note =
-    view && view.transport === 'smtp' ? (
-      <>
-        <span className="settings-row__line">
-          {view.smtpHost ?? '-'}
-          {view.smtpPort ? `:${String(view.smtpPort)}` : ''}
-        </span>
-        <span className="settings-row__line">{view.fromAddress ?? '-'}</span>
-        {view.smtpPasswordConfigured ? null : (
-          <span className="settings-row__line">
-            {copy.passwordLabel}: {copy.notSet}
-          </span>
-        )}
-      </>
-    ) : view ? (
-      <span className="settings-row__line">{copy.consoleNote}</span>
-    ) : undefined;
+  const notice =
+    !view
+      ? undefined
+      : view.transport === 'console'
+        ? copy.consoleNote
+        : view.smtpPasswordConfigured
+          ? undefined
+          : `${copy.passwordLabel}: ${copy.notSet}`;
+  const suffix =
+    view && view.transport === 'smtp'
+      ? `${view.smtpHost ?? '-'}${view.smtpPort ? `:${String(view.smtpPort)}` : ''}`
+      : undefined;
 
   return (
     <SettingsIndexRow
@@ -51,7 +46,10 @@ function MailerSettingsLive(): ReactElement {
           : copy.loading
       }
       value={view ? copy.transport[view.transport] : undefined}
-      note={note}
+      caption={view ? copy.transportLabel : undefined}
+      suffix={suffix}
+      notice={notice}
+      dot
       action={
         view
           ? {

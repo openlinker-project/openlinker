@@ -36,8 +36,17 @@ export interface SettingsIndexRowProps {
   /** The current value. With a `tone` it renders as a status chip. */
   value?: ReactNode;
   tone?: SettingsValueTone;
-  /** A quiet line next to the value (what it counts, where it comes from). */
-  note?: ReactNode;
+  /** A small muted caption above the value: what the value is ("Reporting in"). */
+  caption?: ReactNode;
+  /** A tiny muted suffix after the value: where it comes from ("from environment"). */
+  suffix?: ReactNode;
+  /** Put a status dot in the chip, for on/off style values. */
+  dot?: boolean;
+  /**
+   * A warning that belongs to the row, not to its value: shown under the
+   * description with an icon, so the value column stays short and aligned.
+   */
+  notice?: ReactNode;
   /** Set the value in a monospace face (addresses, identifiers). */
   mono?: boolean;
   valueState?: 'ready' | 'loading' | 'error';
@@ -66,6 +75,15 @@ function Chevron(): ReactElement {
       aria-hidden="true"
     >
       <path d="M6 3.5 10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function WarningIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M8 2.5 14 13H2L8 2.5Z" strokeLinejoin="round" />
+      <path d="M8 6.5v3M8 11.5h.01" strokeLinecap="round" />
     </svg>
   );
 }
@@ -101,7 +119,10 @@ export function SettingsIndexRow({
   icon,
   value,
   tone,
-  note,
+  caption,
+  suffix,
+  dot = false,
+  notice,
   mono = false,
   valueState = 'ready',
   stateText,
@@ -132,15 +153,21 @@ export function SettingsIndexRow({
           {title}
         </h4>
         {description ? <p className="settings-row__description">{description}</p> : null}
+        {notice ? (
+          <p className="settings-row__notice" data-tone="warning">
+            <WarningIcon />
+            <span>{notice}</span>
+          </p>
+        ) : null}
       </div>
 
       {valueState === 'loading' ? (
         <div className="settings-row__value" role="status">
           <span className="settings-row__skeleton" aria-hidden="true" />
           <span className="sr-only">{stateText ?? copy.loading}</span>
-          {note ? (
-            <span className="settings-row__note" aria-hidden="true">
-              {note}
+          {caption ? (
+            <span className="settings-row__caption" aria-hidden="true">
+              {caption}
             </span>
           ) : null}
         </div>
@@ -150,16 +177,19 @@ export function SettingsIndexRow({
         </div>
       ) : hasValue ? (
         <div className="settings-row__value">
-          {tone ? (
-            <span className="settings-chip" data-tone={tone}>
-              {value}
-            </span>
-          ) : (
-            <span className="settings-row__figure" data-mono={mono || undefined}>
-              {value}
-            </span>
-          )}
-          {note ? <span className="settings-row__note">{note}</span> : null}
+          {caption ? <span className="settings-row__caption">{caption}</span> : null}
+          <span className="settings-row__reading">
+            {tone ? (
+              <span className="settings-chip" data-tone={tone} data-dot={dot || undefined}>
+                {value}
+              </span>
+            ) : (
+              <span className="settings-row__figure" data-mono={mono || undefined}>
+                {value}
+              </span>
+            )}
+            {suffix ? <span className="settings-row__suffix">{suffix}</span> : null}
+          </span>
         </div>
       ) : (
         <div className="settings-row__value" aria-hidden="true" />

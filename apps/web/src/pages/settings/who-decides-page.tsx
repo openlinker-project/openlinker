@@ -22,6 +22,7 @@ export function WhoDecidesPage(): ReactElement {
   const tpl = useMessages('settings').template.whoDecides;
   return (
     <SettingsPageFrame
+      wide
       eyebrow={WHO_DECIDES_PAGE_COPY.eyebrow}
       title={WHO_DECIDES_PAGE_COPY.title}
       description={WHO_DECIDES_PAGE_COPY.lede}

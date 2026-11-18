@@ -8,7 +8,7 @@
  * @module apps/web/src/features/settings/components
  */
 import type { ReactElement } from 'react';
-import { interpolate, useMessages } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { SettingsIndexRow } from '../../../shared/ui/settings-index-row';
 import { useOperationalSettingsQuery } from '../hooks/use-operational-settings-query';
 
@@ -32,12 +32,9 @@ function SyncPacingLive(): ReactElement {
       title={copy.title}
       description={copy.description}
       valueState={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-      value={
-        catalogue === null
-          ? '-'
-          : interpolate(copy.valueWithSource, { value: String(catalogue.value), source: sourceLabel })
-      }
-      note={copy.cataloguePerRun}
+      value={catalogue === null ? '-' : String(catalogue.value)}
+      suffix={sourceLabel || undefined}
+      caption={copy.cataloguePerRun}
       action={{ label: copy.adjust, to: '/settings/sync-pacing' }}
     />
   );

@@ -52,6 +52,7 @@
   "currencySettingsTile": {
     "actions": {
       "coverage": "Pokrycie",
+      "coverageHint": "Zobacz, dla jakich walut z zamówień są kursy wymiany.",
       "edit": "Edytuj"
     },
     "adminOnly": "Tylko administrator",

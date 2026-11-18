@@ -36919,6 +36919,10 @@ legend.analytics-settings-dialog__label {
 .buyer-emails-table th {
   vertical-align: top;
 }
+/* The sender cell names a mail setup ("Mail settings default"); an ellipsis
+   there hid the one word that tells the rows apart. */
+.buyer-emails-table td { max-width: none; overflow: visible; text-overflow: clip; }
+.buyer-emails-table td .mono-text { white-space: normal; overflow-wrap: anywhere; }
 .buyer-email-editor {
   display: grid;
   gap: var(--space-4);
@@ -41308,7 +41312,31 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xs);
 }
-.settings-page__card[data-wide] { max-width: 60rem; }
+/* `wide` fills the main column up to 90rem: tables, two-column editors and
+   rails need room, and a reading-width card clipped them (#4154). */
+.settings-page__card[data-wide] { max-width: 90rem; }
+/* Prose keeps a reading measure whatever the card width, so wide pages do not
+   turn explanations into full-width walls. */
+.settings-page__section > p,
+.settings-page__section .page-section > p,
+.settings-page__section .muted-text:is(p) { max-width: 70ch; }
+/* A control in a table cell must keep a usable width: a table that is squeezed
+   shrinks a bare select to its arrow and the cell reads as empty. */
+.settings-page__section .data-table select,
+.settings-page__section .data-table .control { min-width: 10rem; }
+/* A table on a settings page is a bordered scroller of last resort: tighter
+   cells keep most tables whole, and a fade on the clipped edge says there is
+   more to scroll to instead of letting a column look cut off. */
+.settings-page__section .data-table__container {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(to right, var(--bg-surface) 30%, transparent) 0 0 / 2rem 100% no-repeat local,
+    linear-gradient(to left, var(--bg-surface) 30%, transparent) 100% 0 / 2rem 100% no-repeat local,
+    linear-gradient(to right, var(--border-default), transparent) 0 0 / 0.5rem 100% no-repeat scroll,
+    linear-gradient(to left, var(--border-default), transparent) 100% 0 / 0.5rem 100% no-repeat scroll;
+}
+.settings-page__section .data-table :is(th, td) { padding-inline: var(--space-3); }
 .settings-page__fields { display: grid; min-width: 0; margin: 0; padding: 0; border: 0; }
 .settings-page__readonly {
   display: flex;
@@ -41552,11 +41580,22 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .settings-row__value {
   display: grid;
   justify-items: end;
-  gap: 2px;
+  align-content: center;
+  gap: 3px;
+  width: 13rem;
   min-width: 0;
-  max-width: 15rem;
   text-align: right;
 }
+.settings-row__caption { font-size: 0.75rem; line-height: 1.3; color: var(--text-muted); }
+.settings-row__reading {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.settings-row__suffix { font-size: 0.75rem; line-height: 1.3; color: var(--text-muted); }
 .settings-row__figure {
   font-size: 0.875rem;
   font-weight: 600;
@@ -41566,7 +41605,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   overflow-wrap: anywhere;
 }
 .settings-row__figure[data-mono] { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; }
-.settings-row__note { font-size: 0.75rem; line-height: 1.35; color: var(--text-muted); overflow-wrap: anywhere; }
+.settings-row__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--status-warning-fg);
+}
+.settings-row__notice svg { flex: none; margin-top: 2px; }
 .settings-row__line { display: block; }
 .settings-row__warning { color: var(--status-warning-fg); }
 .settings-row__value--error { font-size: 0.75rem; color: var(--status-error-fg); }
@@ -41596,6 +41645,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .settings-chip[data-tone='success'] { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
 .settings-chip[data-tone='warning'] { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
 .settings-chip[data-tone='info'] { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.settings-chip[data-dot]::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-1);
+  border-radius: 50%;
+  background: currentColor;
+}
 .settings-chip[data-tone='muted'] { background: transparent; border-style: dashed; color: var(--text-muted); font-weight: 500; }
 .settings-row__action {
   display: flex;
@@ -41604,7 +41661,12 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   gap: var(--space-2);
   min-width: 0;
 }
-.settings-row__secondary { position: relative; z-index: 1; }
+.settings-row__secondary {
+  position: relative;
+  z-index: 1;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-subtle);
+}
 .settings-row__link {
   display: inline-grid;
   place-items: center;
@@ -41650,7 +41712,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     padding: var(--space-3);
   }
   .settings-row:not([data-has-icon]) { grid-template-columns: minmax(0, 1fr) minmax(1.75rem, auto); }
-  .settings-row__value { grid-column: 2; grid-row: 2; justify-items: start; text-align: left; max-width: none; }
+  .settings-row__value { grid-column: 2; grid-row: 2; justify-items: start; text-align: left; width: auto; }
+  .settings-row__reading { justify-content: flex-start; }
+  .settings-row__secondary { padding-left: 0; border-left: 0; }
   .settings-row:not([data-has-icon]) .settings-row__value { grid-column: 1; }
   .settings-row__action { grid-column: 3; grid-row: 1 / span 2; }
   .settings-row:not([data-has-icon]) .settings-row__action { grid-column: 2; }

@@ -25,6 +25,7 @@ function ReleaseCenterLive(): ReactElement {
       valueState={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
       value={enabled === undefined ? undefined : enabled ? copy.on : copy.off}
       tone={enabled ? 'success' : 'muted'}
+      dot
       action={{ label: copy.open, to: '/settings/sync-pacing' }}
     />
   );
