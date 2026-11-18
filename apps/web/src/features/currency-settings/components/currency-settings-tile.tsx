@@ -47,6 +47,8 @@ function CurrencySettingsLive(): ReactElement {
 
   return (
     <SettingsIndexRow
+      icon="coins"
+      tone={query.data?.source === 'setting' ? 'info' : 'neutral'}
       title={copy.title}
       description={copy.body}
       valueState={query.isLoading ? 'loading' : query.isError ? 'error' : 'ready'}
@@ -106,7 +108,7 @@ function CurrencySettingsLive(): ReactElement {
 export function CurrencySettingsTile({ locked = false }: { locked?: boolean }): ReactElement {
   const copy = useMessages('currency-settings').currencySettingsTile;
   return locked ? (
-    <SettingsIndexRow locked title={copy.title} description={copy.body} />
+    <SettingsIndexRow locked icon="coins" title={copy.title} description={copy.body} />
   ) : (
     <CurrencySettingsLive />
   );

@@ -44,6 +44,7 @@
   "mailerSettingsTile": {
     "adminOnly": "Admin only",
     "configured": "Configured",
+    "consoleNote": "Not for production: emails are only printed to the server log.",
     "description": "How OpenLinker sends email: the transport and the sender address.",
     "edit": "Edit",
     "eyebrow": "Outbound mail",

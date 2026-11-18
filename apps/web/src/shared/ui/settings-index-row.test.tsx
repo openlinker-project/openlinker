@@ -71,4 +71,11 @@ describe('SettingsIndexRow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load.');
     expect(screen.getByText('3')).toBeInTheDocument();
   });
+
+  it('should render the value as a toned status chip with a quiet note', () => {
+    renderRow(<SettingsIndexRow title="Mailer" value="Console" tone="warning" note="Not for production" />);
+
+    expect(screen.getByText('Console')).toHaveAttribute('data-tone', 'warning');
+    expect(screen.getByText('Not for production')).toBeInTheDocument();
+  });
 });

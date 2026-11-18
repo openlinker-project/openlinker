@@ -215,6 +215,13 @@
     "suggestedMax": "zalecane ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterRow": {
+    "description": "Okno „co się zmieniło” po aktualizacji, dzwonek i przewodnik po nowych ustawieniach.",
+    "off": "Wyłączone",
+    "on": "Włączone",
+    "open": "Otwórz ustawienia centrum wydań",
+    "title": "Centrum wydań"
+  },
   "releaseCenterSection": {
     "backToEnv": "Wróć do .env lub domyślnej",
     "field": {
@@ -269,7 +276,8 @@
     "environment": {
       "apiBaseUrl": "Bazowy adres URL API",
       "environment": "Środowisko",
-      "title": "Środowisko"
+      "title": "Środowisko",
+      "version": "Wersja aplikacji"
     },
     "notifications": {
       "title": "Powiadomienia"

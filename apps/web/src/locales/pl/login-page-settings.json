@@ -60,6 +60,8 @@
   "saving": "Zapisuję...",
   "screenHint": "Pola i podgląd pokazują wybrany ekran.",
   "tile": "Nagłówek, teksty formularzy, pomoc przy logowaniu i prośby o dostęp.",
+  "tileCustomised": "Dostosowana",
+  "tileDefault": "Tekst domyślny",
   "title": "Strona logowania",
   "tooLong": "Wpisz najwyżej {max} znaków.",
   "unsaved": "Masz niezapisane zmiany.",

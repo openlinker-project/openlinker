@@ -209,6 +209,13 @@
     "suggestedMax": "suggested ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterRow": {
+    "description": "The what changed dialog after an update, the bell and the guide to new settings.",
+    "off": "Off",
+    "on": "On",
+    "open": "Open release center settings",
+    "title": "Release center"
+  },
   "releaseCenterSection": {
     "backToEnv": "Back to .env or default",
     "field": {
@@ -263,7 +270,8 @@
     "environment": {
       "apiBaseUrl": "API base URL",
       "environment": "Environment",
-      "title": "Environment"
+      "title": "Environment",
+      "version": "App version"
     },
     "notifications": {
       "title": "Notifications"

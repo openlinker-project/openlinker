@@ -44,6 +44,7 @@
   "mailerSettingsTile": {
     "adminOnly": "Tylko administratorzy",
     "configured": "Skonfigurowane",
+    "consoleNote": "Nie do produkcji: e-maile trafiają tylko do logu serwera.",
     "description": "Jak OpenLinker wysyła e-maile: transport i adres nadawcy.",
     "edit": "Edytuj",
     "eyebrow": "Poczta wychodząca",

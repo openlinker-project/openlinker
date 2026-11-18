@@ -19,6 +19,8 @@ function SalesDocumentsLive(): ReactElement {
 
   return (
     <SettingsIndexRow
+      icon="document"
+      tone={conflict ? 'warning' : 'neutral'}
       title={copy.title}
       description={
         conflict ? (
@@ -40,7 +42,7 @@ function SalesDocumentsLive(): ReactElement {
 export function SalesDocumentsTile({ locked = false }: { locked?: boolean }): ReactElement {
   const copy = useMessages('sales-documents').salesDocumentsTile;
   return locked ? (
-    <SettingsIndexRow locked title={copy.title} description={copy.description} />
+    <SettingsIndexRow locked icon="document" title={copy.title} description={copy.description} />
   ) : (
     <SalesDocumentsLive />
   );

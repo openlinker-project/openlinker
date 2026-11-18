@@ -14,6 +14,7 @@ export function InventoryLocationsTile({ locked = false }: { locked?: boolean })
   const copy = useMessages('inventory').inventoryLocationsTile;
   return (
     <SettingsIndexRow
+      icon="pin"
       locked={locked}
       title={copy.title}
       description={copy.description}
