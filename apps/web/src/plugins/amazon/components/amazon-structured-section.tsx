@@ -150,10 +150,10 @@ export function AmazonStructuredSection({
       ) : null}
 
       {catalogueEnabled || offersEnabled ? (
-        <fieldset className="form-field">
+        <fieldset className="form-field amazon-tax-codes">
           <legend className="form-field__label">{copy.taxCodes.label}</legend>
           <p className="form-field__description">{copy.taxCodes.description}</p>
-          {taxRows.length === 0 ? <p className="text-muted">{copy.taxCodes.empty}</p> : null}
+          {taxRows.length === 0 ? <p className="form-field__description">{copy.taxCodes.empty}</p> : null}
           {taxRows.map((row, index) => (
             <div key={index} className="amazon-tax-codes__row">
               <Input
