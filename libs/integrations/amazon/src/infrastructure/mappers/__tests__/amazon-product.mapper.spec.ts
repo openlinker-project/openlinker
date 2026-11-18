@@ -57,6 +57,37 @@ describe('mapAmazonProduct', () => {
   });
 });
 
+describe('listing images', () => {
+  it('should take the summary main image when the attributes carry no image', () => {
+    const bare: AmazonListingItem = {
+      sku: 'GM-ZDPI-9B4E',
+      summaries: [
+        {
+          marketplaceId: DE,
+          productType: 'LUGGAGE',
+          status: ['BUYABLE'],
+          mainImage: { link: 'https://m.media-amazon.com/luggage.png', height: 500, width: 500 },
+        },
+      ],
+    };
+
+    expect(mapAmazonProduct(bare, ctx).images).toEqual(['https://m.media-amazon.com/luggage.png']);
+    expect(mapAmazonVariant(bare, 'ol_product_x', [], ctx).images).toEqual(['https://m.media-amazon.com/luggage.png']);
+  });
+
+  it('should prefer the seller image attributes over the summary image', () => {
+    const both: AmazonListingItem = {
+      ...listing,
+      summaries: [{ ...listing.summaries![0], mainImage: { link: 'https://m.media-amazon.com/summary.jpg' } }],
+    };
+
+    expect(mapAmazonProduct(both, ctx).images).toEqual([
+      'https://m.media-amazon.com/main.jpg',
+      'https://m.media-amazon.com/side.jpg',
+    ]);
+  });
+});
+
 describe('mapAmazonVariant and variationLinks', () => {
   it('should read the variation theme and the child attributes', () => {
     const parent: AmazonListingItem = {

@@ -107,7 +107,22 @@ export function listingEan(item: AmazonListingItem, marketplaceId: string): stri
   return null;
 }
 
+/**
+ * The listing's images: the seller's image attributes, else the main image of
+ * the listing's summary. Amazon hosts that one and reports it even when the
+ * seller's attributes carry no image locator.
+ */
 export function listingImages(item: AmazonListingItem, marketplaceId: string): string[] {
+  const fromAttributes = attributeImages(item, marketplaceId);
+  if (fromAttributes.length > 0) {
+    return fromAttributes;
+  }
+  const summary = item.summaries?.find((entry) => entry.marketplaceId === marketplaceId) ?? item.summaries?.[0];
+  const main = summary?.mainImage?.link;
+  return typeof main === 'string' && main.startsWith('https://') ? [main] : [];
+}
+
+function attributeImages(item: AmazonListingItem, marketplaceId: string): string[] {
   const urls: string[] = [];
   const add = (name: string): void => {
     const location = attributeValues(item, name, marketplaceId)[0]?.media_location;

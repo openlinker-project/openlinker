@@ -16,6 +16,8 @@ export interface AmazonListingSummary {
   readonly status: readonly string[];
   readonly itemName?: string;
   readonly fnSku?: string;
+  /** The listing's main image as Amazon hosts it, present whenever it has one. */
+  readonly mainImage?: { readonly link: string; readonly height?: number; readonly width?: number };
 }
 
 export interface AmazonListingIssue {
