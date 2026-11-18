@@ -198,7 +198,7 @@
     "errorTitle": "Unable to update capabilities",
     "eyebrow": "Capabilities",
     "legacyMasterPublisher": {
-      "body": "This connection is both a catalog source and a publish target, so its published products can come back as duplicates. Turn one of the two off.",
+      "body": "This connection is both a catalog source and a publish target, so its published products can come back as duplicates. Publishing to it is refused until Product master is switched off.",
       "title": "Catalog and publishing on one connection"
     },
     "none": "This connection has no capabilities available to toggle here.",

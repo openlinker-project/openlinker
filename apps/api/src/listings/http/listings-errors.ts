@@ -19,6 +19,7 @@ import {
   InvalidOverrideKeyException,
   type MasterCatalogConnectionNotConfiguredException,
   MasterStockNotSyncedException,
+  ShopPublishMasterPublisherConflictException,
 } from '@openlinker/core/listings';
 import { codedHttpError } from '../../common/errors/coded-http.exception';
 
@@ -118,6 +119,22 @@ export function bulkSubmissionRefusal(error: unknown): HttpException | null {
       'BULK_OFFER_CEILING_EXCEEDED',
       error.message,
       { expandedCount: error.expandedCount, ceiling: error.ceiling }
+    );
+  }
+  return null;
+}
+
+/**
+ * The refusal to publish to a legacy connection that is both a catalogue source
+ * and a publish target (#4123), or `null` when `error` is not that.
+ */
+export function shopPublishMasterPublisherConflict(error: unknown): HttpException | null {
+  if (error instanceof ShopPublishMasterPublisherConflictException) {
+    return codedHttpError(
+      HttpStatus.CONFLICT,
+      'SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT',
+      error.message,
+      { connectionId: error.connectionId }
     );
   }
   return null;

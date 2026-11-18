@@ -344,6 +344,7 @@
     "SHIPPING_COMMAND_FAILED": "The shipping action failed. Try again, and contact support if it keeps happening.",
     "SHIPPING_PROVIDER_AUTH_FAILED": "{provider} did not accept the stored credentials. Update them in the connection settings.",
     "SHIPPING_PROVIDER_REJECTED": "{provider} refused the shipment request.",
+    "SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT": "Publishing to this connection is blocked because it is both a catalog source and a publish target, so published products would come back as duplicates. Turn off Product master on the connection to publish.",
     "SOURCING_RULE_DUPLICATE": "A rule of this kind already exists for this connection.",
     "SOURCING_RULE_INVALID": "This sourcing rule combination is not valid.",
     "SOURCING_RULE_LOCATION_NOT_FOUND": "Some of the chosen warehouse locations no longer exist.",

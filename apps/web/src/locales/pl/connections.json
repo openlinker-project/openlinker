@@ -198,7 +198,7 @@
     "errorTitle": "Nie udało się zaktualizować możliwości",
     "eyebrow": "Możliwości",
     "legacyMasterPublisher": {
-      "body": "To połączenie jest jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty mogą wracać jako duplikaty. Wyłącz jedną z tych dwóch opcji.",
+      "body": "To połączenie jest jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty mogą wracać jako duplikaty. Publikowanie na to połączenie jest odrzucane, dopóki nie wyłączysz roli Źródło produktów.",
       "title": "Katalog i publikowanie na jednym połączeniu"
     },
     "none": "To połączenie nie ma możliwości, które można tu przełączać.",

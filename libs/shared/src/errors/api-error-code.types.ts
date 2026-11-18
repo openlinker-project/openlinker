@@ -436,6 +436,8 @@ export const ApiErrorCodeValues = [
   'BULK_OFFER_BATCH_NOT_FOUND',
   /** No bulk shop-publish batch has this id. params: `batchId`. */
   'BULK_SHOP_PUBLISH_BATCH_NOT_FOUND',
+  /** A legacy connection holds both ProductMaster and ProductPublisher, so publishing to it is refused. params: `connectionId`. */
+  'SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT',
   /** Another submit with the same idempotency key is still being resolved; retry. No params. */
   'BULK_SUBMIT_IDEMPOTENCY_CONTENDED',
   /** Every selected variant is already listed on the connection. params: `skippedCount`. */

@@ -344,6 +344,7 @@
     "SHIPPING_COMMAND_FAILED": "Operacja wysyłkowa nie powiodła się. Spróbuj ponownie, a jeśli problem się powtarza, skontaktuj się z pomocą techniczną.",
     "SHIPPING_PROVIDER_AUTH_FAILED": "Przewoźnik {provider} nie zaakceptował zapisanych danych dostępowych. Zaktualizuj je w ustawieniach połączenia.",
     "SHIPPING_PROVIDER_REJECTED": "Przewoźnik {provider} odrzucił żądanie dotyczące przesyłki.",
+    "SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT": "Publikowanie na to połączenie jest zablokowane, bo jest ono jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty wróciłyby jako duplikaty. Wyłącz na połączeniu rolę Główny katalog produktów, aby publikować.",
     "SOURCING_RULE_DUPLICATE": "Reguła tego rodzaju już istnieje dla tego połączenia.",
     "SOURCING_RULE_INVALID": "Ta kombinacja reguły wyboru magazynu jest nieprawidłowa.",
     "SOURCING_RULE_LOCATION_NOT_FOUND": "Niektóre wybrane lokalizacje magazynowe już nie istnieją.",
