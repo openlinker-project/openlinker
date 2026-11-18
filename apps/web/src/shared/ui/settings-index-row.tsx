@@ -138,6 +138,11 @@ export function SettingsIndexRow({
         <div className="settings-row__value" role="status">
           <span className="settings-row__skeleton" aria-hidden="true" />
           <span className="sr-only">{stateText ?? copy.loading}</span>
+          {note ? (
+            <span className="settings-row__note" aria-hidden="true">
+              {note}
+            </span>
+          ) : null}
         </div>
       ) : valueState === 'error' ? (
         <div className="settings-row__value settings-row__value--error" role="alert">

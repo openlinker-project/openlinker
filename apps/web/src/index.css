@@ -41424,7 +41424,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .settings-page__card[data-plain] .settings-page__section-head p { max-width: 62ch; }
 @container (min-width: 64rem) {
-  .settings-page__card[data-plain] .settings-page__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-page__card[data-plain] .settings-page__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto auto 1fr;
+  }
   .settings-page__card[data-plain] .settings-page__section:first-child { grid-column: 1 / -1; }
   /* Two columns: the long Orders group runs down the right while the two
      shorter groups stack on the left, so neither column ends in a gap. This
@@ -41462,19 +41465,20 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* Hairlines are the 1px grid gap showing the bar's background, so they stay
    right however the cells wrap. */
 .settings-facts__cell {
-  flex: 1 1 9rem;
+  flex: 1 1 8.25rem;
   display: grid;
   align-content: start;
   gap: 2px;
   min-width: 0;
+  min-height: 4.5rem;
   padding: var(--space-3) var(--space-4);
   background: var(--bg-surface);
 }
 .settings-facts dt { font-size: 0.75rem; color: var(--text-muted); }
 .settings-facts dd { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; color: var(--text-primary); overflow-wrap: anywhere; }
 .settings-facts dd[data-mono] { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; overflow-wrap: normal; white-space: nowrap; }
-.settings-facts__cell[data-wide] { flex: 2 1 14rem; }
-.settings-facts .settings-facts__note { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+.settings-facts__cell[data-wide] { flex: 2 1 13rem; }
+.settings-facts .settings-facts__note { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Rows */
 .settings-index {
@@ -41495,23 +41499,26 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(1.75rem, auto);
   align-items: center;
   column-gap: var(--space-4);
-  min-height: 4rem;
+  min-height: 4.5rem;
   padding: var(--space-3) var(--space-4);
   transition: background-color var(--duration-fast) var(--ease-out);
 }
-.settings-row[data-has-icon] { grid-template-columns: 2rem minmax(0, 1fr) minmax(0, auto) minmax(1.75rem, auto); }
+.settings-row[data-has-icon] { grid-template-columns: 2.25rem minmax(0, 1fr) minmax(0, auto) minmax(1.75rem, auto); }
 .settings-row + .settings-row { border-top: 1px solid var(--border-subtle); }
 .settings-row:hover:not([data-locked]),
 .settings-row:has(.settings-row__link:focus-visible) { background: var(--bg-surface-muted); }
 .settings-row:active:not([data-locked]) { background: var(--bg-surface-hover); }
+.settings-glyph__node { fill: var(--settings-glyph-accent, var(--accent-primary)); }
+.settings-row[data-locked] .settings-glyph__node { fill: currentColor; }
 .settings-row__icon {
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface-muted);
+  box-shadow: var(--shadow-inset-top);
   color: var(--text-secondary);
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -41564,14 +41571,16 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .settings-row__skeleton {
   display: block;
   width: 4.5rem;
-  height: 1.375rem;
+  height: 1.5rem;
   border-radius: var(--radius-pill);
   background: var(--bg-muted);
 }
 .settings-chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
   max-width: 100%;
-  padding: 2px var(--space-2);
+  padding: 0 var(--space-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
   background: var(--bg-surface-muted);
@@ -41634,7 +41643,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @media (max-width: 767px) {
   .settings-row,
   .settings-row[data-has-icon] {
-    grid-template-columns: 2rem minmax(0, 1fr) minmax(1.75rem, auto);
+    grid-template-columns: 2.25rem minmax(0, 1fr) minmax(1.75rem, auto);
     row-gap: var(--space-2);
     padding: var(--space-3);
   }
@@ -41660,6 +41669,20 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .settings-row__chevron { transition: none; }
   .settings-row:hover .settings-row__chevron,
   .settings-row:active .settings-row__chevron { transform: none; }
+}
+
+/* One restrained reveal on load: the groups settle in order. Nothing else on the
+   page moves unprompted, and nothing at all under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .settings-page__card[data-plain] .settings-page__section {
+    animation: settings-group-in 160ms var(--ease-out) both;
+  }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(2) { animation-delay: 30ms; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(3) { animation-delay: 60ms; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(4) { animation-delay: 90ms; }
+}
+@keyframes settings-group-in {
+  from { opacity: 0; transform: translateY(4px); }
 }
 
 .whats-new__row-title .release-chip { margin-left: var(--space-2); }
