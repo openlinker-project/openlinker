@@ -19,13 +19,12 @@ import { Button } from '../../../shared/ui/button';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useReleaseActions } from '../hooks/use-release-actions';
-import { requestWhatsNew } from '../lib/release-center-requests';
-import { notificationStatusOf, stepStatusOf } from '../lib/release-notifications';
+import { notificationStatusOf } from '../lib/release-notifications';
 import { useReleaseCenterView } from './release-center-provider';
 import { ReleaseIcon } from './release-icon';
 import { ReleaseCard } from './release-card';
 
-type Tab = 'todo' | 'all' | 'archive';
+type Tab = 'active' | 'archive';
 
 /** The panel hangs 6px under the topbar and 14px (8px on a phone) from the right edge. */
 const PANEL_GAP_BELOW_TOPBAR = 6;
@@ -64,7 +63,7 @@ export function ReleaseBell(): ReactElement | null {
   const plural = usePlural();
   const actions = useReleaseActions();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>('todo');
+  const [tab, setTab] = useState<Tab>('active');
   const [ringing, setRinging] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [placement, setPlacement] = useState<PanelPlacement>({ side: 17, align: 0 });
@@ -87,14 +86,7 @@ export function ReleaseBell(): ReactElement | null {
   const visible = rows.filter((row) => row.status !== 'deleted');
   const active = visible.filter((row) => row.status === 'active');
   const archived = visible.filter((row) => row.status === 'archived');
-  const todo = active.filter((row) =>
-    view.instances.some(
-      (instance) =>
-        row.notification.stepKeys.includes(instance.itemKey) &&
-        stepStatusOf(view.state, instance.itemKey, view.now).status === 'open'
-    )
-  );
-  const shown = tab === 'todo' ? todo : tab === 'all' ? active : archived;
+  const shown = tab === 'active' ? active : archived;
   const unreadKeys = active.filter((row) => row.unread).map((row) => row.notification.itemKey);
 
   const srText =
@@ -170,16 +162,9 @@ export function ReleaseBell(): ReactElement | null {
             value={tab}
             onChange={setTab}
             options={[
-              { value: 'todo', label: (
+              { value: 'active', label: (
                   <>
-                    {panel.tabTodo}
-                    <span className="sr-only"> {todo.length}</span>
-                  </>
-                ),
-                hint: todo.length },
-              { value: 'all', label: (
-                  <>
-                    {panel.tabAll}
+                    {panel.tabActive}
                     <span className="sr-only"> {active.length}</span>
                   </>
                 ),
@@ -211,18 +196,6 @@ export function ReleaseBell(): ReactElement | null {
             ))
           )}
         </div>
-        <footer className="release-panel__foot">
-          <button
-            type="button"
-            className="release-panel__link"
-            onClick={() => {
-              requestWhatsNew({});
-              setOpen(false);
-            }}
-          >
-            {panel.footerChangelog}
-          </button>
-        </footer>
       </PopoverContent>
     </Popover>
   );

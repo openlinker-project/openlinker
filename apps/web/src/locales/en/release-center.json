@@ -50,7 +50,6 @@
     "emptyArchiveTitle": "Archive is empty",
     "emptyDoneBody": "Nothing is waiting for your decision. New changes show up after the next update.",
     "emptyDoneTitle": "All done",
-    "footerChangelog": "All changes in OpenLinker",
     "itemActions": "Notification actions",
     "markRead": "Mark as read",
     "menuArchive": "Archive",
@@ -77,9 +76,8 @@
     "stepsHide": "Hide steps",
     "stepsRegion": "Steps of release {version}",
     "stepsShow": "Show steps ({n})",
-    "tabAll": "All",
+    "tabActive": "Active",
     "tabArchive": "Archive",
-    "tabTodo": "To do",
     "tabsLabel": "Filter notifications",
     "title": "Notifications",
     "toastAllDone": "All steps marked as done.",
@@ -106,7 +104,7 @@
       "title": "Say whether another system packs parcels",
       "tourBody": "Choose who packs orders that arrive in this system. This changes only what OpenLinker shows. Nothing gets blocked.",
       "tourTitle": "Who packs the orders?",
-      "why": "If an external warehouse system packs the orders, tick \"This system packs and ships its own orders\". OpenLinker then hides its own \"Mark as packed\" button."
+      "why": "If an external warehouse system packs the orders, tick \"This system packs and ships orders itself\". OpenLinker then hides its own \"Mark as packed\" button."
     },
     "shipping-routing": {
       "title": "Check who ships each delivery method",
