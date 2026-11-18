@@ -81,4 +81,22 @@ describe('AmazonSetupForm', () => {
     await waitFor(() => expect(apiClient.connections.test).toHaveBeenCalledWith(created.id));
     expect(await screen.findByText('The connection works')).toBeInTheDocument();
   });
+
+  it('should word a failed connection test from its outcome, not the server text', async () => {
+    const apiClient = createMockApiClient();
+    vi.mocked(apiClient.connections.test).mockResolvedValue({
+      success: false,
+      status: 401,
+      message: 'Amazon refused the credentials.',
+      latencyMs: 12,
+      outcome: 'unauthorized',
+    });
+    renderWithProviders(<AmazonSetupForm />, { apiClient });
+
+    await fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+
+    expect(await screen.findByText(/^The platform refused the credentials\. Check the key or password\./)).toBeInTheDocument();
+  });
 });

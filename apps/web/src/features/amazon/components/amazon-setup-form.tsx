@@ -20,6 +20,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import {
+  describeConnectionTestFailure,
   useCreateConnectionMutation,
   useTestConnectionMutation,
   type ConnectionTestResult,
@@ -108,7 +109,8 @@ export function AmazonSetupForm(): ReactElement {
             tone={testResult.success ? 'success' : 'error'}
             title={testResult.success ? copy.testPassed : copy.testFailed}
           >
-            {testResult.message}
+            {/* The tester's own text is English; a failure is worded from its outcome. */}
+            {testResult.success ? null : describeConnectionTestFailure(testResult)}
           </Alert>
         ) : null}
         {testConnection.error ? (
