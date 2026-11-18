@@ -794,6 +794,11 @@ export class OrderRecordRepository
       if (normalized.length > 0) {
         const pattern = `%${OrderRecordRepository.escapeLikePattern(normalized)}%`;
         const trackingOrderIds = filters.searchTrackingOrderIds ?? [];
+        // #4229 - an OpenLinker order id (`ol_order_*`) is matched by substring
+        // too, so an operator holding an id from a log or ticket can find the
+        // order. ORed with `searchText` (alternate ways ONE query matches), and
+        // backed by `IDX_order_records_internalOrderId_trgm`; the normalized
+        // pattern is lowercase and keeps `_`, the same shape the id is minted in.
         if (trackingOrderIds.length > 0) {
           // #3528 — the tracking-number search resolves a shipment's owning
           // order BEFORE `orders` is ever asked (`orders` must not import
@@ -802,13 +807,14 @@ export class OrderRecordRepository
           // match, never ANDed: both are alternate ways ONE query can match
           // an order, not two conditions the order must satisfy together.
           qb.andWhere(
-            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" IN (:...searchTrackingOrderIds))',
+            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" IN (:...searchTrackingOrderIds))',
             { searchPattern: pattern, searchTrackingOrderIds: trackingOrderIds }
           );
         } else {
-          qb.andWhere('rec."searchText" LIKE :searchPattern ESCAPE \'\\\'', {
-            searchPattern: pattern,
-          });
+          qb.andWhere(
+            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" LIKE :searchPattern ESCAPE \'\\\')',
+            { searchPattern: pattern }
+          );
         }
       }
     }

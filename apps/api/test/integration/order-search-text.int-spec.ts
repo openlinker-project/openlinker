@@ -89,6 +89,21 @@ describe('order search text — trigram search (integration, #3527/#3528)', () =
     expect(bySku.items.map((o) => o.internalOrderId)).toContain('ol_order_pl_1');
   });
 
+  it('finds an order by a substring of its OpenLinker order id (#4229)', async () => {
+    await repository.upsert(makeOrder('ol_order_4229abcdef', { orderNumber: 'NO-ID-IN-TEXT' }));
+    await repository.upsert(makeOrder('ol_order_other0001', { orderNumber: 'ANOTHER' }));
+
+    const byFullId = await repository.findMany(
+      { search: 'ol_order_4229abcdef' },
+      { limit: 20, offset: 0 },
+    );
+    expect(byFullId.items.map((o) => o.internalOrderId)).toEqual(['ol_order_4229abcdef']);
+
+    const bySubstring = await repository.findMany({ search: '4229abc' }, { limit: 20, offset: 0 });
+    expect(bySubstring.items.map((o) => o.internalOrderId)).toEqual(['ol_order_4229abcdef']);
+    expect(await repository.countMany({ search: '4229abc' })).toBe(1);
+  });
+
   it('does not match an unrelated order', async () => {
     await repository.upsert(
       makeOrder('ol_order_pl_2', {
