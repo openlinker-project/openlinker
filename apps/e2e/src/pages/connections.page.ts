@@ -51,12 +51,12 @@ export class ConnectionDetailPage {
 
   /**
    * The "Order sync" panel on the health tab (#4228): its heading and the
-   * "Live" row that says the feed is syncing. Selectors are role/text based, so
+   * "New" row that says the feed is syncing. Selectors are role/text based, so
    * they follow the operator-visible copy rather than any class name.
    */
   async expectOrderSyncPanel(): Promise<void> {
     await expect(this.page.getByRole('heading', { name: 'Order sync' })).toBeVisible();
-    await expect(this.page.getByText('Live', { exact: true })).toBeVisible();
+    await expect(this.page.getByText('New', { exact: true })).toBeVisible();
   }
 
   // No trigger-sync accessors: every suite enqueues jobs through the API
