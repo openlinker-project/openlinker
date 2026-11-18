@@ -78,7 +78,7 @@ export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
 interface EnvironmentBadgeProps {
   appEnv?: string;
   compact?: boolean;
-  /** Release version, shown as a smaller line below the environment label, e.g. `"0.10.0"`. */
+  /** Release version, revealed beside the environment label on hover/focus, e.g. `"0.10.0"`. */
   version?: string;
   className?: string;
 }
@@ -94,7 +94,7 @@ export function EnvironmentBadge({
   const classes = [
     'context-chip',
     `context-chip--${environment.tone}`,
-    version ? 'environment-badge--stacked' : '',
+    version ? 'environment-badge--reveal' : '',
     className,
   ]
     .filter(Boolean)
@@ -106,12 +106,16 @@ export function EnvironmentBadge({
     : interpolate(copy.ariaLabel, { env: spokenName });
 
   return (
-    <span className={classes} aria-label={ariaLabel}>
+    <span className={classes} aria-label={ariaLabel} tabIndex={version ? 0 : undefined}>
       <span className="environment-badge__env">{label}</span>
       {/* An empty APP_VERSION means the build-time inject never ran — omit
           the line rather than render a fake-looking "v0.0.0". */}
       {version ? (
-        <span className="environment-badge__version">{interpolate(copy.version, { version })}</span>
+        <span className="environment-badge__version-clip">
+          <span className="environment-badge__version">
+            {interpolate(copy.version, { version })}
+          </span>
+        </span>
       ) : null}
     </span>
   );

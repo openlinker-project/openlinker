@@ -1412,27 +1412,58 @@ textarea,
   padding: 0;
 }
 
-/* ── Environment badge: version line (#3287) ─────────────────────────
- * The environment label (Dev/Stg/Prod) keeps its pre-existing single-line
- * layout; when a build version is available the badge stacks a second,
- * visibly smaller line below it rather than replacing the label.
+/* ── Environment badge: version on hover (#3287) ─────────────────────
+ * The badge rests as the single-line environment label. The release version
+ * slides out to its right on hover or keyboard focus, so the sidebar brand row
+ * keeps its height. The version stays in the DOM (it is also in the aria-label)
+ * and is only clipped, never display:none, so the width can animate.
  */
-.context-chip.environment-badge--stacked {
+.context-chip.environment-badge--reveal {
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
-  line-height: 1.15;
-  padding-block: 3px;
-  gap: 1px;
+  cursor: default;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .environment-badge__env {
   font-weight: 600;
 }
 
+.environment-badge__version-clip {
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-columns var(--duration-normal) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
+}
+
 .environment-badge__version {
-  font-size: 0.6875rem;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.75rem;
   font-weight: 400;
+  padding-left: 0;
+  transition: padding-left var(--duration-normal) var(--ease-out);
+}
+
+.environment-badge--reveal:hover .environment-badge__version-clip,
+.environment-badge--reveal:focus-visible .environment-badge__version-clip {
+  grid-template-columns: 1fr;
+  opacity: 1;
+}
+
+.environment-badge--reveal:hover .environment-badge__version,
+.environment-badge--reveal:focus-visible .environment-badge__version {
+  padding-left: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .environment-badge__version-clip,
+  .environment-badge__version {
+    transition: none;
+  }
 }
 
 .shell-nav {
