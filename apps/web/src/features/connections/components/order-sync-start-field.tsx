@@ -77,10 +77,12 @@ export function OrderSyncStartField({
 
   return (
     <div className="order-sync-start">
-      <div className="order-sync-start__intro">
-        <h3 className="order-sync-start__title">{copy.title}</h3>
-        <p className="muted-text">{restart ? copy.restartIntro : copy.intro}</p>
-      </div>
+      {restart ? null : (
+        <div className="order-sync-start__intro">
+          <h3 className="order-sync-start__title">{copy.title}</h3>
+          <p className="muted-text">{copy.intro}</p>
+        </div>
+      )}
 
       <div
         className="order-sync-start__cards"

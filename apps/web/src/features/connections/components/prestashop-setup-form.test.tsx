@@ -180,10 +180,10 @@ describe('PrestashopSetupForm', () => {
     });
     await advanceToStep(view.container, 3);
 
-    fireEvent.click(within(view.container).getByRole('radio', { name: /All order history/ }));
+    fireEvent.click(within(view.container).getByRole('radio', { name: /Every order the shop has/ }));
     await advanceOneStep(view.container);
 
-    expect(within(view.container).getAllByText('All history').length).toBeGreaterThan(0);
+    expect(within(view.container).getAllByText('Every order').length).toBeGreaterThan(0);
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     await findToastTitle('Connection created');

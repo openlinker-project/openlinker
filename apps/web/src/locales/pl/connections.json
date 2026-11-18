@@ -1100,78 +1100,78 @@
     "errorTitle": "Nie udało się wczytać synchronizacji zamówień",
     "eyebrow": "Zamówienia",
     "history": {
-      "badge": "Nie zaimportowano",
-      "caption": "Zamówienia złożone przed datą startu nie zostały zaimportowane.",
-      "label": "Historia"
+      "badge": "Twój wybór",
+      "caption": "Zamówienia sprzed startu zostały zaimportowane tylko wtedy, gdy wybrano to przy łączeniu albo zmianie startu.",
+      "label": "Starsze"
     },
     "live": {
-      "badge": "Synchronizuje",
-      "badgeBefore": "Start przed śledzeniem",
-      "before": "To połączenie synchronizuje się od czasu, zanim zapisywano daty startu.",
-      "from": "Od {date}",
-      "label": "Na żywo",
-      "lastActivity": "Ostatnia aktywność {when}",
-      "noActivity": "Brak aktywności"
+      "badge": "Pobiera",
+      "badgeBefore": "Działa",
+      "before": "To połączenie pobiera nowe zamówienia. Data jego startu nie została zapisana.",
+      "from": "Pobiera zamówienia od {date}",
+      "label": "Nowe",
+      "lastActivity": "Ostatnie sprawdzenie zamówień {when}",
+      "noActivity": "Jeszcze nie sprawdzano zamówień"
     },
-    "loadingMessage": "Sprawdzamy, od kiedy synchronizowane są zamówienia.",
+    "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
     "loadingTitle": "Wczytywanie synchronizacji zamówień",
     "restart": {
-      "action": "Uruchom synchronizację zamówień od nowa…",
+      "action": "Zmień start…",
       "cancel": "Anuluj",
-      "confirm": "Uruchom od nowa",
-      "confirming": "Uruchamianie…",
-      "description": "Wybierz, od kiedy ma działać synchronizacja zamówień. Zamówienia, które już zaimportowano, zostają bez zmian.",
-      "failedTitle": "Nie udało się uruchomić synchronizacji od nowa",
-      "gapNote": "Zamówienia złożone od ostatniego sprawdzenia do teraz nie zostaną zaimportowane.",
-      "successMessage": "Następne sprawdzenie zamówień zacznie się od Twojego wyboru.",
-      "successTitle": "Synchronizacja zamówień uruchomiona od nowa",
-      "title": "Uruchom synchronizację zamówień od nowa"
+      "confirm": "Zastosuj zmianę",
+      "confirming": "Zapisywanie…",
+      "description": "Zamówienia, które OpenLinker już ma, zostają. Zmiana decyduje tylko o tym, które zamówienia OpenLinker pobierze ze sklepu jako następne.",
+      "failedTitle": "Nie udało się zmienić startu",
+      "gapNote": "Zamówienia złożone między ostatnim sprawdzeniem a teraz zostaną pominięte.",
+      "repeatNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
+      "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
+      "successTitle": "Start zmieniony",
+      "title": "Zmień, od kiedy pobierane są zamówienia"
     },
     "retry": "Ponów",
     "title": "Synchronizacja zamówień"
   },
   "orderSyncStart": {
     "all": {
-      "delay": "Nowe zamówienia czekają za importem, więc mogą dotrzeć z opóźnieniem sięgającym godzin.",
-      "documents": "Faktury i paragony fiskalne są wystawiane dzisiaj, jeśli włączone jest automatyczne wystawianie.",
-      "orders": "Każde stare zamówienie jest tworzone ponownie w każdym sklepie docelowym, razem z klientem.",
-      "stock": "Stan magazynowy jest rezerwowany dla zamówień, które już wysłano.",
+      "delay": "Nowe zamówienia czekają za importem i mogą dotrzeć nawet po kilku godzinach.",
+      "documents": "Jeśli włączone jest automatyczne wystawianie, OpenLinker wystawi faktury i paragony za stare sprzedaże, z dzisiejszą datą.",
+      "orders": "Każde stare zamówienie zostanie skopiowane do każdego podłączonego sklepu, razem z klientem.",
+      "stock": "Stan jest rezerwowany pod zamówienia, które już wysłano, więc dostępny stan może wyglądać na zaniżony.",
       "warningTitle": "Stare zamówienia traktujemy jak nowe"
     },
-    "dateLabel": "Data początkowa",
+    "dateLabel": "Pierwszy dzień importu",
     "info": {
       "from": "Zamówienia złożone przed {date} nie zostaną zaimportowane.",
-      "now": "Nic sprzed kliknięcia Połącz nie zostanie zaimportowane. Zamówienia będą docierać od tej chwili."
+      "now": "Zamówienia, które już są w sklepie, tam zostają i nie są importowane. Importujemy tylko te złożone od teraz."
     },
-    "intro": "OpenLinker tworzy każde zaimportowane zamówienie w Twoich pozostałych podłączonych systemach, więc wybierz, od kiedy zacząć. Po pierwszej synchronizacji nie można tego zmienić.",
+    "intro": "Każde pobrane zamówienie OpenLinker kopiuje do Twoich pozostałych sklepów i systemów. Wybierz, od kiedy zacząć, żeby nie kopiować zamówień, które są już obsłużone.",
     "modes": {
       "all": {
-        "description": "Każde zamówienie, jakie kiedykolwiek wpłynęło do sklepu.",
-        "title": "Cała historia zamówień"
+        "description": "Cała historia, nawet najstarsza. Wybierz tylko wtedy, gdy chcesz mieć każde zamówienie w OpenLinker.",
+        "title": "Wszystkie zamówienia ze sklepu"
       },
       "from": {
-        "description": "Zamówienia złożone od wybranego dnia, a potem wszystkie nowe.",
-        "title": "Zamówienia od daty"
+        "description": "Zamówienia złożone od wybranego dnia oraz wszystkie nowe po nim.",
+        "title": "Zamówienia od wybranej daty"
       },
       "now": {
-        "description": "Zamówienia złożone po połączeniu. To, co już jest w sklepie, tam zostaje.",
+        "description": "Zamówienia złożone od teraz. Starsze zostają w sklepie i nie są kopiowane.",
         "title": "Tylko nowe zamówienia"
       }
     },
     "recommended": "Zalecane",
-    "restartIntro": "Zamówienia, które już zaimportowano, zostają bez zmian. Zmienia się tylko to, które zamówienia przeczyta następne sprawdzenie.",
     "review": {
-      "all": "Cała historia",
+      "all": "Wszystkie",
       "from": "Od {date}",
-      "label": "Historia zamówień",
-      "now": "Tylko nowe zamówienia"
+      "label": "Zamówienia do importu",
+      "now": "Tylko nowe"
     },
     "slow": "Wolno",
-    "title": "Od których zamówień zacząć import?",
+    "title": "Które zamówienia OpenLinker ma pobrać?",
     "unsupported": {
-      "all": "OpenLinker nie potrafi jeszcze zaimportować całej historii tego źródła.",
-      "from": "Start od daty nie jest jeszcze dostępny dla tego źródła.",
-      "now": "Start od teraz nie jest jeszcze dostępny dla tego źródła."
+      "all": "OpenLinker nie umie jeszcze zaimportować pełnej historii tego połączenia.",
+      "from": "Wybór daty startu nie jest jeszcze dostępny dla tego połączenia.",
+      "now": "Start od teraz nie jest jeszcze dostępny dla tego połączenia."
     }
   },
   "orderSyncStartSchema": {

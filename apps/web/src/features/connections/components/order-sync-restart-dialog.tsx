@@ -103,6 +103,7 @@ export function OrderSyncRestartDialog({
             restart
           />
           {value.mode === 'now' ? <Alert tone="warning">{copy.gapNote}</Alert> : null}
+          {value.mode !== 'now' ? <p className="muted-text">{copy.repeatNote}</p> : null}
         </div>
 
         <DialogFooter>

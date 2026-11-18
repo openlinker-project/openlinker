@@ -39,22 +39,22 @@ describe('OrderSyncStartField', () => {
 
   it('preselects only new orders and states what it means', () => {
     renderWithProviders(<Harness />);
-    expect(screen.getByRole('radio', { name: /Only new orders/ })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: /New orders only/ })).toHaveAttribute(
       'aria-checked',
       'true',
     );
-    expect(screen.getByText(/Nothing from before you click Connect/)).toBeInTheDocument();
+    expect(screen.getByText(/Orders already in the shop stay there/)).toBeInTheDocument();
   });
 
   it('reveals a date input capped at yesterday for "from a date"', () => {
     const onValue = vi.fn();
     renderWithProviders(<Harness onValue={onValue} />);
-    fireEvent.click(screen.getByRole('radio', { name: /Orders from a date/ }));
-    const input = screen.getByLabelText('Start date');
+    fireEvent.click(screen.getByRole('radio', { name: /Orders since a date/ }));
+    const input = screen.getByLabelText('First day to import');
     expect(input).toHaveAttribute('max', latestOrderSyncStartDate());
     fireEvent.change(input, { target: { value: '2026-01-05' } });
     expect(onValue).toHaveBeenLastCalledWith({ mode: 'from', from: '2026-01-05' });
-    expect(screen.getByText(/will not be imported/)).toBeInTheDocument();
+    expect(screen.getByText(/are not imported/)).toBeInTheDocument();
   });
 
   it('shows the field error for a bad date', () => {
@@ -64,25 +64,25 @@ describe('OrderSyncStartField', () => {
 
   it('warns about the consequences when all history is chosen', () => {
     renderWithProviders(<Harness />);
-    fireEvent.click(screen.getByRole('radio', { name: /All order history/ }));
-    expect(screen.getByText('Old orders are treated like new ones')).toBeInTheDocument();
-    expect(screen.getByText(/created again in every destination shop/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /Every order the shop has/ }));
+    expect(screen.getByText('Old orders are handled like new ones')).toBeInTheDocument();
+    expect(screen.getByText(/copied again to every connected shop/)).toBeInTheDocument();
   });
 
   it('keeps an unsupported card visible, disabled, with the reason, and refuses it', () => {
     const onValue = vi.fn();
     renderWithProviders(<Harness supportedModes={['now', 'all']} onValue={onValue} />);
-    const card = screen.getByRole('radio', { name: /Orders from a date/ });
+    const card = screen.getByRole('radio', { name: /Orders since a date/ });
     expect(card).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText(/not available for this source yet/)).toBeInTheDocument();
+    expect(screen.getByText(/not available for this connection yet/)).toBeInTheDocument();
     fireEvent.click(card);
     expect(onValue).not.toHaveBeenCalled();
   });
 
   it('moves between enabled cards with the arrow keys, skipping a disabled one', () => {
     renderWithProviders(<Harness supportedModes={['now', 'all']} />);
-    fireEvent.keyDown(screen.getByRole('radio', { name: /Only new orders/ }), { key: 'ArrowRight' });
-    expect(screen.getByRole('radio', { name: /All order history/ })).toHaveAttribute(
+    fireEvent.keyDown(screen.getByRole('radio', { name: /New orders only/ }), { key: 'ArrowRight' });
+    expect(screen.getByRole('radio', { name: /Every order the shop has/ })).toHaveAttribute(
       'aria-checked',
       'true',
     );

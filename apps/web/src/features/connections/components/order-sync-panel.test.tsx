@@ -76,7 +76,7 @@ describe('OrderSyncPanel', () => {
     expect(await screen.findByText('Could not load order sync')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByText('Started before tracking')).toBeInTheDocument();
+    expect(await screen.findByText('Running')).toBeInTheDocument();
   });
 
   it('shows the live row with the start date when a start was recorded', async () => {
@@ -89,29 +89,29 @@ describe('OrderSyncPanel', () => {
       ),
     );
 
-    expect(await screen.findByText('Syncing')).toBeInTheDocument();
-    expect(screen.getByText(/^From /)).toBeInTheDocument();
-    expect(screen.getByText(/Last activity/)).toBeInTheDocument();
+    expect(await screen.findByText('Importing')).toBeInTheDocument();
+    expect(screen.getByText(/^Importing orders since /)).toBeInTheDocument();
+    expect(screen.getByText(/Last order check/)).toBeInTheDocument();
   });
 
   it('shows an honest absence, not a date, when no start was recorded', async () => {
     renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderSyncStartedAt: null })));
 
-    expect(await screen.findByText('Started before tracking')).toBeInTheDocument();
+    expect(await screen.findByText('Running')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'This connection has been syncing since before start dates were recorded.',
+        'This connection imports new orders. Its start date was not recorded.',
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/^From /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Importing orders since /)).not.toBeInTheDocument();
   });
 
   it('states that earlier orders were not imported, with no import action', async () => {
     renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
 
-    expect(await screen.findByText('Not imported')).toBeInTheDocument();
+    expect(await screen.findByText('Your choice')).toBeInTheDocument();
     expect(
-      screen.getByText('Orders placed before the start date were not imported.'),
+      screen.getByText('Orders from before the start were imported only if you chose that when connecting or changing the start.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /import/i })).not.toBeInTheDocument();
   });
@@ -140,9 +140,9 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: /Restart order sync/ }));
-      await user.click(await screen.findByRole('radio', { name: /All order history/ }));
-      await user.click(screen.getByRole('button', { name: 'Restart sync' }));
+      await user.click(await screen.findByRole('button', { name: /Change start/ }));
+      await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+      await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
       expect(restartOrderSync).toHaveBeenCalledWith('conn_1', { mode: 'all' });
     });
@@ -170,10 +170,10 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: /Restart order sync/ }));
-      await user.click(await screen.findByRole('radio', { name: /Orders from a date/ }));
+      await user.click(await screen.findByRole('button', { name: /Change start/ }));
+      await user.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
 
-      expect(screen.getByRole('button', { name: 'Restart sync' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Apply change' })).toBeDisabled();
       expect(restartOrderSync).not.toHaveBeenCalled();
     });
   });

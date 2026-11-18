@@ -1074,78 +1074,78 @@
     "errorTitle": "Could not load order sync",
     "eyebrow": "Orders",
     "history": {
-      "badge": "Not imported",
-      "caption": "Orders placed before the start date were not imported.",
-      "label": "History"
+      "badge": "Your choice",
+      "caption": "Orders from before the start were imported only if you chose that when connecting or changing the start.",
+      "label": "Older"
     },
     "live": {
-      "badge": "Syncing",
-      "badgeBefore": "Started before tracking",
-      "before": "This connection has been syncing since before start dates were recorded.",
-      "from": "From {date}",
-      "label": "Live",
-      "lastActivity": "Last activity {when}",
-      "noActivity": "No activity yet"
+      "badge": "Importing",
+      "badgeBefore": "Running",
+      "before": "This connection imports new orders. Its start date was not recorded.",
+      "from": "Importing orders since {date}",
+      "label": "New",
+      "lastActivity": "Last order check {when}",
+      "noActivity": "No order check yet"
     },
     "loadingMessage": "Checking where order sync starts.",
     "loadingTitle": "Loading order sync",
     "restart": {
-      "action": "Restart order sync…",
+      "action": "Change start…",
       "cancel": "Cancel",
-      "confirm": "Restart sync",
-      "confirming": "Restarting…",
-      "description": "Choose where order sync starts from now on. Orders already imported stay as they are.",
-      "failedTitle": "Could not restart order sync",
-      "gapNote": "Orders placed since the last check and before now will not be imported.",
-      "successMessage": "The next order check starts from your choice.",
-      "successTitle": "Order sync restarted",
-      "title": "Restart order sync"
+      "confirm": "Apply change",
+      "confirming": "Saving…",
+      "description": "Orders OpenLinker already has stay. This only decides which orders it reads from the shop next.",
+      "failedTitle": "Could not change the start",
+      "gapNote": "Orders placed between the last check and now are skipped.",
+      "repeatNote": "Orders OpenLinker already has are updated, not created twice.",
+      "successMessage": "The next order check uses the new start.",
+      "successTitle": "Start changed",
+      "title": "Change where order sync starts"
     },
     "retry": "Retry",
     "title": "Order sync"
   },
   "orderSyncStart": {
     "all": {
-      "delay": "New orders wait behind the import, so they can arrive hours late.",
-      "documents": "Invoices and fiscal receipts are issued today if automatic issuing is on.",
-      "orders": "Each old order is created again in every destination shop, with its customer.",
-      "stock": "Stock is reserved for orders that already shipped.",
-      "warningTitle": "Old orders are treated like new ones"
+      "delay": "New orders wait behind the import and can arrive hours late.",
+      "documents": "If automatic invoicing is on, OpenLinker issues invoices and receipts for old sales, dated today.",
+      "orders": "Each old order is copied again to every connected shop, with its customer.",
+      "stock": "Stock is held for orders that already shipped, so available stock can look too low.",
+      "warningTitle": "Old orders are handled like new ones"
     },
-    "dateLabel": "Start date",
+    "dateLabel": "First day to import",
     "info": {
-      "from": "Orders placed before {date} will not be imported.",
-      "now": "Nothing from before you click Connect will be imported. Orders arrive from then on."
+      "from": "Orders placed before {date} are not imported.",
+      "now": "Orders already in the shop stay there and are not imported. Only orders placed from now on are."
     },
-    "intro": "OpenLinker creates every imported order in your other connected systems, so choose where it starts. You cannot change this after the first sync.",
+    "intro": "Every order OpenLinker brings in is copied to your other connected shops and systems. Pick where to start, so you do not copy orders you already handled.",
     "modes": {
       "all": {
-        "description": "Every order the shop has ever received.",
-        "title": "All order history"
+        "description": "All past orders, however old. Choose this only if you want every one of them in OpenLinker.",
+        "title": "Every order the shop has"
       },
       "from": {
-        "description": "Orders placed on or after the day you choose, then everything new.",
-        "title": "Orders from a date"
+        "description": "Orders placed on or after the day you pick, and every new order after that.",
+        "title": "Orders since a date"
       },
       "now": {
-        "description": "Orders placed after you connect. Everything already in the shop stays there.",
-        "title": "Only new orders"
+        "description": "Orders placed from now on. Older orders stay in the shop and are never copied.",
+        "title": "New orders only"
       }
     },
     "recommended": "Recommended",
-    "restartIntro": "Orders already imported stay as they are. This only changes which orders the next check reads.",
     "review": {
-      "all": "All history",
-      "from": "From {date}",
-      "label": "Order history",
-      "now": "Only new orders"
+      "all": "Every order",
+      "from": "Since {date}",
+      "label": "Orders to import",
+      "now": "New orders only"
     },
     "slow": "Slow",
-    "title": "Which orders should we import first?",
+    "title": "Which orders should OpenLinker bring in?",
     "unsupported": {
-      "all": "OpenLinker cannot import the whole history of this source yet.",
-      "from": "Starting from a date is not available for this source yet.",
-      "now": "Starting from now is not available for this source yet."
+      "all": "OpenLinker cannot import the full history of this connection yet.",
+      "from": "Choosing a start date is not available for this connection yet.",
+      "now": "Starting from now is not available for this connection yet."
     }
   },
   "orderSyncStartSchema": {
