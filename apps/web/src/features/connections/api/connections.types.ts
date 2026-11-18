@@ -162,6 +162,15 @@ export interface ConnectionFilters {
   status?: ConnectionStatus;
 }
 
+export const ORDER_SYNC_START_MODE_VALUES = ['now', 'from', 'all'] as const;
+export type OrderSyncStartMode = (typeof ORDER_SYNC_START_MODE_VALUES)[number];
+
+/** Mirrors the backend create-request contract (#4228). `from` is a `YYYY-MM-DD` date. */
+export type OrderSyncStart =
+  | { mode: 'now' }
+  | { mode: 'from'; from: string }
+  | { mode: 'all' };
+
 export interface CreateConnectionInput {
   name: string;
   platformType: PlatformType;
@@ -178,6 +187,11 @@ export interface CreateConnectionInput {
    * runtime-aware DTO validator follow-up lands (#576).
    */
   enabledCapabilities?: CoreCapability[];
+  /**
+   * Where order sync starts (#4228). Absent means "only new orders", which is
+   * what the backend does with no value.
+   */
+  orderSyncStart?: OrderSyncStart;
 }
 
 export interface UpdateConnectionInput {

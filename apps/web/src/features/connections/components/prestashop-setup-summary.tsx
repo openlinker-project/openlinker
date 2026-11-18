@@ -10,7 +10,8 @@
  *
  * @see {@link PrestashopSetupForm} for the form this summary is paired with.
  */
-import { useMessages } from '../../../shared/i18n';
+import { useFormat, useMessages } from '../../../shared/i18n';
+import { describeOrderSyncStart, readsOrders } from '../lib/order-sync-start';
 import type { ReactElement } from 'react';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
@@ -30,6 +31,8 @@ export function PrestashopSetupSummary({
   values,
 }: PrestashopSetupSummaryProps): ReactElement {
   const copy = useMessages('connections').prestashopSetupSummary;
+  const orderCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const webserviceEndpoint =
     values.baseUrl && values.baseUrl.length > 0 ? `${trimTrailingSlash(values.baseUrl)}/api` : null;
   const selectedCapabilities = values.enabledCapabilities ?? [];
@@ -52,6 +55,12 @@ export function PrestashopSetupSummary({
             value={values.currency ? values.currency : null}
             mono
           />
+          {readsOrders(values.enabledCapabilities) ? (
+            <WizardSummaryRow
+              label={orderCopy.review.label}
+              value={describeOrderSyncStart(values.orderSyncStart, orderCopy.review, format.date)}
+            />
+          ) : null}
         </dl>
       </section>
 

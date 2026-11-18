@@ -9,6 +9,7 @@ import {
 import { masterSweepCompletedAtCursorKey, masterSweepCursorKey } from './master-sweep-cursor.types';
 
 import { orderFeedSeededAtCursorKey } from './order-feed-seed-cursor.types';
+import { ORDER_SYNC_START_CURSOR_KEY } from './order-sync-start.types';
 
 describe('resolveCursorCatalogueEntry', () => {
   it.each([
@@ -47,6 +48,7 @@ describe('resolveCursorCatalogueEntry', () => {
     ],
     [masterSweepCompletedAtCursorKey('product', 'c1'), 'completion-stamp', null, null],
     [orderFeedSeededAtCursorKey('marketplace.orders.lastEventId'), 'completion-stamp', null, null],
+    [ORDER_SYNC_START_CURSOR_KEY, 'completion-stamp', null, null],
     [`${OFFER_QUANTITY_WRITE_MARK_PREFIX}9`, 'write-order', null, null],
   ])('should classify %s', (key, family, writerJobType, rewind) => {
     expect(resolveCursorCatalogueEntry(key)).toEqual({ family, writerJobType, rewind });

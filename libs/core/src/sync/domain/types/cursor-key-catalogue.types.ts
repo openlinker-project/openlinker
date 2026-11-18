@@ -172,6 +172,13 @@ const ROWS: readonly CatalogueRow[] = [
     rewind: null,
   },
   {
+    // #4228: the operator's one-shot start choice, consumed by the first poll.
+    match: /^orders\.syncStart$/,
+    family: 'completion-stamp',
+    writerJobType: null,
+    rewind: null,
+  },
+  {
     match: /\.seededAt$/,
     family: 'completion-stamp',
     writerJobType: null,

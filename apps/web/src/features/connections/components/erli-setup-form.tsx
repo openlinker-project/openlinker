@@ -28,6 +28,7 @@ import { useCreateConnectionMutation } from '../hooks/use-create-connection-muta
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
+  ERLI_ADAPTER_KEY,
   ERLI_SETUP_DEFAULT_VALUES,
   erliSetupSchema,
   toCreateConnectionInput,
@@ -35,6 +36,13 @@ import {
   type ErliSetupFormValues,
 } from './erli-setup.schema';
 import { ErliSetupSummary } from './erli-setup-summary';
+import { OrderSyncStartField } from './order-sync-start-field';
+import { useAdaptersQuery } from '../../adapters';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+} from '../lib/order-sync-start';
 import {
   DEFAULT_DELIVERY_WIZARD_VALUE,
   DeliveryWizardStep,
@@ -64,6 +72,7 @@ const PRODUCTION_URL = 'https://erli.pl';
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ErliSetupFormValues>>> = [
   ['name', 'apiKey', 'environment'],
   [],
+  ['orderSyncStart'],
   [],
 ];
 
@@ -79,9 +88,15 @@ export function ErliSetupForm(): ReactElement {
   const STEP_LABELS = [
     copy.steps.credentials,
     copy.steps.salesDocuments,
+    copy.steps.orders,
     copy.steps.review,
   ];
   const format = useFormat();
+  const orderStartCopy = useMessages('connections').orderSyncStart;
+  const adaptersQuery = useAdaptersQuery();
+  const orderSyncStartModes =
+    adaptersQuery.data?.find((a) => a.adapterKey === ERLI_ADAPTER_KEY)?.orderSyncStartModes ??
+    ORDER_SYNC_START_DEFAULT_MODES;
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -262,6 +277,17 @@ export function ErliSetupForm(): ReactElement {
         ) : null}
 
         {stepIndex === 2 ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepIndex === 3 ? (
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '-'}</dd>
@@ -271,6 +297,8 @@ export function ErliSetupForm(): ReactElement {
             <dd>{values.environment === 'production' ? copy.environments.production : copy.environments.sandbox}</dd>
             <dt>{copy.review.deliveryOnDocuments}</dt>
             <dd>{deliverySummary}</dd>
+            <dt>{orderStartCopy.review.label}</dt>
+            <dd>{describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}</dd>
           </dl>
         ) : null}
 

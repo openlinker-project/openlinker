@@ -922,6 +922,7 @@
     },
     "steps": {
       "credentials": "Credentials",
+      "orders": "Order history",
       "review": "Review & connect",
       "salesDocuments": "Sales documents"
     },
@@ -1091,6 +1092,55 @@
     "retry": "Retry",
     "title": "Order sync"
   },
+  "orderSyncStart": {
+    "all": {
+      "delay": "New orders wait behind the import, so they can arrive hours late.",
+      "documents": "Invoices and fiscal receipts are issued today if automatic issuing is on.",
+      "orders": "Each old order is created again in every destination shop, with its customer.",
+      "stock": "Stock is reserved for orders that already shipped.",
+      "warningTitle": "Old orders are treated like new ones"
+    },
+    "dateLabel": "Start date",
+    "info": {
+      "from": "Orders placed before {date} will not be imported.",
+      "now": "Nothing from before you click Connect will be imported. Orders arrive from then on."
+    },
+    "intro": "OpenLinker creates every imported order in your other connected systems, so choose where it starts. You cannot change this after the first sync.",
+    "modes": {
+      "all": {
+        "description": "Every order the shop has ever received.",
+        "title": "All order history"
+      },
+      "from": {
+        "description": "Orders placed on or after the day you choose, then everything new.",
+        "title": "Orders from a date"
+      },
+      "now": {
+        "description": "Orders placed after you connect. Everything already in the shop stays there.",
+        "title": "Only new orders"
+      }
+    },
+    "recommended": "Recommended",
+    "review": {
+      "all": "All history",
+      "from": "From {date}",
+      "label": "Order history",
+      "now": "Only new orders"
+    },
+    "slow": "Slow",
+    "title": "Which orders should we import first?",
+    "unsupported": {
+      "all": "This source cannot import its whole history.",
+      "from": "This source cannot filter orders by date.",
+      "now": "This source cannot start from now."
+    }
+  },
+  "orderSyncStartSchema": {
+    "dateFuture": "Choose a day before today",
+    "dateInvalid": "Enter a valid date",
+    "dateRequired": "Choose the first day to import",
+    "dateTooOld": "Choose a day within the last 5 years"
+  },
   "paymentWriteback": {
     "factCod": "Cash on delivery and cancelled orders are never marked paid.",
     "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",
@@ -1193,6 +1243,7 @@
     "steps": {
       "capabilities": "Capabilities",
       "credentials": "Credentials",
+      "orders": "Order history",
       "review": "Review & connect",
       "verify": "Verify credentials"
     },
@@ -1679,6 +1730,7 @@
     "steps": {
       "capabilities": "Capabilities",
       "credentials": "API credentials",
+      "orders": "Order history",
       "review": "Review & create",
       "store": "Store details"
     }

@@ -40214,3 +40214,85 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .sync-progress__confirm,
   .sync-guide__item[data-focus='true'] { animation: none; }
 }
+
+/* ── Order sync start (#4228) ───────────────────────────────────────────── */
+.order-sync-start {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.order-sync-start__title {
+  margin: 0 0 var(--space-1);
+  font-size: 1.125rem;
+  color: var(--text-primary);
+}
+
+.order-sync-start__intro p {
+  margin: 0;
+}
+
+.order-sync-start__cards {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.order-sync-start__card {
+  cursor: pointer;
+  outline: none;
+}
+
+.order-sync-start__card:focus-visible {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.order-sync-start__card--checked {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+}
+
+.order-sync-start__card--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.order-sync-start__card--disabled:hover {
+  border-color: var(--border-default);
+  box-shadow: none;
+}
+
+.order-sync-start__reason {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+
+.order-sync-start__reveal {
+  display: grid;
+  gap: var(--space-3);
+  animation: order-sync-start-reveal 160ms ease-out;
+}
+
+.order-sync-start__consequences {
+  margin: 0;
+  padding-left: 1.125rem;
+  display: grid;
+  gap: var(--space-1);
+}
+
+@keyframes order-sync-start-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-sync-start__reveal {
+    animation: none;
+  }
+}

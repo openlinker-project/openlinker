@@ -569,6 +569,59 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
+  describe('cursorForDate (#4228)', () => {
+    it('should return a cursor at the start of the date after probing the date filter', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const cursor = await adapter.cursorForDate('2026-10-01');
+
+      expect(cursor).toBe('2026-10-01 00:00:00|0');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        expect.objectContaining({ updatedAfter: '2026-10-01 00:00:00' }),
+        1,
+        0
+      );
+    });
+
+    it('should use the date part of a full instant', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.cursorForDate('2026-10-01T22:30:00Z')).resolves.toBe(
+        '2026-10-01 00:00:00|0'
+      );
+    });
+
+    it('should refuse, never falling back to the whole history, when the shop will not filter by date_upd', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        );
+
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow(/cannot start from a date/);
+
+      // The refusal is remembered, so the next attempt fails without a request.
+      mockHttpClient.listResources = jest.fn();
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow(/cannot start from a date/);
+      expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow('boom');
+    });
+
+    it('should refuse an unreadable date', async () => {
+      await expect(adapter.cursorForDate('soon')).rejects.toThrow('expected an ISO date');
+    });
+  });
+
   describe('listOrderFeed — date_upd sort/filter fallback (#2877)', () => {
     /**
      * PrestaShop's own refusal, verified live on 9.0.2: `date_upd` is not on

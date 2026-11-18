@@ -53,6 +53,7 @@ import {
 } from '@openlinker/core/integrations';
 import type { ConnectionCredentialsRewriterPort } from '@openlinker/core/integrations';
 import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
+import { SYNC_CURSORS_SERVICE_TOKEN } from '@openlinker/core/sync';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { AllegroConnectionConfigShapeValidatorAdapter } from '@openlinker/integrations-allegro';
 import {
@@ -73,6 +74,7 @@ describe('ConnectionService', () => {
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let destinationTaxonomy: jest.Mocked<IDestinationTaxonomyService>;
   let locations: jest.Mocked<ILocationService>;
+  let syncCursors: { advanceCursor: jest.Mock };
   let credentials: jest.Mocked<ICredentialsService>;
   let testerRegistry: ConnectionTesterRegistryService;
   let mockTester: jest.Mocked<ConnectionTesterPort>;
@@ -230,9 +232,12 @@ describe('ConnectionService', () => {
       getLocation: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ILocationService>;
 
+    const mockSyncCursors = { advanceCursor: jest.fn().mockResolvedValue(undefined) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionService,
+        { provide: SYNC_CURSORS_SERVICE_TOKEN, useValue: mockSyncCursors },
         { provide: CONNECTION_PORT_TOKEN, useValue: mockConnectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrationsService },
         { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
@@ -265,6 +270,7 @@ describe('ConnectionService', () => {
     destinationTaxonomy = module.get(DESTINATION_TAXONOMY_SERVICE_TOKEN);
     credentials = module.get(CREDENTIALS_SERVICE_TOKEN);
     locations = module.get(LOCATION_SERVICE_TOKEN);
+    syncCursors = module.get(SYNC_CURSORS_SERVICE_TOKEN);
   });
 
   describe('create', () => {
@@ -313,6 +319,106 @@ describe('ConnectionService', () => {
       const rest: ConnectionCreateInput = { ...payload };
       delete rest.credentialsRef;
       await expect(service.create(rest)).rejects.toThrow(/Exactly one of/);
+    });
+
+    describe('order sync start (#4228)', () => {
+      const dateModes = {
+        adapterKey: 'prestashop.webservice.v1',
+        platformType: 'prestashop',
+        supportedCapabilities: ['ProductMaster', 'OrderSource'],
+        orderSyncStartModes: ['now', 'from', 'all'],
+      };
+      const recent = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+      it('should store a valid choice as an intent cursor and never touch config', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, orderSyncStart: { mode: 'all' } });
+
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          mockConnection.id,
+          'orders.syncStart',
+          '{"mode":"all"}'
+        );
+        const created = connectionPort.create.mock.calls[0][0] as unknown as Record<string, unknown>;
+        expect(created).not.toHaveProperty('orderSyncStart');
+        expect(created.config).toEqual(payload.config);
+      });
+
+      it('should store nothing when no choice was made', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create(payload);
+
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+      });
+
+      it('should store a from date when the adapter declares the mode', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(dateModes as never);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, orderSyncStart: { mode: 'from', from: recent } });
+
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          mockConnection.id,
+          'orders.syncStart',
+          JSON.stringify({ mode: 'from', from: recent })
+        );
+      });
+
+      it('should refuse a choice when OrderSource is not enabled', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            enabledCapabilities: ['ProductMaster'],
+            orderSyncStart: { mode: 'now' },
+          })
+        ).rejects.toThrow(/OrderSource/);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse from when the adapter does not declare it', async () => {
+        await expect(
+          service.create({ ...payload, orderSyncStart: { mode: 'from', from: recent } })
+        ).rejects.toThrow(/not supported by this adapter/);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse a mode that does not exist', async () => {
+        await expect(
+          service.create({ ...payload, orderSyncStart: { mode: 'later' } as never })
+        ).rejects.toThrow(/must be one of/);
+      });
+
+      it.each([
+        ['a future date', '2999-01-01', /future/],
+        ['a date older than five years', '2001-01-01', /5 years/],
+        ['an unparseable date', 'soon', /ISO date/],
+      ])('should refuse from with %s', async (_label, from, message) => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(dateModes as never);
+
+        await expect(
+          service.create({ ...payload, orderSyncStart: { mode: 'from', from } })
+        ).rejects.toThrow(message);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse from without a date', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(dateModes as never);
+
+        await expect(
+          service.create({ ...payload, orderSyncStart: { mode: 'from' } as never })
+        ).rejects.toThrow(/ISO date/);
+      });
+
+      it('should tell the operator when the choice could not be saved', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        syncCursors.advanceCursor.mockRejectedValueOnce(new Error('db down'));
+
+        await expect(
+          service.create({ ...payload, orderSyncStart: { mode: 'now' } })
+        ).rejects.toThrow(/could not be saved/);
+      });
     });
 
     describe('unique config keys (#3391)', () => {

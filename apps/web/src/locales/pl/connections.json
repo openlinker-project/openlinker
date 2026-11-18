@@ -948,6 +948,7 @@
     },
     "steps": {
       "credentials": "Dane dostępowe",
+      "orders": "Historia zamówień",
       "review": "Sprawdź i połącz",
       "salesDocuments": "Dokumenty sprzedaży"
     },
@@ -1117,6 +1118,55 @@
     "retry": "Ponów",
     "title": "Synchronizacja zamówień"
   },
+  "orderSyncStart": {
+    "all": {
+      "delay": "Nowe zamówienia czekają za importem, więc mogą dotrzeć z opóźnieniem sięgającym godzin.",
+      "documents": "Faktury i paragony fiskalne są wystawiane dzisiaj, jeśli włączone jest automatyczne wystawianie.",
+      "orders": "Każde stare zamówienie jest tworzone ponownie w każdym sklepie docelowym, razem z klientem.",
+      "stock": "Stan magazynowy jest rezerwowany dla zamówień, które już wysłano.",
+      "warningTitle": "Stare zamówienia traktujemy jak nowe"
+    },
+    "dateLabel": "Data początkowa",
+    "info": {
+      "from": "Zamówienia złożone przed {date} nie zostaną zaimportowane.",
+      "now": "Nic sprzed kliknięcia Połącz nie zostanie zaimportowane. Zamówienia będą docierać od tej chwili."
+    },
+    "intro": "OpenLinker tworzy każde zaimportowane zamówienie w Twoich pozostałych podłączonych systemach, więc wybierz, od kiedy zacząć. Po pierwszej synchronizacji nie można tego zmienić.",
+    "modes": {
+      "all": {
+        "description": "Każde zamówienie, jakie kiedykolwiek wpłynęło do sklepu.",
+        "title": "Cała historia zamówień"
+      },
+      "from": {
+        "description": "Zamówienia złożone od wybranego dnia, a potem wszystkie nowe.",
+        "title": "Zamówienia od daty"
+      },
+      "now": {
+        "description": "Zamówienia złożone po połączeniu. To, co już jest w sklepie, tam zostaje.",
+        "title": "Tylko nowe zamówienia"
+      }
+    },
+    "recommended": "Zalecane",
+    "review": {
+      "all": "Cała historia",
+      "from": "Od {date}",
+      "label": "Historia zamówień",
+      "now": "Tylko nowe zamówienia"
+    },
+    "slow": "Wolno",
+    "title": "Od których zamówień zacząć import?",
+    "unsupported": {
+      "all": "To źródło nie umie zaimportować całej historii.",
+      "from": "To źródło nie umie filtrować zamówień po dacie.",
+      "now": "To źródło nie umie zacząć od teraz."
+    }
+  },
+  "orderSyncStartSchema": {
+    "dateFuture": "Wybierz dzień wcześniejszy niż dzisiaj",
+    "dateInvalid": "Podaj poprawną datę",
+    "dateRequired": "Wybierz pierwszy dzień importu",
+    "dateTooOld": "Wybierz dzień z ostatnich 5 lat"
+  },
   "paymentWriteback": {
     "factCod": "Zamówienia za pobraniem i anulowane nigdy nie są oznaczane jako opłacone.",
     "factFailure": "Jeśli sklep tego nie przyjmie, zamówienie pojawi się w Zamówieniach pod filtrem „Płatność nie trafiła do sklepu”.",
@@ -1219,6 +1269,7 @@
     "steps": {
       "capabilities": "Możliwości",
       "credentials": "Dane dostępowe",
+      "orders": "Historia zamówień",
       "review": "Sprawdź i połącz",
       "verify": "Sprawdź dane dostępowe"
     },
@@ -1719,6 +1770,7 @@
     "steps": {
       "capabilities": "Możliwości",
       "credentials": "Dane dostępowe API",
+      "orders": "Historia zamówień",
       "review": "Sprawdź i utwórz",
       "store": "Dane sklepu"
     }

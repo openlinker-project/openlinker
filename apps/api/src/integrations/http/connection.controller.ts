@@ -51,6 +51,7 @@ import {
   RATE_LIMIT_STATUS_SERVICE_TOKEN,
 } from '../application/interfaces/rate-limit-status.service.interface';
 import { CreateConnectionDto } from './dto/create-connection.dto';
+import { toOrderSyncStart } from './dto/order-sync-start.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
@@ -168,7 +169,12 @@ export class ConnectionController {
     @Body() dto: CreateConnectionDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
-    const connection = await this.connectionService.create(dto);
+    const { orderSyncStart, ...rest } = dto;
+    const start = toOrderSyncStart(orderSyncStart);
+    const connection = await this.connectionService.create({
+      ...rest,
+      ...(start ? { orderSyncStart: start } : {}),
+    });
     const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
     return this.toResponse(connection, user, warnings);
   }

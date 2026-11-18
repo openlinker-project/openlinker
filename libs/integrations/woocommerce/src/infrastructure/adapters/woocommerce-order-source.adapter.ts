@@ -21,6 +21,7 @@ import type {
   OrderFeedEventType,
   PaymentStatus,
   OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
 } from '@openlinker/core/orders';
 import {
   readSourceBuyerNote,
@@ -63,7 +64,9 @@ const COD_DEAD_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'failed', '
  */
 const COD_SETTLED_STATUSES: ReadonlySet<string> = new Set(['completed']);
 
-export class WooCommerceOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap {
+export class WooCommerceOrderSourceAdapter
+  implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap
+{
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
 
   constructor(
@@ -115,6 +118,30 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort, OrderFeed
     return new Date(
       modifiedAt.getTime() - WooCommerceOrderSourceAdapter.SEED_SAFETY_MARGIN_MS
     ).toISOString();
+  }
+
+  /**
+   * Cursor at the start of `date` in GMT, so a connection the operator created
+   * "from {date}" imports only orders modified since then (#4228). A bare date
+   * means 00:00:00 GMT of that day; a full instant is used as given. The value
+   * is the same `modified_after` GMT instant `listOrderFeed` resumes from.
+   *
+   * The operator's explicit choice wins over `orders.initialSyncFrom`, which
+   * only supplies the start when no choice was made (see `headCursor`).
+   *
+   * @throws when `date` is not a readable ISO date.
+   */
+  cursorForDate(date: string): Promise<string> {
+    const value = date.trim();
+    const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00.000Z` : value);
+    if (Number.isNaN(parsed.getTime())) {
+      return Promise.reject(
+        new Error(
+          `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
+        )
+      );
+    }
+    return Promise.resolve(parsed.toISOString());
   }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {

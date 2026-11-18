@@ -35,6 +35,7 @@ import type {
   IncomingOrderAddress,
   OrderPickupPoint,
   OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
 } from '@openlinker/core/orders';
 import {
   PAYMENT_STATUS,
@@ -97,7 +98,7 @@ import { Logger } from '@openlinker/shared/logging';
  * why the id is part of the read position and why the timestamp is never
  * interpreted. `null` input means "start from the beginning".
  */
-export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap {
+export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap {
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
 
   /**
@@ -273,6 +274,50 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
       ),
       lastOrderId: orderId,
     });
+  }
+
+  /**
+   * Cursor at 00:00:00 (the shop's wall clock) of `date`, so a connection the
+   * operator created "from {date}" imports only orders updated since then
+   * (#4228). A full ISO instant is reduced to its date: the shop's zone is not
+   * known here, and "from the start of that day" is what an operator picking a
+   * day means.
+   *
+   * A shop that refuses `date_upd` as a filter (#2877) reads by `id` only, where
+   * a date cursor would resume at id 0 and silently import the whole history.
+   * That is exactly what a dated start must never do, so this THROWS there, and
+   * a probing read finds the refusal on a shop that has not hit it yet.
+   *
+   * @throws when the shop cannot filter by `date_upd`, or the read fails.
+   */
+  async cursorForDate(date: string): Promise<string> {
+    const wallClock = normalizeWallClock(`${date.trim().slice(0, 10)} 00:00:00`);
+    if (wallClock === null) {
+      throw new Error(
+        `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
+      );
+    }
+    const unsupported = new Error(
+      `This PrestaShop shop does not allow filtering orders by \`date_upd\`, so the order feed cannot start from a date. Use "from now" or "all orders" instead (connection: ${this.connection.id})`
+    );
+    if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {
+      throw unsupported;
+    }
+    try {
+      await this.httpClient.listResources<PrestashopOrder>(
+        'orders',
+        { updatedAfter: wallClock, sort: ['date_upd_ASC', 'id_ASC'] },
+        1,
+        0
+      );
+    } catch (error) {
+      if (this.isDateUpdSortUnsupportedError(error)) {
+        this.orderFeedCapabilityCache.markDateUpdSortUnsupported(this.connection.id);
+        throw unsupported;
+      }
+      throw error;
+    }
+    return formatOrderFeedCursor({ updatedAt: wallClock, lastOrderId: 0 });
   }
 
   private readNewestOrderRow(sort: PrestashopSort[]): Promise<PrestashopOrder[]> {

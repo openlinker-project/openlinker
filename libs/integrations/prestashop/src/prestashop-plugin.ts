@@ -73,6 +73,8 @@ export const prestashopAdapterManifest: AdapterMetadata = {
     'ProductPublisher',
     'CategoryProvisioner',
   ],
+  // The shop filters orders by date, so a start date is honourable (OrderFeedDateBootstrap, #4228).
+  orderSyncStartModes: ['now', 'from', 'all'],
   displayName: 'PrestaShop WebService v1',
   version: '1.0.0',
   isDefault: true,

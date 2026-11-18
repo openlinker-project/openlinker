@@ -91,6 +91,8 @@ export {
 } from './domain/types/source-fulfillment-readback.types';
 export type { OrderFeedBootstrap } from './domain/ports/capabilities/order-feed-bootstrap.capability';
 export { isOrderFeedBootstrap } from './domain/ports/capabilities/order-feed-bootstrap.capability';
+export type { OrderFeedDateBootstrap } from './domain/ports/capabilities/order-feed-date-bootstrap.capability';
+export { isOrderFeedDateBootstrap } from './domain/ports/capabilities/order-feed-date-bootstrap.capability';
 export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 // The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a

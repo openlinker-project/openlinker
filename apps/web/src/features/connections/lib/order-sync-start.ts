@@ -1,0 +1,109 @@
+/**
+ * Order sync start
+ *
+ * The form value, the zod rule and the create-payload mapping for the "which
+ * orders should we import first?" choice (#4228), shared by every guided
+ * wizard that creates an order-reading connection. The choice is made once, at
+ * connect time, so the date bounds are about what a seller can sensibly ask
+ * for: a past day, within the last five years.
+ *
+ * @module features/connections/lib
+ */
+import { z } from 'zod';
+import {
+  ORDER_SYNC_START_MODE_VALUES,
+  type OrderSyncStart,
+  type OrderSyncStartMode,
+} from '../api/connections.types';
+import { schemaMessage } from './schema-message';
+
+const msg = schemaMessage('orderSyncStartSchema');
+
+export const ORDER_SYNC_START_MAX_YEARS = 5;
+
+/** What the adapter metadata means when it declares nothing. */
+export const ORDER_SYNC_START_DEFAULT_MODES: readonly OrderSyncStartMode[] = ['now', 'all'];
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function toDateString(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** `YYYY-MM-DD` of the day before `today` (local time). */
+export function latestOrderSyncStartDate(today: Date = new Date()): string {
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  return toDateString(yesterday);
+}
+
+/** `YYYY-MM-DD` of the earliest day a start date may name. */
+export function earliestOrderSyncStartDate(today: Date = new Date()): string {
+  return toDateString(
+    new Date(today.getFullYear() - ORDER_SYNC_START_MAX_YEARS, today.getMonth(), today.getDate()),
+  );
+}
+
+function isRealDate(value: string): boolean {
+  if (!DATE_PATTERN.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+}
+
+export const orderSyncStartSchema = z
+  .object({
+    mode: z.enum(ORDER_SYNC_START_MODE_VALUES),
+    from: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.mode !== 'from') return;
+    const from = value.from ?? '';
+    const fail = (key: Parameters<typeof msg>[0]): void => {
+      ctx.addIssue({ code: 'custom', path: ['from'], message: msg(key).error() });
+    };
+    if (from === '') return fail('dateRequired');
+    if (!isRealDate(from)) return fail('dateInvalid');
+    if (from > latestOrderSyncStartDate()) return fail('dateFuture');
+    if (from < earliestOrderSyncStartDate()) return fail('dateTooOld');
+  });
+
+export type OrderSyncStartValue = z.input<typeof orderSyncStartSchema>;
+
+export const ORDER_SYNC_START_DEFAULT_VALUE: OrderSyncStartValue = { mode: 'now' };
+
+/**
+ * The create-payload part. "Only new orders" is what the backend does with no
+ * value, so it is sent as nothing rather than as an explicit default.
+ */
+export function toOrderSyncStart(value: OrderSyncStartValue | undefined): OrderSyncStart | undefined {
+  if (!value || value.mode === 'now') return undefined;
+  if (value.mode === 'all') return { mode: 'all' };
+  return { mode: 'from', from: value.from ?? '' };
+}
+
+/** Whether the order-history step applies to this connection. */
+export function readsOrders(capabilities: readonly string[] | undefined): boolean {
+  return (capabilities ?? []).includes('OrderSource');
+}
+
+interface ReviewCopy {
+  now: string;
+  all: string;
+  from: string;
+}
+
+/** One-line statement of the choice, for the review step and the summary rail. */
+export function describeOrderSyncStart(
+  value: OrderSyncStartValue | undefined,
+  copy: ReviewCopy,
+  formatDate: (iso: string) => string,
+): string {
+  if (!value || value.mode === 'now') return copy.now;
+  if (value.mode === 'all') return copy.all;
+  if (!value.from) return copy.now;
+  return copy.from.replace('{date}', formatDate(`${value.from}T12:00:00`));
+}

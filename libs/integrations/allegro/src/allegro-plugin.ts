@@ -124,6 +124,8 @@ export const allegroAdapterManifest: AdapterMetadata = {
     // dispatched `OrderSource` adapter with `isReturnDecliner`.
     'ReturnDecliner',
   ],
+  // The event journal has no date lookup, so a start date is not offered (#4228).
+  orderSyncStartModes: ['now', 'all'],
   displayName: 'Allegro Public API v1',
   version: '1.0.0',
   isDefault: true,

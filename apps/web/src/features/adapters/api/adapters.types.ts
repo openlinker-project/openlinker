@@ -25,4 +25,10 @@ export interface AdapterSummary {
    * arrives verbatim from the manifest.
    */
   requiresCredentials?: boolean;
+  /**
+   * Which order-sync start choices the source can honour (#4228). Absent means
+   * `['now', 'all']`: every order source can start from now or take everything,
+   * only some can also filter by date.
+   */
+  orderSyncStartModes?: Array<'now' | 'from' | 'all'>;
 }

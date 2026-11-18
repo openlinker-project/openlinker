@@ -21,6 +21,7 @@ import {
 } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import { isOrderFeedBootstrap } from '../../domain/ports/capabilities/order-feed-bootstrap.capability';
+import { isOrderFeedDateBootstrap } from '../../domain/ports/capabilities/order-feed-date-bootstrap.capability';
 import {
   ISyncCursorsService,
   SYNC_CURSORS_SERVICE_TOKEN,
@@ -29,6 +30,8 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
   orderFeedSeededAtCursorKey,
+  ORDER_SYNC_START_CURSOR_KEY,
+  parseOrderSyncStart,
 } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
@@ -329,6 +332,74 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly orderGifts: IOrderGiftService
   ) {}
 
+  /**
+   * The first poll of a connection with no order cursor (#4228). Returns the
+   * poll result when the start was applied and nothing should be read from
+   * history, or null when the normal history poll should proceed ("all", an
+   * already-seeded connection, or an adapter that cannot seed).
+   *
+   * The `.seededAt` marker is the only re-entry gate: it is written by every
+   * branch that consumes the operator's intent, so the intent is one-shot.
+   */
+  private async startFirstPoll(
+    connectionId: string,
+    cursorKey: string,
+    orderSource: OrderSourcePort
+  ): Promise<OrderIngestionResult | null> {
+    const seededKey = orderFeedSeededAtCursorKey(cursorKey);
+    const seededAt = await this.syncCursors.getCursor(connectionId, seededKey);
+    if (seededAt) {
+      return null;
+    }
+
+    const rawIntent = await this.syncCursors.getCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
+    const intent = parseOrderSyncStart(rawIntent);
+    if (rawIntent && intent === null) {
+      this.logger.warn(
+        `Unreadable order sync start intent; starting from now. intent=${rawIntent} (connection: ${connectionId})`
+      );
+    }
+    const mode = intent?.mode ?? 'now';
+
+    if (mode === 'all') {
+      // Only the marker: the history poll below then reads from the beginning,
+      // and the marker stops a later cursor-less poll from seeding "now".
+      await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+      this.logger.log(`Order sync starts from the whole history (connection: ${connectionId})`);
+      return null;
+    }
+
+    let startCursor: string | null;
+    if (intent?.mode === 'from') {
+      if (!isOrderFeedDateBootstrap(orderSource)) {
+        throw new Error(
+          `Order sync was set to start from ${intent.from}, but this adapter cannot start from a date. Create the connection again with "from now" or "all orders" (connection: ${connectionId})`
+        );
+      }
+      startCursor = await orderSource.cursorForDate(intent.from);
+    } else if (isOrderFeedBootstrap(orderSource)) {
+      startCursor = await orderSource.headCursor();
+    } else {
+      return null;
+    }
+
+    const seeded = startCursor !== null && startCursor.trim() !== '';
+    if (seeded) {
+      await this.syncCursors.advanceCursor(connectionId, cursorKey, startCursor as string);
+    }
+    await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+    this.logger.log(
+      `Seeded order cursor (${intent?.mode === 'from' ? `from ${intent.from}` : 'at the source head'}); nothing imported from history. cursorKey=${cursorKey}, cursor=${startCursor ?? 'none'} (connection: ${connectionId})`
+    );
+    return {
+      fetched: 0,
+      enqueued: 0,
+      nextCursor: seeded ? startCursor : null,
+      committed: seeded,
+      skippedDueToLock: false,
+    };
+  }
+
   async ingestOrders(
     connectionId: string,
     options: OrderIngestionOptions
@@ -355,29 +426,14 @@ export class OrderIngestionService implements IOrderIngestionService {
         'OrderSource'
       );
 
-      // #4228: a connection that has never polled starts from "now". A throw from
-      // headCursor propagates so the job retries; falling back to listOrderFeed
-      // here would import the source's whole history, which is what this prevents.
-      if (!fromCursor && isOrderFeedBootstrap(orderSource)) {
-        const seededKey = orderFeedSeededAtCursorKey(cursorKey);
-        const seededAt = await this.syncCursors.getCursor(connectionId, seededKey);
-        if (!seededAt) {
-          const head = await orderSource.headCursor();
-          if (head !== null && head.trim() !== '') {
-            await this.syncCursors.advanceCursor(connectionId, cursorKey, head);
-          }
-          await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
-          this.logger.log(
-            `Seeded order cursor at the source head; nothing imported from history. cursorKey=${cursorKey}, head=${head ?? 'none'} (connection: ${connectionId})`
-          );
-          const seeded = head !== null && head.trim() !== '';
-          return {
-            fetched: 0,
-            enqueued: 0,
-            nextCursor: seeded ? head : null,
-            committed: seeded,
-            skippedDueToLock: false,
-          };
+      // #4228: a connection that has never polled starts where the operator chose
+      // at create time (default: "now"). Every failure below propagates so the job
+      // retries; falling back to listOrderFeed here would import the source's whole
+      // history, which is what this exists to prevent.
+      if (!fromCursor) {
+        const started = await this.startFirstPoll(connectionId, cursorKey, orderSource);
+        if (started) {
+          return started;
         }
       }
 

@@ -14,7 +14,12 @@ import {
   validateDeliveryOnDocumentsShape,
   validateGiftOnDocumentsShape,
 } from '@openlinker/core/sales-documents';
-import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpStatus,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
@@ -86,8 +91,18 @@ import {
   resolveRequiresCredentials,
   resolveArchivable,
 } from '@openlinker/core/integrations';
-import type { SyncJobRequest } from '@openlinker/core/sync';
-import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import type { OrderSyncStart, SyncJobRequest } from '@openlinker/core/sync';
+import {
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  ISyncCursorsService,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  ORDER_SYNC_START_CURSOR_KEY,
+  OrderSyncStartModeValues,
+  describeInvalidOrderSyncStartDate,
+  resolveOrderSyncStartModes,
+  serializeOrderSyncStart,
+} from '@openlinker/core/sync';
 import { parseAuthorityConfig } from '@openlinker/core/fulfillment-authority';
 import { describeInvalidTriggerModels } from '@openlinker/core/invoicing';
 import { describeInvalidBatchSchedules } from '@openlinker/core/sales-documents';
@@ -156,8 +171,57 @@ export class ConnectionService implements IConnectionService {
     @Inject(DESTINATION_TAXONOMY_SERVICE_TOKEN)
     private readonly destinationTaxonomy: IDestinationTaxonomyService,
     @Inject(LOCATION_SERVICE_TOKEN)
-    private readonly locations: ILocationService
+    private readonly locations: ILocationService,
+    // #4228: where the one-shot order-sync start choice is stored.
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly syncCursors: ISyncCursorsService
   ) {}
+
+  /**
+   * Refuse an order-sync start choice the connection cannot honour (#4228).
+   * Always a 400: a choice silently dropped would import the wrong history for
+   * a shop that may already hold thousands of orders. The supported modes come
+   * from the adapter's STATIC declaration, because an OAuth connection has no
+   * credentials, and so no adapter instance, until the callback.
+   */
+  private assertOrderSyncStart(
+    start: OrderSyncStart,
+    declaredModes: AdapterMetadata['orderSyncStartModes'],
+    enabledCapabilities: readonly string[]
+  ): void {
+    const field = 'orderSyncStart';
+    if (!OrderSyncStartModeValues.includes(start.mode)) {
+      throw connectionConfigInvalid(
+        `${field}.mode`,
+        'one-of',
+        `${field}.mode must be one of ${OrderSyncStartModeValues.join(', ')}`,
+        { allowed: allowedValues(OrderSyncStartModeValues) }
+      );
+    }
+    if (!enabledCapabilities.includes('OrderSource')) {
+      throw connectionConfigInvalid(
+        field,
+        'required-with',
+        `${field} needs the OrderSource capability: this connection does not import orders`,
+        { with: 'OrderSource' }
+      );
+    }
+    const modes = resolveOrderSyncStartModes(declaredModes);
+    if (!modes.includes(start.mode)) {
+      throw connectionConfigInvalid(
+        `${field}.mode`,
+        'one-of',
+        `${field}.mode "${start.mode}" is not supported by this adapter. Supported: ${modes.join(', ')}`,
+        { allowed: allowedValues(modes) }
+      );
+    }
+    if (start.mode === 'from') {
+      const problem = describeInvalidOrderSyncStartDate(start.from, new Date());
+      if (problem !== null) {
+        throw connectionConfigInvalid(`${field}.from`, 'range', problem);
+      }
+    }
+  }
 
   /**
    * Refuse to switch fulfilment routing ON while no active inventory location
@@ -1178,8 +1242,34 @@ export class ConnectionService implements IConnectionService {
     return result;
   }
 
+  /**
+   * Persist the operator's start choice as a one-shot intent cursor, consumed by
+   * the connection's first order poll (#4228). Deliberately not best-effort: the
+   * connection exists and would start "from now", which is not what was asked, so
+   * the operator is told instead of being left to find out from the order list.
+   */
+  private async storeOrderSyncStart(
+    connection: Connection,
+    start: OrderSyncStart
+  ): Promise<void> {
+    try {
+      await this.syncCursors.advanceCursor(
+        connection.id,
+        ORDER_SYNC_START_CURSOR_KEY,
+        serializeOrderSyncStart(start)
+      );
+    } catch (error) {
+      this.logger.error(
+        `Could not store the order sync start for connection ${connection.id}: ${(error as Error).message}`
+      );
+      throw new InternalServerErrorException(
+        `The connection ${connection.id} was created, but its order sync start could not be saved, so it will start from now. Check the connection and recreate it if that is not what you want.`
+      );
+    }
+  }
+
   async create(payload: ConnectionCreateInput): Promise<Connection> {
-    const { credentials, credentialsRef, ...rest } = payload;
+    const { credentials, credentialsRef, orderSyncStart, ...rest } = payload;
 
     // Supplying BOTH is contradictory input at every setting, including for a
     // credential-less adapter (#2405): the `if (credentials)` branch below
@@ -1268,6 +1358,14 @@ export class ConnectionService implements IConnectionService {
       }
       this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
       this.assertNotMasterAndPublisher(enabledCapabilities, null);
+      // #4228 — before credentials are persisted, like the config checks below.
+      if (orderSyncStart !== undefined) {
+        this.assertOrderSyncStart(
+          orderSyncStart,
+          metadata.orderSyncStartModes,
+          enabledCapabilities
+        );
+      }
 
       // #509 / #587 — validate the platform-specific config shape on create
       // (was platformType-keyed static record; now adapterKey-keyed registry
@@ -1348,6 +1446,9 @@ export class ConnectionService implements IConnectionService {
       }
 
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
+      if (orderSyncStart !== undefined) {
+        await this.storeOrderSyncStart(connection, orderSyncStart);
+      }
       await this.enqueueInitialCatalogSync(connection);
       await this.enqueueInitialTaxonomySync(connection);
       return connection;
