@@ -40419,12 +40419,12 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .dialog__content.release-dialog { animation: none; }
 }
 
-.whats-new { display: grid; gap: 20px 28px; max-width: 80rem; align-items: start; }
+.whats-new { display: grid; gap: 20px 32px; max-width: 96rem; align-items: start; }
 .whats-new__intro { grid-column: 1 / -1; max-width: 64ch; font-size: 0.9375rem; line-height: 1.55; }
 .whats-new__main { display: grid; gap: 18px; min-width: 0; }
 .whats-new__rail { display: grid; gap: 16px; min-width: 0; }
 @media (min-width: 1024px) {
-  .whats-new { grid-template-columns: minmax(0, 1fr) 21rem; }
+  .whats-new { grid-template-columns: minmax(0, 1fr) 25rem; }
   .whats-new__rail { grid-column: 2; grid-row: 2; position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; padding: 2px; margin: -2px; }
   .whats-new__main { grid-column: 1; grid-row: 2; }
 }
@@ -41820,7 +41820,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   from { opacity: 0; transform: translateY(4px); }
 }
 
-.whats-new__row-title .release-chip { margin-left: var(--space-2); }
 
 /* ── Release center settings section (#4143) ── */
 .release-settings { gap: 16px; padding: 22px 24px; font-size: 0.875rem; line-height: 1.5; }
@@ -41909,12 +41908,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: var(--accent-primary);
 }
 
-/* What's new: setup rows stay one line tall in the narrow rail (title left, action right). */
-.whats-new__setup { padding: 18px 18px 8px; gap: 12px; }
-.whats-new__setup .whats-new__row { flex-wrap: nowrap; align-items: flex-start; padding: 10px 0; gap: 10px; }
-.whats-new__setup .whats-new__row-title { flex: 1 1 auto; min-width: 0; line-height: 1.4; }
-.whats-new__setup .whats-new__row-title .release-chip { display: block; width: max-content; margin: 4px 0 0; }
-.whats-new__setup .whats-new__row > :last-child { flex: none; }
+/* What's new: the setup block reuses the notification card, so it only needs a heading. */
+.whats-new__setup { display: grid; gap: 12px; padding: 0; background: none; border: 0; box-shadow: none; }
+.whats-new__setup-title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.whats-new__setup .release-card { box-shadow: var(--shadow-xs); }
 @media (min-width: 1024px) {
   .whats-new__rail { grid-row: 2; top: 76px; }
   .whats-new__lang { margin-top: -4px; }

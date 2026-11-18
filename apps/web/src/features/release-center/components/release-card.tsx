@@ -36,11 +36,14 @@ export function ReleaseCard({
   notification,
   instances,
   onNavigate,
+  hideChangelogLink = false,
 }: {
   notification: ReleaseNotification;
   instances: readonly StepInstance[];
   /** Closes the panel when the card hands the viewer to another surface. */
   onNavigate: () => void;
+  /** On the What's new page itself the changelog is already in view. */
+  hideChangelogLink?: boolean;
 }): ReactElement | null {
   const view = useReleaseCenterView();
   const copy = useMessages('release-center').panel;
@@ -227,16 +230,18 @@ export function ReleaseCard({
             >
               {cta} <ReleaseIcon name="arrow-right" size={14} />
             </Button>
-            <Button
-              className="button--sm"
-              tone="secondary"
-              onClick={() => {
-                requestWhatsNew({ minor: notification.minor });
-                onNavigate();
-              }}
-            >
-              {copy.ctaWhatsNew}
-            </Button>
+            {hideChangelogLink ? null : (
+              <Button
+                className="button--sm"
+                tone="secondary"
+                onClick={() => {
+                  requestWhatsNew({ minor: notification.minor });
+                  onNavigate();
+                }}
+              >
+                {copy.ctaWhatsNew}
+              </Button>
+            )}
           </div>
         </>
       ) : null}

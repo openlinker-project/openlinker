@@ -10,13 +10,10 @@
  */
 import { useEffect, useRef, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useMessages } from '../../../shared/i18n';
 import changelog from 'virtual:openlinker-changelog';
-import { interpolate, useMessages } from '../../../shared/i18n';
-import { Button } from '../../../shared/ui/button';
 import { ListPagination } from '../../../shared/ui/list-pagination';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
-import { useReleaseStepRows } from '../hooks/use-release-step-rows';
 import { compareVersions, isValidVersion } from '../lib/compare-versions';
 import {
   RELEASES_PAGE_SIZE,
@@ -24,20 +21,21 @@ import {
   pageOfIndex,
   paginateReleases,
 } from '../lib/paginate-releases';
+import { notificationStatusOf } from '../lib/release-notifications';
 import { BaselineMarkdown } from './baseline-markdown';
-import { rowsToTourSteps } from './release-dialog-host';
-import { useTour } from '../tour/tour-context';
-import { ReleaseIcon } from './release-icon';
-import { useStepCopy } from './release-step-copy';
+import { useReleaseCenterView } from './release-center-provider';
+import { ReleaseCard } from './release-card';
 
 export function WhatsNewContent(): ReactElement {
   const copy = useMessages('release-center').whatsNew;
-  const dialogCopy = useMessages('release-center').dialog;
-  const stepCopy = useStepCopy();
-  const tour = useTour();
-  const { canWriteSteps } = useReleaseCenterAccess();
-  const rows = useReleaseStepRows();
-  const left = rows.filter((row) => !row.done).length;
+  const view = useReleaseCenterView();
+  const cards = view
+    ? view.notifications.filter(
+        (notification) =>
+          notification.stepKeys.length > 0 &&
+          notificationStatusOf(view.state, notification.itemKey).status !== 'archived'
+      )
+    : [];
 
   const releases = [...changelog.releases]
     .filter((r) => isValidVersion(r.version))
@@ -97,59 +95,27 @@ export function WhatsNewContent(): ReactElement {
       <p className="whats-new__intro">{copy.intro}</p>
 
       <aside className="whats-new__rail">
-      <section className="whats-new__card whats-new__setup" aria-labelledby="whats-new-setup">
-        <div className="whats-new__head">
-          <h3 id="whats-new-setup">{copy.setupTitle}</h3>
-          {rows.length > 0 ? (
-            <span
-              className={`release-chip ${left === 0 ? 'release-chip--success' : 'release-chip--accent'}`}
-            >
-              {left === 0
-                ? copy.allSet
-                : interpolate(copy.progress, { done: rows.length - left, total: rows.length })}
-            </span>
-          ) : null}
-        </div>
-        {rows.length > 0 ? (
-          <div
-            className="whats-new__meter"
-            role="presentation"
-            style={{ ['--done' as string]: `${((rows.length - left) / rows.length) * 100}%` }}
-          />
-        ) : null}
-        {rows.length === 0 ? <p>{copy.noSteps}</p> : null}
-        <ul className="whats-new__rows">
-          {rows.map((row) => (
-            <li key={row.key} className="whats-new__row">
-              <span className="whats-new__row-title">
-                {stepCopy(row.step.id).title}
-                {row.connection ? <span> · {row.connection.name}</span> : null}
-                <span
-                  className={`release-chip${canWriteSteps && row.importance === 'required' ? ' release-chip--accent' : ''}`}
-                >
-                  {canWriteSteps
-                    ? row.importance === 'required'
-                      ? dialogCopy.required
-                      : dialogCopy.optional
-                    : dialogCopy.needsAdmin}
-                </span>
-              </span>
-              {row.done ? (
-                <StatusBadge tone="success">{copy.done}</StatusBadge>
-              ) : (
-                <Button
-                  tone="secondary"
-                  className="button--sm"
-                  onClick={() => tour.start(rowsToTourSteps([row]))}
-                >
-                  {canWriteSteps ? copy.setNow : copy.showWhere}{' '}
-                  <ReleaseIcon name="arrow-right" size={12} />
-                </Button>
-              )}
-            </li>
+      {!view ? null : cards.length > 0 ? (
+        <section className="whats-new__setup" aria-label={copy.setupTitle}>
+          <h3 className="whats-new__setup-title">{copy.setupTitle}</h3>
+          {cards.map((notification) => (
+            <ReleaseCard
+              key={notification.itemKey}
+              notification={notification}
+              instances={view.instances}
+              onNavigate={() => undefined}
+              hideChangelogLink
+            />
           ))}
-        </ul>
-      </section>
+        </section>
+      ) : (
+        <section className="whats-new__card whats-new__all-set" aria-label={copy.setupTitle}>
+          <div className="whats-new__head">
+            <h3>{copy.setupTitle}</h3>
+            <span className="release-chip release-chip--success">{copy.allSet}</span>
+          </div>
+        </section>
+      )}
       {releases.length > 1 ? (
         <nav className="whats-new__card whats-new__index" aria-label="Releases" lang="en">
           <h3>Releases</h3>
