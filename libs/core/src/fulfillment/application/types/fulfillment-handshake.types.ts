@@ -27,6 +27,7 @@
  */
 import type { FulfillmentCancellationReason } from '@openlinker/core/fulfillment-authority';
 import type { FulfillmentExecutorPort } from '../../domain/ports/fulfillment-executor.port';
+import type { FulfillmentDeliveryAddress } from '../../domain/types/fulfillment-execution.types';
 import type { RoutingShipTo } from '../../domain/types/routing-ship-to.types';
 
 export interface DispatchFulfillmentWorkInput {
@@ -41,6 +42,12 @@ export interface DispatchFulfillmentWorkInput {
    */
   readonly expectedAssignmentAttempt: number | null;
   readonly shipTo: RoutingShipTo;
+  /**
+   * The delivery address for a holder that ships the parcel itself (#4185),
+   * resolved by the HOST from the order, `null` when buyer data is not stored.
+   * Optional so a caller predating it passes `null` implicitly.
+   */
+  readonly deliveryAddress?: FulfillmentDeliveryAddress | null;
   /** Resolved by the HOST. See this file's header. */
   readonly executor: FulfillmentExecutorPort;
 }

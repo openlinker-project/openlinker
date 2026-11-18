@@ -21,6 +21,8 @@
  * `ReturnSourceReader` with #4184, advertised-without-dispatch: resolved by
  * narrowing the `OrderSource` adapter. `RefundExecutor` is undeclared (core's
  * rule for it) and present only on a connection that opted in to refunds.
+ * `FulfillmentExecutor` with #4185 (Multi-Channel Fulfillment), together with
+ * its polling `FulfillmentStatusSource`.
  *
  * Authorization: both a self-authorized private app and a public-app OAuth
  * grant end in the same stored LWA credentials (`AmazonCredentials`), so this
@@ -62,6 +64,7 @@ export const amazonAdapterManifest: AdapterMetadata = {
     'ProductMaster',
     'InventoryMaster',
     'ReturnSourceReader',
+    'FulfillmentExecutor',
     'CategoryBrowser',
     'EanCategoryMatcher',
     'OfferCreator',
@@ -121,6 +124,8 @@ export function createAmazonPlugin(): AdapterPlugin {
               factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,
             InventoryMaster: async () =>
               factory.createInventoryMaster(await resolve(), host.identifierMapping, host.cache) as T,
+            FulfillmentExecutor: async () =>
+              factory.createFulfillmentExecutor(await resolve(), host.identifierMapping, host.cache) as T,
           },
           AMAZON_BRAND,
         );

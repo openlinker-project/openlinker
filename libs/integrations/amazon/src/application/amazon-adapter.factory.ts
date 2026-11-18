@@ -36,6 +36,8 @@ import {
 import { AmazonRefundExecutor } from '../infrastructure/adapters/returns/amazon-refund-executor';
 import { AmazonReturnReader } from '../infrastructure/adapters/returns/amazon-return-reader';
 import { AmazonFeedsClient } from '../infrastructure/http/amazon-feeds.client';
+import { AmazonFulfillmentOutboundClient } from '../infrastructure/http/amazon-fulfillment-outbound.client';
+import { AmazonMcfFulfillmentExecutorAdapter } from '../infrastructure/adapters/fulfillment-executor/amazon-mcf-fulfillment-executor.adapter';
 import { AmazonReportsClient } from '../infrastructure/http/amazon-reports.client';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
 
@@ -172,6 +174,24 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       resolution.client,
       resolution.config,
       identifierMapping,
+      cache,
+    );
+  }
+
+  /** Amazon Multi-Channel Fulfillment as a fulfilment holder (#4185). */
+  createFulfillmentExecutor(
+    resolution: AmazonResolution,
+    identifierMapping: IdentifierMappingPort,
+    cache?: CachePort,
+  ): AmazonMcfFulfillmentExecutorAdapter {
+    return new AmazonMcfFulfillmentExecutorAdapter(
+      new AmazonFulfillmentOutboundClient(resolution.client),
+      identifierMapping,
+      {
+        connectionId: resolution.connection.id,
+        marketplaceId: resolution.config.marketplaceIds[0],
+        shippingSpeed: resolution.config.mcfShippingSpeed ?? 'Standard',
+      },
       cache,
     );
   }
