@@ -54,7 +54,8 @@ moves to **Needs reauth**: authorize again and paste the new token on the connec
    be changed later on the connection page, which drops the old region's marketplaces.
 2. **Marketplaces** you sell in, picked from a searchable list of the chosen region's marketplaces
    (e.g. PL `A1C3SOZRARQ6R3`, DE `A1PA6795UKMFR9`). Prices read from a marketplace keep its currency.
-3. **Orders** and/or **Offers**. With offers on, the **merchant token** is required.
+3. The **role**: a sales channel (**Orders** and/or **Offers**) or the catalogue master (below). With
+   offers on, or as the catalogue master, the **merchant token** is required.
 4. The **LWA client id**, **client secret** and **refresh token** from steps 1-2.
 5. **Test connection**: it passes when the credentials work and the account sells in every
    marketplace you listed. If it names a marketplace, remove it or enable selling there.
@@ -64,8 +65,8 @@ credentials panel.
 
 ### Catalogue master role
 
-The guided form creates a sales channel. For Amazon as the catalogue master, open the connection's
-edit page and, under **Enabled roles**, turn on:
+Choose **Catalogue master** as the role in the guided form (orders optional, offers off), or on an
+existing connection open the edit page and, under **Enabled roles**, turn on:
 
 - **ProductMaster**: your listings become OpenLinker products. A variation parent is a product and
   its child SKUs are the variants; a standalone listing is a product with one variant. Title,
