@@ -41928,3 +41928,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   mask-image: none;
 }
 .whats-new__setup .release-card__actions { position: static; }
+
+/* Only the release index stays in view: the rail stretches to the full height of the changelog so
+   the index has room to travel while the setup card scrolls away with the page. */
+@media (min-width: 1024px) {
+  .whats-new__rail { align-self: stretch; align-content: start; }
+  .whats-new__index { position: sticky; top: 76px; }
+  .whats-new__index ul { max-height: min(24rem, calc(100dvh - 190px)); }
+}
