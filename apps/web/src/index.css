@@ -40419,7 +40419,42 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .dialog__content.release-dialog { animation: none; }
 }
 
-.whats-new { display: grid; gap: 18px; max-width: 760px; }
+.whats-new { display: grid; gap: 20px 28px; max-width: 80rem; align-items: start; }
+.whats-new__intro { grid-column: 1 / -1; max-width: 64ch; font-size: 0.9375rem; line-height: 1.55; }
+.whats-new__main { display: grid; gap: 18px; min-width: 0; }
+.whats-new__rail { display: grid; gap: 16px; min-width: 0; }
+@media (min-width: 1024px) {
+  .whats-new { grid-template-columns: minmax(0, 1fr) 21rem; }
+  .whats-new__rail { grid-column: 2; grid-row: 2; position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; padding: 2px; margin: -2px; }
+  .whats-new__main { grid-column: 1; grid-row: 2; }
+}
+.whats-new__setup { background: linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 6%, var(--bg-surface)), var(--bg-surface) 70%); }
+.whats-new__meter { height: 6px; border-radius: 999px; background: var(--border-subtle); overflow: hidden; }
+.whats-new__meter::after { content: ''; display: block; height: 100%; width: var(--done, 0%); border-radius: inherit; background: var(--accent-primary); transform-origin: left; }
+.whats-new__index h3 { margin: 0 0 4px; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.whats-new__index ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 15rem; overflow: auto; }
+.whats-new__index a {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border-radius: var(--radius-md); color: var(--text-secondary);
+  text-decoration: none; font-size: 0.8125rem; transition: background-color 140ms ease, color 140ms ease;
+}
+.whats-new__index a:hover { background: var(--bg-hover, var(--border-subtle)); color: var(--text-primary); }
+.whats-new__index a[aria-current='true'] { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); color: var(--text-primary); font-weight: 600; }
+.whats-new__index a:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.whats-new__head--release h3 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; font-family: var(--font-mono); }
+.whats-new__changelog .whats-new__card { padding: 22px 24px; gap: 18px; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.whats-new__changelog .whats-new__card:hover { border-color: var(--border-strong, var(--border-default)); }
+.whats-new__group h4 { font-size: 0.75rem; letter-spacing: 0.02em; }
+.whats-new__change { font-size: 0.875rem; line-height: 1.5; padding: 10px 0; }
+.whats-new__change:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--accent-primary) 4%, transparent), transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  .whats-new__main .whats-new__card { animation: whats-new-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .whats-new__main .whats-new__card:nth-child(2) { animation-delay: 50ms; }
+  .whats-new__main .whats-new__card:nth-child(3) { animation-delay: 100ms; }
+  .whats-new__meter::after { animation: whats-new-meter 700ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both; }
+}
+@keyframes whats-new-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes whats-new-meter { from { transform: scaleX(0); } }
 .whats-new__intro,
 .whats-new__lang { margin: 0; color: var(--text-secondary); font-size: 0.875rem; max-width: 52ch; }
 .whats-new__changelog { display: grid; gap: 18px; }
@@ -41872,4 +41907,15 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   margin-left: var(--space-2);
   border-radius: 50%;
   background: var(--accent-primary);
+}
+
+/* What's new: setup rows stay one line tall in the narrow rail (title left, action right). */
+.whats-new__setup { padding: 18px 18px 8px; gap: 12px; }
+.whats-new__setup .whats-new__row { flex-wrap: nowrap; align-items: flex-start; padding: 10px 0; gap: 10px; }
+.whats-new__setup .whats-new__row-title { flex: 1 1 auto; min-width: 0; line-height: 1.4; }
+.whats-new__setup .whats-new__row-title .release-chip { display: block; width: max-content; margin: 4px 0 0; }
+.whats-new__setup .whats-new__row > :last-child { flex: none; }
+@media (min-width: 1024px) {
+  .whats-new__rail { grid-row: 2; top: 76px; }
+  .whats-new__lang { margin-top: -4px; }
 }

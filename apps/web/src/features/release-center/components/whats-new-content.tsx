@@ -96,7 +96,8 @@ export function WhatsNewContent(): ReactElement {
     <div className="whats-new">
       <p className="whats-new__intro">{copy.intro}</p>
 
-      <section className="whats-new__card" aria-labelledby="whats-new-setup">
+      <aside className="whats-new__rail">
+      <section className="whats-new__card whats-new__setup" aria-labelledby="whats-new-setup">
         <div className="whats-new__head">
           <h3 id="whats-new-setup">{copy.setupTitle}</h3>
           {rows.length > 0 ? (
@@ -109,6 +110,13 @@ export function WhatsNewContent(): ReactElement {
             </span>
           ) : null}
         </div>
+        {rows.length > 0 ? (
+          <div
+            className="whats-new__meter"
+            role="presentation"
+            style={{ ['--done' as string]: `${((rows.length - left) / rows.length) * 100}%` }}
+          />
+        ) : null}
         {rows.length === 0 ? <p>{copy.noSteps}</p> : null}
         <ul className="whats-new__rows">
           {rows.map((row) => (
@@ -142,7 +150,45 @@ export function WhatsNewContent(): ReactElement {
           ))}
         </ul>
       </section>
+      {releases.length > 1 ? (
+        <nav className="whats-new__card whats-new__index" aria-label="Releases" lang="en">
+          <h3>Releases</h3>
+          <ul>
+            {releases.map((release, i) => (
+              <li key={release.version}>
+                <a
+                  href={`?v=${release.version}`}
+                  aria-current={
+                    release.version === (targetVersion ?? releases[offset]?.version)
+                      ? 'true'
+                      : undefined
+                  }
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setSearchParams(
+                      (prev) => {
+                        const next = new URLSearchParams(prev);
+                        next.delete('page');
+                        next.set('v', release.version);
+                        return next;
+                      },
+                      { preventScrollReset: true }
+                    );
+                  }}
+                >
+                  <span className="mono-text">{`v${release.version}`}</span>
+                  {i === 0 ? (
+                    <span className="release-chip release-chip--success">{copy.current}</span>
+                  ) : null}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
+      </aside>
 
+      <div className="whats-new__main">
       <p className="whats-new__lang" ref={langRef} tabIndex={-1}>
         {copy.changelogLanguage}
       </p>
@@ -156,11 +202,11 @@ export function WhatsNewContent(): ReactElement {
               id={`release-v${release.version}`}
               className={`whats-new__card${release.version === targetVersion ? ' whats-new__card--target' : ''}`}
             >
-              <div className="whats-new__head">
+              <div className="whats-new__head whats-new__head--release">
+                <h3>{`v${release.version}`}</h3>
                 <StatusBadge tone={index === 0 ? 'success' : 'neutral'}>
                   {index === 0 ? copy.current : copy.older}
                 </StatusBadge>
-                <h3>{`v${release.version}`}</h3>
                 {release.date ? <span className="whats-new__date">{release.date}</span> : null}
               </div>
               {release.groups.map((group) => (
@@ -210,6 +256,7 @@ export function WhatsNewContent(): ReactElement {
           }}
         />
       ) : null}
+      </div>
     </div>
   );
 }
