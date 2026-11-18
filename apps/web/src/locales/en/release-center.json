@@ -58,6 +58,7 @@
     "menuMarkAllDone": "Mark all steps as done",
     "menuMarkRead": "Mark as read",
     "menuRestore": "Restore from archive",
+    "moreActions": "More step actions",
     "naChip": "Marked not applicable",
     "needsAdmin": "Needs an administrator",
     "notApplicable": "Not applicable",
@@ -96,22 +97,22 @@
   },
   "steps": {
     "inpost-notify-buyer": {
-      "title": "Choose when the buyer learns about the shipment",
+      "title": "Choose when the buyer sees \"shipped\"",
       "tourBody": "Choose the moment the marketplace shows the buyer \"shipped\". This setting belongs to this InPost account.",
       "tourTitle": "When does the buyer learn about the shipment?",
-      "why": "By default the buyer gets \"shipped\" only after you click \"Mark as shipped\". In an InPost account you can change that to the moment the label is bought."
+      "why": "By default the buyer sees \"shipped\" after you click \"Mark as shipped\". You can switch it to the moment the label is bought."
     },
     "packing-owner": {
-      "title": "Say whether another system packs the parcels",
+      "title": "Say whether another system packs parcels",
       "tourBody": "Tick the box if another system packs the parcels. It only changes what you see in OpenLinker and blocks nothing.",
       "tourTitle": "Who packs the orders?",
-      "why": "When an external system, for example a warehouse one, packs the orders, OpenLinker hides its own \"Mark as packed\" button for them. By default the button is visible."
+      "why": "If a warehouse system packs your orders, tick the box and OpenLinker hides its own \"Mark as packed\" button."
     },
     "shipping-routing": {
-      "title": "Assign carriers in the channel",
+      "title": "Check who ships each delivery method",
       "tourBody": "Check who ships each delivery method of this channel. Change what is needed and save the assignment.",
       "tourTitle": "Who ships the parcels from this channel?",
-      "why": "The carrier assignment is set in Mappings, on the Fulfilment tab, under \"Who ships each delivery method\". Check each delivery method of this channel and click Save assignment."
+      "why": "Open Mappings > Fulfilment and look at the \"Who ships each delivery method\" list for this channel. Save when it is right."
     }
   },
   "tour": {

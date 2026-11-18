@@ -41936,3 +41936,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .whats-new__index { position: sticky; top: 76px; }
   .whats-new__index ul { max-height: min(24rem, calc(100dvh - 190px)); }
 }
+
+/* Step list (What's new and the bell): one quiet note instead of a hint under every step. */
+.release-steps__note { margin: 10px 0 0; font-size: 0.75rem; color: var(--text-muted); max-width: 52ch; }
+.release-step__chips .connection-chip { flex: none; }
