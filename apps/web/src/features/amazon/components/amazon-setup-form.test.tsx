@@ -62,13 +62,14 @@ describe('AmazonSetupForm', () => {
     expect(screen.getByRole('option', { name: /Japan/ })).toHaveAttribute('aria-selected', 'false');
   });
 
-  it('should show the sandbox notice and keep the master role unavailable', () => {
+  it('should show the sandbox notice and offer both roles', () => {
     renderWithProviders(<AmazonSetupForm />);
 
     fireEvent.change(screen.getByLabelText('Environment'), { target: { value: 'sandbox' } });
 
     expect(screen.getByText(/sample data only/)).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Catalogue master/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Catalogue master/ })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: /Sales channel/ })).toBeChecked();
     expect(screen.getByLabelText(/^Orders/)).toBeChecked();
     expect(screen.getByLabelText(/^Offers/)).toBeChecked();
   });
@@ -122,5 +123,21 @@ describe('AmazonSetupForm', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
 
     expect(await screen.findByText(/^The platform refused the credentials\. Check the key or password\./)).toBeInTheDocument();
+  });
+
+  it('should create a catalogue master with products and stock, orders optional, never offers', async () => {
+    const apiClient = createMockApiClient();
+    renderWithProviders(<AmazonSetupForm />, { apiClient });
+
+    await fill();
+    fireEvent.click(screen.getByRole('radio', { name: /Catalogue master/ }));
+    expect(screen.getByLabelText(/^Offers/)).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() =>
+      expect(apiClient.connections.create).toHaveBeenCalledWith(
+        expect.objectContaining({ enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource'] }),
+      ),
+    );
   });
 });

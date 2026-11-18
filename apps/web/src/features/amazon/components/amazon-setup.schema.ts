@@ -5,9 +5,11 @@
  * payload. Each rule is no stricter than the backend's `parseAmazonConfig` /
  * `parseAmazonCredentials`, which validate the same values on save.
  *
- * The role is chosen up front. Today only the sales channel role exists
- * (orders and offers); the catalogue master role arrives with #4182. The
- * manifest enables nothing by default, so the payload names the capabilities.
+ * The role is chosen up front. A sales channel takes orders and offers; a
+ * catalogue master (#4182/#4183) reads products and stock from the seller's
+ * listings, optionally with orders, and never offers: a stock master is not a
+ * stock write-back target. The manifest enables nothing by default, so the
+ * payload names the capabilities.
  *
  * Validation messages are KEYS of `amazon.setup.errors`, so the schema is
  * static and the form translates what it shows.
@@ -40,6 +42,9 @@ export type AmazonSetupErrorKey = (typeof AmazonSetupErrorKeyValues)[number];
 
 /** Merchant token, as `readSellerId` on the API accepts it. */
 export const SELLER_ID = /^[A-Z0-9]{8,20}$/;
+export const AmazonSetupRoleValues = ['sales-channel', 'master'] as const;
+export type AmazonSetupRole = (typeof AmazonSetupRoleValues)[number];
+
 export const SQS_QUEUE_URL = /^https:\/\/sqs\.[a-z0-9-]+\.amazonaws\.com\/\d{12}\/[A-Za-z0-9_-]{1,80}(\.fifo)?$/;
 
 export const amazonSetupSchema = z
@@ -48,6 +53,7 @@ export const amazonSetupSchema = z
     region: z.enum(AmazonRegionValues),
     environment: z.enum(AmazonEnvironmentValues),
     marketplaceIds: z.array(z.string()),
+    role: z.enum(AmazonSetupRoleValues),
     orders: z.boolean(),
     offers: z.boolean(),
     sellerId: z.string().trim().toUpperCase(),
@@ -69,12 +75,15 @@ export const amazonSetupSchema = z
     } else if (isSingleMarketplaceRegion(values.region) && values.marketplaceIds.length > 1) {
       fail('marketplaceIds', 'marketplaceSingle');
     }
-    if (!values.orders && !values.offers) {
+    const master = values.role === 'master';
+    if (!master && !values.orders && !values.offers) {
       fail('orders', 'capabilityRequired');
     }
+    // The catalogue master reads the seller's listings, which need the token too.
+    const needsSellerId = master || values.offers;
     if (values.sellerId !== '' && !SELLER_ID.test(values.sellerId)) {
       fail('sellerId', 'sellerIdInvalid');
-    } else if (values.offers && values.sellerId === '') {
+    } else if (needsSellerId && values.sellerId === '') {
       fail('sellerId', 'sellerIdRequired');
     }
     if (values.notificationQueueUrl !== '' && !SQS_QUEUE_URL.test(values.notificationQueueUrl)) {
@@ -93,6 +102,7 @@ export const AMAZON_SETUP_DEFAULT_VALUES: AmazonSetupFormValues = {
   region: 'eu',
   environment: 'production',
   marketplaceIds: [],
+  role: 'sales-channel',
   orders: true,
   offers: true,
   sellerId: '',
@@ -105,10 +115,13 @@ export const AMAZON_SETUP_DEFAULT_VALUES: AmazonSetupFormValues = {
 };
 
 export function toCreateConnectionInput(values: AmazonSetupFormSubmission): CreateConnectionInput {
-  const enabledCapabilities: CoreCapability[] = [
-    ...(values.orders ? (['OrderSource'] as const) : []),
-    ...(values.offers ? (['OfferManager'] as const) : []),
-  ];
+  const enabledCapabilities: CoreCapability[] =
+    values.role === 'master'
+      ? ['ProductMaster', 'InventoryMaster', ...(values.orders ? (['OrderSource'] as const) : [])]
+      : [
+          ...(values.orders ? (['OrderSource'] as const) : []),
+          ...(values.offers ? (['OfferManager'] as const) : []),
+        ];
   return {
     name: values.name,
     platformType: 'amazon',
