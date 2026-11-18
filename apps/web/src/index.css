@@ -40742,7 +40742,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   transition: grid-template-rows 320ms var(--ease-out), opacity 240ms var(--ease-out);
 }
 .release-card__collapse[data-open='true'] { grid-template-rows: 1fr; opacity: 1; }
-.release-card__collapse > div { overflow: hidden; min-height: 0; }
+/* overflow hides the collapsing steps, but the step markers scale with a spring
+   and sit on the left edge: widen the clip box sideways so their ring is not cut. */
+.release-card__collapse > div { overflow: hidden; min-height: 0; padding-inline: 6px; margin-inline: -6px; }
 .release-card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 /* The item menu of the approved mockup: a compact card with icon rows. */
 .dropdown-menu__content.release-card__menu {
