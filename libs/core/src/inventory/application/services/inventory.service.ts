@@ -14,7 +14,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import type { IInventoryService } from './inventory.service.interface';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type { PruneStaleVariantsResult, ProvenanceScope } from '../../domain/types/inventory.types';
+import type { PruneStaleVariantsResult, ProvenanceScope, ReportedLocationSet } from '../../domain/types/inventory.types';
 import { Logger } from '@openlinker/shared/logging';
 import { InventoryMovementRepositoryPort } from '../../domain/ports/inventory-movement-repository.port';
 import {
@@ -280,6 +280,27 @@ export class InventoryService implements IInventoryService {
       // repair in the log beside it (#3206).
       this.logger.warn(
         `inventory_located_position_staled_by_pooled_write product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} pooled=${pooledVariantKeys.length} source=${scope.sourceConnectionId}`
+      );
+    }
+    return result;
+  }
+
+  async staleUnreportedLocationsForSource(
+    productId: string,
+    reported: readonly ReportedLocationSet[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    if (reported.length === 0) {
+      return { markedCount: 0, variantIds: [] };
+    }
+    const result = await this.inventoryRepository.markUnreportedLocationsStaleForSource(
+      productId,
+      reported,
+      scope
+    );
+    if (result.markedCount > 0) {
+      this.logger.warn(
+        `inventory_unreported_location_staled product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} source=${scope.sourceConnectionId}`
       );
     }
     return result;

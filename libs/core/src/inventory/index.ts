@@ -228,6 +228,7 @@ export {
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
+  ReportedLocationSet,
   DuplicatePositionRow,
   DuplicatePositionGroup,
   DuplicatePositionReport,

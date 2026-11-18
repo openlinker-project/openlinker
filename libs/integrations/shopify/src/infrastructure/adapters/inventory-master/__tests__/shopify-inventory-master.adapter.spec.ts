@@ -2,6 +2,7 @@ import type { Connection, IdentifierMappingPort } from '@openlinker/core/identif
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { CachePort } from '@openlinker/shared';
 
+import { ShopifyLocationNotOwnedException } from '../../../../domain/exceptions/shopify-location-not-owned.exception';
 import { ShopifyNotSupportedException } from '../../../../domain/exceptions/shopify-not-supported.exception';
 import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopify-user-errors.exception';
 import type { ShopifyInventoryVariant } from '../../../../domain/types/shopify-api.types';
@@ -316,8 +317,12 @@ describe('ShopifyInventoryMasterAdapter in all-locations mode', () => {
   const LOC_A = 'gid://shopify/Location/1';
   const LOC_B = 'gid://shopify/Location/2';
 
-  function buildAll(query: jest.Mock): ShopifyInventoryMasterAdapter {
-    const client = { query, mutate: jest.fn() } as unknown as ShopifyGraphqlClient;
+  function buildAll(
+    query: jest.Mock,
+    mutate: jest.Mock = jest.fn(),
+    resolver?: { resolveShopifyLocationId: jest.Mock },
+  ): ShopifyInventoryMasterAdapter {
+    const client = { query, mutate } as unknown as ShopifyGraphqlClient;
     return new ShopifyInventoryMasterAdapter(
       client,
       mapping(),
@@ -335,6 +340,7 @@ describe('ShopifyInventoryMasterAdapter in all-locations mode', () => {
       null,
       undefined,
       true,
+      resolver,
     );
   }
 
@@ -382,5 +388,78 @@ describe('ShopifyInventoryMasterAdapter in all-locations mode', () => {
     });
 
     await expect(buildAll(query).resolveEventProductExternalId('inventory-item:55:2')).resolves.toBe('7');
+  });
+
+  it('should declare the location set complete when every level was read', async () => {
+    const v = variant('1', 4) as unknown as { inventoryItem: Record<string, unknown> };
+    v.inventoryItem.levels = { nodes: [level(LOC_A, 4)], pageInfo: { hasNextPage: false, endCursor: null } };
+    const query = jest.fn().mockResolvedValue(productAnswer([v as unknown as ShopifyInventoryVariant]));
+
+    const rows = await buildAll(query).listInventory('ol_7');
+
+    expect(rows.every((r) => r.locationSetComplete === true)).toBe(true);
+  });
+
+  it('should not declare the set complete while a page of levels is unread', async () => {
+    const v = variant('1', 4) as unknown as { inventoryItem: Record<string, unknown> };
+    v.inventoryItem.levels = { nodes: [level(LOC_A, 4)], pageInfo: { hasNextPage: true, endCursor: 'c' } };
+    const query = jest.fn().mockResolvedValue(productAnswer([v as unknown as ShopifyInventoryVariant]));
+
+    const rows = await buildAll(query).listInventory('ol_7');
+
+    expect(rows.some((r) => r.locationSetComplete === true)).toBe(false);
+  });
+
+  describe('adjustInventory at a named location', () => {
+    it('should write at the Shopify location the OL location resolves to', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 4)]));
+      const mutate = jest.fn().mockResolvedValue(adjusted());
+      const resolver = { resolveShopifyLocationId: jest.fn().mockResolvedValue('2') };
+
+      await buildAll(query, mutate, resolver).adjustInventory({
+        productId: 'ol_7',
+        quantity: 1,
+        locationId: 'ol_location_krk',
+      });
+
+      expect(resolver.resolveShopifyLocationId).toHaveBeenCalledWith('c1', 'ol_location_krk');
+      expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ locationId: LOC_B });
+      const input = ((mutate.mock.calls[0] as unknown[])[1] as { input: { changes: Array<Record<string, unknown>> } })
+        .input;
+      expect(input.changes[0]).toMatchObject({ locationId: LOC_B });
+    });
+
+    it('should refuse a location this connection does not own, writing nothing', async () => {
+      const mutate = jest.fn();
+      const resolver = { resolveShopifyLocationId: jest.fn().mockResolvedValue(null) };
+
+      const adjust = buildAll(jest.fn(), mutate, resolver).adjustInventory({
+        productId: 'ol_7',
+        quantity: 1,
+        locationId: 'ol_location_other',
+      });
+
+      await expect(adjust).rejects.toBeInstanceOf(ShopifyLocationNotOwnedException);
+      await expect(adjust).rejects.toBeInstanceOf(ShopifyNotSupportedException);
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a location that is no longer an active shop location', async () => {
+      const resolver = { resolveShopifyLocationId: jest.fn().mockResolvedValue('99') };
+
+      await expect(
+        buildAll(jest.fn(), jest.fn(), resolver).adjustInventory({
+          productId: 'ol_7',
+          quantity: 1,
+          locationId: 'ol_location_gone',
+        }),
+      ).rejects.toBeInstanceOf(ShopifyLocationNotOwnedException);
+    });
+
+    it('should refuse a located write when the host supplied no resolver', async () => {
+      await expect(
+        buildAll(jest.fn()).adjustInventory({ productId: 'ol_7', quantity: 1, locationId: 'ol_location_x' }),
+      ).rejects.toBeInstanceOf(ShopifyLocationNotOwnedException);
+    });
   });
 });

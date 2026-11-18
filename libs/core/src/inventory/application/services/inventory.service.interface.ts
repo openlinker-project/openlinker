@@ -9,7 +9,7 @@
  */
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
 import type { InventoryMovementContext } from '../../domain/types/inventory-movement.types';
-import type { PruneStaleVariantsResult, ProvenanceScope } from '../../domain/types/inventory.types';
+import type { PruneStaleVariantsResult, ProvenanceScope, ReportedLocationSet } from '../../domain/types/inventory.types';
 
 /**
  * Inventory Service Interface
@@ -136,6 +136,17 @@ export interface IInventoryService {
   staleLocatedPositionsForSource(
     productId: string,
     pooledVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult>;
+
+  /**
+   * Multi-location pruning: soft-stale the source's own located rows of each
+   * listed variant at a location its pull did not report (the master declared
+   * the set complete). Emits no event - see the repository port.
+   */
+  staleUnreportedLocationsForSource(
+    productId: string,
+    reported: readonly ReportedLocationSet[],
     scope: ProvenanceScope
   ): Promise<PruneStaleVariantsResult>;
 }

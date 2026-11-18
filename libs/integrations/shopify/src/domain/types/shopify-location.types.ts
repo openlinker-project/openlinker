@@ -20,3 +20,14 @@ export interface ShopifyLocationSummary {
 export interface IShopifyLocationReader {
   listLocations(connectionId: string): Promise<ShopifyLocationSummary[]>;
 }
+
+/**
+ * Maps an OpenLinker location back to the Shopify location it stands for
+ * (provisioned by the multi-location sync, `ownerConnectionId` = the
+ * connection, `externalRef` = the Shopify location id). Supplied by the host:
+ * the adapter holds no core service.
+ */
+export interface ShopifyLocationResolverPort {
+  /** The numeric Shopify location id, or `null` when this connection does not own that location. */
+  resolveShopifyLocationId(connectionId: string, olLocationId: string): Promise<string | null>;
+}

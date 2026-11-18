@@ -27,6 +27,14 @@ export interface Inventory {
   variantId?: string;
   locationId?: string;
   /**
+   * `true` when this pull reports the variant at EVERY location the master
+   * holds it at (a location absent from the pull is gone, not merely unread).
+   * Core then soft-stales the source's own located rows at any location the
+   * pull did not name. Leave absent unless the set really is complete: a
+   * master that reports a subset would otherwise stale live stock.
+   */
+  locationSetComplete?: boolean;
+  /**
    * The master's OWN location for this position, when it can name one but
    * cannot know an OpenLinker location id. Core resolves it to an OL location
    * (provisioning one on first sight, matched by `externalRef`), so the

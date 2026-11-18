@@ -100,6 +100,9 @@ describe('MasterInventorySyncService', () => {
       staleLocatedPositionsForSource: jest
         .fn()
         .mockResolvedValue({ markedCount: 0, variantIds: [] }),
+      staleUnreportedLocationsForSource: jest
+        .fn()
+        .mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<IInventoryService>;
 
     productsService = {
@@ -1296,6 +1299,49 @@ describe('MasterInventorySyncService', () => {
         ['ol_variant_a'],
         expect.anything()
       );
+    });
+  });
+
+  describe('multi-location pruning', () => {
+    const entry = (variantId: string, ref: string, complete: boolean): InventoryPortInterface => ({
+      id: `inv-${variantId}-${ref}`,
+      productId: internalProductId,
+      variantId,
+      masterLocation: { ref, name: ref },
+      ...(complete ? { locationSetComplete: true } : {}),
+      quantity: 1,
+      reserved: 0,
+      available: 1,
+    });
+
+    it('should stale unreported locations of a variant whose set is declared complete', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { platformType: 'shopify', config: {} },
+        metadata: {},
+      } as never);
+      locationService.resolveMasterLocation.mockImplementation(({ externalRef }) =>
+        Promise.resolve({ id: `ol_location_${externalRef}` })
+      );
+      inventoryAdapter.listInventory.mockResolvedValue([
+        entry('ol_variant_a', '1', true),
+        entry('ol_variant_a', '2', true),
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleUnreportedLocationsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        [{ variantKey: 'ol_variant_a', locationIds: ['ol_location_1', 'ol_location_2'] }],
+        { sourceConnectionId: connectionId, includeUnattributedProvenance: true }
+      );
+    });
+
+    it('should not prune locations when the master did not declare the set complete', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([entry('ol_variant_a', '1', false)]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleUnreportedLocationsForSource).not.toHaveBeenCalled();
     });
   });
 
