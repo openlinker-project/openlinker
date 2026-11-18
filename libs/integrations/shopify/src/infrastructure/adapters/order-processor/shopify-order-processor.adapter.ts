@@ -3,8 +3,9 @@
  *
  * Shopify as an order DESTINATION (#3978): an order from a marketplace
  * (Allegro, Erli) is created in the store with `orderCreate`. Implements
- * `OrderProcessorManagerPort` plus five sub-capabilities (`OrderDeliveryUpdater`, #4195, edits the
- * shipping line and pickup-point details of a copy whose locker changed at the source), each narrowed by its
+ * `OrderProcessorManagerPort` plus six sub-capabilities (`OrderDeliveryUpdater`, #4195, edits the
+ * shipping line and pickup-point details of a copy whose locker changed at the source;
+ * `OrderContactRefresher` fills the e-mail and phone a source reveals after the create), each narrowed by its
  * guard at the call site:
  *   - `OrderStatusWriteback` and `OrderFulfillmentUpdater`: a dispatch is
  *     `fulfillmentCreate` with tracking, a cancellation `orderCancel`, through
@@ -48,6 +49,7 @@ import type {
   FulfillmentStatusSnapshot,
   MappingOption,
   OrderCreate,
+  OrderContactRefresher,
   OrderCreateStockEffect,
   OrderDeliveryUpdateResult,
   OrderDeliveryUpdater,
@@ -85,6 +87,7 @@ import {
 } from '../../readers/shopify-order.queries';
 import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop-context.provider';
 import type { ShopifyOrderStatusWriteback } from '../order-status/shopify-order-status-writeback';
+import { ShopifyOrderContactRefresher } from './shopify-order-contact-refresher';
 import { ShopifyOrderDeliveryUpdater } from './shopify-order-delivery-updater';
 
 /** Fulfillment-order states that still hold work to move. */
@@ -159,12 +162,14 @@ export class ShopifyOrderProcessorAdapter
     OrderStatusWriteback,
     OrderCreateStockEffect,
     OrderDeliveryUpdater,
+    OrderContactRefresher,
     DestinationOptionsReader,
     FulfillmentStatusReader
 {
   private readonly logger = new Logger(ShopifyOrderProcessorAdapter.name);
   private readonly options: ShopifyMappingOptionsReader;
   private readonly deliveryUpdater: ShopifyOrderDeliveryUpdater;
+  private readonly contactRefresher: ShopifyOrderContactRefresher;
 
   /** Delays between re-asks of the source-identifier search after a miss; tests shorten it. */
   private readonly lookupRetryDelaysMs: readonly number[] = LOOKUP_RETRY_DELAYS_MS;
@@ -179,6 +184,7 @@ export class ShopifyOrderProcessorAdapter
   ) {
     this.options = new ShopifyMappingOptionsReader(client, connection.id);
     this.deliveryUpdater = new ShopifyOrderDeliveryUpdater(client, connection.id);
+    this.contactRefresher = new ShopifyOrderContactRefresher(client, connection.id);
   }
 
   // ─── DestinationOptionsReader ──────────────────────────────────────────────
@@ -253,6 +259,13 @@ export class ShopifyOrderProcessorAdapter
   }): Promise<OrderDeliveryUpdateResult> {
     const mapped = await this.resolveMappedOptions(input.order);
     return this.deliveryUpdater.update(input.externalOrderId, input.order, mapped);
+  }
+
+  // ─── OrderContactRefresher ─────────────────────────────────────────────────
+
+  /** Fills the e-mail and phone the source revealed after the create; see `ShopifyOrderContactRefresher`. */
+  refreshOrderContact(input: { externalOrderId: string; order: OrderCreate }): Promise<void> {
+    return this.contactRefresher.refresh(input.externalOrderId, input.order);
   }
 
   // ─── OrderCreateStockEffect ────────────────────────────────────────────────

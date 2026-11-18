@@ -220,7 +220,8 @@ Orders and products reach OpenLinker seconds after a change instead of at the ne
   only) in the connection config, then `POST /connections/:id/webhooks/install` (the "Configure webhooks" button
   arrives with #3982). The shop is subscribed to `${base}/webhooks/shopify/{connectionId}`: `orders/create`,
   `orders/updated`, `orders/cancelled` when OrderSource is enabled, `products/create`, `products/update`,
-  `products/delete` when ProductMaster is. Neither enabled is refused.
+  `products/delete` when ProductMaster is, `inventory_levels/update` when InventoryMaster is. None enabled is
+  refused.
 - **Idempotent.** Subscriptions already pointing at the current URL stay; missing ones are created; ours on an old
   base URL or for a topic no enabled capability needs are deleted after the new ones exist. Other subscriptions
   are never touched.
@@ -237,6 +238,13 @@ Orders and products reach OpenLinker seconds after a change instead of at the ne
 - **Trigger only.** Only the order or product id is read from the body; the order or product is re-read through
   the API. `products/update` also re-reads the stock (when InventoryMaster is enabled), because a stock edit in the
   admin arrives as that topic. The orders poll stays on as the backstop for a lost delivery.
+- **Stock-level topic.** A stock change made through the inventory-level API (an app, a POS) does not touch the
+  product, so it brings no `products/update`; `inventory_levels/update` covers it. The delivery names an inventory
+  item and a location, so the decoder packs both into the job's external id (`inventory-item:{item}:{location}`)
+  and the sync resolves it (core's `InventoryEventTargetResolver`, implemented by the inventory master): a
+  delivery for a location other than the connection's (`config.locationId` or the primary) is ignored with no
+  read or write, otherwise ONE GraphQL read (`inventoryItem -> variant -> product`) names the product and the
+  ordinary product-keyed stock sync runs. The body is only a trigger; the quantity in it is never used.
 
 ## ProductPublisher and CategoryProvisioner (#3979)
 

@@ -237,3 +237,16 @@ export const ORDER_UPDATE_MUTATION = `mutation OlOrderUpdate($input: OrderInput!
     userErrors { field message }
   }
 }`;
+
+/**
+ * What the contact refresh needs to know about the copy: whether it can still
+ * be edited, and the contact fields it carries now.
+ */
+export const ORDER_CONTACT_QUERY = `query OlOrderContact($id: ID!) {
+  order(id: $id) {
+    id cancelledAt closedAt email phone
+    shippingAddress {
+      firstName lastName company address1 address2 city zip provinceCode countryCodeV2 phone
+    }
+  }
+}`;
