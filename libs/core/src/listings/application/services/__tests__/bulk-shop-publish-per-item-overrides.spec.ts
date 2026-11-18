@@ -106,6 +106,9 @@ describe('Bulk shop publish per-item overrides (end-to-end, #1831)', () => {
         .mockResolvedValue([{ id: 'src-root', name: 'Electronics', depth: 0 }]),
     };
     const integrations = {
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: { id: 'conn-1', enabledCapabilities: ['ProductPublisher'] },
+      }),
       getCapabilityAdapter: jest.fn((_id: string, capability: string) =>
         capability === 'ProductMaster'
           ? Promise.resolve(productMaster)

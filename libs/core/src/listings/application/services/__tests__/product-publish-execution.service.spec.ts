@@ -58,7 +58,7 @@ describe('ProductPublishExecutionService', () => {
     deleteMapping: jest.Mock;
   };
   let syncLock: { acquire: jest.Mock; release: jest.Mock };
-  let integrations: { getCapabilityAdapter: jest.Mock };
+  let integrations: { getCapabilityAdapter: jest.Mock; getAdapter: jest.Mock };
   let adapter: { publishProduct: jest.Mock };
   let service: ProductPublishExecutionService;
 
@@ -92,7 +92,12 @@ describe('ProductPublishExecutionService', () => {
     adapter = {
       publishProduct: jest.fn().mockResolvedValue({ externalProductId: EXT, status: 'published' }),
     };
-    integrations = { getCapabilityAdapter: jest.fn().mockResolvedValue(adapter) };
+    integrations = {
+      getCapabilityAdapter: jest.fn().mockResolvedValue(adapter),
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: { id: CONN, enabledCapabilities: ['ProductPublisher'] },
+      }),
+    };
 
     syncLock = {
       acquire: jest.fn().mockResolvedValue('lock-token'),
@@ -795,5 +800,22 @@ describe('ProductPublishExecutionService', () => {
 
       expect(result.outcome).toBe('ok');
     });
+  });
+
+  it('should record a terminal business_failure without publishing when the connection is both ProductMaster and ProductPublisher', async () => {
+    integrations.getAdapter.mockResolvedValue({
+      connection: { id: CONN, enabledCapabilities: ['ProductMaster', 'ProductPublisher'] },
+    });
+    records.updateStatus.mockResolvedValue(makeRecord('failed'));
+
+    const result = await service.executePublish(input);
+
+    expect(result.outcome).toBe('business_failure');
+    expect(adapter.publishProduct).not.toHaveBeenCalled();
+    expect(records.updateStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'failed',
+      [expect.objectContaining({ code: 'SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT' })]
+    );
   });
 });

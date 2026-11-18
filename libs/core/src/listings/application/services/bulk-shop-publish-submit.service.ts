@@ -19,6 +19,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { ShopProductManagerPort } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 
+import { ensurePublishTargetAllowed } from '../../domain/ensure-publish-target-allowed';
 import type { BulkListingBatch } from '../../domain/entities/bulk-listing-batch.entity';
 import { EmptyBulkSubmissionException } from '../../domain/exceptions/empty-bulk-submission.exception';
 import { BulkListingBatchRepositoryPort } from '../../domain/ports/bulk-listing-batch-repository.port';
@@ -64,6 +65,8 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
       input.connectionId,
       'ProductPublisher',
     );
+    const { connection } = await this.integrationsService.getAdapter(input.connectionId);
+    ensurePublishTargetAllowed(connection);
 
     // 2. Persist the parent batch. totalCount = fan-out width (no multi-variant
     //    expansion — each submitted id is its own publish; #1042 model is

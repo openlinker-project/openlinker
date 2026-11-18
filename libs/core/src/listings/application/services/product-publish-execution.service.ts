@@ -65,6 +65,8 @@ import { ContendedWriteError, SYNC_LOCK_TOKEN, type SyncLockPort } from '@openli
 import { Logger } from '@openlinker/shared/logging';
 
 import type { ListingCreationRecord } from '../../domain/entities/listing-creation-record.entity';
+import { ensurePublishTargetAllowed } from '../../domain/ensure-publish-target-allowed';
+import { ShopPublishMasterPublisherConflictException } from '../../domain/exceptions/shop-publish-master-publisher-conflict.exception';
 import { ListingCreationInvariantException } from '../../domain/exceptions/listing-creation-invariant.exception';
 import { ListingCreationRecordNotFoundException } from '../../domain/exceptions/listing-creation-record-not-found.exception';
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -109,6 +111,30 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
 
   async executePublish(input: ExecutePublishProductInput): Promise<ExecutePublishProductResult> {
     const record = await this.loadOrCreateRecord(input);
+
+    // A legacy connection holding both ProductMaster and ProductPublisher
+    // cannot be published to: recorded as a terminal failure (business_failure,
+    // ADR-007) so a job queued before the guard existed does not retry.
+    try {
+      const { connection } = await this.integrationsService.getAdapter(input.connectionId);
+      ensurePublishTargetAllowed(connection);
+    } catch (error) {
+      if (error instanceof ShopPublishMasterPublisherConflictException) {
+        const updated = await this.listingRecords.updateStatus(
+          record.id,
+          LISTING_CREATION_STATUS.Failed,
+          [
+            {
+              field: 'connection.enabledCapabilities',
+              code: 'SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT',
+              message: error.message,
+            },
+          ]
+        );
+        return this.buildResult(updated, input.connectionId);
+      }
+      throw error;
+    }
 
     // Create-vs-upsert: the `ShopProduct` mapping is keyed (entityType,
     // internalId) on the reverse lookup, so filter by connectionId to get

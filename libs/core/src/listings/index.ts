@@ -646,6 +646,7 @@ export type {
   ProvisionCategoryResult,
 } from './domain/types/category-provision.types';
 export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
+export { ShopPublishMasterPublisherConflictException } from './domain/exceptions/shop-publish-master-publisher-conflict.exception';
 export { ProductPublishTargetNotFoundException } from './domain/exceptions/product-publish-target-not-found.exception';
 
 // Required-to-sell preflight (#1842) — pure, side-effect-free "would publish
