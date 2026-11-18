@@ -3,9 +3,9 @@
     "configure": "Configure webhooks",
     "configuring": "Configuring...",
     "currentlyConfigured": "Currently configured.",
-    "description": "Subscribes the store to order and product events, so changes reach OpenLinker right away instead of on the next poll.",
+    "description": "Subscribes the store to order, product and stock events, so changes reach OpenLinker right away instead of on the next poll.",
     "needsCallbackUrl": "Save an OpenLinker callback URL first.",
-    "needsCapability": "Enable Order source or Product master first.",
+    "needsCapability": "Enable Order source, Product master or Inventory master first.",
     "reconfigure": "Configure again",
     "title": "Configure webhooks",
     "toast": {
@@ -55,7 +55,7 @@
       "unknownWarning": "The saved location is not an active location of this store. Stock cannot be read or written until you pick another one."
     },
     "noWebhookCapability": {
-      "body": "Webhooks carry order and product events. Enable Order source or Product master to use them.",
+      "body": "Webhooks carry order, product and stock events. Enable Order source, Product master or Inventory master to use them.",
       "title": "Webhooks are not available"
     },
     "refunds": {

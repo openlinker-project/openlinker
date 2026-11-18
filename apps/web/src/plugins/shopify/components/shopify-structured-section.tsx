@@ -41,7 +41,8 @@ export function ShopifyStructuredSection({
 
   const webhookCapabilityEnabled =
     connection.enabledCapabilities.includes('OrderSource') ||
-    connection.enabledCapabilities.includes('ProductMaster');
+    connection.enabledCapabilities.includes('ProductMaster') ||
+    connection.enabledCapabilities.includes('InventoryMaster');
   const locationId = form.watch('shopifyLocationId') ?? '';
   const refundsOn = form.watch('shopifyRefundsThroughShopify') === 'true';
 

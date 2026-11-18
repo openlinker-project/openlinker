@@ -37,6 +37,18 @@ describe('ShopifyWebhookEventTranslatorAdapter', () => {
     ]);
   });
 
+  it('should turn an inventory delivery into one inventory event keeping the packed id', () => {
+    const packed = { ...event('inventory_levels/update', 'inventory'), externalId: 'inventory-item:5:9' };
+
+    expect(translator.translate(packed as InboundWebhookEvent)).toEqual({
+      domain: 'inventory',
+      externalId: 'inventory-item:5:9',
+      eventType: 'inventory_levels/update',
+      occurredAt: '2026-11-10T10:00:00.000Z',
+      payload: { id: '77' },
+    });
+  });
+
   it('should turn products/create and products/delete into a product event only', () => {
     expect(translator.translate(event('products/create', 'product'))).toMatchObject({ domain: 'product' });
     expect(translator.translate(event('products/delete', 'product'))).toMatchObject({ domain: 'product' });

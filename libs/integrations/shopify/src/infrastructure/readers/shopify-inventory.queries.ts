@@ -59,3 +59,8 @@ export const ADJUST_AVAILABLE_MUTATION = `mutation OlAdjustAvailable($input: Inv
     userErrors { field message code }
   }
 }`;
+
+/** The product an inventory item belongs to (stock-level webhook resolution); null for an unknown item. */
+export const INVENTORY_ITEM_PRODUCT_QUERY = `query OlInventoryItemProduct($id: ID!) {
+  inventoryItem(id: $id) { id variant { id product { id } } }
+}`;

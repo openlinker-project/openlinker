@@ -117,7 +117,7 @@ describe('ShopifyStructuredSection', () => {
 
   it('should warn when nothing on the connection uses webhooks', () => {
     locationsQuery.mockReturnValue({ data: LOCATIONS, isSuccess: true, isLoading: false, isError: false });
-    renderAsAdmin(<Harness caps={['InventoryMaster']} />);
+    renderAsAdmin(<Harness caps={['Invoicing']} />);
 
     expect(screen.getByText('Webhooks are not available')).toBeTruthy();
   });

@@ -30,24 +30,36 @@ export const SHOPIFY_WEBHOOK_ORDER_RESOURCE = 'order';
 /** The neutral object type of a product delivery. */
 export const SHOPIFY_WEBHOOK_PRODUCT_RESOURCE = 'product';
 
+/** The neutral object type of a stock-level delivery (keyed by inventory item and location, not product). */
+export const SHOPIFY_WEBHOOK_INVENTORY_RESOURCE = 'inventory';
+
 export type ShopifyWebhookResource =
   | typeof SHOPIFY_WEBHOOK_ORDER_RESOURCE
-  | typeof SHOPIFY_WEBHOOK_PRODUCT_RESOURCE;
+  | typeof SHOPIFY_WEBHOOK_PRODUCT_RESOURCE
+  | typeof SHOPIFY_WEBHOOK_INVENTORY_RESOURCE;
 
 export const SHOPIFY_ORDER_WEBHOOK_TOPICS = ['orders/create', 'orders/updated', 'orders/cancelled'] as const;
 
 export const SHOPIFY_PRODUCT_WEBHOOK_TOPICS = ['products/create', 'products/update', 'products/delete'] as const;
 
+/**
+ * A stock change made through the inventory-level API (an app, a POS) does not
+ * touch the product, so it brings no `products/update`. Subscribed only for
+ * connections with `InventoryMaster`.
+ */
+export const SHOPIFY_INVENTORY_WEBHOOK_TOPICS = ['inventory_levels/update'] as const;
+
 export type ShopifyWebhookTopic =
   | (typeof SHOPIFY_ORDER_WEBHOOK_TOPICS)[number]
-  | (typeof SHOPIFY_PRODUCT_WEBHOOK_TOPICS)[number];
+  | (typeof SHOPIFY_PRODUCT_WEBHOOK_TOPICS)[number]
+  | (typeof SHOPIFY_INVENTORY_WEBHOOK_TOPICS)[number];
 
 export const SHOPIFY_ORDER_CREATE_TOPIC = 'orders/create';
 
 /**
  * The product topic that also triggers a stock re-read. Shopify's own stock
  * topic (`inventory_levels/update`) is keyed by inventory item and location, not
- * by product, so it cannot feed the product-keyed inventory sync directly.
+ * by product, so its id is resolved to a product when the sync runs.
  */
 export const SHOPIFY_PRODUCT_UPDATE_TOPIC = 'products/update';
 
@@ -59,6 +71,7 @@ export const SHOPIFY_WEBHOOK_TOPIC_ENUM: Readonly<Record<ShopifyWebhookTopic, st
   'products/create': 'PRODUCTS_CREATE',
   'products/update': 'PRODUCTS_UPDATE',
   'products/delete': 'PRODUCTS_DELETE',
+  'inventory_levels/update': 'INVENTORY_LEVELS_UPDATE',
 };
 
 /** The resource a topic concerns, or null for a topic OpenLinker does not handle. */
@@ -69,6 +82,9 @@ export function shopifyWebhookResourceOf(topic: string): ShopifyWebhookResource 
   }
   if ((SHOPIFY_PRODUCT_WEBHOOK_TOPICS as readonly string[]).includes(normalised)) {
     return SHOPIFY_WEBHOOK_PRODUCT_RESOURCE;
+  }
+  if ((SHOPIFY_INVENTORY_WEBHOOK_TOPICS as readonly string[]).includes(normalised)) {
+    return SHOPIFY_WEBHOOK_INVENTORY_RESOURCE;
   }
   return null;
 }

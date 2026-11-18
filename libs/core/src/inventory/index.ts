@@ -41,6 +41,8 @@ export {
 // co-located guard. Guard-only - never advertised in a manifest.
 export type { BulkInventoryReader } from './domain/ports/capabilities/bulk-inventory-reader.capability';
 export { isBulkInventoryReader } from './domain/ports/capabilities/bulk-inventory-reader.capability';
+export type { InventoryEventTargetResolver } from './domain/ports/capabilities/inventory-event-target-resolver.capability';
+export { isInventoryEventTargetResolver } from './domain/ports/capabilities/inventory-event-target-resolver.capability';
 
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';

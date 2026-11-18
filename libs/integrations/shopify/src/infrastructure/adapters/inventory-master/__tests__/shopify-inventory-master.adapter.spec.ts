@@ -270,3 +270,44 @@ describe('ShopifyInventoryMasterAdapter', () => {
     });
   });
 });
+
+describe('ShopifyInventoryMasterAdapter.resolveEventProductExternalId', () => {
+  it('should resolve the packed inventory item to its product with one read', async () => {
+    const query = jest.fn<Promise<unknown>, [string, Record<string, unknown>]>().mockResolvedValue({
+      inventoryItem: {
+        id: 'gid://shopify/InventoryItem/55',
+        variant: { id: 'gid://shopify/ProductVariant/6', product: { id: 'gid://shopify/Product/7' } },
+      },
+    });
+    const adapter = build({ query, mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('inventory-item:55:1')).resolves.toBe('7');
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0][1]).toEqual({ id: 'gid://shopify/InventoryItem/55' });
+  });
+
+  it('should ignore a delivery for a location other than the connection\'s without reading anything', async () => {
+    const query = jest.fn();
+    const adapter = build({ query, mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('inventory-item:55:2')).resolves.toBeNull();
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('should ignore an inventory item Shopify no longer knows', async () => {
+    const adapter = build({ query: jest.fn().mockResolvedValue({ inventoryItem: null }), mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('inventory-item:55:1')).resolves.toBeNull();
+  });
+
+  it('should pass a plain product id through untouched', async () => {
+    const query = jest.fn();
+    const adapter = build({ query, mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('7')).resolves.toBe('7');
+
+    expect(query).not.toHaveBeenCalled();
+  });
+});

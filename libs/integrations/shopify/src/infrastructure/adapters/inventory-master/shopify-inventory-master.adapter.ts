@@ -18,7 +18,9 @@
  * unfulfilled orders) is reported as `reserved`, `on_hand` as `quantity`.
  *
  * Also implements the guard-only `BulkInventoryReader` rung: a prefetch that
- * reads a batch's levels with `nodes(ids:)`.
+ * reads a batch's levels with `nodes(ids:)`, and the guard-only
+ * `InventoryEventTargetResolver`, which turns an `inventory_levels/update`
+ * delivery (inventory item + location) into the product to re-read.
  *
  * Load-bearing behaviours:
  *   - **Deletion** only where Shopify says so (`ShopifyInventoryReader`):
@@ -55,6 +57,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   BulkInventoryReader,
   Inventory,
+  InventoryEventTargetResolver,
   InventoryAdjustment,
   InventoryAdjustmentResult,
   InventoryMasterPort,
@@ -68,6 +71,7 @@ import { ShopifyNotSupportedException } from '../../../domain/exceptions/shopify
 import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
 import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
 import { shopifyIdempotencyKey } from '../../../domain/policies/shopify-idempotency-key.policy';
+import { unpackShopifyInventoryEventId } from '../../../domain/policies/shopify-inventory-event-id.policy';
 import type {
   ShopifyInventoryLevel,
   ShopifyInventoryProduct,
@@ -79,6 +83,7 @@ import { ShopifyBatchSizer } from '../../readers/shopify-cost-backoff';
 import { resolveShopifyExternalId } from '../../readers/shopify-external-id';
 import {
   ADJUST_AVAILABLE_MUTATION,
+  INVENTORY_ITEM_PRODUCT_QUERY,
   PRODUCTS_INVENTORY_BY_IDS_QUERY,
 } from '../../readers/shopify-inventory.queries';
 import type { ShopifyInventoryReader } from '../../readers/shopify-inventory.reader';
@@ -114,7 +119,7 @@ export function readShopifyLevel(level: ShopifyInventoryLevel | null | undefined
   };
 }
 
-export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkInventoryReader {
+export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkInventoryReader, InventoryEventTargetResolver {
   private readonly logger = new Logger(ShopifyInventoryMasterAdapter.name);
   private readonly batchSizer = new ShopifyBatchSizer(SHOPIFY_PRODUCT_BATCH_SIZE);
 
@@ -195,6 +200,37 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
           `${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * The product a stock-level webhook stands for. An id that is not a packed
+   * item + location (a product id from `products/update`) is returned as is.
+   * A location other than the connection's is ignored without any read; the
+   * location comes from the cached shop context, so the one request this spends
+   * is the `inventoryItem -> variant -> product` read. The delivery body is a
+   * trigger only: the stock is read afresh by the sync that follows.
+   */
+  async resolveEventProductExternalId(eventExternalId: string): Promise<string | null> {
+    const target = unpackShopifyInventoryEventId(eventExternalId);
+    if (target === null) {
+      return eventExternalId;
+    }
+    const { locationGid } = await this.shopContext.get();
+    if (fromShopifyGid(locationGid) !== target.locationId) {
+      return null;
+    }
+    const data = await this.client.query<{
+      inventoryItem: { variant: { product: { id: string } | null } | null } | null;
+    }>(INVENTORY_ITEM_PRODUCT_QUERY, { id: toShopifyGid('InventoryItem', target.inventoryItemId) });
+    const productGid = data.inventoryItem?.variant?.product?.id;
+    if (typeof productGid !== 'string') {
+      this.logger.warn(
+        `Shopify inventory item ${target.inventoryItemId} resolves to no product; stock event ignored ` +
+          `(connection: ${this.connection.id})`,
+      );
+      return null;
+    }
+    return fromShopifyGid(productGid);
   }
 
   // ─── Write ─────────────────────────────────────────────────────────────────

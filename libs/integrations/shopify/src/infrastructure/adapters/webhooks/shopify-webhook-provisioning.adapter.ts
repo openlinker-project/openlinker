@@ -2,7 +2,7 @@
  * Shopify Webhook Provisioning Adapter (#3981)
  *
  * Implements `WebhookProvisioningPort` for Shopify: subscribes the shop to the
- * order and product topics OpenLinker routes, delivering to
+ * order, product and stock-level topics OpenLinker routes, delivering to
  * `${openlinkerCallbackBaseUrl}/webhooks/shopify/${connectionId}`. Registered
  * by `ShopifyIntegrationModule` (it needs `ConnectionPort` and
  * `IWebhookSecretService`, which `HostServices` does not carry) and reached
@@ -30,7 +30,7 @@
  * never touched.
  *
  * TOPICS FOLLOW THE ENABLED CAPABILITIES: order topics for `OrderSource`,
- * product topics for `ProductMaster`; the routing gate would otherwise accept
+ * product topics for `ProductMaster`, the stock-level topic for `InventoryMaster`; the routing gate would otherwise accept
  * and then dead-letter every delivery of the other kind. Neither enabled is
  * refused. The orders poll stays on as the reconciliation backstop (#904).
  *
@@ -53,6 +53,7 @@ import type { ConnectionRateLimit } from '@openlinker/shared/rate-limit';
 import { resolveShopifyRateLimitBucketKey } from '../../../domain/policies/shopify-rate-limit-bucket.policy';
 import type { ShopifyCredentials } from '../../../domain/types/shopify-credentials.types';
 import {
+  SHOPIFY_INVENTORY_WEBHOOK_TOPICS,
   SHOPIFY_ORDER_WEBHOOK_TOPICS,
   SHOPIFY_PRODUCT_WEBHOOK_TOPICS,
   SHOPIFY_WEBHOOK_PROVIDER,
@@ -67,6 +68,9 @@ const ORDER_CAPABILITY = 'OrderSource';
 
 /** The capability the routing gate requires for a `product` delivery. */
 const PRODUCT_CAPABILITY = 'ProductMaster';
+
+/** The capability the routing gate requires for an `inventory` delivery. */
+const INVENTORY_CAPABILITY = 'InventoryMaster';
 
 const SUBSCRIPTIONS_PAGE_SIZE = 100;
 
@@ -112,6 +116,7 @@ export function shopifyWebhookTopicsFor(enabledCapabilities: readonly string[]):
   return [
     ...(enabledCapabilities.includes(ORDER_CAPABILITY) ? SHOPIFY_ORDER_WEBHOOK_TOPICS : []),
     ...(enabledCapabilities.includes(PRODUCT_CAPABILITY) ? SHOPIFY_PRODUCT_WEBHOOK_TOPICS : []),
+    ...(enabledCapabilities.includes(INVENTORY_CAPABILITY) ? SHOPIFY_INVENTORY_WEBHOOK_TOPICS : []),
   ].map((topic) => SHOPIFY_WEBHOOK_TOPIC_ENUM[topic]);
 }
 
@@ -164,7 +169,7 @@ export class ShopifyWebhookProvisioningAdapter implements WebhookProvisioningPor
     const topics = shopifyWebhookTopicsFor(connection.enabledCapabilities);
     if (topics.length === 0) {
       throw new BadRequestException(
-        'Enable the Order source or Product master capability on this connection before ' +
+        'Enable the Order source, Product master or Inventory master capability on this connection before ' +
           'configuring webhooks: without one OpenLinker would accept every Shopify delivery and ' +
           'then discard it.',
       );

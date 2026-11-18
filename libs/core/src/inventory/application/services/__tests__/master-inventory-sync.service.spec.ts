@@ -142,6 +142,34 @@ describe('MasterInventorySyncService', () => {
   });
 
   describe('syncFromMasterByExternalId', () => {
+    it('should sync the product an event-target resolver names instead of the event id', async () => {
+      const resolve = jest.fn().mockResolvedValue('resolved-product');
+      Object.assign(inventoryAdapter, { resolveEventProductExternalId: resolve });
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+
+      await service.syncFromMasterByExternalId(connectionId, 'inventory-item:5:9');
+
+      expect(resolve).toHaveBeenCalledWith('inventory-item:5:9');
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        'Product',
+        'resolved-product',
+        connectionId
+      );
+    });
+
+    it('should end without reading or writing when the resolver says the event is not applicable', async () => {
+      Object.assign(inventoryAdapter, {
+        resolveEventProductExternalId: jest.fn().mockResolvedValue(null),
+      });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, 'inventory-item:5:9');
+
+      expect(result).toMatchObject({ skipped: 'event-not-applicable', itemsWritten: 0, masterDeleted: false });
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+      expect(inventoryAdapter.listInventory).not.toHaveBeenCalled();
+      expect(inventoryService.setInventory).not.toHaveBeenCalled();
+    });
+
     it('should attribute every written position to the sync run when one is given (#4062)', async () => {
       inventoryAdapter.listInventory.mockResolvedValue([
         {
