@@ -224,6 +224,13 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     else dispatch({ type: 'next' });
   };
 
+  // "Stays as it is" is a decision too: it records the step as handled, so it also unblocks a required step.
+  const handleStaysAsIs = (): void => {
+    steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
+    if (isLast) onClose();
+    else dispatch({ type: 'next' });
+  };
+
   return (
     <>
       {createPortal(
@@ -328,6 +335,11 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
           </p>
         ) : null}
         <div className="tour-card__footer">
+          {isAdmin && !done && state.target !== 'missing' ? (
+            <Button tone="ghost" className="button--sm" onClick={handleStaysAsIs}>
+              {copy.panel.stayAsIs}
+            </Button>
+          ) : null}
           <div className="tour-card__nav">
             {state.index > 0 ? (
               <Button
