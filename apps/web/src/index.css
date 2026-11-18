@@ -41916,3 +41916,15 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .whats-new__rail { grid-row: 2; top: 76px; }
   .whats-new__lang { margin-top: -4px; }
 }
+
+/* What's new has the whole page to scroll, so the setup card does not add scrollbars of its own:
+   the rail flows with the page and the step list shows in full. */
+@media (min-width: 1024px) {
+  .whats-new__rail { position: static; max-height: none; overflow: visible; padding: 0; margin: 0; }
+}
+.whats-new__setup .release-card__collapse > .release-card__steps {
+  max-height: none;
+  overflow-y: visible;
+  mask-image: none;
+}
+.whats-new__setup .release-card__actions { position: static; }
