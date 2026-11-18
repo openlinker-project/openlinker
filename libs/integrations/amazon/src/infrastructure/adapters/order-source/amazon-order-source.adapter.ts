@@ -26,6 +26,12 @@
  *   Never throws; a failure is `rejected`, transient when it was a transport
  *   failure or a throttle.
  *
+ * Returns (`ReturnSourceReader`, #4184): delegated to `AmazonReturnReader`,
+ * which reads Amazon's seller-fulfilled returns report. Refunds
+ * (`RefundExecutor`) are on the refunding subclasses the factory builds only
+ * for a connection that opted in, so a connection without the opt-in is not a
+ * refund executor at all and core records the refund as done out of band.
+ *
  * @module libs/integrations/amazon/src/infrastructure/adapters/order-source
  * @implements {OrderSourcePort}
  */
@@ -39,11 +45,14 @@ import type {
   OrderSourcePort,
   OrderStatusWriteback,
   OrderWritebackResult,
+  ReturnSourceReader,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
+import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 
+import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import {
   decodeAmazonOrderFeedCursor,
@@ -64,6 +73,8 @@ import {
 } from '../../../domain/types/amazon-order.types';
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
 import { mapAmazonOrderToIncomingOrder } from '../../mappers/amazon-incoming-order.mapper';
+import { AMAZON_TERMINAL_RETURN_STATUSES } from '../../mappers/amazon-return.mapper';
+import type { AmazonReturnReader } from '../returns/amazon-return-reader';
 import { resolveAmazonCarrier } from './amazon-carrier-code';
 
 const SEARCH_ORDERS_PATH = '/orders/2026-01-01/orders';
@@ -75,7 +86,9 @@ const GET_ORDER_INCLUDED_DATA = ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT'
 /** Payment method names the Orders API documents (`PaymentExecution.paymentMethod`). */
 const DOCUMENTED_PAYMENT_METHODS = ['CashOnDelivery', 'ConvenienceStore', 'CreditCard', 'Invoice', 'Pix'];
 
-export class AmazonOrderSourceAdapter implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader {
+export class AmazonOrderSourceAdapter
+  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader, ReturnSourceReader
+{
   private readonly logger = new Logger(AmazonOrderSourceAdapter.name);
 
   constructor(
@@ -83,7 +96,27 @@ export class AmazonOrderSourceAdapter implements OrderSourcePort, OrderStatusWri
     private readonly client: AmazonSpApiClient,
     private readonly config: AmazonConnectionConfig,
     private readonly now: () => Date = (): Date => new Date(),
+    /** The returns report reader (#4184); absent only in tests that do not read returns. */
+    protected readonly returns?: AmazonReturnReader,
   ) {}
+
+  /** Return request statuses after which Amazon changes nothing more (#4184). */
+  readonly terminalRawStatuses: readonly string[] = AMAZON_TERMINAL_RETURN_STATUSES;
+
+  listReturnFeed(input: ReturnFeedInput): Promise<ReturnFeedOutput> {
+    return this.requireReturns().listReturnFeed(input);
+  }
+
+  getReturn(input: { externalReturnId: string }): Promise<IncomingReturn> {
+    return this.requireReturns().getReturn(input);
+  }
+
+  protected requireReturns(): AmazonReturnReader {
+    if (this.returns === undefined) {
+      throw new AmazonConfigException(this.connectionId, 'the returns report reader is not configured');
+    }
+    return this.returns;
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     const now = this.now();
@@ -176,7 +209,7 @@ export class AmazonOrderSourceAdapter implements OrderSourcePort, OrderStatusWri
     return Promise.resolve(DOCUMENTED_PAYMENT_METHODS.map((value) => ({ value, label: value })));
   }
 
-  private async readOrder(orderId: string): Promise<AmazonOrder> {
+  protected async readOrder(orderId: string): Promise<AmazonOrder> {
     const response = await this.client.get<AmazonGetOrderResponse>(
       `${SEARCH_ORDERS_PATH}/${encodeURIComponent(orderId)}`,
       { includedData: GET_ORDER_INCLUDED_DATA },

@@ -11,6 +11,7 @@
  *     static sandbox, which answers from canned fixtures (#2881).
  *   - `fbaLocationId` (optional) needs `stockLocationOverride` set to a
  *     different location (#4183, see `readFbaLocationId`).
+ *   - `refundsEnabled` (optional boolean, #4184) opts in to sending refunds.
  *   - `marketplaceIds` must be a non-empty list of SP-API marketplace ids.
  *     An id we know (`AMAZON_KNOWN_MARKETPLACES`) must belong to the chosen
  *     region; an unknown id is accepted by format alone. Duplicates are dropped.
@@ -68,6 +69,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
   const taxCodeRates = readTaxCodeRates(config.taxCodeRates, issues);
   const catalogueMarketplaceId = readCatalogueMarketplaceId(config.catalogueMarketplaceId, marketplaceIds, issues);
   const fbaLocationId = readFbaLocationId(config.fbaLocationId, config.stockLocationOverride, issues);
+  const refundsEnabled = readOptionalBoolean(config.refundsEnabled, 'refundsEnabled', issues);
 
   if (issues.length > 0 || region === null || environment === null) {
     return { ok: false, issues };
@@ -83,6 +85,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
       ...(taxCodeRates ? { taxCodeRates } : {}),
       ...(catalogueMarketplaceId ? { catalogueMarketplaceId } : {}),
       ...(fbaLocationId ? { fbaLocationId } : {}),
+      ...(refundsEnabled ? { refundsEnabled } : {}),
     },
   };
 }
@@ -285,4 +288,15 @@ function readFbaLocationId(
     return undefined;
   }
   return id;
+}
+
+function readOptionalBoolean(value: unknown, path: string, issues: FlatValidationIssue[]): boolean | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'boolean') {
+    issues.push({ path, message: 'must be true or false' });
+    return undefined;
+  }
+  return value;
 }

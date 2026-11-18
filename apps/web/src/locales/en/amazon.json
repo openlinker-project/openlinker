@@ -76,6 +76,10 @@
       "unlisted": "Marketplace {id}"
     },
     "queueUrlDescription": "Amazon delivers order changes to this queue. Register it below after saving.",
+    "refunds": {
+      "description": "A refund confirmed in OpenLinker is sent to Amazon for seller-fulfilled orders. When off, OpenLinker only records that you refunded in Seller Central.",
+      "label": "Send refunds to Amazon"
+    },
     "region": {
       "description": "Set when the connection was created. Another region is another Amazon account and needs a new connection.",
       "label": "Region"

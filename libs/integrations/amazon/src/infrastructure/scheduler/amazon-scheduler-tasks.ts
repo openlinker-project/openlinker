@@ -9,6 +9,10 @@
  * 0.0056 req/s with a burst of 20, so one tick every five minutes reading up to
  * a few pages stays inside the quota.
  *
+ * `amazon-returns-poll` and `amazon-returns-status-sync` (#4184) read the
+ * seller-fulfilled returns report; both OFF by default. They need only
+ * `OrderSource`, so they use the host's capability filter.
+ *
  * @module libs/integrations/amazon/src/infrastructure/scheduler
  */
 import type { Connection, ConnectionFilters } from '@openlinker/core/identifier-mapping';
@@ -33,6 +37,10 @@ function readMasterCatalogConnectionId(connection: Connection): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+/** Returns handed to core per call of the return feed (#4184). */
+export const AMAZON_RETURNS_POLL_LIMIT = 100;
+export const AMAZON_RETURNS_CURSOR_KEY = 'amazon.returns.reportCursor';
+
 /** `searchListingsItems` and the status reads page by 20. */
 const AMAZON_OFFERS_PAGE_LIMIT = 20;
 
@@ -52,6 +60,46 @@ export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
         cursorKey: AMAZON_ORDERS_CURSOR_KEY,
       }),
       generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:orders:poll:${timestamp}`,
+    },
+    // #4184: the seller-fulfilled returns report. Ticks every 15 minutes so a
+    // report Amazon finished building is read soon; the reader requests a new
+    // report at most once an hour. Off by default
+    // (`OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED`). Requires `OrderSource`,
+    // never `ReturnSourceReader`, which is advertised-without-dispatch.
+    {
+      taskId: 'amazon-returns-poll',
+      platformType: AMAZON_PLATFORM_TYPE,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.poll',
+      cronExpression: '*/15 * * * *',
+      enabledEnvVar: 'OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        cursorKey: AMAZON_RETURNS_CURSOR_KEY,
+        limit: AMAZON_RETURNS_POLL_LIMIT,
+      }),
+      generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:returns:poll:${timestamp}`,
+    },
+    // #4184: re-reads the open returns from the last reports (kept in the
+    // cache), bounded to the cache lifetime. Off by default
+    // (`OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED`).
+    {
+      taskId: 'amazon-returns-status-sync',
+      platformType: AMAZON_PLATFORM_TYPE,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.statusSync',
+      cronExpression: '20 * * * *',
+      enabledEnvVar: 'OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: 50,
+        cursorKey: 'amazon.returns.scanOffset',
+        lookbackDays: 40,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:returns:status:sync:${timestamp}`,
     },
   ];
 }

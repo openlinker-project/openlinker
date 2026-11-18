@@ -19,6 +19,7 @@ import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
 import type { AmazonSqsClient } from '../../http/amazon-sqs-client';
 import { mapAmazonNotificationMessage } from '../../mappers/amazon-notification.mapper';
+import type { AmazonReturnReader } from '../returns/amazon-return-reader';
 import { AmazonOrderSourceAdapter } from './amazon-order-source.adapter';
 
 export class AmazonQueuedOrderSourceAdapter extends AmazonOrderSourceAdapter implements InboundQueueReader {
@@ -28,8 +29,9 @@ export class AmazonQueuedOrderSourceAdapter extends AmazonOrderSourceAdapter imp
     config: AmazonConnectionConfig,
     private readonly notificationQueue: AmazonSqsClient,
     now?: () => Date,
+    returns?: AmazonReturnReader,
   ) {
-    super(connectionId, client, config, now);
+    super(connectionId, client, config, now, returns);
   }
 
   async receiveInboundMessages(input: { readonly maxMessages: number }): Promise<InboundQueueMessage[]> {

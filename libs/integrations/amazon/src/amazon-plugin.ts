@@ -18,6 +18,9 @@
  * guards, never through `getCapabilityAdapter`. `ProductMaster` with #4182
  * (the seller's own listings as a catalogue). `InventoryMaster` with #4183
  * (FBM stock from the listings, FBA stock at an operator-chosen location).
+ * `ReturnSourceReader` with #4184, advertised-without-dispatch: resolved by
+ * narrowing the `OrderSource` adapter. `RefundExecutor` is undeclared (core's
+ * rule for it) and present only on a connection that opted in to refunds.
  *
  * Authorization: both a self-authorized private app and a public-app OAuth
  * grant end in the same stored LWA credentials (`AmazonCredentials`), so this
@@ -58,6 +61,7 @@ export const amazonAdapterManifest: AdapterMetadata = {
     'OfferManager',
     'ProductMaster',
     'InventoryMaster',
+    'ReturnSourceReader',
     'CategoryBrowser',
     'EanCategoryMatcher',
     'OfferCreator',
@@ -111,7 +115,7 @@ export function createAmazonPlugin(): AdapterPlugin {
         return dispatchCapability<Promise<T>>(
           capability,
           {
-            OrderSource: async () => factory.createOrderSource(await resolve()) as T,
+            OrderSource: async () => factory.createOrderSource(await resolve(), host.cache) as T,
             OfferManager: async () => factory.createOfferManager(await resolve()) as T,
             ProductMaster: async () =>
               factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,

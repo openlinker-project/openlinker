@@ -23,6 +23,16 @@ describe('amazonConnectionConfig', () => {
       amazonCatalogueMarketplaceId: '',
       amazonFbaLocationId: '',
       amazonFbmLocationId: '',
+      amazonRefundsEnabled: 'false',
+    });
+  });
+
+  it('should read and write the refund opt-in (#4184)', () => {
+    const config = { region: 'eu', marketplaceIds: ['A1PA6795UKMFR9'], refundsEnabled: true };
+
+    expect(amazonConnectionConfig.readConfigToForm(config)).toMatchObject({ amazonRefundsEnabled: 'true' });
+    expect(amazonConnectionConfig.applyToConfig(config, { amazonRefundsEnabled: 'false' })).toMatchObject({
+      refundsEnabled: false,
     });
   });
 
