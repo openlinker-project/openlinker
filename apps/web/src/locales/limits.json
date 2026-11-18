@@ -906,7 +906,7 @@
   "mappings:mappingPairingBar.destination": 18,
   "mappings:mappingPairingBar.notLinked": 16,
   "mappings:mappingPairingBar.source": 10,
-  "mappings:mappingPanel.add": 7,
+  "mappings:mappingPanel.add": 16,
   "mappings:mappingPanel.remove": 10,
   "mappings:mappingPanel.save": 21,
   "mappings:mappingPanel.unsaved": 24,

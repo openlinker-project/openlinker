@@ -615,6 +615,12 @@ export function ConnectionMappingsPage(): ReactElement {
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
               {tab.label}
+              {dirtyTabs.has(tab.id) && (
+                <>
+                  <span className="tabs__unsaved-dot" aria-hidden="true" />
+                  <span className="sr-only">{copy.tabUnsaved}</span>
+                </>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>

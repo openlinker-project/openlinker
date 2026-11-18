@@ -169,12 +169,14 @@
   },
   "mappingPanel": {
     "actions": "Actions",
-    "add": "Add",
+    "add": "Add to list",
+    "addDisabledHint": "Pick both fields first ({source} and {target}), then press Add to list.",
     "allMapped": "All source values mapped.",
     "dataErrorTitle": "Unable to load mappings",
     "defaultDynamicSuffix": " - dynamic",
-    "defaultEmpty": "No mappings configured yet. Orders may sync with default values. Add one below.",
+    "defaultEmpty": "No mappings configured yet. Orders may sync with default values. Pick both values below, press Add to list, then Save mappings.",
     "derivedCue": " - reads as {value}",
+    "discard": "Discard",
     "duplicateSource": "A mapping for this source value already exists.",
     "eyebrow": "Configuration",
     "focusHint": "Map <strong>{source}</strong> to a {target} below.",
@@ -182,17 +184,28 @@
       "message": "Fetching available values…",
       "title": "Loading {title} options"
     },
+    "notSavedChip": "Not saved yet",
     "optionsErrorTitle": "Unable to load options",
     "orphanedSource": "orphaned source",
     "remove": "Remove",
     "removeLabel": "Remove mapping for {source}",
     "retry": "Retry",
     "save": "Save mappings",
+    "savedCount": {
+      "one": "{n} mapping saved",
+      "other": "{n} mappings saved"
+    },
+    "savedNone": "Mappings saved.",
     "saving": "Saving…",
     "select": "Select {label}",
     "tableLabel": "{title} mappings",
     "tryAgain": "Try again",
-    "unsaved": "Unsaved changes"
+    "unsaved": "Unsaved changes",
+    "unsavedBarHint": "Nothing is stored until you press Save mappings.",
+    "unsavedCount": {
+      "one": "{n} unsaved change",
+      "other": "{n} unsaved changes"
+    }
   },
   "orderStatuses": {
     "cancelled": "Cancelled",
