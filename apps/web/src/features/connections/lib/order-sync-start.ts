@@ -104,6 +104,11 @@ export function describeOrderSyncStart(
 ): string {
   if (!value || value.mode === 'now') return copy.now;
   if (value.mode === 'all') return copy.all;
-  if (!value.from) return copy.now;
-  return copy.from.replace('{date}', formatDate(`${value.from}T12:00:00`));
+  // A date that is still being typed, or that the schema will refuse, must not
+  // be echoed back as the operator's choice, and must not read as "only new
+  // orders" either: the summary would then contradict the selected card.
+  const from = value.from ?? '';
+  const usable =
+    isRealDate(from) && from <= latestOrderSyncStartDate() && from >= earliestOrderSyncStartDate();
+  return copy.from.replace('{date}', usable ? formatDate(`${from}T12:00:00`) : '…');
 }
