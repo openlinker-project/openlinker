@@ -40620,6 +40620,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   display: grid;
   gap: 10px;
   align-content: start;
+  /* A focused control scrolls clear of the pinned card actions (about 3.9rem tall). */
+  scroll-padding-bottom: 4.5rem;
 }
 .release-panel__empty {
   display: grid;
@@ -40748,7 +40750,40 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* overflow hides the collapsing steps, but the step markers scale with a spring
    and sit on the left edge: widen the clip box sideways so their ring is not cut. */
 .release-card__collapse > div { overflow: hidden; min-height: 0; padding-inline: 6px; margin-inline: -6px; }
-.release-card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Only the step list scrolls (#4154): the card header and the actions stay put. The side padding
+   above stays so the step markers are not clipped; the edge fades show only where more content waits. */
+.release-card__collapse > .release-card__steps {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: min(42dvh, 26rem);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.release-card__steps:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-md); }
+.release-card__steps[data-edge-top='true'][data-edge-bottom='false'] {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
+}
+.release-card__steps[data-edge-top='false'][data-edge-bottom='true'] {
+  mask-image: linear-gradient(to top, transparent 0, #000 20px);
+}
+.release-card__steps[data-edge-top='true'][data-edge-bottom='true'] {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+}
+/* Pinned to the bottom of the panel list while the card is on screen. It inherits the card's own
+   background so nothing shows through, and stretches over the card padding to its edges. */
+.release-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 -14px -12px;
+  padding: 10px 14px 12px;
+  background: inherit;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
 /* The item menu of the approved mockup: a compact card with icon rows. */
 .dropdown-menu__content.release-card__menu {
   /* Above the bell panel (62); Radix copies this onto its positioning wrapper,

@@ -74,6 +74,7 @@
     "stepperAdmin": "The step ticks itself after you save the change",
     "stepperViewer": "An administrator completes this step. You can see where it is.",
     "stepsHide": "Hide steps",
+    "stepsRegion": "Steps of release {version}",
     "stepsShow": "Show steps ({n})",
     "tabAll": "All",
     "tabArchive": "Archive",

@@ -78,6 +78,7 @@
     "stepperAdmin": "Krok zaznaczy się automatycznie po zapisaniu zmiany.",
     "stepperViewer": "Ten krok wykonuje administrator. Możesz zobaczyć, gdzie jest.",
     "stepsHide": "Zwiń kroki",
+    "stepsRegion": "Kroki wydania {version}",
     "stepsShow": "Pokaż kroki ({n})",
     "tabAll": "Wszystkie",
     "tabArchive": "Archiwum",

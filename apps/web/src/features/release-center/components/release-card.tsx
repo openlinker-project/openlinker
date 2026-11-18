@@ -8,7 +8,7 @@
  *
  * @module features/release-center/components
  */
-import { useId, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -48,6 +48,34 @@ export function ReleaseCard({
   const { canWriteSteps } = useReleaseCenterAccess();
   const [open, setOpen] = useState(false);
   const regionId = useId();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // The step list unmounts when collapsed, so its scroll offset is kept here.
+  const savedScroll = useRef(0);
+  const [edges, setEdges] = useState({ top: false, bottom: false });
+
+  const syncEdges = useCallback((): void => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const top = node.scrollTop > 1;
+    const bottom = node.scrollTop + node.clientHeight < node.scrollHeight - 1;
+    setEdges((previous) => (previous.top === top && previous.bottom === bottom ? previous : { top, bottom }));
+  }, []);
+
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!open || !node) return undefined;
+    node.scrollTop = savedScroll.current;
+    syncEdges();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncEdges);
+    observer?.observe(node);
+    if (node.firstElementChild) observer?.observe(node.firstElementChild);
+    return () => observer?.disconnect();
+  }, [open, syncEdges]);
+
+  useEffect(() => {
+    if (!open) setEdges({ top: false, bottom: false });
+  }, [open]);
+
   if (!view) return null;
 
   const mine = instances.filter((instance) => notification.stepKeys.includes(instance.itemKey));
@@ -161,7 +189,10 @@ export function ReleaseCard({
             className="release-card__toggle"
             aria-expanded={open}
             aria-controls={regionId}
-            onClick={() => setOpen((value) => !value)}
+            onClick={() => {
+              if (open && scrollRef.current) savedScroll.current = scrollRef.current.scrollTop;
+              setOpen((value) => !value);
+            }}
           >
             <span>{open ? copy.stepsHide : interpolate(copy.stepsShow, { n: mine.length })}</span>
             <span className="release-card__chevron" aria-hidden="true" data-open={open}>
@@ -169,7 +200,20 @@ export function ReleaseCard({
             </span>
           </button>
           <div id={regionId} className="release-card__collapse" data-open={open}>
-            <div>
+            <div
+              ref={scrollRef}
+              className="release-card__steps"
+              data-edge-top={edges.top}
+              data-edge-bottom={edges.bottom}
+              onScroll={syncEdges}
+              {...(open
+                ? {
+                    role: 'region',
+                    'aria-label': interpolate(copy.stepsRegion, { version: notification.version }),
+                    tabIndex: 0,
+                  }
+                : {})}
+            >
               {open ? <ReleaseStepList instances={mine} onNavigate={onNavigate} /> : null}
             </div>
           </div>
