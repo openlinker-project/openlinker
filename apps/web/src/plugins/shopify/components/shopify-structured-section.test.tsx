@@ -77,7 +77,7 @@ describe('ShopifyStructuredSection', () => {
     // The primary location is listed once: no second plain "Main" entry.
     expect(screen.queryByRole('option', { name: 'Main' })).toBeNull();
     expect(screen.getAllByRole('option')).toHaveLength(2);
-    expect((screen.getByRole('option', { name: 'Main (primary)' }) as HTMLOptionElement).value).toBe('');
+    expect(screen.getByRole<HTMLOptionElement>('option', { name: 'Main (primary)' }).value).toBe('');
     fireEvent.change(screen.getByLabelText('Stock location'), { target: { value: '2' } });
     expect(sync).toHaveBeenCalledWith('shopifyLocationId', '2');
   });
