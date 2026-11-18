@@ -8,7 +8,8 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
+import { CoreCapabilityValues, type CoreCapability } from '@openlinker/core/integrations';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ShopifyOAuthConnectDto {
@@ -57,4 +58,16 @@ export class ShopifyOAuthConnectDto {
   @IsUUID()
   @IsOptional()
   connectionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Capabilities the created connection enables; the adapter default applies when absent. ' +
+      'ProductMaster and ProductPublisher cannot be combined.',
+    enum: CoreCapabilityValues,
+    isArray: true,
+  })
+  @IsArray()
+  @IsIn(CoreCapabilityValues, { each: true })
+  @IsOptional()
+  enabledCapabilities?: CoreCapability[];
 }

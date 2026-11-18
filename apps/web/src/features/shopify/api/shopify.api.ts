@@ -16,6 +16,8 @@ export interface StartShopifyOAuthInput {
   redirectUri: string;
   connectionName?: string;
   locationId?: string;
+  /** Capabilities the connection created on the callback enables. */
+  enabledCapabilities?: string[];
 }
 
 export interface StartShopifyOAuthResponse {

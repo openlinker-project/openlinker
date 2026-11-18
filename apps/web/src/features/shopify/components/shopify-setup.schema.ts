@@ -10,12 +10,26 @@
  * @module features/shopify/components
  */
 import { z } from 'zod';
-import type { CreateConnectionInput } from '../../connections';
+import type { CoreCapability, CreateConnectionInput } from '../../connections';
 
 export const SHOPIFY_ADAPTER_KEY = 'shopify.admin.v1';
 
 export const ShopifySetupModeValues = ['client-credentials', 'access-token', 'oauth'] as const;
 export type ShopifySetupMode = (typeof ShopifySetupModeValues)[number];
+
+/**
+ * What the connection is FOR. Each preset is a capability set that core accepts
+ * as it stands: ProductMaster and ProductPublisher are never combined on one
+ * connection (#3985, `CONNECTION_MASTER_PUBLISHER_CONFLICT`), because whatever
+ * is published to a shop is read back by that shop's own catalogue sync.
+ */
+export const ShopifySetupRoleValues = ['master', 'publisher'] as const;
+export type ShopifySetupRole = (typeof ShopifySetupRoleValues)[number];
+
+export const SHOPIFY_ROLE_CAPABILITIES: Record<ShopifySetupRole, CoreCapability[]> = {
+  master: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+  publisher: ['ProductPublisher', 'CategoryProvisioner', 'OfferManager'],
+};
 
 const STORE_DOMAIN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
 
@@ -38,6 +52,7 @@ export const shopifySetupSchema = z
       .transform(normaliseStoreDomain)
       .refine((value) => STORE_DOMAIN.test(value), 'storeDomainInvalid'),
     mode: z.enum(ShopifySetupModeValues),
+    role: z.enum(ShopifySetupRoleValues),
     clientId: z.string().trim(),
     clientSecret: z.string().trim(),
     accessToken: z.string().trim(),
@@ -64,6 +79,7 @@ export const SHOPIFY_SETUP_DEFAULT_VALUES: ShopifySetupFormValues = {
   name: '',
   storeDomain: '',
   mode: 'client-credentials',
+  role: 'master',
   clientId: '',
   clientSecret: '',
   accessToken: '',
@@ -85,6 +101,7 @@ export function toCreateConnectionInput(values: ShopifySetupFormSubmission): Cre
     platformType: 'shopify',
     adapterKey: SHOPIFY_ADAPTER_KEY,
     config: toShopifyConfig(values),
+    enabledCapabilities: SHOPIFY_ROLE_CAPABILITIES[values.role],
     credentials:
       values.mode === 'access-token'
         ? { accessToken: values.accessToken }

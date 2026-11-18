@@ -29,6 +29,7 @@ import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useStartShopifyOAuthMutation } from '../hooks/use-start-shopify-oauth-mutation';
 import {
+  SHOPIFY_ROLE_CAPABILITIES,
   SHOPIFY_SETUP_DEFAULT_VALUES,
   ShopifySetupErrorKeyValues,
   shopifySetupSchema,
@@ -37,6 +38,7 @@ import {
   type ShopifySetupFormSubmission,
   type ShopifySetupFormValues,
   type ShopifySetupMode,
+  type ShopifySetupRole,
 } from './shopify-setup.schema';
 
 export function ShopifySetupForm(): ReactElement {
@@ -54,6 +56,7 @@ export function ShopifySetupForm(): ReactElement {
     resolver: zodResolver(shopifySetupSchema),
   });
   const mode = form.watch('mode');
+  const role = form.watch('role');
   const errors = form.formState.errors;
   const errorText = (message: string | undefined): string | undefined =>
     message === undefined
@@ -69,6 +72,11 @@ export function ShopifySetupForm(): ReactElement {
     { value: 'oauth', label: copy.modeOauth, hint: copy.modeOauthHint },
   ];
 
+  const roleOptions: ReadonlyArray<{ value: ShopifySetupRole; label: string; hint: string }> = [
+    { value: 'master', label: copy.roleMaster, hint: copy.roleMasterHint },
+    { value: 'publisher', label: copy.rolePublisher, hint: copy.rolePublisherHint },
+  ];
+
   const onSubmit = form.handleSubmit(async (values) => {
     if (values.mode === 'oauth') {
       try {
@@ -78,6 +86,7 @@ export function ShopifySetupForm(): ReactElement {
           clientSecret: values.clientSecret,
           redirectUri,
           connectionName: values.name,
+          enabledCapabilities: SHOPIFY_ROLE_CAPABILITIES[values.role],
           ...(values.locationId ? { locationId: values.locationId } : {}),
         });
         window.location.assign(authorizationUrl);
@@ -164,6 +173,21 @@ export function ShopifySetupForm(): ReactElement {
           >
             <Input {...form.register('storeDomain')} placeholder="my-shop.myshopify.com" />
           </FormField>
+
+          <div className="form-field">
+            <span className="form-field__label" id="shopify-role-label">
+              {copy.role}
+            </span>
+            <SegmentedControl
+              aria-labelledby="shopify-role-label"
+              options={roleOptions.map(({ value, label }) => ({ value, label }))}
+              value={role}
+              onChange={(next) => form.setValue('role', next)}
+            />
+            <p className="form-field__description">
+              {roleOptions.find((option) => option.value === role)?.hint}
+            </p>
+          </div>
 
           <div className="form-field">
             <span className="form-field__label" id="shopify-mode-label">

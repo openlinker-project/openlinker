@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SHOPIFY_ROLE_CAPABILITIES,
   SHOPIFY_SETUP_DEFAULT_VALUES,
   shopifyOAuthRedirectUri,
   shopifySetupSchema,
@@ -45,6 +46,7 @@ describe('toCreateConnectionInput', () => {
       platformType: 'shopify',
       adapterKey: 'shopify.admin.v1',
       config: { storeDomain: 'my-shop.myshopify.com' },
+      enabledCapabilities: SHOPIFY_ROLE_CAPABILITIES.master,
       credentials: { clientId: 'id', clientSecret: 'secret' },
     });
   });
@@ -63,5 +65,23 @@ describe('shopifyOAuthRedirectUri', () => {
     expect(shopifyOAuthRedirectUri('https://ol.example.com')).toBe(
       'https://ol.example.com/integrations/shopify/connect/callback',
     );
+  });
+});
+
+describe('Shopify role presets', () => {
+  it('should never combine ProductMaster and ProductPublisher, which core refuses', () => {
+    for (const capabilities of Object.values(SHOPIFY_ROLE_CAPABILITIES)) {
+      expect(capabilities.includes('ProductMaster') && capabilities.includes('ProductPublisher')).toBe(false);
+    }
+  });
+
+  it('should default to the master role and send its capabilities on create', () => {
+    const input = toCreateConnectionInput(shopifySetupSchema.parse(VALID));
+    expect(input.enabledCapabilities).toEqual(SHOPIFY_ROLE_CAPABILITIES.master);
+  });
+
+  it('should send the publisher capabilities when that role is chosen', () => {
+    const input = toCreateConnectionInput(shopifySetupSchema.parse({ ...VALID, role: 'publisher' }));
+    expect(input.enabledCapabilities).toEqual(SHOPIFY_ROLE_CAPABILITIES.publisher);
   });
 });
