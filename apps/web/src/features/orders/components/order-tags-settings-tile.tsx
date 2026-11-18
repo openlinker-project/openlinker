@@ -14,6 +14,7 @@ export function OrderTagsSettingsTile({ locked = false }: { locked?: boolean }):
   const copy = useMessages('orders').orderTagsSettingsTile;
   return (
     <SettingsIndexRow
+      icon="tag"
       locked={locked}
       title={copy.title}
       description={interpolate(copy.description, { limit: ORDER_TAG_LIMIT })}

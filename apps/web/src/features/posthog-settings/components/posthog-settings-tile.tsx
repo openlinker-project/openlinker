@@ -40,6 +40,8 @@ function PosthogSettingsLive(): ReactElement {
 
   return (
     <SettingsIndexRow
+      icon="chart"
+      tone={!view ? undefined : view.enabled ? 'success' : 'muted'}
       title={copy.title}
       description={copy.description}
       valueState={query.isLoading ? 'loading' : query.isError ? 'error' : 'ready'}
@@ -77,7 +79,7 @@ function PosthogSettingsLive(): ReactElement {
 export function PosthogSettingsTile({ locked = false }: { locked?: boolean }): ReactElement {
   const copy = useMessages('posthog-settings').posthogSettingsTile;
   return locked ? (
-    <SettingsIndexRow locked title={copy.title} description={copy.description} />
+    <SettingsIndexRow locked icon="chart" title={copy.title} description={copy.description} />
   ) : (
     <PosthogSettingsLive />
   );

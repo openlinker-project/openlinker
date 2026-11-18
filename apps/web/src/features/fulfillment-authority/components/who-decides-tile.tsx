@@ -20,6 +20,7 @@ import { WHO_DECIDES_TILE_COPY } from '../lib/who-decides-text';
 export function WhoDecidesTile(): ReactElement {
   return (
     <SettingsIndexRow
+      icon="users"
       title={WHO_DECIDES_TILE_COPY.title}
       description={WHO_DECIDES_TILE_COPY.description}
       action={{ label: WHO_DECIDES_TILE_COPY.linkLabel, to: '/settings/who-decides' }}

@@ -34,10 +34,14 @@ function MailerSettingsLive(): ReactElement {
           </span>
         )}
       </>
+    ) : view ? (
+      <span className="settings-row__line">{copy.consoleNote}</span>
     ) : undefined;
 
   return (
     <SettingsIndexRow
+      icon="send"
+      tone={!view ? undefined : view.transport === 'console' || !view.smtpPasswordConfigured ? 'warning' : 'success'}
       title={copy.title}
       description={copy.description}
       valueState={query.isLoading ? 'loading' : query.isError ? 'error' : 'ready'}
@@ -75,7 +79,7 @@ function MailerSettingsLive(): ReactElement {
 export function MailerSettingsTile({ locked = false }: { locked?: boolean }): ReactElement {
   const copy = useMessages('mailer-settings').mailerSettingsTile;
   return locked ? (
-    <SettingsIndexRow locked title={copy.title} description={copy.description} />
+    <SettingsIndexRow locked icon="send" title={copy.title} description={copy.description} />
   ) : (
     <MailerSettingsLive />
   );

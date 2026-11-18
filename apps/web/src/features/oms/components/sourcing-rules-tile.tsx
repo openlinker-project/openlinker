@@ -14,6 +14,7 @@ export function SourcingRulesTile({ locked = false }: { locked?: boolean }): Rea
   const copy = useMessages('oms-core').sourcingRulesTile;
   return (
     <SettingsIndexRow
+      icon="route"
       locked={locked}
       title={copy.title}
       description={copy.description}

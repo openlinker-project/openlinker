@@ -17,6 +17,8 @@ function McpTokensLive(): ReactElement {
 
   return (
     <SettingsIndexRow
+      icon="key"
+      tone="neutral"
       title={copy.title}
       description={copy.description}
       valueState={tokensQuery.isLoading ? 'loading' : tokensQuery.isError ? 'error' : 'ready'}
@@ -30,7 +32,7 @@ function McpTokensLive(): ReactElement {
 export function McpTokensTile({ locked = false }: { locked?: boolean }): ReactElement {
   const copy = useMessages('mcp-tokens').mcpTokensTile;
   return locked ? (
-    <SettingsIndexRow locked title={copy.title} description={copy.description} />
+    <SettingsIndexRow locked icon="key" title={copy.title} description={copy.description} />
   ) : (
     <McpTokensLive />
   );

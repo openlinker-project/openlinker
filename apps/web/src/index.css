@@ -41250,21 +41250,47 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .settings-page__toc-page[data-on='true'] { grid-template-rows: 1fr; opacity: 1; transform: none; }
 .settings-page__toc-page > div { overflow: hidden; min-height: 0; }
-.settings-page__toc-page-btn {
+/* The rail heading is a button, so the global `button` rules (orange fill,
+   centred label, orange hover) would apply; the doubled selector outranks
+   `button:hover` and `button:active` in every state. It reads as the rail's
+   heading, aligned with the links below it, not as a call to action. */
+.settings-page__toc .settings-page__toc-page-btn {
   display: grid;
   justify-items: start;
-  box-shadow: none;
+  justify-content: stretch;
   gap: 1px;
   width: 100%;
-  padding: 2px var(--space-3) var(--space-3);
-  margin-bottom: var(--space-2);
+  height: auto;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-2) calc(var(--space-3) + 1px);
   border: 0;
   border-bottom: 1px solid var(--border-subtle);
-  background: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-primary);
   text-align: left;
+  white-space: normal;
   cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
-.settings-page__toc-page-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.settings-page__toc .settings-page__toc-page-btn:hover {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+.settings-page__toc .settings-page__toc-page-btn:active {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
+}
+/* Inset: the slide-in wrapper clips anything drawn outside the button. */
+.settings-page__toc .settings-page__toc-page-btn:focus-visible {
+  outline: none;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--accent-primary);
+}
 .settings-page__toc-page-btn strong {
   font-size: 1rem;
   font-weight: 600;
@@ -41272,8 +41298,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
-.settings-page__toc-page-btn span { font-size: 0.75rem; color: var(--text-muted); }
-.settings-page__toc-page-btn:hover strong { color: var(--accent-primary); }
+.settings-page__toc-page-btn span { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
 .settings-page__card {
   max-width: 40rem;
   background: var(--bg-surface);
@@ -41369,57 +41394,136 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .settings-page__mark[data-channel='shopify'] { --mark-hue: var(--channel-woocommerce); --mark-ink: oklch(18% 0.02 270); }
 .settings-page__mark[data-channel='amazon'] { --mark-hue: var(--channel-amazon); --mark-ink: oklch(18% 0.02 270); }
 /* ── Settings index (#4154) ──
-   The hub drops the card around its sections (`data-plain`) and lists each
-   setting as a row separated by hairlines. Boldness is spent once: the value
-   column. Everything else is quiet text on the page surface. */
+   The hub drops the template card (`data-plain`). Each group is a heading with
+   its purpose and area count above ONE surface of rows; the installation facts
+   sit in a bar above them. Hairlines separate rows, surfaces separate groups.
+   Boldness is spent once: the status chips. On wide screens the groups sit in
+   two columns (a container query, so the sidebar and rail are already counted). */
 .settings-page__card[data-plain] {
-  max-width: 56rem;
+  max-width: 88rem;
   background: transparent;
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  container-type: inline-size;
+}
+.settings-page__card[data-plain] .settings-page__fields {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  row-gap: var(--space-6);
+  column-gap: var(--space-6);
 }
 .settings-page__card[data-plain] .settings-page__section {
-  padding: var(--space-6) 0 var(--space-5);
+  padding: 0;
   gap: var(--space-3);
-  border-bottom: 0;
-  border-top: 1px solid var(--border-default);
+  border: 0;
 }
-.settings-page__card[data-plain] .settings-page__fields > .settings-page__section:first-child {
-  border-top: 0;
-  padding-top: 0;
+.settings-page__card[data-plain] .settings-page__section-head h3 {
+  font-size: 1.0625rem;
+  letter-spacing: var(--tracking-tight);
 }
-.settings-page__card[data-plain] .settings-page__section-head h3 { font-size: 1.125rem; letter-spacing: var(--tracking-tight); }
-.settings-page__card[data-plain] .settings-page__section-head { margin-bottom: var(--space-1); }
+.settings-page__card[data-plain] .settings-page__section-head p { max-width: 62ch; }
+@container (min-width: 64rem) {
+  .settings-page__card[data-plain] .settings-page__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-page__card[data-plain] .settings-page__section:first-child { grid-column: 1 / -1; }
+  /* Two columns: the long Orders group runs down the right while the two
+     shorter groups stack on the left, so neither column ends in a gap. This
+     index is the only plain-variant page; its group order is part of its design. */
+  .settings-page__card[data-plain] .settings-page__section:nth-child(3) { grid-column: 2; grid-row: 2 / span 2; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(4) { grid-column: 1; grid-row: 3; }
+}
+.settings-index__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Installation facts */
+.settings-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin: 0;
+  background: var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+/* Hairlines are the 1px grid gap showing the bar's background, so they stay
+   right however the cells wrap. */
+.settings-facts__cell {
+  flex: 1 1 9rem;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+}
+.settings-facts dt { font-size: 0.75rem; color: var(--text-muted); }
+.settings-facts dd { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; color: var(--text-primary); overflow-wrap: anywhere; }
+.settings-facts dd[data-mono] { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; overflow-wrap: normal; white-space: nowrap; }
+.settings-facts__cell[data-wide] { flex: 2 1 14rem; }
+.settings-facts .settings-facts__note { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+
+/* Rows */
+.settings-index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
 .settings-index[data-pending] .settings-row__lock { visibility: hidden; }
-.settings-index { list-style: none; margin: 0; padding: 0; display: grid; }
 .settings-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(8rem, 14rem) minmax(7rem, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(1.75rem, auto);
   align-items: center;
-  column-gap: var(--space-5);
-  min-height: 3.25rem;
-  padding: var(--space-3);
-  margin: 0 calc(-1 * var(--space-3));
-  border-radius: var(--radius-md);
+  column-gap: var(--space-4);
+  min-height: 4rem;
+  padding: var(--space-3) var(--space-4);
   transition: background-color var(--duration-fast) var(--ease-out);
 }
-/* The hairline is inset so it never meets the rounded hover surface. */
-.settings-row + .settings-row::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: var(--space-3);
-  right: var(--space-3);
-  height: 1px;
-  background: var(--border-subtle);
-}
-.settings-row:hover:not([data-locked])::before,
-.settings-row:hover:not([data-locked]) + .settings-row::before { opacity: 0; }
+.settings-row[data-has-icon] { grid-template-columns: 2rem minmax(0, 1fr) minmax(0, auto) minmax(1.75rem, auto); }
+.settings-row + .settings-row { border-top: 1px solid var(--border-subtle); }
 .settings-row:hover:not([data-locked]),
 .settings-row:has(.settings-row__link:focus-visible) { background: var(--bg-surface-muted); }
 .settings-row:active:not([data-locked]) { background: var(--bg-surface-hover); }
+.settings-row__icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.settings-row:hover:not([data-locked]) .settings-row__icon {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+  color: var(--text-primary);
+}
+.settings-row[data-locked] .settings-row__icon { color: var(--text-muted); }
 .settings-row__text { display: grid; gap: 2px; min-width: 0; }
 .settings-row__title {
   margin: 0;
@@ -41441,30 +41545,47 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   justify-items: end;
   gap: 2px;
   min-width: 0;
+  max-width: 15rem;
   text-align: right;
 }
 .settings-row__figure {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.3;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
-.settings-row__figure[data-mono] {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-.settings-row__note { font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
-.settings-row__value--error { font-size: 0.75rem; color: var(--status-error-fg); max-width: 14rem; }
+.settings-row__figure[data-mono] { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; }
+.settings-row__note { font-size: 0.75rem; line-height: 1.35; color: var(--text-muted); overflow-wrap: anywhere; }
+.settings-row__line { display: block; }
+.settings-row__warning { color: var(--status-warning-fg); }
+.settings-row__value--error { font-size: 0.75rem; color: var(--status-error-fg); }
 .settings-row__skeleton {
   display: block;
   width: 4.5rem;
-  height: 0.875rem;
-  border-radius: var(--radius-xs);
+  height: 1.375rem;
+  border-radius: var(--radius-pill);
   background: var(--bg-muted);
 }
+.settings-chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.settings-chip[data-tone='success'] { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.settings-chip[data-tone='warning'] { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.settings-chip[data-tone='info'] { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.settings-chip[data-tone='muted'] { background: transparent; border-style: dashed; color: var(--text-muted); font-weight: 500; }
 .settings-row__action {
   display: flex;
   align-items: center;
@@ -41474,55 +41595,60 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .settings-row__secondary { position: relative; z-index: 1; }
 .settings-row__link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
   padding: 0;
   border: 0;
-  background: none;
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-decoration: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
   cursor: pointer;
-  white-space: nowrap;
+  text-decoration: none;
 }
 /* The link covers the whole row so the row is one target, not a link plus
-   dead space; the focus ring is drawn on the row for the same reason. */
-.settings-row__link::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius-md); }
-.settings-row__link:focus-visible { outline: none; }
-.settings-row__link:focus-visible::after { box-shadow: var(--shadow-focus); }
-.settings-row__link svg { transition: transform var(--duration-fast) var(--ease-out); }
+   dead space; the focus ring is drawn on the row for the same reason. These
+   selectors outrank the global `button` / `a:hover` rules. */
+.settings-row .settings-row__link:hover { background: transparent; border: 0; color: var(--text-primary); }
+.settings-row .settings-row__link:active { background: transparent; border: 0; }
+.settings-row__link::after { content: ''; position: absolute; inset: 0; }
+.settings-row .settings-row__link:focus-visible { outline: none; box-shadow: none; }
+.settings-row .settings-row__link:focus-visible::after { box-shadow: inset 0 0 0 2px var(--accent-ring); }
+.settings-row__chevron { transition: transform var(--duration-fast) var(--ease-out); }
 .settings-row:hover .settings-row__link { color: var(--text-primary); }
-.settings-row:hover .settings-row__link svg { transform: translateX(2px); }
-.settings-row:active .settings-row__link svg { transform: translateX(4px); }
+.settings-row:hover .settings-row__chevron { transform: translateX(2px); }
+.settings-row:active .settings-row__chevron { transform: translateX(4px); }
 .settings-row__lock {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
   border-radius: var(--radius-sm);
-  font-size: 0.75rem;
   color: var(--text-muted);
   cursor: default;
 }
 .settings-row__lock:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
-.settings-row__line { display: block; }
-.settings-row__warning { color: var(--status-warning-fg); }
-.settings-index__soon { margin: var(--space-3) 0 0; font-size: 0.8125rem; color: var(--text-muted); max-width: 62ch; }
+.settings-index__soon { margin: var(--space-1) 0 0; font-size: 0.8125rem; color: var(--text-muted); max-width: 62ch; }
 @media (max-width: 767px) {
-  .settings-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .settings-row,
+  .settings-row[data-has-icon] {
+    grid-template-columns: 2rem minmax(0, 1fr) minmax(1.75rem, auto);
     row-gap: var(--space-2);
     padding: var(--space-3);
   }
-  .settings-row__text { grid-column: 1 / -1; }
-  .settings-row__value { justify-items: start; text-align: left; }
+  .settings-row:not([data-has-icon]) { grid-template-columns: minmax(0, 1fr) minmax(1.75rem, auto); }
+  .settings-row__value { grid-column: 2; grid-row: 2; justify-items: start; text-align: left; max-width: none; }
+  .settings-row:not([data-has-icon]) .settings-row__value { grid-column: 1; }
+  .settings-row__action { grid-column: 3; grid-row: 1 / span 2; }
+  .settings-row:not([data-has-icon]) .settings-row__action { grid-column: 2; }
+  .settings-chip { text-align: left; }
 }
 @media (hover: none) and (pointer: coarse) {
   .settings-row { min-height: 44px; }
-  .settings-row__lock { min-width: 44px; min-height: 44px; justify-content: center; }
+  .settings-row__link,
+  .settings-row__lock { min-width: 44px; min-height: 44px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .settings-row__skeleton { animation: settings-row-pulse 1.4s ease-in-out infinite; }
@@ -41530,9 +41656,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @keyframes settings-row-pulse { 50% { opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
   .settings-row,
-  .settings-row__link svg { transition: none; }
-  .settings-row:hover .settings-row__link svg,
-  .settings-row:active .settings-row__link svg { transform: none; }
+  .settings-row__icon,
+  .settings-row__chevron { transition: none; }
+  .settings-row:hover .settings-row__chevron,
+  .settings-row:active .settings-row__chevron { transform: none; }
 }
 
 .whats-new__row-title .release-chip { margin-left: var(--space-2); }

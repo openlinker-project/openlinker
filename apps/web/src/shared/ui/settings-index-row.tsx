@@ -1,10 +1,12 @@
 /**
  * SettingsIndexRow and SettingsIndexList (#4154)
  *
- * One row of the settings index: what the setting is (title, one plain line),
- * what it is set to right now (value, with a quiet note), and the one thing to
- * do about it. The whole row is the click target: the action's link or button
- * is stretched over the row, so a row cannot be half-clickable.
+ * One row of the settings index: a leading icon tile, what the setting is
+ * (title and one plain line), what it is set to right now (a status chip with a
+ * semantic tone, plus a quiet note) and the one thing to do about it. The whole
+ * row is the click target: the action's link or button is stretched over the
+ * row, so a row cannot be half-clickable. The visible affordance is a chevron;
+ * the action label stays as the accessible name.
  *
  * A row the signed-in role may not open is still listed (`locked`): it stays
  * readable, carries a lock with a tooltip that says who can open it, and
@@ -17,19 +19,24 @@
 import { useId, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useMessages } from '../i18n/use-messages';
+import { SettingsGlyph, type SettingsGlyphName } from './settings-glyph';
 import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip';
 
 export type SettingsRowAction =
   | { label: string; to: string }
   | { label: string; onClick: () => void };
 
+export type SettingsValueTone = 'neutral' | 'success' | 'warning' | 'info' | 'muted';
+
 export interface SettingsIndexRowProps {
   title: string;
   /** One plain sentence on what the setting changes. */
   description?: ReactNode;
-  /** The current value. Rendered in the one emphasised column of the row. */
+  icon?: SettingsGlyphName;
+  /** The current value. With a `tone` it renders as a status chip. */
   value?: ReactNode;
-  /** A quiet line under the value (what it counts, where it comes from). */
+  tone?: SettingsValueTone;
+  /** A quiet line next to the value (what it counts, where it comes from). */
   note?: ReactNode;
   /** Set the value in a monospace face (addresses, identifiers). */
   mono?: boolean;
@@ -48,7 +55,16 @@ export interface SettingsIndexRowProps {
 
 function Chevron(): ReactElement {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg
+      className="settings-row__chevron"
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
       <path d="M6 3.5 10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -82,7 +98,9 @@ export function SettingsIndexList({
 export function SettingsIndexRow({
   title,
   description,
+  icon,
   value,
+  tone,
   note,
   mono = false,
   valueState = 'ready',
@@ -98,7 +116,17 @@ export function SettingsIndexRow({
   const hasValue = value !== undefined && value !== null;
 
   return (
-    <li className="settings-row" data-locked={locked || undefined} data-testid={testId}>
+    <li
+      className="settings-row"
+      data-locked={locked || undefined}
+      data-has-icon={icon ? 'true' : undefined}
+      data-testid={testId}
+    >
+      {icon ? (
+        <span className="settings-row__icon" aria-hidden="true">
+          <SettingsGlyph name={icon} />
+        </span>
+      ) : null}
       <div className="settings-row__text">
         <h4 className="settings-row__title" id={titleId}>
           {title}
@@ -117,9 +145,15 @@ export function SettingsIndexRow({
         </div>
       ) : hasValue ? (
         <div className="settings-row__value">
-          <span className="settings-row__figure" data-mono={mono || undefined}>
-            {value}
-          </span>
+          {tone ? (
+            <span className="settings-chip" data-tone={tone}>
+              {value}
+            </span>
+          ) : (
+            <span className="settings-row__figure" data-mono={mono || undefined}>
+              {value}
+            </span>
+          )}
           {note ? <span className="settings-row__note">{note}</span> : null}
         </div>
       ) : (
@@ -145,12 +179,12 @@ export function SettingsIndexRow({
         ) : action ? (
           'to' in action ? (
             <Link className="settings-row__link" to={action.to} aria-describedby={titleId}>
-              <span>{action.label}</span>
+              <span className="sr-only">{action.label}</span>
               <Chevron />
             </Link>
           ) : (
             <button type="button" className="settings-row__link" onClick={action.onClick} aria-describedby={titleId}>
-              <span>{action.label}</span>
+              <span className="sr-only">{action.label}</span>
               <Chevron />
             </button>
           )

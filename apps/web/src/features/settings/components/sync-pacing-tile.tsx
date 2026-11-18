@@ -27,6 +27,8 @@ function SyncPacingLive(): ReactElement {
 
   return (
     <SettingsIndexRow
+      icon="sliders"
+      tone={catalogue?.source === 'setting' ? 'info' : 'neutral'}
       title={copy.title}
       description={copy.description}
       valueState={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
@@ -44,7 +46,7 @@ function SyncPacingLive(): ReactElement {
 export function SyncPacingTile({ locked = false }: { locked?: boolean }): ReactElement {
   const copy = useMessages('settings').syncPacingTile;
   return locked ? (
-    <SettingsIndexRow locked title={copy.title} description={copy.description} />
+    <SettingsIndexRow locked icon="sliders" title={copy.title} description={copy.description} />
   ) : (
     <SyncPacingLive />
   );

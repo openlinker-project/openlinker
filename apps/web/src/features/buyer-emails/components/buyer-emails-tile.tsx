@@ -13,6 +13,7 @@ export function BuyerEmailsTile({ locked = false }: { locked?: boolean }): React
   const copy = useMessages('buyer-emails').tile;
   return (
     <SettingsIndexRow
+      icon="mail"
       locked={locked}
       title={copy.title}
       description={copy.description}

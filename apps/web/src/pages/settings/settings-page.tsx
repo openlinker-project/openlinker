@@ -9,13 +9,15 @@ import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-t
 import { SalesDocumentsTile } from '../../features/sales-documents';
 import { WhoDecidesTile } from '../../features/fulfillment-authority';
 import { SourcingRulesTile } from '../../features/oms';
-import { SyncPacingTile } from '../../features/settings';
+import { ReleaseCenterRow, SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
 import { BuyerEmailsTile } from '../../features/buyer-emails';
 import { LoginPageSettingsTile } from '../../features/login-page-settings';
 import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
-import { SettingsIndexList, SettingsIndexRow } from '../../shared/ui/settings-index-row';
+import { SettingsIndexList } from '../../shared/ui/settings-index-row';
+import { SettingsFactsBar } from '../../shared/ui/settings-facts-bar';
+import { APP_VERSION } from '../../shared/config/app-version';
 import type { SettingsPageSection } from '../../shared/ui/settings-page-template';
 import { interpolate, useMessages } from '../../shared/i18n';
 
@@ -39,41 +41,68 @@ export function SettingsPage(): ReactElement {
     meta: { short: string; title: string; hint: string },
     rows: ReactNode[],
     footer?: ReactNode,
-  ): SettingsPageSection => ({
-    id,
-    label: meta.short,
-    title: meta.title,
-    hint: meta.hint,
-    children: (
-      <>
-        <SettingsIndexList pending={!isReady}>{rows.filter(Boolean)}</SettingsIndexList>
-        {footer}
-      </>
-    ),
-  });
+  ): SettingsPageSection => {
+    const visible = rows.filter(Boolean);
+    return {
+      id,
+      label: meta.short,
+      title: meta.title,
+      hint: meta.hint,
+      badge: <span className="settings-index__count">{visible.length}</span>,
+      children: (
+        <>
+          <SettingsIndexList pending={!isReady}>{visible}</SettingsIndexList>
+          {footer}
+        </>
+      ),
+    };
+  };
 
   const sections: SettingsPageSection[] = [
-    group('environment', tpl.settingsEnv, [
-      <SettingsIndexRow key="env" title={copy.environment.environment} value={env.VITE_APP_ENV} />,
-      <SettingsIndexRow key="api" title={copy.environment.apiBaseUrl} value={env.VITE_API_BASE_URL} mono />,
-      user ? (
-        <SettingsIndexRow
-          key="account"
-          title={copy.account.signedInAs}
-          value={user.username}
-          note={user.email ?? undefined}
-        />
-      ) : (
-        <SettingsIndexRow
-          key="account"
-          title={copy.account.title}
-          valueState={isReady ? 'ready' : 'loading'}
-          stateText={copy.account.loading}
-          value={copy.account.anonymous}
+    {
+      id: 'environment',
+      label: tpl.settingsEnv.short,
+      title: tpl.settingsEnv.title,
+      hint: tpl.settingsEnv.hint,
+      children: (
+        <SettingsFactsBar
+          facts={[
+            {
+              id: 'env',
+              label: copy.environment.environment,
+              value: (
+                <span className="settings-chip" data-tone={env.VITE_APP_ENV === 'production' ? 'success' : 'info'}>
+                  {env.VITE_APP_ENV}
+                </span>
+              ),
+            },
+            ...(APP_VERSION ? [{ id: 'version', label: copy.environment.version, value: `v${APP_VERSION}` }] : []),
+            user
+              ? {
+                  id: 'account',
+                  label: copy.account.signedInAs,
+                  value: user.username,
+                  note: user.email ?? undefined,
+                }
+              : {
+                  id: 'account',
+                  label: copy.account.title,
+                  value: isReady ? copy.account.anonymous : copy.account.loading,
+                },
+            ...(user
+              ? [
+                  {
+                    id: 'role',
+                    label: copy.account.role,
+                    value: <span className="settings-chip">{user.role}</span>,
+                  },
+                ]
+              : []),
+            { id: 'api', label: copy.environment.apiBaseUrl, value: env.VITE_API_BASE_URL, mono: true, wide: true },
+          ]}
         />
       ),
-      user ? <SettingsIndexRow key="role" title={copy.account.role} value={user.role} /> : null,
-    ]),
+    },
     group('data', tpl.settingsGroups.data, [
       <SyncPacingTile key="sync" locked={locked} />,
       <CurrencySettingsTile key="currency" locked={locked} />,
@@ -93,6 +122,7 @@ export function SettingsPage(): ReactElement {
       tpl.settingsGroups.access,
       [
         <McpTokensTile key="mcp" locked={locked} />,
+        <ReleaseCenterRow key="release" locked={locked} />,
         <LoginPageSettingsTile key="login" locked={locked} />,
         <PosthogSettingsTile key="posthog" locked={locked} />,
       ],
