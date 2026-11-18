@@ -1,7 +1,7 @@
 /**
  * Shopify Inbound Webhook Decoder Adapter (#3981, ADR-021)
  *
- * Authenticates and decodes Shopify order and product webhooks at the host
+ * Authenticates and decodes Shopify order, product and stock-level webhooks at the host
  * ingress. Registered by PLATFORM TYPE, the `:provider` segment of
  * `/webhooks/:provider/:connectionId`.
  *
@@ -38,8 +38,10 @@ import type {
 } from '@openlinker/core/integrations';
 
 import { fromShopifyGid } from '../../../domain/policies/shopify-gid.policy';
+import { packShopifyInventoryEventId } from '../../../domain/policies/shopify-inventory-event-id.policy';
 import {
   SHOPIFY_WEBHOOK_HMAC_HEADER,
+  SHOPIFY_WEBHOOK_INVENTORY_RESOURCE,
   SHOPIFY_WEBHOOK_ID_HEADER,
   SHOPIFY_WEBHOOK_TOPIC_HEADER,
   SHOPIFY_WEBHOOK_TRIGGERED_AT_HEADER,
@@ -85,7 +87,7 @@ export class ShopifyInboundWebhookDecoderAdapter implements InboundWebhookDecode
     if (resource === null) {
       // Authentic, but a topic OpenLinker does not subscribe to (added by hand):
       // 202 without a job, so it cannot become a retry storm.
-      return { action: 'ignore', reason: `not an order or product topic (${topic})` };
+      return { action: 'ignore', reason: `not an order, product or inventory topic (${topic})` };
     }
 
     const text = rawBody.toString('utf8');
@@ -97,6 +99,27 @@ export class ShopifyInboundWebhookDecoderAdapter implements InboundWebhookDecode
     }
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       return { action: 'reject', reason: 'body is not a JSON object' };
+    }
+
+    if (resource === SHOPIFY_WEBHOOK_INVENTORY_RESOURCE) {
+      // The body names an inventory item and a location, not a product: the
+      // pair is packed into the id and resolved to a product when the sync runs.
+      const target = inventoryTarget(body as Record<string, unknown>, text);
+      if (target === null) {
+        return { action: 'ignore', reason: 'body has no inventory item and location id' };
+      }
+      const eventType = topic.trim().toLowerCase();
+      return {
+        action: 'route',
+        envelope: {
+          eventId: eventIdOf(header(headers, SHOPIFY_WEBHOOK_ID_HEADER), eventType, rawBody),
+          eventType,
+          occurredAt: occurredAt(headers),
+          objectType: resource,
+          externalId: packShopifyInventoryEventId(target.inventoryItemId, target.locationId),
+          payload: { ...target },
+        },
+      };
     }
 
     const id = resourceId(body as Record<string, unknown>, text);
@@ -137,6 +160,32 @@ function resourceId(record: Record<string, unknown>, text: string): string | nul
   }
   const leading = LEADING_ID.exec(text);
   return leading !== null && leading[1] !== '0' ? leading[1] : null;
+}
+
+/** A positive numeric id of `key`, exact: the safe number, a numeric string, or the digits in the raw text. */
+function numericField(record: Record<string, unknown>, key: string, text: string): string | null {
+  const raw = record[key];
+  if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) {
+    return String(raw);
+  }
+  if (typeof raw === 'string' && NUMERIC_ID.test(raw.trim()) && raw.trim() !== '0') {
+    return raw.trim();
+  }
+  if (typeof raw === 'number') {
+    // Above the safe range JSON.parse has already rounded: read the digits.
+    const match = new RegExp(`"${key}"\\s*:\\s*(\\d+)`).exec(text);
+    return match !== null && match[1] !== '0' ? match[1] : null;
+  }
+  return null;
+}
+
+function inventoryTarget(
+  record: Record<string, unknown>,
+  text: string,
+): { inventoryItemId: string; locationId: string } | null {
+  const inventoryItemId = numericField(record, 'inventory_item_id', text);
+  const locationId = numericField(record, 'location_id', text);
+  return inventoryItemId === null || locationId === null ? null : { inventoryItemId, locationId };
 }
 
 /**

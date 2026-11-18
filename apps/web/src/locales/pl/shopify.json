@@ -3,9 +3,9 @@
     "configure": "Skonfiguruj webhooki",
     "configuring": "Konfigurowanie...",
     "currentlyConfigured": "Obecnie skonfigurowane.",
-    "description": "Subskrybuje zdarzenia zamówień i produktów ze sklepu, aby zmiany od razu trafiały do OpenLinker, a nie dopiero przy następnym odpytaniu.",
+    "description": "Subskrybuje zdarzenia zamówień, produktów i stanów magazynowych ze sklepu, aby zmiany od razu trafiały do OpenLinker, a nie dopiero przy następnym odpytaniu.",
     "needsCallbackUrl": "Najpierw zapisz adres URL zwrotny OpenLinker.",
-    "needsCapability": "Najpierw włącz możliwość Źródło zamówień lub Główny katalog produktów.",
+    "needsCapability": "Najpierw włącz możliwość Źródło zamówień, Główny katalog produktów lub Główne źródło stanów magazynowych.",
     "reconfigure": "Skonfiguruj ponownie",
     "title": "Skonfiguruj webhooki",
     "toast": {
@@ -55,7 +55,7 @@
       "unknownWarning": "Zapisana lokalizacja nie jest aktywną lokalizacją tego sklepu. Stanu magazynowego nie da się odczytać ani zapisać, dopóki nie wybierzesz innej."
     },
     "noWebhookCapability": {
-      "body": "Webhooki przenoszą zdarzenia zamówień i produktów. Włącz możliwość Źródło zamówień lub Główny katalog produktów, aby z nich korzystać.",
+      "body": "Webhooki przenoszą zdarzenia zamówień, produktów i stanów magazynowych. Włącz możliwość Źródło zamówień, Główny katalog produktów lub Główne źródło stanów magazynowych, aby z nich korzystać.",
       "title": "Webhooki są niedostępne"
     },
     "refunds": {

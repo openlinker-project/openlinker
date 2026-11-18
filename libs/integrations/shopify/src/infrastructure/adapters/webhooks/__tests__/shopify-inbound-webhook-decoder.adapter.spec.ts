@@ -85,6 +85,33 @@ describe('ShopifyInboundWebhookDecoderAdapter', () => {
       expect(result).toMatchObject({ action: 'route', envelope: { objectType: 'product', externalId: '9007199254740993' } });
     });
 
+    it('should pack the inventory item and location of an inventory_levels/update into the id, exactly', () => {
+      const level =
+        '{"inventory_item_id":9007199254740993,"location_id":905684977,"available":6,' +
+        '"updated_at":"2026-11-10T10:00:00-05:00","admin_graphql_api_id":"gid://shopify/InventoryLevel/523463154?inventory_item_id=9007199254740993"}';
+
+      expect(decoder.extractEnvelope(Buffer.from(level), headers('inventory_levels/update'))).toEqual({
+        action: 'route',
+        envelope: {
+          eventId: expect.stringMatching(/^wh-1:[0-9a-f]{16}$/),
+          eventType: 'inventory_levels/update',
+          occurredAt: '2026-11-10T10:00:00.000Z',
+          objectType: 'inventory',
+          externalId: 'inventory-item:9007199254740993:905684977',
+          payload: { inventoryItemId: '9007199254740993', locationId: '905684977' },
+        },
+      });
+    });
+
+    it('should ignore an inventory_levels/update that names no item or no location', () => {
+      expect(
+        decoder.extractEnvelope(Buffer.from('{"location_id":1}'), headers('inventory_levels/update')),
+      ).toMatchObject({ action: 'ignore' });
+      expect(
+        decoder.extractEnvelope(Buffer.from('{"inventory_item_id":1}'), headers('inventory_levels/update')),
+      ).toMatchObject({ action: 'ignore' });
+    });
+
     it('should ignore a topic OpenLinker does not handle', () => {
       expect(decoder.extractEnvelope(Buffer.from(body), headers('customers/create'))).toMatchObject({
         action: 'ignore',

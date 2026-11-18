@@ -50,7 +50,8 @@ export function ShopifyConnectionActions({
   // Mirrors the provisioner's own refusal, so the button is honest about it.
   const webhookCapabilityEnabled =
     connection.enabledCapabilities.includes('OrderSource') ||
-    connection.enabledCapabilities.includes('ProductMaster');
+    connection.enabledCapabilities.includes('ProductMaster') ||
+    connection.enabledCapabilities.includes('InventoryMaster');
 
   async function handleConfigureWebhooks(): Promise<void> {
     try {

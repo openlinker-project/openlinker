@@ -39,6 +39,7 @@ import { InventoryItem as InventoryItemDomainEntity } from '../../domain/entitie
 import type { PruneStaleVariantsResult } from '../../domain/types/inventory.types';
 import { readStockLocationOverride } from '../../domain/types/stock-location-override.types';
 import { isBulkInventoryReader } from '../../domain/ports/capabilities/bulk-inventory-reader.capability';
+import { isInventoryEventTargetResolver } from '../../domain/ports/capabilities/inventory-event-target-resolver.capability';
 import type {
   IMasterInventorySyncService,
   MasterInventoryBatchSyncFailure,
@@ -103,10 +104,29 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         connectionId,
         'InventoryMaster'
       );
+    let productExternalId = externalId;
+    if (isInventoryEventTargetResolver(inventoryAdapter)) {
+      const resolved = await inventoryAdapter.resolveEventProductExternalId(externalId);
+      if (resolved === null) {
+        this.logger.log(
+          `master_inventory_event_not_applicable connection=${connectionId} externalId=${externalId}`
+        );
+        return {
+          internalProductId: '',
+          itemsWritten: 0,
+          availableQuantity: 0,
+          reservedQuantity: 0,
+          masterDeleted: false,
+          pruneSkipped: false,
+          skipped: 'event-not-applicable',
+        };
+      }
+      productExternalId = resolved;
+    }
     const overrideLocationId = await this.resolveStockLocationOverride(connectionId);
     return this.syncOneFromMaster(
       connectionId,
-      externalId,
+      productExternalId,
       inventoryAdapter,
       overrideLocationId,
       options.syncRunId ?? null

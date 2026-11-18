@@ -72,7 +72,14 @@ describe('shopifyWebhookTopicsFor', () => {
       'PRODUCTS_UPDATE',
       'PRODUCTS_DELETE',
     ]);
-    expect(shopifyWebhookTopicsFor(['InventoryMaster'])).toEqual([]);
+    expect(shopifyWebhookTopicsFor(['InventoryMaster'])).toEqual(['INVENTORY_LEVELS_UPDATE']);
+    expect(shopifyWebhookTopicsFor(['Invoicing'])).toEqual([]);
+    expect(shopifyWebhookTopicsFor(['OrderSource', 'InventoryMaster'])).toEqual([
+      'ORDERS_CREATE',
+      'ORDERS_UPDATED',
+      'ORDERS_CANCELLED',
+      'INVENTORY_LEVELS_UPDATE',
+    ]);
   });
 });
 
@@ -137,8 +144,8 @@ describe('ShopifyWebhookProvisioningAdapter', () => {
     });
   });
 
-  it('should refuse a connection with neither orders nor products enabled', async () => {
-    const h = build(connection({ enabledCapabilities: ['InventoryMaster'] } as Partial<Connection>));
+  it('should refuse a connection with no order, product or inventory capability enabled', async () => {
+    const h = build(connection({ enabledCapabilities: ['Invoicing'] } as Partial<Connection>));
 
     await expect(h.adapter.install('conn-1')).rejects.toBeInstanceOf(BadRequestException);
     expect(h.secrets.set).not.toHaveBeenCalled();

@@ -26,8 +26,8 @@ describe('ShopifyConnectionActions', () => {
     expect(screen.getByText(/Save an OpenLinker callback URL first/)).toBeTruthy();
   });
 
-  it('should disable the button when neither Order source nor Product master is on', () => {
-    render(<ShopifyConnectionActions connection={connection(['InventoryMaster'])} />);
+  it('should disable the button when no webhook-fed capability is on', () => {
+    render(<ShopifyConnectionActions connection={connection(['Invoicing'])} />);
     expect(screen.getByRole('button', { name: 'Configure webhooks' })).toBeDisabled();
   });
 

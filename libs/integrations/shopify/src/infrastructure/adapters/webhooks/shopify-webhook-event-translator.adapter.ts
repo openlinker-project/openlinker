@@ -15,9 +15,10 @@
  * `product.edit` shape (ADR-049 § Amendment): a stock edit made on the product
  * in the admin updates the product and so tends to arrive as `products/update`.
  * That is NOT guaranteed for a change made purely through the inventory-level
- * API (Shopify has a separate `inventory_levels/update` topic for that, which
- * this integration does not subscribe to), so the inventory sweep stays the
- * backstop for stock changes that bring no product webhook. The host gates the
+ * API, which is why `inventory_levels/update` is subscribed too: it becomes an
+ * `inventory` event whose id packs the inventory item and location, resolved
+ * to a product when the sync runs (the translator stays I/O-free). The
+ * inventory sweep stays the backstop for anything a webhook misses. The host gates the
  * inventory event on `InventoryMaster`, so a connection without it gets only the
  * product job. `products/delete` stays single: the product re-read's not-found
  * runs the deletion path, and an inventory re-read would only repeat it.
@@ -34,6 +35,7 @@ import type {
 import {
   SHOPIFY_ORDER_CREATE_TOPIC,
   SHOPIFY_PRODUCT_UPDATE_TOPIC,
+  SHOPIFY_WEBHOOK_INVENTORY_RESOURCE,
   SHOPIFY_WEBHOOK_ORDER_RESOURCE,
   SHOPIFY_WEBHOOK_PRODUCT_RESOURCE,
 } from '../../../domain/types/shopify-webhook.types';
@@ -54,6 +56,16 @@ export class ShopifyWebhookEventTranslatorAdapter implements WebhookEventTransla
         const product = productScoped('product', event);
         return topic === SHOPIFY_PRODUCT_UPDATE_TOPIC ? [product, productScoped('inventory', event)] : product;
       }
+      case SHOPIFY_WEBHOOK_INVENTORY_RESOURCE:
+        // `externalId` is the packed inventory item + location id: the sync
+        // resolves it to a product (`InventoryEventTargetResolver`).
+        return {
+          domain: 'inventory',
+          externalId: event.externalId,
+          eventType: event.eventType,
+          occurredAt: event.occurredAt,
+          payload: event.payload,
+        };
       default:
         // Not decodable by this plugin: the host dead-letters it.
         return null;
