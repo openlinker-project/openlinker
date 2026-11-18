@@ -101,22 +101,22 @@
   },
   "steps": {
     "inpost-notify-buyer": {
-      "title": "Wybierz, kiedy kupujący zobaczy „wysłano”",
-      "tourBody": "Marketplace pokaże „wysłano” od razu po zakupie etykiety albo dopiero po kliknięciu „Oznacz jako wysłane”. Dotyczy to tego konta InPost.",
+      "title": "Ustaw, kiedy kupujący zobaczy „wysłano”",
+      "tourBody": "Kupujący zobaczy „wysłano” od razu po zakupie etykiety albo dopiero po kliknięciu „Oznacz jako wysłane”. Ustawienie dotyczy tego konta InPost.",
       "tourTitle": "Kiedy kupujący ma zobaczyć „wysłano”?",
-      "why": "Domyślnie kupujący widzi „wysłano” po kliknięciu „Oznacz jako wysłane”. Możesz przesunąć to na moment kupienia etykiety."
+      "why": "Zakup etykiety nie znaczy jeszcze, że paczka została nadana, dlatego kupujący widzi „wysłano” dopiero po kliknięciu „Oznacz jako wysłane”. Jeśli wolisz, status zmieni się od razu po zakupie etykiety."
     },
     "packing-owner": {
-      "title": "Wskaż, czy paczki pakuje inny system",
-      "tourBody": "Wybierz, kto pakuje zamówienia trafiające do tego systemu. To zmienia tylko to, co pokazuje OpenLinker. Nic nie jest blokowane.",
+      "title": "Wskaż, kto pakuje zamówienia",
+      "tourBody": "Wskaż, kto pakuje zamówienia z tego sklepu: OpenLinker czy inny system. Zmienia to tylko to, co widzisz w OpenLinkerze, niczego nie blokuje.",
       "tourTitle": "Kto pakuje zamówienia?",
-      "why": "Jeśli zamówienia pakuje system magazynowy, OpenLinker ukrywa własny przycisk „Oznacz jako spakowane”."
+      "why": "Jeśli zamówienia pakuje zewnętrzny system magazynowy, zaznacz „Ten system sam pakuje i wysyła zamówienia”. OpenLinker nie pokaże wtedy własnego przycisku „Oznacz jako spakowane”."
     },
     "shipping-routing": {
       "title": "Sprawdź, kto wysyła każdą metodę dostawy",
-      "tourBody": "Każda metoda dostawy ma przypisanego nadawcę. Sprawdź listę, popraw to, co się nie zgadza, i zapisz zmiany na stronie.",
+      "tourBody": "Każdą metodę dostawy z tego kanału wysyła wskazany przewoźnik lub magazyn. Sprawdź przypisania, popraw te, które się nie zgadzają, i zapisz.",
       "tourTitle": "Kto wysyła paczki z tego kanału?",
-      "why": "Otwórz Mapowania > Realizacja i sprawdź listę „Kto wysyła każdą metodę dostawy” dla tego kanału. Zapisz, gdy jest dobrze."
+      "why": "Wejdź w Mapowania, zakładka Realizacja. Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału, popraw przypisania i zapisz."
     }
   },
   "tour": {

@@ -100,19 +100,19 @@
       "title": "Choose when the buyer sees \"shipped\"",
       "tourBody": "The marketplace shows \"shipped\" either as soon as the label is bought or only after you click \"Mark as shipped\". This applies to this InPost account.",
       "tourTitle": "When should the buyer see \"shipped\"?",
-      "why": "By default the buyer sees \"shipped\" after you click \"Mark as shipped\". You can move it to the moment the label is bought."
+      "why": "Buying a label does not mean the parcel has been handed over, so the buyer sees \"shipped\" only after you click \"Mark as shipped\". If you prefer, the status changes right after the label is bought."
     },
     "packing-owner": {
       "title": "Say whether another system packs parcels",
       "tourBody": "Choose who packs orders that arrive in this system. This changes only what OpenLinker shows. Nothing gets blocked.",
       "tourTitle": "Who packs the orders?",
-      "why": "If a warehouse system packs the orders, OpenLinker hides its own \"Mark as packed\" button."
+      "why": "If an external warehouse system packs the orders, tick \"This system packs and ships its own orders\". OpenLinker then hides its own \"Mark as packed\" button."
     },
     "shipping-routing": {
       "title": "Check who ships each delivery method",
       "tourBody": "Every delivery method has a sender assigned. Check the list, fix what is wrong, then save on the page.",
       "tourTitle": "Who ships parcels from this channel?",
-      "why": "Open Mappings > Fulfilment and check the \"Who ships each delivery method\" list for this channel. Save when it is right."
+      "why": "Go to Mappings, Fulfilment tab. Check who ships each delivery method of this channel, fix the assignments and save."
     }
   },
   "tour": {
