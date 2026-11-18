@@ -794,26 +794,52 @@ export class OrderRecordRepository
       if (normalized.length > 0) {
         const pattern = `%${OrderRecordRepository.escapeLikePattern(normalized)}%`;
         const trackingOrderIds = filters.searchTrackingOrderIds ?? [];
+        const idNeedle = OrderRecordRepository.toOrderIdNeedle(normalized);
+        const idPattern =
+          idNeedle === null ? null : `%${OrderRecordRepository.escapeLikePattern(idNeedle)}%`;
+        // #4229 - the id predicate is built separately from the text one, so it
+        // can drop dashes and the shared prefix; `null` means "do not match ids".
+        const matches = ['rec."searchText" LIKE :searchPattern ESCAPE \'\\\''];
+        const params: Record<string, unknown> = { searchPattern: pattern };
+        if (idPattern !== null) {
+          matches.push('rec."internalOrderId" LIKE :searchIdPattern ESCAPE \'\\\'');
+          params.searchIdPattern = idPattern;
+        }
         if (trackingOrderIds.length > 0) {
-          // #3528 — the tracking-number search resolves a shipment's owning
+          // #3528 - the tracking-number search resolves a shipment's owning
           // order BEFORE `orders` is ever asked (`orders` must not import
           // `shipping`, which already depends on `orders`), so by the time
           // this filter runs it is just a plain id list. ORed with the text
           // match, never ANDed: both are alternate ways ONE query can match
           // an order, not two conditions the order must satisfy together.
-          qb.andWhere(
-            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" IN (:...searchTrackingOrderIds))',
-            { searchPattern: pattern, searchTrackingOrderIds: trackingOrderIds }
-          );
-        } else {
-          qb.andWhere('rec."searchText" LIKE :searchPattern ESCAPE \'\\\'', {
-            searchPattern: pattern,
-          });
+          matches.push('rec."internalOrderId" IN (:...searchTrackingOrderIds)');
+          params.searchTrackingOrderIds = trackingOrderIds;
         }
+        qb.andWhere(`(${matches.join(' OR ')})`, params);
       }
     }
 
     return qb;
+  }
+
+  /**
+   * The substring to match against `internalOrderId`, or `null` when the query
+   * should not match ids at all (#4229 review). Every id is
+   * `ol_order_<uuid without dashes>`, so dashes are dropped (a UUID pasted from
+   * a log still matches), the shared prefix is stripped, and a query that lies
+   * inside the prefix (`ol`, `order`, `_`) or is under 3 characters is refused -
+   * it would match every order and only add noise to a text search.
+   */
+  private static toOrderIdNeedle(normalized: string): string | null {
+    const prefix = 'ol_order_';
+    let needle = normalized.replace(/-/g, '');
+    if (prefix.includes(needle)) {
+      return null;
+    }
+    if (needle.startsWith(prefix)) {
+      needle = needle.slice(prefix.length);
+    }
+    return needle.length >= 3 ? needle : null;
   }
 
   /** Escape LIKE metacharacters so a search term is matched literally. */
