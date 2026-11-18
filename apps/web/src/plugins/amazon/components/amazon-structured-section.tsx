@@ -272,7 +272,7 @@ export function AmazonStructuredSection({
       ) : null}
 
       {ordersEnabled ? (
-        <label className="checkbox-row">
+        <label className="amazon-checkbox-row">
           <input
             type="checkbox"
             checked={form.watch('amazonRefundsEnabled') === 'true'}
@@ -280,10 +280,8 @@ export function AmazonStructuredSection({
             onChange={(event) => syncStructuredToJson('amazonRefundsEnabled', event.target.checked ? 'true' : 'false')}
           />
           <span>
-            {copy.refunds.label}
-            <small className="text-muted" style={{ display: 'block' }}>
-              {copy.refunds.description}
-            </small>
+            <span className="form-field__label">{copy.refunds.label}</span>
+            <span className="form-field__description amazon-checkbox-row__description">{copy.refunds.description}</span>
           </span>
         </label>
       ) : null}
