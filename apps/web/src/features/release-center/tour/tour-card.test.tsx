@@ -99,7 +99,7 @@ describe('TourCard', () => {
     fireEvent.click(screen.getByText('start-missing'));
     const skip = await screen.findByRole('button', { name: 'Skip this step' }, { timeout: 4000 });
     expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'I will do it later' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close the tour' })).toBeInTheDocument();
     fireEvent.click(skip);
     expect(await screen.findByText(/^Step 2 of 2$/)).toBeInTheDocument();
     expect(screen.getByText('Step 1 of 2: skipped')).toBeInTheDocument();

@@ -29,7 +29,9 @@ export function useReleaseStepRows(introducedAfter: string | null = null): Relea
   const connections = useConnectionsQuery(undefined, { enabled: canRead && needsConnections }).data;
 
   return useMemo(() => {
-    const named: NamedStepConnection[] = (connections ?? []).map((c) => ({
+    const named: NamedStepConnection[] = (connections ?? [])
+      .filter((c) => c.status === 'active')
+      .map((c) => ({
       id: c.id,
       name: c.name,
       platformType: c.platformType,

@@ -79,7 +79,9 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
       buildStepInstances(
         RELEASE_STEPS,
         APP_VERSION,
-        (connectionsQuery.data ?? []).map((connection) => ({
+        (connectionsQuery.data ?? [])
+          .filter((connection) => connection.status === 'active')
+          .map((connection) => ({
           id: connection.id,
           name: connection.name,
           platformType: connection.platformType,

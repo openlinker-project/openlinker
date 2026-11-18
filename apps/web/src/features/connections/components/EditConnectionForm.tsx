@@ -471,8 +471,7 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
     [connectionConfig],
   );
 
-  const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
-    defaultValues: {
+  const buildDefaultValues = (): EditConnectionFormValues => ({
       name: connection.name,
       baseUrl: readConfigString(connection.config, 'baseUrl'),
       siteUrl: readConfigString(connection.config, 'siteUrl'),
@@ -542,9 +541,22 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
       ...(connectionConfig?.readConfigToForm(connection.config) ?? {}),
-    },
+    });
+
+  const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
+    defaultValues: buildDefaultValues(),
     resolver: zodResolver(resolverSchema),
   });
+
+  // The guided tour (and any other writer) saves a setting while this page is open; without a reset the
+  // form keeps showing the old value and a later Save would write it back. A form with unsaved edits is left alone.
+  const seenUpdatedAtRef = useRef(connection.updatedAt);
+  useEffect(() => {
+    if (seenUpdatedAtRef.current === connection.updatedAt) return;
+    seenUpdatedAtRef.current = connection.updatedAt;
+    if (!form.formState.isDirty) form.reset(buildDefaultValues());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new server version should reset
+  }, [connection.updatedAt]);
 
   const validationMessages = collectFormErrorMessages(form.formState.errors);
 

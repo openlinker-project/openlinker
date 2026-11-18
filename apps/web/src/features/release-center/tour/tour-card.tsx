@@ -251,29 +251,42 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
                   ? 'skipped'
                   : 'todo';
             return (
-              <li
-                key={`${other.stepId}:${other.connectionId ?? ''}`}
-                className={`tour-card__dot tour-card__dot--${dotState}${
-                  other.importance === 'optional' ? ' tour-card__dot--optional' : ''
-                }`}
-              >
-                <span className="sr-only">
-                  {interpolate(tour.railStep, {
+              <li key={`${other.stepId}:${other.connectionId ?? ''}`} className="tour-card__seg">
+                <button
+                  type="button"
+                  className={`tour-card__dot tour-card__dot--${dotState}${
+                    other.importance === 'optional' ? ' tour-card__dot--optional' : ''
+                  }`}
+                  aria-current={index === state.index ? 'step' : undefined}
+                  aria-label={interpolate(tour.railStep, {
                     current: index + 1,
                     total: state.steps.length,
                     status: tour.railState[dotState],
                   })}
-                </span>
+                  title={copy.steps[other.stepId as keyof typeof copy.steps]?.tourTitle}
+                  onClick={() => dispatch({ type: 'go', index })}
+                />
               </li>
             );
           })}
         </ol>
         <div className="tour-card__top">
           <span>{interpolate(tour.stepOf, { current: state.index + 1, total })}</span>
-          <span
-            className={`release-chip${isAdmin && step.importance === 'required' ? ' release-chip--accent' : ''}`}
-          >
-            {!isAdmin ? tour.adminOnly : step.importance === 'required' ? tour.required : tour.optional}
+          <span className="tour-card__top-end">
+            <span
+              className={`release-chip${isAdmin && step.importance === 'required' ? ' release-chip--accent' : ''}`}
+            >
+              {!isAdmin ? tour.adminOnly : step.importance === 'required' ? tour.required : tour.optional}
+            </span>
+            <button
+              type="button"
+              className="tour-card__close"
+              aria-label={tour.close}
+              title={tour.close}
+              onClick={onClose}
+            >
+              <ReleaseIcon name="close" size={14} />
+            </button>
           </span>
         </div>
         <div className="tour-card__text">
@@ -314,10 +327,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             {tour.requiredReason}
           </p>
         ) : null}
-        <div className={`tour-card__footer${state.index > 0 ? ' tour-card__footer--three' : ''}`}>
-          <Button tone="ghost" className="button--sm" onClick={onClose}>
-            {tour.later}
-          </Button>
+        <div className="tour-card__footer">
           <div className="tour-card__nav">
             {state.index > 0 ? (
               <Button

@@ -41076,15 +41076,26 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .tour-card:focus-visible { outline: none; box-shadow: var(--shadow-overlay), var(--shadow-focus); }
 
 .tour-card__rail { display: flex; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.tour-card__seg { flex: 1; display: flex; min-width: 0; }
+/* The bar stays thin; the button around it is a tall, easy target. */
 .tour-card__dot {
-  display: block;
+  appearance: none;
+  border: 0;
+  padding: 0;
   flex: 1;
   height: 5px;
+  margin-block: 7px;
   border-radius: 99px;
   background: var(--bg-strong);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  cursor: pointer;
+  transition: transform 160ms var(--ease-out);
 }
+.tour-card__dot::before { content: ''; position: absolute; inset: -8px -2px; }
+.tour-card__dot:hover { transform: scaleY(1.7); }
+.tour-card__dot:active { transform: scaleY(1.2); }
+.tour-card__dot:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .tour-card__dot--optional {
   background: repeating-linear-gradient(90deg, var(--bg-strong) 0 4px, transparent 4px 7px);
 }
@@ -41092,6 +41103,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   content: '';
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   background: var(--accent-primary);
   transform: scaleX(0);
   transform-origin: left;
@@ -41115,6 +41127,22 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+.tour-card__top-end { display: inline-flex; align-items: center; gap: 6px; }
+.tour-card__close {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out), transform 140ms var(--ease-out);
+}
+.tour-card__close:hover { background: var(--bg-strong); color: var(--text-primary); }
+.tour-card__close:active { transform: scale(0.92); }
+.tour-card__close:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .tour-card__text { display: grid; gap: 4px; }
 .tour-card__title { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; }
 .tour-card__body { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }

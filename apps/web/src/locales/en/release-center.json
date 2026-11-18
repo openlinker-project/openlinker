@@ -98,21 +98,21 @@
   "steps": {
     "inpost-notify-buyer": {
       "title": "Choose when the buyer sees \"shipped\"",
-      "tourBody": "Choose the moment the marketplace shows the buyer \"shipped\". This setting belongs to this InPost account.",
-      "tourTitle": "When does the buyer learn about the shipment?",
-      "why": "By default the buyer sees \"shipped\" after you click \"Mark as shipped\". You can switch it to the moment the label is bought."
+      "tourBody": "The marketplace shows \"shipped\" either as soon as the label is bought or only after you click \"Mark as shipped\". This applies to this InPost account.",
+      "tourTitle": "When should the buyer see \"shipped\"?",
+      "why": "By default the buyer sees \"shipped\" after you click \"Mark as shipped\". You can move it to the moment the label is bought."
     },
     "packing-owner": {
       "title": "Say whether another system packs parcels",
-      "tourBody": "Tick the box if another system packs the parcels. It only changes what you see in OpenLinker and blocks nothing.",
+      "tourBody": "Choose who packs orders that arrive in this system. This changes only what OpenLinker shows. Nothing gets blocked.",
       "tourTitle": "Who packs the orders?",
-      "why": "If a warehouse system packs your orders, tick the box and OpenLinker hides its own \"Mark as packed\" button."
+      "why": "If a warehouse system packs the orders, OpenLinker hides its own \"Mark as packed\" button."
     },
     "shipping-routing": {
       "title": "Check who ships each delivery method",
-      "tourBody": "Check who ships each delivery method of this channel. Change what is needed and save the assignment.",
-      "tourTitle": "Who ships the parcels from this channel?",
-      "why": "Open Mappings > Fulfilment and look at the \"Who ships each delivery method\" list for this channel. Save when it is right."
+      "tourBody": "Every delivery method has a sender assigned. Check the list, fix what is wrong, then save on the page.",
+      "tourTitle": "Who ships parcels from this channel?",
+      "why": "Open Mappings > Fulfilment and check the \"Who ships each delivery method\" list for this channel. Save when it is right."
     }
   },
   "tour": {
@@ -124,9 +124,9 @@
       "notifyNow": "When the label is bought",
       "ownPacking": "OpenLinker packs"
     },
-    "finish": "Finish",
-    "later": "I will do it later",
-    "missing": "We could not find this element on the screen. You can skip this step.",
+    "close": "Close the tour",
+    "finish": "Done",
+    "missing": "This element is not on the screen. Skip to the next step.",
     "next": "Next",
     "optional": "Optional",
     "railLabel": "Tour progress",
@@ -139,12 +139,12 @@
     "railStep": "Step {current} of {total}: {status}",
     "regionLabel": "Guided tour",
     "required": "Required",
-    "requiredReason": "Make a choice for this required step to continue.",
-    "saveFailed": "Could not save. Try again.",
+    "requiredReason": "Pick an option to continue. This step is required.",
+    "saveFailed": "The setting was not saved. Try again.",
     "saved": "Saved: {choice}",
-    "skip": "Skip this step",
+    "skip": "Skip step",
     "stepOf": "Step {current} of {total}",
-    "viewerHint": "You can look at this setting. Only an administrator can change it."
+    "viewerHint": "You can see this setting. Only an administrator can change it."
   },
   "whatsNew": {
     "allSet": "All set",

@@ -102,20 +102,20 @@
   "steps": {
     "inpost-notify-buyer": {
       "title": "Wybierz, kiedy kupujący zobaczy „wysłano”",
-      "tourBody": "Wybierz moment, w którym marketplace pokaże kupującemu „wysłano”. To ustawienie tego konta InPost.",
-      "tourTitle": "Kiedy kupujący dowie się o wysyłce?",
-      "why": "Domyślnie kupujący widzi „wysłano” po kliknięciu „Oznacz jako wysłane”. Możesz zmienić to na moment kupienia etykiety."
+      "tourBody": "Marketplace pokaże „wysłano” od razu po zakupie etykiety albo dopiero po kliknięciu „Oznacz jako wysłane”. Dotyczy to tego konta InPost.",
+      "tourTitle": "Kiedy kupujący ma zobaczyć „wysłano”?",
+      "why": "Domyślnie kupujący widzi „wysłano” po kliknięciu „Oznacz jako wysłane”. Możesz przesunąć to na moment kupienia etykiety."
     },
     "packing-owner": {
       "title": "Wskaż, czy paczki pakuje inny system",
-      "tourBody": "Zaznacz pole, jeśli paczki pakuje inny system. To zmienia tylko to, co widzisz w OpenLinker, niczego nie blokuje.",
+      "tourBody": "Wybierz, kto pakuje zamówienia trafiające do tego systemu. To zmienia tylko to, co pokazuje OpenLinker. Nic nie jest blokowane.",
       "tourTitle": "Kto pakuje zamówienia?",
-      "why": "Jeśli zamówienia pakuje system magazynowy, zaznacz pole, a OpenLinker ukryje własny przycisk „Oznacz jako spakowane”."
+      "why": "Jeśli zamówienia pakuje system magazynowy, OpenLinker ukrywa własny przycisk „Oznacz jako spakowane”."
     },
     "shipping-routing": {
       "title": "Sprawdź, kto wysyła każdą metodę dostawy",
-      "tourBody": "Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału. Zmień to, co trzeba, i zapisz przypisanie.",
-      "tourTitle": "Kto wysyła przesyłki z tego kanału?",
+      "tourBody": "Każda metoda dostawy ma przypisanego nadawcę. Sprawdź listę, popraw to, co się nie zgadza, i zapisz zmiany na stronie.",
+      "tourTitle": "Kto wysyła paczki z tego kanału?",
       "why": "Otwórz Mapowania > Realizacja i sprawdź listę „Kto wysyła każdą metodę dostawy” dla tego kanału. Zapisz, gdy jest dobrze."
     }
   },
@@ -128,9 +128,9 @@
       "notifyNow": "Od razu po zakupie etykiety",
       "ownPacking": "Pakujemy w OpenLinker"
     },
-    "finish": "Zakończ",
-    "later": "Zrobię to później",
-    "missing": "Nie znaleziono tego elementu na ekranie. Możesz pominąć ten krok.",
+    "close": "Zamknij przewodnik",
+    "finish": "Gotowe",
+    "missing": "Tego elementu nie ma na ekranie. Przejdź do następnego kroku.",
     "next": "Dalej",
     "optional": "Opcjonalne",
     "railLabel": "Postęp przewodnika",
@@ -143,12 +143,12 @@
     "railStep": "Krok {current} z {total}: {status}",
     "regionLabel": "Przewodnik",
     "required": "Wymagane",
-    "requiredReason": "Wybierz opcję w tym wymaganym kroku, aby przejść dalej.",
-    "saveFailed": "Nie udało się zapisać. Spróbuj ponownie.",
+    "requiredReason": "Wybierz opcję, aby iść dalej. Ten krok jest wymagany.",
+    "saveFailed": "Nie zapisano ustawienia. Spróbuj ponownie.",
     "saved": "Zapisano: {choice}",
-    "skip": "Pomiń ten krok",
+    "skip": "Pomiń krok",
     "stepOf": "Krok {current} z {total}",
-    "viewerHint": "Możesz zobaczyć to ustawienie. Zmienić je może tylko administrator."
+    "viewerHint": "Widzisz to ustawienie, ale zmienić je może tylko administrator."
   },
   "whatsNew": {
     "allSet": "Wszystko ustawione",

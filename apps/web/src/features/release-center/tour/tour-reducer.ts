@@ -25,6 +25,7 @@ export type TourAction =
   | { type: 'next' }
   | { type: 'skip' }
   | { type: 'back' }
+  | { type: 'go'; index: number }
   | { type: 'target'; state: TourTargetState };
 
 export const INITIAL_TOUR_STATE: TourState = { steps: [], index: 0, active: false, target: 'waiting', skipped: [] };
@@ -52,6 +53,10 @@ export function tourReducer(state: TourState, action: TourAction): TourState {
       const skipped = state.skipped.includes(state.index) ? state.skipped : [...state.skipped, state.index];
       return { ...state, skipped, index: state.index + 1, target: 'waiting' };
     }
+    case 'go':
+      if (!state.active || action.index === state.index) return state;
+      if (action.index < 0 || action.index >= state.steps.length) return state;
+      return { ...state, index: action.index, target: 'waiting' };
     case 'back':
       if (!state.active || state.index === 0) return state;
       return { ...state, index: state.index - 1, target: 'waiting' };
