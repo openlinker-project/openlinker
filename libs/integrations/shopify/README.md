@@ -240,9 +240,9 @@ Orders and products reach OpenLinker seconds after a change instead of at the ne
 
 ## ProductPublisher and CategoryProvisioner (#3979)
 
-Publishes products from another master (PrestaShop, WooCommerce, ...) to the store. Opt-in, and refused on a
-connection that also has Product master enabled: the sweep would read every published product back as a new master
-product (#3985, a core issue that also affects Shoper and WooCommerce). Use a separate connection for publishing.
+Publishes products from another master (PrestaShop, WooCommerce, ...) to the store. Opt-in, and refused by
+OpenLinker's connection settings on a connection that also has Product master enabled: the sweep would read every
+published product back as a new master product (#3985). Use a separate connection for publishing.
 
 - **Simple product**: one `productSet`, Shopify's default option, one variant with its stock at the configured
   location. A re-publish reads the mapped product first and refuses one that no longer has exactly one variant
@@ -301,7 +301,7 @@ location reader share one OAuth token memo.
 ## Known gaps
 
 - `defaultEnabledCapabilities` turns ProductMaster on for every new connection, so a publish-only connection must
-  have it turned off by hand before publishing (the publisher refuses otherwise).
+  have it turned off by hand before enabling the publisher (the connection settings refuse the pair).
 - No `ShopProductStatusReader`: the publish status reconcile does not run for Shopify yet.
 
 - Delivery and payment mappings are keyed by the SOURCE connection only, so one source sending orders to Shopify and

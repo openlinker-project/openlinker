@@ -261,13 +261,6 @@ describe('ShopifyProductPublisherAdapter', () => {
       expect(variables.input.variants[0].price).toBe('123.00');
     });
 
-    it('should refuse a connection that is also the product master before anything is sent', async () => {
-      const h = build({ capabilities: ['ProductMaster', 'ProductPublisher'] });
-
-      await expect(h.adapter.publishProduct(cmd())).rejects.toBeInstanceOf(ProductPublishRejectedException);
-      expect(h.mutate).not.toHaveBeenCalled();
-    });
-
     it('should refuse a tax-exclusive shop when the catalogue holds no rate', async () => {
       const h = build();
 

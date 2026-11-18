@@ -96,7 +96,7 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // the store receive every marketplace order (the Shoper precedent).
   // `ProductPublisher` and `CategoryProvisioner` WRITE to the store, and a
   // connection that is also the master would read its own publications back
-  // (#3985), so they are opt-in and the publisher refuses a master connection.
+  // (#3985), so they are opt-in; core refuses the pair on one connection.
   // `OfferManager` writes stock to the store and is opt-in for the same reason;
   // the propagation fan-out never writes back to an `InventoryMaster`.
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],

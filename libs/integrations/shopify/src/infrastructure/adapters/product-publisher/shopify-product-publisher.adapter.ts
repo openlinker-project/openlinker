@@ -50,11 +50,6 @@
  * tax-exclusive shop it asks Shopify for the variant's own rate
  * (`ShopifyTaxRateReader`) and refuses when that is unknown.
  *
- * Not on a master connection: a connection that is also the ProductMaster
- * would read every product it publishes back as a new master product, so a
- * publish there is refused naming the remedy. A stopgap for the core issue
- * #3985 (which also covers Shoper and WooCommerce); remove it once that lands.
- *
  * Stock: the configured location only (`ShopifyShopContextProvider`). A create
  * sets it in the same call; an update sets it with `inventorySetQuantities`
  * (compare-and-set against the level read with the product).
@@ -214,8 +209,6 @@ const DEFINITION_REF = /^[^.\s]+\.[^.\s]+$/;
 const GROUP_HANDLE_PROBES = 6;
 const COLLECTIONS_PAGE_SIZE = 250;
 
-/** The capability a publish must not share a connection with (#3985). */
-const PRODUCT_MASTER_CAPABILITY = 'ProductMaster';
 
 
 type PriceBasis = { readonly divisor: number; readonly exempt: boolean };
@@ -428,7 +421,6 @@ export class ShopifyProductPublisherAdapter
   }
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
-    this.assertNotMaster();
     const context = await this.shopContext.get();
     const basis = this.priceBasis(cmd, context);
     this.logger.debug(
@@ -893,17 +885,6 @@ export class ShopifyProductPublisherAdapter
   }
 
   // ─── Shared steps ────────────────────────────────────────────────────────────
-
-  private assertNotMaster(): void {
-    if (this.connection.enabledCapabilities.includes(PRODUCT_MASTER_CAPABILITY)) {
-      throw this.refuse(
-        'shopify_publish_on_master_connection',
-        'This Shopify connection is also the product master, so every product published to it would be ' +
-          'read back as a new master product. Turn off Product master on this connection, or publish ' +
-          'to a connection used only for publishing.',
-      );
-    }
-  }
 
   private priceBasis(cmd: PublishProductCommand, context: ShopifyShopContext): PriceBasis {
     if (cmd.price.currency.toUpperCase() !== context.currencyCode.toUpperCase()) {
