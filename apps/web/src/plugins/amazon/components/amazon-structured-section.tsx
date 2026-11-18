@@ -49,6 +49,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import {
+  AmazonMcfShippingSpeedValues,
   formatTaxCodeRows,
   parseTaxCodeRows,
   splitMarketplaceIds,
@@ -76,6 +77,7 @@ export function AmazonStructuredSection({
   const ordersEnabled = connection.enabledCapabilities.includes('OrderSource');
   const offersEnabled = connection.enabledCapabilities.includes('OfferManager');
   const catalogueEnabled = connection.enabledCapabilities.includes('ProductMaster');
+  const mcfEnabled = connection.enabledCapabilities.includes('FulfillmentExecutor');
 
   const taxRows = parseTaxCodeRows(form.watch('amazonTaxCodeRates') ?? '');
   const writeTaxRows = (rows: readonly AmazonTaxCodeRow[]): void =>
@@ -333,6 +335,21 @@ export function AmazonStructuredSection({
         <Alert tone="info" density="compact">
           {copy.fba.sellsOnOtherChannels}
         </Alert>
+      ) : null}
+      {mcfEnabled ? (
+        <FormField label={copy.mcf.label} name="amazonMcfShippingSpeed" description={copy.mcf.description}>
+          <Select
+            value={form.watch('amazonMcfShippingSpeed') || 'Standard'}
+            onChange={(event) => syncStructuredToJson('amazonMcfShippingSpeed', event.target.value)}
+            disabled={disabled}
+          >
+            {AmazonMcfShippingSpeedValues.map((speed) => (
+              <option key={speed} value={speed}>
+                {copy.mcf.speeds[speed]}
+              </option>
+            ))}
+          </Select>
+        </FormField>
       ) : null}
     </>
   );

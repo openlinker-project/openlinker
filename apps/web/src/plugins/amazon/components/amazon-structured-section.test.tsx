@@ -252,4 +252,19 @@ describe('AmazonStructuredSection', () => {
 
     expect(sync).toHaveBeenCalledWith('amazonRefundsEnabled', 'true');
   });
+
+  it('should offer the Multi-Channel Fulfillment shipping speed only with FulfillmentExecutor (#4185)', async () => {
+    const sync = vi.fn();
+    renderWithProviders(<Harness caps={['FulfillmentExecutor']} sync={sync} />, admin);
+
+    const select = await screen.findByLabelText('Multi-Channel Fulfillment shipping speed');
+    expect(select).toHaveValue('Standard');
+    fireEvent.change(select, { target: { value: 'Expedited' } });
+    expect(sync).toHaveBeenCalledWith('amazonMcfShippingSpeed', 'Expedited');
+
+    cleanup();
+    renderWithProviders(<Harness caps={['OrderSource']} />, admin);
+    await screen.findByLabelText('SQS queue URL');
+    expect(screen.queryByLabelText('Multi-Channel Fulfillment shipping speed')).toBeNull();
+  });
 });

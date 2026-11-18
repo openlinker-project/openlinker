@@ -24,6 +24,7 @@ describe('amazonConnectionConfig', () => {
       amazonFbaLocationId: '',
       amazonFbmLocationId: '',
       amazonRefundsEnabled: 'false',
+      amazonMcfShippingSpeed: '',
     });
   });
 
@@ -122,5 +123,16 @@ describe('amazonConnectionConfig', () => {
     expect(schema.safeParse({ amazonMarketplaceIds: 'A1VC38T7YXB528,A39IBJ37TRP1C6' }).success).toBe(false);
     expect(schema.safeParse({ amazonMarketplaceIds: 'A1VC38T7YXB528' }).success).toBe(true);
     expect(schema.safeParse({ amazonMarketplaceIds: 'A1PA6795UKMFR9,A1C3SOZRARQ6R3' }).success).toBe(true);
+  });
+
+  it('should read and write the Multi-Channel Fulfillment shipping speed (#4185)', () => {
+    expect(amazonConnectionConfig.readConfigToForm({ marketplaceIds: [], mcfShippingSpeed: 'Expedited' })).toMatchObject({
+      amazonMcfShippingSpeed: 'Expedited',
+    });
+    expect(amazonConnectionConfig.readConfigToForm({ marketplaceIds: [], mcfShippingSpeed: 'Turbo' })).toMatchObject({
+      amazonMcfShippingSpeed: '',
+    });
+    expect(amazonConnectionConfig.applyToConfig({}, { amazonMcfShippingSpeed: 'Priority' })).toEqual({ mcfShippingSpeed: 'Priority' });
+    expect(schema.safeParse({ amazonMcfShippingSpeed: 'Turbo' }).success).toBe(false);
   });
 });

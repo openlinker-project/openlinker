@@ -52,9 +52,18 @@ declare module '../../shared/plugins/plugin.types' {
     amazonFbmLocationId?: string;
     /** `config.refundsEnabled` as `'true'` / `'false'` (#4184). */
     amazonRefundsEnabled?: string;
+    /** `config.mcfShippingSpeed`, the Multi-Channel Fulfillment speed (#4185). */
+    amazonMcfShippingSpeed?: string;
   }
 }
 
+/** Mirrors `AmazonMcfShippingSpeedValues` in the Amazon integration (#4185). */
+export const AmazonMcfShippingSpeedValues = ['Standard', 'Expedited', 'Priority'] as const;
+export type AmazonMcfShippingSpeed = (typeof AmazonMcfShippingSpeedValues)[number];
+
+function isAmazonMcfShippingSpeed(value: string): value is AmazonMcfShippingSpeed {
+  return (AmazonMcfShippingSpeedValues as readonly string[]).includes(value);
+}
 /** Mirrors `TAX_RATE_CODE_PATTERN` in `amazon-config.policy.ts`. */
 const TAX_RATE = /^(\d{1,2}(\.\d{1,2})?|zw|np|oo)$/;
 
@@ -151,6 +160,7 @@ const amazonSchemaShape: ConnectionConfigContribution['schemaShape'] = {
   amazonFbaLocationId: z.string().optional(),
   amazonFbmLocationId: z.string().optional(),
   amazonRefundsEnabled: z.string().optional(),
+  amazonMcfShippingSpeed: z.enum(['', ...AmazonMcfShippingSpeedValues]).optional(),
 };
 
 function readAmazonConfig(config: Record<string, unknown>): Record<string, string> {
@@ -168,6 +178,10 @@ function readAmazonConfig(config: Record<string, unknown>): Record<string, strin
     amazonFbaLocationId: typeof config.fbaLocationId === 'string' ? config.fbaLocationId : '',
     amazonFbmLocationId: typeof config.stockLocationOverride === 'string' ? config.stockLocationOverride : '',
     amazonRefundsEnabled: config.refundsEnabled === true ? 'true' : 'false',
+    amazonMcfShippingSpeed:
+      typeof config.mcfShippingSpeed === 'string' && isAmazonMcfShippingSpeed(config.mcfShippingSpeed)
+        ? config.mcfShippingSpeed
+        : '',
   };
 }
 
@@ -215,6 +229,11 @@ function applyAmazonConfig(
       rows.length === 0
         ? null
         : Object.fromEntries(rows.map((row) => [row.code.toUpperCase(), canonicalRate(row.rate)]));
+  }
+
+  const mcfSpeed = readOptionalConfigString(patch, 'amazonMcfShippingSpeed');
+  if (mcfSpeed !== undefined) {
+    next.mcfShippingSpeed = isAmazonMcfShippingSpeed(mcfSpeed) ? mcfSpeed : null;
   }
 
   const refunds = readOptionalConfigString(patch, 'amazonRefundsEnabled');
