@@ -53,6 +53,14 @@
       "first": "First marketplace ({marketplace})",
       "label": "Catalogue marketplace"
     },
+    "fba": {
+      "description": "Stock Amazon keeps in its warehouses (FBA) is read into this location. It is never written from OpenLinker.",
+      "label": "FBA stock location",
+      "needsFbmLocation": "Also turn on \"Assign a location to this connection's stock\" with a different location, or the FBA stock cannot be kept apart.",
+      "none": "Do not read FBA stock",
+      "sellsOnOtherChannels": "FBA stock counts toward what other channels may sell. Until Amazon ships those orders for you, keep it at a location you do not sell from.",
+      "unknown": "Location {id}"
+    },
     "marketplaces": {
       "addedNote": "Orders from a marketplace you add are read from the last 7 days.",
       "description": "Orders are read and offers written on these marketplaces.",

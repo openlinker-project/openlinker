@@ -42,6 +42,13 @@ export interface AmazonConnectionConfig {
    * One of `marketplaceIds`; absent means the first of them.
    */
   readonly catalogueMarketplaceId?: string;
+  /**
+   * The OpenLinker location FBA stock is reported at (#4183). Absent means FBA
+   * stock is not read. Requires the connection's `stockLocationOverride` (the
+   * FBM location) to be set and different: core cannot hold one variant both
+   * pooled and located, and would otherwise retire the FBM position.
+   */
+  readonly fbaLocationId?: string;
 }
 
 export interface AmazonNotificationQueue {

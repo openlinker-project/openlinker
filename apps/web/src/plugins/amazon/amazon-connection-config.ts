@@ -3,11 +3,11 @@
  *
  * The non-render half of the Amazon edit section: the marketplaces OpenLinker
  * reads orders from and writes offers to, the merchant token the listings API
- * needs, the SQS queue Amazon delivers order notifications to, and the rates
- * the account's product tax codes carry (#4182). Region and environment are
- * fixed at create and only shown: another region is another seller account
- * with its own refresh token, so the API refuses the change and another
- * region is a new connection.
+ * needs, the SQS queue Amazon delivers order notifications to, the rates the
+ * account's product tax codes carry (#4182) and the location FBA stock is read
+ * into (#4183). Region and environment are fixed at create and only shown:
+ * another region is another seller account with its own refresh token, so the
+ * API refuses the change and another region is a new connection.
  *
  * A marketplace added here is picked up by the order feed, which rewinds its
  * watermark for it (`scopeAmazonOrderFeedCursor`). The catalogue is read from
@@ -41,6 +41,8 @@ declare module '../../shared/plugins/plugin.types' {
     amazonTaxCodeRates?: string;
     /** `config.catalogueMarketplaceId`, empty for the first marketplace (#4182). */
     amazonCatalogueMarketplaceId?: string;
+    /** `config.fbaLocationId`, the location FBA stock is read into (#4183). */
+    amazonFbaLocationId?: string;
   }
 }
 
@@ -137,6 +139,7 @@ const amazonSchemaShape: ConnectionConfigContribution['schemaShape'] = {
       error: () => getAmazonMessages().edit.taxCodes.invalid,
     })
     .optional(),
+  amazonFbaLocationId: z.string().optional(),
 };
 
 function readAmazonConfig(config: Record<string, unknown>): Record<string, string> {
@@ -151,6 +154,7 @@ function readAmazonConfig(config: Record<string, unknown>): Record<string, strin
     amazonTaxCodeRates: formatTaxCodeRows(readTaxCodeRates(config.taxCodeRates)),
     amazonCatalogueMarketplaceId:
       typeof config.catalogueMarketplaceId === 'string' ? config.catalogueMarketplaceId : '',
+    amazonFbaLocationId: typeof config.fbaLocationId === 'string' ? config.fbaLocationId : '',
   };
 }
 
@@ -198,6 +202,12 @@ function applyAmazonConfig(
       rows.length === 0
         ? null
         : Object.fromEntries(rows.map((row) => [row.code.toUpperCase(), canonicalRate(row.rate)]));
+  }
+
+  const fbaLocation = readOptionalConfigString(patch, 'amazonFbaLocationId');
+  if (fbaLocation !== undefined) {
+    const text = fbaLocation.trim();
+    next.fbaLocationId = text === '' ? null : text;
   }
 
   return next;

@@ -15,6 +15,10 @@
  *     rather than failing keeps every stock change of a product sold both FBM
  *     and FBA from leaving a failed write. Quantity 0 is the pause (#1689);
  *     `deleteListingsItem` is never used.
+ *     On a connection that is also the stock master (#4183) the write is
+ *     skipped: Amazon is where that number comes from, and writing back the
+ *     quantity OpenLinker publishes (net of reservations and the safety
+ *     buffer) would lower Amazon's stock on every sync.
  *   - `OfferFieldUpdater`: price only, `patchListingsItem` replacing
  *     `purchasable_offer` for each configured marketplace whose currency is the
  *     price's (FR / DE: EUR, PL: PLN). Title, description and tax rate are
@@ -110,6 +114,7 @@ import {
   type AmazonListingSubmissionResponse,
 } from '../../../domain/types/amazon-listing.types';
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
+import { patchAmazonListing, sellerQuantityPatch } from '../../writers/amazon-listing-patch';
 import {
   AMAZON_OFFER_ONLY_PRODUCT_TYPE,
   composeFullListing,
@@ -156,6 +161,7 @@ export class AmazonOfferManagerAdapter
     private readonly config: AmazonConnectionConfig,
     fetchImpl: FetchLike,
     private readonly cache?: CachePort,
+    private readonly isStockMaster = false,
   ) {
     this.catalog = new AmazonCatalogReader(client, config.marketplaceIds[0]);
     this.productTypes = new AmazonProductTypeReader(client, fetchImpl, config.marketplaceIds[0]);
@@ -311,6 +317,13 @@ export class AmazonOfferManagerAdapter
   }
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
+    if (this.isStockMaster) {
+      this.logger.log(
+        `Skipping the quantity write to Amazon listing ${cmd.offerId}: this connection is the stock master ` +
+          `(connection: ${this.connectionId})`,
+      );
+      return;
+    }
     const item = await this.readListing(cmd.offerId);
     if (isFulfilledByAmazon(item)) {
       // warn, not debug: OpenLinker stops propagating stock to this listing,
@@ -321,15 +334,7 @@ export class AmazonOfferManagerAdapter
       );
       return;
     }
-    await this.patch(item, this.config.marketplaceIds, [
-      {
-        op: 'replace',
-        path: '/attributes/fulfillment_availability',
-        value: [
-          { fulfillment_channel_code: AMAZON_SELLER_FULFILLMENT_CHANNEL, quantity: Math.max(0, Math.floor(cmd.quantity)) },
-        ],
-      },
-    ]);
+    await this.patch(item, this.config.marketplaceIds, [sellerQuantityPatch(cmd.quantity)]);
   }
 
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<UpdateOfferFieldsReport | void> {
@@ -536,31 +541,23 @@ export class AmazonOfferManagerAdapter
     return response.data;
   }
 
-  private async patch(
+  private patch(
     item: AmazonListingItem,
     marketplaceIds: readonly string[],
     patches: readonly Record<string, unknown>[],
   ): Promise<void> {
-    const productType = item.summaries?.[0]?.productType;
-    if (productType === undefined) {
-      throw new AmazonNotSupportedException(`listing ${item.sku} reports no product type to patch`);
-    }
-    const response = await this.client.patch<AmazonListingSubmissionResponse>(
-      `${LISTINGS_PATH}/${this.sellerPath()}/${encodeURIComponent(item.sku)}`,
-      { productType, patches },
-      { marketplaceIds },
-    );
-    if (response.data.status === 'INVALID') {
-      const first = response.data.issues?.find((issue) => issue.severity === 'ERROR') ?? response.data.issues?.[0];
-      throw new AmazonApiError(400, first?.code ?? 'INVALID', first?.message ?? 'Amazon refused the listing update', response.requestId);
-    }
+    return patchAmazonListing(this.client, this.sellerId(), item, marketplaceIds, patches);
   }
 
   private sellerPath(): string {
+    return encodeURIComponent(this.sellerId());
+  }
+
+  private sellerId(): string {
     if (this.config.sellerId === undefined) {
       throw new AmazonConfigException(this.connectionId, 'sellerId (merchant token) is required to manage listings');
     }
-    return encodeURIComponent(this.config.sellerId);
+    return this.config.sellerId;
   }
 
   private primaryMarketplace(): string {

@@ -16,7 +16,8 @@
  * `CategoryBrowser`, `EanCategoryMatcher` and `OfferCreator` with #4181, advertised-without-dispatch
  * like Allegro's: resolved by narrowing the `OfferManager` adapter with their
  * guards, never through `getCapabilityAdapter`. `ProductMaster` with #4182
- * (the seller's own listings as a catalogue).
+ * (the seller's own listings as a catalogue). `InventoryMaster` with #4183
+ * (FBM stock from the listings, FBA stock at an operator-chosen location).
  *
  * Authorization: both a self-authorized private app and a public-app OAuth
  * grant end in the same stored LWA credentials (`AmazonCredentials`), so this
@@ -56,6 +57,7 @@ export const amazonAdapterManifest: AdapterMetadata = {
     'OrderSource',
     'OfferManager',
     'ProductMaster',
+    'InventoryMaster',
     'CategoryBrowser',
     'EanCategoryMatcher',
     'OfferCreator',
@@ -113,6 +115,8 @@ export function createAmazonPlugin(): AdapterPlugin {
             OfferManager: async () => factory.createOfferManager(await resolve()) as T,
             ProductMaster: async () =>
               factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,
+            InventoryMaster: async () =>
+              factory.createInventoryMaster(await resolve(), host.identifierMapping, host.cache) as T,
           },
           AMAZON_BRAND,
         );

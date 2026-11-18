@@ -24,6 +24,7 @@ import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.po
 import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-token.provider';
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
 import { AmazonSqsClient } from '../infrastructure/http/amazon-sqs-client';
+import { AmazonInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/amazon-inventory-master.adapter';
 import { AmazonOfferManagerAdapter } from '../infrastructure/adapters/offer-manager/amazon-offer-manager.adapter';
 import { AmazonProductMasterAdapter } from '../infrastructure/adapters/product-master/amazon-product-master.adapter';
 import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
@@ -102,6 +103,8 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       resolution.config,
       resolution.fetchImpl,
       resolution.cache,
+      // A stock-master connection gets no quantity written back to its own listings (#4183).
+      resolution.connection.enabledCapabilities.includes('InventoryMaster'),
     );
   }
 
@@ -111,6 +114,20 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
     cache?: CachePort,
   ): AmazonProductMasterAdapter {
     return new AmazonProductMasterAdapter(
+      resolution.connection,
+      resolution.client,
+      resolution.config,
+      identifierMapping,
+      cache,
+    );
+  }
+
+  createInventoryMaster(
+    resolution: AmazonResolution,
+    identifierMapping: IdentifierMappingPort,
+    cache?: CachePort,
+  ): AmazonInventoryMasterAdapter {
+    return new AmazonInventoryMasterAdapter(
       resolution.connection,
       resolution.client,
       resolution.config,

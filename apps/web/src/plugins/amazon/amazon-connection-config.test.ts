@@ -21,6 +21,19 @@ describe('amazonConnectionConfig', () => {
       amazonNotificationQueueUrl: '',
       amazonTaxCodeRates: '',
       amazonCatalogueMarketplaceId: '',
+      amazonFbaLocationId: '',
+    });
+  });
+
+  it('should read, write and clear the FBA location (#4183)', () => {
+    const config = { region: 'eu', marketplaceIds: ['A1PA6795UKMFR9'], fbaLocationId: 'ol_location_fba' };
+
+    expect(amazonConnectionConfig.readConfigToForm(config)).toMatchObject({ amazonFbaLocationId: 'ol_location_fba' });
+    expect(amazonConnectionConfig.applyToConfig(config, { amazonFbaLocationId: 'ol_location_b' })).toMatchObject({
+      fbaLocationId: 'ol_location_b',
+    });
+    expect(amazonConnectionConfig.applyToConfig(config, { amazonFbaLocationId: '' })).toMatchObject({
+      fbaLocationId: null,
     });
   });
 
