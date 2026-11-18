@@ -30,6 +30,7 @@
  *
  * @module libs/integrations/shopify/src
  */
+import type { ShopifyLocationResolverPort } from './domain/types/shopify-location.types';
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata, WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
@@ -131,6 +132,11 @@ export interface CreateShopifyPluginDeps {
    * longer matches the app client secret (#3981). Absent, that check is skipped.
    */
   readonly webhookSecrets?: WebhookSecretProviderPort;
+  /**
+   * Maps an OpenLinker location back to the Shopify one it stands for, for a
+   * located stock write. Absent, a write naming a location is refused.
+   */
+  readonly locationResolver?: ShopifyLocationResolverPort;
 }
 
 export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): AdapterPlugin {
@@ -196,7 +202,12 @@ export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): Adapter
             ProductMaster: async () =>
               factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,
             InventoryMaster: async () =>
-              factory.createInventoryMaster(await resolve(), host.identifierMapping, host.cache) as T,
+              factory.createInventoryMaster(
+                await resolve(),
+                host.identifierMapping,
+                host.cache,
+                deps.locationResolver,
+              ) as T,
             OrderSource: async () => factory.createOrderSource(await resolve()) as T,
             OrderProcessorManager: async () =>
               factory.createOrderProcessor(

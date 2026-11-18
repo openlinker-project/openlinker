@@ -83,6 +83,11 @@ import {
   MAPPING_CONFIG_SERVICE_TOKEN,
   type IMappingConfigService,
 } from '@openlinker/core/mappings';
+import {
+  InventoryModule,
+  LOCATION_SERVICE_TOKEN,
+  type ILocationService,
+} from '@openlinker/core/inventory';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
@@ -103,7 +108,14 @@ import { SHOPIFY_LOCATION_READER_TOKEN } from './shopify.tokens';
 const SHOPIFY_CLIENT_RUNTIME_TOKEN = Symbol('ShopifyClientRuntime');
 
 @Module({
-  imports: [IntegrationsModule, SyncModule, IdentifierMappingModule, MappingsModule, RateLimitModule],
+  imports: [
+    IntegrationsModule,
+    SyncModule,
+    IdentifierMappingModule,
+    MappingsModule,
+    InventoryModule,
+    RateLimitModule,
+  ],
   providers: [
     {
       provide: SHOPIFY_CLIENT_RUNTIME_TOKEN,
@@ -192,6 +204,8 @@ export class ShopifyIntegrationModule implements OnModuleInit {
     private readonly webhookSecretService: IWebhookSecretService,
     @Inject(WEBHOOK_SECRET_PROVIDER_TOKEN)
     private readonly webhookSecrets: WebhookSecretProviderPort,
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locationService: ILocationService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort,
   ) {}
@@ -204,6 +218,16 @@ export class ShopifyIntegrationModule implements OnModuleInit {
       runtime,
       mappingConfigService: this.mappingConfigService,
       webhookSecrets: this.webhookSecrets,
+      locationResolver: {
+        resolveShopifyLocationId: async (connectionId, olLocationId) => {
+          const location = await this.locationService.getLocation(olLocationId);
+          return location !== null &&
+            location.ownerConnectionId === connectionId &&
+            location.externalRef !== null
+            ? location.externalRef
+            : null;
+        },
+      },
     });
 
     const host: HostServices = {

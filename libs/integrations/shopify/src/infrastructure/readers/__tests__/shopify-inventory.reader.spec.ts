@@ -20,7 +20,7 @@ describe('ShopifyInventoryReader', () => {
     const product = await new ShopifyInventoryReader({ query } as unknown as ShopifyGraphqlClient, 'c1').read('7', 'p', LOCATION);
 
     expect(product.variants.nodes.map((v) => v.id)).toEqual(['v1', 'v2']);
-    expect((query.mock.calls[1] as unknown[])[1]).toEqual({ id: 'gid://shopify/Product/7', locationId: LOCATION, after: 'c1' });
+    expect((query.mock.calls[1] as unknown[])[1]).toEqual({ id: 'gid://shopify/Product/7', locationId: LOCATION, after: 'c1', allLocations: false });
   });
 
   it('should read again after forget, so a write compares against the current level', async () => {
@@ -42,5 +42,36 @@ describe('ShopifyInventoryReader', () => {
     await expect(
       new ShopifyInventoryReader({ query } as unknown as ShopifyGraphqlClient, 'c1').read('7', 'p', LOCATION),
     ).rejects.toBeInstanceOf(MasterProductNotFoundError);
+  });
+
+  it('should page the levels of an item whose first page was full, in all-locations mode', async () => {
+    const lvl = (id: string): unknown => ({ location: { id }, updatedAt: null, quantities: [] });
+    const item = (pageInfo: { hasNextPage: boolean; endCursor: string | null }, nodes: unknown[]): unknown => ({
+      id: 'v1',
+      inventoryItem: { id: 'ii-1', tracked: true, inventoryLevel: null, levels: { nodes, pageInfo } },
+    });
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({
+        product: {
+          id: 'gid://shopify/Product/7',
+          status: 'ACTIVE',
+          variants: { nodes: [item({ hasNextPage: true, endCursor: 'l1' }, [lvl('L1')])], pageInfo: { hasNextPage: false, endCursor: null } },
+        },
+      })
+      .mockResolvedValueOnce({
+        inventoryItem: { levels: { nodes: [lvl('L2')], pageInfo: { hasNextPage: false, endCursor: null } } },
+      });
+
+    const product = await new ShopifyInventoryReader({ query } as unknown as ShopifyGraphqlClient, 'c1', true).read(
+      '7',
+      'p',
+      LOCATION,
+    );
+
+    const levels = product.variants.nodes[0].inventoryItem.levels;
+    expect(levels?.nodes.map((n) => n.location.id)).toEqual(['L1', 'L2']);
+    expect(levels?.pageInfo?.hasNextPage).toBe(false);
+    expect((query.mock.calls[1] as unknown[])[1]).toEqual({ id: 'ii-1', after: 'l1' });
   });
 });

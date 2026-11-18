@@ -35,6 +35,7 @@ import { ShopifyProductMasterAdapter } from '../infrastructure/adapters/product-
 import { ShopifyOfferManagerAdapter } from '../infrastructure/adapters/offer-manager/shopify-offer-manager.adapter';
 import { ShopifyProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shopify-product-publisher.adapter';
 import { buildShopifyClient, type ShopifyClientRuntime } from '../infrastructure/http/shopify-client.builder';
+import type { ShopifyLocationResolverPort } from '../domain/types/shopify-location.types';
 import { ShopifyInventoryReader } from '../infrastructure/readers/shopify-inventory.reader';
 import { ShopifyProductReader } from '../infrastructure/readers/shopify-product.reader';
 import { ShopifyTaxRateReader } from '../infrastructure/tax/shopify-tax-rate.reader';
@@ -88,6 +89,7 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
     resolution: ShopifyResolution,
     identifierMapping: IdentifierMappingPort,
     cache?: CachePort,
+    locationResolver?: ShopifyLocationResolverPort,
   ): InventoryMasterPort {
     const { client, connection, config, shopContext } = resolution;
     return new ShopifyInventoryMasterAdapter(
@@ -99,6 +101,7 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
       config.unmanagedStockQuantity,
       cache,
       config.stockLocations === 'all',
+      locationResolver,
     );
   }
 

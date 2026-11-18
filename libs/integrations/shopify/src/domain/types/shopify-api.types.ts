@@ -145,6 +145,7 @@ export interface ShopifyInventoryVariant {
     /** Every level of the item; present only when read with `allLocations`. */
     readonly levels?: {
       readonly nodes: readonly (ShopifyInventoryLevel & { readonly location: { readonly id: string } })[];
+      readonly pageInfo?: { readonly hasNextPage: boolean; readonly endCursor: string | null };
     };
   };
 }

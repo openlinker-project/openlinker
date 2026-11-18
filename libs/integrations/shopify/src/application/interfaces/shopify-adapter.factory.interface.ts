@@ -10,6 +10,7 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { InventoryMasterPort } from '@openlinker/core/inventory';
+import type { ShopifyLocationResolverPort } from '../../domain/types/shopify-location.types';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { OfferManagerPort, ShopProductManagerPort } from '@openlinker/core/listings';
 import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
@@ -49,6 +50,7 @@ export interface IShopifyAdapterFactory {
     resolution: ShopifyResolution,
     identifierMapping: IdentifierMappingPort,
     cache?: CachePort,
+    locationResolver?: ShopifyLocationResolverPort,
   ): InventoryMasterPort;
 
   /**

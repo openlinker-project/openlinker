@@ -4,9 +4,13 @@
  * All-locations mode (`config.stockLocations: 'all'`, opt-in): `listInventory`
  * reports one position per active shop location, each named by the master's
  * own location (`Inventory.masterLocation`) which core resolves to - and
- * provisions on first sight - an OL `inventory_locations` row. Writes
- * (`adjustInventory`) still target the configured / primary location only
- * (mapping an OL location back to a Shopify one is deferred).
+ * provisions on first sight - an OL `inventory_locations` row. A pull
+ * whose levels were read completely declares `locationSetComplete`, so core
+ * stales positions at locations the shop no longer lists. `adjustInventory`
+ * honours `InventoryAdjustment.locationId` by resolving the OL location back
+ * to its Shopify one (refused with `ShopifyLocationNotOwnedException` when this
+ * connection does not own it); without a `locationId` it targets the
+ * configured / primary location as before.
  *
  * Implements `InventoryMasterPort` over the Admin GraphQL API (2026-10)
  * against ONE Shopify location: the connection's `config.locationId`, or the
@@ -91,9 +95,10 @@ import { resolveShopifyExternalId } from '../../readers/shopify-external-id';
 import {
   ADJUST_AVAILABLE_MUTATION,
   INVENTORY_ITEM_PRODUCT_QUERY,
-  SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE,
   PRODUCTS_INVENTORY_BY_IDS_QUERY,
 } from '../../readers/shopify-inventory.queries';
+import type { ShopifyLocationResolverPort } from '../../../domain/types/shopify-location.types';
+import { ShopifyLocationNotOwnedException } from '../../../domain/exceptions/shopify-location-not-owned.exception';
 import type { ShopifyInventoryReader } from '../../readers/shopify-inventory.reader';
 import { SHOPIFY_PRODUCT_BATCH_SIZE } from '../../readers/shopify-product.queries';
 import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop-context.provider';
@@ -146,6 +151,8 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
     private readonly cache: CachePort | undefined,
     /** `config.stockLocations === 'all'`: one located position per active shop location. */
     private readonly allLocations: boolean = false,
+    /** Maps an OL location back to a Shopify one for a located `adjustInventory`. */
+    private readonly locationResolver?: ShopifyLocationResolverPort,
   ) {}
 
   // ─── Reads ─────────────────────────────────────────────────────────────────
@@ -194,10 +201,13 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
         continue;
       }
       const levels = variant.inventoryItem.levels?.nodes ?? [];
-      if (levels.length >= SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE) {
+      // Complete only when no page of levels was left unread: a location absent
+      // from a partial read is merely unread, and must never be pruned.
+      const complete = variant.inventoryItem.levels?.pageInfo?.hasNextPage !== true;
+      if (!complete) {
         this.logger.warn(
-          `Shopify inventory item ${variant.inventoryItem.id} has ${levels.length}+ levels; only the first ` +
-            `${SHOPIFY_INVENTORY_LEVELS_PAGE_SIZE} are read (connection: ${this.connection.id})`,
+          `Shopify inventory item ${variant.inventoryItem.id} has more levels than were read; ` +
+            `its locations are not pruned this pull (connection: ${this.connection.id})`,
         );
       }
       for (const location of activeLocations) {
@@ -214,6 +224,7 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
           ...base,
           id: levelId,
           masterLocation: { ref: fromShopifyGid(location.gid), name: location.name },
+          ...(complete ? { locationSetComplete: true } : {}),
         });
       }
     }
@@ -326,7 +337,8 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
     // The level compared against must be the shop's, not one memoised earlier
     // in this resolution (a sweep prefetch, a listInventory).
     this.reader.forget(externalId);
-    const { product, locationGid } = await this.readProduct(adjustment.productId, externalId);
+    const targetLocationGid = await this.resolveTargetLocation(adjustment);
+    const { product, locationGid } = await this.readProduct(adjustment.productId, externalId, targetLocationGid);
     const variant = await this.pickVariant(product.variants.nodes, adjustment);
     const variantExternalId = fromShopifyGid(variant.id);
     // Ids are minted BEFORE the write: failing after it would report an error
@@ -466,12 +478,44 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort, BulkI
     return resolveShopifyExternalId(this.identifierMapping, this.connection.id, CORE_ENTITY_TYPE.Product, productId);
   }
 
+  /**
+   * The Shopify location a write targets: the one `adjustment.locationId`
+   * names (resolved back through the host, refused when this connection does
+   * not own it or it is not an active shop location), else `undefined` for the
+   * configured / primary one, exactly as before.
+   */
+  private async resolveTargetLocation(adjustment: InventoryAdjustment): Promise<string | undefined> {
+    if (adjustment.locationId === undefined) {
+      return undefined;
+    }
+    const refuse = (reason: string): never => {
+      throw new ShopifyLocationNotOwnedException(adjustment.locationId as string, this.connection.id, reason);
+    };
+    if (this.locationResolver === undefined) {
+      return refuse('this host cannot resolve OpenLinker locations to Shopify ones');
+    }
+    const numeric = await this.locationResolver.resolveShopifyLocationId(
+      this.connection.id,
+      adjustment.locationId,
+    );
+    if (numeric === null) {
+      return refuse('the location is not owned by this connection');
+    }
+    const gid = toShopifyGid('Location', numeric);
+    const { activeLocations } = await this.shopContext.get();
+    if (!activeLocations.some((l) => l.gid === gid)) {
+      return refuse(`Shopify location ${numeric} is not an active location of the shop`);
+    }
+    return gid;
+  }
+
   private async readProduct(
     productId: string,
     knownExternalId?: string,
+    locationOverride?: string,
   ): Promise<{ product: ShopifyInventoryProduct; locationGid: string }> {
     const externalId = knownExternalId ?? (await this.resolveExternalProductId(productId));
-    const { locationGid } = await this.shopContext.get();
+    const locationGid = locationOverride ?? (await this.shopContext.get()).locationGid;
     const product = await this.reader.read(externalId, productId, locationGid);
     if (product.variants.pageInfo?.hasNextPage === true) {
       this.logger.warn(

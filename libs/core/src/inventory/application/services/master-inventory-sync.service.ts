@@ -284,6 +284,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // location - so it double-counts stock and is repaired below.
     const locatedVariantKeys: (string | null)[] = [];
     const pooledVariantKeys = new Set<string>();
+    // Complete location sets, per variant (multi-location pruning, below).
+    const completeLocationSets = new Map<string, { variantKey: string | null; locationIds: string[] }>();
     for (const inventory of inventories) {
       const inventoryItem = await this.toDomainInventoryItem(
         inventory,
@@ -309,6 +311,15 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       // repair's perspective the two are indistinguishable (#3206).
       if (inventoryItem.locationId !== null) {
         locatedVariantKeys.push(inventoryItem.productVariantId);
+        if (inventory.locationSetComplete === true) {
+          const key = inventoryItem.productVariantId ?? PRODUCT_LEVEL_VARIANT_KEY;
+          const set = completeLocationSets.get(key) ?? {
+            variantKey: inventoryItem.productVariantId,
+            locationIds: [],
+          };
+          set.locationIds.push(inventoryItem.locationId);
+          completeLocationSets.set(key, set);
+        }
       } else {
         pooledVariantKeys.add(inventoryItem.productVariantId ?? PRODUCT_LEVEL_VARIANT_KEY);
       }
@@ -522,6 +533,27 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         internalProductId,
         locatedStaleResult.variantIds,
         locatedStaleResult.markedProductLevel === true
+      );
+    }
+
+    // Multi-location pruning: a variant reported with a declared-complete
+    // location set loses (soft-stale, no event) its own rows at any location the
+    // pull no longer names - the per-variant prune above keeps every location
+    // row of a variant still reported. Same provenance invariant as the repairs:
+    // the unattributed claim holds only without a rival master.
+    const unreportedStaleResult =
+      completeLocationSets.size === 0
+        ? { markedCount: 0, variantIds: [] }
+        : await this.inventoryService.staleUnreportedLocationsForSource(
+            internalProductId,
+            [...completeLocationSets.values()],
+            { sourceConnectionId: connectionId, includeUnattributedProvenance: !pruneSkipped }
+          );
+    if (unreportedStaleResult.markedCount > 0) {
+      await this.enqueueAggregatePropagation(
+        internalProductId,
+        unreportedStaleResult.variantIds,
+        unreportedStaleResult.markedProductLevel === true
       );
     }
 

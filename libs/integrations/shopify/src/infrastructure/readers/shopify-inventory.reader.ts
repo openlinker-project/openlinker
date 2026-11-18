@@ -24,11 +24,13 @@ import type {
   ShopifyInventoryVariant,
 } from '../../domain/types/shopify-api.types';
 import type { ShopifyGraphqlClient } from '../http/shopify-graphql-client';
-import { PRODUCT_INVENTORY_QUERY } from './shopify-inventory.queries';
+import { INVENTORY_ITEM_LEVELS_QUERY, PRODUCT_INVENTORY_QUERY } from './shopify-inventory.queries';
 import { isShopifyProductWithdrawn } from './shopify-product.reader';
 
 /** Shopify allows 2048 variants per product; past this many pages the read stops. */
 const MAX_VARIANT_PAGES = 25;
+/** 250 per page, so this covers Shopify's own location ceiling several times over. */
+const MAX_LEVEL_PAGES = 10;
 
 export class ShopifyInventoryReader {
   private readonly reads = new Map<string, Promise<ShopifyInventoryProduct | null>>();
@@ -84,10 +86,12 @@ export class ShopifyInventoryReader {
     product: ShopifyInventoryProduct,
     locationGid: string,
   ): Promise<ShopifyInventoryProduct> {
-    let pageInfo = product.variants.pageInfo;
+    const withLevels = this.allLocations ? await this.completeLevels(product) : product;
+    let pageInfo = withLevels.variants.pageInfo;
     if (pageInfo?.hasNextPage !== true) {
-      return product;
+      return withLevels;
     }
+    product = withLevels;
     const variants: ShopifyInventoryVariant[] = [...product.variants.nodes];
     for (let page = 0; page < MAX_VARIANT_PAGES && pageInfo?.hasNextPage === true; page += 1) {
       const data: { product: ShopifyInventoryProduct | null } = await this.client.query(
@@ -99,9 +103,49 @@ export class ShopifyInventoryReader {
         // next sync sees the deletion.
         break;
       }
-      variants.push(...data.product.variants.nodes);
+      const more = this.allLocations ? await this.completeLevels(data.product) : data.product;
+      variants.push(...more.variants.nodes);
       pageInfo = data.product.variants.pageInfo;
     }
     return { ...product, variants: { nodes: variants, pageInfo } };
+  }
+
+  /**
+   * Pages the levels of every item whose nested first page was full, so a shop
+   * with more locations than the nested page holds is read completely instead
+   * of in part. A follow-up is one cheap single-item query (cost is paid only
+   * by items that need it); an item still having pages after `MAX_LEVEL_PAGES`
+   * keeps `hasNextPage: true`, which the adapter reads as "location set not
+   * complete" and so never prunes off it.
+   */
+  private async completeLevels(product: ShopifyInventoryProduct): Promise<ShopifyInventoryProduct> {
+    const nodes = await Promise.all(
+      product.variants.nodes.map(async (variant) => {
+        const first = variant.inventoryItem.levels;
+        if (first?.pageInfo?.hasNextPage !== true) {
+          return variant;
+        }
+        const all = [...first.nodes];
+        let pageInfo: { readonly hasNextPage: boolean; readonly endCursor: string | null } | undefined =
+          first.pageInfo;
+        for (let page = 0; page < MAX_LEVEL_PAGES && pageInfo?.hasNextPage === true; page += 1) {
+          const data: { inventoryItem: { levels: NonNullable<typeof first> } | null } =
+            await this.client.query(INVENTORY_ITEM_LEVELS_QUERY, {
+              id: variant.inventoryItem.id,
+              after: pageInfo.endCursor,
+            });
+          if (!data.inventoryItem) {
+            break;
+          }
+          all.push(...data.inventoryItem.levels.nodes);
+          pageInfo = data.inventoryItem.levels.pageInfo;
+        }
+        return {
+          ...variant,
+          inventoryItem: { ...variant.inventoryItem, levels: { nodes: all, pageInfo } },
+        };
+      }),
+    );
+    return { ...product, variants: { ...product.variants, nodes } };
   }
 }
