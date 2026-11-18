@@ -21,7 +21,7 @@ export interface TourStepInput {
 export interface TourController {
   isActive: boolean;
   /** `trigger` receives focus again when the tour closes. */
-  start: (steps: readonly TourStepInput[], trigger?: HTMLElement | null) => void;
+  start: (steps: readonly TourStepInput[], trigger?: HTMLElement | null, startIndex?: number) => void;
   close: () => void;
 }
 

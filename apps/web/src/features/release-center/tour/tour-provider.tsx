@@ -52,10 +52,10 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
     if (trigger) setTimeout(() => trigger.focus(), 0);
   }, []);
 
-  const start = useCallback((steps: readonly TourStepInput[], trigger?: HTMLElement | null): void => {
+  const start = useCallback((steps: readonly TourStepInput[], trigger?: HTMLElement | null, startIndex?: number): void => {
     triggerRef.current =
       trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    dispatch({ type: 'start', steps });
+    dispatch({ type: 'start', steps, index: startIndex });
   }, []);
 
   const view = useReleaseCenterView();
@@ -66,7 +66,8 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
       subscribeToTourRequests((request) => {
         const latest = viewRef.current;
         if (!latest) return;
-        start(tourStepsForRequest(latest.instances, latest.state, request));
+        const walk = tourStepsForRequest(latest.instances, latest.state, request);
+        start(walk.steps, null, walk.startIndex);
       }),
     [start]
   );

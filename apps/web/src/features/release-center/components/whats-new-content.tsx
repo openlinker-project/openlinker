@@ -170,9 +170,7 @@ export function WhatsNewContent(): ReactElement {
             >
               <div className="whats-new__head whats-new__head--release">
                 <h3>{`v${release.version}`}</h3>
-                <StatusBadge tone={index === 0 ? 'success' : 'neutral'}>
-                  {index === 0 ? copy.current : copy.older}
-                </StatusBadge>
+                {index === 0 ? <StatusBadge tone="success">{copy.current}</StatusBadge> : null}
                 {release.date ? <span className="whats-new__date">{release.date}</span> : null}
               </div>
               {release.groups.map((group) => (
@@ -201,7 +199,6 @@ export function WhatsNewContent(): ReactElement {
         {changelog.baseline && isLastPage ? (
           <article className="whats-new__card">
             <div className="whats-new__head">
-              <StatusBadge tone="neutral">{copy.older}</StatusBadge>
               <h3>{`v${changelog.baseline.version}`}</h3>
               <span className="whats-new__date">{copy.baselineTitle}</span>
             </div>

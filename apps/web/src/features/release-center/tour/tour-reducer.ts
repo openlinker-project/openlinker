@@ -20,7 +20,7 @@ export interface TourState {
 }
 
 export type TourAction =
-  | { type: 'start'; steps: readonly TourStepInput[] }
+  | { type: 'start'; steps: readonly TourStepInput[]; index?: number }
   | { type: 'close' }
   | { type: 'next' }
   | { type: 'skip' }
@@ -33,7 +33,13 @@ export function tourReducer(state: TourState, action: TourAction): TourState {
   switch (action.type) {
     case 'start':
       if (action.steps.length === 0) return state;
-      return { steps: action.steps, index: 0, active: true, target: 'waiting', skipped: [] };
+      return {
+        steps: action.steps,
+        index: Math.min(Math.max(action.index ?? 0, 0), action.steps.length - 1),
+        active: true,
+        target: 'waiting',
+        skipped: [],
+      };
     case 'close':
       return INITIAL_TOUR_STATE;
     case 'next':

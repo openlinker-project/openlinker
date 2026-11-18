@@ -160,7 +160,6 @@
     "eyebrow": "Aktualizacje",
     "intro": "Historia zmian z pliku CHANGELOG.md. To, co możesz ustawić w interfejsie, jest w osobnym bloku nad listą.",
     "noSteps": "Po tej aktualizacji nie ma nic do ustawienia.",
-    "older": "Starsza",
     "progress": "{done} z {total}",
     "setNow": "Ustaw teraz",
     "setupTitle": "Do skonfigurowania",

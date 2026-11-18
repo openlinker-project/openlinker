@@ -156,7 +156,6 @@
     "eyebrow": "Updates",
     "intro": "Change history from CHANGELOG.md. Things you can set in the interface are in the block above the list.",
     "noSteps": "Nothing to set up after this update.",
-    "older": "Older",
     "progress": "{done} of {total}",
     "setNow": "Set up now",
     "setupTitle": "Still to set up",
