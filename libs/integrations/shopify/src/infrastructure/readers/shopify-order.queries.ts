@@ -78,6 +78,18 @@ export const ORDER_FULFILLMENT_STATUS_QUERY = `query OlOrderFulfillmentStatus($i
   }
 }`;
 
+/**
+ * What the SOURCE shop says about an order's fulfilment (`OrderFulfillmentReadback`):
+ * the order-level display status plus each fulfillment's status and tracking
+ * (number and carrier name). `fulfillments` is a plain list, not a connection.
+ */
+export const ORDER_FULFILLMENT_READBACK_QUERY = `query OlOrderFulfillmentReadback($id: ID!) {
+  order(id: $id) {
+    id cancelledAt displayFulfillmentStatus
+    fulfillments(first: 20) { status trackingInfo(first: 5) { number company } }
+  }
+}`;
+
 export const ORDER_FEED_QUERY = `query OlOrderFeed($first: Int!, $after: String, $query: String!) {
   orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT) {
     nodes { id createdAt updatedAt cancelledAt }

@@ -8,6 +8,10 @@
  * its own `cursorKey` (`shopify.orders.cursor`), so a run never writes under
  * the core default key (C22).
  *
+ * `shopify-source-fulfillment-status-sync`: reads back a fulfilment made in the
+ * Shopify admin for an order ingested from the store (default ON, hourly;
+ * `OL_SHOPIFY_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED=false` stops it).
+ *
  * The two returns passes (#2330 shape): discovery over the return feed and
  * the re-read of OpenLinker's open returns. Both require `OrderSource`, never
  * `ReturnSourceReader` (advertised-without-dispatch; naming it would fail
@@ -56,6 +60,27 @@ export function buildShopifySchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
         `marketplace:${connection.id}:shopify:fulfillment:status:sync:${timestamp}`,
+    },
+    {
+      // A shipment made in the Shopify admin on an order OL ingested FROM this
+      // store is read back (`OrderFulfillmentReadback`, ADR-012 amendment). Gated
+      // on OrderSource, never on the guard-only sub-capability; the core service
+      // no-ops where the adapter lacks it. Its own cursor, so a store that is
+      // also a destination never shares the destination task's offset.
+      taskId: 'shopify-source-fulfillment-status-sync',
+      platformType: SHOPIFY_PLATFORM_TYPE,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      cronExpression: '20 * * * *',
+      enabledEnvVar: 'OL_SHOPIFY_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: (_connection: Connection) => ({
+        schemaVersion: 1 as const,
+        limit: 100,
+        cursorKey: 'shopify.sourceFulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      }),
+      generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
+        `marketplace:${connection.id}:shopify:source:fulfillment:status:sync:${timestamp}`,
     },
     {
       // Live status of published products (#4192): one page of the connection's

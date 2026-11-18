@@ -31,6 +31,9 @@
  * `ShopifyOrderStatusWriteback`, so a dispatch made in OpenLinker fulfils the
  * order on the shop it came from (L-S3c).
  *
+ * Fulfilment readback (`OrderFulfillmentReadback`): a parcel packed in the Shopify
+ * admin is reported back, see `readFulfillment`.
+ *
  * Refunds: `ShopifyRefundingOrderSourceAdapter` below adds `RefundExecutor` on
  * a connection with `refundsThroughShopify: true` (C20); without it a refund
  * confirmed in OpenLinker is only recorded.
@@ -39,6 +42,7 @@
  * @implements {OrderSourcePort}
  * @implements {ReturnSourceReader}
  * @implements {SourceOptionsReader}
+ * @implements {OrderFulfillmentReadback}
  */
 import type {
   ExecuteRefundCommand,
@@ -48,13 +52,17 @@ import type {
   OrderFeedInput,
   OrderFeedItem,
   OrderFeedOutput,
+  OrderFulfillmentReadback,
   OrderSourcePort,
   RefundExecutionResult,
   RefundExecutor,
   ReturnDecliner,
   ReturnSourceReader,
+  SourceFulfillmentReadback,
+  SourceFulfillmentWaybill,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
+import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type {
   IncomingReturn,
   ReturnDeclineCommand,
@@ -105,6 +113,7 @@ import { ShopifyMappingOptionsReader } from '../../readers/shopify-mapping-optio
 import {
   ORDER_BY_ID_QUERY,
   ORDER_FEED_QUERY,
+  ORDER_FULFILLMENT_READBACK_QUERY,
   ORDER_LINE_ITEMS_PAGE_QUERY,
 } from '../../readers/shopify-order.queries';
 import type { ShopifyPaymentGatewayNames } from '../../../domain/types/shopify-config.types';
@@ -122,6 +131,8 @@ const SETTLE_WINDOW_MS = 30_000;
 const FEED_PAGE_SIZE = 100;
 /** Bounds one poll; the next tick resumes from the cursor. */
 const MAX_FEED_PAGES = 20;
+/** The fulfillments read per order; a full page may have been cut off. */
+const FULFILLMENTS_PAGE = 20;
 const EPOCH = '1970-01-01T00:00:00Z';
 /** Orders read per return-feed page; each carries its returns' ids, never their lines. */
 const RETURN_FEED_ORDERS_PER_PAGE = 50;
@@ -134,7 +145,7 @@ const MAX_EXTRA_LINE_PAGES = 20;
  * Shopify is written back by the same code the destination role uses.
  */
 export class ShopifyOrderSourceAdapter
-  implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback, SourceOptionsReader
+  implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback, SourceOptionsReader, OrderFulfillmentReadback
 {
   /** Shopify's own `ReturnDeclineReason` values; core treats them as opaque. */
   readonly declineReasonCodes: readonly string[] = ['RETURN_PERIOD_ENDED', 'FINAL_SALE', 'OTHER'];
@@ -166,6 +177,62 @@ export class ShopifyOrderSourceAdapter
 
   write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     return this.writeback.write(event);
+  }
+
+  /**
+   * What this shop says about the order's fulfilment, so a parcel packed in
+   * the Shopify admin reaches OpenLinker.
+   *
+   * `rawStatus` is the order's `displayFulfillmentStatus` verbatim. `dispatched`
+   * is `true` only when Shopify says the WHOLE order is FULFILLED and it is not
+   * cancelled: a PARTIALLY_FULFILLED order is `false`, because part of an order
+   * having left is not a dispatch to relay to the marketplace (the sync acts on
+   * `dispatched: true` alone). A status this code does not know is `null`.
+   *
+   * Waybills are the tracking numbers of the live (`SUCCESS`) fulfillments, with
+   * the carrier name Shopify holds. They are reported for a partial fulfilment
+   * too, so an operator sees the parcel. A fulfillment page that may have been
+   * cut off reports `waybills: null` ("not reported"), never a short list.
+   *
+   * A marketplace-side failure is `unavailable`, never a throw.
+   */
+  async readFulfillment(input: { externalOrderId: string }): Promise<SourceFulfillmentReadback> {
+    const { externalOrderId } = input;
+    if (!/^\d+$/.test(externalOrderId)) {
+      return unavailableSourceFulfillmentReadback(`"${externalOrderId}" is not a Shopify order id`);
+    }
+    let order: ShopifyFulfillmentReadbackOrder | null;
+    try {
+      ({ order } = await this.client.query<{ order: ShopifyFulfillmentReadbackOrder | null }>(
+        ORDER_FULFILLMENT_READBACK_QUERY,
+        { id: toShopifyGid('Order', externalOrderId) },
+      ));
+    } catch (error) {
+      this.logger.warn(
+        `Shopify fulfillment readback failed for order ${externalOrderId} (connection: ${this.connection.id}): ` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+      return unavailableSourceFulfillmentReadback(`Shopify did not answer for order ${externalOrderId}`);
+    }
+    if (order === null) {
+      return unavailableSourceFulfillmentReadback(`Shopify has no order ${externalOrderId}`);
+    }
+
+    const cancelled = order.cancelledAt !== null;
+    const rawStatus = cancelled ? 'CANCELLED' : order.displayFulfillmentStatus;
+    const dispatched = cancelled ? false : dispatchedFromDisplayStatus(order.displayFulfillmentStatus);
+    if (dispatched === null) {
+      this.logger.warn(
+        `shopify_fulfillment_status_unrecognised: order ${externalOrderId} is ${order.displayFulfillmentStatus}, ` +
+          `reported as unknown (connection: ${this.connection.id})`,
+      );
+    }
+    return {
+      outcome: 'read',
+      rawStatus,
+      dispatched,
+      waybills: order.fulfillments.length >= FULFILLMENTS_PAGE ? null : toWaybills(order.fulfillments),
+    };
   }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
@@ -485,4 +552,56 @@ export class ShopifyRefundingOrderSourceAdapter extends ShopifyOrderSourceAdapte
   executeRefund(command: ExecuteRefundCommand): Promise<RefundExecutionResult> {
     return this.refunds.executeRefund(command);
   }
+}
+
+interface ShopifyFulfillmentReadbackOrder {
+  readonly cancelledAt: string | null;
+  readonly displayFulfillmentStatus: string;
+  readonly fulfillments: ReadonlyArray<{
+    readonly status: string;
+    readonly trackingInfo: ReadonlyArray<{ readonly number: string | null; readonly company: string | null }>;
+  }>;
+}
+
+/** Whole-order dispatch only: `null` for a status this code does not know. */
+function dispatchedFromDisplayStatus(status: string): boolean | null {
+  switch (status) {
+    case 'FULFILLED':
+      return true;
+    case 'UNFULFILLED':
+    case 'PARTIALLY_FULFILLED':
+    case 'IN_PROGRESS':
+    case 'ON_HOLD':
+    case 'SCHEDULED':
+    case 'PENDING_FULFILLMENT':
+    case 'OPEN':
+    case 'REQUEST_DECLINED':
+    case 'RESTOCKED':
+      return false;
+    default:
+      return null;
+  }
+}
+
+/** Live fulfillments only (a CANCELLED one never shipped); a blank number is skipped; a repeat is listed once. */
+function toWaybills(
+  fulfillments: ShopifyFulfillmentReadbackOrder['fulfillments'],
+): SourceFulfillmentWaybill[] {
+  const seen = new Set<string>();
+  const waybills: SourceFulfillmentWaybill[] = [];
+  for (const fulfillment of fulfillments) {
+    if (fulfillment.status !== 'SUCCESS') {
+      continue;
+    }
+    for (const info of fulfillment.trackingInfo) {
+      const waybill = info.number?.trim() ?? '';
+      if (waybill === '' || seen.has(waybill)) {
+        continue;
+      }
+      seen.add(waybill);
+      const carrierName = info.company?.trim() ?? '';
+      waybills.push({ waybill, ...(carrierName === '' ? {} : { carrierName }) });
+    }
+  }
+  return waybills;
 }

@@ -26,6 +26,25 @@ describe('buildShopifySchedulerTasks', () => {
     });
   });
 
+  it('should read back a source-side fulfilment hourly, ON by default, under its own cursor, gated on OrderSource', () => {
+    const task = byId.get('shopify-source-fulfillment-status-sync');
+
+    expect(task).toMatchObject({
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      requiredCapability: 'OrderSource',
+      cronExpression: '20 * * * *',
+      enabledEnvVar: 'OL_SHOPIFY_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+    });
+    expect(task?.enabledDefault).toBeUndefined();
+    expect(task?.generatePayload({ id: 'c1' } as Connection)).toMatchObject({
+      cursorKey: 'shopify.sourceFulfillmentStatus.scanOffset',
+      updatedSinceDays: 30,
+    });
+    expect(task?.generateIdempotencyKey({ id: 'c1' } as Connection, 't')).toBe(
+      'marketplace:c1:shopify:source:fulfillment:status:sync:t',
+    );
+  });
+
   it('should reconcile published product status hourly under its own cursor, gated on ProductPublisher', () => {
     const task = byId.get('shopify-product-status-sync');
 

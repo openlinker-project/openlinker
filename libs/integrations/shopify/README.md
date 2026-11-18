@@ -320,8 +320,10 @@ location reader share one OAuth token memo.
   is saved (a save has no credentials to ask the shop with).
 - A return's reason is carried as Shopify's raw `returnReasonDefinition` handle; core recognises only its own words,
   so every Shopify return reason is stored as `other` (the same holds for Allegro's reasons).
-- A fulfilment made in the Shopify admin (and its tracking number) does not reach OpenLinker: the order source does not
-  implement `OrderFulfillmentReadback`, which Allegro and Shoper do.
+- A fulfilment made in the Shopify admin for an order OpenLinker ingested from the store is read back by the hourly
+  `shopify-source-fulfillment-status-sync` task (`OrderFulfillmentReadback`, as Allegro and Shoper do). Only a fully
+  FULFILLED order counts as dispatched; a partially fulfilled one is reported as partial and relays nothing until the rest
+  ships. Set `OL_SHOPIFY_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED=false` to stop it.
 - A discount Shopify allocated to the lines is visible only as lower line prices; OpenLinker has no field for "a
   discount already inside the line prices" to show it as an amount.
 - Cost pacing is per process: two worker processes share the request-count bucket but each paces cost from its own
