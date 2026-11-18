@@ -42,6 +42,7 @@ describe('ShopifySetupForm', () => {
       platformType: 'shopify',
       adapterKey: 'shopify.admin.v1',
       config: { storeDomain: 'my-shop.myshopify.com', locationId: '123' },
+      enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
       credentials: { clientId: 'client-id', clientSecret: 'client-secret' },
     });
 
@@ -98,8 +99,28 @@ describe('ShopifySetupForm', () => {
       clientSecret: 'client-secret',
       redirectUri: `${ORIGIN}/integrations/shopify/connect/callback`,
       connectionName: 'Shopify my-shop',
+      enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
     });
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('should create a publish-only connection without the master capabilities', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_2', name: 'Shopify my-shop' });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+
+    fillCommon();
+    fireEvent.click(screen.getByRole('radio', { name: copy.rolePublisher }));
+    expect(screen.getByText(copy.rolePublisherHint)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 'client-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const sent = create.mock.calls[0][0] as { enabledCapabilities: string[] };
+    expect(sent.enabledCapabilities).toEqual(['ProductPublisher', 'CategoryProvisioner', 'OfferManager']);
+    expect(sent.enabledCapabilities).not.toContain('ProductMaster');
   });
 
   it('should refuse a domain that is not a myshopify.com domain without calling the API', async () => {

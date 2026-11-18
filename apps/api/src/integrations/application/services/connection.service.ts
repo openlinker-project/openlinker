@@ -35,6 +35,7 @@ import {
   stockLocationOverrideInvalid,
 } from './connection-errors';
 import { codedHttpError } from '../../../common/errors/coded-http.exception';
+import { hasMasterAndPublisher, masterPublisherConflictError } from './connection-capability-rules';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import type {
   Connection,
@@ -362,19 +363,9 @@ export class ConnectionService implements IConnectionService {
     enabledCapabilities: string[],
     previouslyEnabled: string[] | null
   ): void {
-    const hasBoth = (caps: string[]): boolean =>
-      caps.includes('ProductMaster') && caps.includes('ProductPublisher');
-    if (!hasBoth(enabledCapabilities)) return;
-    if (previouslyEnabled !== null && hasBoth(previouslyEnabled)) return;
-    throw codedHttpError(
-      HttpStatus.BAD_REQUEST,
-      'CONNECTION_MASTER_PUBLISHER_CONFLICT',
-      'ProductMaster and ProductPublisher cannot both be enabled on the same connection: ' +
-        'products published to a shop would be read back by its own catalog sync as new ' +
-        'master products, creating duplicates. Keep ProductMaster on the connection that ' +
-        'owns the catalog and use ProductPublisher on a separate connection (or vice versa).',
-      { capabilities: 'ProductMaster, ProductPublisher' }
-    );
+    if (!hasMasterAndPublisher(enabledCapabilities)) return;
+    if (previouslyEnabled !== null && hasMasterAndPublisher(previouslyEnabled)) return;
+    throw masterPublisherConflictError();
   }
 
   /**

@@ -58,6 +58,10 @@ import {
   OAUTH_CONNECTION_SERVICE_TOKEN,
 } from '../application/interfaces/oauth-connection.service.interface';
 import { toConfigShapeErrorBody } from '../application/services/connection-shape-error-body';
+import {
+  hasMasterAndPublisher,
+  masterPublisherConflictError,
+} from '../application/services/connection-capability-rules';
 import { ShopifyOAuthCallbackDto } from './dto/shopify-oauth-callback.dto';
 import { ShopifyOAuthConnectDto } from './dto/shopify-oauth-connect.dto';
 
@@ -148,6 +152,11 @@ export class ShopifyController {
         ),
       );
     }
+    // The connection is created only after the merchant approved the app, so a
+    // combination core would refuse is refused here, before the redirect.
+    if (dto.enabledCapabilities && hasMasterAndPublisher(dto.enabledCapabilities)) {
+      throw masterPublisherConflictError();
+    }
     const storeDomain = parsed.config.storeDomain;
     return this.oauthService.generateAuthorizationUrl({
       adapterKey: SHOPIFY_ADAPTER_KEY,
@@ -157,6 +166,7 @@ export class ShopifyController {
       redirectUri: dto.redirectUri,
       connectionName: dto.connectionName || `Shopify ${storeDomain}`,
       connectionId: dto.connectionId,
+      ...(dto.enabledCapabilities ? { enabledCapabilities: dto.enabledCapabilities } : {}),
       // A reauth rotates credentials only, so the config seed is used to reach
       // the store and is not written over the connection's config (#3911).
       initialConfig: { ...seed, storeDomain },

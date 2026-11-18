@@ -44,6 +44,12 @@ export interface GenerateAuthorizationUrlInput {
   connectionId?: string;
   /** Platform-specific connection-config seed; opaque to the host. */
   initialConfig?: Record<string, unknown>;
+  /**
+   * Capabilities the created connection enables. Absent, the adapter manifest's
+   * default applies. Ignored on the re-auth-in-place path, which rotates
+   * credentials only.
+   */
+  enabledCapabilities?: string[];
 }
 
 /**
@@ -65,6 +71,8 @@ export interface OAuthStateData {
   connectionId?: string;
   /** Platform-specific connection-config seed forwarded verbatim to the adapter + merged into the connection's config. */
   initialConfig?: Record<string, unknown>;
+  /** Capabilities chosen at connect time; see `GenerateAuthorizationUrlInput`. */
+  enabledCapabilities?: string[];
 }
 
 /**

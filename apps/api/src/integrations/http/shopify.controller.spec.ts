@@ -91,6 +91,33 @@ describe('ShopifyController', () => {
       );
     });
 
+    it('should carry a chosen capability set into the install', async () => {
+      await controller.connect({
+        storeDomain: STORE,
+        clientId: 'id',
+        clientSecret: SECRET,
+        redirectUri: STATE_DATA.redirectUri,
+        enabledCapabilities: ['ProductPublisher', 'CategoryProvisioner'],
+      });
+
+      expect(oauth.generateAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ enabledCapabilities: ['ProductPublisher', 'CategoryProvisioner'] }),
+      );
+    });
+
+    it('should refuse a master plus publisher set before redirecting the merchant', async () => {
+      await expect(
+        controller.connect({
+          storeDomain: STORE,
+          clientId: 'id',
+          clientSecret: SECRET,
+          redirectUri: STATE_DATA.redirectUri,
+          enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+        }),
+      ).rejects.toMatchObject({ response: { code: 'CONNECTION_MASTER_PUBLISHER_CONFLICT' } });
+      expect(oauth.generateAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
     it('should refuse a store that is not a *.myshopify.com domain before redirecting', async () => {
       await expect(
         controller.connect({
