@@ -384,7 +384,7 @@
     "carriers": {
       "description": "Zmapuj identyfikatory metod dostawy {source} na odpowiadające im identyfikatory przewoźników {destination}.",
       "dynamicSuffix": "dokładny koszt {platform}",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowany przewoźnik może spowodować błąd synchronizacji zamówienia, chyba że ustawiono przewoźnika zastępczego. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowany przewoźnik może spowodować błąd synchronizacji zamówienia, chyba że ustawiono przewoźnika zastępczego. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "sourceColumn": "Metoda dostawy {platform}",
       "targetColumn": "Przewoźnik {platform}",
       "title": "Mapowania przewoźników"
@@ -421,14 +421,14 @@
     },
     "orderStates": {
       "description": "Ustal, na który stan zamówienia {destination} przechodzi każdy status OpenLinker. Sklepy ze zmienionymi lub dodanymi stanami mapuje się tutaj; niezmapowane statusy używają stanu z domyślnej instalacji.",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy używają stanu zamówienia z domyślnej instalacji. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy używają stanu zamówienia z domyślnej instalacji. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "sourceColumn": "Status OpenLinker",
       "targetColumn": "Stan zamówienia {platform}",
       "title": "Mapowania stanów zamówień"
     },
     "payments": {
       "description": "Zmapuj nazwy dostawców płatności {source} na odpowiadające im nazwy modułów płatności {destination}.",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane metody płatności są zapisywane w zamówieniu jako „Check payment”. Zmapowana metoda jest zapisywana pod wybraną nazwą. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane metody płatności są zapisywane w zamówieniu jako „Check payment”. Zmapowana metoda jest zapisywana pod wybraną nazwą. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "sourceColumn": "Dostawca płatności {platform}",
       "targetColumn": "Moduł płatności {platform}",
       "title": "Mapowania płatności"
@@ -442,9 +442,10 @@
     "status": {
       "columnLabel": "Status {platform}",
       "description": "Zmapuj statusy zamówień {source} na odpowiadające im identyfikatory statusów zamówień {destination}.",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy przy synchronizacji otrzymują status domyślny. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy przy synchronizacji otrzymują status domyślny. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "title": "Mapowania statusów zamówień"
     },
+    "tabUnsaved": "niezapisane zmiany",
     "tabs": {
       "attributeRules": "Reguły atrybutów",
       "carriers": "Przewoźnicy",

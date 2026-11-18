@@ -41796,3 +41796,80 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-settings__check small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.75rem; }
 .release-settings__source { margin: 0; color: var(--text-muted); font-size: 0.75rem; }
 .release-settings__actions { display: flex; gap: var(--space-2); }
+
+/* Mapping panel: staged rows, unsaved bar, saved confirmation (#4154). */
+.mapping-row--staged td {
+  background: var(--accent-primary-soft);
+}
+
+.mapping-row__chip {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 1px var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--accent-primary-soft-strong);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mapping-panel__add-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+}
+
+.mapping-panel__saved {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--status-success-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.mapping-panel__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.mapping-panel__bar--dirty {
+  position: sticky;
+  bottom: 0;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface-elevated);
+  box-shadow: 0 -4px 12px oklch(0% 0 0 / 0.08);
+  z-index: 2;
+}
+
+.mapping-panel__bar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+}
+
+.mapping-panel__bar-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.tabs__unsaved-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: var(--space-2);
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
