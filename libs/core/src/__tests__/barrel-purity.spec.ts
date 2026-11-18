@@ -211,6 +211,9 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
     },
     { context: 'fulfillment-authority', authorizedTypeOnlySpecifiers: [] },
     { context: 'order-lifecycle', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
+    // #4241: named list views. Empty allow-set, and that is a positive assertion -
+    // the context is page-agnostic and takes the actor as a plain object.
+    { context: 'saved-views', authorizedTypeOnlySpecifiers: [] },
     {
       context: 'fulfillment',
       authorizedTypeOnlySpecifiers: [

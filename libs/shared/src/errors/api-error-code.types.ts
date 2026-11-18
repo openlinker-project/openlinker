@@ -608,6 +608,16 @@ export const ApiErrorCodeValues = [
   'CATALOG_TRUST_CONNECTION_NOT_FOUND',
   /** An operational setting is out of bounds. params: `field`. */
   'OPERATIONAL_SETTING_INVALID',
+  /** No saved view has this id, or it is another user's personal view. params: `viewId`. */
+  'SAVED_VIEW_NOT_FOUND',
+  /** Only an administrator may change a shared view. */
+  'SAVED_VIEW_FORBIDDEN',
+  /** A view with this name already exists on the page. params: `pageKey`. */
+  'SAVED_VIEW_NAME_TAKEN',
+  /** The view changed since the revision the client holds. params: `viewId`. */
+  'SAVED_VIEW_REVISION_CONFLICT',
+  /** A view breaks a limit or has a malformed definition. params: `field`, `rule`, `message`, `limit`. */
+  'SAVED_VIEW_INVALID',
 
   // ── OMS (#3865) ──
   /** The connection is not the OpenLinker OMS, so it has no sourcing rules or router. params: `connectionId`, `platformType`. */
