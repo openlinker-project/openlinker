@@ -266,7 +266,7 @@
     "noTriggers": "No sync triggers available for this connection.",
     "requiredField": "{field} *",
     "restartHint": "To change where order sync starts (only new orders, from a date, or all history), use",
-    "restartHintLink": "Restart order sync",
+    "restartHintLink": "Change start",
     "title": "Trigger sync",
     "toast": {
       "description": "\"{job}\" started for \"{connection}\". Job ID: {jobId}",

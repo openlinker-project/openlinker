@@ -7777,7 +7777,7 @@ html:has(.login-stage) {
 }
 
 /* ── Order sync panel (#4228) ── */
-.order-sync-restart-dialog {
+.dialog__content.order-sync-restart-dialog {
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
 }
