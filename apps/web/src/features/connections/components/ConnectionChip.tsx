@@ -106,9 +106,6 @@ export function ConnectionChip({
   // Without a platform label there is nothing to slide out: the name is the
   // face whichever way the chip leads.
   const nameFirst = lead === 'name' && faceLabel !== null;
-  const revealPlatform = sandbox
-    ? interpolate(copy.sandboxLabel, { platform: shortPlatform ?? platformLabel ?? '' })
-    : shortPlatform;
 
   const classes = [
     'connection-chip',
@@ -145,7 +142,11 @@ export function ConnectionChip({
       {/* The integration is always in the DOM - only its visibility is animated -
           so the link's text, and a screen reader's reading of it, never depend on hover. */}
       <span className="connection-chip__reveal">
-        <span className="connection-chip__name">{revealPlatform}</span>
+        <span className="connection-chip__name">
+          {sandbox
+            ? interpolate(copy.sandboxLabel, { platform: shortPlatform ?? '' })
+            : shortPlatform}
+        </span>
         {chevron}
       </span>
     </>

@@ -15799,7 +15799,7 @@ a.kpi-card:focus-visible {
   color: var(--text-secondary);
 }
 
-.connection-chip--unknown .connection-chip__label {
+.connection-chip--name-first.connection-chip--unknown .connection-chip__label {
   color: var(--text-muted);
   font-weight: 400;
 }
