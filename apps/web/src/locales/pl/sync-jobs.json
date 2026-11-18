@@ -218,8 +218,6 @@
     "enqueuing": "Dodawanie do kolejki…",
     "fieldRequired": "Pole {field} jest wymagane",
     "fields": {
-      "cursorKey": "Klucz pozycji synchronizacji",
-      "cursorKeyHelp": "Zostaw puste, aby kontynuować od własnego kanału zamówień tego połączenia. Wypełnij tylko po to, by czytać z innej zapisanej pozycji.",
       "externalId": "ID zewnętrzne",
       "maxInvoices": "Maks. liczba faktur",
       "objectType": "Typ obiektu",
@@ -233,8 +231,8 @@
         "label": "Automatycznie dopasuj warianty"
       },
       "pollOrders": {
-        "description": "Pobierz nowe zamówienia ze strumienia zdarzeń marketplace.",
-        "label": "Pobierz zamówienia z marketplace"
+        "description": "Sprawdza teraz w sklepie, czy są zamówienia, których OpenLinker jeszcze nie pobrał. Nie zmienia tego, które zamówienia uznaje za nowe.",
+        "label": "Sprawdź nowe zamówienia"
       },
       "propagateInventory": {
         "description": "Wyślij bieżące stany magazynowe do wszystkich podłączonych marketplace.",
@@ -266,9 +264,23 @@
       }
     },
     "noTriggers": "Dla tego połączenia nie ma dostępnych synchronizacji do uruchomienia.",
+    "orderPosition": {
+      "customHelp": "Użyj tylko wtedy, gdy klucz podało Ci wsparcie.",
+      "customLabel": "Klucz miejsca",
+      "customRequired": "Wpisz klucz miejsca albo wybierz inną opcję powyżej.",
+      "limitHelp": "Tyle zamówień OpenLinker przeczyta za jednym razem. Domyślnie 100.",
+      "limitLabel": "Maks. liczba zamówień",
+      "positionCustom": "Inne miejsce (własny klucz)…",
+      "positionDefault": "Od miejsca, w którym skończyło się ostatnie sprawdzenie (zalecane)",
+      "positionDefaultHint": "OpenLinker zapamiętuje, dokąd doczytał listę zamówień ze sklepu. Zostaw bez zmian, chyba że wsparcie podało inaczej.",
+      "positionDefaultHintSaved": "Zapisane w {key}, ostatnio przesunięte {when}.",
+      "positionLabel": "Skąd czytać zamówienia",
+      "positionSaved": "Zapisane miejsce {key}, przesunięte {when}",
+      "startAction": "Zmień start…",
+      "startText": "Każde sprawdzenie czyta tylko to, co pojawiło się od poprzedniego. Żeby zaimportować starsze zamówienia albo zacząć od innego dnia, zmień start.",
+      "startTitle": "Które zamówienia są importowane"
+    },
     "requiredField": "{field} *",
-    "restartHint": "Aby zmienić, od kiedy działa synchronizacja zamówień (tylko nowe, od daty albo cała historia), użyj",
-    "restartHintLink": "Zmień start",
     "title": "Uruchom synchronizację",
     "toast": {
       "description": "Uruchomiono „{job}” dla „{connection}”. ID zadania w tle: {jobId}",

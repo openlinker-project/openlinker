@@ -216,8 +216,6 @@
     "enqueuing": "Enqueuing…",
     "fieldRequired": "{field} is required",
     "fields": {
-      "cursorKey": "Sync position key",
-      "cursorKeyHelp": "Leave empty to continue from this connection's own order feed. Fill it in only to read from a different saved position.",
       "externalId": "External ID",
       "maxInvoices": "Max invoices",
       "objectType": "Object type",
@@ -231,8 +229,8 @@
         "label": "Auto-match variants"
       },
       "pollOrders": {
-        "description": "Fetch new orders from the marketplace event stream.",
-        "label": "Poll marketplace orders"
+        "description": "Checks the shop now for orders OpenLinker has not imported yet. It does not change which orders count as new.",
+        "label": "Check for new orders"
       },
       "propagateInventory": {
         "description": "Push current inventory levels to all connected marketplaces.",
@@ -264,9 +262,23 @@
       }
     },
     "noTriggers": "No sync triggers available for this connection.",
+    "orderPosition": {
+      "customHelp": "Use this only if support gave you a key.",
+      "customLabel": "Position key",
+      "customRequired": "Enter the position key, or pick another option above.",
+      "limitHelp": "OpenLinker reads up to this many orders in one go. The default is 100.",
+      "limitLabel": "Most orders to read",
+      "positionCustom": "Another position (own key)…",
+      "positionDefault": "Where the last check stopped (recommended)",
+      "positionDefaultHint": "OpenLinker remembers how far it has read the shop's order list. Leave this as it is unless support told you otherwise.",
+      "positionDefaultHintSaved": "Saved at {key}, last moved {when}.",
+      "positionLabel": "Read orders from",
+      "positionSaved": "Saved position {key}, moved {when}",
+      "startAction": "Change start…",
+      "startText": "Each check reads only what is new since the previous one. To import older orders, or to begin from another day, change the start.",
+      "startTitle": "Which orders get imported"
+    },
     "requiredField": "{field} *",
-    "restartHint": "To change where order sync starts (only new orders, from a date, or all history), use",
-    "restartHintLink": "Change start",
     "title": "Trigger sync",
     "toast": {
       "description": "\"{job}\" started for \"{connection}\". Job ID: {jobId}",

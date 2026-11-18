@@ -1097,24 +1097,24 @@
     "wizardsChip": "Kreatory dla każdej platformy"
   },
   "orderSyncPanel": {
-    "errorTitle": "Nie udało się wczytać synchronizacji zamówień",
+    "errorTitle": "Nie udało się wczytać importu zamówień",
     "eyebrow": "Zamówienia",
     "history": {
       "badge": "Twój wybór",
-      "caption": "Zamówienia sprzed startu zostały zaimportowane tylko wtedy, gdy wybrano to przy łączeniu albo zmianie startu.",
-      "label": "Starsze"
+      "caption": "Zamówienia złożone przed startem zostają w sklepie. OpenLinker skopiuje je tylko wtedy, gdy wybrano ich import przy podłączaniu sklepu albo przy zmianie startu.",
+      "label": "Starsze zamówienia"
     },
     "live": {
-      "badge": "Pobiera",
-      "badgeBefore": "Działa",
-      "before": "To połączenie pobiera nowe zamówienia. Data jego startu nie została zapisana.",
-      "from": "Pobiera zamówienia od {date}",
-      "label": "Nowe",
-      "lastActivity": "Ostatnie sprawdzenie zamówień {when}",
-      "noActivity": "Jeszcze nie sprawdzano zamówień"
+      "badge": "Pobierane",
+      "badgeBefore": "Pobierane",
+      "before": "OpenLinker pobiera każde nowe zamówienie z tego sklepu. Data startu nie została zapisana.",
+      "from": "OpenLinker pobiera zamówienia złożone od {date}.",
+      "label": "Nowe zamówienia",
+      "lastActivity": "Ostatnie sprawdzenie: {when}",
+      "noActivity": "Jeszcze nie sprawdzano"
     },
     "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
-    "loadingTitle": "Wczytywanie synchronizacji zamówień",
+    "loadingTitle": "Wczytywanie importu zamówień",
     "restart": {
       "action": "Zmień start…",
       "cancel": "Anuluj",
@@ -1129,7 +1129,7 @@
       "title": "Zmień, od kiedy pobierane są zamówienia"
     },
     "retry": "Ponów",
-    "title": "Synchronizacja zamówień"
+    "title": "Import zamówień"
   },
   "orderSyncStart": {
     "all": {

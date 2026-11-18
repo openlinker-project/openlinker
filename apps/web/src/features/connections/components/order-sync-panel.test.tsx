@@ -62,7 +62,7 @@ describe('OrderSyncPanel', () => {
   it('shows a loading state while the status loads', () => {
     renderPanel(vi.fn<GetSyncStatus>().mockReturnValue(new Promise(() => undefined)));
 
-    expect(screen.getByText('Loading order sync')).toBeInTheDocument();
+    expect(screen.getByText('Loading order import')).toBeInTheDocument();
   });
 
   it('shows an error with a retry that refetches', async () => {
@@ -73,10 +73,10 @@ describe('OrderSyncPanel', () => {
       .mockResolvedValue(makeStatus());
     renderPanel(getSyncStatus);
 
-    expect(await screen.findByText('Could not load order sync')).toBeInTheDocument();
+    expect(await screen.findByText('Could not load order import')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByText('Running')).toBeInTheDocument();
+    expect(await screen.findByText('Importing')).toBeInTheDocument();
   });
 
   it('shows the live row with the start date when a start was recorded', async () => {
@@ -90,20 +90,20 @@ describe('OrderSyncPanel', () => {
     );
 
     expect(await screen.findByText('Importing')).toBeInTheDocument();
-    expect(screen.getByText(/^Importing orders since /)).toBeInTheDocument();
-    expect(screen.getByText(/Last order check/)).toBeInTheDocument();
+    expect(screen.getByText(/^OpenLinker imports orders placed since /)).toBeInTheDocument();
+    expect(screen.getByText(/Last checked/)).toBeInTheDocument();
   });
 
   it('shows an honest absence, not a date, when no start was recorded', async () => {
     renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderSyncStartedAt: null })));
 
-    expect(await screen.findByText('Running')).toBeInTheDocument();
+    expect(await screen.findByText('Importing')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'This connection imports new orders. Its start date was not recorded.',
+        'OpenLinker imports every new order from this shop. The start date was not saved.',
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/^Importing orders since /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^OpenLinker imports orders placed since /)).not.toBeInTheDocument();
   });
 
   it('states that earlier orders were not imported, with no import action', async () => {
@@ -111,7 +111,7 @@ describe('OrderSyncPanel', () => {
 
     expect(await screen.findByText('Your choice')).toBeInTheDocument();
     expect(
-      screen.getByText('Orders from before the start were imported only if you chose that when connecting or changing the start.'),
+      screen.getByText('Orders placed before the start stay in the shop. They are copied only if you chose to import them when connecting or when changing the start.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /import/i })).not.toBeInTheDocument();
   });

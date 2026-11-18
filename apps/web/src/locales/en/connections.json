@@ -1071,24 +1071,24 @@
     "wizardsChip": "Per-platform wizards"
   },
   "orderSyncPanel": {
-    "errorTitle": "Could not load order sync",
+    "errorTitle": "Could not load order import",
     "eyebrow": "Orders",
     "history": {
       "badge": "Your choice",
-      "caption": "Orders from before the start were imported only if you chose that when connecting or changing the start.",
-      "label": "Older"
+      "caption": "Orders placed before the start stay in the shop. They are copied only if you chose to import them when connecting or when changing the start.",
+      "label": "Older orders"
     },
     "live": {
       "badge": "Importing",
-      "badgeBefore": "Running",
-      "before": "This connection imports new orders. Its start date was not recorded.",
-      "from": "Importing orders since {date}",
-      "label": "New",
-      "lastActivity": "Last order check {when}",
-      "noActivity": "No order check yet"
+      "badgeBefore": "Importing",
+      "before": "OpenLinker imports every new order from this shop. The start date was not saved.",
+      "from": "OpenLinker imports orders placed since {date}.",
+      "label": "New orders",
+      "lastActivity": "Last checked {when}",
+      "noActivity": "Not checked yet"
     },
-    "loadingMessage": "Checking where order sync starts.",
-    "loadingTitle": "Loading order sync",
+    "loadingMessage": "Checking where order import starts.",
+    "loadingTitle": "Loading order import",
     "restart": {
       "action": "Change start…",
       "cancel": "Cancel",
@@ -1103,7 +1103,7 @@
       "title": "Change where order sync starts"
     },
     "retry": "Retry",
-    "title": "Order sync"
+    "title": "Order import"
   },
   "orderSyncStart": {
     "all": {

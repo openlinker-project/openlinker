@@ -27,6 +27,11 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { interpolate, renderRich, useMessages, type Messages } from '../../../shared/i18n';
+import {
+  OrderPositionField,
+  ORDER_POSITION_CUSTOM,
+  ORDER_POSITION_DEFAULT,
+} from './order-position-field';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 type TriggerSyncDialogCopy = Messages['sync-jobs']['triggerSyncDialog'];
@@ -100,18 +105,13 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
       description: jobs.pollOrders.description,
       payloadFields: [
         {
-          name: 'cursorKey',
-          label: fields.cursorKey,
-          required: false,
-          description: fields.cursorKeyHelp,
-        },
-        {
           name: 'limit',
-          label: fields.pageLimit,
+          label: copy.orderPosition.limitLabel,
           required: false,
           type: 'number',
           defaultValue: '100',
           placeholder: '100',
+          description: copy.orderPosition.limitHelp,
         },
       ],
       // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
@@ -185,6 +185,8 @@ export function TriggerSyncDialog({
   const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
   const [payloadValues, setPayloadValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [positionChoice, setPositionChoice] = useState(ORDER_POSITION_DEFAULT);
+  const [customPositionKey, setCustomPositionKey] = useState('');
   // Stable idempotency-key suffix for this dialog open cycle. Reused across
   // retries after a failed submit so the backend dedup (Redis SET NX + DB
   // unique index on idempotency_key) collapses rapid double-clicks into a
@@ -206,6 +208,8 @@ export function TriggerSyncDialog({
         firstJob ? buildDefaultValues(firstJob.payloadFields) : {},
       );
       setFieldErrors({});
+      setPositionChoice(ORDER_POSITION_DEFAULT);
+      setCustomPositionKey('');
       setIntentKey(crypto.randomUUID());
       enqueueSyncJob.reset();
     }
@@ -216,6 +220,8 @@ export function TriggerSyncDialog({
     setSelectedJobType(jobType);
     setPayloadValues(job ? buildDefaultValues(job.payloadFields) : {});
     setFieldErrors({});
+    setPositionChoice(ORDER_POSITION_DEFAULT);
+    setCustomPositionKey('');
     enqueueSyncJob.reset();
   };
 
@@ -226,6 +232,13 @@ export function TriggerSyncDialog({
       if (field.required && !payloadValues[field.name]?.trim()) {
         errors[field.name] = interpolate(copy.fieldRequired, { field: field.label });
       }
+    }
+    if (
+      selectedJob.jobType === 'marketplace.orders.poll' &&
+      positionChoice === ORDER_POSITION_CUSTOM &&
+      !customPositionKey.trim()
+    ) {
+      errors.cursorKey = copy.orderPosition.customRequired;
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -240,6 +253,11 @@ export function TriggerSyncDialog({
       if (raw) {
         payload[field.name] = field.type === 'number' ? Number(raw) : raw;
       }
+    }
+
+    if (selectedJob.jobType === 'marketplace.orders.poll') {
+      const key = positionChoice === ORDER_POSITION_CUSTOM ? customPositionKey.trim() : positionChoice;
+      if (key) payload.cursorKey = key;
     }
 
     try {
@@ -314,17 +332,16 @@ export function TriggerSyncDialog({
           ) : null}
 
           {selectedJob?.jobType === 'marketplace.orders.poll' ? (
-            <p className="trigger-sync-dialog__description muted-text">
-              {copy.restartHint}{' '}
-              <Link
-                to={`/connections/${connection.id}?tab=health`}
-                onClick={() => onOpenChange(false)}
-                className="link"
-              >
-                {copy.restartHintLink}
-              </Link>
-              .
-            </p>
+            <OrderPositionField
+              connectionId={connection.id}
+              choice={positionChoice}
+              onChoiceChange={setPositionChoice}
+              customKey={customPositionKey}
+              onCustomKeyChange={setCustomPositionKey}
+              customError={fieldErrors.cursorKey}
+              disabled={enqueueSyncJob.isPending}
+              onNavigate={() => onOpenChange(false)}
+            />
           ) : null}
 
           {selectedJob?.payloadFields.map((field) => (
