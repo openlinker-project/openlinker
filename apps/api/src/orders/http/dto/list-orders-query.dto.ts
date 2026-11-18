@@ -403,8 +403,8 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
 
   @ApiPropertyOptional({
     description:
-      'Free-text search (#3527/#3528): order number, buyer name, buyer email, any line SKU, ' +
-      'or a shipment tracking number. Matched against a denormalized, diacritic-folded ' +
+      'Free-text search (#3527/#3528/#4229): order number, buyer name, buyer email, any line SKU, ' +
+      'a shipment tracking number, or an OpenLinker order id (`ol_order_*`, substring). Matched against a denormalized, diacritic-folded ' +
       '`searchText` column via a GIN trigram index; a valid tracking number additionally ' +
       'widens the match to the order(s) that shipment belongs to. A blank or ' +
       'diacritic/punctuation-only query behaves as "don\'t filter".',
