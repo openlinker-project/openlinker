@@ -52,8 +52,8 @@ moves to **Needs reauth**: authorize again and paste the new token on the connec
 1. **Region** and **environment**. Production talks to your account; sandbox to Amazon's static
    sandbox (canned answers only, see below). The environment is fixed after saving; the region can
    be changed later on the connection page, which drops the old region's marketplaces.
-2. **Marketplaces** you sell in, from the chosen region (e.g. PL `A1C3SOZRARQ6R3`, DE
-   `A1PA6795UKMFR9`). Prices read from a marketplace keep its currency.
+2. **Marketplaces** you sell in, picked from a searchable list of the chosen region's marketplaces
+   (e.g. PL `A1C3SOZRARQ6R3`, DE `A1PA6795UKMFR9`). Prices read from a marketplace keep its currency.
 3. **Orders** and/or **Offers**. With offers on, the **merchant token** is required.
 4. The **LWA client id**, **client secret** and **refresh token** from steps 1-2.
 5. **Test connection**: it passes when the credentials work and the account sells in every
@@ -70,9 +70,11 @@ edit page and, under **Enabled roles**, turn on:
 - **ProductMaster**: your listings become OpenLinker products. A variation parent is a product and
   its child SKUs are the variants; a standalone listing is a product with one variant. Title,
   description, images and EAN come from your listing, falling back to the ASIN's catalogue entry
-  only for what the listing lacks. Amazon carries a tax code rather than a VAT rate: map codes to
-  rates in the connection's config as `taxCodeRates`, e.g. `{"A_GEN_STANDARD": "23"}`, or the rate
-  reads as not known.
+  only for what the listing lacks. Amazon carries a tax code rather than a VAT rate: under **VAT
+  rates of Amazon tax codes** in the Amazon section, give each code your account uses its rate
+  (e.g. `A_GEN_STANDARD` 23, `A_BOOKS_GEN` 5), or the rate reads as not known. The same map sends
+  the code back with every offer OpenLinker publishes, and a tax rate change on an offer changes
+  its code; a rate no code (or two codes) maps to sends none.
 - **InventoryMaster**: seller-fulfilled (FBM) stock from your listings becomes OpenLinker stock and
   is published to your other channels. A manual stock correction in OpenLinker is written back to
   Amazon. While a connection is the stock master, OpenLinker does not write quantities back to its
@@ -86,9 +88,10 @@ one as their catalogue source.
 To see Amazon-warehouse (FBA) stock, create a location for it on OpenLinker's **Inventory locations** page (`/inventory/locations`),
 then on the Amazon connection:
 
-1. Under **Stock and price on this destination**, turn on "Assign a location to this connection's stock" and pick a
-   location for your own (FBM) stock.
-2. In the Amazon section, choose the **FBA stock location**, a different one.
+1. In the Amazon section, choose the **Location of the stock you ship (FBM)**. (With the OMS routing
+   UI on, the same setting is "Assign a location to this connection's stock" under **Stock and price
+   on this destination** instead.)
+2. Choose the **FBA stock location**, a different one.
 
 OpenLinker refuses the FBA location without the FBM one: both kinds of stock must be at separate
 locations or one would replace the other. FBA stock is never written from OpenLinker. It counts
@@ -130,8 +133,8 @@ channels:
    routing to the FBA location.
 2. OpenLinker must store buyer data (`OL_STORE_PII=true`, the default): Amazon needs the delivery
    address, and OpenLinker sends it only to the holder that ships the parcel.
-3. Optional: `mcfShippingSpeed` in the connection config (`Standard`, `Expedited`, `Priority`;
-   default `Standard`). Fees and packaging are set in Seller Central.
+3. Optional: **Multi-Channel Fulfillment shipping speed** in the Amazon section (Standard,
+   Expedited or Priority; Standard when unset). Fees and packaging are set in Seller Central.
 
 An order Amazon cannot fulfil (not in FBA stock, an unknown SKU) is refused with Amazon's reason,
 and routing tries elsewhere. Cancelling in OpenLinker cancels the Amazon order until Amazon starts
