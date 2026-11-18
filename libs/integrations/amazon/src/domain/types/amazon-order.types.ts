@@ -70,8 +70,19 @@ export interface AmazonOrderItem {
   };
   readonly proceeds?: {
     readonly proceedsTotal?: AmazonMoney;
-    readonly breakdowns?: readonly { readonly type: string; readonly subtotal: AmazonMoney }[];
+    readonly breakdowns?: readonly AmazonProceedsBreakdown[];
   };
+}
+
+/**
+ * One proceeds category (`ITEM`, `SHIPPING`, `GIFT_WRAP`, `COD_FEE`, `TAX`,
+ * `DISCOUNT`, `DELIVERY_TIP`, `OTHER`). `TAX` and `DISCOUNT` may say which
+ * charge they apply to through `detailedBreakdowns[].subtype`.
+ */
+export interface AmazonProceedsBreakdown {
+  readonly type: string;
+  readonly subtotal: AmazonMoney;
+  readonly detailedBreakdowns?: readonly { readonly subtype?: string; readonly value?: AmazonMoney }[];
 }
 
 export interface AmazonOrderPackage {
@@ -99,7 +110,7 @@ export interface AmazonOrder {
   readonly recipient?: { readonly deliveryAddress?: AmazonCustomerAddress };
   readonly proceeds?: {
     readonly grandTotal?: AmazonMoney;
-    readonly breakdowns?: readonly { readonly type: string; readonly subtotal: AmazonMoney }[];
+    readonly breakdowns?: readonly AmazonProceedsBreakdown[];
   };
   readonly payment?: {
     readonly paymentExecutions?: readonly { readonly paymentMethod?: string; readonly paymentAmount?: AmazonMoney }[];
