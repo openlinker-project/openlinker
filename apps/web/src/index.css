@@ -15766,6 +15766,44 @@ a.kpi-card:focus-visible {
   font-weight: 400;
 }
 
+/* ── Name first (#4232) ── the face leads with the connection name the operator
+ * chose and the integration slides out. The label is capped so a long name
+ * cannot widen a column; the full text stays in the native title. */
+.connection-chip--name-first .connection-chip__label {
+  min-width: 0;
+  max-width: 15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.connection-chip--name-first .connection-chip__env {
+  flex: none;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--chip-hue) 14%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The slide-out now carries the integration, which reads as a platform label
+ * (mono, secondary) rather than as a name. */
+.connection-chip--name-first .connection-chip__reveal .connection-chip__name {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.connection-chip--unknown .connection-chip__label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 /* No hover to open it: show the name statically, joined to the face, rather
  * than hide it on the one device class that could never reveal it. */
 @media (hover: none) {
