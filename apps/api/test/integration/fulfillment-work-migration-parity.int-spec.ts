@@ -869,14 +869,20 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
         [userId]
       );
 
-      const { CopyOrderColumnPresetsToSavedViews1940100000000: CopyMigration } = await import(
-        '../../src/migrations/1940100000000-copy-order-column-presets-to-saved-views'
+      // Taken from the DataSource's own glob-loaded list rather than imported by
+      // path: the test type-check runs under node16 resolution, which refuses an
+      // extensionless relative specifier (TS2835), and jest does not map `.js`.
+      const copyMigration = migrated.migrations.find(
+        (m) => m.constructor.name === 'CopyOrderColumnPresetsToSavedViews1940100000000'
       );
+      if (!copyMigration) {
+        throw new Error('CopyOrderColumnPresetsToSavedViews1940100000000 was not loaded');
+      }
       // The migration chain already ran over an empty presets table; running the
       // copy now over populated rows is the trigger, and running it twice is the
       // idempotency check.
-      await new CopyMigration().up(migrated.createQueryRunner());
-      await new CopyMigration().up(migrated.createQueryRunner());
+      await copyMigration.up(migrated.createQueryRunner());
+      await copyMigration.up(migrated.createQueryRunner());
 
       const rows = (await migrated.query(
         `SELECT "scope","name","is_workspace_default","owner_user_id","definition"
