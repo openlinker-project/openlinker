@@ -21,7 +21,7 @@
  * @module plugins/amazon
  */
 import { z } from 'zod';
-import { SQS_QUEUE_URL, findMarketplace, isSingleMarketplaceRegion } from '../../features/amazon';
+import { SELLER_ID, SQS_QUEUE_URL, findMarketplace, isSingleMarketplaceRegion } from '../../features/amazon';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readOptionalConfigString } from '../../shared/plugins';
 import { getAmazonMessages } from './messages';
@@ -36,8 +36,6 @@ declare module '../../shared/plugins/plugin.types' {
     amazonNotificationQueueUrl?: string;
   }
 }
-
-const SELLER_ID = /^[A-Z0-9]{8,20}$/;
 
 export function splitMarketplaceIds(value: string): string[] {
   return value

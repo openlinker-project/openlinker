@@ -22,7 +22,7 @@
   },
   "credentials": {
     "awsAccessKeyId": "AWS access key id (optional)",
-    "awsHint": "Leave the AWS key empty to keep reading notifications without a key.",
+    "awsHint": "Leave both AWS keys empty to keep the ones already stored.",
     "awsPaired": "Enter both AWS keys, or neither.",
     "awsSecretAccessKey": "AWS secret access key",
     "cancel": "Cancel",
@@ -49,6 +49,7 @@
       "label": "Selling Partner API environment"
     },
     "marketplaces": {
+      "addedNote": "Orders from a marketplace you add are read from the last 7 days.",
       "description": "Orders are read and offers written on these marketplaces.",
       "descriptionSingle": "This region has a separate seller account per country, so the connection sells on one marketplace.",
       "label": "Marketplaces",
@@ -69,7 +70,7 @@
   "setup": {
     "accountNotice": {
       "farEast": "In Japan, Australia and Singapore each country is a separate account, so a Far East connection covers one marketplace.",
-      "oneRegion": "North America and Europe each have one account for all their marketplaces, so choose every marketplace you sell on there.",
+      "oneRegion": "North America, and the EU with the UK, each have one account for all their marketplaces, so choose every marketplace you sell on there.",
       "regionFixed": "The region cannot be changed later; for another region, create another connection with that region's credentials.",
       "title": "One connection is one Amazon seller account in one region"
     },

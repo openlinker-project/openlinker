@@ -27,7 +27,14 @@ This is the only path the plugin foundation supports; the public-app OAuth flow 
 
 ## 3. Create the connection in OpenLinker
 
-There is no guided form for Amazon yet. Create the connection through the API:
+One connection is one seller account in one region. North America, and the EU with the UK, each have
+one account for all their marketplaces, so list every marketplace you sell on there. In Japan,
+Australia and Singapore each country is a separate account, so a Far East connection names one
+marketplace. The region cannot be changed later; for another region, authorize the app in that
+region's Seller Central and create another connection.
+
+Use the guided form at **Connections > New connection > Amazon**, or create the connection through
+the API:
 
 ```http
 POST /v1/connections

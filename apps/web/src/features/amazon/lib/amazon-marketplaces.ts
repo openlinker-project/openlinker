@@ -5,7 +5,9 @@
  * (`libs/integrations/amazon/src/amazon.constants.ts`); `apps/web` cannot
  * import the integration package. The backend stays the authority: it refuses
  * a marketplace served by another region on save, and this list only decides
- * what the form offers.
+ * what the form offers. `scripts/check-amazon-marketplaces-mirror.mjs`
+ * (`pnpm check:invariants`) keeps the regions, the single-marketplace regions
+ * and every marketplace's id, country, region and currency identical.
  *
  * @module features/amazon/lib
  */

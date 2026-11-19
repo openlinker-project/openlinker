@@ -4,8 +4,11 @@
  * Plugin-owned credentials affordance for Amazon connections: re-authorizes
  * the connection with a new LWA refresh token (and, when the app's secret was
  * rotated, the new client secret), and sets the AWS key the notification
- * queue is read with. `PUT /connections/:id/credentials` replaces the stored
- * set, so the form asks for the whole LWA set and keeps the AWS pair together.
+ * queue is read with. `PUT /connections/:id/credentials` MERGES into the
+ * stored set (`ConnectionService.updateCredentials`), so an empty AWS pair
+ * keeps the stored AWS keys rather than removing them. The form still asks
+ * for the whole LWA set (a re-authorization replaces all three together) and
+ * keeps the AWS pair together.
  *
  * Nothing stored is ever shown back. A read-only session sees the status with
  * the write control locked.

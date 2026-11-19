@@ -223,34 +223,34 @@ export function AmazonSetupForm(): ReactElement {
           <input type="radio" name="amazon-role" checked readOnly />
           <span>
             {copy.roleSalesChannel}
-            <small className="text-muted" style={{ display: 'block' }}>
+            <span className="form-field__description form-field__description--block">
               {copy.roleSalesChannelHint}
-            </small>
+            </span>
           </span>
         </label>
         <label className="checkbox-row">
           <input type="radio" name="amazon-role" disabled />
           <span className="text-muted">
             {copy.roleMaster}
-            <small style={{ display: 'block' }}>{copy.roleMasterHint}</small>
+            <span className="form-field__description form-field__description--block">{copy.roleMasterHint}</span>
           </span>
         </label>
         <label className="checkbox-row">
           <input type="checkbox" {...form.register('orders')} />
           <span>
             {copy.orders}
-            <small className="text-muted" style={{ display: 'block' }}>
+            <span className="form-field__description form-field__description--block">
               {copy.ordersHint}
-            </small>
+            </span>
           </span>
         </label>
         <label className="checkbox-row">
           <input type="checkbox" {...form.register('offers')} />
           <span>
             {copy.offers}
-            <small className="text-muted" style={{ display: 'block' }}>
+            <span className="form-field__description form-field__description--block">
               {copy.offersHint}
-            </small>
+            </span>
           </span>
         </label>
         {errors.orders ? (

@@ -77,3 +77,16 @@ refunds opt-in (#4184), tax-code mapping, and the public-app OAuth connect flow.
   frontend does not know cannot be picked, the backend list stays the authority on save.
 - Tests: schema (region refusal, required fields per role), form (create + test flow), sections
   (capability gating, read-only), connection-config round trip.
+
+## Changes after review (#4219)
+
+- Marketplaces are picked from a searchable list of every Amazon marketplace of the region, not
+  checkboxes of three.
+- The region stays fixed after create, and the API refuses a change: another region is another
+  seller account (its own refresh token and merchant token), so it is a new connection.
+- In the Far East region each country is a separate account, so a connection there takes one
+  marketplace (API, setup form, connection page).
+- A marketplace added on the connection page rewinds the order feed watermark to the bootstrap
+  point for it (`scopeAmazonOrderFeedCursor`), so its last 7 days of orders are read.
+- The browser copy of the marketplace list is held identical to the backend by
+  `scripts/check-amazon-marketplaces-mirror.mjs`.

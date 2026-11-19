@@ -13,6 +13,9 @@
  *     An id we know (`AMAZON_KNOWN_MARKETPLACES`) must belong to the chosen
  *     region; an unknown id is accepted by format alone. Duplicates are dropped.
  *   - A region without a unified seller account (`fe`) takes ONE marketplace.
+ *     The rule is part of the parse, so the factory and the tester refuse such
+ *     a config too, not only a save: a second marketplace there belongs to
+ *     another seller account, so the connection could not read it anyway.
  *   - The region is fixed once the connection exists: another region is
  *     another seller account with its own refresh token and merchant token,
  *     so `regionChangeIssue` refuses a change on update. Another region is a

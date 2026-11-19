@@ -38,7 +38,8 @@ export const AmazonSetupErrorKeyValues = [
 ] as const;
 export type AmazonSetupErrorKey = (typeof AmazonSetupErrorKeyValues)[number];
 
-const SELLER_ID = /^[A-Z0-9]{8,20}$/;
+/** Merchant token, as `readSellerId` on the API accepts it. */
+export const SELLER_ID = /^[A-Z0-9]{8,20}$/;
 export const SQS_QUEUE_URL = /^https:\/\/sqs\.[a-z0-9-]+\.amazonaws\.com\/\d{12}\/[A-Za-z0-9_-]{1,80}(\.fifo)?$/;
 
 export const amazonSetupSchema = z

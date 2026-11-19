@@ -90,7 +90,7 @@ export function AmazonStructuredSection({
       <FormField
         label={copy.marketplaces.label}
         name="amazonMarketplaceIds"
-        description={singleMarketplace ? copy.marketplaces.descriptionSingle : copy.marketplaces.description}
+        description={`${singleMarketplace ? copy.marketplaces.descriptionSingle : copy.marketplaces.description} ${copy.marketplaces.addedNote}`}
         error={errors.amazonMarketplaceIds?.message}
       >
         <AmazonMarketplacePicker

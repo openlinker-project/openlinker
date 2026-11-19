@@ -8,7 +8,7 @@
  */
 export { AmazonMarketplacePicker } from './components/amazon-marketplace-picker';
 export { AmazonSetupForm } from './components/amazon-setup-form';
-export { SQS_QUEUE_URL } from './components/amazon-setup.schema';
+export { SELLER_ID, SQS_QUEUE_URL } from './components/amazon-setup.schema';
 export {
   AMAZON_MARKETPLACES,
   AmazonRegionValues,

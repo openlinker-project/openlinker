@@ -22,7 +22,7 @@
   },
   "credentials": {
     "awsAccessKeyId": "Identyfikator klucza AWS (opcjonalnie)",
-    "awsHint": "Zostaw klucz AWS pusty, jeśli powiadomienia mają być czytane bez klucza.",
+    "awsHint": "Zostaw oba klucze AWS puste, żeby zachować już zapisane.",
     "awsPaired": "Podaj oba klucze AWS albo żadnego.",
     "awsSecretAccessKey": "Tajny klucz AWS",
     "cancel": "Anuluj",
@@ -49,6 +49,7 @@
       "label": "Środowisko Selling Partner API"
     },
     "marketplaces": {
+      "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
       "descriptionSingle": "W tym regionie każdy kraj ma osobne konto sprzedawcy, więc połączenie sprzedaje na jednym rynku.",
       "label": "Rynki",
@@ -69,7 +70,7 @@
   "setup": {
     "accountNotice": {
       "farEast": "W Japonii, Australii i Singapurze każdy kraj to osobne konto, więc połączenie z regionem Daleki Wschód obejmuje jeden rynek.",
-      "oneRegion": "Ameryka Północna i Europa mają jedno konto dla wszystkich swoich rynków, więc wybierz tam każdy rynek, na którym sprzedajesz.",
+      "oneRegion": "Ameryka Północna oraz Unia Europejska z Wielką Brytanią mają po jednym koncie dla wszystkich swoich rynków, więc wybierz tam każdy rynek, na którym sprzedajesz.",
       "regionFixed": "Regionu nie da się później zmienić; dla innego regionu utwórz kolejne połączenie z danymi logowania z tego regionu.",
       "title": "Jedno połączenie to jedno konto sprzedawcy Amazon w jednym regionie"
     },
