@@ -53,6 +53,13 @@ describe('EnvironmentBadge', () => {
     expect(screen.getByText('v1.4.0')).toBeInTheDocument();
   });
 
+  it('gives the labelled badge a role and a title carrying the version', () => {
+    render(<EnvironmentBadge appEnv="production" version="1.4.0" />);
+
+    const badge = screen.getByRole('img', { name: 'Environment Production, version 1.4.0' });
+    expect(badge).toHaveAttribute('title', 'Environment Production, version 1.4.0');
+  });
+
   it('omits the version line when no version is available', () => {
     render(<EnvironmentBadge appEnv="production" version="" />);
 

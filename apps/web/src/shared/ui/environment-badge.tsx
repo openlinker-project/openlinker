@@ -106,7 +106,16 @@ export function EnvironmentBadge({
     : interpolate(copy.ariaLabel, { env: spokenName });
 
   return (
-    <span className={classes} aria-label={ariaLabel} tabIndex={version ? 0 : undefined}>
+    // `role="img"` is what makes the aria-label valid (a bare span is the generic
+    // role, which ARIA forbids labelling). `title` gives touch and mouse users the
+    // version the hover/focus reveal shows only to pointer and keyboard users.
+    <span
+      className={classes}
+      role="img"
+      aria-label={ariaLabel}
+      title={version ? ariaLabel : undefined}
+      tabIndex={version ? 0 : undefined}
+    >
       <span className="environment-badge__env">{label}</span>
       {/* An empty APP_VERSION means the build-time inject never ran — omit
           the line rather than render a fake-looking "v0.0.0". */}
