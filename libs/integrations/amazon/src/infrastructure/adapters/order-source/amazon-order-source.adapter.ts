@@ -15,6 +15,9 @@
  *   - `dispatched` with a tracking number -> `confirmShipment` for every line
  *     of the order, with Amazon's carrier code for the label's carrier. An
  *     order Amazon fulfils itself (FBA) is not confirmed by the seller.
+ *     Known limit: the event names no lines, so an order sent in several
+ *     parcels is confirmed in full with the first one, and Amazon refuses the
+ *     next ones.
  *   - `dispatched` without a tracking number is `unsupported`: Amazon requires
  *     one, and the late-waybill relay (#1947) sends the event again once the
  *     carrier mints it.
@@ -47,6 +50,7 @@ import {
   encodeAmazonOrderFeedCursor,
   nextAmazonOrderFeedCursor,
 } from '../../../domain/policies/amazon-order-feed-cursor.policy';
+import { amazonPackageReferenceId } from '../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonNetworkError } from '../../../domain/exceptions/amazon-network.error';
 import {
@@ -184,8 +188,8 @@ export class AmazonOrderSourceAdapter implements OrderSourcePort, OrderStatusWri
     const body: AmazonConfirmShipmentRequest = {
       marketplaceId,
       packageDetail: {
-        // Unique per package within the order; the tracking number is.
-        packageReferenceId: trackingNumber,
+        // Amazon takes only a positive number here; derived from the tracking number.
+        packageReferenceId: amazonPackageReferenceId(trackingNumber),
         carrierCode: carrier.carrierCode,
         ...(carrier.carrierName ? { carrierName: carrier.carrierName } : {}),
         trackingNumber,

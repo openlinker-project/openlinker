@@ -9,13 +9,17 @@
  *
  * What is removed: the buyer's addresses (reduced to their country), email,
  * note, tax id and an operator's address edit, and the buyer from the search
- * text. Lines, amounts, statuses and ids stay. A re-import of a redacted order
- * stores none of it again (`OrderRecordService.persistOrder`).
+ * text; the recipient address on the order's buyer-email and document-email
+ * delivery records; and the email, names and street addresses of the customer
+ * projections last seen through the source before the cutoff (hashes and
+ * countries stay). Lines, amounts, statuses and ids stay. A re-import of a
+ * redacted order stores none of it again on the order
+ * (`OrderRecordService.persistOrder`); a customer seen again is cleared again
+ * once that sighting is past the period.
  *
- * Not covered yet, and stated rather than implied: the customer projections,
- * a shipment's recipient, the history of an address edit and the recipient on
- * an email delivery record keep their copy. Issued sales documents keep theirs
- * by law.
+ * Kept, and stated rather than implied: issued sales documents keep the buyer
+ * by law, and a carrier label already generated keeps the recipient printed on
+ * it. What a destination shop or ERP received is outside OpenLinker.
  *
  * @module application/services
  */

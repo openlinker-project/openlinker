@@ -7,6 +7,11 @@
  * one by one, at most `MAX_ORDERS_PER_CONNECTION` per run, so a backlog drains
  * over several runs instead of one long transaction.
  *
+ * For each order it also clears the recipient on the order's buyer-email and
+ * document-email delivery records, and after the orders it clears the customer
+ * projections (email, names, street address) of customers last seen through
+ * this source before the same cutoff.
+ *
  * Connections are found through `listCapabilityAdapters('OrderSource', lazy,
  * all statuses)`: no adapter is built, and a disabled connection's old orders
  * are still cleaned - the limit binds whether or not the connection is in use.
@@ -15,24 +20,36 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  CUSTOMER_PROJECTION_SERVICE_TOKEN,
+  type ICustomerProjectionService,
+} from '@openlinker/core/customers';
+import {
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
+import {
+  DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
+  type IDocumentEmailDeliveryService,
+} from '@openlinker/core/sales-documents';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 
 import { redactOrderSnapshotBuyerData } from '../../domain/order-buyer-data-redaction';
 import { deriveOrderSearchText } from '../../domain/order-search-text';
+import { BuyerEmailDeliveryRepositoryPort } from '../../domain/ports/buyer-email-delivery-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import type {
-  OrderBuyerDataRetentionConnectionResult,
-  OrderBuyerDataRetentionRunResult,
+import {
+  MIN_BUYER_DATA_RETENTION_DAYS,
+  type OrderBuyerDataRetentionConnectionResult,
+  type OrderBuyerDataRetentionRunResult,
 } from '../../domain/types/order-buyer-data-retention.types';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import type { IOrderBuyerDataRetentionService } from './order-buyer-data-retention.service.interface';
 
 export const BUYER_DATA_RETENTION_PAGE_SIZE = 200;
 export const BUYER_DATA_RETENTION_MAX_ORDERS_PER_CONNECTION = 2000;
+export const BUYER_DATA_RETENTION_CUSTOMER_BATCH = 200;
+export const BUYER_DATA_RETENTION_MAX_CUSTOMERS_PER_CONNECTION = 2000;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -45,6 +62,12 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     private readonly repository: OrderRecordRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    @Inject(BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN)
+    private readonly buyerEmailDeliveries: BuyerEmailDeliveryRepositoryPort,
+    @Inject(DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN)
+    private readonly documentEmailDeliveries: IDocumentEmailDeliveryService,
+    @Inject(CUSTOMER_PROJECTION_SERVICE_TOKEN)
+    private readonly customerProjections: ICustomerProjectionService,
   ) {}
 
   async runOnce(now: Date = new Date()): Promise<OrderBuyerDataRetentionRunResult> {
@@ -57,7 +80,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     const connections: OrderBuyerDataRetentionConnectionResult[] = [];
     for (const source of sources) {
       const days = source.metadata.buyerDataRetentionDays;
-      if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+      if (typeof days !== 'number' || !Number.isFinite(days) || days < MIN_BUYER_DATA_RETENTION_DAYS) {
         continue;
       }
       try {
@@ -86,15 +109,13 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     let redacted = 0;
     let processed = 0;
 
+    let ordersExhausted = true;
     while (processed < BUYER_DATA_RETENTION_MAX_ORDERS_PER_CONNECTION) {
       const candidates = await this.repository.findBuyerDataRetentionCandidates({
         sourceConnectionId,
         anchorBefore,
         limit: BUYER_DATA_RETENTION_PAGE_SIZE,
       });
-      if (candidates.length === 0) {
-        return { sourceConnectionId, retentionDays, redacted, budgetExhausted: false };
-      }
       for (const candidate of candidates) {
         const orderSnapshot = redactOrderSnapshotBuyerData(candidate.orderSnapshot);
         const done = await this.repository.redactBuyerData({
@@ -104,13 +125,48 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
         });
         if (done) {
           redacted += 1;
+          await this.buyerEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
+          await this.documentEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
         }
       }
       processed += candidates.length;
       if (candidates.length < BUYER_DATA_RETENTION_PAGE_SIZE) {
-        return { sourceConnectionId, retentionDays, redacted, budgetExhausted: false };
+        ordersExhausted = false;
+        break;
       }
     }
-    return { sourceConnectionId, retentionDays, redacted, budgetExhausted: true };
+
+    const customers = await this.redactCustomers(sourceConnectionId, anchorBefore);
+    return {
+      sourceConnectionId,
+      retentionDays,
+      redacted,
+      customersRedacted: customers.redacted,
+      budgetExhausted: ordersExhausted || customers.budgetExhausted,
+    };
+  }
+
+  /**
+   * The customer projections an order of this source last touched. Keyed by
+   * when the customer was last seen, not by order, so a customer who orders
+   * again keeps their data until that order is past the period too.
+   */
+  private async redactCustomers(
+    sourceConnectionId: string,
+    lastSeenBefore: Date,
+  ): Promise<{ redacted: number; budgetExhausted: boolean }> {
+    let redacted = 0;
+    while (redacted < BUYER_DATA_RETENTION_MAX_CUSTOMERS_PER_CONNECTION) {
+      const batch = await this.customerProjections.redactPersonalDataLastSeenBefore({
+        sourceConnectionId,
+        lastSeenBefore,
+        limit: BUYER_DATA_RETENTION_CUSTOMER_BATCH,
+      });
+      redacted += batch;
+      if (batch < BUYER_DATA_RETENTION_CUSTOMER_BATCH) {
+        return { redacted, budgetExhausted: false };
+      }
+    }
+    return { redacted, budgetExhausted: true };
   }
 }

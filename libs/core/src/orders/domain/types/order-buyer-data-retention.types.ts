@@ -7,6 +7,13 @@
  * @module domain/types
  */
 
+/**
+ * The shortest retention period a source may declare, in days. A shorter or
+ * missing value is ignored by the retention pass, and order writes rely on it
+ * to skip the redaction lookup for an order placed within this period.
+ */
+export const MIN_BUYER_DATA_RETENTION_DAYS = 1;
+
 /** One order whose buyer data is due for removal. */
 export interface OrderBuyerDataRetentionCandidate {
   readonly internalOrderId: string;
@@ -25,6 +32,8 @@ export interface OrderBuyerDataRetentionConnectionResult {
   readonly sourceConnectionId: string;
   readonly retentionDays: number;
   readonly redacted: number;
+  /** Customer projections cleared for this source. */
+  readonly customersRedacted: number;
   /** A full budget was spent; the rest is redacted on the next run. */
   readonly budgetExhausted: boolean;
 }

@@ -3,6 +3,7 @@
  *
  * @module libs/integrations/amazon/src/infrastructure/adapters/order-source/__tests__
  */
+import { amazonPackageReferenceId } from '../../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import type { AmazonSpApiClient } from '../../../http/amazon-spapi-client';
 import { amazonFbmOrder } from '../../../__tests__/amazon-order.fixture';
@@ -94,7 +95,7 @@ describe('AmazonOrderSourceAdapter.write', () => {
     expect(post).toHaveBeenCalledWith('/orders/v0/orders/302-1234567-7654321/shipmentConfirmation', {
       marketplaceId: 'A1PA6795UKMFR9',
       packageDetail: {
-        packageReferenceId: '520000011',
+        packageReferenceId: amazonPackageReferenceId('520000011'),
         carrierCode: 'InPost',
         trackingNumber: '520000011',
         shipDate: NOW.toISOString(),

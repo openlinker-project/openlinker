@@ -1643,18 +1643,6 @@ export class OrderRecordRepository
   }
 
   /**
-   * Conditional per-row rewrite for the reindex pass (#3507 G03-14) — see the
-   * port's JSDoc for the `expectedSearchText` guard. One statement per row,
-   * not one `UPDATE ... FROM (VALUES ...)`: the query builder has no
-   * parameterised form of the latter, and a page is bounded by the caller's
-   * budget anyway.
-   *
-   * `updatedAt` is assigned to ITSELF on purpose. A query-builder `update()`
-   * appends `"updatedAt" = CURRENT_TIMESTAMP` for an `@UpdateDateColumn`
-   * unless the column is already in the SET list; naming it with its own value
-   * is how this derived-data repair leaves the row's real timestamp alone.
-   */
-  /**
    * Retention candidates (#4178), see the port. The anchor is
    * `COALESCE(dispatchByAt, placedAt, createdAt)`: the ship-by deadline and the
    * placement both precede delivery, so a deletion counted from them is never
@@ -1723,6 +1711,18 @@ export class OrderRecordRepository
     return row !== undefined && row !== null && row.redacted_at !== null;
   }
 
+  /**
+   * Conditional per-row rewrite for the reindex pass (#3507 G03-14) — see the
+   * port's JSDoc for the `expectedSearchText` guard. One statement per row,
+   * not one `UPDATE ... FROM (VALUES ...)`: the query builder has no
+   * parameterised form of the latter, and a page is bounded by the caller's
+   * budget anyway.
+   *
+   * `updatedAt` is assigned to ITSELF on purpose. A query-builder `update()`
+   * appends `"updatedAt" = CURRENT_TIMESTAMP` for an `@UpdateDateColumn`
+   * unless the column is already in the SET list; naming it with its own value
+   * is how this derived-data repair leaves the row's real timestamp alone.
+   */
   async rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number> {
     let rewritten = 0;
     for (const rewrite of rewrites) {

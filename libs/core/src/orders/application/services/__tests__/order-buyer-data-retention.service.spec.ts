@@ -3,10 +3,14 @@
  *
  * @module application/services/__tests__
  */
+import type { ICustomerProjectionService } from '@openlinker/core/customers';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { IDocumentEmailDeliveryService } from '@openlinker/core/sales-documents';
 
+import type { BuyerEmailDeliveryRepositoryPort } from '../../../domain/ports/buyer-email-delivery-repository.port';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import {
+  BUYER_DATA_RETENTION_CUSTOMER_BATCH,
   BUYER_DATA_RETENTION_PAGE_SIZE,
   OrderBuyerDataRetentionService,
 } from '../order-buyer-data-retention.service';
@@ -21,17 +25,26 @@ function setup(sources: Record<string, unknown>[]): {
   service: OrderBuyerDataRetentionService;
   repository: jest.Mocked<Pick<OrderRecordRepositoryPort, 'findBuyerDataRetentionCandidates' | 'redactBuyerData'>>;
   integrations: { listCapabilityAdapters: jest.Mock };
+  buyerEmails: { clearRecipientsForOrder: jest.Mock };
+  documentEmails: { clearRecipientsForOrder: jest.Mock };
+  customers: { redactPersonalDataLastSeenBefore: jest.Mock };
 } {
   const repository = {
     findBuyerDataRetentionCandidates: jest.fn().mockResolvedValue([]),
     redactBuyerData: jest.fn().mockResolvedValue(true),
   };
   const integrations = { listCapabilityAdapters: jest.fn().mockResolvedValue(sources) };
+  const buyerEmails = { clearRecipientsForOrder: jest.fn().mockResolvedValue(0) };
+  const documentEmails = { clearRecipientsForOrder: jest.fn().mockResolvedValue(0) };
+  const customers = { redactPersonalDataLastSeenBefore: jest.fn().mockResolvedValue(0) };
   const service = new OrderBuyerDataRetentionService(
     repository as unknown as OrderRecordRepositoryPort,
     integrations as unknown as IIntegrationsService,
+    buyerEmails as unknown as BuyerEmailDeliveryRepositoryPort,
+    documentEmails as unknown as IDocumentEmailDeliveryService,
+    customers as unknown as ICustomerProjectionService,
   );
-  return { service, repository, integrations };
+  return { service, repository, integrations, buyerEmails, documentEmails, customers };
 }
 
 describe('OrderBuyerDataRetentionService', () => {
@@ -103,5 +116,39 @@ describe('OrderBuyerDataRetentionService', () => {
 
     expect(result.connections.map((entry) => entry.sourceConnectionId)).toEqual(['amz']);
     expect(result.redacted).toBe(1);
+  });
+
+  it('should clear the email delivery recipients of each order it redacted, and only those', async () => {
+    const { service, repository, buyerEmails, documentEmails } = setup([source('amz', 30)]);
+    repository.findBuyerDataRetentionCandidates.mockResolvedValueOnce([
+      { internalOrderId: 'o1', orderSnapshot: {} },
+      { internalOrderId: 'o2', orderSnapshot: {} },
+    ]);
+    repository.redactBuyerData.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await service.runOnce(NOW);
+
+    expect(buyerEmails.clearRecipientsForOrder.mock.calls).toEqual([['o1']]);
+    expect(documentEmails.clearRecipientsForOrder.mock.calls).toEqual([['o1']]);
+  });
+
+  it('should clear the customers last seen through the source before the same cutoff, in batches', async () => {
+    const { service, customers } = setup([source('amz', 30)]);
+    customers.redactPersonalDataLastSeenBefore
+      .mockResolvedValueOnce(BUYER_DATA_RETENTION_CUSTOMER_BATCH)
+      .mockResolvedValueOnce(3);
+
+    const result = await service.runOnce(NOW);
+
+    expect(customers.redactPersonalDataLastSeenBefore).toHaveBeenCalledTimes(2);
+    expect(customers.redactPersonalDataLastSeenBefore).toHaveBeenCalledWith({
+      sourceConnectionId: 'amz',
+      lastSeenBefore: new Date('2026-10-18T12:00:00.000Z'),
+      limit: BUYER_DATA_RETENTION_CUSTOMER_BATCH,
+    });
+    expect(result.connections[0]).toMatchObject({
+      customersRedacted: BUYER_DATA_RETENTION_CUSTOMER_BATCH + 3,
+      budgetExhausted: false,
+    });
   });
 });

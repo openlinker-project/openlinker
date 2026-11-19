@@ -287,7 +287,7 @@ export interface AdapterMetadata {
    * later than the platform's own limit. After that the buyer's addresses,
    * email, note and tax id are removed from the order
    * (`IOrderBuyerDataRetentionService`), and a later re-import of the order
-   * stores none of them again.
+   * stores none of them again. At least one day; a shorter value is ignored.
    */
   buyerDataRetentionDays?: number;
 
