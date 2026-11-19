@@ -20,6 +20,7 @@ describe('amazonConnectionConfig', () => {
       amazonSellerId: 'A2EXAMPLE12345',
       amazonNotificationQueueUrl: '',
       amazonTaxCodeRates: '',
+      amazonCatalogueMarketplaceId: '',
     });
   });
 
@@ -29,10 +30,19 @@ describe('amazonConnectionConfig', () => {
         .amazonTaxCodeRates,
     ).toBe('A_GEN_STANDARD=23\nA_BOOKS_GEN=5');
     expect(
-      amazonConnectionConfig.applyToConfig({}, { amazonTaxCodeRates: 'a_gen_standard=23\n=\nA_EXEMPT=ZW' }),
+      amazonConnectionConfig.applyToConfig({}, { amazonTaxCodeRates: 'a_gen_standard=23.00\n=\nA_EXEMPT=ZW' }),
     ).toEqual({ taxCodeRates: { A_GEN_STANDARD: '23', A_EXEMPT: 'zw' } });
     expect(amazonConnectionConfig.applyToConfig({ taxCodeRates: { A: '23' } }, { amazonTaxCodeRates: '' })).toEqual({
       taxCodeRates: null,
+    });
+  });
+
+  it('should write the catalogue marketplace, and null for the first one', () => {
+    expect(amazonConnectionConfig.applyToConfig({}, { amazonCatalogueMarketplaceId: 'A1C3SOZRARQ6R3' })).toEqual({
+      catalogueMarketplaceId: 'A1C3SOZRARQ6R3',
+    });
+    expect(amazonConnectionConfig.applyToConfig({ catalogueMarketplaceId: 'X' }, { amazonCatalogueMarketplaceId: '' })).toEqual({
+      catalogueMarketplaceId: null,
     });
   });
 

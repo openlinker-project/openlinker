@@ -28,6 +28,11 @@
  * A listing Amazon no longer has raises `MasterProductNotFoundError`, the
  * deletion path (#1599 / #1689).
  *
+ * Everything is read on ONE marketplace, `catalogueMarketplaceId` (else the
+ * first configured): the content, the gross price and currency (ADR-077) and
+ * the country of the tax rate. It is a setting on the connection page, so
+ * reordering the marketplaces never moves the catalogue's currency.
+ *
  * Enumeration: `listExternalIds` serves an `{offset, limit}` window over a
  * token-paged read. Positions count the product ids kept (children are
  * skipped), and a checkpoint in the host cache lets the next window of a
@@ -64,6 +69,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { AMAZON_KNOWN_MARKETPLACES } from '../../../amazon.constants';
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import { AmazonNotSupportedException } from '../../../domain/exceptions/amazon-not-supported.exception';
+import { resolveCatalogueMarketplaceId } from '../../../domain/policies/amazon-config.policy';
 import type { AmazonCatalogEntry } from '../../../domain/types/amazon-catalog.types';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import type { AmazonListingItem } from '../../../domain/types/amazon-listing.types';
@@ -110,7 +116,7 @@ export class AmazonProductMasterAdapter
     if (config.sellerId === undefined) {
       throw new AmazonConfigException(connection.id, 'sellerId (merchant token) is required to read the catalogue');
     }
-    this.marketplaceId = config.marketplaceIds[0];
+    this.marketplaceId = resolveCatalogueMarketplaceId(config);
     this.listings = new AmazonListingReader(client, config.sellerId, this.marketplaceId, connection.id, cache);
     this.catalog = new AmazonCatalogReader(client, this.marketplaceId);
   }
@@ -304,7 +310,7 @@ export class AmazonProductMasterAdapter
     if (code === null) {
       return { kind: 'unknown', reason: 'not-configured', detail: 'the listing carries no product tax code' };
     }
-    const rate = this.config.taxCodeRates?.[code];
+    const rate = this.config.taxCodeRates?.[code.toUpperCase()];
     if (rate === undefined) {
       return {
         kind: 'unknown',

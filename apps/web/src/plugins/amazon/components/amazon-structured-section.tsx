@@ -6,7 +6,9 @@
  * (shown, not editable), the marketplaces of that region, the merchant token
  * when offers are enabled, the order-notification queue when orders are, and
  * the rates of the account's product tax codes when the catalogue or offers
- * are (#4182): Amazon carries a tax code, never a rate.
+ * are (#4182): Amazon carries a tax code, never a rate. With the catalogue
+ * enabled, the marketplace it is read from (price, currency, tax country) is
+ * chosen here rather than implied by the order of the marketplaces.
  *
  * The region is fixed because another region is another Amazon seller account
  * with its own refresh token and merchant token; the API refuses the change.
@@ -37,6 +39,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
 import {
   formatTaxCodeRows,
   parseTaxCodeRows,
@@ -73,6 +76,7 @@ export function AmazonStructuredSection({
     writeTaxRows(taxRows.map((row, at) => (at === index ? { ...row, ...change } : row)));
 
   const selected = splitMarketplaceIds(form.watch('amazonMarketplaceIds') ?? '');
+  const catalogueMarketplace = form.watch('amazonCatalogueMarketplaceId') ?? '';
   const offered = marketplacesForRegion(region);
   // A stored id outside the offered list (a marketplace this browser does not
   // know, or one of another region) stays visible so it can be unticked.
@@ -81,7 +85,7 @@ export function AmazonStructuredSection({
   const countryName = (country: string): string =>
     countries[country as keyof typeof countries] ?? country;
 
-  const unlistedLabel = (id: string): string => {
+  const marketplaceLabel = (id: string): string => {
     const known = findMarketplace(id);
     return known === undefined
       ? interpolate(copy.marketplaces.unlisted, { id })
@@ -111,8 +115,14 @@ export function AmazonStructuredSection({
         <AmazonMarketplacePicker
           marketplaces={offered}
           selected={selected}
-          extra={unlisted.map((id) => ({ id, label: unlistedLabel(id) }))}
-          onChange={(ids) => syncStructuredToJson('amazonMarketplaceIds', ids.join(','))}
+          extra={unlisted.map((id) => ({ id, label: marketplaceLabel(id) }))}
+          onChange={(ids) => {
+            syncStructuredToJson('amazonMarketplaceIds', ids.join(','));
+            // The catalogue marketplace must stay one of the connection's own.
+            if (catalogueMarketplace !== '' && !ids.includes(catalogueMarketplace)) {
+              syncStructuredToJson('amazonCatalogueMarketplaceId', '');
+            }
+          }}
           labelOf={(marketplace) =>
             interpolate(messages.setup.marketplaceOption, {
               country: countryName(marketplace.country),
@@ -147,6 +157,29 @@ export function AmazonStructuredSection({
         <Alert tone="warning" density="compact">
           {copy.sellerIdMissing}
         </Alert>
+      ) : null}
+
+      {catalogueEnabled && selected.length > 0 ? (
+        <FormField
+          label={copy.catalogueMarketplace.label}
+          name="amazonCatalogueMarketplaceId"
+          description={copy.catalogueMarketplace.description}
+        >
+          <Select
+            value={selected.includes(catalogueMarketplace) ? catalogueMarketplace : ''}
+            onChange={(event) => syncStructuredToJson('amazonCatalogueMarketplaceId', event.target.value)}
+            disabled={disabled}
+          >
+            <option value="">
+              {interpolate(copy.catalogueMarketplace.first, { marketplace: marketplaceLabel(selected[0]) })}
+            </option>
+            {selected.map((id) => (
+              <option key={id} value={id}>
+                {marketplaceLabel(id)}
+              </option>
+            ))}
+          </Select>
+        </FormField>
       ) : null}
 
       {catalogueEnabled || offersEnabled ? (

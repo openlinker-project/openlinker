@@ -10,7 +10,9 @@
  * region is a new connection.
  *
  * A marketplace added here is picked up by the order feed, which rewinds its
- * watermark for it (`scopeAmazonOrderFeedCursor`).
+ * watermark for it (`scopeAmazonOrderFeedCursor`). The catalogue is read from
+ * one of them, `catalogueMarketplaceId` (empty: the first), cleared to `null`
+ * when the marketplace it names is removed.
  *
  * Each rule is no stricter than `parseAmazonConfig` on the API, which refuses
  * the same values on save.
@@ -37,6 +39,8 @@ declare module '../../shared/plugins/plugin.types' {
     amazonNotificationQueueUrl?: string;
     /** `config.taxCodeRates`, one `CODE=rate` per line (#4182). */
     amazonTaxCodeRates?: string;
+    /** `config.catalogueMarketplaceId`, empty for the first marketplace (#4182). */
+    amazonCatalogueMarketplaceId?: string;
   }
 }
 
@@ -66,6 +70,13 @@ export function parseTaxCodeRows(value: string): AmazonTaxCodeRow[] {
 
 export function formatTaxCodeRows(rows: readonly AmazonTaxCodeRow[]): string {
   return rows.map((row) => `${row.code}=${row.rate}`).join('\n');
+}
+
+/** One spelling per rate, as the API stores it: `'23.00'` is `'23'`, an exemption code in lower case. */
+function canonicalRate(rate: string): string {
+  const text = rate.trim().toLowerCase();
+  const number = Number(text);
+  return text !== '' && Number.isFinite(number) ? String(number) : text;
 }
 
 function isBlankRow(row: AmazonTaxCodeRow): boolean {
@@ -119,6 +130,7 @@ const amazonSchemaShape: ConnectionConfigContribution['schemaShape'] = {
     SQS_QUEUE_URL,
     () => getAmazonMessages().setup.errors.queueUrlInvalid,
   ),
+  amazonCatalogueMarketplaceId: z.string().optional(),
   amazonTaxCodeRates: z
     .string()
     .refine((value) => parseTaxCodeRows(value).every(isValidTaxCodeRow), {
@@ -137,6 +149,8 @@ function readAmazonConfig(config: Record<string, unknown>): Record<string, strin
     amazonNotificationQueueUrl:
       typeof config.notificationQueueUrl === 'string' ? config.notificationQueueUrl : '',
     amazonTaxCodeRates: formatTaxCodeRows(readTaxCodeRates(config.taxCodeRates)),
+    amazonCatalogueMarketplaceId:
+      typeof config.catalogueMarketplaceId === 'string' ? config.catalogueMarketplaceId : '',
   };
 }
 
@@ -172,13 +186,18 @@ function applyAmazonConfig(
     next.notificationQueueUrl = text === '' ? null : text;
   }
 
+  const catalogueMarketplace = readOptionalConfigString(patch, 'amazonCatalogueMarketplaceId');
+  if (catalogueMarketplace !== undefined) {
+    next.catalogueMarketplaceId = catalogueMarketplace.trim() === '' ? null : catalogueMarketplace.trim();
+  }
+
   const taxCodes = readOptionalConfigString(patch, 'amazonTaxCodeRates');
   if (taxCodes !== undefined) {
     const rows = parseTaxCodeRows(taxCodes).filter((row) => !isBlankRow(row));
     next.taxCodeRates =
       rows.length === 0
         ? null
-        : Object.fromEntries(rows.map((row) => [row.code.toUpperCase(), row.rate.toLowerCase()]));
+        : Object.fromEntries(rows.map((row) => [row.code.toUpperCase(), canonicalRate(row.rate)]));
   }
 
   return next;

@@ -12,6 +12,11 @@
  * without a code (Amazon then applies the account default). Guessing between
  * two codes would put a reduced-rate product on the wrong one silently.
  *
+ * `canonicalTaxRateCode` is the one spelling of a rate: OpenLinker's rate
+ * codes are percent-as-string from a fixed vocabulary (`'23'`, `'8'`, `'zw'`,
+ * ADR-063), so `'23.00'` is stored and reported as `'23'`, and an exemption
+ * code in lower case.
+ *
  * @module libs/integrations/amazon/src/domain/policies
  */
 
@@ -21,12 +26,12 @@ export function resolveAmazonTaxCode(
   rate: string | undefined | null,
   taxCodeRates: Readonly<Record<string, string>> | undefined,
 ): AmazonTaxCodeResolution {
-  const wanted = normalizeRate(rate);
+  const wanted = canonicalTaxRateCode(rate);
   if (wanted === null) {
     return { kind: 'none', reason: 'no-rate' };
   }
   const codes = Object.entries(taxCodeRates ?? {})
-    .filter(([, mapped]) => normalizeRate(mapped) === wanted)
+    .filter(([, mapped]) => canonicalTaxRateCode(mapped) === wanted)
     .map(([code]) => code)
     .sort();
   if (codes.length === 0) {
@@ -38,8 +43,8 @@ export function resolveAmazonTaxCode(
   return { kind: 'resolved', code: codes[0] };
 }
 
-/** `"23"`, `"23.00"` and `" 23 "` are one rate; exemption codes compare as text. */
-function normalizeRate(rate: string | undefined | null): string | null {
+/** `"23"`, `"23.00"` and `" 23 "` are one rate, `'23'`; exemption codes in lower case; `null` for no rate. */
+export function canonicalTaxRateCode(rate: string | undefined | null): string | null {
   const text = rate?.trim().toLowerCase() ?? '';
   if (text.length === 0) {
     return null;

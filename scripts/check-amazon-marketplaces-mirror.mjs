@@ -13,6 +13,10 @@
  *   - `AMAZON_SINGLE_MARKETPLACE_REGIONS`
  *   - every marketplace's id, country, region and currency
  *     (`AMAZON_KNOWN_MARKETPLACES` / `AMAZON_MARKETPLACES`)
+ *   - the VAT rate pattern of the tax-code map (#4182):
+ *     `TAX_RATE_CODE_PATTERN` (amazon-config.policy.ts) / `TAX_RATE`
+ *     (plugins/amazon/amazon-connection-config.ts). Flags are ignored: the
+ *     browser lower-cases before testing, the API matches case-insensitively.
  *
  * Drift is not cosmetic: the form would offer a marketplace the API refuses,
  * hide one it accepts, or let a Far East connection save two marketplaces the
@@ -31,6 +35,14 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 const BACKEND = 'libs/integrations/amazon/src/amazon.constants.ts';
 const BROWSER = 'apps/web/src/features/amazon/lib/amazon-marketplaces.ts';
+const BACKEND_TAX = 'libs/integrations/amazon/src/domain/policies/amazon-config.policy.ts';
+const BROWSER_TAX = 'apps/web/src/plugins/amazon/amazon-connection-config.ts';
+
+/** The body of a `const <name> = /.../flags;` regex literal, or null. */
+export function parseRegexBody(source, name) {
+  const match = source.match(new RegExp(`\\bconst ${name}\\s*=\\s*/(.+)/[a-z]*;`));
+  return match ? match[1] : null;
+}
 
 /** The string members of `<name> ... = [ 'a', 'b' ]`, or null when absent. */
 export function parseStringArray(source, name) {
@@ -155,6 +167,9 @@ export const AMAZON_MARKETPLACES: readonly AmazonMarketplace[] = [
   if (diff(backend, single).length !== 1) {
     throw new Error('self-check: a changed single-marketplace region list was not reported');
   }
+  if (parseRegexBody("const TAX_RATE = /^(\\d{1,2}|zw)$/i;", 'TAX_RATE') !== '^(\\d{1,2}|zw)$') {
+    throw new Error('self-check: the regex body parser misread a literal');
+  }
   process.stdout.write('check-amazon-marketplaces-mirror: self-check passed\n');
 }
 
@@ -174,6 +189,15 @@ async function main() {
     }
   }
   const problems = diff(backend, browser);
+  const backendTax = parseRegexBody(await readFile(join(ROOT, BACKEND_TAX), 'utf8'), 'TAX_RATE_CODE_PATTERN');
+  const browserTax = parseRegexBody(await readFile(join(ROOT, BROWSER_TAX), 'utf8'), 'TAX_RATE');
+  if (backendTax === null || browserTax === null) {
+    process.stderr.write(`could not read the tax rate pattern (${BACKEND_TAX} / ${BROWSER_TAX})\n`);
+    process.exit(1);
+  }
+  if (backendTax !== browserTax) {
+    problems.push(`tax rate pattern: backend /${backendTax}/ vs browser /${browserTax}/`);
+  }
   if (problems.length > 0) {
     process.stderr.write(`Amazon marketplace mirror drifted (${BACKEND} vs ${BROWSER}):\n`);
     for (const problem of problems) {

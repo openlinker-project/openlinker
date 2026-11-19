@@ -48,6 +48,11 @@
       "description": "Ustawione przy tworzeniu połączenia. Inne środowisko wymaga nowego połączenia.",
       "label": "Środowisko Selling Partner API"
     },
+    "catalogueMarketplace": {
+      "description": "OpenLinker czyta katalog z jednego rynku: treść listingu, cenę brutto z jej walutą i kraj stawki VAT.",
+      "first": "Pierwszy rynek ({marketplace})",
+      "label": "Rynek katalogu"
+    },
     "marketplaces": {
       "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",

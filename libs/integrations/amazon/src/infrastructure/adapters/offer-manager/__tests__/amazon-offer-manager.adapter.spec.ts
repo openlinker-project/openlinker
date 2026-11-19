@@ -170,7 +170,7 @@ describe('AmazonOfferManagerAdapter.updateOfferFields', () => {
     ).rejects.toThrow(/title/);
   });
 
-  it('should write a tax rate as the Amazon tax code mapped to it', async () => {
+  it('should write a tax rate as the Amazon tax code mapped to it, on the marketplaces the listing is on', async () => {
     const { adapter, patch } = setup({ ...CONFIG, taxCodeRates: { A_GEN_STANDARD: '23', A_BOOKS_GEN: '5' } });
 
     await adapter.updateOfferFields({ externalOfferId: 'MUG-BLUE', fields: { taxRate: '5' } });
@@ -179,15 +179,15 @@ describe('AmazonOfferManagerAdapter.updateOfferFields', () => {
     expect(body.patches[0]).toMatchObject({
       op: 'replace',
       path: '/attributes/product_tax_code',
-      value: CONFIG.marketplaceIds.map((marketplace_id) => ({ value: 'A_BOOKS_GEN', marketplace_id })),
+      value: [{ value: 'A_BOOKS_GEN', marketplace_id: 'A1PA6795UKMFR9' }],
     });
   });
 
-  it('should refuse a tax rate no Amazon tax code is mapped to', async () => {
+  it('should leave the tax code alone, without failing, for a rate no Amazon tax code is mapped to', async () => {
     const { adapter, patch } = setup({ ...CONFIG, taxCodeRates: { A_GEN_STANDARD: '23' } });
     await expect(
       adapter.updateOfferFields({ externalOfferId: 'MUG-BLUE', fields: { taxRate: '8' } }),
-    ).rejects.toThrow(/no Amazon tax code is mapped/);
+    ).resolves.toBeUndefined();
     expect(patch).not.toHaveBeenCalled();
   });
 });

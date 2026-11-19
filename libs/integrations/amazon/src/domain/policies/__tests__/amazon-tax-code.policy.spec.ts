@@ -3,7 +3,7 @@
  *
  * @module libs/integrations/amazon/src/domain/policies/__tests__
  */
-import { resolveAmazonTaxCode } from '../amazon-tax-code.policy';
+import { canonicalTaxRateCode, resolveAmazonTaxCode } from '../amazon-tax-code.policy';
 
 const RATES = { A_GEN_STANDARD: '23', A_BOOKS_GEN: '5', A_FOOD_GEN: '8' };
 
@@ -36,5 +36,14 @@ describe('resolveAmazonTaxCode', () => {
 
   it('should compare exemption codes as text', () => {
     expect(resolveAmazonTaxCode('ZW', { A_EXEMPT: 'zw' })).toEqual({ kind: 'resolved', code: 'A_EXEMPT' });
+  });
+});
+
+describe('canonicalTaxRateCode', () => {
+  it('should give one spelling per rate', () => {
+    expect(canonicalTaxRateCode('23.00')).toBe('23');
+    expect(canonicalTaxRateCode(' 5.5 ')).toBe('5.5');
+    expect(canonicalTaxRateCode('ZW')).toBe('zw');
+    expect(canonicalTaxRateCode('')).toBeNull();
   });
 });

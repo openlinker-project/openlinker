@@ -388,22 +388,29 @@ export class AmazonOfferManagerAdapter
     return null;
   }
 
-  /** A tax rate change is a tax CODE change on Amazon; a rate no code maps to is refused. */
+  /**
+   * A tax rate change is a tax CODE change on Amazon. A rate no code maps to is
+   * not written and is logged, exactly as `createOffer` leaves the code out
+   * (`taxCodeFor`): an unmapped rate is a gap in the connection's map, not a
+   * conflict, so it must not fail the job (ADR-063 refuses only behind
+   * `OL_TAX_RATE_STRICT_ENABLED` or on a conflict). The code goes to the
+   * marketplaces the listing is on, not every configured one.
+   */
   private async updateTaxCode(externalOfferId: string, rate: string): Promise<void> {
-    const resolution = resolveAmazonTaxCode(rate, this.config.taxCodeRates);
-    if (resolution.kind !== 'resolved') {
-      throw new AmazonNotSupportedException(
-        resolution.reason === 'ambiguous'
-          ? `the tax rate ${rate}: Amazon tax codes ${resolution.codes?.join(', ')} all map to it on this connection`
-          : `the tax rate ${rate}: no Amazon tax code is mapped to it on this connection`,
-      );
+    const code = this.taxCodeFor(rate);
+    if (code === null) {
+      return;
     }
     const item = await this.readListing(externalOfferId);
-    await this.patch(item, this.config.marketplaceIds, [
+    const listed = this.config.marketplaceIds.filter((marketplaceId) =>
+      item.summaries?.some((summary) => summary.marketplaceId === marketplaceId),
+    );
+    const marketplaces = listed.length > 0 ? listed : this.config.marketplaceIds;
+    await this.patch(item, marketplaces, [
       {
         op: 'replace',
         path: '/attributes/product_tax_code',
-        value: this.config.marketplaceIds.map((marketplaceId) => ({ value: resolution.code, marketplace_id: marketplaceId })),
+        value: marketplaces.map((marketplaceId) => ({ value: code, marketplace_id: marketplaceId })),
       },
     ]);
   }

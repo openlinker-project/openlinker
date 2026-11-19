@@ -3,7 +3,12 @@
  *
  * @module libs/integrations/amazon/src/domain/policies/__tests__
  */
-import { parseAmazonConfig, regionChangeIssue, resolveAmazonSpApiHost } from '../amazon-config.policy';
+import {
+  parseAmazonConfig,
+  regionChangeIssue,
+  resolveAmazonSpApiHost,
+  resolveCatalogueMarketplaceId,
+} from '../amazon-config.policy';
 
 describe('parseAmazonConfig', () => {
   it('should default the region to eu and the environment to production', () => {
@@ -145,5 +150,37 @@ describe('regionChangeIssue', () => {
 
   it('should pass a save that keeps the region', () => {
     expect(regionChangeIssue({ region: 'na', sellerId: 'A2EXAMPLE12345' }, { region: 'na' })).toBeNull();
+  });
+});
+
+describe('parseAmazonConfig taxCodeRates (#4182)', () => {
+  it('should store codes in upper case and rates in their canonical spelling', () => {
+    const result = parseAmazonConfig({
+      marketplaceIds: ['A1PA6795UKMFR9'],
+      taxCodeRates: { a_gen_standard: '23.00', A_BOOKS_GEN: ' 5 ', A_EXEMPT: 'ZW' },
+    });
+    expect(result.ok && result.config.taxCodeRates).toEqual({ A_GEN_STANDARD: '23', A_BOOKS_GEN: '5', A_EXEMPT: 'zw' });
+  });
+
+  it('should refuse a rate outside the vocabulary', () => {
+    const result = parseAmazonConfig({ marketplaceIds: ['A1PA6795UKMFR9'], taxCodeRates: { A_GEN_STANDARD: '23%' } });
+    expect(!result.ok && result.issues.map((issue) => issue.path)).toEqual(['taxCodeRates.A_GEN_STANDARD']);
+  });
+});
+
+describe('catalogueMarketplaceId (#4182)', () => {
+  const DE = 'A1PA6795UKMFR9';
+  const PL = 'A1C3SOZRARQ6R3';
+
+  it('should read the catalogue from the chosen marketplace, else the first', () => {
+    const chosen = parseAmazonConfig({ marketplaceIds: [DE, PL], catalogueMarketplaceId: PL });
+    expect(chosen.ok && resolveCatalogueMarketplaceId(chosen.config)).toBe(PL);
+    const unset = parseAmazonConfig({ marketplaceIds: [DE, PL], catalogueMarketplaceId: null });
+    expect(unset.ok && resolveCatalogueMarketplaceId(unset.config)).toBe(DE);
+  });
+
+  it('should refuse a catalogue marketplace the connection does not sell on', () => {
+    const result = parseAmazonConfig({ marketplaceIds: [DE], catalogueMarketplaceId: PL });
+    expect(!result.ok && result.issues.map((issue) => issue.path)).toEqual(['catalogueMarketplaceId']);
   });
 });

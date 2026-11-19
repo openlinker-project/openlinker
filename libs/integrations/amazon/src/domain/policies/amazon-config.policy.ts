@@ -16,6 +16,8 @@
  *     The rule is part of the parse, so the factory and the tester refuse such
  *     a config too, not only a save: a second marketplace there belongs to
  *     another seller account, so the connection could not read it anyway.
+ *   - `catalogueMarketplaceId`, when set, must be one of `marketplaceIds`:
+ *     the catalogue's price, currency and tax country come from it.
  *   - The region is fixed once the connection exists: another region is
  *     another seller account with its own refresh token and merchant token,
  *     so `regionChangeIssue` refuses a change on update. Another region is a
@@ -35,6 +37,7 @@ import {
   type AmazonRegion,
 } from '../../amazon.constants';
 import type { AmazonConnectionConfig, AmazonNotificationQueue } from '../types/amazon-config.types';
+import { canonicalTaxRateCode } from './amazon-tax-code.policy';
 
 /** SP-API marketplace ids are 10-14 upper-case letters and digits (`A1PA6795UKMFR9`). */
 const MARKETPLACE_ID_PATTERN = /^[A-Z0-9]{10,14}$/;
@@ -61,6 +64,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
   const notificationQueue = readNotificationQueue(config.notificationQueueUrl, issues);
   const sellerId = readSellerId(config.sellerId, issues);
   const taxCodeRates = readTaxCodeRates(config.taxCodeRates, issues);
+  const catalogueMarketplaceId = readCatalogueMarketplaceId(config.catalogueMarketplaceId, marketplaceIds, issues);
 
   if (issues.length > 0 || region === null || environment === null) {
     return { ok: false, issues };
@@ -74,6 +78,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
       ...(notificationQueue ? { notificationQueue } : {}),
       ...(sellerId ? { sellerId } : {}),
       ...(taxCodeRates ? { taxCodeRates } : {}),
+      ...(catalogueMarketplaceId ? { catalogueMarketplaceId } : {}),
     },
   };
 }
@@ -191,7 +196,7 @@ export function readSellerId(value: unknown, issues: FlatValidationIssue[] = [])
 }
 
 /** OpenLinker's VAT rate codes: a percentage or an exemption code (`zw`, `np`, `oo`). */
-const TAX_RATE_CODE_PATTERN = /^(\d{1,2}(\.\d{1,2})?|zw|np|oo)$/;
+const TAX_RATE_CODE_PATTERN = /^(\d{1,2}(\.\d{1,2})?|zw|np|oo)$/i;
 
 function readTaxCodeRates(value: unknown, issues: FlatValidationIssue[]): Record<string, string> | undefined {
   if (value === undefined || value === null) {
@@ -207,7 +212,32 @@ function readTaxCodeRates(value: unknown, issues: FlatValidationIssue[]): Record
       issues.push({ path: `taxCodeRates.${code}`, message: 'must be a rate such as "23", "8", "0" or "zw"' });
       continue;
     }
-    rates[code.trim()] = rate.trim();
+    // Stored in the one spelling the catalogue reports and the reverse lookup
+    // compares: an upper-case Amazon code, a canonical OpenLinker rate code.
+    rates[code.trim().toUpperCase()] = canonicalTaxRateCode(rate) as string;
   }
   return Object.keys(rates).length > 0 ? rates : undefined;
+}
+
+/** Optional `catalogueMarketplaceId`: empty means the first marketplace; any other value must be listed. */
+function readCatalogueMarketplaceId(
+  value: unknown,
+  marketplaceIds: readonly string[],
+  issues: FlatValidationIssue[],
+): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !marketplaceIds.includes(value.trim())) {
+    issues.push({ path: 'catalogueMarketplaceId', message: 'must be one of the connection\'s marketplaceIds' });
+    return undefined;
+  }
+  return value.trim();
+}
+
+/** The marketplace the catalogue is read from: the chosen one, else the first. */
+export function resolveCatalogueMarketplaceId(
+  config: Pick<AmazonConnectionConfig, 'marketplaceIds' | 'catalogueMarketplaceId'>,
+): string {
+  return config.catalogueMarketplaceId ?? config.marketplaceIds[0];
 }
