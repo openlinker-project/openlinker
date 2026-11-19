@@ -246,7 +246,13 @@ export function AmazonSetupForm(): ReactElement {
           </span>
         </label>
         <label className="checkbox-row">
-          <input type="checkbox" {...form.register('offers')} disabled={role === 'master'} />
+          {role === 'master' ? (
+            // A catalogue master never gets offers, so the box reads unticked
+            // while the sales-channel choice keeps its own value for a switch back.
+            <input type="checkbox" checked={false} disabled readOnly />
+          ) : (
+            <input type="checkbox" {...form.register('offers')} />
+          )}
           <span className={role === 'master' ? 'text-muted' : undefined}>
             {copy.offers}
             <span className="form-field__description form-field__description--block">
