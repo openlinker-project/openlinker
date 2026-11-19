@@ -276,7 +276,7 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           <DensityToggle />
         </div>
         <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">Text size</div>
+          <div className="shell-user-chip__menu-section-label">{copy.fontSize}</div>
           <FontSizeToggle />
         </div>
         <DropdownMenuSeparator />

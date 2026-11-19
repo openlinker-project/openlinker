@@ -21,6 +21,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from 'react';
+import { useMessages } from '../i18n/use-messages';
 
 export const FontSizeValues = ['s', 'm', 'l', 'xl'] as const;
 export type FontSize = (typeof FontSizeValues)[number];
@@ -30,16 +31,16 @@ const STORAGE_KEY = 'openlinker-font-size';
 
 interface FontSizeOption {
   value: FontSize;
-  label: string;
+  labelKey: 'small' | 'default' | 'large' | 'extraLarge';
   /** Glyph size inside the control, px. Deliberately fixed: it previews the step. */
   glyph: number;
 }
 
 const FONT_SIZE_OPTIONS: FontSizeOption[] = [
-  { value: 's', label: 'Small', glyph: 10 },
-  { value: 'm', label: 'Default', glyph: 12 },
-  { value: 'l', label: 'Large', glyph: 14 },
-  { value: 'xl', label: 'Extra large', glyph: 16 },
+  { value: 's', labelKey: 'small', glyph: 10 },
+  { value: 'm', labelKey: 'default', glyph: 12 },
+  { value: 'l', labelKey: 'large', glyph: 14 },
+  { value: 'xl', labelKey: 'extraLarge', glyph: 16 },
 ];
 
 function isFontSize(value: unknown): value is FontSize {
@@ -82,6 +83,7 @@ export function useFontSize(): [FontSize, (next: FontSize) => void] {
 
 export function FontSizeToggle(): ReactElement {
   const [size, setSize] = useFontSize();
+  const copy = useMessages('ui').fontSize;
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedIndex = FONT_SIZE_OPTIONS.findIndex((option) => option.value === size);
 
@@ -127,7 +129,7 @@ export function FontSizeToggle(): ReactElement {
     <div
       className="font-size-toggle"
       role="radiogroup"
-      aria-label="Text size"
+      aria-label={copy.group}
       style={{ '--fs-index': selectedIndex } as React.CSSProperties}
     >
       <span className="font-size-toggle__thumb" aria-hidden="true" />
@@ -140,8 +142,8 @@ export function FontSizeToggle(): ReactElement {
             type="button"
             role="radio"
             aria-checked={selected}
-            aria-label={option.label}
-            title={option.label}
+            aria-label={copy[option.labelKey]}
+            title={copy[option.labelKey]}
             tabIndex={selected ? 0 : -1}
             className={`font-size-toggle__option ${selected ? 'is-active' : ''}`}
             onClick={() => setSize(option.value)}
