@@ -900,6 +900,8 @@ export const ApiErrorCodeValues = [
   /** Stock correction refusal. */
   'adapter-unresolved',
   /** Stock correction refusal. */
+  'multiple-locations',
+  /** Stock correction refusal. */
   'master-refused',
   /** Stock correction refusal. */
   'master-product-not-found',

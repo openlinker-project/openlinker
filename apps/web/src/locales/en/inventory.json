@@ -553,6 +553,10 @@
         "body": "Two connections claim this stock, so OpenLinker will not guess which one to change.",
         "title": "More than one connection claims this stock"
       },
+      "multipleLocations": {
+        "body": "This variant is held at more than one location, so OpenLinker cannot tell which one to change. Correct it in the master.",
+        "title": "This stock is in more than one location"
+      },
       "noInventoryMaster": {
         "body": "No connection is set up as the stock master for this product, so there is nowhere to write the change.",
         "title": "No connection owns this stock"

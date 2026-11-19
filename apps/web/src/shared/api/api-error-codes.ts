@@ -414,6 +414,7 @@ export const ApiErrorCodeValues = [
   'no-position',
   'unattributed-owner',
   'adapter-unresolved',
+  'multiple-locations',
   'master-refused',
   'master-product-not-found',
   'master-unreadable',

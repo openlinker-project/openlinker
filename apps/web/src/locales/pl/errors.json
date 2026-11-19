@@ -394,6 +394,7 @@
     "master-product-not-found": "Sklep nie ma już tego produktu.",
     "master-refused": "Sklep odrzucił zmianę stanu magazynowego.",
     "master-unreadable": "Nie udało się odczytać bieżącego stanu magazynowego ze sklepu. Spróbuj ponownie.",
+    "multiple-locations": "Ten wariant leży w więcej niż jednej lokalizacji, więc skoryguj go w połączeniu głównym.",
     "no-change": "Nowy stan jest równy obecnemu, więc niczego nie zmieniono.",
     "no-document": "Dla tego dokumentu nie ma pliku ani linku do wysłania.",
     "no-inventory-master": "Żadne połączenie nie dostarcza stanów magazynowych, więc nie można ich skorygować.",

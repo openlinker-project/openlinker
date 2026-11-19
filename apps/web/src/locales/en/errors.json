@@ -394,6 +394,7 @@
     "master-product-not-found": "The shop no longer has this product.",
     "master-refused": "The shop refused the stock change.",
     "master-unreadable": "The current stock could not be read from the shop. Try again.",
+    "multiple-locations": "This variant is held at more than one location, so correct it in the master.",
     "no-change": "The new stock equals the current stock, so nothing was changed.",
     "no-document": "There is no file or link for this document to send.",
     "no-inventory-master": "No connection supplies stock, so stock cannot be corrected.",
