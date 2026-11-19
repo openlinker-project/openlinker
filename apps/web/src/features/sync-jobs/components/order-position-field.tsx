@@ -13,7 +13,6 @@
  * @module apps/web/src/features/sync-jobs/components
  */
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
@@ -32,7 +31,6 @@ interface OrderPositionFieldProps {
   onCustomKeyChange: (key: string) => void;
   customError?: string;
   disabled: boolean;
-  onNavigate: () => void;
 }
 
 export function OrderPositionField({
@@ -43,7 +41,6 @@ export function OrderPositionField({
   onCustomKeyChange,
   customError,
   disabled,
-  onNavigate,
 }: OrderPositionFieldProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog.orderPosition;
   const format = useFormat();
@@ -64,20 +61,6 @@ export function OrderPositionField({
 
   return (
     <div className="order-position">
-      <div className="order-position__start">
-        <div>
-          <p className="order-position__start-title">{copy.startTitle}</p>
-          <p className="order-position__start-text">{copy.startText}</p>
-        </div>
-        <Link
-          to={`/connections/${connectionId}?tab=health`}
-          onClick={onNavigate}
-          className="button button--secondary order-position__start-action"
-        >
-          {copy.startAction}
-        </Link>
-      </div>
-
       <FormField label={copy.positionLabel} name="orderPosition" description={hint}>
         <Select
           value={choice}

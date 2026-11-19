@@ -375,7 +375,6 @@ export function TriggerSyncDialog({
               onCustomKeyChange={setCustomPositionKey}
               customError={fieldErrors.cursorKey}
               disabled={enqueueSyncJob.isPending}
-              onNavigate={() => onOpenChange(false)}
             />
           ) : null}
 

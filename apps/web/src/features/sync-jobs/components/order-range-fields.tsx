@@ -44,12 +44,7 @@ export function OrderRangeFields({
             onChange={(event) => onChange({ ...value, from: event.target.value })}
           />
         </FormField>
-        <FormField
-          label={copy.toLabel}
-          name="orderRangeTo"
-          error={errors.to}
-          description={copy.toHelp}
-        >
+        <FormField label={copy.toLabel} name="orderRangeTo" error={errors.to}>
           <Input
             type="date"
             value={value.to}
@@ -61,6 +56,7 @@ export function OrderRangeFields({
           />
         </FormField>
       </div>
+      <p className="order-range__hint">{copy.toHelp}</p>
       <FormField label={copy.directionLabel} name="orderRangeDirection">
         <Select
           value={value.direction}

@@ -229,8 +229,8 @@
         "label": "Auto-match variants"
       },
       "importOrders": {
-        "description": "Reads the orders placed in the days you choose, once. It does not change which orders count as new, and orders OpenLinker already has are updated, not copied twice.",
-        "label": "Import orders from a date range"
+        "description": "Reads the orders placed between two days, once. It does not change which orders count as new, and orders OpenLinker already has are updated, not copied twice.",
+        "label": "Sync orders"
       },
       "pollOrders": {
         "description": "Checks the shop now for orders OpenLinker has not imported yet. It does not change which orders count as new.",
@@ -277,13 +277,10 @@
       "positionDefaultHint": "OpenLinker remembers how far it has read the shop's order list. Leave this as it is unless support told you otherwise.",
       "positionDefaultHintSaved": "Saved at {key}, last moved {when}.",
       "positionLabel": "Read orders from",
-      "positionSaved": "Saved position {key}, moved {when}",
-      "startAction": "Change start…",
-      "startText": "Each check reads only what is new since the previous one. To import older orders, or to begin from another day, change the start.",
-      "startTitle": "Which orders get imported"
+      "positionSaved": "Saved position {key}, moved {when}"
     },
     "orderRange": {
-      "directionLabel": "Read",
+      "directionLabel": "Start with",
       "errors": {
         "fromInvalid": "Enter a valid date",
         "fromRequired": "Choose the first day",
@@ -293,8 +290,8 @@
         "toInvalid": "Enter a valid date"
       },
       "fromLabel": "First day",
-      "newestFirst": "Newest first",
-      "oldestFirst": "Oldest first",
+      "newestFirst": "Newest orders",
+      "oldestFirst": "Oldest orders",
       "toHelp": "Leave empty to read up to the newest order.",
       "toLabel": "Last day"
     },

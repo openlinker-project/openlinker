@@ -181,7 +181,7 @@ describe('TriggerSyncDialog', () => {
       const position = screen.getByRole('combobox', { name: /read orders from/i });
       expect(position).toHaveValue('');
       expect(screen.queryByLabelText(/^position key/i)).not.toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /change start/i })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /change start/i })).not.toBeInTheDocument();
     });
 
     it('should reveal the key box only after picking the custom position, and require it', async () => {
@@ -243,7 +243,7 @@ describe('TriggerSyncDialog', () => {
           apiClient: createMockApiClient(adapter(false)),
         });
         await screen.findByRole('combobox', { name: /job type/i });
-        expect(screen.queryByRole('option', { name: /date range/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /^sync orders$/i })).not.toBeInTheDocument();
       });
 
       it('should require the first day and send the range as one import run', async () => {
@@ -251,7 +251,7 @@ describe('TriggerSyncDialog', () => {
         renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
           apiClient: mockApi,
         });
-        await screen.findByRole('option', { name: /date range/i });
+        await screen.findByRole('option', { name: /^sync orders$/i });
         fireEvent.change(screen.getByRole('combobox', { name: /job type/i }), {
           target: { value: 'marketplace.orders.import' },
         });
@@ -261,7 +261,7 @@ describe('TriggerSyncDialog', () => {
         expect(mockApi.syncJobs.enqueue).not.toHaveBeenCalled();
 
         fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
-        fireEvent.change(screen.getByLabelText('Read'), { target: { value: 'newest-first' } });
+        fireEvent.change(screen.getByLabelText('Start with'), { target: { value: 'newest-first' } });
         fireEvent.click(screen.getByRole('button', { name: /^trigger$/i }));
         await waitFor(() => {
           expect(mockApi.syncJobs.enqueue).toHaveBeenCalledWith(

@@ -231,8 +231,8 @@
         "label": "Automatycznie dopasuj warianty"
       },
       "importOrders": {
-        "description": "Jednorazowo pobiera zamówienia złożone w wybranych dniach. Nie zmienia tego, które zamówienia uchodzą za nowe, a zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz.",
-        "label": "Importuj zamówienia z zakresu dat"
+        "description": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Nie zmienia tego, które zamówienia uchodzą za nowe, a zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz.",
+        "label": "Synchronizuj zamówienia"
       },
       "pollOrders": {
         "description": "Sprawdza teraz w sklepie, czy są zamówienia, których OpenLinker jeszcze nie pobrał. Nie zmienia tego, które zamówienia uznaje za nowe.",
@@ -279,13 +279,10 @@
       "positionDefaultHint": "OpenLinker zapamiętuje, dokąd doczytał listę zamówień ze sklepu. Zostaw bez zmian, chyba że wsparcie podało inaczej.",
       "positionDefaultHintSaved": "Zapisane w {key}, ostatnio przesunięte {when}.",
       "positionLabel": "Skąd czytać zamówienia",
-      "positionSaved": "Zapisane miejsce {key}, przesunięte {when}",
-      "startAction": "Zmień start…",
-      "startText": "Każde sprawdzenie czyta tylko to, co pojawiło się od poprzedniego. Żeby zaimportować starsze zamówienia albo zacząć od innego dnia, zmień start.",
-      "startTitle": "Które zamówienia są importowane"
+      "positionSaved": "Zapisane miejsce {key}, przesunięte {when}"
     },
     "orderRange": {
-      "directionLabel": "Kolejność",
+      "directionLabel": "Zacznij od",
       "errors": {
         "fromInvalid": "Wpisz poprawną datę",
         "fromRequired": "Wybierz pierwszy dzień",
@@ -295,8 +292,8 @@
         "toInvalid": "Wpisz poprawną datę"
       },
       "fromLabel": "Pierwszy dzień",
-      "newestFirst": "Od najnowszych",
-      "oldestFirst": "Od najstarszych",
+      "newestFirst": "Najnowszych zamówień",
+      "oldestFirst": "Najstarszych zamówień",
       "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
       "toLabel": "Ostatni dzień"
     },
