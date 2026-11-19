@@ -39,9 +39,12 @@
  *     (one tree per marketplace and environment); a type's parameters are the
  *     required simple attributes of its JSON Schema.
  *   - `OfferStatusReader`: `getListingsItem` with summaries, offers,
- *     fulfilment and issues: `BUYABLE` is active, otherwise inactive; ERROR
- *     issues are the validation errors; the live price and quantity are the
- *     commercial observation. A listing Amazon no longer has (404) is `ended`.
+ *     fulfilment and issues: `BUYABLE` is active, otherwise inactive; a
+ *     listing with no status for the primary marketplace yet and no ERROR
+ *     issue is still being processed (`activating`); ERROR issues are the
+ *     validation errors; the live price and quantity are the commercial
+ *     observation. A listing Amazon no longer has (404) is `ended`, so a 404
+ *     read right after a create closes that record.
  *
  * Reads and the FBA check use the first configured marketplace; a listing that
  * exists only in another one is not listed.
@@ -354,14 +357,14 @@ export class AmazonOfferManagerAdapter
       throw error;
     }
     const marketplaceId = this.primaryMarketplace();
-    const summary = item.summaries?.find((entry) => entry.marketplaceId === marketplaceId) ?? item.summaries?.[0];
+    const summary = item.summaries?.find((entry) => entry.marketplaceId === marketplaceId);
     const errors = (item.issues ?? []).filter((issue) => issue.severity === 'ERROR');
     const offer = item.offers?.find((entry) => entry.marketplaceId === marketplaceId && entry.offerType === 'B2C');
     const sellerStock = item.fulfillmentAvailability?.find(
       (entry) => entry.fulfillmentChannelCode === AMAZON_SELLER_FULFILLMENT_CHANNEL,
     );
     return {
-      publicationStatus: summary?.status.includes('BUYABLE') ? 'active' : 'inactive',
+      publicationStatus: readPublicationStatus(summary, errors.length > 0),
       validationErrors: errors.map((issue) => ({
         code: issue.code,
         message: issue.message,
@@ -493,6 +496,24 @@ function isFulfilledByAmazon(item: AmazonListingItem): boolean {
   return (item.fulfillmentAvailability ?? []).some(
     (entry) => entry.fulfillmentChannelCode !== AMAZON_SELLER_FULFILLMENT_CHANNEL,
   );
+}
+
+/**
+ * Amazon reports a listing's status per marketplace only once it has processed
+ * the listing, minutes after answering `ACCEPTED`. Until then (no summary for
+ * the primary marketplace and no ERROR issue) the listing is still being
+ * processed, `activating`, so the creation poll waits instead of closing a new
+ * listing as a draft, as Allegro does while its create operation runs. ERROR
+ * issues mean Amazon has refused it.
+ */
+function readPublicationStatus(
+  summary: { readonly status: readonly string[] } | undefined,
+  hasErrors: boolean,
+): OfferStatusReadResult['publicationStatus'] {
+  if (summary === undefined) {
+    return hasErrors ? 'inactive' : 'activating';
+  }
+  return summary.status.includes('BUYABLE') ? 'active' : 'inactive';
 }
 
 /** The status and Amazon's error code, never the response body. */

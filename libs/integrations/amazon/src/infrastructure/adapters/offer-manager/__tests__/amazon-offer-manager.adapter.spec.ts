@@ -203,6 +203,33 @@ describe('AmazonOfferManagerAdapter.getOfferStatus', () => {
     await expect(adapter.getOfferStatus('MUG-BLUE')).resolves.toMatchObject({ publicationStatus: 'inactive' });
   });
 
+  it('should read a listing Amazon has not processed yet as activating', async () => {
+    const { adapter, get } = setup();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: fbmListing({ summaries: [], issues: [] }) });
+
+    await expect(adapter.getOfferStatus('MUG-NEW')).resolves.toMatchObject({
+      publicationStatus: 'activating',
+      validationErrors: [],
+    });
+  });
+
+  it('should read an unprocessed listing with an ERROR issue as inactive with that error', async () => {
+    const { adapter, get } = setup();
+    get.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: fbmListing({
+        summaries: [],
+        issues: [{ code: '90220', message: 'brand is required', severity: 'ERROR', attributeNames: ['brand'] }],
+      }),
+    });
+
+    await expect(adapter.getOfferStatus('MUG-NEW')).resolves.toMatchObject({
+      publicationStatus: 'inactive',
+      validationErrors: [{ code: '90220', message: 'brand is required', field: 'brand' }],
+    });
+  });
+
   it('should report a listing Amazon no longer has as ended', async () => {
     const { adapter, get } = setup();
     get.mockRejectedValue(new AmazonApiError(404, 'NOT_FOUND', 'Requested item not found', 'r'));
