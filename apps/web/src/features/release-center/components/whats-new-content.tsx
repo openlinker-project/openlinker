@@ -118,6 +118,7 @@ export function WhatsNewContent(): ReactElement {
       )}
       {releases.length > 1 ? (
         <nav className="whats-new__card whats-new__index" aria-label="Releases" lang="en">
+          {/* eslint-disable-next-line i18next/no-literal-string -- this index belongs to the English changelog (lang="en"), like the release entries it lists */}
           <h3>Releases</h3>
           <ul>
             {releases.map((release, i) => (

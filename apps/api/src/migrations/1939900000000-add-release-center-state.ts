@@ -18,8 +18,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddReleaseCenterState1939800000000 implements MigrationInterface {
-  name = 'AddReleaseCenterState1939800000000';
+export class AddReleaseCenterState1939900000000 implements MigrationInterface {
+  name = 'AddReleaseCenterState1939900000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

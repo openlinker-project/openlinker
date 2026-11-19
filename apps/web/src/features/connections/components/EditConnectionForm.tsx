@@ -559,7 +559,7 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
     if (seenUpdatedAtRef.current === connection.updatedAt) return;
     seenUpdatedAtRef.current = connection.updatedAt;
     if (!form.formState.isDirty) form.reset(buildDefaultValues());
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new server version should reset
+    // Only a new server version resets the form, so the effect depends on that alone (the react-hooks lint rule is not enabled in this repo).
   }, [connection.updatedAt]);
 
   const validationMessages = collectFormErrorMessages(form.formState.errors);
