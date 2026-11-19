@@ -56,6 +56,8 @@ export interface SettingsPageTemplateProps extends Omit<HTMLAttributes<HTMLDivEl
   wide?: boolean;
   /** Drops the card around the sections; for index screens made of rows. */
   plain?: boolean;
+  /** One column: no "on this page" rail beside the sections. */
+  singleColumn?: boolean;
   title: ReactNode;
   /** Condensed title shown above the contents once the big title scrolled away. */
   short: string;
@@ -83,7 +85,7 @@ function scrollBehavior(): ScrollBehavior {
 
 export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTemplateProps>(
   function SettingsPageTemplate(
-    { eyebrow, mark, wide = false, plain = false, title, short, description, sections, actions, readOnly = false, className = '', ...rest },
+    { eyebrow, mark, wide = false, plain = false, singleColumn = false, title, short, description, sections, actions, readOnly = false, className = '', ...rest },
     ref,
   ): ReactElement {
     const copy = useMessages('ui').settingsTemplate;
@@ -199,7 +201,12 @@ export const SettingsPageTemplate = forwardRef<HTMLDivElement, SettingsPageTempl
     };
 
     return (
-      <div ref={ref} className={['settings-page', className].filter(Boolean).join(' ')} {...rest}>
+      <div
+        ref={ref}
+        className={['settings-page', className].filter(Boolean).join(' ')}
+        data-single={singleColumn || undefined}
+        {...rest}
+      >
         <header className="settings-page__head" ref={headRef} data-condensed={condensed}>
           {mark ? <div className="settings-page__mark">{mark}</div> : null}
           <div className="settings-page__heading">

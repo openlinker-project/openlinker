@@ -53,6 +53,7 @@ import { promotionsRoute } from './promotions.route';
 import { returnsRoute } from './returns.route';
 import { assignPackingWorkLegacyRedirectRoute, fulfillmentRoute } from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
+import { releaseCenterSettingsRoute } from './release-center-settings.route';
 import { loginPageSettingsRoute } from './login-page-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { salesDocumentBatchRoute } from './sales-document-batch.route';
@@ -109,6 +110,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     webhookDeliveriesRoute,
     settingsRoute,
     operationalSettingsRoute,
+    releaseCenterSettingsRoute,
     loginPageSettingsRoute,
     salesDocumentsRoute,
     salesDocumentBatchRoute,

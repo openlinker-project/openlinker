@@ -1,9 +1,8 @@
 /**
  * Release Center Row
  *
- * Settings-index row for the release center switch. The switch itself lives on
- * the sync pacing page; this row only reports whether it is on, from the same
- * operational settings read the sync pacing row already makes.
+ * Settings-index row for the news and notifications switch. It opens the page of its own
+ * and reports whether the switch is on, from the same operational settings read.
  *
  * @module apps/web/src/features/settings/components
  */
@@ -26,7 +25,7 @@ function ReleaseCenterLive(): ReactElement {
       value={enabled === undefined ? undefined : enabled ? copy.on : copy.off}
       tone={enabled ? 'success' : 'muted'}
       dot
-      action={{ label: copy.open, to: '/settings/sync-pacing' }}
+      action={{ label: copy.open, to: '/settings/release-center' }}
     />
   );
 }

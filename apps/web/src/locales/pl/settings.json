@@ -215,35 +215,53 @@
     "suggestedMax": "zalecane ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterPage": {
+    "adminOnly": {
+      "message": "Te ustawienia zmienia administrator.",
+      "title": "Wymagana rola administratora"
+    },
+    "back": "Wróć do ustawień",
+    "description": "Zdecyduj, czy po aktualizacji użytkownicy widzą okno ze zmianami, karty nowości w dzwonku i przewodniki po nowych funkcjach.",
+    "error": {
+      "retry": "Spróbuj ponownie",
+      "title": "Nie udało się wczytać ustawień"
+    },
+    "eyebrow": "Dostęp i wygląd",
+    "loading": {
+      "message": "To potrwa chwilę.",
+      "title": "Wczytuję ustawienia"
+    },
+    "title": "Nowości po aktualizacji"
+  },
   "releaseCenterRow": {
-    "description": "Okno „co się zmieniło” po aktualizacji, dzwonek i przewodnik po nowych ustawieniach.",
+    "description": "Okno z listą zmian po aktualizacji, karty wydań w dzwonku i przewodniki po nowych funkcjach.",
     "off": "Wyłączone",
     "on": "Włączone",
-    "open": "Otwórz ustawienia centrum wydań",
-    "title": "Centrum wydań"
+    "open": "Otwórz ustawienia nowości po aktualizacji",
+    "title": "Nowości po aktualizacji"
   },
   "releaseCenterSection": {
-    "backToEnv": "Wróć do .env lub domyślnej",
+    "backToEnv": "Wróć do ustawienia serwera",
     "field": {
-      "ariaLabel": "Centrum zmian włączone lub wyłączone",
-      "description": "Po wyłączeniu znikają okno po aktualizacji, dzwonek i przewodnik. Historia zmian nadal jest na stronie „Co nowego”. Zmienną OL_RELEASE_CENTER_ENABLED czyta API, nie worker.",
-      "label": "Włącz centrum zmian"
+      "ariaLabel": "Nowości po aktualizacji włączone lub wyłączone",
+      "description": "Po wyłączeniu po aktualizacji nie pojawi się okno ze zmianami, a w dzwonku zniknie karta nowości z krokami do ustawienia i przewodnikami po nowych funkcjach. Dzwonek i pozostałe powiadomienia zostają. Lista zmian nadal jest na stronie „Co nowego”.",
+      "label": "Pokazuj nowości po aktualizacji"
     },
-    "lead": "Okno z listą zmian po aktualizacji, dzwonek powiadomień i przewodnik po nowych ustawieniach. Dotyczy wszystkich użytkowników instalacji.",
+    "lead": "Dotyczy wszystkich użytkowników instalacji.",
     "newChip": "Nowe",
     "reset": "Cofnij",
     "save": "Zapisz zmiany",
-    "saveFailed": "Nie udało się zapisać ustawienia centrum zmian.",
+    "saveFailed": "Nie udało się zapisać ustawienia.",
     "savedToast": {
-      "description": "Zacznie działać po następnym załadowaniu strony.",
-      "title": "Zapisano ustawienie centrum zmian"
+      "description": "U Ciebie działa od razu, u pozostałych użytkowników po odświeżeniu strony.",
+      "title": "Zapisano ustawienie"
     },
     "sourceLine": {
-      "default": "Źródło wartości: domyślne. Kolejność: ustawienie w bazie, potem zmienna OL_RELEASE_CENTER_ENABLED w .env, potem domyślnie włączone.",
-      "env": "Źródło wartości: zmienna OL_RELEASE_CENTER_ENABLED w środowisku API.",
-      "setting": "Źródło wartości: ustawione tutaj."
+      "default": "Teraz obowiązuje ustawienie domyślne: włączone.",
+      "env": "Teraz obowiązuje ustawienie serwera. Zapisz tutaj, żeby je zastąpić.",
+      "setting": "Ustawione tutaj."
     },
-    "title": "Centrum zmian po aktualizacji"
+    "title": "Nowości po aktualizacji"
   },
   "salesDocumentsPage": {
     "adminOnly": {

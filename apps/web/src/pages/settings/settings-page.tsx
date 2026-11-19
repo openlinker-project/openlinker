@@ -140,6 +140,7 @@ export function SettingsPage(): ReactElement {
     <SettingsPageFrame
       wide
       plain
+      singleColumn
       title={copy.title}
       short={tpl.settingsHome.short}
       description={copy.description}

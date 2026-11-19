@@ -209,35 +209,53 @@
     "suggestedMax": "suggested ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterPage": {
+    "adminOnly": {
+      "message": "An administrator changes these settings.",
+      "title": "Administrator role required"
+    },
+    "back": "Back to settings",
+    "description": "Decide whether people see the what-changed window, the news cards in the bell and the guides to new features after an update.",
+    "error": {
+      "retry": "Try again",
+      "title": "Could not load the settings"
+    },
+    "eyebrow": "Access and look",
+    "loading": {
+      "message": "This takes a moment.",
+      "title": "Loading settings"
+    },
+    "title": "Update news"
+  },
   "releaseCenterRow": {
-    "description": "The what changed dialog after an update, the bell and the guide to new settings.",
+    "description": "The window with what changed after an update, the release cards in the bell and the guides to new features.",
     "off": "Off",
     "on": "On",
-    "open": "Open release center settings",
-    "title": "Release center"
+    "open": "Open the update news settings",
+    "title": "Update news"
   },
   "releaseCenterSection": {
-    "backToEnv": "Back to .env or default",
+    "backToEnv": "Back to the server setting",
     "field": {
-      "ariaLabel": "Release center on or off",
-      "description": "When off, the update dialog, the bell and the guide are hidden. The change history stays on the What's new page. The OL_RELEASE_CENTER_ENABLED variable is read by the API, not the worker.",
-      "label": "Turn on the release center"
+      "ariaLabel": "Update news on or off",
+      "description": "When off, no what-changed window appears after an update, and the bell loses its news card with the steps to set up and the guides to new features. The bell and every other notification stay. The list of changes is still on the \"What's new\" page.",
+      "label": "Show news after an update"
     },
-    "lead": "The what changed dialog after an update, the notification bell and the guide to new settings. Applies to every user of the installation.",
+    "lead": "Applies to every user of this installation.",
     "newChip": "New",
     "reset": "Reset",
     "save": "Save changes",
-    "saveFailed": "The release center setting could not be saved.",
+    "saveFailed": "Could not save the setting.",
     "savedToast": {
-      "description": "It applies on the next page load.",
-      "title": "Release center setting saved"
+      "description": "It applies to you at once, and to everyone else after they reload the page.",
+      "title": "Setting saved"
     },
     "sourceLine": {
-      "default": "Value source: default. Order: stored setting, then OL_RELEASE_CENTER_ENABLED in .env, then on by default.",
-      "env": "Value source: OL_RELEASE_CENTER_ENABLED in the API environment.",
-      "setting": "Value source: set here."
+      "default": "The default is in force: on.",
+      "env": "The server setting is in force. Save here to replace it.",
+      "setting": "Set here."
     },
-    "title": "Release center after an update"
+    "title": "Update news"
   },
   "salesDocumentsPage": {
     "adminOnly": {

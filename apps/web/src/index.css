@@ -42578,3 +42578,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .msg[data-archived='true'] { border-color: var(--border-subtle); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--msg-accent) 50%, transparent); }
 @media (forced-colors: active) { .msg { box-shadow: inset 3px 0 0 CanvasText; } }
+/* A page can ask for one column: the sections alone, with no rail beside them. */
+.settings-page[data-single] .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
+.settings-page[data-single] .settings-page__toc { display: none; }
