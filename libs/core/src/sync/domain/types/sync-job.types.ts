@@ -498,6 +498,10 @@ export const JobOutcomeReasonValues = [
   // burned the ladder. Transient carrier errors (5xx, 408, 429) still retry.
   'auto_dispatch_carrier_refused',
   'auto_dispatch_preflight_failed',
+  // #4179: a notifications drain on a connection whose adapter has no inbound
+  // queue reader (no queue URL or no AWS access key). A configuration fact
+  // only an operator edit changes, so the job ends instead of retrying.
+  'notification_queue_not_configured',
 ] as const;
 
 /**

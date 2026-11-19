@@ -9,7 +9,9 @@
  * poll remains the delivery guarantee (see `IInboundQueueDrainService`).
  *
  * An adapter without a queue reader is a configuration fact, not a failure
- * that retrying fixes, so it ends the job as a business failure (ADR-007).
+ * that retrying fixes, so it ends the job as a business failure (ADR-007)
+ * with the reason `notification_queue_not_configured`, so the Jobs page says
+ * why instead of a bare "business failure".
  * Any other error retries on the ordinary ladder; messages not acknowledged
  * stay on the queue and arrive again.
  *
@@ -58,7 +60,7 @@ export class NotificationsDrainHandler implements SyncJobHandler {
         this.logger.warn(
           `marketplace.notifications.drain: connection ${job.connectionId} has no inbound queue reader`,
         );
-        return { outcome: 'business_failure' };
+        return { outcome: 'business_failure', outcomeReason: 'notification_queue_not_configured' };
       }
       const result = await this.drainService.drain({
         connection,

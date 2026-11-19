@@ -129,7 +129,8 @@
       "auto_dispatch_preflight_failed": "shipment data invalid",
       "auto_dispatch_shipment_claimed_by_sibling_work": "other parcel has label",
       "auto_dispatch_work_not_eligible": "order not ready",
-      "master_deleted": "source deleted"
+      "master_deleted": "source deleted",
+      "notification_queue_not_configured": "no queue set"
     },
     "statuses": {
       "dead": "dead",
