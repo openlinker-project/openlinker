@@ -33,6 +33,7 @@ function renderPanel(overrides: Partial<ConnectionSyncStatus> = {}): void {
     attemptDurationSampleSize: 0,
     lastCursorAdvanceAt: null,
     orderSyncStartedAt: null,
+    orderImport: null,
     observationWindowMs: HOUR,
     alertHorizonMs: DAY,
     historyWindowMs: 7 * DAY,

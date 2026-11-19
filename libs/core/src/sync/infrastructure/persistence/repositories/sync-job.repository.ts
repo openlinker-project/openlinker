@@ -24,7 +24,10 @@ import type { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repos
 import { SyncJob } from '../../../domain/entities/sync-job.entity';
 import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
 import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
-import type { ConnectionBacklogStats } from '../../../domain/types/connection-sync-status.types';
+import type {
+  ConnectionBacklogStats,
+  OrderImportStats,
+} from '../../../domain/types/connection-sync-status.types';
 import type {
   JobOutcome,
   JobOutcomeReason,
@@ -694,6 +697,90 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       requeuedJobIds,
       count: requeuedJobIds.length,
       skipped: candidateIds.length - requeuedJobIds.length,
+    };
+  }
+
+  async getOrderImportStats(
+    connectionId: string,
+    since24h: Date,
+    since7d: Date
+  ): Promise<OrderImportStats> {
+    // Two small aggregates. The order-job one is bounded by the 7 day floor on the
+    // (connectionId, createdAt) index; the active-import one reads only queued and
+    // running rows, so it scales with the live queue, never with history.
+    const ordersSql = `
+      SELECT
+        COUNT(*) FILTER (
+          WHERE status = 'succeeded' AND "updatedAt" >= $2
+        )::int AS imported_24h,
+        COUNT(*) FILTER (WHERE status = 'dead')::int AS failed_7d,
+        COUNT(*) FILTER (WHERE status IN ('queued', 'running'))::int AS waiting,
+        MAX("updatedAt") FILTER (WHERE status = 'succeeded') AS last_imported_at
+      FROM sync_jobs
+      WHERE "connectionId" = $1
+        AND "jobType" = 'marketplace.order.sync'
+        AND "createdAt" >= $3
+    `;
+    const importSql = `
+      WITH active AS (
+        SELECT "payloadJson" AS payload
+        FROM sync_jobs
+        WHERE "connectionId" = $1
+          AND "jobType" = 'marketplace.orders.import'
+          AND status IN ('queued', 'running')
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      )
+      SELECT
+        a.payload->>'runId' AS run_id,
+        a.payload->>'direction' AS direction,
+        a.payload->>'from' AS from_day,
+        a.payload->>'to' AS to_day,
+        (
+          SELECT COUNT(*)::int FROM sync_jobs s
+          WHERE s."connectionId" = $1
+            AND s."jobType" = 'marketplace.orders.import'
+            AND s.status = 'succeeded'
+            AND s."createdAt" >= $2
+            AND s."payloadJson"->>'runId' = a.payload->>'runId'
+        ) AS pages_done,
+        (
+          SELECT MIN(s."createdAt") FROM sync_jobs s
+          WHERE s."connectionId" = $1
+            AND s."jobType" = 'marketplace.orders.import'
+            AND s."createdAt" >= $2
+            AND s."payloadJson"->>'runId' = a.payload->>'runId'
+        ) AS started_at
+      FROM active a
+    `;
+    const [orderRows, importRows] = await Promise.all([
+      this.dataSource.query<Array<Record<string, unknown>>>(ordersSql, [
+        connectionId,
+        since24h,
+        since7d,
+      ]),
+      // The run's pages are only counted back to the 7 day floor: a run still
+      // going after a week is reported with the pages it has shown this week.
+      this.dataSource.query<Array<Record<string, unknown>>>(importSql, [connectionId, since7d]),
+    ]);
+    const o = orderRows[0] ?? {};
+    const a = importRows[0];
+    return {
+      importedLast24h: Number(o.imported_24h ?? 0),
+      failedLast7d: Number(o.failed_7d ?? 0),
+      waiting: Number(o.waiting ?? 0),
+      lastImportedAt: o.last_imported_at ? new Date(o.last_imported_at as string) : null,
+      activeImport:
+        a && typeof a.run_id === 'string'
+          ? {
+              runId: a.run_id,
+              direction: a.direction === 'newest-first' ? 'newest-first' : 'oldest-first',
+              from: typeof a.from_day === 'string' ? a.from_day : null,
+              to: typeof a.to_day === 'string' ? a.to_day : null,
+              pagesDone: Number(a.pages_done ?? 0),
+              startedAt: a.started_at ? new Date(a.started_at as string) : new Date(),
+            }
+          : null,
     };
   }
 

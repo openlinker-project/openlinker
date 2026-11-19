@@ -29,6 +29,7 @@ function status(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSyncSt
     attemptDurationSampleSize: 0,
     lastCursorAdvanceAt: null,
     orderSyncStartedAt: null,
+    orderImport: null,
     observationWindowMs: HOUR,
     alertHorizonMs: 24 * HOUR,
     historyWindowMs: 7 * 24 * HOUR,
@@ -104,5 +105,46 @@ describe('ConnectionSyncStatusController', () => {
     expect(dto.lastCursorAdvanceAt).toBeNull();
     expect(dto.orderSyncStartedAt).toBeNull();
     expect(dto.status).toBe('idle');
+  });
+
+  it('should project the order import figures with ISO dates, and keep an unreadable read null', async () => {
+    service.getConnectionSyncStatus.mockResolvedValue(
+      status({
+        orderImport: {
+          importedLast24h: 12,
+          failedLast7d: 1,
+          waiting: 3,
+          lastImportedAt: new Date('2026-08-20T09:00:00.000Z'),
+          activeImport: {
+            runId: 'run-1',
+            direction: 'newest-first',
+            from: '2026-10-01',
+            to: null,
+            pagesDone: 4,
+            startedAt: new Date('2026-08-20T08:00:00.000Z'),
+          },
+        },
+      })
+    );
+
+    const dto = await controller.getSyncStatus('conn-1');
+
+    expect(dto.orderImport).toEqual({
+      importedLast24h: 12,
+      failedLast7d: 1,
+      waiting: 3,
+      lastImportedAt: '2026-08-20T09:00:00.000Z',
+      activeImport: {
+        runId: 'run-1',
+        direction: 'newest-first',
+        from: '2026-10-01',
+        to: null,
+        pagesDone: 4,
+        startedAt: '2026-08-20T08:00:00.000Z',
+      },
+    });
+
+    service.getConnectionSyncStatus.mockResolvedValue(status());
+    expect((await controller.getSyncStatus('conn-1')).orderImport).toBeNull();
   });
 });

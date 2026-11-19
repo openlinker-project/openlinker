@@ -26,7 +26,13 @@ import { Logger } from '@openlinker/shared/logging';
 import { SYNC_CURSORS_SERVICE_TOKEN, SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import { ISyncCursorsService } from './sync-cursors.service.interface';
-import type { ConnectionSyncStatus } from '../../domain/types/connection-sync-status.types';
+import type {
+  ConnectionSyncStatus,
+  OrderImportStatus,
+} from '../../domain/types/connection-sync-status.types';
+
+const ORDER_IMPORT_RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ORDER_IMPORT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 import {
   BACKLOG_ALERT_HORIZON_MS,
   BACKLOG_HISTORY_WINDOW_MS,
@@ -52,10 +58,11 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
     const windowStart = new Date(now.getTime() - BACKLOG_OBSERVATION_WINDOW_MS);
     const historyStart = new Date(now.getTime() - BACKLOG_HISTORY_WINDOW_MS);
 
-    const [stats, lastCursorAdvanceAt, orderSyncStartedAt] = await Promise.all([
+    const [stats, lastCursorAdvanceAt, orderSyncStartedAt, orderImport] = await Promise.all([
       this.readStatsSafely(connectionId, windowStart, historyStart, now),
       this.readCursorSafely(connectionId),
       this.readOrderSyncStartSafely(connectionId),
+      this.readOrderImportSafely(connectionId, now),
     ]);
 
     if (stats === null) {
@@ -82,6 +89,7 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
         attemptDurationSampleSize: 0,
         lastCursorAdvanceAt,
         orderSyncStartedAt,
+        orderImport,
         observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
         alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
         historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
@@ -115,6 +123,7 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
       attemptDurationSampleSize: stats.attemptDurationSampleSize,
       lastCursorAdvanceAt,
       orderSyncStartedAt,
+      orderImport,
       observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
       alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
       historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
@@ -175,6 +184,28 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
     } catch (error) {
       this.logger.warn(
         `Could not read order sync start for connection ${connectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
+  }
+
+  private async readOrderImportSafely(
+    connectionId: string,
+    now: Date
+  ): Promise<OrderImportStatus | null> {
+    // Supplementary like the cursor recency: a failed read is reported as unknown
+    // (null), never as zero orders, so the panel can say it could not tell.
+    try {
+      return await this.jobRepository.getOrderImportStats(
+        connectionId,
+        new Date(now.getTime() - ORDER_IMPORT_RECENT_WINDOW_MS),
+        new Date(now.getTime() - ORDER_IMPORT_HISTORY_WINDOW_MS)
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read order import figures for connection ${connectionId}: ${
           error instanceof Error ? error.message : String(error)
         }`
       );

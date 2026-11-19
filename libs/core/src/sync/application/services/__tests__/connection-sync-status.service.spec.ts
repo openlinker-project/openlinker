@@ -31,18 +31,26 @@ function stats(overrides: Partial<ConnectionBacklogStats> = {}): ConnectionBackl
 describe('ConnectionSyncStatusService', () => {
   let service: ConnectionSyncStatusService;
   let getConnectionBacklogStats: jest.Mock;
+  let getOrderImportStats: jest.Mock;
   let getMostRecentCursorUpdate: jest.Mock;
   let getCursorValuesByKeySuffix: jest.Mock;
 
   beforeEach(async () => {
     getConnectionBacklogStats = jest.fn().mockResolvedValue(stats());
+    getOrderImportStats = jest.fn().mockResolvedValue({
+      importedLast24h: 0,
+      failedLast7d: 0,
+      waiting: 0,
+      lastImportedAt: null,
+      activeImport: null,
+    });
     getMostRecentCursorUpdate = jest.fn().mockResolvedValue(null);
     getCursorValuesByKeySuffix = jest.fn().mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionSyncStatusService,
-        { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: { getConnectionBacklogStats } },
+        { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: { getConnectionBacklogStats, getOrderImportStats } },
         { provide: SYNC_CURSORS_SERVICE_TOKEN, useValue: { getMostRecentCursorUpdate, getCursorValuesByKeySuffix }, },
       ],
     }).compile();
@@ -187,5 +195,29 @@ describe('ConnectionSyncStatusService', () => {
     const result = await service.getConnectionSyncStatus(CONNECTION_ID);
 
     expect(result.alerting).toBe(false);
+  });
+
+  it('should report the order import figures read from the job rows', async () => {
+    const figures = {
+      importedLast24h: 40,
+      failedLast7d: 2,
+      waiting: 5,
+      lastImportedAt: new Date('2026-11-18T09:00:00.000Z'),
+      activeImport: null,
+    };
+    getOrderImportStats.mockResolvedValue(figures);
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(result.orderImport).toEqual(figures);
+  });
+
+  it('should report an unreadable order import as null, never as zero orders', async () => {
+    getOrderImportStats.mockRejectedValue(new Error('db down'));
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(result.orderImport).toBeNull();
+    expect(result.status).not.toBe('unknown');
   });
 });

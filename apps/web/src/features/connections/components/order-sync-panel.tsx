@@ -23,6 +23,7 @@ import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../api/connections.types';
+import { OrderImportHealth } from './order-import-health';
 import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
 
 interface OrderSyncPanelProps {
@@ -111,7 +112,11 @@ export function OrderSyncPanel({
               </p>
             </div>
           </div>
-          {statusOnly ? null : <p className="order-sync-panel__note">{copy.note}</p>}
+          {statusOnly ? (
+            <OrderImportHealth orderImport={data.orderImport} />
+          ) : (
+            <p className="order-sync-panel__note">{copy.note}</p>
+          )}
         </>
       ) : null}
       {statusOnly ? null : (

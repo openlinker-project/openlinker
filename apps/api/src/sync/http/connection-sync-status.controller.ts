@@ -74,6 +74,22 @@ export class ConnectionSyncStatusController {
       status.lastCursorAdvanceAt === null ? null : status.lastCursorAdvanceAt.toISOString();
     dto.orderSyncStartedAt =
       status.orderSyncStartedAt === null ? null : status.orderSyncStartedAt.toISOString();
+    dto.orderImport =
+      status.orderImport === null
+        ? null
+        : {
+            importedLast24h: status.orderImport.importedLast24h,
+            failedLast7d: status.orderImport.failedLast7d,
+            waiting: status.orderImport.waiting,
+            lastImportedAt: status.orderImport.lastImportedAt?.toISOString() ?? null,
+            activeImport:
+              status.orderImport.activeImport === null
+                ? null
+                : {
+                    ...status.orderImport.activeImport,
+                    startedAt: status.orderImport.activeImport.startedAt.toISOString(),
+                  },
+          };
     dto.observationWindowMs = status.observationWindowMs;
     dto.alertHorizonMs = status.alertHorizonMs;
     dto.historyWindowMs = status.historyWindowMs;

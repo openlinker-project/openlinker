@@ -70,6 +70,9 @@ export {
 export type {
   ConnectionBacklogStatus,
   ConnectionBacklogStats,
+  ActiveOrderImport,
+  OrderImportStats,
+  OrderImportStatus,
   ConnectionSyncStatus,
 } from './domain/types/connection-sync-status.types';
 export {

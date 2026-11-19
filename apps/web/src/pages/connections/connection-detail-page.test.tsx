@@ -399,6 +399,7 @@ describe('ConnectionDetailPage', () => {
             attemptDurationSampleSize: 0,
             lastCursorAdvanceAt: null,
             orderSyncStartedAt: '2026-11-18T08:00:00.000Z',
+            orderImport: null,
             observationWindowMs: 3600000,
             alertHorizonMs: 86400000,
             historyWindowMs: 604800000,

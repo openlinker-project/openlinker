@@ -412,6 +412,24 @@ export const CONNECTION_BACKLOG_STATUS_VALUES = [
 
 export type ConnectionBacklogStatus = (typeof CONNECTION_BACKLOG_STATUS_VALUES)[number];
 
+export interface ActiveOrderImport {
+  runId: string;
+  direction: 'oldest-first' | 'newest-first';
+  from: string | null;
+  to: string | null;
+  /** Pages read so far; the total is unknown. */
+  pagesDone: number;
+  startedAt: string;
+}
+
+export interface OrderImportStatus {
+  importedLast24h: number;
+  failedLast7d: number;
+  waiting: number;
+  lastImportedAt: string | null;
+  activeImport: ActiveOrderImport | null;
+}
+
 export interface ConnectionSyncStatus {
   connectionId: string;
   generatedAt: string;
@@ -441,6 +459,8 @@ export interface ConnectionSyncStatus {
   lastCursorAdvanceAt: string | null;
   /** When order sync was started from now; null means no start was recorded. */
   orderSyncStartedAt: string | null;
+  /** How the order import is doing; null means the figures could not be read. */
+  orderImport: OrderImportStatus | null;
   observationWindowMs: number;
   alertHorizonMs: number;
   historyWindowMs: number;

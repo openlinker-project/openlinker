@@ -208,6 +208,12 @@ export interface ConnectionSyncStatus {
    * or one whose adapter has no order feed. Null is an absence, never a date.
    */
   orderSyncStartedAt: Date | null;
+  /**
+   * How this connection's ORDER import is doing, read from its own jobs. Null
+   * when the figures could not be read: an unreadable answer is never rendered
+   * as zero orders.
+   */
+  orderImport: OrderImportStatus | null;
   /** The observation window used, so a consumer can state what the rates are over. */
   observationWindowMs: number;
   /** The alert horizon used, for the same reason. */
@@ -215,3 +221,34 @@ export interface ConnectionSyncStatus {
   /** How far back the historical figures look, in ms. */
   historyWindowMs: number;
 }
+
+/**
+ * A history or date-range import that is still running (#4228): the chain of
+ * `marketplace.orders.import` jobs of one run.
+ */
+export interface ActiveOrderImport {
+  runId: string;
+  direction: 'oldest-first' | 'newest-first';
+  /** First day of the window, or null when it starts at the beginning of history. */
+  from: string | null;
+  /** Last day of the window, or null when it runs up to the newest order. */
+  to: string | null;
+  /** Pages already read. The total is unknown: the source does not say how many orders it holds. */
+  pagesDone: number;
+  startedAt: Date;
+}
+
+/** The raw per-connection order-import figures, aggregated from `sync_jobs`. */
+export interface OrderImportStats {
+  /** `marketplace.order.sync` jobs that succeeded in the last 24 hours. */
+  importedLast24h: number;
+  /** `marketplace.order.sync` jobs that ended dead in the last 7 days. */
+  failedLast7d: number;
+  /** `marketplace.order.sync` jobs queued or running right now. */
+  waiting: number;
+  /** When an order was last imported (within the last 7 days), or null. */
+  lastImportedAt: Date | null;
+  activeImport: ActiveOrderImport | null;
+}
+
+export type OrderImportStatus = OrderImportStats;
