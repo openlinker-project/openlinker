@@ -373,8 +373,8 @@ describe('ConnectionDetailPage', () => {
     });
   });
 
-  describe('order sync panel on the Health tab (#4228)', () => {
-    async function openHealth(connection: Connection): Promise<void> {
+  describe('order sync panel on the Health and Actions tabs (#4228)', () => {
+    async function openTab(connection: Connection, tab: 'Health' | 'Actions'): Promise<void> {
       const user = userEvent.setup();
       const apiClient = createMockApiClient({
         connections: {
@@ -406,22 +406,31 @@ describe('ConnectionDetailPage', () => {
         },
       });
       await renderDetailPage(connection, apiClient);
-      await user.click(screen.getByRole('tab', { name: 'Health' }));
-      await screen.findByRole('heading', { name: 'Diagnostics' });
+      await user.click(screen.getByRole('tab', { name: tab }));
     }
 
-    it('should show the order sync panel for an order source connection', async () => {
-      await openHealth(
-        makeAllegro({ enabledCapabilities: ['OfferManager', 'OrderSource'] }),
-      );
+    const orderSource = (): Connection =>
+      makeAllegro({ enabledCapabilities: ['OfferManager', 'OrderSource'] });
 
-      expect(await screen.findByRole('heading', { name: 'Order sync' })).toBeInTheDocument();
+    it('should show the import status, without the change control, on the Health tab', async () => {
+      await openTab(orderSource(), 'Health');
+
+      expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
+      expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Change start/ })).not.toBeInTheDocument();
+    });
+
+    it('should carry the full panel, with its note, on the Actions tab', async () => {
+      await openTab(orderSource(), 'Actions');
+
+      expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
+      expect(await screen.findByText(/stay in the shop/)).toBeInTheDocument();
     });
 
     it('should not show the order sync panel for a connection that is not an order source', async () => {
-      await openHealth(makeAllegro());
+      await openTab(makeAllegro(), 'Health');
 
-      expect(screen.queryByRole('heading', { name: 'Order sync' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Order import' })).not.toBeInTheDocument();
     });
   });
 

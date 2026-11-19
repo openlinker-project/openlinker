@@ -27,9 +27,14 @@ import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
 
 interface OrderSyncPanelProps {
   connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'>;
+  /** Health tab: state only. The Actions tab carries the control that changes it. */
+  statusOnly?: boolean;
 }
 
-export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElement {
+export function OrderSyncPanel({
+  connection,
+  statusOnly = false,
+}: OrderSyncPanelProps): ReactElement {
   const connectionId = connection.id;
   const [restartOpen, setRestartOpen] = useState(false);
   const demoMode = useDemoMode();
@@ -47,7 +52,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
           <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title">{copy.title}</h3>
         </div>
-        {write.visible ? (
+        {write.visible && !statusOnly ? (
           <Button
             tone="secondary"
             onClick={() => setRestartOpen(true)}
@@ -106,14 +111,16 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               </p>
             </div>
           </div>
-          <p className="order-sync-panel__note">{copy.note}</p>
+          {statusOnly ? null : <p className="order-sync-panel__note">{copy.note}</p>}
         </>
       ) : null}
-      <OrderSyncRestartDialog
-        connection={connection}
-        open={restartOpen}
-        onOpenChange={setRestartOpen}
-      />
+      {statusOnly ? null : (
+        <OrderSyncRestartDialog
+          connection={connection}
+          open={restartOpen}
+          onOpenChange={setRestartOpen}
+        />
+      )}
     </div>
   );
 }

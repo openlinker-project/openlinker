@@ -50,7 +50,7 @@ export class ConnectionDetailPage {
   }
 
   /**
-   * The "Order sync" panel on the health tab (#4228): its heading and the
+   * The "Order import" panel (status on the health tab, change-start on the actions tab) (#4228): its heading and the
    * "New" row that says the feed is syncing. Selectors are role/text based, so
    * they follow the operator-visible copy rather than any class name.
    */

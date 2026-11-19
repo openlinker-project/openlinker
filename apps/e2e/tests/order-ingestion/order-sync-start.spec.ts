@@ -321,7 +321,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
     );
   });
 
-  test('the connection health tab shows the Order sync panel with a Live row', async ({
+  test('the connection health tab shows the order import status', async ({
     page,
     pages,
   }) => {
