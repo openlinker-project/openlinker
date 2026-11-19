@@ -46,6 +46,7 @@ export const tokens = {
   'shell-topbar-height': 'var(--shell-topbar-height)',
   'ui-zoom': 'var(--ui-zoom)',
   'ui-vh': 'var(--ui-vh)',
+  'ui-vw': 'var(--ui-vw)',
   'ui-dvh': 'var(--ui-dvh)',
   'layout-max-width': 'var(--layout-max-width)',
   'demo-banner-height': 'var(--demo-banner-height)',
