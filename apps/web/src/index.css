@@ -15773,6 +15773,23 @@ a.kpi-card:focus-visible {
   outline: none;
 }
 
+/* Floating slide-out (`floatReveal`): fixed to the viewport so a clipping
+ * ancestor cannot cut it, with the side chosen in script from the free room. */
+.connection-chip--float .connection-chip__reveal {
+  position: fixed;
+  top: var(--reveal-y, 0);
+  left: var(--reveal-x, 0);
+}
+.connection-chip--float[data-side='left'] .connection-chip__reveal {
+  padding: 0 calc(var(--chip-overlap) + 7px) 0 8px;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  clip-path: inset(-12px 0 -12px 100%);
+}
+.connection-chip--float[data-side='left']:hover .connection-chip__reveal,
+.connection-chip--float[data-side='left']:focus-visible .connection-chip__reveal {
+  clip-path: inset(-12px 0 -12px -12px);
+}
+
 .connection-chip--link:focus-visible .connection-chip__face {
   box-shadow: var(--shadow-focus);
 }

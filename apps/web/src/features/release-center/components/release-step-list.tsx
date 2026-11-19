@@ -96,6 +96,7 @@ export function ReleaseStepList({
           connectionId={instance.connectionId}
           name={connection?.name ?? instance.connectionName}
           loading={connections.isLoading}
+          floatReveal
           channel={{
             platformType,
             label: platformType ? resolvePlatformLabel(platforms, platformType) : null,
