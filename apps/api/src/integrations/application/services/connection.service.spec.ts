@@ -74,7 +74,11 @@ describe('ConnectionService', () => {
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let destinationTaxonomy: jest.Mocked<IDestinationTaxonomyService>;
   let locations: jest.Mocked<ILocationService>;
-  let syncCursors: { advanceCursor: jest.Mock; deleteOrderFeedCursors: jest.Mock };
+  let syncCursors: {
+    advanceCursor: jest.Mock;
+    deleteOrderFeedCursors: jest.Mock;
+    hasOrderFeedCursor: jest.Mock;
+  };
   let credentials: jest.Mocked<ICredentialsService>;
   let testerRegistry: ConnectionTesterRegistryService;
   let mockTester: jest.Mocked<ConnectionTesterPort>;
@@ -235,6 +239,7 @@ describe('ConnectionService', () => {
     const mockSyncCursors = {
       advanceCursor: jest.fn().mockResolvedValue(undefined),
       deleteOrderFeedCursors: jest.fn().mockResolvedValue(['prestashop.orders.dateUpd']),
+      hasOrderFeedCursor: jest.fn().mockResolvedValue(true),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -2716,6 +2721,31 @@ describe('ConnectionService', () => {
         'connection-123',
         'orders.syncStart',
         expect.stringContaining('all')
+      );
+    });
+
+    it('should change nothing when "new orders only" is asked of a feed that already has a position', async () => {
+      connectionPort.get.mockResolvedValue(orderConnection());
+      syncCursors.hasOrderFeedCursor.mockResolvedValue(true);
+
+      await service.restartOrderSync('connection-123', { mode: 'now' });
+
+      // Resetting to the shop's head would skip every order placed since the last check.
+      expect(syncCursors.deleteOrderFeedCursors).not.toHaveBeenCalled();
+      expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+    });
+
+    it('should seed "new orders only" normally when the feed has no position yet', async () => {
+      connectionPort.get.mockResolvedValue(orderConnection());
+      syncCursors.hasOrderFeedCursor.mockResolvedValue(false);
+
+      await service.restartOrderSync('connection-123', { mode: 'now' });
+
+      expect(syncCursors.deleteOrderFeedCursors).toHaveBeenCalledWith('connection-123');
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+        'connection-123',
+        'orders.syncStart',
+        expect.stringContaining('now')
       );
     });
 

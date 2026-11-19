@@ -61,6 +61,8 @@ export interface PopoverOnHoverProps {
   children: ReactNode;
   /** Small muted heading above the content. */
   title?: ReactNode;
+  /** Names the panel for assistive technology; the panel holds structured text, not a tooltip. */
+  ariaLabel?: string;
   width?: number;
   placement?: PopoverPlacement;
   align?: PopoverAlign;
@@ -77,6 +79,7 @@ export function PopoverOnHover({
   trigger,
   children,
   title,
+  ariaLabel,
   width = DEFAULT_WIDTH,
   placement = 'down',
   align = 'center',
@@ -177,7 +180,8 @@ export function PopoverOnHover({
       >
         <div
           id={bodyId}
-          role="tooltip"
+          role="region"
+          aria-label={ariaLabel}
           className="popover-on-hover__body"
           onPointerEnter={clearTimer}
           onPointerLeave={() => later(hide, closeDelayMs)}

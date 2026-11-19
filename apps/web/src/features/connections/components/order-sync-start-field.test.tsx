@@ -41,7 +41,7 @@ describe('OrderSyncStartField', () => {
     renderWithProviders(<Harness />);
     expect(screen.getByRole('radio', { name: /New orders only/ })).toHaveAttribute(
       'aria-checked',
-      'true',
+      'true'
     );
     expect(screen.getByText(/Orders already in the shop stay there/)).toBeInTheDocument();
   });
@@ -58,7 +58,9 @@ describe('OrderSyncStartField', () => {
   });
 
   it('shows the field error for a bad date', () => {
-    renderWithProviders(<Harness initial={{ mode: 'from', from: '' }} error="Choose a day before today" />);
+    renderWithProviders(
+      <Harness initial={{ mode: 'from', from: '' }} error="Choose a day before today" />
+    );
     expect(screen.getByText('Choose a day before today')).toBeInTheDocument();
   });
 
@@ -74,7 +76,15 @@ describe('OrderSyncStartField', () => {
     fireEvent.focus(screen.getByRole('button', { name: 'What happens to old orders' }));
     expect(await screen.findByText('Old orders are handled like new ones')).toBeInTheDocument();
     expect(screen.getByText(/copied again to every connected shop/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'What happens to old orders' })).toBeInTheDocument();
+    expect(screen.getByText(/Want exact analytics over your whole history/)).toBeInTheDocument();
+  });
+
+  it('explains why new orders only is recommended, and the analytics trade-off', async () => {
+    renderWithProviders(<Harness />);
+    expect(screen.queryByText('Why we recommend this')).not.toBeInTheDocument();
+    fireEvent.focus(screen.getByRole('button', { name: 'Why this is recommended' }));
+    expect(await screen.findByText('Why we recommend this')).toBeInTheDocument();
+    expect(screen.getByText(/You still have to import every order/)).toBeInTheDocument();
   });
 
   it('closes the warning on Escape and leaves the card choice alone', async () => {
@@ -86,7 +96,7 @@ describe('OrderSyncStartField', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onValue).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(screen.queryByText('Old orders are handled like new ones')).not.toBeInTheDocument(),
+      expect(screen.queryByText('Old orders are handled like new ones')).not.toBeInTheDocument()
     );
   });
 
@@ -102,10 +112,12 @@ describe('OrderSyncStartField', () => {
 
   it('moves between enabled cards with the arrow keys, skipping a disabled one', () => {
     renderWithProviders(<Harness supportedModes={['now', 'all']} />);
-    fireEvent.keyDown(screen.getByRole('radio', { name: /New orders only/ }), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('radio', { name: /New orders only/ }), {
+      key: 'ArrowRight',
+    });
     expect(screen.getByRole('radio', { name: /Every order the shop has/ })).toHaveAttribute(
       'aria-checked',
-      'true',
+      'true'
     );
   });
 });

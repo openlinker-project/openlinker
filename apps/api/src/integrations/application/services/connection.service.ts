@@ -1229,6 +1229,15 @@ export class ConnectionService implements IConnectionService {
       adapterKey: connection.adapterKey,
     });
     this.assertOrderSyncStart(start, metadata.orderSyncStartModes, connection.enabledCapabilities);
+    // "New orders only" on a feed that already has a position is what the feed is doing:
+    // it reads on from its last check. Resetting it to the shop's head would skip every
+    // order placed since that check, so there is nothing to reset.
+    if (start.mode === 'now' && (await this.syncCursors.hasOrderFeedCursor(connectionId))) {
+      this.logger.log(
+        `Order sync for connection ${connectionId} already imports new orders from its last check; nothing to reset`
+      );
+      return;
+    }
     const removed = await this.syncCursors.deleteOrderFeedCursors(connectionId);
     await this.storeOrderSyncStart(connection, start);
     this.logger.log(

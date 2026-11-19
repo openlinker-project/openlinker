@@ -13,7 +13,9 @@ import { useId, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
-import { WarningPopoverTooltip } from '../../../shared/ui/warning-popover-tooltip';
+import { IconWithOnHoverPopoverTooltip } from '../../../shared/ui/icon-with-popover-tooltip';
+import { InfoIcon, WarningIcon } from '../../../shared/ui/icons';
+import { PopoverCard } from '../../../shared/ui/popover-card';
 import type { OrderSyncStartMode } from '../api/connections.types';
 import {
   earliestOrderSyncStartDate,
@@ -66,7 +68,8 @@ export function OrderSyncStartField({
     event.preventDefault();
     const index = enabledModes.indexOf(mode);
     if (index < 0) return;
-    const next = enabledModes[(index + (forward ? 1 : -1) + enabledModes.length) % enabledModes.length];
+    const next =
+      enabledModes[(index + (forward ? 1 : -1) + enabledModes.length) % enabledModes.length];
     select(next);
     cardRefs.current[next]?.focus();
   }
@@ -95,56 +98,81 @@ export function OrderSyncStartField({
           const descriptionId = `${groupId}-${mode}`;
           const card = copy.modes[mode];
           return (
-            <div
-              key={mode}
-              ref={(node) => {
-                cardRefs.current[mode] = node;
-              }}
-              role="radio"
-              aria-checked={checked}
-              aria-disabled={disabled || undefined}
-              aria-describedby={descriptionId}
-              tabIndex={disabled ? -1 : tabStop === mode ? 0 : -1}
-              className={[
-                'platform-picker__card',
-                'order-sync-start__card',
-                checked ? 'order-sync-start__card--checked' : '',
-                disabled ? 'order-sync-start__card--disabled' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              onClick={() => select(mode)}
-              onKeyDown={(event) => handleKeyDown(event, mode)}
-            >
-              <div className="platform-picker__card-header">
-                <h4 className="platform-picker__card-title">{card.title}</h4>
-                {mode === 'all' && !disabled ? (
-                  // The icon sits inside a card that selects on click and on Enter/Space;
-                  // the icon has its own Enter/Space (it opens the panel), so the card must
-                  // not also hear them.
-                  <span onKeyDown={(event) => event.stopPropagation()}>
-                    <WarningPopoverTooltip
+            <div key={mode} className="order-sync-start__option">
+              <div
+                ref={(node) => {
+                  cardRefs.current[mode] = node;
+                }}
+                role="radio"
+                aria-checked={checked}
+                aria-disabled={disabled || undefined}
+                aria-describedby={descriptionId}
+                tabIndex={disabled ? -1 : tabStop === mode ? 0 : -1}
+                className={[
+                  'platform-picker__card',
+                  'order-sync-start__card',
+                  checked ? 'order-sync-start__card--checked' : '',
+                  disabled ? 'order-sync-start__card--disabled' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => select(mode)}
+                onKeyDown={(event) => handleKeyDown(event, mode)}
+              >
+                <div className="platform-picker__card-header">
+                  <h4 className="platform-picker__card-title">{card.title}</h4>
+                </div>
+                <p id={descriptionId} className="platform-picker__card-description">
+                  {card.description}
+                  {disabled ? (
+                    <span className="order-sync-start__reason"> {copy.unsupported[mode]}</span>
+                  ) : null}
+                </p>
+              </div>
+              {!disabled && (mode === 'now' || mode === 'all') ? (
+                <span className="order-sync-start__tip">
+                  {mode === 'all' ? (
+                    <IconWithOnHoverPopoverTooltip
+                      icon={<WarningIcon />}
+                      tone="warning"
                       label={copy.all.warningLabel}
+                      align="end"
+                      width={360}
+                    >
+                      <PopoverCard
+                        tone="warning"
+                        icon={<WarningIcon />}
+                        title={copy.all.warningTitle}
+                        summary={copy.all.summary}
+                        items={[
+                          copy.all.orders,
+                          copy.all.documents,
+                          copy.all.stock,
+                          copy.all.delay,
+                        ]}
+                        footer={copy.all.analytics}
+                      />
+                    </IconWithOnHoverPopoverTooltip>
+                  ) : (
+                    <IconWithOnHoverPopoverTooltip
+                      icon={<InfoIcon />}
+                      tone="info"
+                      label={copy.now.infoLabel}
                       align="end"
                       width={340}
                     >
-                      <p className="popover-on-hover__title">{copy.all.warningTitle}</p>
-                      <ul className="popover-on-hover__list">
-                        <li>{copy.all.orders}</li>
-                        <li>{copy.all.documents}</li>
-                        <li>{copy.all.stock}</li>
-                        <li>{copy.all.delay}</li>
-                      </ul>
-                    </WarningPopoverTooltip>
-                  </span>
-                ) : null}
-              </div>
-              <p id={descriptionId} className="platform-picker__card-description">
-                {card.description}
-                {disabled ? (
-                  <span className="order-sync-start__reason"> {copy.unsupported[mode]}</span>
-                ) : null}
-              </p>
+                      <PopoverCard
+                        tone="info"
+                        icon={<InfoIcon />}
+                        title={copy.now.infoTitle}
+                        summary={copy.now.summary}
+                        items={[copy.now.noFlood, copy.now.noQueue, copy.now.noStock]}
+                        footer={copy.now.analytics}
+                      />
+                    </IconWithOnHoverPopoverTooltip>
+                  )}
+                </span>
+              ) : null}
             </div>
           );
         })}

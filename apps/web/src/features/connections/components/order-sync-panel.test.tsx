@@ -42,16 +42,20 @@ function makeStatus(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSy
   };
 }
 
-const CONNECTION = { id: 'conn_1', platformType: 'prestashop', adapterKey: 'prestashop.webservice.v1' };
+const CONNECTION = {
+  id: 'conn_1',
+  platformType: 'prestashop',
+  adapterKey: 'prestashop.webservice.v1',
+};
 
 type GetSyncStatus = (connectionId: string) => Promise<ConnectionSyncStatus>;
 
 function renderPanel(getSyncStatus: Mock<GetSyncStatus>): void {
   const apiClient = createMockApiClient({ connections: { getSyncStatus } });
   renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
-        apiClient,
-        sessionAdapter: createAuthenticatedSessionAdapter(),
-      });
+    apiClient,
+    sessionAdapter: createAuthenticatedSessionAdapter(),
+  });
 }
 
 afterEach(() => {
@@ -76,47 +80,58 @@ describe('OrderSyncPanel', () => {
     expect(await screen.findByText('Could not load order import')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByText('Importing')).toBeInTheDocument();
+    expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
   });
 
-  it('shows the live row with the start date when a start was recorded', async () => {
+  it('shows the start date and last check when a start was recorded', async () => {
     renderPanel(
       vi.fn<GetSyncStatus>().mockResolvedValue(
         makeStatus({
           orderSyncStartedAt: '2026-11-18T08:00:00.000Z',
           lastCursorAdvanceAt: '2026-11-18T09:55:00.000Z',
-        }),
-      ),
+        })
+      )
     );
 
-    expect(await screen.findByText('Importing')).toBeInTheDocument();
-    expect(screen.getByText(/^OpenLinker imports orders placed since /)).toBeInTheDocument();
-    expect(screen.getByText(/Last checked/)).toBeInTheDocument();
+    expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
+    expect(screen.getByText(/^Since /)).toBeInTheDocument();
+    expect(screen.getByText(/Last check /)).toBeInTheDocument();
   });
 
   it('shows an honest absence, not a date, when no start was recorded', async () => {
     renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderSyncStartedAt: null })));
 
-    expect(await screen.findByText('Importing')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'OpenLinker imports every new order from this shop. The start date was not saved.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^OpenLinker imports orders placed since /)).not.toBeInTheDocument();
+    expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
+    expect(screen.getByText('Start date was not recorded')).toBeInTheDocument();
+    expect(screen.queryByText(/^Since /)).not.toBeInTheDocument();
   });
 
-  it('states that earlier orders were not imported, with no import action', async () => {
+  it('states that earlier orders stay in the shop, with no import action', async () => {
     renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
 
-    expect(await screen.findByText('Your choice')).toBeInTheDocument();
     expect(
-      screen.getByText('Orders placed before the start stay in the shop. They are copied only if you chose to import them when connecting or when changing the start.'),
+      await screen.findByText(
+        'Orders placed before the start stay in the shop. They are copied only if you chose to import them.'
+      )
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /import/i })).not.toBeInTheDocument();
   });
 
   describe('restart', () => {
+    it('says nothing is skipped when restarting to new orders only', async () => {
+      const user = userEvent.setup();
+      renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
+
+      await user.click(await screen.findByRole('button', { name: /Change start/ }));
+
+      expect(
+        await screen.findByText(
+          'OpenLinker keeps importing new orders from the last check, so nothing is skipped.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/are skipped/)).not.toBeInTheDocument();
+    });
+
     it('restarts the sync from the chosen start and confirms', async () => {
       const user = userEvent.setup();
       const restartOrderSync = vi.fn().mockResolvedValue(undefined);

@@ -176,6 +176,8 @@ export type {
 } from './icon-with-popover-tooltip';
 export { WarningPopoverTooltip } from './warning-popover-tooltip';
 export type { WarningPopoverTooltipProps } from './warning-popover-tooltip';
+export { PopoverCard } from './popover-card';
+export type { PopoverCardProps, PopoverCardTone } from './popover-card';
 export { WarningIcon, InfoIcon } from './icons';
 export type { IconProps } from './icons';
 export { OptionList } from './option-list';

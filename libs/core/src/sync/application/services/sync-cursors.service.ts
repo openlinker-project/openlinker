@@ -60,6 +60,11 @@ export class SyncCursorsService implements ISyncCursorsService {
     return page.items.map((item) => item.value);
   }
 
+  async hasOrderFeedCursor(connectionId: string): Promise<boolean> {
+    const page = await this.cursorRepository.findMany({ connectionId }, { limit: 200, offset: 0 });
+    return page.items.some((item) => isOrderFeedCursorKey(item.cursorKey));
+  }
+
   async deleteOrderFeedCursors(connectionId: string): Promise<string[]> {
     const page = await this.cursorRepository.findMany({ connectionId }, { limit: 200, offset: 0 });
     const keys = page.items.map((item) => item.cursorKey).filter(isOrderFeedCursorKey);

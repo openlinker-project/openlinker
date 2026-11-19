@@ -76,7 +76,11 @@ export function OrderSyncRestartDialog({
         : { mode: value.mode };
     try {
       await restart.mutateAsync({ connectionId: connection.id, start });
-      showToast({ tone: 'success', title: copy.successTitle, description: copy.successMessage });
+      showToast({
+        tone: 'success',
+        title: copy.successTitle,
+        description: value.mode === 'now' ? copy.successNowMessage : copy.successMessage,
+      });
       handleOpenChange(false);
     } catch {
       // Shown by the alert below.
@@ -102,12 +106,15 @@ export function OrderSyncRestartDialog({
             error={showDateError}
             restart
           />
-          {value.mode === 'now' ? <Alert tone="warning">{copy.gapNote}</Alert> : null}
-          {value.mode !== 'now' ? <p className="muted-text">{copy.repeatNote}</p> : null}
+          <p className="muted-text">{value.mode === 'now' ? copy.nowNote : copy.repeatNote}</p>
         </div>
 
         <DialogFooter>
-          <Button tone="secondary" onClick={() => handleOpenChange(false)} disabled={restart.isPending}>
+          <Button
+            tone="secondary"
+            onClick={() => handleOpenChange(false)}
+            disabled={restart.isPending}
+          >
             {copy.cancel}
           </Button>
           <Button

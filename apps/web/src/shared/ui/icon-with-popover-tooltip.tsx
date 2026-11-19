@@ -49,6 +49,7 @@ export function IconWithOnHoverPopoverTooltip({
   return (
     <PopoverOnHover
       title={title}
+      ariaLabel={label}
       width={width}
       placement={placement}
       align={align}

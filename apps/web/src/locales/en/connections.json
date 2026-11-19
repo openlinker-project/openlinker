@@ -1073,22 +1073,12 @@
   "orderSyncPanel": {
     "errorTitle": "Could not load order import",
     "eyebrow": "Orders",
-    "history": {
-      "badge": "Your choice",
-      "caption": "Orders placed before the start stay in the shop. They are copied only if you chose to import them when connecting or when changing the start.",
-      "label": "Older orders"
-    },
-    "live": {
-      "badge": "Importing",
-      "badgeBefore": "Importing",
-      "before": "OpenLinker imports every new order from this shop. The start date was not saved.",
-      "from": "OpenLinker imports orders placed since {date}.",
-      "label": "New orders",
-      "lastActivity": "Last checked {when}",
-      "noActivity": "Not checked yet"
-    },
+    "headline": "Importing new orders",
+    "lastCheck": "Last check {when}",
     "loadingMessage": "Checking where order import starts.",
     "loadingTitle": "Loading order import",
+    "noCheck": "Not checked yet",
+    "note": "Orders placed before the start stay in the shop. They are copied only if you chose to import them.",
     "restart": {
       "action": "Change start…",
       "cancel": "Cancel",
@@ -1096,21 +1086,26 @@
       "confirming": "Saving…",
       "description": "Orders OpenLinker already has stay. This only decides which orders it reads from the shop next.",
       "failedTitle": "Could not change the start",
-      "gapNote": "Orders placed between the last check and now are skipped.",
+      "nowNote": "OpenLinker keeps importing new orders from the last check, so nothing is skipped.",
       "repeatNote": "Orders OpenLinker already has are updated, not created twice.",
       "successMessage": "The next order check uses the new start.",
+      "successNowMessage": "Order import continues from the last check.",
       "successTitle": "Start changed",
       "title": "Change where order sync starts"
     },
     "retry": "Retry",
+    "since": "Since {date}",
+    "sinceUnknown": "Start date was not recorded",
     "title": "Order import"
   },
   "orderSyncStart": {
     "all": {
+      "analytics": "Want exact analytics over your whole history? Every order has to be imported, and this is how.",
       "delay": "New orders wait behind the import and can arrive hours late.",
       "documents": "If automatic invoicing is on, OpenLinker issues invoices and receipts for old sales, dated today.",
       "orders": "Each old order is copied again to every connected shop, with its customer.",
       "stock": "Stock is held for orders that already shipped, so available stock can look too low.",
+      "summary": "Everything already in the shop is copied and processed.",
       "warningLabel": "What happens to old orders",
       "warningTitle": "Old orders are handled like new ones"
     },
@@ -1133,6 +1128,15 @@
         "description": "Orders placed from now on. Older orders stay in the shop and are never copied.",
         "title": "New orders only"
       }
+    },
+    "now": {
+      "analytics": "Want exact analytics over past periods? You still have to import every order.",
+      "infoLabel": "Why this is recommended",
+      "infoTitle": "Why we recommend this",
+      "noFlood": "Your shops and invoices are not flooded with old sales.",
+      "noQueue": "New orders never wait behind an old backlog.",
+      "noStock": "Stock is not held for orders that already shipped.",
+      "summary": "Starting from now keeps the first import quick and leaves the past alone."
     },
     "review": {
       "all": "Every order",

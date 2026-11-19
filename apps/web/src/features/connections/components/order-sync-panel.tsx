@@ -9,8 +9,8 @@
  *
  * A missing start date is rendered as an absence, never as a date: a
  * connection that predates start dates, or an adapter with no order feed, has
- * nothing to show. The history row says only what is true today; there is no
- * import action.
+ * nothing to show. The panel never claims history was imported: it says only
+ * where reading started and when the shop was last checked.
  *
  * @module features/connections/components
  */
@@ -18,7 +18,6 @@ import { useState, type ReactElement } from 'react';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
-import { StatusBadge } from '../../../shared/ui/status-badge';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
@@ -80,43 +79,35 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
       ) : null}
 
       {data ? (
-        <div className="order-sync-panel__rows">
-          <div className="order-sync-panel__row">
-            <div className="order-sync-panel__row-head">
-              <span className="order-sync-panel__label">{copy.live.label}</span>
-              <StatusBadge tone={startedAt === null ? 'neutral' : 'success'}>
-                {startedAt === null ? copy.live.badgeBefore : copy.live.badge}
-              </StatusBadge>
+        <>
+          <div className="order-sync-panel__status">
+            <span
+              className={[
+                'order-sync-panel__dot',
+                startedAt === null ? 'order-sync-panel__dot--idle' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              aria-hidden="true"
+            />
+            <div>
+              <p className="order-sync-panel__headline">{copy.headline}</p>
+              <p className="order-sync-panel__since">
+                {startedAt === null
+                  ? copy.sinceUnknown
+                  : interpolate(copy.since, { date: format.dateTime(startedAt) })}
+              </p>
+              <p className="order-sync-panel__fact">
+                {data.lastCursorAdvanceAt === null
+                  ? copy.noCheck
+                  : interpolate(copy.lastCheck, {
+                      when: format.relativeTime(data.lastCursorAdvanceAt),
+                    })}
+              </p>
             </div>
-            {startedAt === null ? (
-              <p className="order-sync-panel__caption">{copy.live.before}</p>
-            ) : (
-              <>
-                <div className="order-sync-panel__lane" aria-hidden="true">
-                  <div className="order-sync-panel__fill" />
-                </div>
-                <p className="order-sync-panel__caption">
-                  {interpolate(copy.live.from, { date: format.dateTime(startedAt) })}
-                  {' · '}
-                  {data.lastCursorAdvanceAt === null
-                    ? copy.live.noActivity
-                    : interpolate(copy.live.lastActivity, {
-                        when: format.relativeTime(data.lastCursorAdvanceAt),
-                      })}
-                </p>
-              </>
-            )}
           </div>
-
-          <div className="order-sync-panel__row">
-            <div className="order-sync-panel__row-head">
-              <span className="order-sync-panel__label">{copy.history.label}</span>
-              <StatusBadge tone="neutral">{copy.history.badge}</StatusBadge>
-            </div>
-            <div className="order-sync-panel__lane" aria-hidden="true" />
-            <p className="order-sync-panel__caption">{copy.history.caption}</p>
-          </div>
-        </div>
+          <p className="order-sync-panel__note">{copy.note}</p>
+        </>
       ) : null}
       <OrderSyncRestartDialog
         connection={connection}

@@ -68,6 +68,13 @@ export interface ISyncCursorsService {
   getCursorValuesByKeySuffix(connectionId: string, keySuffix: string): Promise<string[]>;
 
   /**
+   * Whether the connection already has an order feed position (#4228). A feed that
+   * has one is already importing new orders from its last check, so "new orders
+   * only" needs no reset and must not move the position forward.
+   */
+  hasOrderFeedCursor(connectionId: string): Promise<boolean>;
+
+  /**
    * Remove the connection's order-feed cursor and seed marker (#4228), so the
    * next poll seeds again from a stored start intent. Returns the removed keys.
    */

@@ -1099,22 +1099,12 @@
   "orderSyncPanel": {
     "errorTitle": "Nie udało się wczytać importu zamówień",
     "eyebrow": "Zamówienia",
-    "history": {
-      "badge": "Twój wybór",
-      "caption": "Zamówienia złożone przed startem zostają w sklepie. OpenLinker skopiuje je tylko wtedy, gdy wybrano ich import przy podłączaniu sklepu albo przy zmianie startu.",
-      "label": "Starsze zamówienia"
-    },
-    "live": {
-      "badge": "Pobierane",
-      "badgeBefore": "Pobierane",
-      "before": "OpenLinker pobiera każde nowe zamówienie z tego sklepu. Data startu nie została zapisana.",
-      "from": "OpenLinker pobiera zamówienia złożone od {date}.",
-      "label": "Nowe zamówienia",
-      "lastActivity": "Ostatnie sprawdzenie: {when}",
-      "noActivity": "Jeszcze nie sprawdzano"
-    },
+    "headline": "Pobieramy nowe zamówienia",
+    "lastCheck": "Ostatnie sprawdzenie: {when}",
     "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
     "loadingTitle": "Wczytywanie importu zamówień",
+    "noCheck": "Jeszcze nie sprawdzano",
+    "note": "Zamówienia złożone przed startem zostają w sklepie. OpenLinker skopiuje je tylko wtedy, gdy wybrano ich import.",
     "restart": {
       "action": "Zmień start…",
       "cancel": "Anuluj",
@@ -1122,21 +1112,26 @@
       "confirming": "Zapisywanie…",
       "description": "Zamówienia, które OpenLinker już ma, zostają. Zmiana decyduje tylko o tym, które zamówienia OpenLinker pobierze ze sklepu jako następne.",
       "failedTitle": "Nie udało się zmienić startu",
-      "gapNote": "Zamówienia złożone między ostatnim sprawdzeniem a teraz zostaną pominięte.",
+      "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia, więc nic nie zostanie pominięte.",
       "repeatNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
       "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
+      "successNowMessage": "Import zamówień trwa dalej od ostatniego sprawdzenia.",
       "successTitle": "Start zmieniony",
       "title": "Zmień, od kiedy pobierane są zamówienia"
     },
     "retry": "Ponów",
+    "since": "Od {date}",
+    "sinceUnknown": "Data startu nie została zapisana",
     "title": "Import zamówień"
   },
   "orderSyncStart": {
     "all": {
+      "analytics": "Chcesz dokładnych analiz całej historii? Trzeba zaimportować każde zamówienie, a ta opcja robi dokładnie to.",
       "delay": "Nowe zamówienia czekają za importem i mogą dotrzeć nawet po kilku godzinach.",
       "documents": "Jeśli włączone jest automatyczne wystawianie, OpenLinker wystawi faktury i paragony za stare sprzedaże, z dzisiejszą datą.",
       "orders": "Każde stare zamówienie zostanie skopiowane do każdego podłączonego sklepu, razem z klientem.",
       "stock": "Stan jest rezerwowany pod zamówienia, które już wysłano, więc dostępny stan może wyglądać na zaniżony.",
+      "summary": "Wszystko, co jest już w sklepie, zostanie skopiowane i przetworzone.",
       "warningLabel": "Co się stanie ze starymi zamówieniami",
       "warningTitle": "Stare zamówienia traktujemy jak nowe"
     },
@@ -1159,6 +1154,15 @@
         "description": "Zamówienia złożone od teraz. Starsze zostają w sklepie i nie są kopiowane.",
         "title": "Tylko nowe zamówienia"
       }
+    },
+    "now": {
+      "analytics": "Chcesz dokładnych analiz za minione okresy? I tak trzeba zaimportować każde zamówienie.",
+      "infoLabel": "Dlaczego to polecamy",
+      "infoTitle": "Dlaczego polecamy ten wybór",
+      "noFlood": "Twoje sklepy i faktury nie dostają lawiny dawnej sprzedaży.",
+      "noQueue": "Nowe zamówienia nie czekają za zaległościami.",
+      "noStock": "Stan magazynowy nie jest blokowany pod zamówienia, które już wysłano.",
+      "summary": "Start od teraz jest szybki i nie rusza starych zamówień."
     },
     "review": {
       "all": "Wszystkie",
