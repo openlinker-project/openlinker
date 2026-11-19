@@ -50,13 +50,20 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
 
   const marketplaceIds = readMarketplaceIds(config.marketplaceIds, region, issues);
   const notificationQueue = readNotificationQueue(config.notificationQueueUrl, issues);
+  const sellerId = readSellerId(config.sellerId, issues);
 
   if (issues.length > 0 || region === null || environment === null) {
     return { ok: false, issues };
   }
   return {
     ok: true,
-    config: { region, environment, marketplaceIds, ...(notificationQueue ? { notificationQueue } : {}) },
+    config: {
+      region,
+      environment,
+      marketplaceIds,
+      ...(notificationQueue ? { notificationQueue } : {}),
+      ...(sellerId ? { sellerId } : {}),
+    },
   };
 }
 
@@ -129,4 +136,19 @@ function readMarketplaceIds(
     }
   });
   return ids;
+}
+
+/** Merchant tokens are upper-case letters and digits (`A2EXAMPLE12345`). */
+const SELLER_ID_PATTERN = /^[A-Z0-9]{8,20}$/;
+
+/** The merchant token (`sellerId`), or undefined when absent or not a merchant token. */
+export function readSellerId(value: unknown, issues: FlatValidationIssue[] = []): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !SELLER_ID_PATTERN.test(value.trim())) {
+    issues.push({ path: 'sellerId', message: 'must be the merchant token from Seller Central, such as A2EXAMPLE12345' });
+    return undefined;
+  }
+  return value.trim();
 }

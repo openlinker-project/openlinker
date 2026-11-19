@@ -11,7 +11,8 @@
  * that delivers it (the Erli #980 rule), because `listCapabilityAdapters`
  * treats a factory that cannot build a declared capability as fatal.
  * `OrderSource` arrived with #4178 (order feed, tracking write-back, mapping
- * options, the `amazon-orders-poll` task and the email normalizer).
+ * options, the `amazon-orders-poll` task and the email normalizer);
+ * `OfferManager` with #4180 (listing link by SKU, FBM stock, price, status).
  *
  * Authorization: both a self-authorized private app and a public-app OAuth
  * grant end in the same stored LWA credentials (`AmazonCredentials`), so this
@@ -47,7 +48,7 @@ export const amazonAdapterManifest: AdapterMetadata = {
   adapterKey: AMAZON_ADAPTER_KEY,
   platformType: AMAZON_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['OrderSource'],
+  supportedCapabilities: ['OrderSource', 'OfferManager'],
   // Opt-in: ingesting a seller's Amazon orders creates them in every
   // destination.
   defaultEnabledCapabilities: [],
@@ -98,6 +99,7 @@ export function createAmazonPlugin(): AdapterPlugin {
           capability,
           {
             OrderSource: async () => factory.createOrderSource(await resolve()) as T,
+            OfferManager: async () => factory.createOfferManager(await resolve()) as T,
           },
           AMAZON_BRAND,
         );

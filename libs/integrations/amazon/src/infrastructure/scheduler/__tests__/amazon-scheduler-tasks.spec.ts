@@ -5,7 +5,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
-import { buildAmazonNotificationsDrainTask } from '../amazon-scheduler-tasks';
+import { buildAmazonNotificationsDrainTask, buildAmazonOfferTasks } from '../amazon-scheduler-tasks';
 
 const QUEUE_URL = 'https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications';
 
@@ -38,5 +38,25 @@ describe('buildAmazonNotificationsDrainTask', () => {
       enabledEnvVar: 'OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED',
       enabledDefault: false,
     });
+  });
+});
+
+describe('buildAmazonOfferTasks', () => {
+  it('should schedule only active Amazon connections with OfferManager and a merchant token', async () => {
+    const listConnections = jest.fn().mockResolvedValue([
+      connection('ready', { sellerId: 'A2SELLER123' }, ['OfferManager']),
+      connection('no-seller', {}, ['OfferManager']),
+      connection('bad-seller', { sellerId: 'not a token' }, ['OfferManager']),
+      connection('no-capability', { sellerId: 'A2SELLER123' }, ['OrderSource']),
+    ]);
+    const tasks = buildAmazonOfferTasks(listConnections);
+
+    expect(tasks.map((task) => task.taskId)).toEqual(['amazon-offers-sync', 'amazon-offer-status-sync']);
+    for (const task of tasks) {
+      const selected = await task.connectionFilter?.();
+      expect(selected?.map((entry) => entry.id)).toEqual(['ready']);
+      expect(task.enabledDefault).toBe(false);
+    }
+    expect(listConnections).toHaveBeenCalledWith({ platformType: 'amazon', status: 'active' });
   });
 });

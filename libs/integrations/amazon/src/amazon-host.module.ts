@@ -1,14 +1,15 @@
 /**
- * Amazon Notifications Module (#4179)
+ * Amazon Host Module (#4179, #4180)
  *
- * The two notification pieces that need `ConnectionPort`, which `HostServices`
- * does not carry (the `ErliWebhookProvisioningModule` shape); composed into
+ * The Amazon pieces that need `ConnectionPort`, which `HostServices` does not
+ * carry (the `ErliWebhookProvisioningModule` shape); composed into
  * `AmazonIntegrationModule` through `createNestAdapterModule({ imports })`:
  *
  *   - `AmazonNotificationProvisioningAdapter` for the "Configure webhooks"
  *     action (Notifications API destination + `ORDER_CHANGE` subscription);
- *   - the `amazon-notifications-drain` scheduler task, whose connection filter
- *     lists only the connections that name a notification queue.
+ *   - the scheduler tasks whose connection filter reads the connection's
+ *     config: `amazon-notifications-drain` (a notification queue) and the two
+ *     listing tasks (`OfferManager` with a merchant token).
  *
  * @module libs/integrations/amazon/src
  */
@@ -20,7 +21,13 @@ import {
   WebhookProvisioningRegistryService,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
 } from '@openlinker/core/integrations';
-import { ConnectionPort, CONNECTION_PORT_TOKEN, IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+  IdentifierMappingModule,
+  type Connection,
+  type ConnectionFilters,
+} from '@openlinker/core/identifier-mapping';
 import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SchedulerTaskRegistryService,
@@ -32,12 +39,15 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { AMAZON_ADAPTER_KEY } from './amazon.constants';
 import { AmazonAdapterFactory } from './application/amazon-adapter.factory';
 import { AmazonNotificationProvisioningAdapter } from './infrastructure/adapters/amazon-notification-provisioning.adapter';
-import { buildAmazonNotificationsDrainTask } from './infrastructure/scheduler/amazon-scheduler-tasks';
+import {
+  buildAmazonNotificationsDrainTask,
+  buildAmazonOfferTasks,
+} from './infrastructure/scheduler/amazon-scheduler-tasks';
 
 @Module({
   imports: [IntegrationsModule, IdentifierMappingModule, SyncModule, RateLimitModule],
 })
-export class AmazonNotificationsModule implements OnModuleInit {
+export class AmazonHostModule implements OnModuleInit {
   constructor(
     @Inject(WEBHOOK_PROVISIONING_REGISTRY_TOKEN)
     private readonly webhookProvisioningRegistry: WebhookProvisioningRegistryService,
@@ -61,8 +71,10 @@ export class AmazonNotificationsModule implements OnModuleInit {
         this.http,
       ),
     );
-    this.schedulerTaskRegistry.register(
-      buildAmazonNotificationsDrainTask((filters) => this.connectionPort.list(filters)),
-    );
+    const listConnections = (filters: ConnectionFilters): Promise<Connection[]> => this.connectionPort.list(filters);
+    this.schedulerTaskRegistry.register(buildAmazonNotificationsDrainTask(listConnections));
+    for (const task of buildAmazonOfferTasks(listConnections)) {
+      this.schedulerTaskRegistry.register(task);
+    }
   }
 }

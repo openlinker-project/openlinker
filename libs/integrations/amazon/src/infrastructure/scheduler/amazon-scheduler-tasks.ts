@@ -15,7 +15,7 @@ import type { Connection, ConnectionFilters } from '@openlinker/core/identifier-
 import type { SchedulerTaskConfig } from '@openlinker/core/sync';
 
 import { AMAZON_PLATFORM_TYPE } from '../../amazon.constants';
-import { readNotificationQueue } from '../../domain/policies/amazon-config.policy';
+import { readNotificationQueue, readSellerId } from '../../domain/policies/amazon-config.policy';
 
 const AMAZON_ORDERS_POLL_CRON = '*/5 * * * *';
 
@@ -26,6 +26,15 @@ export const AMAZON_ORDERS_CURSOR_KEY = 'amazon.orders.feedCursor';
 
 /** SQS returns at most 10 messages per receive. */
 export const AMAZON_NOTIFICATIONS_DRAIN_MAX_MESSAGES = 10;
+
+/** The connection's master catalogue, which the offer mapping sync links listings against. */
+function readMasterCatalogConnectionId(connection: Connection): string | null {
+  const value = (connection.config ?? {}).masterCatalogConnectionId;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** `searchListingsItems` and the status reads page by 20. */
+const AMAZON_OFFERS_PAGE_LIMIT = 20;
 
 export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
   return [
@@ -60,7 +69,7 @@ export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
  * job ends as a business failure naming the cause. The orders poll stays the
  * delivery guarantee: a notification is only a trigger.
  *
- * Registered by `AmazonNotificationsModule`, which holds the connection list
+ * Registered by `AmazonHostModule`, which holds the connection list
  * the filter needs (`HostServices` carries no `ConnectionPort`).
  */
 export function buildAmazonNotificationsDrainTask(
@@ -83,4 +92,62 @@ export function buildAmazonNotificationsDrainTask(
     generatePayload: () => ({ schemaVersion: 1, maxMessages: AMAZON_NOTIFICATIONS_DRAIN_MAX_MESSAGES }),
     generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:notifications:drain:${timestamp}`,
   };
+}
+
+/**
+ * The two #4180 listing tasks, both OFF by default:
+ *   - `amazon-offers-sync` (`OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED`) links the
+ *     seller's Amazon listings to variants by SKU;
+ *   - `amazon-offer-status-sync` (`OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED`)
+ *     refreshes each linked listing's live status, price and quantity, and
+ *     Amazon's issues on it.
+ *
+ * Only active Amazon connections with `OfferManager` enabled AND a valid
+ * merchant token (`sellerId`) are scheduled: every Listings Items call names
+ * the seller, so a connection without one would fail every run. Registered by
+ * `AmazonHostModule`, which holds the connection list.
+ */
+export function buildAmazonOfferTasks(
+  listConnections: (filters: ConnectionFilters) => Promise<Connection[]>,
+): SchedulerTaskConfig[] {
+  const connectionFilter = async (): Promise<Connection[]> => {
+    const connections = await listConnections({ platformType: AMAZON_PLATFORM_TYPE, status: 'active' });
+    return connections.filter(
+      (connection) =>
+        connection.enabledCapabilities.includes('OfferManager') &&
+        readSellerId(connection.config.sellerId) !== undefined,
+    );
+  };
+  return [
+    {
+      taskId: 'amazon-offers-sync',
+      connectionFilter,
+      jobType: 'marketplace.offers.sync',
+      cronExpression: '15 * * * *',
+      enabledEnvVar: 'OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: (connection): Record<string, unknown> => ({
+        schemaVersion: 1,
+        limit: AMAZON_OFFERS_PAGE_LIMIT,
+        cursor: null,
+        feedType: 'offers',
+        masterConnectionId: readMasterCatalogConnectionId(connection),
+      }),
+      generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:offers:sync:${timestamp}`,
+    },
+    {
+      taskId: 'amazon-offer-status-sync',
+      connectionFilter,
+      jobType: 'marketplace.offer.statusSync',
+      cronExpression: '45 * * * *',
+      enabledEnvVar: 'OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: (): Record<string, unknown> => ({
+        schemaVersion: 1,
+        limit: AMAZON_OFFERS_PAGE_LIMIT,
+        cursorKey: 'amazon.offerStatus.scanOffset',
+      }),
+      generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
+    },
+  ];
 }

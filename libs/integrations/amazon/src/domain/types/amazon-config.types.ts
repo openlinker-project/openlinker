@@ -24,6 +24,12 @@ export interface AmazonConnectionConfig {
    * means orders arrive by polling only.
    */
   readonly notificationQueue?: AmazonNotificationQueue;
+  /**
+   * The seller's merchant token (Seller Central: Settings > Account Info >
+   * Your Merchant Token). The Listings Items API addresses every listing by
+   * it, and no SP-API call returns it to a self-authorized app (#4180).
+   */
+  readonly sellerId?: string;
 }
 
 export interface AmazonNotificationQueue {

@@ -97,3 +97,15 @@ describe('parseAmazonConfig notification queue (#4179)', () => {
     expect(!result.ok && result.issues[0].path).toBe('notificationQueueUrl');
   });
 });
+
+describe('parseAmazonConfig sellerId (#4180)', () => {
+  it('should keep a merchant token', () => {
+    const result = parseAmazonConfig({ marketplaceIds: ['A1PA6795UKMFR9'], sellerId: ' A2SELLER123 ' });
+    expect(result.ok && result.config.sellerId).toBe('A2SELLER123');
+  });
+
+  it('should refuse something that is not a merchant token', () => {
+    const result = parseAmazonConfig({ marketplaceIds: ['A1PA6795UKMFR9'], sellerId: 'my shop' });
+    expect(!result.ok && result.issues[0].path).toBe('sellerId');
+  });
+});
