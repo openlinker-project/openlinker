@@ -15,6 +15,9 @@
  *   - `AmazonApiError` 4xx other than 408 and 429 - Amazon understood the
  *     request and refused it (`400 InvalidInput`, `403 Unauthorized` for a
  *     missing role, `404 NotFound`, `413`, `415`).
+ *   - A product type schema the adapter refuses to read (`SchemaLinkInvalid`,
+ *     `SchemaTooLarge`): Amazon names the same link and file on every call, so
+ *     a retry meets the same refusal and only holds a bulk batch open.
  *
  * Retryable (the default): `AmazonNetworkError`, `408`, `429`, every `5xx`.
  *
@@ -41,6 +44,9 @@ import { AmazonNotSupportedException } from '../../domain/exceptions/amazon-not-
 
 const RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
 
+/** Codes the plugin raises itself for a schema it will not read; deterministic despite their 502. */
+const DETERMINISTIC_SCHEMA_ERRORS: ReadonlySet<string> = new Set(['SchemaLinkInvalid', 'SchemaTooLarge']);
+
 /** Longer than `searchOrders`' ~180 s restore interval, the slowest quota in scope. */
 const THROTTLE_DEFERRAL_SECONDS = 240;
 
@@ -55,6 +61,10 @@ export class AmazonRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof AmazonAuthenticationError ||
       cause instanceof AmazonNotSupportedException
     ) {
+      return true;
+    }
+    const apiError = findAmazonApiError(cause);
+    if (apiError?.errorCode !== undefined && DETERMINISTIC_SCHEMA_ERRORS.has(apiError.errorCode)) {
       return true;
     }
     if (cause instanceof AmazonApiError) {

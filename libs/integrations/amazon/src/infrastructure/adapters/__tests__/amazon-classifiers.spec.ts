@@ -32,6 +32,13 @@ describe('AmazonRetryClassifierAdapter', () => {
     }
   });
 
+  it('should make a product type schema the plugin will not read terminal, even wrapped', () => {
+    expect(classifier.isNonRetryable(api(502, 'SchemaLinkInvalid'))).toBe(true);
+    expect(classifier.isNonRetryable(api(502, 'SchemaTooLarge'))).toBe(true);
+    expect(classifier.isNonRetryable(new Error('create failed', { cause: api(502, 'SchemaLinkInvalid') }))).toBe(true);
+    expect(classifier.isNonRetryable(api(502, 'SchemaUnreadable'))).toBe(false);
+  });
+
   it('should not claim errors from other plugins', () => {
     expect(classifier.isNonRetryable(new Error('boom'))).toBe(false);
     expect(classifier.getRetryDeferral(new Error('boom'))).toBeNull();
