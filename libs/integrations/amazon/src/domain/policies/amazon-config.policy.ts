@@ -9,6 +9,8 @@
  *   - `region` defaults to `eu`; a value outside `eu`, `na`, `fe` is refused.
  *   - `environment` defaults to `production`; `sandbox` points at Amazon's
  *     static sandbox, which answers from canned fixtures (#2881).
+ *   - `fbaLocationId` (optional) needs `stockLocationOverride` set to a
+ *     different location (#4183, see `readFbaLocationId`).
  *   - `marketplaceIds` must be a non-empty list of SP-API marketplace ids.
  *     An id we know (`AMAZON_KNOWN_MARKETPLACES`) must belong to the chosen
  *     region; an unknown id is accepted by format alone. Duplicates are dropped.
@@ -65,6 +67,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
   const sellerId = readSellerId(config.sellerId, issues);
   const taxCodeRates = readTaxCodeRates(config.taxCodeRates, issues);
   const catalogueMarketplaceId = readCatalogueMarketplaceId(config.catalogueMarketplaceId, marketplaceIds, issues);
+  const fbaLocationId = readFbaLocationId(config.fbaLocationId, config.stockLocationOverride, issues);
 
   if (issues.length > 0 || region === null || environment === null) {
     return { ok: false, issues };
@@ -79,6 +82,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
       ...(sellerId ? { sellerId } : {}),
       ...(taxCodeRates ? { taxCodeRates } : {}),
       ...(catalogueMarketplaceId ? { catalogueMarketplaceId } : {}),
+      ...(fbaLocationId ? { fbaLocationId } : {}),
     },
   };
 }
@@ -240,4 +244,45 @@ export function resolveCatalogueMarketplaceId(
   config: Pick<AmazonConnectionConfig, 'marketplaceIds' | 'catalogueMarketplaceId'>,
 ): string {
   return config.catalogueMarketplaceId ?? config.marketplaceIds[0];
+}
+
+/** OpenLinker location ids (`ol_location_...`). */
+const LOCATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
+
+/**
+ * Optional `fbaLocationId` (#4183). FBA stock is reported at this location, so
+ * the FBM stock of the same variant must be located too: core treats a variant
+ * reported both without and with a location as a contradiction and retires the
+ * pooled row (#2322). `stockLocationOverride` is the core field that locates
+ * it; the two must differ, or both quantities would land on one position.
+ */
+function readFbaLocationId(
+  value: unknown,
+  stockLocationOverride: unknown,
+  issues: FlatValidationIssue[],
+): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !LOCATION_ID_PATTERN.test(value.trim())) {
+    issues.push({ path: 'fbaLocationId', message: 'must be an OpenLinker location id' });
+    return undefined;
+  }
+  const id = value.trim();
+  const fbmLocation = typeof stockLocationOverride === 'string' ? stockLocationOverride.trim() : '';
+  if (fbmLocation === '') {
+    issues.push({
+      path: 'fbaLocationId',
+      message: 'needs a stock location for the seller-fulfilled stock (stockLocationOverride) as well',
+    });
+    return undefined;
+  }
+  if (fbmLocation === id) {
+    issues.push({
+      path: 'fbaLocationId',
+      message: 'must differ from the stock location of the seller-fulfilled stock (stockLocationOverride)',
+    });
+    return undefined;
+  }
+  return id;
 }

@@ -49,9 +49,23 @@
       "label": "Selling Partner API environment"
     },
     "catalogueMarketplace": {
-      "description": "OpenLinker reads the catalogue from one marketplace: the listing content, the price with tax and its currency, and the country of the tax rate.",
+      "description": "OpenLinker reads the catalogue from one marketplace: the listing content, the price with tax and its currency, the country of the tax rate, and the stock.",
       "first": "First marketplace ({marketplace})",
       "label": "Catalogue marketplace"
+    },
+    "fba": {
+      "description": "Stock Amazon keeps in its warehouses (FBA) is read into this location. It is never written from OpenLinker.",
+      "label": "FBA stock location",
+      "needsFbmLocation": "Also turn on \"Assign a location to this connection's stock\" with a different location, or the FBA stock cannot be kept apart.",
+      "needsFbmLocationHere": "Also choose the location of the stock you ship yourself, different from the FBA location, or FBA stock cannot be kept apart.",
+      "none": "Do not read FBA stock",
+      "sellsOnOtherChannels": "FBA stock counts toward what other channels may sell. Until Amazon ships those orders for you, keep it at a location you do not sell from.",
+      "unknown": "Location {id}"
+    },
+    "fbm": {
+      "description": "Where the stock you ship yourself is kept. FBA stock is read into a different location, so the two are never added up.",
+      "label": "Location of the stock you ship (FBM)",
+      "none": "No location"
     },
     "marketplaces": {
       "addedNote": "Orders from a marketplace you add are read from the last 7 days.",
@@ -153,6 +167,7 @@
     "notificationsHint": "With an SQS queue, Amazon reports order changes within a minute instead of at the next poll. You can add it later.",
     "offers": "Offers",
     "offersHint": "Link existing listings, publish new ones, and keep stock and prices up to date.",
+    "offersMasterHint": "A catalogue master's stock is not written back to its own listings, so offers stay off.",
     "orders": "Orders",
     "ordersHint": "Import Amazon orders and send tracking numbers back.",
     "queueUrl": "SQS queue URL",
@@ -169,7 +184,7 @@
     },
     "role": "What Amazon does in OpenLinker",
     "roleMaster": "Catalogue master",
-    "roleMasterHint": "Coming soon: take products and stock from Amazon to sell elsewhere.",
+    "roleMasterHint": "Products and stock from your Amazon listings, sold on your other channels.",
     "roleSalesChannel": "Sales channel",
     "roleSalesChannelHint": "Products come from your catalogue; Amazon receives offers and sends orders.",
     "sandboxNotice": "The sandbox answers with Amazon's sample data only. No real orders or listings are read or changed.",

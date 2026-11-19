@@ -184,3 +184,27 @@ describe('catalogueMarketplaceId (#4182)', () => {
     expect(!result.ok && result.issues.map((issue) => issue.path)).toEqual(['catalogueMarketplaceId']);
   });
 });
+
+describe('parseAmazonConfig fbaLocationId (#4183)', () => {
+  const base = { marketplaceIds: ['A1PA6795UKMFR9'] };
+
+  it('should keep a FBA location next to a different seller-fulfilled location', () => {
+    const result = parseAmazonConfig({ ...base, fbaLocationId: 'ol_location_fba', stockLocationOverride: 'ol_location_main' });
+    expect(result.ok && result.config.fbaLocationId).toBe('ol_location_fba');
+  });
+
+  it('should treat an empty FBA location as FBA off', () => {
+    const result = parseAmazonConfig({ ...base, fbaLocationId: null });
+    expect(result.ok && result.config.fbaLocationId).toBeUndefined();
+  });
+
+  it('should refuse a FBA location without a seller-fulfilled location', () => {
+    const result = parseAmazonConfig({ ...base, fbaLocationId: 'ol_location_fba' });
+    expect(!result.ok && result.issues[0].path).toBe('fbaLocationId');
+  });
+
+  it('should refuse the same location for FBA and seller-fulfilled stock', () => {
+    const result = parseAmazonConfig({ ...base, fbaLocationId: 'ol_location_x', stockLocationOverride: 'ol_location_x' });
+    expect(!result.ok && result.issues[0].path).toBe('fbaLocationId');
+  });
+});

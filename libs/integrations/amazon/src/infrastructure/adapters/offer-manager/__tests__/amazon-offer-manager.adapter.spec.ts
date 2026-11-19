@@ -135,6 +135,18 @@ describe('AmazonOfferManagerAdapter.updateOfferQuantity', () => {
     expect(error).toBeInstanceOf(AmazonApiError);
     expect(error).toMatchObject({ errorCode: '90220' });
   });
+
+  it('should not write back to the listings of a stock-master connection (#4183)', async () => {
+    const get = jest.fn();
+    const patch = jest.fn();
+    const client = { get, patch } as unknown as AmazonSpApiClient;
+    const adapter = new AmazonOfferManagerAdapter('conn-amz', client, CONFIG, jest.fn(), undefined, true);
+
+    await adapter.updateOfferQuantity({ offerId: 'MUG-BLUE', quantity: 3 });
+
+    expect(get).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalled();
+  });
 });
 
 describe('AmazonOfferManagerAdapter.updateOfferFields', () => {

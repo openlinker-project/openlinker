@@ -5,12 +5,17 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
 import type { ReactElement } from 'react';
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Connection } from '../../../features/connections';
-import { createAuthenticatedSessionAdapter, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../../test/test-utils';
 import { AmazonStructuredSection } from './amazon-structured-section';
 
 function Harness({
@@ -29,6 +34,8 @@ function Harness({
       amazonMarketplaceIds: 'A1PA6795UKMFR9',
       amazonSellerId: 'A2EXAMPLE12345',
       amazonNotificationQueueUrl: '',
+      amazonFbaLocationId: '',
+      stockLocationOverride: '',
       ...values,
     },
   });
@@ -136,5 +143,103 @@ describe('AmazonStructuredSection', () => {
     renderWithProviders(<Harness values={{ amazonMarketplaceIds: 'A1PA6795UKMFR9,ATVPDKIKX0DER' }} />, admin);
 
     expect(await screen.findByText('United States (USD)')).toBeInTheDocument();
+  });
+
+  describe('FBA stock location (#4183)', () => {
+    const location = (id: string, name: string, status = 'active') => ({
+      id,
+      code: name.toUpperCase(),
+      name,
+      kind: 'warehouse',
+      status,
+      externalRef: null,
+      countryIso2: 'PL',
+      postcode: null,
+      latitude: null,
+      longitude: null,
+      ownerConnectionId: null,
+      createdAt: '2026-11-01T00:00:00Z',
+      updatedAt: '2026-11-01T00:00:00Z',
+    });
+    const withLocations = () =>
+      createMockApiClient({
+        inventory: {
+          listLocations: vi.fn().mockResolvedValue({
+            items: [location('ol_location_main', 'Main'), location('ol_location_fba', 'Amazon FBA'), location('ol_location_old', 'Old', 'inactive')],
+            total: 3,
+            page: 1,
+            limit: 100,
+          }),
+        },
+      });
+
+    it('should not show the FBA location unless the connection is the stock master', async () => {
+      renderWithProviders(<Harness />, admin);
+
+      await screen.findByRole('combobox', { name: 'Marketplaces' });
+      expect(screen.queryByLabelText('FBA stock location')).toBeNull();
+    });
+
+    it('should offer the active locations and sync the choice', async () => {
+      const sync = vi.fn();
+      renderWithProviders(<Harness caps={['InventoryMaster']} sync={sync} />, { ...admin, apiClient: withLocations() });
+
+      const select = await screen.findByLabelText('FBA stock location');
+      await within(select).findByRole('option', { name: 'Amazon FBA (AMAZON FBA)' });
+      expect(within(select).queryByRole('option', { name: /Old/ })).toBeNull();
+      fireEvent.change(select, { target: { value: 'ol_location_fba' } });
+
+      expect(sync).toHaveBeenCalledWith('amazonFbaLocationId', 'ol_location_fba');
+    });
+
+    it('should warn when the connection\'s own stock has no separate location', async () => {
+      renderWithProviders(
+        <Harness caps={['InventoryMaster']} values={{ amazonFbaLocationId: 'ol_location_fba' }} />,
+        { ...admin, apiClient: withLocations() },
+      );
+
+      expect(await screen.findByText(/Also choose the location of the stock you ship yourself/)).toBeInTheDocument();
+      expect(screen.getByText(/FBA stock counts toward what other channels may sell/)).toBeInTheDocument();
+    });
+
+    it('should not warn once the own stock has a different location', async () => {
+      renderWithProviders(
+        <Harness
+          caps={['InventoryMaster']}
+          values={{ amazonFbaLocationId: 'ol_location_fba', amazonFbmLocationId: 'ol_location_main' }}
+        />,
+        { ...admin, apiClient: withLocations() },
+      );
+
+      await screen.findByLabelText('FBA stock location');
+      expect(screen.queryByText(/Also choose the location of the stock you ship yourself/)).toBeNull();
+    });
+
+    it('should let the seller place their own stock here while the OMS routing UI is off', async () => {
+      const sync = vi.fn();
+      renderWithProviders(<Harness caps={['InventoryMaster']} sync={sync} />, { ...admin, apiClient: withLocations() });
+
+      const select = await screen.findByLabelText('Location of the stock you ship (FBM)');
+      await screen.findAllByRole('option', { name: 'Main (MAIN)' });
+      fireEvent.change(select, { target: { value: 'ol_location_main' } });
+
+      expect(sync).toHaveBeenCalledWith('amazonFbmLocationId', 'ol_location_main');
+    });
+
+    it('should leave the own stock location to the host control while the OMS routing UI is on', async () => {
+      vi.stubEnv('VITE_OL_OMS_ROUTING_UI_ENABLED', 'true');
+      try {
+        renderWithProviders(
+          <Harness caps={['InventoryMaster']} values={{ amazonFbaLocationId: 'ol_location_fba' }} />,
+          { ...admin, apiClient: withLocations() },
+        );
+
+        await screen.findByLabelText('FBA stock location');
+        expect(screen.queryByLabelText('Location of the stock you ship (FBM)')).toBeNull();
+        expect(screen.getByText(/Assign a location to this connection's stock/)).toBeInTheDocument();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
   });
 });

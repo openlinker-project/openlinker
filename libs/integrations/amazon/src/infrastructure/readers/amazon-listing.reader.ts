@@ -52,6 +52,11 @@ export class AmazonListingReader {
     if (this.cached.has(sku)) {
       return this.cached.get(sku) ?? null;
     }
+    return this.refresh(sku);
+  }
+
+  /** Reads `sku` from Amazon even when cached: a stock write starts from Amazon's current quantity (#4183). */
+  async refresh(sku: string): Promise<AmazonListingItem | null> {
     try {
       const response = await this.client.get<AmazonListingItem>(
         `${LISTINGS_PATH}/${encodeURIComponent(this.sellerId)}/${encodeURIComponent(sku)}`,

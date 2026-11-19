@@ -65,7 +65,8 @@ export function AmazonSetupForm(): ReactElement {
   const region = form.watch('region');
   const environment = form.watch('environment');
   const selected = form.watch('marketplaceIds');
-  const offers = form.watch('offers');
+  const role = form.watch('role');
+  const offers = form.watch('offers') && role !== 'master';
   const errors = form.formState.errors;
 
   const errorText = (message: string | undefined): string | undefined =>
@@ -220,7 +221,7 @@ export function AmazonSetupForm(): ReactElement {
       <fieldset className="form-field">
         <legend className="form-field__label">{copy.role}</legend>
         <label className="checkbox-row">
-          <input type="radio" name="amazon-role" checked readOnly />
+          <input type="radio" value="sales-channel" {...form.register('role')} />
           <span>
             {copy.roleSalesChannel}
             <span className="form-field__description form-field__description--block">
@@ -229,8 +230,8 @@ export function AmazonSetupForm(): ReactElement {
           </span>
         </label>
         <label className="checkbox-row">
-          <input type="radio" name="amazon-role" disabled />
-          <span className="text-muted">
+          <input type="radio" value="master" {...form.register('role')} />
+          <span>
             {copy.roleMaster}
             <span className="form-field__description form-field__description--block">{copy.roleMasterHint}</span>
           </span>
@@ -245,11 +246,11 @@ export function AmazonSetupForm(): ReactElement {
           </span>
         </label>
         <label className="checkbox-row">
-          <input type="checkbox" {...form.register('offers')} />
-          <span>
+          <input type="checkbox" {...form.register('offers')} disabled={role === 'master'} />
+          <span className={role === 'master' ? 'text-muted' : undefined}>
             {copy.offers}
             <span className="form-field__description form-field__description--block">
-              {copy.offersHint}
+              {role === 'master' ? copy.offersMasterHint : copy.offersHint}
             </span>
           </span>
         </label>
@@ -263,7 +264,7 @@ export function AmazonSetupForm(): ReactElement {
       <FormField
         label={copy.sellerId}
         name="sellerId"
-        description={offers ? copy.sellerIdHintRequired : copy.sellerIdHint}
+        description={offers || role === 'master' ? copy.sellerIdHintRequired : copy.sellerIdHint}
         error={errorText(errors.sellerId?.message)}
       >
         <Input {...form.register('sellerId')} className="mono-text" placeholder="A2EXAMPLE12345" />

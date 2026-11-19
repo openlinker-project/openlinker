@@ -15,6 +15,11 @@
  * In a region without a unified account (Far East) the picker takes one
  * marketplace.
  *
+ * With the connection as the stock master (#4183), the FBA stock location is
+ * picked from OpenLinker's locations; the API refuses it unless the
+ * connection's own stock is placed at a different location too, which the
+ * hint below states before the operator saves.
+ *
  * Every section follows `enabledCapabilities`, never `platformType`. A
  * session without `connections:write` sees the values with the inputs
  * disabled.
@@ -32,7 +37,9 @@ import {
   isSingleMarketplaceRegion,
   marketplacesForRegion,
 } from '../../../features/amazon';
+import { useInventoryLocationsQuery } from '../../../features/inventory';
 import { usePermission } from '../../../shared/auth/use-permission';
+import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 import { interpolate } from '../../../shared/i18n';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
@@ -74,6 +81,19 @@ export function AmazonStructuredSection({
     syncStructuredToJson('amazonTaxCodeRates', formatTaxCodeRows(rows));
   const editTaxRow = (index: number, change: Partial<AmazonTaxCodeRow>): void =>
     writeTaxRows(taxRows.map((row, at) => (at === index ? { ...row, ...change } : row)));
+  const stockMaster = connection.enabledCapabilities.includes('InventoryMaster');
+
+  // The API caps a location page at 100; an install has a handful.
+  const locationsQuery = useInventoryLocationsQuery(undefined, { limit: 100 }, { enabled: stockMaster });
+  const locations = (locationsQuery.data?.items ?? []).filter((location) => location.status === 'active');
+  const fbaLocation = form.watch('amazonFbaLocationId') ?? '';
+  // The host shows its own stock-location control only with the OMS routing
+  // UI; without it the Amazon section edits the same key, so FBA can be set
+  // up at all. Never both, or two controls would edit one value.
+  const ownsFbmLocation = stockMaster && !isOmsRoutingUiEnabled();
+  const fbmLocation = (ownsFbmLocation ? form.watch('amazonFbmLocationId') : form.watch('stockLocationOverride')) ?? '';
+  const fbmLocationUnlisted = fbmLocation !== '' && !locations.some((location) => location.id === fbmLocation);
+  const fbaLocationUnlisted = fbaLocation !== '' && !locations.some((location) => location.id === fbaLocation);
 
   const selected = splitMarketplaceIds(form.watch('amazonMarketplaceIds') ?? '');
   const catalogueMarketplace = form.watch('amazonCatalogueMarketplaceId') ?? '';
@@ -248,6 +268,55 @@ export function AmazonStructuredSection({
             invalid={Boolean(errors.amazonNotificationQueueUrl)}
           />
         </FormField>
+      ) : null}
+
+      {ownsFbmLocation ? (
+        <FormField label={copy.fbm.label} name="amazonFbmLocationId" description={copy.fbm.description}>
+          <Select
+            value={fbmLocation}
+            onChange={(event) => syncStructuredToJson('amazonFbmLocationId', event.target.value)}
+            disabled={disabled}
+          >
+            <option value="">{copy.fbm.none}</option>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {`${location.name} (${location.code})`}
+              </option>
+            ))}
+            {fbmLocationUnlisted ? (
+              <option value={fbmLocation}>{interpolate(copy.fba.unknown, { id: fbmLocation })}</option>
+            ) : null}
+          </Select>
+        </FormField>
+      ) : null}
+      {stockMaster ? (
+        <FormField label={copy.fba.label} name="amazonFbaLocationId" description={copy.fba.description}>
+          <Select
+            value={fbaLocation}
+            onChange={(event) => syncStructuredToJson('amazonFbaLocationId', event.target.value)}
+            disabled={disabled}
+          >
+            <option value="">{copy.fba.none}</option>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {`${location.name} (${location.code})`}
+              </option>
+            ))}
+            {fbaLocationUnlisted ? (
+              <option value={fbaLocation}>{interpolate(copy.fba.unknown, { id: fbaLocation })}</option>
+            ) : null}
+          </Select>
+        </FormField>
+      ) : null}
+      {stockMaster && fbaLocation !== '' && (fbmLocation === '' || fbmLocation === fbaLocation) ? (
+        <Alert tone="warning" density="compact">
+          {ownsFbmLocation ? copy.fba.needsFbmLocationHere : copy.fba.needsFbmLocation}
+        </Alert>
+      ) : null}
+      {stockMaster && fbaLocation !== '' ? (
+        <Alert tone="info" density="compact">
+          {copy.fba.sellsOnOtherChannels}
+        </Alert>
       ) : null}
     </>
   );

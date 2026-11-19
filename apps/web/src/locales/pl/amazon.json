@@ -49,9 +49,23 @@
       "label": "Środowisko Selling Partner API"
     },
     "catalogueMarketplace": {
-      "description": "OpenLinker czyta katalog z jednego rynku: treść listingu, cenę brutto z jej walutą i kraj stawki VAT.",
+      "description": "OpenLinker czyta katalog z jednego rynku: treść listingu, cenę brutto z jej walutą, kraj stawki VAT i stany.",
       "first": "Pierwszy rynek ({marketplace})",
       "label": "Rynek katalogu"
+    },
+    "fba": {
+      "description": "Stany, które Amazon trzyma w swoich magazynach (FBA), są wczytywane do tej lokalizacji. OpenLinker nigdy ich nie zapisuje.",
+      "label": "Lokalizacja stanów FBA",
+      "needsFbmLocation": "Włącz też „Przypisz lokalizację do stanu tego połączenia” z inną lokalizacją, inaczej stanów FBA nie da się trzymać osobno.",
+      "needsFbmLocationHere": "Wybierz też lokalizację stanów wysyłanych przez Ciebie, inną niż lokalizacja FBA, inaczej stanów FBA nie da się trzymać osobno.",
+      "none": "Nie wczytuj stanów FBA",
+      "sellsOnOtherChannels": "Stany FBA wliczają się do tego, co mogą sprzedawać inne kanały. Dopóki Amazon nie wysyła tych zamówień za Ciebie, trzymaj je w lokalizacji, z której nie sprzedajesz.",
+      "unknown": "Lokalizacja {id}"
+    },
+    "fbm": {
+      "description": "Gdzie leży stan, który wysyłasz sam. Stany FBA trafiają do innej lokalizacji, więc nigdy się nie sumują.",
+      "label": "Lokalizacja stanów wysyłanych przez Ciebie (FBM)",
+      "none": "Bez lokalizacji"
     },
     "marketplaces": {
       "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",
@@ -153,6 +167,7 @@
     "notificationsHint": "Z kolejką SQS Amazon zgłasza zmiany zamówień w ciągu minuty, a nie przy następnym odpytaniu. Możesz ją dodać później.",
     "offers": "Oferty",
     "offersHint": "Łącz istniejące oferty, wystawiaj nowe i aktualizuj stany oraz ceny.",
+    "offersMasterHint": "Stany katalogu głównego nie są zapisywane do jego własnych listingów, więc oferty zostają wyłączone.",
     "orders": "Zamówienia",
     "ordersHint": "Importuj zamówienia z Amazona i odsyłaj numery przesyłek.",
     "queueUrl": "Adres kolejki SQS",
@@ -169,7 +184,7 @@
     },
     "role": "Rola Amazona w OpenLinkerze",
     "roleMaster": "Katalog główny",
-    "roleMasterHint": "Wkrótce: produkty i stany z Amazona do sprzedaży w innych kanałach.",
+    "roleMasterHint": "Produkty i stany z Twoich listingów na Amazonie do sprzedaży w innych kanałach.",
     "roleSalesChannel": "Kanał sprzedaży",
     "roleSalesChannelHint": "Produkty pochodzą z Twojego katalogu; Amazon dostaje oferty i wysyła zamówienia.",
     "sandboxNotice": "Sandbox odpowiada tylko przykładowymi danymi Amazona. Żadne prawdziwe zamówienia ani oferty nie są czytane ani zmieniane.",
