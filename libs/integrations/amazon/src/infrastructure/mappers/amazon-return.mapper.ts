@@ -13,6 +13,10 @@
  *     latest moment the request can have been made.
  *   - lines: SKU, ASIN, title, returned quantity, Amazon's return reason and,
  *     when the row carries the order amount and quantity, the unit price.
+ *     Ordered by SKU, then ASIN, never by report row order: core keeps the
+ *     operator's receipt and disposition on a line by its position, and the
+ *     same return is read again from later reports, whose rows Amazon may
+ *     order differently.
  *
  * Column names follow Amazon's report documentation and are not yet verified
  * on a live account (#4184 research criterion).
@@ -65,7 +69,7 @@ export function groupAmazonReturnRows(rows: readonly AmazonFlatFileRow[], window
       orderId: nonEmpty(first.orderid),
       status: nonEmpty(first.returnrequeststatus) ?? 'Unknown',
       requestedAt: toIso(first.returnrequestdate) ?? windowEnd,
-      lines: group.map(toLine),
+      lines: group.map(toLine).sort(compareLines),
     };
   });
 }
@@ -107,6 +111,16 @@ function toLine(row: AmazonFlatFileRow): AmazonReturnLineRow {
         ? Math.round((orderAmount / orderQuantity) * 100) / 100
         : null,
   };
+}
+
+/** A stable order for a return's lines, independent of the report's row order. */
+function compareLines(a: AmazonReturnLineRow, b: AmazonReturnLineRow): number {
+  return (
+    (a.sku ?? '').localeCompare(b.sku ?? '') ||
+    (a.asin ?? '').localeCompare(b.asin ?? '') ||
+    (a.name ?? '').localeCompare(b.name ?? '') ||
+    a.quantity - b.quantity
+  );
 }
 
 function nonEmpty(value: string | undefined): string | null {

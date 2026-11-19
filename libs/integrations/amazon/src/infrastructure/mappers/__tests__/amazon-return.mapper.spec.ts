@@ -35,10 +35,20 @@ describe('groupAmazonReturnRows', () => {
       status: 'Approved',
       requestedAt: '2026-11-10T08:00:00.000Z',
       lines: [
-        { sku: 'MUG-RED', asin: 'B0A', name: 'Red mug', quantity: 1, reason: 'DEFECTIVE', unitPrice: 19.99 },
         { sku: 'MUG-BLUE', asin: 'B0B', name: 'Blue mug', quantity: 2, reason: 'NO_LONGER_WANTED', unitPrice: 10 },
+        { sku: 'MUG-RED', asin: 'B0A', name: 'Red mug', quantity: 1, reason: 'DEFECTIVE', unitPrice: 19.99 },
       ],
     });
+  });
+
+  it('should give a return the same lines whatever order the report lists its rows in', () => {
+    const [header, red, blue, ...rest] = REPORT.split('\n');
+    const reordered = groupAmazonReturnRows(
+      parseAmazonFlatFile([header, blue, red, ...rest].join('\n')),
+      '2026-11-17T00:00:00.000Z',
+    );
+
+    expect(toIncomingReturn(reordered[0]).lines).toEqual(toIncomingReturn(returns[0]).lines);
   });
 
   it('should fall back to the window end for an unreadable date and to one unit for a missing quantity', () => {

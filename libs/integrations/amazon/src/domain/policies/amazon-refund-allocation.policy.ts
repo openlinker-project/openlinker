@@ -7,9 +7,9 @@
  *
  *   - the returned items when the return is known (matched by seller SKU, up
  *     to the returned quantity), otherwise every item of the order;
- *   - in order item order, each item taking at most its price times the
- *     quantity it stands for;
- *   - an amount larger than those items' price is refused, never spread onto
+ *   - in order item order, each item taking at most what was paid for the
+ *     units it stands for (its paid amount, shared over its quantity);
+ *   - an amount larger than what was paid for those items is refused, never spread onto
  *     items that were not returned or onto shipping: Amazon caps a refund at
  *     what was paid for an item, and a wrong split would refund the wrong
  *     thing.
@@ -20,8 +20,8 @@
 export interface AmazonRefundOrderItem {
   readonly orderItemId: string;
   readonly sku: string | null;
-  /** Price paid per unit, in minor units. */
-  readonly unitPriceMinor: number;
+  /** Paid for all units of the item after discounts, tax included, in minor units. */
+  readonly paidMinor: number;
   readonly quantity: number;
 }
 
@@ -68,7 +68,7 @@ export function allocateAmazonRefund(
 }
 
 function wholeOrder(items: readonly AmazonRefundOrderItem[]): { orderItemId: string; capacityMinor: number }[] {
-  return items.map((item) => ({ orderItemId: item.orderItemId, capacityMinor: item.unitPriceMinor * item.quantity }));
+  return items.map((item) => ({ orderItemId: item.orderItemId, capacityMinor: item.paidMinor }));
 }
 
 function returnedItems(
@@ -86,7 +86,12 @@ function returnedItems(
     const units = Math.min(want, item.quantity);
     if (units <= 0 || item.sku === null) continue;
     left.set(item.sku, want - units);
-    capacities.push({ orderItemId: item.orderItemId, capacityMinor: item.unitPriceMinor * units });
+    capacities.push({ orderItemId: item.orderItemId, capacityMinor: paidFor(item, units) });
   }
   return capacities;
+}
+
+/** What was paid for `units` of the item; a share is rounded down so it never exceeds the whole. */
+function paidFor(item: AmazonRefundOrderItem, units: number): number {
+  return units >= item.quantity ? item.paidMinor : Math.floor((item.paidMinor * units) / item.quantity);
 }

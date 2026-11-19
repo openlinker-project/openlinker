@@ -33,9 +33,57 @@ const command = (overrides: Partial<ExecuteRefundCommand> = {}): ExecuteRefundCo
   ...overrides,
 });
 
+const eur = (amount: string): { amount: string; currencyCode: string } => ({ amount, currencyCode: 'EUR' });
+const usd = (amount: string): { amount: string; currencyCode: string } => ({ amount, currencyCode: 'USD' });
+
+/** One MUG listed at 20.00, discounted by 5.00, VAT inside the price: the buyer paid 15.00. */
+const discountedOrder = (): AmazonOrder =>
+  ({
+    orderId: '302-1',
+    salesChannel: { channelName: 'Amazon.de', marketplaceId: 'A1PA6795UKMFR9' },
+    fulfillment: { fulfilledBy: 'MERCHANT' },
+    proceeds: { grandTotal: eur('15.00') },
+    orderItems: [
+      {
+        orderItemId: 'I1',
+        quantityOrdered: 1,
+        product: { sellerSku: 'MUG', price: { unitPrice: eur('20.00') } },
+        proceeds: {
+          breakdowns: [
+            { type: 'ITEM', subtotal: eur('20.00') },
+            { type: 'DISCOUNT', subtotal: eur('-5.00') },
+            { type: 'TAX', subtotal: eur('2.81') },
+          ],
+        },
+      },
+    ],
+  }) as unknown as AmazonOrder;
+
+/** One MUG at 10.00 with 1.00 sales tax added on top: the buyer paid 11.00. */
+const salesTaxOrder = (): AmazonOrder =>
+  ({
+    orderId: '111-1',
+    salesChannel: { channelName: 'Amazon.com', marketplaceId: 'ATVPDKIKX0DER' },
+    fulfillment: { fulfilledBy: 'MERCHANT' },
+    proceeds: { grandTotal: usd('11.00') },
+    orderItems: [
+      {
+        orderItemId: 'I1',
+        quantityOrdered: 1,
+        product: { sellerSku: 'MUG', price: { unitPrice: usd('10.00') } },
+        proceeds: {
+          breakdowns: [
+            { type: 'ITEM', subtotal: usd('10.00') },
+            { type: 'TAX', subtotal: usd('1.00') },
+          ],
+        },
+      },
+    ],
+  }) as unknown as AmazonOrder;
+
 const SUCCESS_REPORT = 'Number of records processed\t\t1\nNumber of records successful\t\t1\n';
 
-function setup(fulfilledBy?: string): {
+function setup(fulfilledBy?: string, theOrder?: AmazonOrder): {
   executor: AmazonRefundExecutor;
   feeds: jest.Mocked<AmazonFeedsClient>;
   cache: InMemoryCacheAdapter;
@@ -64,7 +112,7 @@ function setup(fulfilledBy?: string): {
     marketplaceIds: ['A1PA6795UKMFR9'],
     feeds,
     returns,
-    readOrder: jest.fn().mockResolvedValue(order(fulfilledBy)),
+    readOrder: jest.fn().mockResolvedValue(theOrder ?? order(fulfilledBy)),
     cache,
     sleep: (ms) => {
       clock += ms;
@@ -160,5 +208,25 @@ describe('AmazonRefundExecutor', () => {
     );
 
     await expect(executor.executeRefund(command({ externalReturnId: null, amount: '25.00' }))).rejects.toThrow(/only part/);
+  });
+
+  it('should bound the refund by what the buyer paid after the discount, not the list price', async () => {
+    const paid = setup(undefined, discountedOrder());
+    await paid.executor.executeRefund(command({ amount: '15.00' }));
+    expect(paid.feeds.uploadFeedDocument.mock.calls[0][0]).toContain('302-1\tI1\tCustomerReturn\tEUR\t15.00\t0.00\t0.00\t0.00');
+
+    const over = setup(undefined, discountedOrder());
+    await expect(over.executor.executeRefund(command({ amount: '15.01' }))).resolves.toEqual(
+      expect.objectContaining({ outcome: 'denied' }),
+    );
+    expect(over.feeds.uploadFeedDocument).not.toHaveBeenCalled();
+  });
+
+  it('should split the refund into price and tax where tax is added on top', async () => {
+    const { executor, feeds } = setup(undefined, salesTaxOrder());
+
+    await executor.executeRefund(command({ externalOrderId: '111-1', amount: '11.00', currency: 'USD' }));
+
+    expect(feeds.uploadFeedDocument.mock.calls[0][0]).toContain('111-1\tI1\tCustomerReturn\tUSD\t10.00\t1.00\t0.00\t0.00');
   });
 });

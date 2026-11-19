@@ -143,6 +143,44 @@ export function mapAmazonOrderToIncomingOrder(order: AmazonOrder): IncomingOrder
   };
 }
 
+/** What the buyer paid for one order item, after its discounts (#4184). */
+export interface AmazonItemPayment {
+  readonly orderItemId: string;
+  readonly sku: string | null;
+  readonly quantity: number;
+  /** Paid for all units, tax included. */
+  readonly gross: number;
+  /** The tax part of `gross`; 0 when Amazon reported none or the treatment is unknown. */
+  readonly tax: number;
+}
+
+/**
+ * The order's item payments read the same way the order lines are, so a
+ * refund is bounded by what the order says the buyer paid. `taxTreatment` is
+ * `exclusive` where tax is added on top of the item price (US, Canada).
+ */
+export function readAmazonItemPayments(order: AmazonOrder): {
+  readonly currency: string;
+  readonly taxTreatment: 'inclusive' | 'exclusive' | undefined;
+  readonly items: readonly AmazonItemPayment[];
+} {
+  const money = readOrderMoney(order);
+  return {
+    currency: findCurrency(order),
+    taxTreatment: money.taxTreatment,
+    items: order.orderItems.map((item, index) => {
+      const line = money.lines[index];
+      return {
+        orderItemId: item.orderItemId,
+        sku: item.product.sellerSku ?? null,
+        quantity: item.quantityOrdered,
+        gross: round2(line.gross),
+        tax: money.taxTreatment === undefined ? 0 : round2(line.gross - line.net),
+      };
+    }),
+  };
+}
+
 /** One line's money: `amount` as Amazon states it, `net` without tax, `gross` with it. */
 interface LineMoney {
   readonly amount: number;

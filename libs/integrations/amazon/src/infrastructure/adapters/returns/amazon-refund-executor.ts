@@ -28,17 +28,22 @@
  * `AMAZON_REFUND_FEED_WAIT_MS` for the result; a feed still running after that
  * is reported `accepted` with the feed id as the provider reference.
  *
- * Amounts are VAT-inclusive (`item-price-adj`), as European Amazon prices are.
- * Not verified on a live account (#4184 research criterion): the feed's column
- * set and whether partial amounts are accepted.
+ * What each item can take is what the buyer paid for it after discounts, read
+ * by the same rules as the order lines (`readAmazonItemPayments`), never the
+ * list price. Where European prices include VAT the whole part goes to
+ * `item-price-adj`; where tax is added on top (US, Canada) each part is split
+ * into `item-price-adj` and `item-tax-adj` in the proportion the item was
+ * paid. Not verified on a live account (#4184 research criterion): the feed's
+ * column set and whether partial amounts are accepted.
  *
  * @module libs/integrations/amazon/src/infrastructure/adapters/returns
  */
 import type { ExecuteRefundCommand, RefundExecutionResult, RefundReason } from '@openlinker/core/orders';
 import type { CachePort } from '@openlinker/shared';
 
-import { allocateAmazonRefund, type AmazonRefundOrderItem } from '../../../domain/policies/amazon-refund-allocation.policy';
+import { allocateAmazonRefund } from '../../../domain/policies/amazon-refund-allocation.policy';
 import type { AmazonOrder } from '../../../domain/types/amazon-order.types';
+import { readAmazonItemPayments, type AmazonItemPayment } from '../../mappers/amazon-incoming-order.mapper';
 import type { AmazonFeedsClient } from '../../http/amazon-feeds.client';
 import { writeAmazonFlatFile } from '../../mappers/amazon-flat-file';
 import { readAmazonFeedProcessingReport } from '../../mappers/amazon-feed-processing-report';
@@ -103,10 +108,16 @@ export class AmazonRefundExecutor {
     if (order.fulfillment?.fulfilledBy === 'AMAZON') {
       return denied('Amazon refunds the orders it fulfils itself');
     }
-    const items = toRefundItems(order, command.currency);
-    if (items === null) {
+    const payments = readAmazonItemPayments(order);
+    if (payments.currency !== command.currency) {
       return denied(`the Amazon order is not in ${command.currency}`);
     }
+    const items = payments.items.map((item) => ({
+      orderItemId: item.orderItemId,
+      sku: item.sku,
+      paidMinor: Math.round(item.gross * 100),
+      quantity: item.quantity,
+    }));
     const returned =
       command.externalReturnId === null ? null : await this.deps.returns.cached(command.externalReturnId);
     const allocation = allocateAmazonRefund(
@@ -121,16 +132,20 @@ export class AmazonRefundExecutor {
     const reasonCode = adjustmentReason(command.reason, command.externalReturnId !== null);
     const content = writeAmazonFlatFile(
       FEED_HEADERS,
-      allocation.parts.map((part) => [
-        order.orderId,
-        part.orderItemId,
-        reasonCode,
-        command.currency,
-        fromMinor(part.amountMinor),
-        '0.00',
-        '0.00',
-        '0.00',
-      ]),
+      allocation.parts.map((part) => {
+        const tax =
+          payments.taxTreatment === 'exclusive' ? taxShareMinor(part, payments.items) : 0;
+        return [
+          order.orderId,
+          part.orderItemId,
+          reasonCode,
+          command.currency,
+          fromMinor(part.amountMinor - tax),
+          fromMinor(tax),
+          '0.00',
+          '0.00',
+        ];
+      }),
     );
 
     let documentId: string;
@@ -210,22 +225,20 @@ function denied(message: string): RefundExecutionResult {
   return { outcome: 'denied', providerRefundId: null, refundedAt: null, providerMessage: message };
 }
 
-/** The order's items with their unit prices in minor units, or `null` when a price is in another currency. */
-function toRefundItems(order: AmazonOrder, currency: string): AmazonRefundOrderItem[] | null {
-  const items: AmazonRefundOrderItem[] = [];
-  for (const item of order.orderItems) {
-    const price = item.product.price?.unitPrice;
-    if (price !== undefined && price.currencyCode !== currency) {
-      return null;
-    }
-    items.push({
-      orderItemId: item.orderItemId,
-      sku: item.product.sellerSku ?? null,
-      unitPriceMinor: price !== undefined ? toMinor(price.amount) : 0,
-      quantity: item.quantityOrdered,
-    });
+/**
+ * The tax part of a refund part where tax is added on top of the price: the
+ * part times the item's tax over what was paid for it, so price and tax keep
+ * the proportion the buyer paid them in.
+ */
+function taxShareMinor(
+  part: { readonly orderItemId: string; readonly amountMinor: number },
+  items: readonly AmazonItemPayment[],
+): number {
+  const item = items.find((candidate) => candidate.orderItemId === part.orderItemId);
+  if (item === undefined || item.gross <= 0 || item.tax <= 0) {
+    return 0;
   }
-  return items;
+  return Math.round((part.amountMinor * Math.round(item.tax * 100)) / Math.round(item.gross * 100));
 }
 
 function adjustmentReason(reason: RefundReason, forReturn: boolean): string {

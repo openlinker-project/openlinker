@@ -6,8 +6,8 @@
 import { allocateAmazonRefund } from '../amazon-refund-allocation.policy';
 
 const ITEMS = [
-  { orderItemId: 'I1', sku: 'MUG', unitPriceMinor: 1000, quantity: 2 },
-  { orderItemId: 'I2', sku: 'CUP', unitPriceMinor: 500, quantity: 1 },
+  { orderItemId: 'I1', sku: 'MUG', paidMinor: 2000, quantity: 2 },
+  { orderItemId: 'I2', sku: 'CUP', paidMinor: 500, quantity: 1 },
 ];
 
 describe('allocateAmazonRefund', () => {
@@ -39,5 +39,13 @@ describe('allocateAmazonRefund', () => {
     expect(allocateAmazonRefund(1001, ITEMS, [{ sku: 'MUG', quantity: 1 }]).ok).toBe(false);
     expect(allocateAmazonRefund(100, ITEMS, [{ sku: 'PLATE', quantity: 1 }]).ok).toBe(false);
     expect(allocateAmazonRefund(0, ITEMS, null).ok).toBe(false);
+  });
+
+  it('should bound a part of an item by its share of what was paid, rounded down', () => {
+    const odd = [{ orderItemId: 'I1', sku: 'MUG', paidMinor: 1001, quantity: 2 }];
+
+    expect(allocateAmazonRefund(500, odd, [{ sku: 'MUG', quantity: 1 }]).ok).toBe(true);
+    expect(allocateAmazonRefund(501, odd, [{ sku: 'MUG', quantity: 1 }]).ok).toBe(false);
+    expect(allocateAmazonRefund(1001, odd, [{ sku: 'MUG', quantity: 2 }]).ok).toBe(true);
   });
 });
