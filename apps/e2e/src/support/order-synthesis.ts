@@ -218,6 +218,7 @@ export function buildPrestashopWebserviceClient(world: World): PrestashopWebserv
 async function pickDriverProduct(
   api: ApiClient,
   connectionId: string,
+  ps: PrestashopWebserviceClient,
 ): Promise<{ product: Product; variant: ProductVariant } | undefined> {
   // SCOPED to the connection, not a bare first page. `externalIdFor` below
   // filters by connection anyway, so an unscoped page merely decided the
@@ -228,7 +229,14 @@ async function pickDriverProduct(
   const page = await api.products.list({ limit: 50, connectionId });
   for (const summary of page.items) {
     const detail = await api.products.getById(summary.id);
-    if (!externalIdFor(detail, connectionId)) continue;
+    const shopProductId = externalIdFor(detail, connectionId);
+    if (!shopProductId) continue;
+    // A mapping can outlive the shop product it points at (a shop that was reset
+    // or cleaned up keeps its OpenLinker rows). Selling such a product gives a
+    // cart with no rows, which PrestaShop answers with an order-less "Can't save
+    // Order Payment" 500 that reads like a payment fault. Skip what the shop no
+    // longer has.
+    if (!(await shopHasProduct(ps, shopProductId))) continue;
     const variants = detail.variants && detail.variants.length > 0 ? detail.variants : (await api.products.listVariants(summary.id)).items;
     // Variant-level external id is OPTIONAL downstream (`synthesizeOrder`
     // falls back to `productAttributeId: '0'` for a simple product's
@@ -240,6 +248,15 @@ async function pickDriverProduct(
     }
   }
   return undefined;
+}
+
+async function shopHasProduct(ps: PrestashopWebserviceClient, productId: string): Promise<boolean> {
+  try {
+    await ps.getProduct(productId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -277,7 +294,7 @@ export async function createSourceOrder(
     );
   }
 
-  const driver = options.driver ?? (await pickDriverProduct(api, prestashop.id));
+  const driver = options.driver ?? (await pickDriverProduct(api, prestashop.id, ps));
   if (!driver) {
     throw new Error('synthesizeOrder found no catalogue product with a priced, EAN-complete variant');
   }
