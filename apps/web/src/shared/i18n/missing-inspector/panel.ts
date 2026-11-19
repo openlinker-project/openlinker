@@ -54,7 +54,9 @@ const STYLES = `
   color: inherit;
   cursor: pointer;
 }
-.i18n-inspector-panel__body { overflow: auto; padding: 4px 0; }
+.i18n-inspector-panel__header,
+.i18n-inspector-panel__options { flex-shrink: 0; }
+.i18n-inspector-panel__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0; }
 .i18n-inspector-panel__options { display: flex; gap: 6px; padding: 4px 8px; align-items: center; }
 .i18n-inspector-panel__group {
   padding: 6px 8px 2px;
@@ -62,9 +64,17 @@ const STYLES = `
   color: var(--text-muted);
   text-transform: uppercase;
 }
+/* The app's global button rule fixes height at 2rem and forbids wrapping;
+   a row holds three lines, so both are undone here or rows overlap. */
 .i18n-inspector-panel__row {
-  display: block;
+  display: block !important;
   width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  box-shadow: none !important;
+  font-weight: 400 !important;
   text-align: left;
   border: 0 !important;
   border-radius: 0 !important;
