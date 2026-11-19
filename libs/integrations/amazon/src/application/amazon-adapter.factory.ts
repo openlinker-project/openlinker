@@ -19,7 +19,11 @@ import type { FetchLike } from '@openlinker/shared/http';
 
 import { AMAZON_NOTIFICATIONS_GRANTLESS_SCOPE } from '../amazon.constants';
 import { AmazonConfigException } from '../domain/exceptions/amazon-config.exception';
-import { parseAmazonConfig, resolveAmazonSpApiHost } from '../domain/policies/amazon-config.policy';
+import {
+  parseAmazonConfig,
+  resolveAmazonSpApiHost,
+  resolveCatalogueMarketplaceId,
+} from '../domain/policies/amazon-config.policy';
 import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.policy';
 import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-token.provider';
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
@@ -36,6 +40,8 @@ import {
 import { AmazonRefundExecutor } from '../infrastructure/adapters/returns/amazon-refund-executor';
 import { AmazonReturnReader } from '../infrastructure/adapters/returns/amazon-return-reader';
 import { AmazonFeedsClient } from '../infrastructure/http/amazon-feeds.client';
+import { AmazonFulfillmentOutboundClient } from '../infrastructure/http/amazon-fulfillment-outbound.client';
+import { AmazonMcfFulfillmentExecutorAdapter } from '../infrastructure/adapters/fulfillment-executor/amazon-mcf-fulfillment-executor.adapter';
 import { AmazonReportsClient } from '../infrastructure/http/amazon-reports.client';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
 
@@ -172,6 +178,26 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       resolution.client,
       resolution.config,
       identifierMapping,
+      cache,
+    );
+  }
+
+  /** Amazon Multi-Channel Fulfillment as a fulfilment holder (#4185). */
+  createFulfillmentExecutor(
+    resolution: AmazonResolution,
+    identifierMapping: IdentifierMappingPort,
+    cache?: CachePort,
+  ): AmazonMcfFulfillmentExecutorAdapter {
+    return new AmazonMcfFulfillmentExecutorAdapter(
+      new AmazonFulfillmentOutboundClient(resolution.client),
+      identifierMapping,
+      {
+        connectionId: resolution.connection.id,
+        // The marketplace FBA stock is read on (#4183), so work is routed and
+        // fulfilled against the same FBA pool.
+        marketplaceId: resolveCatalogueMarketplaceId(resolution.config),
+        shippingSpeed: resolution.config.mcfShippingSpeed ?? 'Standard',
+      },
       cache,
     );
   }

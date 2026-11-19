@@ -12,6 +12,7 @@
  *   - `fbaLocationId` (optional) needs `stockLocationOverride` set to a
  *     different location (#4183, see `readFbaLocationId`).
  *   - `refundsEnabled` (optional boolean, #4184) opts in to sending refunds.
+ *   - `mcfShippingSpeed` (optional, #4185): Standard, Expedited or Priority.
  *   - `marketplaceIds` must be a non-empty list of SP-API marketplace ids.
  *     An id we know (`AMAZON_KNOWN_MARKETPLACES`) must belong to the chosen
  *     region; an unknown id is accepted by format alone. Duplicates are dropped.
@@ -40,6 +41,7 @@ import {
   type AmazonRegion,
 } from '../../amazon.constants';
 import type { AmazonConnectionConfig, AmazonNotificationQueue } from '../types/amazon-config.types';
+import { AmazonMcfShippingSpeedValues } from '../types/amazon-mcf.types';
 import { canonicalTaxRateCode } from './amazon-tax-code.policy';
 
 /** SP-API marketplace ids are 10-14 upper-case letters and digits (`A1PA6795UKMFR9`). */
@@ -70,6 +72,13 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
   const catalogueMarketplaceId = readCatalogueMarketplaceId(config.catalogueMarketplaceId, marketplaceIds, issues);
   const fbaLocationId = readFbaLocationId(config.fbaLocationId, config.stockLocationOverride, issues);
   const refundsEnabled = readOptionalBoolean(config.refundsEnabled, 'refundsEnabled', issues);
+  const mcfShippingSpeed =
+    config.mcfShippingSpeed === undefined || config.mcfShippingSpeed === null || config.mcfShippingSpeed === ''
+      ? undefined
+      : readEnum(config.mcfShippingSpeed, AmazonMcfShippingSpeedValues, 'Standard');
+  if (mcfShippingSpeed === null) {
+    issues.push({ path: 'mcfShippingSpeed', message: `must be one of: ${AmazonMcfShippingSpeedValues.join(', ')}` });
+  }
 
   if (issues.length > 0 || region === null || environment === null) {
     return { ok: false, issues };
@@ -86,6 +95,7 @@ export function parseAmazonConfig(raw: Record<string, unknown> | null | undefine
       ...(catalogueMarketplaceId ? { catalogueMarketplaceId } : {}),
       ...(fbaLocationId ? { fbaLocationId } : {}),
       ...(refundsEnabled ? { refundsEnabled } : {}),
+      ...(mcfShippingSpeed ? { mcfShippingSpeed } : {}),
     },
   };
 }

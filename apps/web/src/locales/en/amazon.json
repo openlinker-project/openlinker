@@ -75,6 +75,15 @@
       "placeholder": "Choose marketplaces",
       "unlisted": "Marketplace {id}"
     },
+    "mcf": {
+      "description": "How fast Amazon ships the orders OpenLinker hands to Multi-Channel Fulfillment. Faster shipping costs more.",
+      "label": "Multi-Channel Fulfillment shipping speed",
+      "speeds": {
+        "Expedited": "Expedited",
+        "Priority": "Priority",
+        "Standard": "Standard"
+      }
+    },
     "queueUrlDescription": "Amazon delivers order changes to this queue. Register it below after saving.",
     "refunds": {
       "description": "A refund confirmed in OpenLinker is sent to Amazon for seller-fulfilled orders. When off, OpenLinker only records that you refunded in Seller Central.",

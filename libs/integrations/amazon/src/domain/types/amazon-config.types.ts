@@ -13,6 +13,7 @@
  * @module libs/integrations/amazon/src/domain/types
  */
 import type { AmazonEnvironment, AmazonRegion } from '../../amazon.constants';
+import type { AmazonMcfShippingSpeed } from './amazon-mcf.types';
 
 export interface AmazonConnectionConfig {
   readonly region: AmazonRegion;
@@ -55,6 +56,11 @@ export interface AmazonConnectionConfig {
    * the seller refunded in Seller Central.
    */
   readonly refundsEnabled?: boolean;
+  /**
+   * The Multi-Channel Fulfillment shipping speed for orders Amazon ships for
+   * other channels (#4185). Absent means `Standard`.
+   */
+  readonly mcfShippingSpeed?: AmazonMcfShippingSpeed;
 }
 
 export interface AmazonNotificationQueue {

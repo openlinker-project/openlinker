@@ -75,6 +75,15 @@
       "placeholder": "Wybierz rynki",
       "unlisted": "Rynek {id}"
     },
+    "mcf": {
+      "description": "Jak szybko Amazon wysyła zamówienia, które OpenLinker przekazuje do Multi-Channel Fulfillment. Szybsza wysyłka kosztuje więcej.",
+      "label": "Szybkość wysyłki Multi-Channel Fulfillment",
+      "speeds": {
+        "Expedited": "Przyspieszona",
+        "Priority": "Priorytetowa",
+        "Standard": "Standardowa"
+      }
+    },
     "queueUrlDescription": "Amazon dostarcza zmiany zamówień do tej kolejki. Po zapisaniu zarejestruj ją poniżej.",
     "refunds": {
       "description": "Zwrot pieniędzy zatwierdzony w OpenLinker trafia do Amazona dla zamówień wysyłanych przez sprzedawcę. Gdy wyłączone, OpenLinker tylko zapisuje, że zwróciłeś pieniądze w Seller Central.",
