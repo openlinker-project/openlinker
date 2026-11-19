@@ -74,3 +74,9 @@ Fulfillment), returns (#4184), multi-location pruning.
   Amazon's published models.
 - With FBA on, FBA quantity counts toward available-to-promise on every
   channel before #4185 exists; the connection page says so.
+- `adjustInventory` reads the listing and then patches it: Amazon has no
+  conditional stock write, so a sale on Amazon between the two is overwritten.
+  To measure on a live account together with how long Amazon takes to apply an
+  accepted patch.
+- Stock is read on the catalogue marketplace (`catalogueMarketplaceId`, #4182),
+  the same one the catalogue is read from.

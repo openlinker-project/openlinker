@@ -18,7 +18,9 @@
  *     On a connection that is also the stock master (#4183) the write is
  *     skipped: Amazon is where that number comes from, and writing back the
  *     quantity OpenLinker publishes (net of reservations and the safety
- *     buffer) would lower Amazon's stock on every sync.
+ *     buffer) would lower Amazon's stock on every sync. Unreachable while
+ *     `ConnectionService` refuses `InventoryMaster` beside `OfferManager`
+ *     (#1498); kept as defence in depth should that rule ever be relaxed.
  *   - `OfferFieldUpdater`: price only, `patchListingsItem` replacing
  *     `purchasable_offer` for each configured marketplace whose currency is the
  *     price's (FR / DE: EUR, PL: PLN). Title, description and tax rate are

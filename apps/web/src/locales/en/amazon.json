@@ -49,7 +49,7 @@
       "label": "Selling Partner API environment"
     },
     "catalogueMarketplace": {
-      "description": "OpenLinker reads the catalogue from one marketplace: the listing content, the price with tax and its currency, and the country of the tax rate.",
+      "description": "OpenLinker reads the catalogue from one marketplace: the listing content, the price with tax and its currency, the country of the tax rate, and the stock.",
       "first": "First marketplace ({marketplace})",
       "label": "Catalogue marketplace"
     },

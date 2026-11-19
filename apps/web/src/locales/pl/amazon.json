@@ -49,7 +49,7 @@
       "label": "Środowisko Selling Partner API"
     },
     "catalogueMarketplace": {
-      "description": "OpenLinker czyta katalog z jednego rynku: treść listingu, cenę brutto z jej walutą i kraj stawki VAT.",
+      "description": "OpenLinker czyta katalog z jednego rynku: treść listingu, cenę brutto z jej walutą, kraj stawki VAT i stany.",
       "first": "Pierwszy rynek ({marketplace})",
       "label": "Rynek katalogu"
     },

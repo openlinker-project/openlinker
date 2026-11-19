@@ -129,6 +129,19 @@ describe('AmazonInventoryMasterAdapter', () => {
     expect(isBulkInventoryReader(setup({ listings: [] }).adapter)).toBe(true);
   });
 
+  it('should read stock on the catalogue marketplace, not the first configured one', async () => {
+    const PL = 'A1C3SOZRARQ6R3';
+    const { adapter, get } = setup({
+      listings: [listing('MUG', 4)],
+      config: { ...BASE_CONFIG, marketplaceIds: [DE, PL], catalogueMarketplaceId: PL },
+    });
+
+    await adapter.listInventory('ol_product_1');
+
+    const [, query] = (get.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[0];
+    expect(query.marketplaceIds).toEqual([PL]);
+  });
+
   describe('listInventory', () => {
     it('should report the seller-fulfilled quantity of a standalone listing without a location', async () => {
       const { adapter } = setup({ listings: [listing('MUG', 7)] });

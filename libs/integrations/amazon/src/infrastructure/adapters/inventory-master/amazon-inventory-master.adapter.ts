@@ -33,6 +33,11 @@
  *     few minutes later and reports no instant, so `appliedAt` is `null` and
  *     the written quantity is what is returned.
  *
+ * Everything is read on the catalogue marketplace (`resolveCatalogueMarketplaceId`),
+ * the one the `ProductMaster` reads: the variation links and FBA stock differ
+ * per marketplace, so reading another one would report stock for variants the
+ * catalogue does not have.
+ *
  * A listing Amazon no longer has raises `MasterProductNotFoundError` (#1688).
  * A missing identifier mapping and an unreadable quantity stay retryable
  * errors, never a deletion and never zero.
@@ -63,6 +68,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import { AmazonNotSupportedException } from '../../../domain/exceptions/amazon-not-supported.exception';
 import { AmazonStockUnreadableException } from '../../../domain/exceptions/amazon-stock-unreadable.exception';
+import { resolveCatalogueMarketplaceId } from '../../../domain/policies/amazon-config.policy';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import type { AmazonFbaStock } from '../../../domain/types/amazon-fba-inventory.types';
 import type { AmazonListingItem } from '../../../domain/types/amazon-listing.types';
@@ -94,7 +100,7 @@ export class AmazonInventoryMasterAdapter implements InventoryMasterPort, BulkIn
       throw new AmazonConfigException(connection.id, 'sellerId (merchant token) is required to read stock');
     }
     this.sellerId = config.sellerId;
-    this.marketplaceId = config.marketplaceIds[0];
+    this.marketplaceId = resolveCatalogueMarketplaceId(config);
     this.listings = new AmazonListingReader(client, config.sellerId, this.marketplaceId, connection.id, cache);
     this.fba = this.fbaEnabled() ? new AmazonFbaInventoryReader(client, this.marketplaceId) : null;
   }
