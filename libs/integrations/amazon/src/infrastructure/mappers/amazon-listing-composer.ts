@@ -117,12 +117,25 @@ export function composeFullListing(input: {
       marketplace_id,
     }));
 
+  // Every marketplace the listing goes to needs its own copy of a required
+  // attribute. A picked dictionary entry is the value Amazon expects as is; a
+  // typed value is text, which Amazon reads in the marketplace's language.
   const attributes: Record<string, unknown> = {};
   for (const parameter of input.content.parameters) {
-    const values = parameter.values ?? parameter.valuesIds ?? [];
-    if (values.length > 0) {
-      attributes[parameter.id] = values.map((value) => ({ value, marketplace_id: marketplaces[0] }));
+    const picked = parameter.valuesIds ?? [];
+    const typed = picked.length > 0 ? [] : (parameter.values ?? []);
+    if (picked.length === 0 && typed.length === 0) {
+      continue;
     }
+    attributes[parameter.id] = marketplaces.flatMap((marketplace_id) =>
+      picked.length > 0
+        ? picked.map((value) => ({ value, marketplace_id }))
+        : typed.map((value) => ({
+            value,
+            language_tag: AMAZON_KNOWN_MARKETPLACES[marketplace_id]?.languageTag ?? 'en_GB',
+            marketplace_id,
+          })),
+    );
   }
 
   Object.assign(attributes, {

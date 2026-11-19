@@ -198,7 +198,12 @@ export class AmazonOfferManagerAdapter
       let entries: AmazonCatalogEntry[];
       try {
         entries = await this.catalog.findByEan(item.ean);
-      } catch {
+      } catch (error) {
+        // The port folds a failed lookup into `no-match`; the log is what tells
+        // a throttled or refused catalogue read from a barcode Amazon lacks.
+        this.logger.warn(
+          `Amazon catalogue lookup failed for variant ${item.variantId} on connection ${this.connectionId}: ${describeLookupFailure(error)}`,
+        );
         results.set(item.variantId, { kind: 'no-match' });
         continue;
       }
@@ -488,6 +493,14 @@ function isFulfilledByAmazon(item: AmazonListingItem): boolean {
   return (item.fulfillmentAvailability ?? []).some(
     (entry) => entry.fulfillmentChannelCode !== AMAZON_SELLER_FULFILLMENT_CHANNEL,
   );
+}
+
+/** The status and Amazon's error code, never the response body. */
+function describeLookupFailure(error: unknown): string {
+  if (error instanceof AmazonApiError) {
+    return `HTTP ${error.statusCode}${error.errorCode ? ` ${error.errorCode}` : ''}`;
+  }
+  return error instanceof Error ? error.name : 'unknown error';
 }
 
 function toSummary(entry: AmazonCatalogEntry): CatalogProductSummary {

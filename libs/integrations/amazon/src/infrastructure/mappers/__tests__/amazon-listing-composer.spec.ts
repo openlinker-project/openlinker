@@ -110,8 +110,37 @@ describe('composeFullListing', () => {
       product_description: [{ value: 'Duży & trwały\n350 ml', language_tag: 'pl_PL', marketplace_id: PL }],
       main_product_image_locator: [{ media_location: 'https://shop.example/1.jpg', marketplace_id: PL }],
       other_product_image_locator_1: [{ media_location: 'https://shop.example/2.jpg', marketplace_id: PL }],
-      color: [{ value: 'Niebieski', marketplace_id: PL }],
+      color: [{ value: 'Niebieski', language_tag: 'pl_PL', marketplace_id: PL }],
     });
     expect(plan.body.attributes).not.toHaveProperty('material');
+  });
+
+  it('should write each product type attribute to every marketplace the listing goes to', () => {
+    const plan = composeFullListing({
+      cmd: command({ price: { amount: 19.99, currency: 'EUR' } }),
+      productType: 'KITCHEN',
+      marketplaceIds: [DE, FR],
+      content: {
+        title: 'Becher',
+        brand: 'Acme',
+        ean: '5901234123457',
+        description: null,
+        imageUrls: [],
+        parameters: [
+          { id: 'color', values: ['Blau'], section: 'product' },
+          { id: 'material', valuesIds: ['ceramic'], section: 'product' },
+        ],
+      },
+    });
+
+    expect(plan.marketplaceIds).toEqual([DE, FR]);
+    expect(plan.body.attributes['color']).toEqual([
+      { value: 'Blau', language_tag: 'de_DE', marketplace_id: DE },
+      { value: 'Blau', language_tag: 'fr_FR', marketplace_id: FR },
+    ]);
+    expect(plan.body.attributes['material']).toEqual([
+      { value: 'ceramic', marketplace_id: DE },
+      { value: 'ceramic', marketplace_id: FR },
+    ]);
   });
 });
