@@ -422,9 +422,20 @@ export interface ActiveOrderImport {
   startedAt: string;
 }
 
+export interface OrderImportFailureReason {
+  code: 'missing-mapping' | 'other';
+  count: number;
+  lastFailedAt: string;
+  /** Source id of the most recent order that failed for this reason. */
+  sampleOrderId: string | null;
+  /** The stored English message of that failure; shown only as the original text. */
+  sampleMessage: string;
+}
+
 export interface OrderImportStatus {
   importedLast24h: number;
   failedLast7d: number;
+  failures: OrderImportFailureReason[];
   waiting: number;
   lastImportedAt: string | null;
   activeImport: ActiveOrderImport | null;

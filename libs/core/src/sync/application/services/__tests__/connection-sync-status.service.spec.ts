@@ -40,6 +40,7 @@ describe('ConnectionSyncStatusService', () => {
     getOrderImportStats = jest.fn().mockResolvedValue({
       importedLast24h: 0,
       failedLast7d: 0,
+      failures: [],
       waiting: 0,
       lastImportedAt: null,
       activeImport: null,
@@ -201,6 +202,7 @@ describe('ConnectionSyncStatusService', () => {
     const figures = {
       importedLast24h: 40,
       failedLast7d: 2,
+      failures: [],
       waiting: 5,
       lastImportedAt: new Date('2026-11-18T09:00:00.000Z'),
       activeImport: null,

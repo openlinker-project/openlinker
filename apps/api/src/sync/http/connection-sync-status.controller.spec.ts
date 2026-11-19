@@ -113,6 +113,15 @@ describe('ConnectionSyncStatusController', () => {
         orderImport: {
           importedLast24h: 12,
           failedLast7d: 1,
+          failures: [
+            {
+              code: 'missing-mapping',
+              count: 1,
+              lastFailedAt: new Date('2026-08-20T09:30:00.000Z'),
+              sampleOrderId: '37',
+              sampleMessage: 'Missing mapping for order item',
+            },
+          ],
           waiting: 3,
           lastImportedAt: new Date('2026-08-20T09:00:00.000Z'),
           activeImport: {
@@ -132,6 +141,15 @@ describe('ConnectionSyncStatusController', () => {
     expect(dto.orderImport).toEqual({
       importedLast24h: 12,
       failedLast7d: 1,
+      failures: [
+        {
+          code: 'missing-mapping',
+          count: 1,
+          lastFailedAt: '2026-08-20T09:30:00.000Z',
+          sampleOrderId: '37',
+          sampleMessage: 'Missing mapping for order item',
+        },
+      ],
       waiting: 3,
       lastImportedAt: '2026-08-20T09:00:00.000Z',
       activeImport: {

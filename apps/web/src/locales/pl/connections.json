@@ -1102,7 +1102,22 @@
     "headline": "Pobieramy nowe zamówienia",
     "health": {
       "failed": "Błędy (7 dni)",
-      "failedHint": "Nie wszystkie zamówienia udało się zaimportować.",
+      "failures": {
+        "count": "Zamówienia: {n}",
+        "latest": "Ostatnie: zamówienie {order}, {when}",
+        "original": "Oryginalny komunikat (nieprzetłumaczony):",
+        "reasons": {
+          "missing-mapping": {
+            "text": "Produkt z tych zamówień nie jest powiązany z żadnym produktem w OpenLinker, więc nie da się utworzyć zamówienia. Zsynchronizuj katalog, a potem ponów zamówienie w Zadaniach i logach.",
+            "title": "Produkt z zamówienia nie jest powiązany"
+          },
+          "other": {
+            "text": "OpenLinker nie mógł zaimportować tych zamówień. Otwórz zadanie w Zadaniach i logach, żeby zobaczyć szczegóły i ponowić.",
+            "title": "Zamówienia nie udały się z innego powodu"
+          }
+        },
+        "title": "Co się nie udało"
+      },
       "fromDay": "od {date}",
       "fromStart": "od początku",
       "importRunning": "Trwa import historii",

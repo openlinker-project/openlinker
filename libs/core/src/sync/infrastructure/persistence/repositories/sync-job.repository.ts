@@ -26,6 +26,7 @@ import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-syn
 import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
 import type {
   ConnectionBacklogStats,
+  OrderImportFailureReason,
   OrderImportStats,
 } from '../../../domain/types/connection-sync-status.types';
 import type {
@@ -713,13 +714,33 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         COUNT(*) FILTER (
           WHERE status = 'succeeded' AND "updatedAt" >= $2
         )::int AS imported_24h,
-        COUNT(*) FILTER (WHERE status = 'dead')::int AS failed_7d,
         COUNT(*) FILTER (WHERE status IN ('queued', 'running'))::int AS waiting,
         MAX("updatedAt") FILTER (WHERE status = 'succeeded') AS last_imported_at
       FROM sync_jobs
       WHERE "connectionId" = $1
         AND "jobType" = 'marketplace.order.sync'
         AND "createdAt" >= $3
+    `;
+    // A job an operator cancelled ends dead too, but it is not a failure: it is
+    // left out here so the failed figure means "something went wrong".
+    const failuresSql = `
+      SELECT
+        CASE
+          WHEN "lastError" ILIKE '%Missing mapping for order item%' THEN 'missing-mapping'
+          ELSE 'other'
+        END AS code,
+        COUNT(*)::int AS cnt,
+        MAX("updatedAt") AS last_failed_at,
+        (array_agg("payloadJson"->>'externalOrderId' ORDER BY "updatedAt" DESC))[1] AS sample_order_id,
+        (array_agg(LEFT(COALESCE("lastError", ''), 300) ORDER BY "updatedAt" DESC))[1] AS sample_message
+      FROM sync_jobs
+      WHERE "connectionId" = $1
+        AND "jobType" = 'marketplace.order.sync'
+        AND status = 'dead'
+        AND "createdAt" >= $2
+        AND COALESCE("lastError", '') NOT ILIKE 'cancelled%'
+      GROUP BY 1
+      ORDER BY cnt DESC
     `;
     const importSql = `
       WITH active AS (
@@ -753,7 +774,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         ) AS started_at
       FROM active a
     `;
-    const [orderRows, importRows] = await Promise.all([
+    const [orderRows, importRows, failureRows] = await Promise.all([
       this.dataSource.query<Array<Record<string, unknown>>>(ordersSql, [
         connectionId,
         since24h,
@@ -762,12 +783,21 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       // The run's pages are only counted back to the 7 day floor: a run still
       // going after a week is reported with the pages it has shown this week.
       this.dataSource.query<Array<Record<string, unknown>>>(importSql, [connectionId, since7d]),
+      this.dataSource.query<Array<Record<string, unknown>>>(failuresSql, [connectionId, since7d]),
     ]);
     const o = orderRows[0] ?? {};
     const a = importRows[0];
+    const failures: OrderImportFailureReason[] = failureRows.map((row) => ({
+      code: row.code === 'missing-mapping' ? 'missing-mapping' : 'other',
+      count: Number(row.cnt ?? 0),
+      lastFailedAt: new Date(row.last_failed_at as string),
+      sampleOrderId: typeof row.sample_order_id === 'string' ? row.sample_order_id : null,
+      sampleMessage: typeof row.sample_message === 'string' ? row.sample_message : '',
+    }));
     return {
       importedLast24h: Number(o.imported_24h ?? 0),
-      failedLast7d: Number(o.failed_7d ?? 0),
+      failedLast7d: failures.reduce((sum, f) => sum + f.count, 0),
+      failures,
       waiting: Number(o.waiting ?? 0),
       lastImportedAt: o.last_imported_at ? new Date(o.last_imported_at as string) : null,
       activeImport:

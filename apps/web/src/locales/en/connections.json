@@ -1076,7 +1076,22 @@
     "headline": "Importing new orders",
     "health": {
       "failed": "Failed (7 days)",
-      "failedHint": "Some orders could not be imported.",
+      "failures": {
+        "count": "Orders: {n}",
+        "latest": "Latest: order {order}, {when}",
+        "original": "Original message (not translated):",
+        "reasons": {
+          "missing-mapping": {
+            "text": "A product in these orders is not linked to a product in OpenLinker, so the order cannot be created. Sync the catalogue, then retry the order from Jobs & Logs.",
+            "title": "A product in the order is not linked"
+          },
+          "other": {
+            "text": "OpenLinker could not import these orders. Open the job in Jobs & Logs for the details and to retry.",
+            "title": "Orders failed for another reason"
+          }
+        },
+        "title": "What failed"
+      },
       "fromDay": "from {date}",
       "fromStart": "from the beginning",
       "importRunning": "History import in progress",

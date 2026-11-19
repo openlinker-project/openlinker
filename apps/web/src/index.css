@@ -40590,11 +40590,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-import-health__stat--warn dd {
   color: var(--status-warning-strong);
 }
-.order-import-health__failure {
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
 .order-import-health__run {
   display: flex;
   align-items: center;
@@ -40634,4 +40629,54 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   50% {
     opacity: 0.35;
   }
+}
+
+.order-import-health__failures {
+  display: grid;
+  gap: var(--space-3);
+}
+.order-import-health__failures-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-import-health__failure-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+.order-import-health__failure {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-soft);
+}
+.order-import-health__failure p {
+  margin: 0;
+}
+.order-import-health__failure-head {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-import-health__failure-text {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.order-import-health__failure-meta,
+.order-import-health__failure-original {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.order-import-health__failure-original span {
+  font-weight: 600;
+}
+.order-import-health__failure-link {
+  margin: 0;
+  font-size: 0.875rem;
 }

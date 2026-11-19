@@ -238,12 +238,32 @@ export interface ActiveOrderImport {
   startedAt: Date;
 }
 
+export const OrderImportFailureCodeValues = ['missing-mapping', 'other'] as const;
+/**
+ * Why an order could not be imported, as a closed code the frontend phrases:
+ * `missing-mapping` is a product in the order that is not linked to a product in
+ * OpenLinker; `other` is everything else, shown with its original message.
+ */
+export type OrderImportFailureCode = (typeof OrderImportFailureCodeValues)[number];
+
+export interface OrderImportFailureReason {
+  code: OrderImportFailureCode;
+  count: number;
+  lastFailedAt: Date;
+  /** Source id of the most recent order that failed for this reason. */
+  sampleOrderId: string | null;
+  /** The stored message of that failure, kept verbatim and in English. */
+  sampleMessage: string;
+}
+
 /** The raw per-connection order-import figures, aggregated from `sync_jobs`. */
 export interface OrderImportStats {
   /** `marketplace.order.sync` jobs that succeeded in the last 24 hours. */
   importedLast24h: number;
-  /** `marketplace.order.sync` jobs that ended dead in the last 7 days. */
+  /** `marketplace.order.sync` jobs that ended dead in the last 7 days, cancelled ones excluded. */
   failedLast7d: number;
+  /** The failures grouped by reason, most frequent first. */
+  failures: OrderImportFailureReason[];
   /** `marketplace.order.sync` jobs queued or running right now. */
   waiting: number;
   /** When an order was last imported (within the last 7 days), or null. */

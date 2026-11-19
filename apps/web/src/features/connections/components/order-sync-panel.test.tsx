@@ -111,6 +111,15 @@ describe('OrderSyncPanel', () => {
     const importFigures = {
       importedLast24h: 42,
       failedLast7d: 2,
+      failures: [
+        {
+          code: 'missing-mapping' as const,
+          count: 2,
+          lastFailedAt: '2026-11-18T09:30:00.000Z',
+          sampleOrderId: '37',
+          sampleMessage: 'Missing mapping for order item',
+        },
+      ],
       waiting: 5,
       lastImportedAt: '2026-11-18T09:50:00.000Z',
       activeImport: {
@@ -138,7 +147,9 @@ describe('OrderSyncPanel', () => {
 
       expect(await screen.findByText('Imported (24 h)')).toBeInTheDocument();
       expect(screen.getByText('42')).toBeInTheDocument();
-      expect(screen.getByText('Some orders could not be imported.')).toBeInTheDocument();
+      expect(screen.getByText('What failed')).toBeInTheDocument();
+      expect(screen.getByText(/A product in the order is not linked/)).toBeInTheDocument();
+      expect(screen.getByText(/Orders: 2 · Latest: order 37/)).toBeInTheDocument();
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
       expect(screen.getByText(/Newest first · from .* · Pages read: 4/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Change start/ })).not.toBeInTheDocument();
@@ -147,12 +158,12 @@ describe('OrderSyncPanel', () => {
     it('should not mention failures or a running import when there are none', async () => {
       renderHealth(
         makeStatus({
-          orderImport: { ...importFigures, failedLast7d: 0, activeImport: null },
+          orderImport: { ...importFigures, failedLast7d: 0, failures: [], activeImport: null },
         }),
       );
 
       expect(await screen.findByText('Imported (24 h)')).toBeInTheDocument();
-      expect(screen.queryByText('Some orders could not be imported.')).not.toBeInTheDocument();
+      expect(screen.queryByText('What failed')).not.toBeInTheDocument();
       expect(screen.queryByText('History import in progress')).not.toBeInTheDocument();
     });
 

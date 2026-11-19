@@ -80,6 +80,10 @@ export class ConnectionSyncStatusController {
         : {
             importedLast24h: status.orderImport.importedLast24h,
             failedLast7d: status.orderImport.failedLast7d,
+            failures: status.orderImport.failures.map((f) => ({
+              ...f,
+              lastFailedAt: f.lastFailedAt.toISOString(),
+            })),
             waiting: status.orderImport.waiting,
             lastImportedAt: status.orderImport.lastImportedAt?.toISOString() ?? null,
             activeImport:

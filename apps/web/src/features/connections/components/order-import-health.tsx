@@ -28,7 +28,8 @@ export function OrderImportHealth({ orderImport }: OrderImportHealthProps): Reac
     return <p className="order-sync-panel__note">{copy.unavailable}</p>;
   }
 
-  const { importedLast24h, failedLast7d, waiting, lastImportedAt, activeImport } = orderImport;
+  const { importedLast24h, failedLast7d, failures, waiting, lastImportedAt, activeImport } =
+    orderImport;
 
   return (
     <div className="order-import-health">
@@ -59,12 +60,39 @@ export function OrderImportHealth({ orderImport }: OrderImportHealthProps): Reac
       </dl>
 
       {failedLast7d > 0 ? (
-        <p className="order-import-health__failure">
-          {copy.failedHint}{' '}
-          <Link to="/jobs-logs" className="link">
-            {copy.viewJobs}
-          </Link>
-        </p>
+        <section className="order-import-health__failures" aria-label={copy.failures.title}>
+          <h4 className="order-import-health__failures-title">{copy.failures.title}</h4>
+          <ul className="order-import-health__failure-list">
+            {failures.map((failure) => (
+              <li key={failure.code} className="order-import-health__failure">
+                <p className="order-import-health__failure-head">
+                  {copy.failures.reasons[failure.code].title}
+                </p>
+                <p className="order-import-health__failure-text">
+                  {copy.failures.reasons[failure.code].text}
+                </p>
+                <p className="order-import-health__failure-meta">
+                  {interpolate(copy.failures.count, { n: format.number(failure.count) })}
+                  {' · '}
+                  {interpolate(copy.failures.latest, {
+                    order: failure.sampleOrderId ?? '?',
+                    when: format.relativeTime(failure.lastFailedAt),
+                  })}
+                </p>
+                {failure.code === 'other' && failure.sampleMessage !== '' ? (
+                  <p className="order-import-health__failure-original">
+                    <span>{copy.failures.original}</span> {failure.sampleMessage}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <p className="order-import-health__failure-link">
+            <Link to="/jobs-logs" className="link">
+              {copy.viewJobs}
+            </Link>
+          </p>
+        </section>
       ) : null}
 
       {activeImport ? (

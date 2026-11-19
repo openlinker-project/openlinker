@@ -29,12 +29,32 @@ export class ActiveOrderImportDto {
   startedAt!: string;
 }
 
+export class OrderImportFailureReasonDto {
+  @ApiProperty({ enum: ['missing-mapping', 'other'], description: 'Why the orders could not be imported' })
+  code!: 'missing-mapping' | 'other';
+
+  @ApiProperty({ description: 'Orders that failed for this reason in the last 7 days' })
+  count!: number;
+
+  @ApiProperty({ description: 'ISO timestamp of the most recent failure' })
+  lastFailedAt!: string;
+
+  @ApiProperty({ nullable: true, type: String, description: 'Source id of the most recent order that failed' })
+  sampleOrderId!: string | null;
+
+  @ApiProperty({ description: 'Stored message of that failure, verbatim (English)' })
+  sampleMessage!: string;
+}
+
 export class OrderImportStatusDto {
   @ApiProperty({ description: 'Orders imported in the last 24 hours' })
   importedLast24h!: number;
 
   @ApiProperty({ description: 'Order imports that failed for good in the last 7 days' })
   failedLast7d!: number;
+
+  @ApiProperty({ type: [OrderImportFailureReasonDto], description: 'The failures grouped by reason' })
+  failures!: OrderImportFailureReasonDto[];
 
   @ApiProperty({ description: 'Order imports queued or running right now' })
   waiting!: number;

@@ -72,6 +72,9 @@ export type {
   ConnectionBacklogStats,
   ActiveOrderImport,
   OrderImportStats,
+  OrderImportFailureCode,
+  OrderImportFailureReason,
+  OrderImportFailureCodeValues,
   OrderImportStatus,
   ConnectionSyncStatus,
 } from './domain/types/connection-sync-status.types';
