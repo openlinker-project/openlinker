@@ -44,4 +44,10 @@ export interface BuyerEmailDeliveryRepositoryPort {
   releaseClaim(deliveryId: string): Promise<void>;
   /** Newest first. */
   listByOrder(internalOrderId: string, limit: number): Promise<BuyerEmailDelivery[]>;
+  /**
+   * Remove the recipient address from every delivery of an order (#4178,
+   * buyer-data retention). The rows stay: they record that an email went out.
+   * Returns how many rows changed.
+   */
+  clearRecipientsForOrder(internalOrderId: string): Promise<number>;
 }

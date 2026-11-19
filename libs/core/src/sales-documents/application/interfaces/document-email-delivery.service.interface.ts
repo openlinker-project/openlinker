@@ -22,4 +22,10 @@ export interface IDocumentEmailDeliveryService {
 
   /** Attempts for one order, newest first. */
   listForOrder(internalOrderId: string): Promise<DocumentEmailDelivery[]>;
+  /**
+   * Remove the recipient address from every delivery of an order (#4178,
+   * buyer-data retention). The rows stay: they record that an email went out.
+   * Returns how many rows changed.
+   */
+  clearRecipientsForOrder(internalOrderId: string): Promise<number>;
 }

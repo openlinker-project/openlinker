@@ -57,6 +57,7 @@ export const ORDER_EXPORT_REPOSITORY_TOKEN = Symbol('OrderExportRepositoryPort')
 export const ORDER_EXPORT_SERVICE_TOKEN = Symbol('IOrderExportService');
 // `order_records.searchText` re-derivation under the current PII mode (#3507 G03-14).
 export const ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN = Symbol('IOrderSearchTextReindexService');
+export const ORDER_BUYER_DATA_RETENTION_SERVICE_TOKEN = Symbol('IOrderBuyerDataRetentionService');
 
 
 

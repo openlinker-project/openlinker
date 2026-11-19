@@ -182,6 +182,16 @@ export class OrderRecordOrmEntity {
   dispatchByAt!: Date | null;
 
   /**
+   * When the buyer's personal data was removed from this order because its
+   * source's retention period passed (#4178, `buyerDataRetentionDays` on the
+   * adapter manifest). `NULL` = not removed. Sole writer
+   * `OrderRecordRepository.redactBuyerData`; never part of the ingestion upsert,
+   * which reads it to keep a re-imported order redacted.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerDataRedactedAt!: Date | null;
+
+  /**
    * Per-order fulfillment rollup (#1108) — denormalized projection of the
    * order's shipment lifecycle (`not-shipped | dispatched | delivered |
    * failed`), pushed from the shipping context. Indexed so the orders list can

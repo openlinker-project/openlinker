@@ -49,6 +49,7 @@ import type { DestinationRoutingBlock } from '../../domain/types/destination-rou
 import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
 import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
 import { redactAddress } from '../../domain/order-address-redaction';
+import { MIN_BUYER_DATA_RETENTION_DAYS } from '../../domain/types/order-buyer-data-retention.types';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import { SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS } from '@openlinker/core/sales-documents';
 import type {
@@ -161,6 +162,33 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
+   * The PII mode for one order write. An order whose buyer data was already
+   * removed because its source's retention period passed (#4178) is written as
+   * under `OL_STORE_PII=false`, so a re-import never restores what was removed.
+   *
+   * The lookup is skipped for an order placed within the last day: removal
+   * needs the order's anchor (ship-by, else placement, else first sight) to be
+   * older than a retention period, and no source may declare one shorter than
+   * a day (`MIN_BUYER_DATA_RETENTION_DAYS`), so such an order cannot have been
+   * redacted. That keeps the extra read off the common path of a fresh order.
+   */
+  private async resolvePiiConfig(
+    internalOrderId: string,
+    placedAt: Date | string | undefined,
+  ): Promise<ReturnType<typeof getPiiConfig>> {
+    const piiConfig = getPiiConfig();
+    if (!piiConfig.storePii) {
+      return piiConfig;
+    }
+    const placedMs = placedAt === undefined ? Number.NaN : new Date(placedAt).getTime();
+    if (!Number.isNaN(placedMs) && Date.now() - placedMs < MIN_BUYER_DATA_RETENTION_DAYS * MILLISECONDS_PER_DAY) {
+      return piiConfig;
+    }
+    const redacted = await this.repository.isBuyerDataRedacted(internalOrderId);
+    return redacted ? { ...piiConfig, storePii: false } : piiConfig;
+  }
+
+  /**
    * Persist order record with PII-aware snapshot
    *
    * Creates a snapshot of the order that respects OL_STORE_PII configuration.
@@ -178,7 +206,7 @@ export class OrderRecordService implements IOrderRecordService {
     sourceExternalUrl: string | null = null,
     lineCostCandidates: ReadonlyMap<string, LineCostCandidate> = new Map()
   ): Promise<OrderRecord> {
-    const piiConfig = getPiiConfig();
+    const piiConfig = await this.resolvePiiConfig(order.id, order.placedAt);
     const now = new Date();
 
     // Create PII-aware order snapshot
@@ -521,7 +549,7 @@ export class OrderRecordService implements IOrderRecordService {
     sourceConnectionId: string,
     sourceEventId: string | null
   ): Promise<OrderRecord> {
-    const piiConfig = getPiiConfig();
+    const piiConfig = await this.resolvePiiConfig(internalOrderId, incoming.placedAt);
     const now = new Date();
 
     const snapshot: Record<string, unknown> = {

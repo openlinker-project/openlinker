@@ -7,9 +7,8 @@
  * never in a constructor, never cached across connections; only the access
  * token they mint is cached (by fingerprint, see `AmazonAccessTokenProvider`).
  *
- * The foundation stops at the client: capability adapters (OrderSource,
- * OfferManager) are added by the children of the epic that deliver them and
- * are built on top of `AmazonResolution`.
+ * Capability adapters are built on top of `AmazonResolution`, one `create*`
+ * method each, added by the issue that delivers the capability.
  *
  * @module libs/integrations/amazon/src/application
  */
@@ -23,6 +22,7 @@ import { parseAmazonConfig, resolveAmazonSpApiHost } from '../domain/policies/am
 import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.policy';
 import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-token.provider';
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
+import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
 
 export class AmazonAdapterFactory implements IAmazonAdapterFactory {
@@ -56,5 +56,9 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       credentialSource: credentials.source,
       client: new AmazonSpApiClient(resolveAmazonSpApiHost(config.config), tokens, fetchImpl),
     };
+  }
+
+  createOrderSource(resolution: AmazonResolution): AmazonOrderSourceAdapter {
+    return new AmazonOrderSourceAdapter(resolution.connection.id, resolution.client, resolution.config);
   }
 }

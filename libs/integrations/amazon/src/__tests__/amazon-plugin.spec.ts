@@ -14,14 +14,16 @@ import { AmazonIntegrationModule, amazonAdapterManifest, createAmazonPlugin } fr
 
 const connection = { id: 'conn-amz-1', platformType: 'amazon', config: {} } as unknown as Connection;
 
-function registerHost(): { host: HostServices; registries: Record<string, jest.Mock> } {
+function registerHost(): { host: HostServices; registries: Record<string, jest.Mock>; scheduler: jest.Mock } {
   const registries = {
     tester: jest.fn(),
     config: jest.fn(),
     credentials: jest.fn(),
     retry: jest.fn(),
     auth: jest.fn(),
+    email: jest.fn(),
   };
+  const scheduler = jest.fn();
   const host = {
     http: { forConnection: jest.fn(), evict: jest.fn() },
     connectionTesterRegistry: { register: registries.tester },
@@ -29,16 +31,20 @@ function registerHost(): { host: HostServices; registries: Record<string, jest.M
     connectionCredentialsShapeValidatorRegistry: { register: registries.credentials },
     retryClassifierRegistry: { register: registries.retry },
     authFailureClassifierRegistry: { register: registries.auth },
+    emailNormalizerRegistry: { register: registries.email },
+    schedulerTaskRegistry: { register: scheduler },
   } as unknown as HostServices;
-  return { host, registries };
+  return { host, registries, scheduler };
 }
 
 describe('Amazon plugin', () => {
-  it('should declare the adapter identity and no capability yet', () => {
+  it('should declare the adapter identity and OrderSource as an opt-in capability', () => {
     expect(amazonAdapterManifest).toMatchObject({
       adapterKey: 'amazon.spapi.v1',
       platformType: 'amazon',
-      supportedCapabilities: [],
+      supportedCapabilities: ['OrderSource'],
+      defaultEnabledCapabilities: [],
+      buyerDataRetentionDays: 30,
       isDefault: true,
     });
     expect(createAmazonPlugin().manifest).toBe(amazonAdapterManifest);
@@ -53,10 +59,44 @@ describe('Amazon plugin', () => {
     }
   });
 
-  it('should refuse every capability with the SDK message', async () => {
+  it('should register the orders poll, off by default', () => {
+    const { host, scheduler } = registerHost();
+    createAmazonPlugin().register?.(host);
+
+    expect(scheduler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'amazon-orders-poll',
+        jobType: 'marketplace.orders.poll',
+        requiredCapability: 'OrderSource',
+        enabledDefault: false,
+      }),
+    );
+  });
+
+  it('should build the order source for a connection', async () => {
+    const host = {
+      credentialsResolver: { get: jest.fn().mockResolvedValue({ clientId: 'c', clientSecret: 's', refreshToken: 'r' }) },
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
+    } as unknown as HostServices;
+    const amazonConnection = {
+      id: 'conn-amz-1',
+      platformType: 'amazon',
+      config: { marketplaceIds: ['A1PA6795UKMFR9'] },
+      credentialsRef: 'db:1',
+    } as unknown as Connection;
+
+    const source = await createAmazonPlugin().createCapabilityAdapter<{ listOrderFeed: unknown }>(
+      amazonConnection,
+      'OrderSource',
+      host,
+    );
+    expect(typeof source.listOrderFeed).toBe('function');
+  });
+
+  it('should refuse a capability it does not support with the SDK message', async () => {
     const { host } = registerHost();
-    await expect(createAmazonPlugin().createCapabilityAdapter(connection, 'OrderSource', host)).rejects.toThrow(
-      /Amazon adapter does not support capability: OrderSource/,
+    await expect(createAmazonPlugin().createCapabilityAdapter(connection, 'OfferManager', host)).rejects.toThrow(
+      /Amazon adapter does not support capability: OfferManager/,
     );
   });
 

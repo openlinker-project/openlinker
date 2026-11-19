@@ -7,11 +7,11 @@
  * and auth-failure classifiers, and resolves a connection into an SP-API
  * client (`AmazonAdapterFactory`).
  *
- * `supportedCapabilities` is EMPTY on purpose: a capability name enters the
- * manifest together with the adapter that delivers it (the Erli #980 rule),
- * because `listCapabilityAdapters` treats a factory that cannot build a
- * declared capability as fatal. `OrderSource` and `OfferManager` arrive with
- * their own children of the epic.
+ * A capability name enters `supportedCapabilities` together with the adapter
+ * that delivers it (the Erli #980 rule), because `listCapabilityAdapters`
+ * treats a factory that cannot build a declared capability as fatal.
+ * `OrderSource` arrived with #4178 (order feed, tracking write-back, mapping
+ * options, the `amazon-orders-poll` task and the email normalizer).
  *
  * Authorization: both a self-authorized private app and a public-app OAuth
  * grant end in the same stored LWA credentials (`AmazonCredentials`), so this
@@ -34,6 +34,10 @@ import { AmazonConnectionConfigShapeValidatorAdapter } from './infrastructure/ad
 import { AmazonConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/amazon-connection-credentials-shape-validator.adapter';
 import { AmazonConnectionTesterAdapter } from './infrastructure/adapters/amazon-connection-tester.adapter';
 import { AmazonRetryClassifierAdapter } from './infrastructure/adapters/amazon-retry-classifier.adapter';
+import { AmazonEmailNormalizerAdapter } from './infrastructure/adapters/amazon-email-normalizer.adapter';
+import { buildAmazonSchedulerTasks } from './infrastructure/scheduler/amazon-scheduler-tasks';
+import { AmazonAdapterFactory } from './application/amazon-adapter.factory';
+import type { AmazonResolution } from './application/interfaces/amazon-adapter.factory.interface';
 
 /**
  * Static plugin manifest (#575); `createAmazonPlugin().manifest` returns this
@@ -43,13 +47,21 @@ export const amazonAdapterManifest: AdapterMetadata = {
   adapterKey: AMAZON_ADAPTER_KEY,
   platformType: AMAZON_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: [],
+  supportedCapabilities: ['OrderSource'],
+  // Opt-in: ingesting a seller's Amazon orders creates them in every
+  // destination.
+  defaultEnabledCapabilities: [],
+  // Amazon's Data Protection Policy: buyer personal data is deleted no later
+  // than 30 days after delivery. Enforced by the order buyer-data retention
+  // pass (#4178).
+  buyerDataRetentionDays: 30,
   displayName: 'Amazon Selling Partner API',
   version: '0.1.0',
   isDefault: true,
 };
 
 export function createAmazonPlugin(): AdapterPlugin {
+  const factory = new AmazonAdapterFactory();
   return {
     manifest: amazonAdapterManifest,
 
@@ -70,13 +82,25 @@ export function createAmazonPlugin(): AdapterPlugin {
       // not an adapter key); safe because each only recognises Amazon's own errors.
       host.retryClassifierRegistry.register(AMAZON_ADAPTER_KEY, new AmazonRetryClassifierAdapter());
       host.authFailureClassifierRegistry.register(AMAZON_ADAPTER_KEY, new AmazonAuthFailureClassifierAdapter());
+      host.emailNormalizerRegistry.register(AMAZON_ADAPTER_KEY, new AmazonEmailNormalizerAdapter());
+      for (const task of buildAmazonSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
-    createCapabilityAdapter<T>(_connection: Connection, capability: string, _host: HostServices): Promise<T> {
-      // Empty until the first capability lands; the SDK answers with its
-      // uniform "does not support" error before any credential is decrypted.
+    createCapabilityAdapter<T>(connection: Connection, capability: string, host: HostServices): Promise<T> {
+      // Dispatch FIRST, build lazily: an unsupported capability fails with the
+      // SDK's uniform error before any credential is decrypted.
+      const resolve = (): Promise<AmazonResolution> =>
+        factory.resolve(connection, host.credentialsResolver, host.http.forConnection(connection), host.cache);
       try {
-        return dispatchCapability<Promise<T>>(capability, {}, AMAZON_BRAND);
+        return dispatchCapability<Promise<T>>(
+          capability,
+          {
+            OrderSource: async () => factory.createOrderSource(await resolve()) as T,
+          },
+          AMAZON_BRAND,
+        );
       } catch (error) {
         return Promise.reject(error instanceof Error ? error : new Error(String(error)));
       }
