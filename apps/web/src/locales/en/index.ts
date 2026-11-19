@@ -57,6 +57,7 @@ import promptTemplates from './prompt-templates.json';
 import returnGifts from './return-gifts.json';
 import returns from './returns.json';
 import salesDocuments from './sales-documents.json';
+import savedViews from './saved-views.json';
 import settings from './settings.json';
 import shipments from './shipments.json';
 import shopify from './shopify.json';
@@ -112,6 +113,7 @@ export const en = {
   'return-gifts': returnGifts,
   returns,
   'sales-documents': salesDocuments,
+  'saved-views': savedViews,
   settings,
   shipments,
   shopify,

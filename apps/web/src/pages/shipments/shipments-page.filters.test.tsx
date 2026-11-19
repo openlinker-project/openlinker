@@ -105,27 +105,47 @@ function lastListFilters(list: ReturnType<typeof vi.fn>): Record<string, unknown
 describe('ShipmentsPage filter system (#4044)', () => {
   afterEach(cleanup);
 
-  it('should show a status tab per status with the summary counts', async () => {
+  it('should show a status view per status with the summary counts', async () => {
     setup();
-    const tabs = await screen.findByRole('tablist', { name: 'Shipments by status' });
+    const tabs = await screen.findByRole('group', { name: 'Views' });
     await waitFor(() => {
-      expect(within(tabs).getByRole('tab', { name: /All shipments/ })).toHaveTextContent('42');
+      expect(within(tabs).getByRole('button', { name: /All shipments/ })).toHaveTextContent('42');
     });
-    expect(within(tabs).getByRole('tab', { name: /In transit/ })).toHaveTextContent('7');
-    expect(within(tabs).getByRole('tab', { name: /Failed/ })).toHaveTextContent('4');
+    expect(within(tabs).getByRole('button', { name: /In transit/ })).toHaveTextContent('7');
+    expect(within(tabs).getByRole('button', { name: /Failed/ })).toHaveTextContent('4');
   });
 
   it('should never render a 0 count while the summary is still loading', async () => {
     setup({ summary: new Promise<never>(() => {}) });
-    const tabs = await screen.findByRole('tablist', { name: 'Shipments by status' });
-    expect(within(tabs).getByRole('tab', { name: /All shipments/ })).not.toHaveTextContent('0');
+    const tabs = await screen.findByRole('group', { name: 'Views' });
+    expect(within(tabs).getByRole('button', { name: /All shipments/ })).not.toHaveTextContent('0');
   });
 
-  it('should filter by status when a tab is picked', async () => {
+  it('should filter by status and write the view to the address when a view is picked', async () => {
     const { list } = setup();
-    fireEvent.click(await screen.findByRole('tab', { name: /Delivered/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Delivered/ }));
     await waitFor(() => {
       expect(lastListFilters(list)).toMatchObject({ status: 'delivered' });
+    });
+  });
+
+  it('should apply the default view to the address when it carries no state', async () => {
+    const { list } = setup();
+    await waitFor(() => {
+      expect(list).toHaveBeenCalled();
+    });
+    const tabs = await screen.findByRole('group', { name: 'Views' });
+    expect(within(tabs).getByRole('button', { name: /All shipments/ })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('should hide a column the view leaves out', async () => {
+    setup();
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'Customer' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Columns & sort/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Customer/ }));
+    await waitFor(() => {
+      expect(within(table).queryByRole('columnheader', { name: 'Customer' })).toBeNull();
     });
   });
 
@@ -143,6 +163,28 @@ describe('ShipmentsPage filter system (#4044)', () => {
     await waitFor(() => {
       expect(lastListFilters(list)).toMatchObject({ status: 'failed' });
     });
+  });
+
+  it('should move the views strip to the matching view when "to fix" is clicked from another view', async () => {
+    const { list } = setup();
+    fireEvent.click(await screen.findByRole('button', { name: /Delivered/ }));
+    await waitFor(() => {
+      expect(lastListFilters(list)).toMatchObject({ status: 'delivered' });
+    });
+    const group = await screen.findByRole('group', { name: 'Needs a look' });
+    await waitFor(() => {
+      expect(group).toHaveTextContent('4to fix');
+    });
+    fireEvent.click(within(group).getByText('to fix'));
+    fireEvent.click(await screen.findByRole('button', { name: /Failed shipments/ }));
+    await waitFor(() => {
+      expect(lastListFilters(list)).toMatchObject({ status: 'failed' });
+    });
+    const tabs = await screen.findByRole('group', { name: 'Views' });
+    await waitFor(() => {
+      expect(within(tabs).getByRole('button', { name: /Failed/ })).toHaveAttribute('aria-current', 'true');
+    });
+    expect(within(tabs).getByRole('button', { name: /Delivered/ })).not.toHaveAttribute('aria-current', 'true');
   });
 
   it('should list a cross-page cause group under "to fix" and show its failures', async () => {
@@ -209,7 +251,7 @@ describe('ShipmentsPage filter system (#4044)', () => {
     });
   });
 
-  it('should sort the page by status from the Sort menu', async () => {
+  it('should sort the page by status from the Status header, with no separate Sort menu', async () => {
     setup({
       rows: [
         makeShipment({ id: 'ol_shipment_d', status: 'delivered', orderSummary: { orderNumber: 'D-1', firstItemName: null, firstItemImageUrl: null, itemCount: 1 } }),
@@ -217,9 +259,7 @@ describe('ShipmentsPage filter system (#4044)', () => {
       ],
     });
     await screen.findByText('D-1');
-    fireEvent.click(screen.getByRole('button', { name: /Sort/ }));
-    // The last match is the menu entry; the first is the column header button.
-    await screen.findByRole('dialog', { name: 'Sort shipments' }).catch(() => null);
+    expect(screen.queryByRole('button', { name: 'Sort shipments' })).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: /^Status/ }).at(-1) as HTMLElement);
     await waitFor(() => {
       const rows = screen.getAllByRole('row').slice(1);

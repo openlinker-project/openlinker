@@ -788,7 +788,16 @@
       "registered": "Registered",
       "registering": "Registering"
     },
-    "title": "Sales documents"
+    "title": "Sales documents",
+    "views": {
+      "lockedDescription": "Order ID",
+      "systemViews": {
+        "all": "All documents",
+        "failed": "Failed",
+        "fiscalReceipts": "Fiscal receipts",
+        "invoices": "Invoices"
+      }
+    }
   },
   "salesDocumentsPanel": {
     "capability": {

@@ -1839,6 +1839,12 @@
     },
     "publishProducts": "Opublikuj produkty",
     "retry": "Ponów",
+    "savedViews": {
+      "listingFields": "Produkt, wariant, id oferty, SKU, EAN",
+      "price": "Cena w kanale",
+      "quantity": "Ilość w kanale",
+      "updated": "Zmieniono, odczyt statusu"
+    },
     "status": {
       "countsLoaded": "Wczytano liczby ofert.",
       "countsLoading": "Wczytywanie liczby ofert…",

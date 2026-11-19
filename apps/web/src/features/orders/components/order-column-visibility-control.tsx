@@ -32,6 +32,7 @@ import {
   type OrderColumnPreset,
 } from '../api/orders.types';
 import { useWorkspaceDefaultColumnPresetQuery } from '../hooks/use-order-column-presets';
+import { LEGACY_VISIBLE_COLUMNS_STORAGE_KEY } from '../lib/legacy-visible-columns';
 import { OrderColumnPresetManager } from './order-column-preset-manager';
 import { useMessages } from '../../../shared/i18n';
 
@@ -39,8 +40,7 @@ import { useMessages } from '../../../shared/i18n';
 const CARD_VIEW_QUERY = '(max-width: 767.98px)';
 
 
-/** Per-viewer only — the CURRENTLY showing column arrangement, not a preset reference. */
-const VISIBLE_COLUMNS_STORAGE_KEY = 'ol.orders-list.visible-columns.v1';
+const VISIBLE_COLUMNS_STORAGE_KEY = LEGACY_VISIBLE_COLUMNS_STORAGE_KEY;
 
 function readStoredColumns(): string[] | null {
   try {

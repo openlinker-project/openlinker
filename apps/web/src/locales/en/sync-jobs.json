@@ -207,6 +207,25 @@
       "range": "Showing {from}-{to} of {total}"
     },
     "retry": "Retry",
+    "savedViews": {
+      "jobTypeFields": "Label, key",
+      "sorts": {
+        "attempts": "Attempts",
+        "createdNewest": "Created, newest",
+        "createdOldest": "Created, oldest",
+        "duration": "Duration",
+        "jobType": "Job type",
+        "status": "Status"
+      },
+      "statusFields": "State, outcome",
+      "views": {
+        "all": "All jobs",
+        "businessFailures": "Business failures",
+        "dead": "Gave up",
+        "queued": "Queued",
+        "running": "Running"
+      }
+    },
     "title": "Sync Jobs"
   },
   "triggerSyncDialog": {

@@ -69,6 +69,11 @@ export const PermissionValues = [
   // decorators gate the route, and a UI that offers what the route refuses
   // (or hides what it allows, which is what happened here) is the defect.
   'bench:write',
+  // Saved list views (#4241): display-only gate for the Save / Save as new controls.
+  // Held by admin, operator and viewer - each may keep PERSONAL views, a NEW policy
+  // (order-column-presets excludes viewer). Shared writes are admin-only and enforced
+  // in `SavedViewsService`, not by this value. Mirrors `SavedViewsController`'s `@Roles`.
+  'saved-views:write',
   // Read-only Fulfilment board + task detail (#3736). Held by admin, operator
   // and viewer - never packer, whose work is the bench. Must stay identical to
   // the `@Roles` lists on the GET routes of `FulfillmentWorkController` and
@@ -165,6 +170,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'listings:write',
     'customers:read',
     'bench:write',
+    'saved-views:write',
     'fulfillment:read',
     'bench:read',
     'shipments:read',
@@ -179,6 +185,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'gifts:write',
   ],
   viewer: [
+    'saved-views:write',
     'connections:read',
     'sync:read',
     'integrations:read',

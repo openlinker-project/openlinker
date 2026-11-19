@@ -317,6 +317,12 @@
       "sourceStatusLabel": "Status w źródle",
       "stageLabel": "Etap"
     },
+    "savedViews": {
+      "orderFields": "Zamówienie OpenLinker, zamówienie źródłowe",
+      "returnFields": "Numer zwrotu",
+      "sourceFields": "Połączenie, id",
+      "stageFields": "Etap, liczba przyjętych"
+    },
     "segment": {
       "allReturnsLabel": "Wszystkie zwroty",
       "stripLabel": "Filtruj zwroty według tego, co trzeba zrobić"
