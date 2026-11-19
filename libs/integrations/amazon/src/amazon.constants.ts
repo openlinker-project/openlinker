@@ -65,3 +65,6 @@ export const AMAZON_MARKETPLACE_PARTICIPATIONS_PATH = '/sellers/v1/marketplacePa
  * (`AppName/Version (Language=...)`). Carries no deployment detail.
  */
 export const AMAZON_USER_AGENT = 'OpenLinker/0.1 (Language=TypeScript)';
+
+/** Grantless LWA scope the Notifications API's destination calls need (#4179). */
+export const AMAZON_NOTIFICATIONS_GRANTLESS_SCOPE = 'sellingpartnerapi::notifications';

@@ -17,12 +17,15 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 
+import { AMAZON_NOTIFICATIONS_GRANTLESS_SCOPE } from '../amazon.constants';
 import { AmazonConfigException } from '../domain/exceptions/amazon-config.exception';
 import { parseAmazonConfig, resolveAmazonSpApiHost } from '../domain/policies/amazon-config.policy';
 import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.policy';
 import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-token.provider';
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
+import { AmazonSqsClient } from '../infrastructure/http/amazon-sqs-client';
 import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
+import { AmazonQueuedOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-queued-order-source.adapter';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
 
 export class AmazonAdapterFactory implements IAmazonAdapterFactory {
@@ -50,15 +53,41 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
     }
 
     const tokens = new AmazonAccessTokenProvider(credentials.credentials, fetchImpl, cache);
+    const queue = config.config.notificationQueue;
+    const { awsAccessKeyId, awsSecretAccessKey } = credentials.credentials;
     return {
       connection,
       config: config.config,
       credentialSource: credentials.source,
       client: new AmazonSpApiClient(resolveAmazonSpApiHost(config.config), tokens, fetchImpl),
+      notificationsClient: new AmazonSpApiClient(
+        resolveAmazonSpApiHost(config.config),
+        new AmazonAccessTokenProvider(credentials.credentials, fetchImpl, cache, undefined, undefined, undefined, {
+          scope: AMAZON_NOTIFICATIONS_GRANTLESS_SCOPE,
+        }),
+        fetchImpl,
+      ),
+      ...(queue && awsAccessKeyId && awsSecretAccessKey
+        ? {
+            notificationQueue: new AmazonSqsClient(
+              queue,
+              { accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretAccessKey },
+              fetchImpl,
+            ),
+          }
+        : {}),
     };
   }
 
+  /**
+   * The order source, with the queue reader only when the connection has a
+   * notification queue and its AWS key: without one, `isInboundQueueReader`
+   * answers no and the drain handler reports a configuration fact.
+   */
   createOrderSource(resolution: AmazonResolution): AmazonOrderSourceAdapter {
-    return new AmazonOrderSourceAdapter(resolution.connection.id, resolution.client, resolution.config);
+    const { connection, client, config, notificationQueue } = resolution;
+    return notificationQueue === undefined
+      ? new AmazonOrderSourceAdapter(connection.id, client, config)
+      : new AmazonQueuedOrderSourceAdapter(connection.id, client, config, notificationQueue);
   }
 }

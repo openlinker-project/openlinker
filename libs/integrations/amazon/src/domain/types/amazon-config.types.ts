@@ -19,4 +19,17 @@ export interface AmazonConnectionConfig {
   readonly environment: AmazonEnvironment;
   /** At least one; the marketplaces this connection sells in. */
   readonly marketplaceIds: readonly string[];
+  /**
+   * The operator's SQS queue Amazon delivers notifications to (#4179). Absent
+   * means orders arrive by polling only.
+   */
+  readonly notificationQueue?: AmazonNotificationQueue;
+}
+
+export interface AmazonNotificationQueue {
+  readonly url: string;
+  /** AWS region of the queue, read from its URL. */
+  readonly region: string;
+  /** `arn:aws:sqs:{region}:{account}:{name}`, what Amazon's Notifications API needs. */
+  readonly arn: string;
 }

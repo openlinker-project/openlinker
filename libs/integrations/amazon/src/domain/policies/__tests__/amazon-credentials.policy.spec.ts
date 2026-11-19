@@ -41,3 +41,14 @@ describe('parseAmazonCredentials', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('parseAmazonCredentials AWS key (#4179)', () => {
+  it('should keep an AWS key pair', () => {
+    const result = parseAmazonCredentials({ ...VALID, awsAccessKeyId: 'AKIA', awsSecretAccessKey: 's' });
+    expect(result.ok && result.credentials).toMatchObject({ awsAccessKeyId: 'AKIA', awsSecretAccessKey: 's' });
+  });
+
+  it('should refuse half an AWS key pair', () => {
+    expect(parseAmazonCredentials({ ...VALID, awsAccessKeyId: 'AKIA' }).ok).toBe(false);
+  });
+});

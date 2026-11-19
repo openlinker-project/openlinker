@@ -15,12 +15,20 @@ import type { FetchLike } from '@openlinker/shared/http';
 import type { AmazonConnectionConfig } from '../../domain/types/amazon-config.types';
 import type { AmazonCredentialSource } from '../../domain/types/amazon-credentials.types';
 import type { AmazonSpApiClient } from '../../infrastructure/http/amazon-spapi-client';
+import type { AmazonSqsClient } from '../../infrastructure/http/amazon-sqs-client';
 
 export interface AmazonResolution {
   readonly connection: Connection;
   readonly config: AmazonConnectionConfig;
   readonly credentialSource: AmazonCredentialSource;
   readonly client: AmazonSpApiClient;
+  /** Present when the connection names a notification queue and its AWS key (#4179). */
+  readonly notificationQueue?: AmazonSqsClient;
+  /**
+   * Same host, authorized with a grantless token for the Notifications API
+   * (`sellingpartnerapi::notifications`); minted only when first used (#4179).
+   */
+  readonly notificationsClient: AmazonSpApiClient;
 }
 
 export interface IAmazonAdapterFactory {

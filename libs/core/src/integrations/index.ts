@@ -32,6 +32,11 @@ export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
 export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.port';
 export { WebhookEventTranslatorPort } from './domain/ports/webhook-event-translator.port';
 export { InboundWebhookDecoderPort } from './domain/ports/inbound-webhook-decoder.port';
+export {
+  isInboundQueueReader,
+  type InboundQueueMessage,
+  type InboundQueueReader,
+} from './domain/ports/inbound-queue-reader.port';
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
 export {
   ConnectionConfigShapeValidatorPort,

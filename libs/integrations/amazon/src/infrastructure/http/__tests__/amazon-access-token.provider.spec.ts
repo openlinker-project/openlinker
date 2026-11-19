@@ -168,3 +168,27 @@ describe('AmazonAccessTokenProvider', () => {
     expect(memo.size).toBe(0);
   });
 });
+
+describe('AmazonAccessTokenProvider grantless (#4179)', () => {
+  it('should mint a client-credentials token for the scope and cache it apart from the seller token', async () => {
+    const fetchImpl = jest.fn().mockImplementation(() =>
+      Promise.resolve(jsonResponse(200, { access_token: 'Atza|grantless', expires_in: 3600 })),
+    );
+    const memo = new Map();
+    const provider = new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => 0, memo, new Map(), {
+      scope: 'sellingpartnerapi::notifications',
+    });
+
+    await expect(provider.getAccessToken()).resolves.toBe('Atza|grantless');
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(Object.fromEntries(new URLSearchParams(String(init.body)))).toEqual({
+      grant_type: 'client_credentials',
+      scope: 'sellingpartnerapi::notifications',
+      client_id: 'cid',
+      client_secret: 'csecret',
+    });
+
+    await new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => 0, memo).getAccessToken();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});

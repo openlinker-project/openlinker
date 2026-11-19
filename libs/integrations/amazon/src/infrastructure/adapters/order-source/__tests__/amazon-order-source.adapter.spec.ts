@@ -3,11 +3,14 @@
  *
  * @module libs/integrations/amazon/src/infrastructure/adapters/order-source/__tests__
  */
+import { isInboundQueueReader } from '@openlinker/core/integrations';
+
 import { amazonPackageReferenceId } from '../../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import type { AmazonSpApiClient } from '../../../http/amazon-spapi-client';
 import { amazonFbmOrder } from '../../../__tests__/amazon-order.fixture';
 import { AmazonOrderSourceAdapter } from '../amazon-order-source.adapter';
+import { AmazonQueuedOrderSourceAdapter } from '../amazon-queued-order-source.adapter';
 
 const NOW = new Date('2026-11-17T12:00:00.000Z');
 const CONFIG = { region: 'eu' as const, environment: 'production' as const, marketplaceIds: ['A1PA6795UKMFR9'] };
@@ -173,5 +176,39 @@ describe('AmazonOrderSourceAdapter options', () => {
     expect((await source.listOrderStatuses()).map((option) => option.value)).toContain('UNSHIPPED');
     expect((await source.listDeliveryMethods()).map((option) => option.value)).toContain('STANDARD');
     expect((await source.listPaymentMethods()).map((option) => option.value)).toContain('CashOnDelivery');
+  });
+});
+
+describe('AmazonQueuedOrderSourceAdapter (#4179)', () => {
+  it('should read the queue and translate each message', async () => {
+    const { client } = clientStub();
+    const queue = {
+      receiveMessages: jest.fn().mockResolvedValue([
+        {
+          MessageId: 'm1',
+          ReceiptHandle: 'h1',
+          Body: JSON.stringify({
+            NotificationType: 'ORDER_CHANGE',
+            Payload: { OrderChangeNotification: { AmazonOrderId: '302-1', OrderChangeType: 'OrderStatusChange' } },
+          }),
+        },
+      ]),
+      deleteMessages: jest.fn().mockResolvedValue(undefined),
+    };
+    const source = new AmazonQueuedOrderSourceAdapter('conn-1', client, CONFIG, queue as never, () => NOW);
+
+    const messages = await source.receiveInboundMessages({ maxMessages: 10 });
+    await source.acknowledgeInboundMessages(['h1']);
+
+    expect(messages[0].events[0]).toMatchObject({ domain: 'order', externalId: '302-1' });
+    expect(queue.deleteMessages).toHaveBeenCalledWith(['h1']);
+  });
+
+  it('should be an inbound queue reader, while the plain order source is not', () => {
+    const { client } = clientStub();
+    const queue = { receiveMessages: jest.fn(), deleteMessages: jest.fn() };
+
+    expect(isInboundQueueReader(new AmazonQueuedOrderSourceAdapter('conn-1', client, CONFIG, queue as never))).toBe(true);
+    expect(isInboundQueueReader(adapter(client))).toBe(false);
   });
 });

@@ -58,6 +58,37 @@ Mints an access token and calls `GET /sellers/v1/marketplaceParticipations`.
 - A `403 Unauthorized` from SP-API is reported as that error and **not** as bad credentials: Amazon
   answers it for a missing role too, and re-authorizing would not help.
 
+## Notifications (SQS)
+
+Amazon delivers change notifications only to Amazon SQS or EventBridge, never over HTTP. With a queue
+configured, the `amazon-notifications-drain` task (every minute, off by default,
+`OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED`) reads it and turns each `ORDER_CHANGE` into an
+ordinary order sync, so an order arrives within about a minute. Only connections with
+`OrderSource` enabled and a `notificationQueueUrl` are drained; a queue without its AWS key ends the
+job as a business failure naming the cause.
+
+A notification is a trigger, not the delivery guarantee: the drained event is enqueued on the
+`jobs.sync` Redis stream (not the `sync_jobs` gate a webhook uses), and the SQS message is deleted once
+that enqueue returns. The orders poll is what guarantees every order arrives, so keep
+`amazon-orders-poll` on when the drain is on.
+
+- Config: `"notificationQueueUrl": "https://sqs.<region>.amazonaws.com/<account>/<queue>"`.
+- Credentials: `awsAccessKeyId` and `awsSecretAccessKey` of an IAM user allowed `sqs:ReceiveMessage`
+  and `sqs:DeleteMessage` on that queue. Requests are signed with SigV4; no AWS SDK.
+- The queue's access policy must also let Amazon's SP-API notification principal send to it (Amazon's
+  setup guide for the Notifications API).
+- A message is deleted only after its events were routed; a duplicate dedups on Amazon's
+  `NotificationId`. Other notification types are acknowledged and ignored for now.
+
+Registering the queue with Amazon is the "Configure webhooks" action (`POST
+/connections/:id/webhooks/install`): it reuses or creates the Notifications API destination for the
+queue's ARN (grantless token, scope `sellingpartnerapi::notifications`) and subscribes it to
+`ORDER_CHANGE` (order status and buyer-requested changes). Running it again changes nothing; a
+subscription that already points at another destination is reported, not replaced. A Sandbox-status
+app is refused the grantless scope (#2881), so this step needs a production app; that refusal, an app
+without the Notifications role and an unusable connection config come back as a warning on the action,
+not as an error.
+
 ## Buyer data retention
 
 Amazon's Data Protection Policy requires buyer personal data to be deleted no later than 30 days after
@@ -67,8 +98,11 @@ when it has none, both earlier than delivery) its addresses are reduced to the c
 buyer note, tax id and any operator address edit are removed, as is the buyer from the search text.
 Lines, amounts, statuses and ids stay. A later re-import of the order stores none of it again.
 
-Not covered yet: customer projections, a shipment's recipient, the history of an address edit and the
-recipient on an email delivery record keep their copy. Issued sales documents keep theirs by law.
+The same pass clears the recipient on the order's buyer-email and document-email delivery records, and
+the email, names and street addresses of the customer projections last seen through Amazon before the
+cutoff. Not covered yet: a shipment's recipient and the history of an address edit keep their copy.
+Issued sales documents keep theirs by law, and a carrier label already generated keeps the recipient
+printed on it.
 
 ## Errors and retries
 
@@ -87,5 +121,5 @@ will pace each operation.
 
 ## Not yet built
 
-Offers and stock (`OfferManager`, Listings Items), the SQS / EventBridge inbound transport, the public-app OAuth
+Offers and stock (`OfferManager`, Listings Items), EventBridge delivery, the public-app OAuth
 flow and a web setup form. Epic #4176 lists them.
