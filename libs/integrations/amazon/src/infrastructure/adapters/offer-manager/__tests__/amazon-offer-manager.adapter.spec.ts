@@ -3,6 +3,8 @@
  *
  * @module libs/integrations/amazon/src/infrastructure/adapters/offer-manager/__tests__
  */
+import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
+
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../../domain/exceptions/amazon-config.exception';
 import { AmazonNotSupportedException } from '../../../../domain/exceptions/amazon-not-supported.exception';
@@ -32,7 +34,7 @@ function setup(config = CONFIG): { adapter: AmazonOfferManagerAdapter; get: jest
     .fn()
     .mockResolvedValue({ status: 200, data: { sku: 'MUG-BLUE', status: 'ACCEPTED', submissionId: 's1' }, requestId: 'r' });
   const client = { get, patch } as unknown as AmazonSpApiClient;
-  return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, config), get, patch };
+  return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, config, jest.fn()), get, patch };
 }
 
 describe('AmazonOfferManagerAdapter.listOffers', () => {
@@ -203,6 +205,33 @@ describe('AmazonOfferManagerAdapter.getOfferStatus', () => {
     await expect(adapter.getOfferStatus('MUG-BLUE')).resolves.toMatchObject({ publicationStatus: 'inactive' });
   });
 
+  it('should read a listing Amazon has not processed yet as activating', async () => {
+    const { adapter, get } = setup();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: fbmListing({ summaries: [], issues: [] }) });
+
+    await expect(adapter.getOfferStatus('MUG-NEW')).resolves.toMatchObject({
+      publicationStatus: 'activating',
+      validationErrors: [],
+    });
+  });
+
+  it('should read an unprocessed listing with an ERROR issue as inactive with that error', async () => {
+    const { adapter, get } = setup();
+    get.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: fbmListing({
+        summaries: [],
+        issues: [{ code: '90220', message: 'brand is required', severity: 'ERROR', attributeNames: ['brand'] }],
+      }),
+    });
+
+    await expect(adapter.getOfferStatus('MUG-NEW')).resolves.toMatchObject({
+      publicationStatus: 'inactive',
+      validationErrors: [{ code: '90220', message: 'brand is required', field: 'brand' }],
+    });
+  });
+
   it('should report a listing Amazon no longer has as ended', async () => {
     const { adapter, get } = setup();
     get.mockRejectedValue(new AmazonApiError(404, 'NOT_FOUND', 'Requested item not found', 'r'));
@@ -215,5 +244,242 @@ describe('AmazonOfferManagerAdapter.getOfferStatus', () => {
     get.mockRejectedValue(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'));
 
     await expect(adapter.getOfferStatus('MUG-BLUE')).rejects.toBeInstanceOf(AmazonApiError);
+  });
+});
+
+const catalogHit = {
+  asin: 'B0MUG00001',
+  summaries: [{ marketplaceId: 'A1PA6795UKMFR9', itemName: 'Blaue Tasse', brand: 'Acme' }],
+  productTypes: [{ marketplaceId: 'A1PA6795UKMFR9', productType: 'KITCHEN' }],
+};
+
+function catalogSetup(items: unknown[]): { adapter: AmazonOfferManagerAdapter; get: jest.Mock } {
+  const { adapter, get } = setup();
+  get.mockResolvedValue({ status: 200, data: { numberOfResults: items.length, items }, requestId: 'r' });
+  return { adapter, get };
+}
+
+describe('AmazonOfferManagerAdapter.findProductsByBarcode', () => {
+  it('should report one catalogue item as a unique match with its ASIN', async () => {
+    const { adapter } = catalogSetup([catalogHit]);
+
+    const result = await adapter.findProductsByBarcode({ barcode: '5901234123457' });
+
+    expect(result).toMatchObject({
+      kind: 'unique',
+      product: { id: 'B0MUG00001', name: 'Blaue Tasse', parameters: [{ parameterId: 'brand', valueStrings: ['Acme'] }] },
+    });
+  });
+
+  it('should report no match and an ambiguity', async () => {
+    await expect(catalogSetup([]).adapter.findProductsByBarcode({ barcode: '5901234123457' })).resolves.toEqual({
+      kind: 'no_match',
+    });
+    const ambiguous = await catalogSetup([catalogHit, { ...catalogHit, asin: 'B0MUG00002' }]).adapter.findProductsByBarcode({
+      barcode: '5901234123457',
+    });
+    expect(ambiguous).toMatchObject({ kind: 'ambiguous', products: [{ id: 'B0MUG00001' }, { id: 'B0MUG00002' }] });
+  });
+
+  it('should translate an unknown ASIN into the core not-found exception', async () => {
+    const { adapter, get } = setup();
+    get.mockRejectedValue(new AmazonApiError(404, 'NOT_FOUND', 'no item', 'r'));
+
+    await expect(adapter.getProduct({ productId: 'B0NOPE' })).rejects.toThrow('Catalog product not found: B0NOPE');
+  });
+});
+
+describe('AmazonOfferManagerAdapter.resolveCategoriesForBatchByEan', () => {
+  it('should resolve each variant without failing the batch', async () => {
+    const { adapter, get } = setup();
+    get
+      .mockResolvedValueOnce({ status: 200, data: { numberOfResults: 1, items: [catalogHit] }, requestId: 'r' })
+      .mockRejectedValueOnce(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'))
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { numberOfResults: 2, items: [catalogHit, { ...catalogHit, asin: 'B0MUG00002' }] },
+        requestId: 'r',
+      });
+
+    const result = await adapter.resolveCategoriesForBatchByEan({
+      items: [
+        { variantId: 'v1', ean: '5901234123457' },
+        { variantId: 'v2', ean: null },
+        { variantId: 'v3', ean: '5901234123458' },
+        { variantId: 'v4', ean: '5901234123459' },
+      ],
+    });
+
+    expect(result.get('v1')).toEqual({
+      kind: 'matched',
+      allegroCategoryId: 'KITCHEN',
+      productCardId: 'B0MUG00001',
+      method: 'auto_detect',
+    });
+    expect(result.get('v2')).toEqual({ kind: 'no-ean' });
+    expect(result.get('v3')).toEqual({ kind: 'no-match' });
+    expect(result.get('v4')).toMatchObject({ kind: 'multi-match', candidates: [{ productCardId: 'B0MUG00001' }, {}] });
+  });
+});
+
+describe('AmazonOfferManagerAdapter.createOffer', () => {
+  const cmd = {
+    internalVariantId: 'ol_variant_abc',
+    connectionId: 'conn-amz',
+    price: { amount: 19.99, currency: 'EUR' },
+    stock: 3,
+    publishImmediately: true,
+    productCardId: 'B0MUG00001',
+    overrides: { categoryId: 'KITCHEN' },
+  };
+
+  function createSetup(): { adapter: AmazonOfferManagerAdapter; get: jest.Mock; put: jest.Mock } {
+    const get = jest.fn().mockRejectedValue(new AmazonApiError(404, 'NOT_FOUND', 'no listing', 'r'));
+    const put = jest
+      .fn()
+      .mockResolvedValue({ status: 200, data: { sku: 'OL-abc', status: 'ACCEPTED', submissionId: 's1' }, requestId: 'r' });
+    const client = { get, put } as unknown as AmazonSpApiClient;
+    return { adapter: new AmazonOfferManagerAdapter('conn-amz', client, CONFIG, jest.fn()), get, put };
+  }
+
+  it('should list an offer on the matched ASIN and report it validating', async () => {
+    const { adapter, put } = createSetup();
+
+    const result = await adapter.createOffer(cmd);
+
+    expect(put).toHaveBeenCalledWith(
+      '/listings/2021-08-01/items/A2SELLER123/OL-abc',
+      expect.objectContaining({ productType: 'KITCHEN', requirements: 'LISTING_OFFER_ONLY' }),
+      { marketplaceIds: ['A1PA6795UKMFR9', 'A13V1IB3VIYZZH'] },
+    );
+    expect(result).toEqual({ externalOfferId: 'OL-abc', status: 'validating' });
+  });
+
+  it('should report a listing Amazon refuses as a draft with its issues', async () => {
+    const { adapter, put } = createSetup();
+    put.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: {
+        sku: 'OL-abc',
+        status: 'INVALID',
+        submissionId: 's1',
+        issues: [{ code: '90220', message: 'condition_type is required', severity: 'ERROR', attributeNames: ['condition_type'] }],
+      },
+    });
+
+    await expect(adapter.createOffer(cmd)).resolves.toEqual({
+      externalOfferId: 'OL-abc',
+      status: 'draft',
+      validationErrors: [{ code: '90220', message: 'condition_type is required', field: 'condition_type' }],
+    });
+  });
+
+  it('should not overwrite a listing that already exists under the SKU', async () => {
+    const { adapter, get, put } = createSetup();
+    get.mockResolvedValue({ status: 200, data: fbmListing({ sku: 'OL-abc' }), requestId: 'r' });
+
+    await expect(adapter.createOffer(cmd)).resolves.toEqual({
+      externalOfferId: 'OL-abc',
+      status: 'active',
+      alreadyExisted: true,
+    });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  const newItem = {
+    ...cmd,
+    productCardId: null,
+    variantBarcode: '5901234123457',
+    overrides: { categoryId: 'KITCHEN', title: 'Blue mug', imageUrls: ['https://shop.example/1.jpg'] },
+    parameters: [{ id: 'color', values: ['Blue'], section: 'product' as const }],
+    sourceAttributes: [{ name: 'Manufacturer', value: 'Acme' }],
+  };
+
+  it('should create a new catalogue item when no ASIN matches', async () => {
+    const { adapter, put } = createSetup();
+
+    await expect(adapter.createOffer(newItem)).resolves.toEqual({ externalOfferId: 'OL-abc', status: 'validating' });
+    const body = (put.mock.calls as unknown[][])[0][1] as { requirements: string; productType: string; attributes: Record<string, unknown> };
+    expect(body.requirements).toBe('LISTING');
+    expect(body.productType).toBe('KITCHEN');
+    expect(body.attributes).toMatchObject({
+      brand: [{ value: 'Acme', language_tag: 'de_DE', marketplace_id: 'A1PA6795UKMFR9' }, {}],
+      externally_assigned_product_identifier: [{ type: 'ean', value: '5901234123457' }, {}],
+      color: [{ value: 'Blue' }],
+    });
+  });
+
+  it('should refuse a new item without a barcode, a product type or a brand', async () => {
+    const { adapter, put } = createSetup();
+
+    await expect(adapter.createOffer({ ...newItem, variantBarcode: null })).rejects.toThrow(/GTIN exemption/);
+    await expect(adapter.createOffer({ ...newItem, overrides: { title: 'Blue mug' } })).rejects.toThrow(/product type/);
+    await expect(adapter.createOffer({ ...newItem, sourceAttributes: [] })).rejects.toThrow(/brand/);
+    expect(put).not.toHaveBeenCalled();
+  });
+});
+
+describe('AmazonOfferManagerAdapter taxonomy', () => {
+  it('should name one tree per marketplace and environment', () => {
+    expect(setup().adapter.getTaxonomyIdentity()).toBe('amazon:A1PA6795UKMFR9');
+    expect(setup({ ...CONFIG, environment: 'sandbox' } as unknown as typeof CONFIG).adapter.getTaxonomyIdentity()).toBe(
+      'amazon:sandbox:A1PA6795UKMFR9',
+    );
+  });
+
+  it('should list product types as a flat list of leaves', async () => {
+    const { adapter, get } = setup();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { productTypes: [{ name: 'KITCHEN', displayName: 'Kitchen' }] } });
+
+    await expect(adapter.fetchCategories()).resolves.toEqual([{ id: 'KITCHEN', name: 'Kitchen', parentId: null, leaf: true }]);
+    await expect(adapter.fetchCategories('KITCHEN')).resolves.toEqual([]);
+  });
+});
+
+describe('AmazonOfferManagerAdapter.fetchCategoryParameters', () => {
+  const LINK = 'https://selling-partner-definitions-prod-iad.s3.amazonaws.com/schema/KITCHEN.json?X-Amz-Signature=abc';
+  const SCHEMA = {
+    required: ['color'],
+    properties: { color: { title: 'Colour', items: { properties: { value: { type: 'string', maxLength: 50 } } } } },
+  };
+
+  function setupWithCache(): { adapter: AmazonOfferManagerAdapter; get: jest.Mock; fetchImpl: jest.Mock } {
+    const get = jest.fn().mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: { productType: 'KITCHEN', schema: { link: { resource: LINK, verb: 'GET' } } },
+    });
+    const fetchImpl = jest.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(SCHEMA), { status: 200 })));
+    const client = { get } as unknown as AmazonSpApiClient;
+    const adapter = new AmazonOfferManagerAdapter('conn-amz', client, CONFIG, fetchImpl, new InMemoryCacheAdapter());
+    return { adapter, get, fetchImpl };
+  }
+
+  it('should read a product type schema once and answer the next read from the cache', async () => {
+    const { adapter, get, fetchImpl } = setupWithCache();
+
+    const first = await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+    const second = await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+
+    expect(first).toEqual(second);
+    expect(first).toEqual([expect.objectContaining({ id: 'color', name: 'Colour', required: true })]);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('should read the schema each time when the host has no cache', async () => {
+    const get = jest.fn().mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: { productType: 'KITCHEN', schema: { link: { resource: LINK, verb: 'GET' } } },
+    });
+    const fetchImpl = jest.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(SCHEMA), { status: 200 })));
+    const adapter = new AmazonOfferManagerAdapter('conn-amz', { get } as unknown as AmazonSpApiClient, CONFIG, fetchImpl);
+
+    await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+    await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

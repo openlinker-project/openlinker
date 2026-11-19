@@ -29,6 +29,16 @@ export interface AmazonResolution {
    * (`sellingpartnerapi::notifications`); minted only when first used (#4179).
    */
   readonly notificationsClient: AmazonSpApiClient;
+  /**
+   * The connection's paced fetch, for downloads that are not SP-API calls: a
+   * product type's JSON Schema is served from a pre-signed link (#4181).
+   */
+  readonly fetchImpl: FetchLike;
+  /**
+   * The host cache, when the host has one: the access token and the mapped
+   * parameters of a product type are kept there (#4181).
+   */
+  readonly cache?: CachePort;
 }
 
 export interface IAmazonAdapterFactory {
