@@ -58,6 +58,8 @@ const HISTORY_FLOW_MIN = 100;
 const HISTORY_BUDGET_MS = 300_000;
 /** Longer than a second, so a `date_upd` written before it is strictly older than the feed position. */
 const CLOCK_GAP_MS = 2_500;
+/** A new order only has to be written after the feed position was recorded. */
+const FRESH_ORDER_GAP_MS = 2_500;
 
 test.describe.configure({ mode: 'serial' });
 
@@ -160,7 +162,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
     expect(status.orderSyncStartedAt, 'the start of order sync is recorded').not.toBeNull();
 
     // A new order, created strictly after the feed position was recorded.
-    await new Promise((resolve) => setTimeout(resolve, CLOCK_GAP_MS));
+    await new Promise((resolve) => setTimeout(resolve, FRESH_ORDER_GAP_MS));
     const fresh = await createSourceOrder({ api, world });
     const arrived = await pollUntil(
       async () => {
@@ -240,6 +242,48 @@ test.describe('order ingestion: order sync start (#4228)', () => {
     const apiError = refusal as ApiError;
     expect(apiError.status).toBe(400);
     expect(JSON.stringify(apiError.body)).toContain('orderSyncStart');
+  });
+
+  test('from: a date inside the history imports exactly the orders since that date', async ({
+    api,
+    jobs,
+  }) => {
+    requireSeeded();
+    test.setTimeout(HISTORY_BUDGET_MS + 60_000);
+    const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
+    const baseUrl = (
+      process.env.OL_PS_ADMIN_URL?.trim() ||
+      (typeof master?.config?.['baseUrl'] === 'string' ? master.config['baseUrl'] : '')
+    ).replace(/\/$/, '');
+    // A week back, which cuts through a shop seeded with dated history
+    // (`perf/prestashop-baseline/seed-orders-varied.py`).
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const response = await fetch(
+      `${baseUrl}/api/orders?output_format=JSON&date=1&display=[id]&filter[date_upd]=>[${since} 00:00:00]`,
+      { headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString('base64')}` } },
+    );
+    const body = (await response.json()) as { orders?: Array<{ id: number }> };
+    const expected = body.orders?.length ?? 0;
+    test.skip(
+      expected < 30 || expected > 700,
+      `needs a shop with a few hundred orders in the last week, found ${expected}`,
+    );
+
+    const connection = await createThrowaway(api, 'from-mid', { mode: 'from', from: since });
+    const total = await pollUntil(
+      async () => {
+        await pollOnce(jobs, connection.id);
+        return importedTotal(api, connection.id);
+      },
+      (count) => count >= expected,
+      {
+        timeoutMs: HISTORY_BUDGET_MS,
+        intervalMs: 3_000,
+        message: `${expected} orders placed since ${since} to be imported`,
+      },
+    );
+    // Exactly the window: nothing older leaks in, and nothing in it is skipped.
+    expect(total).toBe(expected);
   });
 
   test('restart: a connection started "now" can be restarted to import the history', async ({

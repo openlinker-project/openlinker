@@ -509,7 +509,7 @@ describe('PrestashopOrderSourceAdapter', () => {
   });
 
   describe('headCursor (#4228)', () => {
-    it('should return the newest order as a cursor moved back by the safety margin', async () => {
+    it('should return the newest order itself as the cursor, with no lookback', async () => {
       mockHttpClient.listResources = jest
         .fn()
         .mockResolvedValueOnce([
@@ -518,7 +518,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       const head = await adapter.headCursor();
 
-      expect(head).toBe('2024-06-01 08:08:00|42');
+      expect(head).toBe('2024-06-01 08:10:00|42');
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'orders',
         { sort: ['date_upd_DESC', 'id_DESC'] },
@@ -549,7 +549,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       const head = await adapter.headCursor();
 
-      expect(head).toBe('2024-06-01 07:58:00|7');
+      expect(head).toBe('2024-06-01 08:00:00|7');
       expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
         'orders',
         { sort: ['id_DESC'] },

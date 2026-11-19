@@ -66,6 +66,22 @@ describe('PrestashopQueryBuilder', () => {
       expect(query).toContain('filter[id]=>[42]');
     });
 
+    it('should add date=1 when sorting by a date column without any date filter', () => {
+      // PrestaShop lists date_upd as a sortable field only with date=1; without it the
+      // newest-order read of the order feed fails on every shop.
+      const query = PrestashopQueryBuilder.buildQuery('orders', {
+        sort: ['date_upd_DESC', 'id_DESC'],
+      });
+
+      expect(query).toContain('date=1');
+    });
+
+    it('should not add date=1 when sorting by id only', () => {
+      const query = PrestashopQueryBuilder.buildQuery('orders', { sort: ['id_DESC'] });
+
+      expect(query).not.toContain('date=1');
+    });
+
     it('should not add date=1 for an idAfter filter, since id is not a date column', () => {
       const query = PrestashopQueryBuilder.buildQuery('orders', { idAfter: 42 });
       expect(query).not.toContain('date=1');

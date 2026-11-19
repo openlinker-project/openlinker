@@ -223,14 +223,6 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
   }
 
   /**
-   * Seconds the seeded cursor is moved BEHIND the newest order's `date_upd`
-   * (#4228). An order written in the same second as the newest one, or just
-   * after the read, must not fall behind the seed; ingestion is idempotent, so
-   * re-reading the last couple of minutes costs nothing.
-   */
-  private static readonly SEED_SAFETY_MARGIN_SECONDS = 120;
-
-  /**
    * Cursor of the shop's newest order, so a fresh connection starts from "now"
    * (#4228). Mirrors the poll's own two read modes: `date_upd` sort, falling
    * back to `id` on a shop that refuses it. The row's `id` rides in the cursor
@@ -268,13 +260,11 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
       );
     }
 
-    return formatOrderFeedCursor({
-      updatedAt: shiftWallClockSeconds(
-        updatedAt,
-        -PrestashopOrderSourceAdapter.SEED_SAFETY_MARGIN_SECONDS
-      ),
-      lastOrderId: orderId,
-    });
+    // Exactly at the newest order, with no lookback. The cursor is the pair
+    // (date_upd, id), so an order written in the same second but with a higher id
+    // is still read; a lookback would instead re-import the orders that sit just
+    // before the newest one - the very history "new orders only" must leave behind.
+    return formatOrderFeedCursor({ updatedAt, lastOrderId: orderId });
   }
 
   /**

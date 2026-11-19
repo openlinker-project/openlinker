@@ -195,9 +195,13 @@ export class PrestashopQueryBuilder {
       }
     }
 
-    // Date filtering: PrestaShop requires date=1 to enable date filters
+    // Date filtering: PrestaShop requires date=1 to enable date filters. It also
+    // needs it to SORT by a date column: without it `date_upd_DESC` answers 500
+    // "Unable to filter by this field" on every shop, which the order feed reads as
+    // "this shop refuses date_upd" and falls back to id order for good (#4228).
     const hasDateFilters = filters?.dateFrom || filters?.dateTo || filters?.updatedAfter;
-    if (hasDateFilters) {
+    const sortsByDate = filters?.sort?.some((entry) => /^date_(add|upd)_(ASC|DESC)$/.test(entry));
+    if (hasDateFilters || sortsByDate) {
       params.push('date=1');
     }
 
