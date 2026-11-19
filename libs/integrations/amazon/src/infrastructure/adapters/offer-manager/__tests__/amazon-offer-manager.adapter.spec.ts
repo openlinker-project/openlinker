@@ -48,12 +48,17 @@ describe('AmazonOfferManagerAdapter.listOffers', () => {
 
     expect(get).toHaveBeenCalledWith('/listings/2021-08-01/items/A2SELLER123', {
       marketplaceIds: ['A1PA6795UKMFR9'],
-      includedData: ['summaries'],
+      includedData: ['summaries', 'fulfillmentAvailability'],
       sortBy: 'sku',
       sortOrder: 'ASC',
       pageSize: 20,
     });
-    expect(result.items[0]).toMatchObject({ offerId: 'MUG-BLUE', sku: 'MUG-BLUE', externalRef: 'B0ABCDEFGH' });
+    expect(result.items[0]).toMatchObject({
+      offerId: 'MUG-BLUE',
+      sku: 'MUG-BLUE',
+      externalRef: 'B0ABCDEFGH',
+      raw: { fulfilledByAmazon: false },
+    });
     expect(result.nextCursor).toBe('next');
   });
 
@@ -100,16 +105,14 @@ describe('AmazonOfferManagerAdapter.updateOfferQuantity', () => {
     expect(body.patches[0].value[0].quantity).toBe(0);
   });
 
-  it('should never write stock to a listing Amazon fulfils', async () => {
+  it('should skip, not fail, writing stock to a listing Amazon fulfils', async () => {
     const { adapter, get, patch } = setup();
     get.mockResolvedValue({
       status: 200,
       requestId: 'r',
       data: fbmListing({ fulfillmentAvailability: [{ fulfillmentChannelCode: 'AMAZON_EU', quantity: 40 }] }),
     });
-    await expect(adapter.updateOfferQuantity({ offerId: 'MUG-BLUE', quantity: 3 })).rejects.toBeInstanceOf(
-      AmazonNotSupportedException,
-    );
+    await expect(adapter.updateOfferQuantity({ offerId: 'MUG-BLUE', quantity: 3 })).resolves.toBeUndefined();
     expect(patch).not.toHaveBeenCalled();
   });
 
@@ -198,5 +201,19 @@ describe('AmazonOfferManagerAdapter.getOfferStatus', () => {
       data: fbmListing({ summaries: [{ marketplaceId: 'A1PA6795UKMFR9', productType: 'KITCHEN', status: ['DISCOVERABLE'] }] }),
     });
     await expect(adapter.getOfferStatus('MUG-BLUE')).resolves.toMatchObject({ publicationStatus: 'inactive' });
+  });
+
+  it('should report a listing Amazon no longer has as ended', async () => {
+    const { adapter, get } = setup();
+    get.mockRejectedValue(new AmazonApiError(404, 'NOT_FOUND', 'Requested item not found', 'r'));
+
+    await expect(adapter.getOfferStatus('MUG-GONE')).resolves.toEqual({ publicationStatus: 'ended', validationErrors: [] });
+  });
+
+  it('should let any other read error through', async () => {
+    const { adapter, get } = setup();
+    get.mockRejectedValue(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'));
+
+    await expect(adapter.getOfferStatus('MUG-BLUE')).rejects.toBeInstanceOf(AmazonApiError);
   });
 });

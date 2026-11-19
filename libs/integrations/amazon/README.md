@@ -63,19 +63,26 @@ Mints an access token and calls `GET /sellers/v1/marketplaceParticipations`.
 
 An Amazon offer is addressed by the seller's SKU, so the offer id in OpenLinker is the SKU. Needs the
 merchant token in the config (`"sellerId": "A2..."`, Seller Central > Settings > Account Info > Your
-Merchant Token): no SP-API call returns it to a self-authorized app.
+Merchant Token): no SP-API call returns it to a self-authorized app. Both listing tasks run only for
+connections with `OfferManager` enabled and a valid `sellerId`, so a connection without one is not
+scheduled at all.
 
 - **Linking**: `amazon-offers-sync` (hourly, off by default, `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED`)
   lists the listings and the offer mapping sync links them to variants by SKU. Linking by EAN is not
   done: listings carry no EAN, only the ASIN.
 - **Stock**: `patchListingsItem` replacing `fulfillment_availability` on the seller channel (`DEFAULT`).
-  A listing Amazon fulfils (FBA) is refused, never written. Quantity 0 pauses a listing; listings are
-  never deleted.
+  A listing Amazon fulfils (FBA) is skipped with a warning, never written (its stock is Amazon's); the
+  listing sync marks it `fulfilledByAmazon`. Quantity 0 pauses a listing; listings are never deleted.
 - **Price**: `patchListingsItem` replacing `purchasable_offer`, gross, for each configured marketplace
   whose currency is the price's (FR / DE: EUR, PL: PLN). Title, description and tax rate are refused.
+  Replacing the attribute also clears what else it held for that marketplace: a sale price, or min / max
+  price bounds set in Seller Central.
 - **Status**: `amazon-offer-status-sync` (hourly, off by default,
   `OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED`) reads `BUYABLE` as active, Amazon's ERROR issues as
-  validation errors, and the live price and seller quantity.
+  validation errors, and the live price and seller quantity. A listing Amazon no longer has (404) is
+  `ended`, so it can be listed again.
+- Listing, the FBA check and the status read use the first configured marketplace; a listing that
+  exists only in another marketplace is not linked.
 - Every write reads the listing first (a patch must name its product type); a patch Amazon answers
   `INVALID` is rejected with its issue. `putListingsItem` is never used for an update.
 - Not verified on a live account: the `replace` operation on both attributes follows Amazon's use-case

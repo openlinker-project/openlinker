@@ -141,7 +141,8 @@ function readMarketplaceIds(
 /** Merchant tokens are upper-case letters and digits (`A2EXAMPLE12345`). */
 const SELLER_ID_PATTERN = /^[A-Z0-9]{8,20}$/;
 
-function readSellerId(value: unknown, issues: FlatValidationIssue[]): string | undefined {
+/** The merchant token (`sellerId`), or undefined when absent or not a merchant token. */
+export function readSellerId(value: unknown, issues: FlatValidationIssue[] = []): string | undefined {
   if (value === undefined || value === null || value === '') {
     return undefined;
   }
