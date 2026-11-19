@@ -1320,6 +1320,31 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    it('should store the delivery fingerprint and relay report on the synced row (#4195)', async () => {
+      const at = new Date('2026-11-17T10:00:00Z');
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'success',
+          destinationConnectionId: 'dest-conn-1',
+          orderRef: { orderId: 'ext-order-1' },
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', at },
+        },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_test',
+        'dest-conn-1',
+        expect.objectContaining({
+          status: 'synced',
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', at },
+        })
+      );
+    });
+
     // #2397 — the consumer half of "a deliberate empty routing decision returns
     // []". `OrderSyncService` refuses to throw for that case precisely so this
     // is a no-op; asserted HERE, at the caller, because the claim is about what
@@ -1655,6 +1680,17 @@ describe('OrderIngestionService', () => {
       expect(orderItemRefResolver.tryResolve).not.toHaveBeenCalled();
     });
 
+    it('should skip an order the source says OpenLinker created, before any id is minted (echo race)', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...baseIncoming, createdFromInternalOrderId: 'ol_order_original' });
+
+      const result = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(result).toEqual([]);
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+    });
+
     it('should proceed with ingestion when no existing order record is found (genuinely new order)', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue(null);
       orderSyncService.syncOrder.mockResolvedValue([]);
@@ -1741,6 +1777,75 @@ describe('OrderIngestionService', () => {
         payload: { schemaVersion: 1, internalOrderId },
         options: { dedupeKey },
       });
+    });
+
+    it('should relay the cancellation to destinations when an update moves an order to cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      // The record carries `cancelledAt` only when this call's markCancelled made the transition.
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({ cancelledAt: new Date() } as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledWith({
+        internalOrderId,
+        originConnectionId: connectionId,
+        event: { type: 'cancelled' },
+      });
+    });
+
+    it('should NOT relay when a concurrent cancel event stamped first and this update made no transition', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+      } as unknown as OrderRecord);
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({ cancelledAt: null } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should NOT relay again when the record was already stamped cancelled by the event path', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: true,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should keep a destination that already holds the order as synced when the order is cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+        syncStatus: [{ destinationConnectionId: 'dest-1', status: 'synced', externalOrderId: 'ext-1' }],
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] } as never);
+      orderSyncService.syncOrder.mockResolvedValue([
+        { destinationConnectionId: 'dest-1', status: 'skipped_cancelled', cancelledAt: new Date() },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalledWith(
+        internalOrderId,
+        'dest-1',
+        expect.objectContaining({ status: 'skipped_cancelled' })
+      );
     });
 
     it('should enqueue when a first-seen order is already cancelled (no prior record)', async () => {
@@ -4375,6 +4480,22 @@ describe('OrderIngestionService', () => {
           reason: 'routing-no-shipping-address',
           detail: null,
         });
+      });
+
+      it('routes a cash-on-delivery order even though nothing is paid yet', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          paymentStatus: 'cod',
+        });
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-cod',
+          works: [{ workId: 'w-cod', assignedConnectionId: 'dest-1' }],
+        });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
       });
 
       describe('the line-unfulfillable attention (#3485)', () => {

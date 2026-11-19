@@ -72,7 +72,7 @@ export class SalesDocumentRulesController {
   @ApiOperation({ summary: 'List sales-document rules for one country (or Rest of world, "*")' })
   @ApiQuery({ name: 'country', required: true })
   @ApiResponse({ status: 200, type: [SalesDocumentRuleResponseDto] })
-  async listRules(@Query('country') country: string): Promise<SalesDocumentRuleResponseDto[]> {
+  async listRules(@Query('country') country: string | undefined): Promise<SalesDocumentRuleResponseDto[]> {
     this.assertValidCountryParam(country);
     const rules = await this.service.listRules(country);
     return rules.map((rule) => SalesDocumentRuleResponseDto.fromDomain(rule));
@@ -282,8 +282,9 @@ export class SalesDocumentRulesController {
    * otherwise surface an oversized value as a raw DB error (500) rather than
    * a clean 400.
    */
-  private assertValidCountryParam(country: string): void {
-    if (country.length < 1 || country.length > 8) {
+  private assertValidCountryParam(country: string | undefined): asserts country is string {
+    // A missing query param arrives as undefined, not as an empty string.
+    if (typeof country !== 'string' || country.length < 1 || country.length > 8) {
       throw codedHttpError(
         HttpStatus.BAD_REQUEST,
         'VALIDATION_FAILED',

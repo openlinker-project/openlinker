@@ -52,6 +52,15 @@ export interface UpdateOfferQuantityCommand {
    * variant to name (the stale-offer pause) and on a legacy job.
    */
   productVariantId?: string;
+
+  /**
+   * The parent product's external id when `offerId` is a variation of a
+   * grouped (multi-variant) shop product (#3962). A shop that addresses a
+   * variation under its parent (WooCommerce: `products/{parent}/variations/{id}`)
+   * needs it; without it the write hits the variation id as if it were a
+   * product. Absent for a marketplace offer and for a standalone shop product.
+   */
+  externalParentId?: string;
 }
 
 /**
@@ -70,6 +79,13 @@ export interface UpdateOfferQuantitiesBatchFailure {
   offerId: string;
   errorCode: string;
   message?: string;
+  /**
+   * The original exception when the write threw. Carried so the worker can
+   * hand it to the runner's per-platform retry classifier: flattening it to a
+   * code and a message made a deterministic refusal look retryable and walked
+   * the full retry ladder. Core never inspects it; only the classifier does.
+   */
+  cause?: Error;
 }
 
 /**

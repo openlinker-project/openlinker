@@ -375,6 +375,7 @@ describe('SchedulerService', () => {
         'returns-orphan-reconcile',
         'sales-document-batch-tick',
         'stale-offer-pause-sweep',
+        'stale-shop-product-pause-sweep',
       ]);
     });
 

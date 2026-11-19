@@ -9,13 +9,14 @@
  */
 
 import { EmptyBulkSubmissionException } from '../../../domain/exceptions/empty-bulk-submission.exception';
+import { ShopPublishMasterPublisherConflictException } from '../../../domain/exceptions/shop-publish-master-publisher-conflict.exception';
 import { BulkShopPublishSubmitService } from '../bulk-shop-publish-submit.service';
 
 const CONN = 'conn-shop-1';
 const USER = 'user-1';
 
 describe('BulkShopPublishSubmitService', () => {
-  let integrations: { getCapabilityAdapter: jest.Mock };
+  let integrations: { getCapabilityAdapter: jest.Mock; getAdapter: jest.Mock };
   let batchRepo: {
     create: jest.Mock;
     findById: jest.Mock;
@@ -39,6 +40,7 @@ describe('BulkShopPublishSubmitService', () => {
   beforeEach(() => {
     integrations = {
       getCapabilityAdapter: jest.fn().mockResolvedValue({ publishProduct: jest.fn() }),
+      getAdapter: jest.fn().mockResolvedValue({ connection: { id: CONN, enabledCapabilities: ['ProductPublisher'] } }),
     };
     batchRepo = {
       create: jest.fn().mockResolvedValue({ id: 'batch-1', totalCount: 2 }),
@@ -216,5 +218,14 @@ describe('BulkShopPublishSubmitService', () => {
       expect(await service.getBatch('nope')).toBeNull();
       expect(records.findByBulkBatchId).not.toHaveBeenCalled();
     });
+  });
+
+  it('should refuse a connection holding both ProductMaster and ProductPublisher before persisting a batch', async () => {
+    integrations.getAdapter.mockResolvedValue({
+      connection: { id: CONN, enabledCapabilities: ['ProductMaster', 'ProductPublisher'] },
+    });
+    await expect(service.submit(input)).rejects.toBeInstanceOf(
+      ShopPublishMasterPublisherConflictException,
+    );
   });
 });

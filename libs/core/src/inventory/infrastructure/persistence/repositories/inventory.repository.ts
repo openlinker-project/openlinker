@@ -39,6 +39,7 @@ import type {
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
+  ReportedLocationSet,
   DuplicatePositionReport,
   InventoryOwnerPosition,
   InventoryPositionCandidate,
@@ -622,6 +623,54 @@ export class InventoryRepository implements InventoryRepositoryPort {
     scope: ProvenanceScope
   ): Promise<PruneStaleVariantsResult> {
     return this.markSameSourceOrphanPositionsStale(productId, pooledVariantKeys, scope, 'located');
+  }
+
+  /** See the port docblock: multi-location pruning, same raw-SQL / no-`updatedAt`-bump rules as the repairs. */
+  async markUnreportedLocationsStaleForSource(
+    productId: string,
+    reported: readonly ReportedLocationSet[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    const variantIds = new Set<string>();
+    let markedCount = 0;
+    let markedProductLevel = false;
+    for (const entry of reported) {
+      const params: unknown[] = [productId, [...entry.locationIds]];
+      let variantClause = '"productVariantId" IS NULL';
+      if (entry.variantKey !== null) {
+        params.push(entry.variantKey);
+        variantClause = `"productVariantId" = $${params.length}`;
+      }
+      params.push(scope.sourceConnectionId);
+      const provenance = [`"sourceConnectionId" = $${params.length}`];
+      if (scope.includeUnattributedProvenance) {
+        provenance.push('"sourceConnectionId" IS NULL');
+        params.push(LEGACY_SOURCE_CONNECTION_ID);
+        provenance.push(`"sourceConnectionId" = $${params.length}`);
+      }
+      const rows = (await this.repository.query(
+        `UPDATE "inventory_items"
+            SET "isStale" = true
+          WHERE "productId" = $1
+            AND "isStale" = false
+            AND "locationId" IS NOT NULL
+            AND NOT ("locationId" = ANY($2::text[]))
+            AND ${variantClause}
+            AND (${provenance.join(' OR ')})
+      RETURNING "productVariantId"`,
+        params
+      )) as unknown;
+      const outer = Array.isArray(rows) ? rows : [];
+      const raw = (Array.isArray(outer[0]) ? outer[0] : outer) as {
+        productVariantId: string | null;
+      }[];
+      markedCount += raw.length;
+      for (const r of raw) {
+        if (r.productVariantId === null) markedProductLevel = true;
+        else variantIds.add(r.productVariantId);
+      }
+    }
+    return { markedCount, variantIds: [...variantIds], markedProductLevel };
   }
 
   /**

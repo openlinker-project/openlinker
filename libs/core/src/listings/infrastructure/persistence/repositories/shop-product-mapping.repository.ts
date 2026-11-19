@@ -132,4 +132,30 @@ export class ShopProductMappingRepository implements ShopProductMappingRepositor
       latestMappedAt: new Date(row.latestMappedAt),
     }));
   }
+
+  /**
+   * Products with at least one variant deleted at the master (#3962) that
+   * are still mapped on this shop connection - the shop half of the hourly
+   * stale-pause sweep. `.limit()` rather than `.take()`: with a join, `take`
+   * is applied after the fetch and the page would be unbounded.
+   */
+  async findStaleMappedProductIds(
+    connectionId: string,
+    options: { limit: number; staleSince: Date }
+  ): Promise<string[]> {
+    const rows = await this.repository
+      .createQueryBuilder('mapping')
+      .select('pv."productId"', 'productId')
+      .addSelect('MAX(pv."staleAt")', 'latestStaleAt')
+      .innerJoin('product_variants', 'pv', 'pv."id" = mapping."internalId"')
+      .where('mapping.entityType = :entityType', { entityType: SHOP_PRODUCT_ENTITY_TYPE })
+      .andWhere('mapping.connectionId = :connectionId', { connectionId })
+      .andWhere('pv."isStale" = true')
+      .andWhere('pv."staleAt" >= :staleSince', { staleSince: options.staleSince })
+      .groupBy('pv."productId"')
+      .orderBy('"latestStaleAt"', 'DESC')
+      .limit(options.limit)
+      .getRawMany<{ productId: string }>();
+    return rows.map((row) => row.productId);
+  }
 }

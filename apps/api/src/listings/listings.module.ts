@@ -11,6 +11,7 @@ import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/i
 import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
 import { ProductsModule as CoreProductsModule } from '@openlinker/core/products';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
+import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
 // The APP-LAYER integrations module (distinct from `CoreIntegrationsModule`
 // above) — supplies `CONNECTION_SERVICE_TOKEN` (`IConnectionService`),
 // which `PriceSyncModeOverrideService` needs for its validated,
@@ -19,6 +20,7 @@ import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 // different class from this one, never this app-layer module.
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { ListingsController } from './http/listings.controller';
+import { ListingSaleStatusController } from './http/listing-sale-status.controller';
 import { BulkListingController } from './http/bulk-listing.controller';
 import { ShopPublishController } from './http/shop-publish.controller';
 import { BulkShopPublishController } from './http/bulk-shop-publish.controller';
@@ -39,6 +41,8 @@ import { PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN } from './application/services/p
     CoreSyncModule,
     CoreIntegrationsModule,
     CoreProductsModule,
+    // #3962: ORDER_RECORD_SERVICE_TOKEN for "orders since deletion".
+    CoreOrdersModule,
     IntegrationsModule,
   ],
   controllers: [
@@ -51,6 +55,9 @@ import { PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN } from './application/services/p
     // `apps/api/test/integration/price-changes-route-shadowing.int-spec.ts`
     // so a future re-sort of this array regresses loudly.
     PriceChangesController,
+    // Before ListingsController for the same reason (#3962): its `GET :id`
+    // would swallow `GET /listings/sale-holds/attention-count`.
+    ListingSaleStatusController,
     ListingsController,
     BulkListingController,
     ShopPublishController,

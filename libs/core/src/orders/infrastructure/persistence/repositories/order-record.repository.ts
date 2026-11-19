@@ -35,6 +35,11 @@ import type { OrderLineItemDraft } from '../../../domain/order-analytics-project
 import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import {
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+  type OrderDeliveryUpdateReport,
+} from '../../../domain/types/order-delivery-update.types';
+import {
   isFulfillmentRoutingSkipReason,
   type FulfillmentRoutingSkipReason,
 } from '../../../domain/types/fulfillment-routing-eligibility.types';
@@ -214,6 +219,22 @@ export class OrderRecordRepository
    */
   private get dataSource(): DataSource {
     return this.repository.manager.connection;
+  }
+
+  async countOrdersMatchingSearchSince(terms: readonly string[], since: Date): Promise<number> {
+    const patterns = terms
+      .map((term) => normalizeOrderSearchText(term))
+      .filter((normalized) => normalized.length > 0)
+      .map((normalized) => `%${OrderRecordRepository.escapeLikePattern(normalized)}%`);
+    if (patterns.length === 0) return 0;
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec."createdAt" >= :since', { since });
+    qb.andWhere(
+      `(${patterns.map((_, index) => `rec."searchText" LIKE :p${index} ESCAPE '\\'`).join(' OR ')})`,
+      Object.fromEntries(patterns.map((pattern, index) => [`p${index}`, pattern])),
+    );
+    return qb.getCount();
   }
 
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
@@ -3008,14 +3029,19 @@ export class OrderRecordRepository
    * `Repository.update()`'s partial-entity API cannot express a `COALESCE(...)`
    * right-hand side without an unsafe string-interpolated function value.
    * No-op (no throw, no rows affected) when the order row doesn't exist yet.
+   * Returns true only when this call wrote the instant (the first transition).
    */
-  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
-    await this.repository.query(
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean> {
+    // `WHERE "cancelledAt" IS NULL` keeps first-write-wins and makes the affected
+    // count the answer to "did THIS call make the transition"; for a raw UPDATE
+    // the count is `result[1]` (rows.length is always 2 on this driver).
+    const result = (await this.repository.query(
       `UPDATE "order_records"
-       SET "cancelledAt" = COALESCE("cancelledAt", $1)
-       WHERE "internalOrderId" = $2`,
+       SET "cancelledAt" = $1
+       WHERE "internalOrderId" = $2 AND "cancelledAt" IS NULL`,
       [cancelledAt, internalOrderId]
-    );
+    )) as [unknown, number];
+    return result[1] > 0;
   }
 
   /**
@@ -4261,6 +4287,15 @@ export class OrderRecordRepository
       externalOrderId: status.externalOrderId,
       externalOrderNumber: status.externalOrderNumber,
       error: status.error,
+      deliveryFingerprint: status.deliveryFingerprint,
+      deliveryUpdate: status.deliveryUpdate
+        ? {
+            outcome: status.deliveryUpdate.outcome,
+            reason: status.deliveryUpdate.reason,
+            detail: status.deliveryUpdate.detail,
+            at: status.deliveryUpdate.at.toISOString(),
+          }
+        : undefined,
     };
 
     const newAttemptRow: SyncAttemptJson = {
@@ -4341,6 +4376,8 @@ export class OrderRecordRepository
       externalOrderId: s.externalOrderId,
       externalOrderNumber: s.externalOrderNumber,
       error: s.error,
+      deliveryFingerprint: s.deliveryFingerprint,
+      deliveryUpdate: toDeliveryUpdateReport(s.deliveryUpdate),
     }));
 
     const syncAttempts: SyncAttempt[] = (entity.syncAttempts ?? []).map((a) => ({
@@ -4658,4 +4695,27 @@ export class OrderRecordRepository
     entity.unitCostCurrency = item.cost.unitCostCurrency;
     return entity;
   }
+}
+
+/**
+ * Coerce a persisted delivery-relay report (#4195). An unrecognised outcome
+ * reads as absent rather than being surfaced as something this build cannot
+ * describe, and a malformed instant is dropped with it.
+ */
+function toDeliveryUpdateReport(
+  json: OrderSyncStatusJson['deliveryUpdate']
+): OrderDeliveryUpdateReport | undefined {
+  if (!json || !isOrderDeliveryUpdateOutcome(json.outcome)) {
+    return undefined;
+  }
+  const at = new Date(json.at);
+  if (Number.isNaN(at.getTime())) {
+    return undefined;
+  }
+  return {
+    outcome: json.outcome,
+    ...(isOrderDeliveryRefusalReason(json.reason) ? { reason: json.reason } : {}),
+    ...(json.detail ? { detail: json.detail } : {}),
+    at,
+  };
 }

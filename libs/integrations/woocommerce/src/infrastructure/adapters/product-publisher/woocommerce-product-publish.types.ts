@@ -26,6 +26,15 @@ export interface WooCommercePriceOnlyUpdateRequest {
 }
 
 /**
+ * The visibility-only PUT body (#3962) for `products/{id}`. Exactly `status`
+ * and nothing else: the product is taken off sale (or put back) without
+ * touching its stock, price or content.
+ */
+export interface WooCommerceVisibilityOnlyUpdateRequest {
+  status: Extract<WooCommerceProductStatus, 'publish' | 'draft'>;
+}
+
+/**
  * Price/schedule/tax/dimension fields shared verbatim between the top-level
  * product body and the per-variation body — WooCommerce accepts the same
  * field names on both resources. Extracted so `applyCommerce` (adapter) has

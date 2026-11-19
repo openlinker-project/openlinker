@@ -8,6 +8,7 @@
  * @see {@link OrderSyncService} for the implementation
  */
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
+import type { OrderDeliveryUpdateReport } from '../../domain/types/order-delivery-update.types';
 import type { Order } from '../../domain/types/order.types';
 
 /**
@@ -111,6 +112,17 @@ export type OrderSyncResult =
        * older caller still type-checks; absent reads as "not created now".
        */
       created?: boolean;
+      /**
+       * Digest of the delivery point the destination copy now carries (#4195),
+       * for ingestion to store beside the sync status so a later re-ingestion
+       * can tell a changed locker from the same one. Optional like `created`.
+       */
+      deliveryFingerprint?: string;
+      /**
+       * What relaying a changed delivery point to this destination did, when a
+       * relay was attempted or an earlier report still stands (#4195).
+       */
+      deliveryUpdate?: OrderDeliveryUpdateReport;
     }
   | {
       destinationConnectionId: string;

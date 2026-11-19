@@ -390,7 +390,7 @@ describe('ReturnWritesController', () => {
   describe('confirmRefund', () => {
     const body = { amount: '19.99', currency: 'PLN', reason: 'other' as const };
 
-    it('should write the linked RefundRecord when money moved', async () => {
+    it('should write the linked RefundRecord and report no money moved for an out-of-band refund', async () => {
       refunds.triggerRefund.mockResolvedValue({
         moneyState: 'triggered',
         claimedLineIds: ['b', 'a'],
@@ -404,6 +404,40 @@ describe('ReturnWritesController', () => {
           reason: 'other',
           note: null,
           executedBy: 'operator_out_of_band',
+          recordedAt: new Date('2026-08-02T00:00:00.000Z'),
+          providerRefundId: null,
+        },
+      });
+      orderRefunds.recordRefund.mockResolvedValue({ id: 'refund-1' });
+
+      const result = await controller.confirmRefund(RETURN_ID, body, USER);
+
+      // Recorded only: the operator refunded out of band, OpenLinker sent nothing (#4194).
+      expect(result.moneyMoved).toBe(false);
+      expect(result.refundRecordWritten).toBe(true);
+      expect(result.refundRecordId).toBe('refund-1');
+      // Deterministic per attempt, and order-independent, so one attempt cannot
+      // insert twice and inflate the order's refund total.
+      expect(orderRefunds.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: `return:${RETURN_ID}:a+b` }),
+        expect.anything()
+      );
+    });
+
+    it('should report money moved when a refund executor performed the refund', async () => {
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'triggered',
+        claimedLineIds: ['b', 'a'],
+        providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
+        refundRecordIntent: {
+          returnId: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          amount: '19.99',
+          currency: 'PLN',
+          reason: 'other',
+          note: null,
+          executedBy: 'refund_executor',
           recordedAt: new Date('2026-08-02T00:00:00.000Z'),
           providerRefundId: null,
         },
@@ -659,7 +693,7 @@ describe('ReturnWritesController', () => {
 
       // Propagating would claim the refund failed when it did not — and the
       // operator's retry would then answer 409 `already-attempted`.
-      expect(result.moneyMoved).toBe(true);
+      expect(result.moneyMoved).toBe(false);
       expect(result.refundRecordWritten).toBe(false);
       expect(result.refundRecordError).toBe('connection reset');
       expect(result.moneyState).toBe('triggered');

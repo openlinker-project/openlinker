@@ -2,9 +2,10 @@
  * Unit tests for `MarketplaceOfferPauseStaleHandler` (#1689).
  *
  * Mocks `IStaleOfferPauseService`. Pins the `getPayload` validation branches
- * (missing/invalid payload, empty variantIds, non-string entries, missing
- * correlationId), the success delegation path, and the OL-shaped error
- * wrapping when the service throws.
+ * (missing/invalid payload, non-string entries, missing correlationId; an
+ * empty variantIds list is a product-level deletion and is accepted, #3962),
+ * the success delegation path, and the OL-shaped error wrapping when the
+ * service throws.
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -41,6 +42,9 @@ const RESULT: StaleOfferPauseResult = {
   variantsStillStale: 2,
   offersPaused: 2,
   offersSkipped: 0,
+  shopProductsHidden: 0,
+  shopListingsZeroed: 0,
+  shopListingsNotStopped: 0,
 };
 
 describe('MarketplaceOfferPauseStaleHandler', () => {
@@ -63,10 +67,6 @@ describe('MarketplaceOfferPauseStaleHandler', () => {
       ['missing internalProductId', { schemaVersion: 1, variantIds: ['a'], correlationId: 'c' }],
       ['missing variantIds', { schemaVersion: 1, internalProductId: 'p', correlationId: 'c' }],
       [
-        'empty variantIds',
-        { schemaVersion: 1, internalProductId: 'p', variantIds: [], correlationId: 'c' },
-      ],
-      [
         'non-string entry in variantIds',
         { schemaVersion: 1, internalProductId: 'p', variantIds: ['a', 42], correlationId: 'c' },
       ],
@@ -85,11 +85,25 @@ describe('MarketplaceOfferPauseStaleHandler', () => {
     );
   });
 
-  it('delegates to pauseOffersForVariants and returns ok on success', async () => {
+  it('should delegate to pauseOffersForVariants with the product id and return ok when the payload is valid', async () => {
     const result = await handler.execute(makeJob(VALID_PAYLOAD));
 
     expect(staleOfferPause.pauseOffersForVariants).toHaveBeenCalledWith({
       variantIds: ['ol_variant_a', 'ol_variant_b'],
+      internalProductId: 'ol_product_1',
+      correlationId: 'corr-1',
+    });
+    expect(result).toEqual({ outcome: 'ok' });
+  });
+
+  it('should accept an empty variantIds list and pass internalProductId when the deletion is product-level', async () => {
+    const result = await handler.execute(
+      makeJob({ ...VALID_PAYLOAD, variantIds: [] })
+    );
+
+    expect(staleOfferPause.pauseOffersForVariants).toHaveBeenCalledWith({
+      variantIds: [],
+      internalProductId: 'ol_product_1',
       correlationId: 'corr-1',
     });
     expect(result).toEqual({ outcome: 'ok' });
