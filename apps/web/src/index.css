@@ -552,7 +552,7 @@ html[data-theme='dark'] {
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
   background: var(--bg-canvas);
 }
 
@@ -1221,7 +1221,7 @@ textarea,
 }
 
 #root {
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
 }
 
 .sr-only {
@@ -1245,7 +1245,7 @@ textarea,
  */
 
 .shell {
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
   background: var(--bg-canvas);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1275,7 +1275,7 @@ textarea,
     padding: 12px 0;
     position: sticky;
     top: 0;
-    height: 100vh;
+    height: calc(100 * var(--ui-vh));
     overflow: hidden;
   }
 }
@@ -1347,7 +1347,7 @@ textarea,
     /* Below the top bar, not beside it; the menu inside (`.shell-nav`)
        scrolls on its own when it outgrows the box. */
     top: calc(var(--shell-topbar-height) + 12px);
-    height: calc(100vh - var(--shell-topbar-height) - 24px);
+    height: calc(calc(100 * var(--ui-vh)) - var(--shell-topbar-height) - 24px);
     margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-xl);
@@ -1625,8 +1625,8 @@ textarea,
   border-radius: 0 12px 12px 0;
   margin: 0;
   width: min(280px, 85vw);
-  height: 100vh;
-  max-height: 100vh;
+  height: calc(100 * var(--ui-vh));
+  max-height: calc(100 * var(--ui-vh));
   background: var(--bg-shell);
   box-shadow: var(--shadow-overlay);
 }
@@ -6254,7 +6254,7 @@ a.delivery-rider-banner__button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
+  min-height: calc(100 * var(--ui-dvh));
   padding: 1.5rem;
   background: var(--bg-canvas);
   position: relative;
@@ -6534,7 +6534,7 @@ html:has(.login-stage) {
   overflow: clip;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  min-height: calc(100 * var(--ui-dvh));
   background: var(--bg-canvas);
 }
 
@@ -7689,7 +7689,7 @@ html:has(.login-stage) {
 
 .login-page-editor__preview-dialog {
   width: min(360px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
+  max-height: calc(calc(100 * var(--ui-dvh)) - 32px);
   overflow-y: auto;
 }
 
@@ -8234,7 +8234,7 @@ html:has(.login-stage) {
   width: min(34rem, 100vw);
   max-width: none;
   max-height: none;
-  height: 100dvh;
+  height: calc(100 * var(--ui-dvh));
   padding: 0;
   border: 0;
   border-left: 1px solid var(--border-subtle);
@@ -9678,7 +9678,7 @@ a.kpi-card:focus-visible {
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(520px, 92vw);
-  max-height: min(90vh, 720px);
+  max-height: min(calc(90 * var(--ui-vh)), 720px);
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--bg-surface-elevated);
@@ -9708,7 +9708,7 @@ a.kpi-card:focus-visible {
   transform: none;
   width: 100%;
   max-width: none;
-  max-height: 88dvh;
+  max-height: calc(88 * var(--ui-dvh));
   padding: 0;
   border-bottom: 0;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
@@ -9796,7 +9796,7 @@ a.kpi-card:focus-visible {
   margin: auto;
   width: min(calc(var(--side-panel-width, 480px) + 120px), calc(100vw - 64px));
   height: fit-content;
-  max-height: min(880px, calc(100vh - 96px));
+  max-height: min(880px, calc(calc(100 * var(--ui-vh)) - 96px));
   padding: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
@@ -9943,7 +9943,7 @@ a.kpi-card:focus-visible {
     right: 0;
     bottom: 0;
     width: 100%;
-    max-height: calc(100dvh - 44px - env(safe-area-inset-top, 0px));
+    max-height: calc(calc(100 * var(--ui-dvh)) - 44px - env(safe-area-inset-top, 0px));
     border-left: 0;
     border-top: 1px solid var(--border-default);
     border-radius: 18px 18px 0 0;
@@ -11806,9 +11806,9 @@ a.kpi-card:focus-visible {
   max-width: none;
   /* Fixed height so the modal stays stable as selections/variants are added -
      the product list and the rail scroll internally instead of growing the
-     modal (phone overrides to a 100dvh full-screen sheet below). */
-  height: min(760px, 88vh);
-  max-height: 88vh;
+     modal (phone overrides to a calc(100 * var(--ui-dvh)) full-screen sheet below). */
+  height: min(760px, calc(88 * var(--ui-vh)));
+  max-height: calc(88 * var(--ui-vh));
   padding: 0;
   overflow: hidden;
   display: flex;
@@ -12165,7 +12165,7 @@ a.kpi-card:focus-visible {
 .offer-product-picker__rail-body {
   flex: 1 1 auto;
   /* Keeps the batch review readable when the destination list is tall (#3725). */
-  min-height: min(9rem, 20vh);
+  min-height: min(9rem, calc(20 * var(--ui-vh)));
   overflow-y: auto;
   padding: var(--space-1) var(--space-3) var(--space-3);
 }
@@ -12254,7 +12254,7 @@ a.kpi-card:focus-visible {
 .offer-product-picker__rail-conn-list {
   /* Many connections scroll inside the rail instead of pushing the actions out (#3725);
      the label above stays pinned. */
-  max-height: min(30vh, 14rem);
+  max-height: min(calc(30 * var(--ui-vh)), 14rem);
   overflow-y: auto;
 }
 .offer-product-picker__eyebrow {
@@ -12458,8 +12458,8 @@ a.kpi-card:focus-visible {
   .offer-product-picker.dialog__content {
     width: 100vw;
     max-width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: calc(100 * var(--ui-dvh));
+    max-height: calc(100 * var(--ui-dvh));
     top: 0;
     left: 0;
     transform: none;
@@ -16639,6 +16639,99 @@ html[data-density='compact'] .status-badge {
   pointer-events: none;
 }
 
+/* ── Text size ──────────────────────────────────────────────────────
+ * One `zoom` per step instead of rewriting ~1700 px values: zoom scales
+ * text, spacing, radii and icons together. Default (no attribute, or
+ * `m`) is 18px-equivalent root; `s` is the pre-switch look.
+ */
+html { --ui-zoom: 1.125; }
+html[data-font-size='s'] { --ui-zoom: 1; }
+html[data-font-size='m'] { --ui-zoom: 1.125; }
+html[data-font-size='l'] { --ui-zoom: 1.25; }
+html[data-font-size='xl'] { --ui-zoom: 1.375; }
+
+/* `vh` ignores zoom, so a calc(100 * var(--ui-vh)) shell would overflow the viewport by the
+ * zoom factor. Every vh below is written as N * var(--ui-vh). */
+html { --ui-vh: calc(1vh / var(--ui-zoom)); --ui-dvh: calc(1dvh / var(--ui-zoom)); }
+
+/* Zoom the CONTENT of body, not <html>: Radix/floating-ui position poppers
+ * from getBoundingClientRect, which is wrong inside a zoomed ancestor (menus
+ * drifted off-screen). The popper wrapper stays unzoomed so it is placed
+ * correctly; its child is zoomed so the menu itself still scales. */
+body > *:not([data-radix-popper-content-wrapper]),
+[data-radix-popper-content-wrapper] > * {
+  zoom: var(--ui-zoom);
+}
+
+/* Topbar text-size toggle: 4-step segmented pill with a sliding thumb. */
+.font-size-toggle {
+  --fs-index: 1;
+  position: relative;
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  padding: 2px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.font-size-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 4);
+  height: calc(100% - 4px);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs), 0 0 0 1px var(--border-subtle);
+  transform: translateX(calc(var(--fs-index) * 100%));
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.font-size-toggle__option {
+  position: relative;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.font-size-toggle__option:hover,
+.font-size-toggle__option.is-active {
+  color: var(--text-primary);
+}
+
+.font-size-toggle__option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.font-size-toggle__glyph {
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.font-size-toggle__option:active .font-size-toggle__glyph {
+  transform: scale(0.88);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .font-size-toggle__thumb,
+  .font-size-toggle__glyph {
+    transition: none;
+  }
+}
+
 /* ── Mobile / touch tweaks for #775 new primitives ─────────────────
  * On touch devices there is no hover, so `.copyable-id__copy` and any
  * other hover-revealed affordance has to stay visible. We also collapse
@@ -16896,7 +16989,7 @@ input.bulk-dispatch__num--wide {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
-  max-height: 46vh;
+  max-height: calc(46 * var(--ui-vh));
   overflow-y: auto;
 }
 
@@ -17005,7 +17098,7 @@ input.bulk-dispatch__num--wide {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
-  max-height: 52vh;
+  max-height: calc(52 * var(--ui-vh));
   overflow-y: auto;
 }
 
@@ -18224,7 +18317,7 @@ input.bulk-dispatch__num--wide {
 }
 .bulk-image-lightbox__img {
   max-width: min(90vw, 900px);
-  max-height: 90vh;
+  max-height: calc(90 * var(--ui-vh));
   object-fit: contain;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -18589,7 +18682,7 @@ button.bulk-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acce
 .bulk-editor__content {
   width: min(960px, 100%);
   max-width: 960px;
-  max-height: 88vh;
+  max-height: calc(88 * var(--ui-vh));
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -19025,7 +19118,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__acc-head { display: none; }
 
 @media (max-width: 599.98px) {
-  .bulk-editor__content { max-width: 100%; max-height: 100vh; height: 100dvh; border-radius: 0; }
+  .bulk-editor__content { max-width: 100%; max-height: calc(100 * var(--ui-vh)); height: calc(100 * var(--ui-dvh)); border-radius: 0; }
   .bulk-editor__body { display: block; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .bulk-editor__rail { display: none; }
   .bulk-editor__scopes { overflow: visible; }
@@ -19158,7 +19251,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__catpick {
   width: min(560px, 100%);
   max-width: 560px;
-  max-height: 80vh;
+  max-height: calc(80 * var(--ui-vh));
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -19238,7 +19331,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__catpick-foot .grow { flex: 1; color: var(--text-muted); font-size: 12px; min-width: 140px; }
 
 @media (max-width: 599.98px) {
-  .bulk-editor__catpick { max-width: 100%; max-height: 100vh; height: 100dvh; border-radius: 0; }
+  .bulk-editor__catpick { max-width: 100%; max-height: calc(100 * var(--ui-vh)); height: calc(100 * var(--ui-dvh)); border-radius: 0; }
 }
 
 /* ── Shop attribute picker (#1835) ── */
@@ -20791,7 +20884,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
  * to have space to truncate gracefully instead of overflowing at 520px. */
 .dialog__content--publish {
   width: min(680px, 94vw);
-  max-height: min(90vh, 800px);
+  max-height: min(calc(90 * var(--ui-vh)), 800px);
 }
 
 /* Product/variant name truncation in the search picker — names spilled past
@@ -22270,12 +22363,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
  */
 .dialog__content--wide {
   width: min(920px, 94vw);
-  max-height: min(92vh, 880px);
+  max-height: min(calc(92 * var(--ui-vh)), 880px);
 }
 
 .ksef-upo-preview__frame {
   width: 100%;
-  height: min(70vh, 640px);
+  height: min(calc(70 * var(--ui-vh)), 640px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-shell);
@@ -24773,7 +24866,7 @@ a.sales-channels__offer:hover { color: var(--text-link); text-decoration: underl
   /* Paper sheet — fixed light presentation regardless of app theme. */
   width: 100%;
   max-width: 48rem;
-  min-height: 60vh;
+  min-height: calc(60 * var(--ui-vh));
   padding: 3.5rem 3rem;
   background: #ffffff;
   color: #1a1a1a;
@@ -30046,7 +30139,7 @@ legend.analytics-settings-dialog__label {
     top: var(--pacing-rail-top);
     /* --space-7 matches .shell-content's bottom padding, so at the very end of
        the page the grid area does not push the rail up under the topbar. */
-    max-height: calc(100dvh - var(--pacing-rail-top) - var(--space-7));
+    max-height: calc(calc(100 * var(--ui-dvh)) - var(--pacing-rail-top) - var(--space-7));
   }
 
   .pacing-rail__body {
@@ -31606,7 +31699,7 @@ legend.analytics-settings-dialog__label {
   flex-direction: column;
   gap: var(--space-5);
   padding: var(--space-5);
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
   background: var(--bg-canvas);
 }
 
@@ -31637,7 +31730,7 @@ legend.analytics-settings-dialog__label {
 .bench-rail {
   position: sticky;
   top: var(--space-4);
-  max-height: calc(100vh - var(--space-6));
+  max-height: calc(calc(100 * var(--ui-vh)) - var(--space-6));
   overflow-y: auto;
 }
 
@@ -32914,7 +33007,7 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-dock__items {
-  max-height: 44vh;
+  max-height: calc(44 * var(--ui-vh));
   overflow-y: auto;
   padding: 0 var(--space-2) var(--space-2);
   background: var(--bg-surface-elevated);
@@ -33263,7 +33356,7 @@ legend.analytics-settings-dialog__label {
   position: fixed;
   inset: 0;
   bottom: auto;
-  height: 58vh;
+  height: calc(58 * var(--ui-vh));
   z-index: 25;
   display: flex;
   flex-direction: column;
@@ -34450,8 +34543,8 @@ legend.analytics-settings-dialog__label {
     transform: none;
     width: 100vw;
     max-width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: calc(100 * var(--ui-dvh));
+    max-height: calc(100 * var(--ui-dvh));
     border: 0;
     border-radius: 0;
     padding: var(--space-4) var(--space-4) 0;
@@ -35574,7 +35667,7 @@ legend.analytics-settings-dialog__label {
 }
 
 /* Manual stock correction dialog (#3567, mockup m6). Page-specific layout only. */
-.sc-dialog { max-width: 34rem; max-height: calc(100vh - 24px); overflow-y: auto; }
+.sc-dialog { max-width: 34rem; max-height: calc(calc(100 * var(--ui-vh)) - 24px); overflow-y: auto; }
 .sc-dialog--compact { max-width: 28rem; }
 .sc-form { display: grid; gap: var(--space-3); }
 .sc-diff { margin: 0; font-size: 0.875rem; color: var(--text-secondary); }
@@ -37319,7 +37412,7 @@ legend.analytics-settings-dialog__label {
 
 /* #3958 - the routing panel's single "Who ships it" cell: the choice, then the
    default parcel for a method OpenLinker buys a label for. */
-.routing-dialog { width: min(52rem, 94vw); max-width: none; max-height: 90vh; overflow-y: auto; }
+.routing-dialog { width: min(52rem, 94vw); max-width: none; max-height: calc(90 * var(--ui-vh)); overflow-y: auto; }
 .routing-route-cell { display: grid; gap: 4px; min-width: 0; }
 /* Wide enough for the longest carrier name, so a choice is never cut mid-word. */
 .routing-route-cell select { width: 100%; }
@@ -38249,7 +38342,7 @@ body.pm-peek-closed .pm-peek{display:none}
   .pm-guide-scrim{-webkit-backdrop-filter:blur(3px) saturate(.85);backdrop-filter:blur(3px) saturate(.85)}
 }
 @media (max-width:640px){
-  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(100dvh - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
+  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(calc(100 * var(--ui-dvh)) - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
   .pm-guide[data-open=true]{transform:translateY(var(--drag,0px));transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s}
   .pm-guide[data-dragging=true]{transition:none}
   .pm-guide__handle{display:flex;justify-content:center;padding:10px 0 4px;touch-action:none;cursor:grab}
@@ -38695,7 +38788,7 @@ tr.cx-detail.is-open .cx-detail__pad{opacity:1;transform:none;transition-delay:.
 .cx-toast{position:fixed;left:50%;bottom:5.5rem;transform:translateX(-50%);z-index:70;padding:var(--space-3) var(--space-4);border-radius:var(--radius-lg);background:var(--text-primary);color:var(--text-inverse);font-size:.8125rem;box-shadow:var(--shadow-overlay);max-width:min(32rem,calc(100vw - 32px))}
 .cx-mscrim{position:fixed;inset:0;background:var(--overlay-scrim);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s var(--ease-out);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 .cx-mscrim[data-open=true]{opacity:1;pointer-events:auto}
-.cx-modal{position:fixed;z-index:51;left:50%;top:50%;width:min(44rem,calc(100vw - 24px));max-height:calc(100dvh - 32px);display:flex;flex-direction:column;background:var(--bg-surface-elevated);border:1px solid var(--border-default);border-radius:var(--radius-xl);box-shadow:var(--shadow-overlay);opacity:0;visibility:hidden;transform:translate(-50%,-47%) scale(.98);transition:opacity .2s var(--ease-out),transform .3s var(--ease-out),visibility 0s .3s}
+.cx-modal{position:fixed;z-index:51;left:50%;top:50%;width:min(44rem,calc(100vw - 24px));max-height:calc(calc(100 * var(--ui-dvh)) - 32px);display:flex;flex-direction:column;background:var(--bg-surface-elevated);border:1px solid var(--border-default);border-radius:var(--radius-xl);box-shadow:var(--shadow-overlay);opacity:0;visibility:hidden;transform:translate(-50%,-47%) scale(.98);transition:opacity .2s var(--ease-out),transform .3s var(--ease-out),visibility 0s .3s}
 .cx-modal[data-open=true]{opacity:1;visibility:visible;transform:translate(-50%,-50%);transition:opacity .2s var(--ease-out),transform .34s var(--ease-out),visibility 0s}
 .cx-modal__h{display:flex;justify-content:space-between;gap:var(--space-3);align-items:flex-start;padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border-subtle)}
 .cx-modal__t{margin:0;font-size:1.0625rem;font-weight:600;letter-spacing:var(--tracking-tight)}
@@ -38706,7 +38799,7 @@ tr.cx-detail.is-open .cx-detail__pad{opacity:1;transform:none;transition-delay:.
 .cx-ms__h{display:flex;justify-content:space-between;align-items:center;gap:var(--space-3)}
 .cx-ms__h h3{margin:0;font-size:.8125rem;font-weight:600}
 body.cx-modal-open{overflow:hidden}
-@media (width<=640px){.cx-modal{left:0;top:auto;bottom:0;width:100%;max-height:calc(100dvh - 44px);border-radius:18px 18px 0 0;transform:translateY(104%)}
+@media (width<=640px){.cx-modal{left:0;top:auto;bottom:0;width:100%;max-height:calc(calc(100 * var(--ui-dvh)) - 44px);border-radius:18px 18px 0 0;transform:translateY(104%)}
   .cx-modal[data-open=true]{transform:none}.cx-dset{grid-template-columns:repeat(2,minmax(0,1fr))}.cx-wcomp>li{grid-template-columns:auto minmax(0,1fr)}.cx-wm{grid-column:1/-1;justify-content:flex-start}}
 .pm-cards .cx-wcomp{margin-top:var(--space-2)}
 @media (prefers-reduced-motion:reduce){.cx-modal,.cx-mscrim{transition:none}}
@@ -38946,7 +39039,7 @@ body.pm-peek-closed .pm-peek{display:none}
   .pm-guide-scrim{-webkit-backdrop-filter:blur(3px) saturate(.85);backdrop-filter:blur(3px) saturate(.85)}
 }
 @media (max-width:640px){
-  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(100dvh - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
+  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(calc(100 * var(--ui-dvh)) - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
   .pm-guide[data-open=true]{transform:translateY(var(--drag,0px));transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s}
   .pm-guide[data-dragging=true]{transition:none}
   .pm-guide__handle{display:flex;justify-content:center;padding:10px 0 4px;touch-action:none;cursor:grab}
@@ -39652,7 +39745,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   width: 0.75rem; height: 0.75rem; fill: none; stroke: var(--text-muted);
   stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
 }
-.motion-popover.described-select__popover { padding: var(--space-1); max-height: min(70vh, 28rem); overflow-y: auto; }
+.motion-popover.described-select__popover { padding: var(--space-1); max-height: min(calc(70 * var(--ui-vh)), 28rem); overflow-y: auto; }
 .option-list--described .option-list__option {
   height: auto;
   min-height: 3.25rem;

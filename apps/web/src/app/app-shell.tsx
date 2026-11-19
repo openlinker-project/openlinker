@@ -43,6 +43,7 @@ import {
 } from '../shared/ui/dropdown-menu';
 import { ThemePicker } from '../features/appearance';
 import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
+import { FontSizeToggle, useFontSize } from '../shared/ui/font-size-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
 import { CommandPaletteTrigger } from '../shared/ui/command-palette';
@@ -274,6 +275,10 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           <div className="shell-user-chip__menu-section-label">{copy.density}</div>
           <DensityToggle />
         </div>
+        <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">Text size</div>
+          <FontSizeToggle />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
       </DropdownMenuAnimatedContent>
@@ -382,6 +387,9 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // users who selected compact). useDensity is a no-op hook for the
   // shell itself — we only call it to drive its useEffect.
   useDensity();
+  // Same boot-time reasoning: apply the saved text size before first paint of
+  // the tables, not when the user menu is first opened.
+  useFontSize();
   const username = session.user?.username;
   const counts = useNavCounts();
   // The session's own role string, and the ONLY place this file reads it.
