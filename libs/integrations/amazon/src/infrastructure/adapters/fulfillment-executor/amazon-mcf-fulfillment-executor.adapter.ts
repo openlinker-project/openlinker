@@ -12,7 +12,7 @@
  *     first: work Amazon cannot fulfil (not in FBA stock, an SKU it does not
  *     know) is rejected, blocking, with Amazon's reasons, as is work whose
  *     variant has no Amazon SKU or whose order has no delivery address (buyer
- *     data not stored, ADR-062 § Amendment (#4185)). `acceptedAt` is Amazon's
+ *     data not stored or an incomplete address, ADR-062 § Amendment (#4185)). `acceptedAt` is Amazon's
  *     `receivedDate`.
  *   - `requestCancellation`: an order still `New`, `Received` or `Planning` is
  *     cancelled; once Amazon is processing or has shipped it, the cancellation
@@ -21,6 +21,17 @@
  *   - `FulfillmentStatusSource`: `getFulfillmentOrder` as work counters, one
  *     line per order item (the item id IS the work line id), shipped units from
  *     the `SHIPPED` shipments, cancelled and unfulfillable units as cancelled.
+ *
+ * The Amazon SKU of a work line is the variant's `ProductVariant` mapping on this
+ * connection, which Amazon as InventoryMaster creates when it reads FBA stock
+ * (#4183); MCF therefore needs the connection to be the stock master too. A
+ * connection that only links offers has no such mapping and its work is
+ * rejected as `sku-not-on-amazon`.
+ *
+ * `acceptedAt` is read back right after the create; if Amazon does not list the
+ * new order yet it is `null`, and a later replay of the same key reports the
+ * `receivedDate`. Core records an acceptance once (`acceptedAt IS NULL`), so
+ * the difference changes nothing it stores.
  *
  * Each order's line items carry the work line id as `sellerFulfillmentOrderItemId`
  * (a UUID, within Amazon's 50 characters), which is what maps Amazon's answer
@@ -99,11 +110,17 @@ export class AmazonMcfFulfillmentExecutorAdapter implements FulfillmentExecutorP
     }
 
     if (req.deliveryAddress === null || req.deliveryAddress === undefined) {
-      return rejected(
-        'delivery-address-unavailable',
-        true,
-        'OpenLinker does not store the buyer address (OL_STORE_PII=false), so Amazon cannot be told where to ship',
-      );
+      return req.shipTo.mode === 'hashed'
+        ? rejected(
+            'buyer-data-not-stored',
+            true,
+            'OpenLinker does not keep buyer addresses on this installation, so Amazon cannot be told where to ship',
+          )
+        : rejected(
+            'delivery-address-incomplete',
+            true,
+            'The order has no complete delivery address (name, street, city, postcode and country)',
+          );
     }
     const items: AmazonMcfItemRequest[] = [];
     for (const line of req.lines) {

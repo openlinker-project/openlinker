@@ -19,7 +19,11 @@ import type { FetchLike } from '@openlinker/shared/http';
 
 import { AMAZON_NOTIFICATIONS_GRANTLESS_SCOPE } from '../amazon.constants';
 import { AmazonConfigException } from '../domain/exceptions/amazon-config.exception';
-import { parseAmazonConfig, resolveAmazonSpApiHost } from '../domain/policies/amazon-config.policy';
+import {
+  parseAmazonConfig,
+  resolveAmazonSpApiHost,
+  resolveCatalogueMarketplaceId,
+} from '../domain/policies/amazon-config.policy';
 import { parseAmazonCredentials } from '../domain/policies/amazon-credentials.policy';
 import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-token.provider';
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
@@ -189,7 +193,9 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       identifierMapping,
       {
         connectionId: resolution.connection.id,
-        marketplaceId: resolution.config.marketplaceIds[0],
+        // The marketplace FBA stock is read on (#4183), so work is routed and
+        // fulfilled against the same FBA pool.
+        marketplaceId: resolveCatalogueMarketplaceId(resolution.config),
         shippingSpeed: resolution.config.mcfShippingSpeed ?? 'Standard',
       },
       cache,

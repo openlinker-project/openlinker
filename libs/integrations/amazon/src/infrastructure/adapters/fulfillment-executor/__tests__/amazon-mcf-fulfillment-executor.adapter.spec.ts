@@ -176,8 +176,13 @@ describe('AmazonMcfFulfillmentExecutorAdapter', () => {
     const { adapter, outbound } = setup();
 
     await expect(adapter.requestFulfillment(request({ deliveryAddress: null }))).resolves.toEqual(
-      expect.objectContaining({ status: 'rejected', reason: 'delivery-address-unavailable', blocking: true }),
+      expect.objectContaining({ status: 'rejected', reason: 'delivery-address-incomplete', blocking: true }),
     );
+    await expect(
+      adapter.requestFulfillment(
+        request({ deliveryAddress: null, shipTo: { mode: 'hashed', countryIso2: 'PL', locationHash: null } }),
+      ),
+    ).resolves.toEqual(expect.objectContaining({ status: 'rejected', reason: 'buyer-data-not-stored', blocking: true }));
     await expect(
       adapter.requestFulfillment(
         request({ lines: [{ workLineId: 'work-line-1', productVariantId: 'ol_variant_unmapped', quantity: 1 }] }),

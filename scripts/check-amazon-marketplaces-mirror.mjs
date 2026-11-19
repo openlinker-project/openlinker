@@ -17,6 +17,10 @@
  *     `TAX_RATE_CODE_PATTERN` (amazon-config.policy.ts) / `TAX_RATE`
  *     (plugins/amazon/amazon-connection-config.ts). Flags are ignored: the
  *     browser lower-cases before testing, the API matches case-insensitively.
+ *   - the Multi-Channel Fulfillment shipping speeds (#4185):
+ *     `AmazonMcfShippingSpeedValues` (domain/types/amazon-mcf.types.ts) / the
+ *     same name in plugins/amazon/amazon-connection-config.ts. A speed the
+ *     form offers and the API refuses fails the save.
  *
  * Drift is not cosmetic: the form would offer a marketplace the API refuses,
  * hide one it accepts, or let a Far East connection save two marketplaces the
@@ -37,6 +41,7 @@ const BACKEND = 'libs/integrations/amazon/src/amazon.constants.ts';
 const BROWSER = 'apps/web/src/features/amazon/lib/amazon-marketplaces.ts';
 const BACKEND_TAX = 'libs/integrations/amazon/src/domain/policies/amazon-config.policy.ts';
 const BROWSER_TAX = 'apps/web/src/plugins/amazon/amazon-connection-config.ts';
+const BACKEND_MCF = 'libs/integrations/amazon/src/domain/types/amazon-mcf.types.ts';
 
 /** The body of a `const <name> = /.../flags;` regex literal, or null. */
 export function parseRegexBody(source, name) {
@@ -197,6 +202,15 @@ async function main() {
   }
   if (backendTax !== browserTax) {
     problems.push(`tax rate pattern: backend /${backendTax}/ vs browser /${browserTax}/`);
+  }
+  const backendSpeeds = parseStringArray(await readFile(join(ROOT, BACKEND_MCF), 'utf8'), 'AmazonMcfShippingSpeedValues');
+  const browserSpeeds = parseStringArray(await readFile(join(ROOT, BROWSER_TAX), 'utf8'), 'AmazonMcfShippingSpeedValues');
+  if (backendSpeeds === null || browserSpeeds === null || backendSpeeds.length === 0) {
+    process.stderr.write(`could not read the MCF shipping speeds (${BACKEND_MCF} / ${BROWSER_TAX})\n`);
+    process.exit(1);
+  }
+  if ([...backendSpeeds].sort().join(',') !== [...browserSpeeds].sort().join(',')) {
+    problems.push(`MCF shipping speeds: backend [${backendSpeeds}] vs browser [${browserSpeeds}]`);
   }
   if (problems.length > 0) {
     process.stderr.write(`Amazon marketplace mirror drifted (${BACKEND} vs ${BROWSER}):\n`);
