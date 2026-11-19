@@ -13,7 +13,7 @@
  * Output is the SHAPE of each answer (keys, array lengths, value types), never
  * the values: on a live account an order answer carries buyer data, and nothing
  * here should put that in a terminal or a CI log. `--values` prints the raw
- * answer instead, for the sandbox, whose data is canned.
+ * answer instead and is refused outside the sandbox, whose data is canned.
  *
  * Usage:
  *   AMAZON_CLIENT_ID=... AMAZON_CLIENT_SECRET=... AMAZON_REFRESH_TOKEN=... \
@@ -63,6 +63,9 @@ function fail(message) {
 
 if (!config.clientId || !config.clientSecret || !config.refreshToken) {
   fail('set AMAZON_CLIENT_ID, AMAZON_CLIENT_SECRET and AMAZON_REFRESH_TOKEN (the private app\'s LWA credentials)');
+}
+if (showValues && config.environment !== 'sandbox') {
+  fail('--values prints raw answers and is only allowed with AMAZON_ENVIRONMENT=sandbox: live answers carry buyer data');
 }
 const host = HOSTS[config.environment]?.[config.region];
 if (!host) {

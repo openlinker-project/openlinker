@@ -15,8 +15,10 @@ connection, in either role:
 ## What you need
 
 - A **Professional** seller account. Amazon groups marketplaces into three regions (Europe including
-  the UK, Middle East and India; North America including Brazil; Far East); one connection talks to
-  one region and sells in any of its marketplaces.
+  the UK, Middle East and India; North America including Brazil; Far East). One connection is one
+  seller account in one region. In Europe and North America one account sells in all the region's
+  marketplaces; in the Far East (Japan, Australia, Singapore) each country is a separate account, so
+  such a connection names one marketplace.
 - Access to **Solution Provider Portal** with a developer profile approved for private use.
 - Your **merchant token** (Seller Central: Settings > Account Info > Your Merchant Token). The
   listings API addresses every listing by it and no API returns it, so OpenLinker asks for it.
@@ -50,8 +52,9 @@ moves to **Needs reauth**: authorize again and paste the new token on the connec
 **Connections > Add connection > Amazon** opens the guided form:
 
 1. **Region** and **environment**. Production talks to your account; sandbox to Amazon's static
-   sandbox (canned answers only, see below). The environment is fixed after saving; the region can
-   be changed later on the connection page, which drops the old region's marketplaces.
+   sandbox (canned answers only, see below). Both are fixed after saving: another region is another
+   seller account with its own refresh token, so authorize the app in that region's Seller Central
+   and create another connection.
 2. **Marketplaces** you sell in, picked from a searchable list of the chosen region's marketplaces
    (e.g. PL `A1C3SOZRARQ6R3`, DE `A1PA6795UKMFR9`). Prices read from a marketplace keep its currency.
 3. The **role**: a sales channel (**Orders** and/or **Offers**) or the catalogue master (below). With
@@ -122,16 +125,20 @@ Amazon has no HTTP webhooks for orders; the queue is the only push channel.
   an hour or two. Returns of orders Amazon ships (FBA) are handled by Amazon.
 - **Refunds**: tick **Send refunds to Amazon** on the connection. A refund confirmed in OpenLinker is
   sent through Amazon's payment adjustment feed, split over the returned items, once even after a
-  retry. Without it, OpenLinker only records that you refunded in Seller Central. Amazon refunds FBA
+  retry. Each item takes at most what the buyer paid for it after discounts; where tax is added on
+  top of the price (US, Canada) the refund is split into price and tax. Shipping is not refunded
+  this way, so an amount above the items' price is refused. Without it, OpenLinker only records that you refunded in Seller Central. Amazon refunds FBA
   orders itself; such a refund is refused.
 
 ## 6. Multi-Channel Fulfillment (optional)
 
 With the **Amazon Fulfillment** role and FBA stock, Amazon can pack and ship orders from your other
-channels:
+channels. The connection must be the stock master with an FBA location (above): that is where
+OpenLinker learns which Amazon SKU each variant is.
 
 1. Turn on **FulfillmentExecutor** under **Enabled roles**, and enable the OpenLinker OMS with
-   routing to the FBA location.
+   routing to the FBA location. Orders go to Amazon on the marketplace the catalogue and FBA stock
+   are read from.
 2. OpenLinker must store buyer data (`OL_STORE_PII=true`, the default): Amazon needs the delivery
    address, and OpenLinker sends it only to the holder that ships the parcel.
 3. Optional: **Multi-Channel Fulfillment shipping speed** in the Amazon section (Standard,
@@ -163,8 +170,9 @@ which is why the tasks run as slowly as they do.
 ## Personal data
 
 Amazon's Data Protection Policy allows keeping a buyer's personal data at most 30 days after
-delivery. OpenLinker removes buyer addresses, email, note and tax id from Amazon orders after that
-period, and a later re-import does not store them again.
+delivery. OpenLinker removes buyer addresses, email, note and tax id from Amazon orders 30 days
+after the order's ship-by deadline (earlier than Amazon's limit, since OpenLinker does not always
+know the delivery date), and a later re-import does not store them again.
 
 ## Sandbox and probes
 
@@ -181,8 +189,8 @@ AMAZON_ENVIRONMENT=sandbox AMAZON_SELLER_ID=... AMAZON_SKU=... \
 pnpm amazon:probe
 ```
 
-They are read-only and print the structure of each answer, never its values (pass `--values` for
-the sandbox's canned data). `--only=orders,listings` runs a subset. Never run them in CI.
+They are read-only and print the structure of each answer, never its values. `--values` prints the
+sandbox's canned data and is refused in production, where answers carry buyer data. `--only=orders,listings` runs a subset. Never run them in CI.
 
 ## What is verified
 
