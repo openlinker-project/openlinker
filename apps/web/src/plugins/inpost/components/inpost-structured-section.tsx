@@ -257,8 +257,8 @@ export function InpostStructuredSection({
         />
       </FormField>
 
-      <fieldset className="form-field" disabled={!configIsParseable} data-tour="notify-setting">
-        <legend className="form-field__label">{notifyCopy.title}</legend>
+      <fieldset className="setting-card" disabled={!configIsParseable} data-tour="notify-setting">
+        <legend className="setting-card__legend">{notifyCopy.title}</legend>
         <div className="setup-lane__toggle setup-lane__toggle--inline">
           <label className="setup-lane__toggle-label" htmlFor="inpost-notify-on-label-purchase">
             <input

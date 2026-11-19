@@ -8671,6 +8671,44 @@ html:has(.login-stage) {
   margin-top: 0.2rem;
 }
 
+/* A native <fieldset> grouping one setting (a toggle plus its explanation).
+ * Keeps the semantics - a screen reader announces the legend with the control -
+ * and drops the browser's etched border, so it reads as the same quiet card
+ * the rest of the app uses. The legend sits inside the card (floated, since a
+ * legend otherwise straddles the border). A turned-on setting picks up a thin
+ * accent edge, the one thing that changes. */
+.setting-card {
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.setting-card__legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.setting-card__legend + * { clear: both; }
+.setting-card > :not(legend) + * { margin-top: var(--space-2); }
+.setting-card .form-field__description { max-width: 60ch; }
+.setting-card:has(input:checked) {
+  border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border-subtle));
+  background: color-mix(in oklab, var(--accent-primary) 5%, var(--bg-surface-muted));
+}
+.setting-card:disabled { opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) {
+  .setting-card { transition: none; }
+}
+
 .next-steps {
   display: grid;
   gap: var(--space-2);
