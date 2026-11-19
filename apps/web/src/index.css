@@ -359,9 +359,11 @@
   --shell-topbar-height: 52px;
   /* The widest the app's layout block gets on an ultrawide screen: from the
      left edge of the floating sidebar box to the right edge of the page
-     content. The one knob for "how wide"; the content cap, the sidebar column
+     content. In REAL screen pixels: the text-size zoom scales every CSS px, so
+     the value is divided by it, and the block stays 2560 screen px at every
+     size. The one knob for "how wide"; the content cap, the sidebar column
      and the top bar's padding are all derived from it. */
-  --layout-max-width: 2560px;
+  --layout-max-width: calc(2560px / var(--ui-zoom, 1));
   /* The floating layout switches on at the same width: the
      `@media (min-width: 2560px)` block below must follow this value by hand.
      (Panels become a centred modal earlier, from 1920px - WIDE_QUERY in
