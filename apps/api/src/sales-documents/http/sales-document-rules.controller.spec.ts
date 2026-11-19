@@ -73,6 +73,11 @@ describe('SalesDocumentRulesController', () => {
       expect(result[0]).toMatchObject({ id: 'rule-1', country: 'PL', documentKind: 'invoice' });
     });
 
+    it('should answer 400 instead of throwing a TypeError when country is missing', async () => {
+      await expect(controller.listRules(undefined)).rejects.toBeInstanceOf(BadRequestException);
+      expect(service.listRules).not.toHaveBeenCalled();
+    });
+
     it('should reject an empty country before calling the service', async () => {
       await expect(controller.listRules('')).rejects.toBeInstanceOf(BadRequestException);
       expect(service.listRules).not.toHaveBeenCalled();

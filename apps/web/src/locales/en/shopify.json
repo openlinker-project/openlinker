@@ -1,0 +1,129 @@
+{
+  "actions": {
+    "configure": "Configure webhooks",
+    "configuring": "Configuring...",
+    "currentlyConfigured": "Currently configured.",
+    "description": "Subscribes the store to order, product and stock events, so changes reach OpenLinker right away instead of on the next poll.",
+    "needsCallbackUrl": "Save an OpenLinker callback URL first.",
+    "needsCapability": "Enable Order source, Product master or Inventory master first.",
+    "reconfigure": "Configure again",
+    "title": "Configure webhooks",
+    "toast": {
+      "configured": "Shopify will now notify OpenLinker when an order or product changes.",
+      "configuredTitle": "Webhooks configured",
+      "failedTitle": "Webhooks could not be configured",
+      "notAccepted": "Shopify did not accept the subscriptions."
+    }
+  },
+  "callback": {
+    "alreadyUsed": "This authorization link was already used. Your Shopify connection should be active.",
+    "alreadyUsedTitle": "Authorization already completed",
+    "description": "Finishing the install of the OpenLinker app on your Shopify store.",
+    "failedPrefix": "Shopify could not be connected: {message}",
+    "failedTitle": "Connection failed",
+    "goToConnection": "Go to connection",
+    "loading": "Exchanging the authorization code with Shopify...",
+    "loadingTitle": "Completing authorization",
+    "missing": "The redirect from Shopify is missing required parameters. This may happen if you open this page directly.",
+    "missingTitle": "Invalid callback",
+    "name": "Name",
+    "startOver": "Start over",
+    "successTitle": "Shopify store connected",
+    "title": "Shopify authorization",
+    "unverified": "The redirect could not be confirmed as coming from Shopify for this store. No connection was created.",
+    "viewAll": "View all connections"
+  },
+  "connectionConfig": {
+    "callbackUrlHttpsRequired": "Enter an https:// address, e.g. https://openlinker.example.com. Shopify sends webhooks to https only.",
+    "locationIdInvalid": "Enter a Shopify location ID, e.g. 12345678.",
+    "salesCountryInvalid": "Enter a 2-letter country code, e.g. PL.",
+    "unmanagedStockInvalid": "Enter a whole number, 0 or more."
+  },
+  "edit": {
+    "callbackUrl": {
+      "description": "The public https address of OpenLinker. Shopify sends webhooks to it.",
+      "label": "OpenLinker callback URL"
+    },
+    "location": {
+      "description": "The one location OpenLinker reads and writes stock at. Stock at other locations is not counted. The primary location follows the store's primary; choosing a location by name pins it even if the primary changes.",
+      "label": "Stock location",
+      "loadFailed": "The store's locations could not be read. Enter the location ID instead.",
+      "loading": "Loading locations...",
+      "primaryOption": "{name} (primary)",
+      "primaryUnnamed": "Primary location",
+      "unknownOption": "Location {id} (not found in the store)",
+      "unknownWarning": "The saved location is not an active location of this store. Stock cannot be read or written until you pick another one."
+    },
+    "noWebhookCapability": {
+      "body": "Webhooks carry order, product and stock events. Enable Order source, Product master or Inventory master to use them.",
+      "title": "Webhooks are not available"
+    },
+    "refunds": {
+      "description": "When you confirm a refund in OpenLinker, Shopify returns the money to the buyer. When off, a confirmed refund is only recorded.",
+      "label": "Send refunds to Shopify",
+      "warning": "Confirming a refund will move real money on Shopify Payments. Check every amount before you confirm it."
+    },
+    "salesCountry": {
+      "description": "The country whose VAT rate is read for products. Leave empty to use the store's billing country.",
+      "label": "Sales country"
+    },
+    "stockLocations": {
+      "description": "Report stock for every active Shopify location instead of only the one above. Each location becomes an OpenLinker location (created on the next stock sync, you can rename it). Stock written back from OpenLinker still goes to the location above.",
+      "label": "Track stock at all locations"
+    },
+    "unmanagedStock": {
+      "description": "The quantity reported for a variant whose stock Shopify does not track. Leave empty for 1000.",
+      "label": "Quantity for untracked stock"
+    }
+  },
+  "plugin": {
+    "callbackCrumb": "Shopify callback",
+    "setupCardBadge": "Admin API",
+    "setupCardDescription": "Connect a Shopify store with app credentials, an access token or an OAuth install.",
+    "setupCrumb": "Connect Shopify"
+  },
+  "setup": {
+    "accessToken": "Admin API access token",
+    "accessTokenHint": "A token issued for this store, starting with shpat_.",
+    "clientId": "App client ID",
+    "clientSecret": "App client secret",
+    "connectionName": "Connection name",
+    "createFailed": "The connection could not be created: {message}",
+    "created": "Test the connection to confirm OpenLinker can reach the store.",
+    "createdTitle": "Connection created",
+    "description": "Connect a Shopify store through the OpenLinker app on the Admin API.",
+    "done": "Done",
+    "locationId": "Location ID (optional)",
+    "locationIdHint": "The Shopify location OpenLinker reads and writes stock at. Leave empty to use the primary location.",
+    "mode": "How to connect",
+    "modeAccessToken": "Access token",
+    "modeAccessTokenHint": "Use a token already issued for this store.",
+    "modeClientCredentials": "App credentials",
+    "modeClientCredentialsHint": "For a store in the same organization as the app.",
+    "modeOauth": "Install with OAuth",
+    "modeOauthHint": "For a store in another organization. You approve the app on Shopify.",
+    "oauthFailed": "The Shopify install could not start: {message}",
+    "readOnly": {
+      "message": "Connecting a store needs write access. Ask an administrator to set it up.",
+      "title": "Read-only access"
+    },
+    "redirectUrl": "Add this URL to the app's allowed redirection URLs: {url}",
+    "required": "This field is required",
+    "role": "What this connection is for",
+    "roleMaster": "Master catalogue, stock and orders",
+    "roleMasterHint": "Reads this store's products and stock into OpenLinker and takes its orders. Pick this when the store is where your catalogue lives.",
+    "rolePublisher": "Publish products",
+    "rolePublisherHint": "Only sends products from OpenLinker to this store, and keeps their stock up to date. A store cannot be both: what you publish would be read back as new products.",
+    "storeDomain": "Store domain",
+    "storeDomainHint": "The permanent domain, e.g. my-shop.myshopify.com.",
+    "storeDomainInvalid": "Enter the domain ending in .myshopify.com",
+    "submitCreate": "Create connection",
+    "submitOauth": "Continue to Shopify",
+    "test": "Test connection",
+    "testFailed": "Connection test failed",
+    "testPassed": "Connection test passed",
+    "testUnavailable": "The connection could not be tested",
+    "testing": "Testing...",
+    "title": "Connect Shopify"
+  }
+}

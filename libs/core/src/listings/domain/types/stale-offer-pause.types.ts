@@ -21,4 +21,10 @@ export interface StaleOfferPauseResult {
   offersPaused: number;
   /** Mappings that failed to enqueue (logged, not thrown — isolated per mapping). */
   offersSkipped: number;
+  /** Shop products hidden because the whole product was deleted (#3962). */
+  shopProductsHidden: number;
+  /** Shop listings set to 0 because one variant was deleted (#3962). */
+  shopListingsZeroed: number;
+  /** Shop listings OpenLinker could not stop selling, or failed to (#3962). */
+  shopListingsNotStopped: number;
 }

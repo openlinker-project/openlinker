@@ -275,6 +275,39 @@ describe('ProductDetailPage', () => {
     expect(screen.getByText('Loading product')).toBeInTheDocument();
   });
 
+  it('should mount the sales channels section for a product deleted at the source', async () => {
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+      listings: {
+        getProductSaleStatus: vi.fn().mockResolvedValue({
+          productId: sampleProduct.id,
+          deletedAtSource: true,
+          deletedAt: '2026-11-05T09:14:00Z',
+          staleVariantIds: [],
+          staleSkus: [],
+          ordersSinceDeletion: 0,
+          checkedAt: null,
+          rows: [
+            {
+              connectionId: 'c1',
+              entityType: 'Offer',
+              externalId: '1',
+              externalParentId: null,
+              internalVariantId: null,
+              channelStatus: 'ended',
+              quantity: 0,
+              lastCheckedAt: null,
+              hold: { id: 'h1', method: 'stock_zero', outcome: 'applied', outcomeReason: null, appliedAt: '2026-11-05T09:14:00Z' },
+              state: 'off_sale',
+            },
+          ],
+        }),
+      } as never,
+    });
+    renderDetailPage(mockApi);
+    expect(await screen.findByText('Off sale on all 1 channel')).toBeInTheDocument();
+  });
+
   it('should show product detail with variants when data loads', async () => {
     const mockApi = createMockApiClient({
       products: {

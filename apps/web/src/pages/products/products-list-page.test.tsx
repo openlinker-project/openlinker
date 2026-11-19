@@ -125,6 +125,38 @@ describe('ProductsListPage', () => {
   });
   afterEach(cleanup);
 
+  it('should warn that deleted products are still on sale and link to the listings filter', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      listings: { getSaleHoldAttentionCount: vi.fn().mockResolvedValue({ productsStillOnSale: 3 }) } as never,
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    const banner = await screen.findByTestId('sale-hold-banner');
+    expect(banner).toHaveTextContent('3 products deleted at the source are still on sale');
+    expect(screen.getByRole('link', { name: 'Show these listings' })).toHaveAttribute(
+      'href',
+      '/listings?staleSignal=selling',
+    );
+  });
+
+  it('should say the count could not be read instead of showing nothing', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      listings: { getSaleHoldAttentionCount: vi.fn().mockRejectedValue(new Error('down')) } as never,
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    expect(await screen.findByTestId('sale-hold-banner-failed')).toBeInTheDocument();
+  });
+
+  it('should show no sale-hold banner when nothing deleted is still on sale', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    await screen.findAllByRole('status');
+    expect(screen.queryByTestId('sale-hold-banner')).not.toBeInTheDocument();
+  });
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       products: {

@@ -21,6 +21,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import type { OrderRecord } from '../api/orders.types';
 import { paymentMethodChipLabel } from '../lib/payment-method';
+import { OrderRefundStateBadge } from './order-refund-state-badge';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
 import { deriveHealthLevel, healthLabel, rollupSyncStatus, totalUnits, type OrderHealthLevel } from '../lib/order-health';
 import { isOrderLifecyclePhase, orderLifecyclePhaseWaitingOn } from '../lib/order-lifecycle-phase';
@@ -101,6 +102,7 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
             {paymentLabels[snapshot.paymentStatus]}
           </StatusBadge>
         ) : null}
+        <OrderRefundStateBadge refundState={order.refundState} />
         {methodLabel ? <StatusBadge tone="neutral">{methodLabel}</StatusBadge> : null}
       </div>
 
