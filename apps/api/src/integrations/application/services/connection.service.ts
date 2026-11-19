@@ -128,6 +128,7 @@ export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE: KnownApiErrorCode =
 @Injectable()
 export class ConnectionService implements IConnectionService {
   private readonly logger = new Logger(ConnectionService.name);
+  private readonly legacyMasterPublisherWarned = new Set<string>();
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
@@ -326,6 +327,53 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * A connection saved before the #3985 rule can still hold both capabilities;
+   * updates deliberately allow it, so make it findable in the logs (once per
+   * process per connection, to keep a hot read path quiet).
+   */
+  private warnOnLegacyMasterPublisher(connection: Connection): void {
+    const caps = connection.enabledCapabilities ?? [];
+    if (!caps.includes('ProductMaster') || !caps.includes('ProductPublisher')) return;
+    if (this.legacyMasterPublisherWarned.has(connection.id)) return;
+    this.legacyMasterPublisherWarned.add(connection.id);
+    this.logger.warn(
+      `Connection ${connection.id} (${connection.name}) holds ProductMaster and ProductPublisher, ` +
+        'which is no longer allowed; drop one'
+    );
+  }
+
+  /**
+   * Master/publisher exclusion (#3985): one connection must not be both a
+   * `ProductMaster` and a `ProductPublisher`. Whatever OpenLinker publishes
+   * to a shop is read back by that shop's own master sync as a brand-new
+   * master product, minting a duplicate that then competes for order-line
+   * resolution. The rule is stated in capability terms, never by platform.
+   *
+   * Fires only on the TRANSITION into the combination: a connection that
+   * already holds both (created before this rule) keeps saving unrelated
+   * patches, and is cured by dropping either capability. `previouslyEnabled`
+   * is the persisted set on update and `null` on create.
+   */
+  private assertNotMasterAndPublisher(
+    enabledCapabilities: string[],
+    previouslyEnabled: string[] | null
+  ): void {
+    const hasBoth = (caps: string[]): boolean =>
+      caps.includes('ProductMaster') && caps.includes('ProductPublisher');
+    if (!hasBoth(enabledCapabilities)) return;
+    if (previouslyEnabled !== null && hasBoth(previouslyEnabled)) return;
+    throw codedHttpError(
+      HttpStatus.BAD_REQUEST,
+      'CONNECTION_MASTER_PUBLISHER_CONFLICT',
+      'ProductMaster and ProductPublisher cannot both be enabled on the same connection: ' +
+        'products published to a shop would be read back by its own catalog sync as new ' +
+        'master products, creating duplicates. Keep ProductMaster on the connection that ' +
+        'owns the catalog and use ProductPublisher on a separate connection (or vice versa).',
+      { capabilities: 'ProductMaster, ProductPublisher' }
+    );
+  }
+
+  /**
    * Advisory shared-rate-limit-bucket detection (#1594). Some invoicing
    * providers (e.g. KSeF) bucket their per-hour request ceilings by the seller's
    * tax id: two OL connections configured against the SAME seller tax id on the
@@ -433,7 +481,11 @@ export class ConnectionService implements IConnectionService {
     const rateLimit = config.rateLimit;
     if (rateLimit === undefined || rateLimit === null) return;
     if (typeof rateLimit !== 'object' || Array.isArray(rateLimit)) {
-      throw connectionConfigInvalid('config.rateLimit', 'object', 'config.rateLimit must be an object');
+      throw connectionConfigInvalid(
+        'config.rateLimit',
+        'object',
+        'config.rateLimit must be an object'
+      );
     }
 
     const { requestsPerMinute, maxConcurrent } = rateLimit as Record<string, unknown>;
@@ -1199,7 +1251,14 @@ export class ConnectionService implements IConnectionService {
           : metadata.supportedCapabilities.includes('InventoryMaster')
             ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
             : [...metadata.supportedCapabilities];
-      const enabledCapabilities = rest.enabledCapabilities ?? defaultCapabilities;
+      // #3985: the publisher role is opt-in on a shop that is also a master,
+      // so the omitted-capabilities default never trips the exclusion.
+      const nonConflictingDefault =
+        defaultCapabilities.includes('ProductMaster') &&
+        defaultCapabilities.includes('ProductPublisher')
+          ? defaultCapabilities.filter((c) => c !== 'ProductPublisher')
+          : defaultCapabilities;
+      const enabledCapabilities = rest.enabledCapabilities ?? nonConflictingDefault;
 
       const invalid = enabledCapabilities.filter(
         (c) => !metadata.supportedCapabilities.includes(c)
@@ -1208,6 +1267,7 @@ export class ConnectionService implements IConnectionService {
         throw capabilitiesUnsupported(metadata.adapterKey, invalid);
       }
       this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
+      this.assertNotMasterAndPublisher(enabledCapabilities, null);
 
       // #509 / #587 — validate the platform-specific config shape on create
       // (was platformType-keyed static record; now adapterKey-keyed registry
@@ -1439,6 +1499,7 @@ export class ConnectionService implements IConnectionService {
       this.logger.debug(
         `Connection retrieved: ${connection.id} (${connection.name}, status: ${connection.status})`
       );
+      this.warnOnLegacyMasterPublisher(connection);
       return connection;
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
@@ -1512,6 +1573,7 @@ export class ConnectionService implements IConnectionService {
           throw capabilitiesUnsupported(metadata.adapterKey, invalid);
         }
         this.assertNoWriteBackAuthorityConflict(patch.enabledCapabilities);
+        this.assertNotMasterAndPublisher(patch.enabledCapabilities, existing.enabledCapabilities);
       }
 
       // #437 / #587 — close the DTO bypass on `Connection.config`. The

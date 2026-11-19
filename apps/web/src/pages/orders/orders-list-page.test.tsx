@@ -652,11 +652,13 @@ describe('OrdersListPage', () => {
 
     await screen.findByText('ALG-882414');
     const chip = container.querySelector('.connection-chip[data-channel="allegro"]');
-    expect(chip?.querySelector('.connection-chip__platform')?.textContent).toBe('Allegro');
-    // #3670: the chip IS the link to the source connection, and its name
-    // slides out of it rather than sitting beside it as a second link.
+    // #4232: the face leads with the name the operator chose and the
+    // integration slides out of the chip on hover or focus.
+    expect(chip?.querySelector('.connection-chip__face')?.textContent).toBe(sampleConnection.name);
+    expect(chip?.querySelector('.connection-chip__reveal')?.textContent).toBe('Allegro');
+    // #3670: the chip IS the link to the source connection, never a pill
+    // beside a separate name link.
     expect(chip).toHaveAttribute('href', `/connections/${sampleConnection.id}`);
-    expect(chip?.querySelector('.connection-chip__reveal')?.textContent).toBe(sampleConnection.name);
   });
 
   it.each([
@@ -680,7 +682,7 @@ describe('OrdersListPage', () => {
       const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
       await screen.findByText('ALG-882414');
-      const pill = container.querySelector(`.connection-chip[data-channel="${platformType}"] .connection-chip__platform`);
+      const pill = container.querySelector(`.connection-chip[data-channel="${platformType}"] .connection-chip__reveal`);
       expect(pill?.textContent).toBe(expectedLabel);
     }
   );
@@ -2266,7 +2268,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     const stack = container.querySelector('.orders-cell-stack') as HTMLElement;
     const fold = stack.querySelector('.orders-order-channel') as HTMLElement;
     expect(fold).not.toBeNull();
-    expect(fold.querySelector('.connection-chip[data-channel="erli"] .connection-chip__platform')?.textContent).toBe('Erli');
+    expect(fold.querySelector('.connection-chip[data-channel="erli"] .connection-chip__reveal')?.textContent).toBe('Erli');
     expect(within(fold).getByText('→ WooCommerce')).toBeInTheDocument();
     // The fold is a SIBLING of the identity cell, not inside its body.
     expect(fold.closest('.order-cell')).toBeNull();
@@ -2281,7 +2283,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     // Two `erli` pills render on the desktop row — the order cell's fold and the
     // Channel column. Exclude the fold to assert the column's own lookup.
     const columnPill = Array.from(
-      container.querySelectorAll('.connection-chip[data-channel="erli"] .connection-chip__platform')
+      container.querySelectorAll('.connection-chip[data-channel="erli"] .connection-chip__reveal')
     ).find((pill) => pill.closest('.orders-order-channel') === null);
     expect(columnPill?.textContent).toBe('Erli');
     expect(columnPill?.closest('.connection-chip')?.parentElement?.textContent).toContain('→ WooCommerce');
@@ -2296,7 +2298,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
       await screen.findAllByText('ALG-882414');
       const subtitle = container.querySelector('.orders-card-sub') as HTMLElement;
-      expect(subtitle.querySelector('.connection-chip[data-channel="erli"] .connection-chip__platform')?.textContent).toBe(
+      expect(subtitle.querySelector('.connection-chip[data-channel="erli"] .connection-chip__reveal')?.textContent).toBe(
         'Erli'
       );
       expect(within(subtitle).getByText('→ WooCommerce')).toBeInTheDocument();

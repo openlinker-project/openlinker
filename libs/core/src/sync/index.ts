@@ -88,7 +88,16 @@ export {
 } from './domain/domain-services/connection-backlog.domain-service';
 export type { IConnectionSyncStatusService } from './application/services/connection-sync-status.service.interface';
 export type { SyncJobLane } from './domain/types/sync-job-lane.types';
-export { SyncJobLaneValues, resolveJobScope } from './domain/types/sync-job-lane.types';
+export {
+  SyncJobLaneValues,
+  resolveJobScope,
+  isHookScope,
+  hookScopeClass,
+  HOOK_INVENTORY_SCOPE_SUFFIX,
+  HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE,
+  HOOK_SCOPE_SUFFIX,
+  HOOK_SYNC_JOB_TYPES,
+} from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
   MarketplaceOrderSyncPayloadV1,
@@ -187,6 +196,7 @@ export { ContendedWriteError } from './domain/exceptions/contended-write.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
+export type { IRetryClassifierRegistry } from './infrastructure/adapters/retry-classifier-registry.service.interface';
 export { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
 export { AuthFailureClassifierRegistryService } from './infrastructure/adapters/auth-failure-classifier-registry.service';
 export { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';

@@ -8,6 +8,10 @@ import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 import { writeTriggerModelForKind } from '../lib/resolve-trigger-model-for-kind';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY,
+  SHIPPING_CONFIG_KEY,
+} from '../lib/label-purchase-notification';
 
 const msg = schemaMessage('editConnectionSchema');
 
@@ -422,6 +426,8 @@ export const editConnectionSchema = z
     paymentWriteback: z
       .object({ mode: z.enum(['mark-paid', 'leave']), paidStateId: z.string() })
       .optional(),
+    // "Tell the shop when a label is bought" (#4097) — carrier connections.
+    notifyOnLabelPurchase: z.boolean().optional(),
   });
 
 /**
@@ -605,6 +611,12 @@ export type StructuredConfigPatch = {
    * default paid state).
    */
   paymentWriteback?: { mode: 'mark-paid' | 'leave'; paidStateId: string };
+  /**
+   * "Tell the shop when a label is bought" (#4097) — nested
+   * `config.shipping.notifyMarketplaceOnLabelPurchase`. Written as an explicit
+   * boolean; other keys in the `shipping` namespace are kept.
+   */
+  notifyOnLabelPurchase?: boolean;
 };
 
 /**
@@ -990,6 +1002,22 @@ export function mergeStructuredIntoConfig(
     next.paymentWriteback = {
       mode: structured.paymentWriteback.mode,
       paidStateId: stateId.length === 0 ? null : stateId,
+    };
+  }
+  // "Tell the shop when a label is bought" (#4097). The flag lives inside the
+  // `shipping` namespace, which the shallow spread above would replace whole,
+  // so the namespace's other keys are carried over by hand. A namespace that
+  // is not a plain object reads as off in core and is replaced. Off is an
+  // explicit `false`, never a delete (see `rateLimit`).
+  if (structured.notifyOnLabelPurchase !== undefined) {
+    const existing = base[SHIPPING_CONFIG_KEY];
+    const namespace =
+      typeof existing === 'object' && existing !== null && !Array.isArray(existing)
+        ? (existing as Record<string, unknown>)
+        : {};
+    next[SHIPPING_CONFIG_KEY] = {
+      ...namespace,
+      [NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY]: structured.notifyOnLabelPurchase === true,
     };
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are

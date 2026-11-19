@@ -27,7 +27,11 @@ const projection = {
 describe('FulfillmentWorkRouteHandler — persisting the hold state (#3485)', () => {
   let handler: FulfillmentWorkRouteHandler;
   let routingCommit: { route: jest.Mock };
-  let orderRecords: { markFulfillmentBlock: jest.Mock; markOmsAttention: jest.Mock };
+  let orderRecords: {
+    markFulfillmentBlock: jest.Mock;
+    markOmsAttention: jest.Mock;
+    getOrderRecord: jest.Mock;
+  };
   let projectOrder: jest.SpyInstance;
 
   const job = {
@@ -45,6 +49,7 @@ describe('FulfillmentWorkRouteHandler — persisting the hold state (#3485)', ()
     orderRecords = {
       markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
       markOmsAttention: jest.fn().mockResolvedValue(undefined),
+      getOrderRecord: jest.fn().mockResolvedValue(null),
     };
 
     handler = new FulfillmentWorkRouteHandler(
@@ -107,6 +112,41 @@ describe('FulfillmentWorkRouteHandler — persisting the hold state (#3485)', ()
       kind: 'blocked',
       reason: 'line-unfulfillable',
     });
+  });
+
+  // #4033: the reroute sweep or an operator retry must not route an unpaid
+  // order either. The payment is read through the same record service, under
+  // the routing lock.
+  it('should ask the routing commit to wait for payment on an unpaid order', async () => {
+    orderRecords.getOrderRecord.mockResolvedValue({ paymentStatus: 'awaiting', isCancelled: false });
+    routeTo({ status: 'skipped', reason: 'awaiting-payment' });
+
+    await expect(handler.execute(job)).resolves.toEqual({ outcome: 'ok' });
+
+    const [[input]] = routingCommit.route.mock.calls as [
+      [{ isAwaitingPayment: () => Promise<boolean> }],
+    ];
+    await expect(input.isAwaitingPayment()).resolves.toBe(true);
+    expect(orderRecords.markFulfillmentBlock).toHaveBeenCalledWith(ORDER_ID, {
+      reason: 'routing-awaiting-payment',
+      detail: null,
+    });
+  });
+
+  it('should let a cash on delivery order route', async () => {
+    orderRecords.getOrderRecord.mockResolvedValue({ paymentStatus: 'cod', isCancelled: false });
+    routeTo({
+      status: 'routed',
+      decisionId: 'dec-5',
+      works: [{ workId: 'w-5', assignedConnectionId: 'conn-oms' }],
+    });
+
+    await handler.execute(job);
+
+    const [[input]] = routingCommit.route.mock.calls as [
+      [{ isAwaitingPayment: () => Promise<boolean> }],
+    ];
+    await expect(input.isAwaitingPayment()).resolves.toBe(false);
   });
 
   it('should hold an order with no shipping address instead of retrying it', async () => {

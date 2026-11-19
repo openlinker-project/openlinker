@@ -122,6 +122,7 @@ export function ConnectionHealthList({
                 </td>
                 <td className="conn-health__platform">
                   <ConnectionChip
+                    lead="platform"
                     connectionId={connection.id}
                     name={connection.name}
                     channel={{

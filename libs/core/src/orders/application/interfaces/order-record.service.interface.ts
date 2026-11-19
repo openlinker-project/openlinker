@@ -99,7 +99,8 @@ export interface IOrderRecordService {
    * Persist raw incoming snapshot before item resolution.
    *
    * Called immediately after ID resolution but before offer→variant mapping.
-   * Sets recordStatus='awaiting_mapping'. On retry, once all items resolve,
+   * Sets recordStatus='awaiting_mapping'. Once all items resolve (on a
+   * retry, or on re-ingestion after an unlisted offer gets mapped, #4040),
    * persistOrder() upserts with recordStatus='ready'.
    *
    * The orderSnapshot stores the raw IncomingOrder — items retain external offer
@@ -353,10 +354,7 @@ export interface IOrderRecordService {
    * becoming a DI cycle — the same shape #2100 established for the invoicing
    * gate.
    */
-  markFulfillmentBlock(
-    internalOrderId: string,
-    block: FulfillmentBlock | null
-  ): Promise<void>;
+  markFulfillmentBlock(internalOrderId: string, block: FulfillmentBlock | null): Promise<void>;
 
   /**
    * Persist how a routing decision narrowed this order's destination fan-out

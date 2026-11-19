@@ -80,6 +80,7 @@ import {
   NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
+  OrderDestinationHandledByRoutingException,
   MissingSourceExternalIdException,
   IOrderDestinationRetryService,
   ORDER_HOLD_SERVICE_TOKEN,
@@ -1122,7 +1123,7 @@ export class OrdersController {
     type: RetryOrderDestinationResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Order or destination row not found' })
-  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state' })
+  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state, or the order is handled by OMS routing (ORDER_HANDLED_BY_ROUTING)' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryDestination(
     @Param('internalOrderId') internalOrderId: string,
@@ -1154,6 +1155,12 @@ export class OrdersController {
           orderId: error.internalOrderId,
           connectionId: error.destinationConnectionId,
           status: error.currentStatus,
+        });
+      }
+      if (error instanceof OrderDestinationHandledByRoutingException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_HANDLED_BY_ROUTING', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
         });
       }
       if (error instanceof MissingSourceExternalIdException) {

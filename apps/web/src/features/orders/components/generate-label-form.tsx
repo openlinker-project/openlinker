@@ -467,7 +467,7 @@ export function GenerateLabelForm({
               const mapped = resolveLabelDownloadError(downloadResult.error);
               showToast({
                 tone: mapped.tone,
-                title: copy.toast.downloadFailed,
+                title: mapped.pending ? mapped.title : copy.toast.downloadFailed,
                 description: mapped.description,
               });
             }
