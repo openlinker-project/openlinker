@@ -17,7 +17,9 @@ import type { SyncLockPort } from '@openlinker/core/sync';
 import { OrderBuyerDataRetentionSweepService } from '../order-buyer-data-retention-sweep.service';
 
 const DONE: OrderBuyerDataRetentionRunResult = {
-  connections: [{ sourceConnectionId: 'amz', retentionDays: 30, redacted: 2, budgetExhausted: false }],
+  connections: [
+    { sourceConnectionId: 'amz', retentionDays: 30, redacted: 2, customersRedacted: 0, budgetExhausted: false },
+  ],
   redacted: 2,
 };
 

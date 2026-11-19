@@ -67,8 +67,11 @@ when it has none, both earlier than delivery) its addresses are reduced to the c
 buyer note, tax id and any operator address edit are removed, as is the buyer from the search text.
 Lines, amounts, statuses and ids stay. A later re-import of the order stores none of it again.
 
-Not covered yet: customer projections, a shipment's recipient, the history of an address edit and the
-recipient on an email delivery record keep their copy. Issued sales documents keep theirs by law.
+The same pass clears the recipient on the order's buyer-email and document-email delivery records, and
+the email, names and street addresses of the customer projections last seen through Amazon before the
+cutoff. Not covered yet: a shipment's recipient and the history of an address edit keep their copy.
+Issued sales documents keep theirs by law, and a carrier label already generated keeps the recipient
+printed on it.
 
 ## Errors and retries
 
