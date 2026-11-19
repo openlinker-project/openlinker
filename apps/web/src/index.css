@@ -1905,6 +1905,14 @@ textarea,
 
 .shell-user-chip__menu {
   min-width: 240px;
+  /* Never taller than the room the browser leaves: at 200% browser zoom the
+     viewport is ~400 css px high and this menu (language, theme, density, text
+     size, sign out) is taller, so without a cap the lower rows are
+     unreachable (WCAG 1.4.4 / 1.4.10). Radix reports the room in screen
+     pixels outside the text-size zoom, hence the division. */
+  max-height: calc(var(--radix-dropdown-menu-content-available-height, 100dvh) / var(--ui-zoom, 1) - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .shell-user-chip__menu-name {
@@ -16660,6 +16668,20 @@ html[data-font-size='s'] { --ui-zoom: 1; }
 html[data-font-size='m'] { --ui-zoom: 1.125; }
 html[data-font-size='l'] { --ui-zoom: 1.25; }
 html[data-font-size='xl'] { --ui-zoom: 1.375; }
+
+/* On a narrow viewport the text-size zoom steps aside. That is where browser
+ * zoom lands people who need big text (400% on a 1280px screen is 320 css px),
+ * and shrinking the room further by 1.375x loses controls off the edge
+ * (WCAG 1.4.10). The browser zoom is the size they chose there. */
+@media (max-width: 640px) {
+  html,
+  html[data-font-size='s'],
+  html[data-font-size='m'],
+  html[data-font-size='l'],
+  html[data-font-size='xl'] {
+    --ui-zoom: 1;
+  }
+}
 
 /* `vh` ignores zoom, so a calc(100 * var(--ui-vh)) shell would overflow the viewport by the
  * zoom factor. Every vh below is written as N * var(--ui-vh). */
@@ -36586,7 +36608,9 @@ legend.analytics-settings-dialog__label {
   font-size: 11px;
   font-weight: 500;
   line-height: 22px;
-  color: var(--text-muted);
+  /* --text-muted was 4.4:1 on the dark menu, under the 4.5:1 AA floor for
+     11px text (WCAG 1.4.3); the chosen name steps up to --text-primary. */
+  color: var(--text-secondary);
 }
 
 /* Same columns as the track (3px padding + 1px border), so each name sits
@@ -36608,7 +36632,7 @@ legend.analytics-settings-dialog__label {
 }
 
 .segmented-switch__name[data-state='active'] {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .segmented-switch__name[data-state='pointed'] {
