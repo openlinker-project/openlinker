@@ -62,9 +62,16 @@ The bell now also lists plain message notifications (an expiring token, a finish
 - **Consequences.** A message exists only on the device that published it, so a feature publishes a condition again on each load (the dedupe key makes that a no-op); a one-off event is lost if it was never opened on that device; title and body are stored as published and are not re-translated. A server-side `notifications` table (per-user targeting, jobs as writers, polling) is a separate, larger task and would replace the local store.
 - **A notification action points at a real route.** `pnpm check:release-center-catalog` validates every `to: '/...'` literal in a file that publishes a notification or registers a rule against the router.
 
+## Amendment: guides without a release, and what the update switch governs (#4243, #4245)
+
+A guide (a "showcase" in the catalog) is a tour with no setup step behind it: one to three stops, each a route plus a `data-tour` anchor. It is seen when the caller's own user row `showcase-<id>` is archived, so it needs no new table. `introducedIn` is optional on guides and on setup steps; an item without it is shown under "General" and never triggers the dialog.
+
+- **The update switch (decision 9) governs update content only.** Release cards, the What's new dialog and setup steps go away when it is off. The bell, message notifications and guides stay, because they are not about an update. The API therefore returns the caller's user rows when the switch is off (`enabled: false`, `cursor: null`, empty installation list) instead of an empty snapshot, so read state survives turning it off and on.
+- **Consequence.** A deployment that wants no news at all still sees messages and guides. Hiding those is a separate decision and is not covered by this switch.
+
 ## References
 
-- Related issues: epic #4131, #4140, #4141, #4142, #4143, #4145, #4146
+- Related issues: epic #4131, #4242, #4243, #4244, #4245, #4140, #4141, #4142, #4143, #4145, #4146
 - Related ADRs: [ADR-053](./053-fulfillment-authority-vocabulary-leaf.md) (leaf posture), [ADR-069](./069-operator-settable-sweep-pacing.md), [ADR-071](./071-pack-station-principal.md), [ADR-081](./081-frontend-owned-ui-translation.md)
 - Primary doc sections: [docs/architecture-overview.md](../../architecture-overview.md), [docs/frontend-architecture.md](../../frontend-architecture.md)
 - Mockup: [release-center.html](../../plans/mockups/release-center.html)
