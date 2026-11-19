@@ -3,11 +3,14 @@
  *
  * @module libs/integrations/amazon/src/infrastructure/adapters/order-source/__tests__
  */
+import { isInboundQueueReader } from '@openlinker/core/integrations';
+
 import { amazonPackageReferenceId } from '../../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import type { AmazonSpApiClient } from '../../../http/amazon-spapi-client';
 import { amazonFbmOrder } from '../../../__tests__/amazon-order.fixture';
 import { AmazonOrderSourceAdapter } from '../amazon-order-source.adapter';
+import { AmazonQueuedOrderSourceAdapter } from '../amazon-queued-order-source.adapter';
 
 const NOW = new Date('2026-11-17T12:00:00.000Z');
 const CONFIG = { region: 'eu' as const, environment: 'production' as const, marketplaceIds: ['A1PA6795UKMFR9'] };
@@ -176,7 +179,7 @@ describe('AmazonOrderSourceAdapter options', () => {
   });
 });
 
-describe('AmazonOrderSourceAdapter as InboundQueueReader (#4179)', () => {
+describe('AmazonQueuedOrderSourceAdapter (#4179)', () => {
   it('should read the queue and translate each message', async () => {
     const { client } = clientStub();
     const queue = {
@@ -192,7 +195,7 @@ describe('AmazonOrderSourceAdapter as InboundQueueReader (#4179)', () => {
       ]),
       deleteMessages: jest.fn().mockResolvedValue(undefined),
     };
-    const source = new AmazonOrderSourceAdapter('conn-1', client, CONFIG, () => NOW, queue as never);
+    const source = new AmazonQueuedOrderSourceAdapter('conn-1', client, CONFIG, queue as never, () => NOW);
 
     const messages = await source.receiveInboundMessages({ maxMessages: 10 });
     await source.acknowledgeInboundMessages(['h1']);
@@ -201,8 +204,11 @@ describe('AmazonOrderSourceAdapter as InboundQueueReader (#4179)', () => {
     expect(queue.deleteMessages).toHaveBeenCalledWith(['h1']);
   });
 
-  it('should raise a configuration error when the connection names no queue', async () => {
+  it('should be an inbound queue reader, while the plain order source is not', () => {
     const { client } = clientStub();
-    await expect(adapter(client).receiveInboundMessages({ maxMessages: 10 })).rejects.toThrow(/no notification queue/);
+    const queue = { receiveMessages: jest.fn(), deleteMessages: jest.fn() };
+
+    expect(isInboundQueueReader(new AmazonQueuedOrderSourceAdapter('conn-1', client, CONFIG, queue as never))).toBe(true);
+    expect(isInboundQueueReader(adapter(client))).toBe(false);
   });
 });

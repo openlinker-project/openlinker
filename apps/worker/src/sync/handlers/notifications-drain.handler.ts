@@ -5,7 +5,8 @@
  * `OrderSource` adapter, narrows it to `InboundQueueReader`, and lets
  * `IInboundQueueDrainService` route what the queue holds. The job carries no
  * data; every notification becomes an ordinary sync job that re-reads the
- * entity from the platform.
+ * entity from the platform. Notifications are a trigger: the source's order
+ * poll remains the delivery guarantee (see `IInboundQueueDrainService`).
  *
  * An adapter without a queue reader is a configuration fact, not a failure
  * that retrying fixes, so it ends the job as a business failure (ADR-007).

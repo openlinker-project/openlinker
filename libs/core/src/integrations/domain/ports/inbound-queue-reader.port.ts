@@ -4,8 +4,9 @@
  * A pull-based inbound transport: some platforms deliver change notifications
  * not over HTTP but into a queue the operator owns (Amazon SP-API delivers
  * only to Amazon SQS or EventBridge). An adapter that can read such a queue
- * implements this alongside its capability port; core drains it through the
- * same inbound routing a webhook takes (`IInboundRoutingPolicyService.route`).
+ * implements this alongside its capability port; core drains it with the
+ * same routing table a webhook uses (`IInboundRoutingPolicyService`), but not
+ * the same durable path: see `IInboundQueueDrainService`.
  *
  * Contract:
  *   - `receiveInboundMessages` returns at most `maxMessages` messages, each
@@ -16,7 +17,8 @@
  *     called with its `receiptHandle`; core acknowledges only after every
  *     event in it was routed, so a failed enqueue is received again.
  *   - Notifications are triggers, never data: the routed job always re-reads
- *     the entity from the platform.
+ *     the entity from the platform, and the source's own poll stays the
+ *     delivery guarantee.
  *
  * Advertised-without-dispatch: narrowed off the dispatched capability adapter
  * with {@link isInboundQueueReader}, never resolved by name.

@@ -63,7 +63,14 @@ Mints an access token and calls `GET /sellers/v1/marketplaceParticipations`.
 Amazon delivers change notifications only to Amazon SQS or EventBridge, never over HTTP. With a queue
 configured, the `amazon-notifications-drain` task (every minute, off by default,
 `OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED`) reads it and turns each `ORDER_CHANGE` into an
-ordinary order sync, so an order arrives within about a minute; the orders poll stays as the backstop.
+ordinary order sync, so an order arrives within about a minute. Only connections with
+`OrderSource` enabled and a `notificationQueueUrl` are drained; a queue without its AWS key ends the
+job as a business failure naming the cause.
+
+A notification is a trigger, not the delivery guarantee: the drained event is enqueued on the
+`jobs.sync` Redis stream (not the `sync_jobs` gate a webhook uses), and the SQS message is deleted once
+that enqueue returns. The orders poll is what guarantees every order arrives, so keep
+`amazon-orders-poll` on when the drain is on.
 
 - Config: `"notificationQueueUrl": "https://sqs.<region>.amazonaws.com/<account>/<queue>"`.
 - Credentials: `awsAccessKeyId` and `awsSecretAccessKey` of an IAM user allowed `sqs:ReceiveMessage`
@@ -78,7 +85,9 @@ Registering the queue with Amazon is the "Configure webhooks" action (`POST
 queue's ARN (grantless token, scope `sellingpartnerapi::notifications`) and subscribes it to
 `ORDER_CHANGE` (order status and buyer-requested changes). Running it again changes nothing; a
 subscription that already points at another destination is reported, not replaced. A Sandbox-status
-app is refused the grantless scope (#2881), so this step needs a production app.
+app is refused the grantless scope (#2881), so this step needs a production app; that refusal, an app
+without the Notifications role and an unusable connection config come back as a warning on the action,
+not as an error.
 
 ## Buyer data retention
 

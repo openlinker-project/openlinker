@@ -9,6 +9,7 @@ import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 import type { IAmazonAdapterFactory } from '../../../application/interfaces/amazon-adapter.factory.interface';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
+import { AmazonAuthenticationError } from '../../../domain/exceptions/amazon-authentication.error';
 import { AmazonNotificationProvisioningAdapter } from '../amazon-notification-provisioning.adapter';
 
 const ARN = 'arn:aws:sqs:eu-west-1:123456789012:amazon-notifications';
@@ -89,5 +90,33 @@ describe('AmazonNotificationProvisioningAdapter', () => {
     const result = await adapter.install('conn-amz');
     expect(result).toMatchObject({ webhooksConfigured: false });
     expect(grantless.get).not.toHaveBeenCalled();
+  });
+
+  it('should report a refused grantless token as a warning, not an error', async () => {
+    const { adapter, grantless, seller } = setup();
+    grantless.get.mockRejectedValue(new AmazonAuthenticationError('invalid_scope'));
+
+    const result = await adapter.install('conn-amz');
+
+    expect(result).toMatchObject({ webhooksConfigured: false, testPingTriggered: false });
+    expect(result.warning).toContain('Sandbox');
+    expect(seller.post).not.toHaveBeenCalled();
+  });
+
+  it('should report a missing Notifications role as a warning, not an error', async () => {
+    const { adapter, seller } = setup();
+    seller.get.mockRejectedValue(new AmazonApiError(403, 'Unauthorized', 'Access to requested resource is denied.', 'r'));
+
+    const result = await adapter.install('conn-amz');
+
+    expect(result).toMatchObject({ webhooksConfigured: false });
+    expect(result.warning).toContain('Notifications role');
+  });
+
+  it('should let any other Amazon error propagate', async () => {
+    const { adapter, grantless } = setup();
+    grantless.get.mockRejectedValue(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'));
+
+    await expect(adapter.install('conn-amz')).rejects.toBeInstanceOf(AmazonApiError);
   });
 });

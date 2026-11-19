@@ -25,6 +25,7 @@ import { AmazonAccessTokenProvider } from '../infrastructure/http/amazon-access-
 import { AmazonSpApiClient } from '../infrastructure/http/amazon-spapi-client';
 import { AmazonSqsClient } from '../infrastructure/http/amazon-sqs-client';
 import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
+import { AmazonQueuedOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-queued-order-source.adapter';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
 
 export class AmazonAdapterFactory implements IAmazonAdapterFactory {
@@ -78,13 +79,15 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
     };
   }
 
+  /**
+   * The order source, with the queue reader only when the connection has a
+   * notification queue and its AWS key: without one, `isInboundQueueReader`
+   * answers no and the drain handler reports a configuration fact.
+   */
   createOrderSource(resolution: AmazonResolution): AmazonOrderSourceAdapter {
-    return new AmazonOrderSourceAdapter(
-      resolution.connection.id,
-      resolution.client,
-      resolution.config,
-      undefined,
-      resolution.notificationQueue,
-    );
+    const { connection, client, config, notificationQueue } = resolution;
+    return notificationQueue === undefined
+      ? new AmazonOrderSourceAdapter(connection.id, client, config)
+      : new AmazonQueuedOrderSourceAdapter(connection.id, client, config, notificationQueue);
   }
 }

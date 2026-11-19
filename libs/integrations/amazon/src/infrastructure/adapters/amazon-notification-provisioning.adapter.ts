@@ -13,9 +13,12 @@
  *      destination is left alone and reported, since replacing it could cut
  *      off a queue the seller still uses.
  *
- * A connection without a queue is reported, not failed. Amazon's own answers
- * propagate (a Sandbox-status app is refused the grantless scope, #2881
- * Evidence #9 / #32; a production app needs the Notifications role).
+ * A connection without a queue is reported, not failed. So are Amazon's two
+ * routine refusals, as a warning naming the fix rather than a raw error: LWA
+ * refusing the grantless scope (a Sandbox-status app, #2881 Evidence #9 /
+ * #32, or rejected credentials), a 403 from the Notifications API (the app
+ * lacks the Notifications role), and a connection config or credentials the
+ * factory cannot use. Anything else propagates.
  *
  * @module libs/integrations/amazon/src/infrastructure/adapters
  * @implements {WebhookProvisioningPort}
@@ -30,6 +33,8 @@ import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
 import type { IAmazonAdapterFactory } from '../../application/interfaces/amazon-adapter.factory.interface';
 import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
+import { AmazonAuthenticationError } from '../../domain/exceptions/amazon-authentication.error';
+import { AmazonConfigException } from '../../domain/exceptions/amazon-config.exception';
 import type { AmazonSpApiClient } from '../http/amazon-spapi-client';
 
 const DESTINATIONS_PATH = '/notifications/v1/destinations';
@@ -58,42 +63,50 @@ export class AmazonNotificationProvisioningAdapter implements WebhookProvisionin
 
   async install(connectionId: string): Promise<WebhookProvisioningResult> {
     const connection = await this.connections.get(connectionId);
-    const resolution = await this.factory.resolve(
-      connection,
-      this.credentialsResolver,
-      this.http.forConnection(connection),
-    );
-    const queue = resolution.config.notificationQueue;
-    if (queue === undefined) {
-      return {
-        webhooksConfigured: false,
-        testPingTriggered: false,
-        warning: 'Set the notification queue URL on the connection first.',
-      };
-    }
+    try {
+      const resolution = await this.factory.resolve(
+        connection,
+        this.credentialsResolver,
+        this.http.forConnection(connection),
+      );
+      const queue = resolution.config.notificationQueue;
+      if (queue === undefined) {
+        return {
+          webhooksConfigured: false,
+          testPingTriggered: false,
+          warning: 'Set the notification queue URL on the connection first.',
+        };
+      }
 
-    const destinationId = await this.findOrCreateDestination(resolution.notificationsClient, queue.arn, connectionId);
-    const existing = await this.readOrderChangeSubscription(resolution.client);
-    if (existing === null) {
-      await resolution.client.post(ORDER_CHANGE_SUBSCRIPTION_PATH, {
-        payloadVersion: PAYLOAD_VERSION,
-        destinationId,
-        processingDirective: {
-          eventFilter: { eventFilterType: 'ORDER_CHANGE', orderChangeTypes: ORDER_CHANGE_TYPES },
-        },
-      });
+      const destinationId = await this.findOrCreateDestination(resolution.notificationsClient, queue.arn, connectionId);
+      const existing = await this.readOrderChangeSubscription(resolution.client);
+      if (existing === null) {
+        await resolution.client.post(ORDER_CHANGE_SUBSCRIPTION_PATH, {
+          payloadVersion: PAYLOAD_VERSION,
+          destinationId,
+          processingDirective: {
+            eventFilter: { eventFilterType: 'ORDER_CHANGE', orderChangeTypes: ORDER_CHANGE_TYPES },
+          },
+        });
+        return { webhooksConfigured: true, testPingTriggered: false };
+      }
+      if (existing.destinationId !== destinationId) {
+        return {
+          webhooksConfigured: false,
+          testPingTriggered: false,
+          warning:
+            'This seller already has an ORDER_CHANGE subscription for another destination. ' +
+            'Delete it in Amazon to send order changes to this queue.',
+        };
+      }
       return { webhooksConfigured: true, testPingTriggered: false };
+    } catch (error) {
+      const refusal = describeRefusal(error);
+      if (refusal === null) {
+        throw error;
+      }
+      return { webhooksConfigured: false, testPingTriggered: false, warning: refusal };
     }
-    if (existing.destinationId !== destinationId) {
-      return {
-        webhooksConfigured: false,
-        testPingTriggered: false,
-        warning:
-          'This seller already has an ORDER_CHANGE subscription for another destination. ' +
-          'Delete it in Amazon to send order changes to this queue.',
-      };
-    }
-    return { webhooksConfigured: true, testPingTriggered: false };
   }
 
   private async findOrCreateDestination(
@@ -129,4 +142,21 @@ export class AmazonNotificationProvisioningAdapter implements WebhookProvisionin
       throw error;
     }
   }
+}
+
+/** The operator-facing sentence for a routine Amazon refusal, or null for anything else. */
+function describeRefusal(error: unknown): string | null {
+  if (error instanceof AmazonConfigException) {
+    return error.message;
+  }
+  if (error instanceof AmazonAuthenticationError) {
+    return (
+      'Amazon refused the token for its Notifications API. An app still in Sandbox status cannot ' +
+      'register a queue; otherwise check the client id and secret.'
+    );
+  }
+  if (error instanceof AmazonApiError && error.statusCode === 403) {
+    return 'Amazon refused the call: the app lacks the Notifications role. Add it in Developer Central, then authorize the app again.';
+  }
+  return null;
 }
