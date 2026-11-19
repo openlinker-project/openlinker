@@ -1165,8 +1165,8 @@
     "scopeItem": "{label} {value}",
     "search": {
       "label": "Search orders",
-      "placeholderNoPii": "Search by order number, SKU or tracking number…",
-      "placeholderWithPii": "Search by order number, buyer, email, SKU or tracking number…"
+      "placeholderNoPii": "Search by order number, SKU, tracking number or OpenLinker ID…",
+      "placeholderWithPii": "Search by order number, buyer, email, SKU, tracking number or OpenLinker ID…"
     },
     "sectionAny": "Any",
     "sectionNone": "None",
