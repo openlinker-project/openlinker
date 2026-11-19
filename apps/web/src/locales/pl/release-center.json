@@ -10,6 +10,25 @@
       "other": "({n} do zrobienia)"
     }
   },
+  "demoMessages": {
+    "failAction": "Zobacz szczegóły",
+    "failBody": "Sklep odrzucił zapis. Sprawdź dane dostępowe i uruchom synchronizację ponownie.",
+    "failTitle": "Synchronizacja stanów nie powiodła się",
+    "importAction": "Zobacz oferty",
+    "importBody": "Dodano 412 produktów, 6 pominięto.",
+    "importTitle": "Import produktów zakończony",
+    "infoBody": "Filtry otwierają się teraz w panelu bocznym.",
+    "infoTitle": "Nowy widok filtrów zamówień",
+    "savedAction": "Otwórz połączenia",
+    "savedBody": "Nowe ustawienia obowiązują od następnej synchronizacji.",
+    "savedTitle": "Połączenie zapisane",
+    "tokenAction": "Otwórz połączenia",
+    "tokenBody": "Odnów połączenie, żeby synchronizacja zamówień się nie zatrzymała.",
+    "tokenTitle": "Token Allegro wygasa za 3 dni",
+    "tourAction": "Zobacz przewodnik",
+    "tourBody": "Dwa krótkie przystanki pokażą, gdzie szukać zamówień i jak ustawić kolumny listy.",
+    "tourTitle": "Poznaj OpenLinker"
+  },
   "dialog": {
     "back": "Wstecz",
     "close": "Zamknij",
@@ -172,6 +191,102 @@
       "tourBody": "Każdą metodę dostawy z tego kanału wysyła wskazany przewoźnik lub magazyn. Sprawdź przypisania, popraw te, które się nie zgadzają, i zapisz.",
       "tourTitle": "Kto wysyła paczki z tego kanału?",
       "why": "Wejdź w Mapowania, zakładka Realizacja. Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału, popraw przypisania i zapisz."
+    },
+    "sim-advanced": {
+      "title": "Przejrzyj ustawienia zaawansowane",
+      "tourBody": "Sprawdź nowe ustawienia w sekcji zaawansowanej.",
+      "tourTitle": "Zaawansowane",
+      "why": "Nic nie trzeba zmieniać, jeśli domyślne wartości pasują."
+    },
+    "sim-columns": {
+      "title": "Ukryj kolumny, których nie używasz",
+      "tourBody": "Wybierz tylko te kolumny, które naprawdę czytasz. Reszta nie zasłania listy.",
+      "tourTitle": "Ukryj kolumny, których nie używasz",
+      "why": "Wybierz tylko te kolumny, które naprawdę czytasz. Reszta nie zasłania listy."
+    },
+    "sim-erli-rate": {
+      "title": "Ustaw limit zapytań dla Erli",
+      "tourBody": "Erli ogranicza liczbę zapytań. Ustaw limit poniżej puli swojego konta.",
+      "tourTitle": "Limit zapytań",
+      "why": "Bez limitu synchronizacja może zostać wstrzymana."
+    },
+    "sim-fulfil": {
+      "title": "Sprawdź, kto pakuje zamówienia",
+      "tourBody": "Wskaż, czy zamówienia pakuje sklep, czy OpenLinker.",
+      "tourTitle": "Pakowanie",
+      "why": "Zmienia przyciski dostępne na stanowisku pakowania."
+    },
+    "sim-inpost-label": {
+      "title": "Sprawdź zakup etykiet InPost",
+      "tourBody": "Potwierdź, jak OpenLinker kupuje etykiety w InPost.",
+      "tourTitle": "Etykiety InPost",
+      "why": "Wpływa na to, kiedy powstaje numer przesyłki."
+    },
+    "sim-mappings": {
+      "title": "Przypisz metody dostawy do przewoźników",
+      "tourBody": "Zajrzyj do Mapowań i sprawdź, który przewoźnik obsługuje każdą metodę dostawy.",
+      "tourTitle": "Kto wysyła paczki",
+      "why": "Bez przypisania część zamówień trafi do domyślnego przewoźnika."
+    },
+    "sim-missing": {
+      "title": "Przejrzyj nowy ekran, którego nie ma",
+      "tourBody": "Ten krok wskazuje element, który nie istnieje. Sprawdza ścieżkę „nie znaleziono”.",
+      "tourTitle": "Brakujący element",
+      "why": "Test wariantu, w którym tour nie znajduje celu."
+    },
+    "sim-notify": {
+      "title": "Zdecyduj, kiedy kupujący dostaje powiadomienie",
+      "tourBody": "Wybierz, czy kupujący widzi „wysłano” po zakupie etykiety, czy dopiero po nadaniu.",
+      "tourTitle": "Powiadomienie kupującego",
+      "why": "Wcześniejsze powiadomienie skraca czas oczekiwania kupującego."
+    },
+    "sim-pack": {
+      "title": "Wskaż, kto pakuje zamówienia",
+      "tourBody": "Zdecyduj, czy zamówienia pakuje ten sklep, czy OpenLinker.",
+      "tourTitle": "Pakowanie",
+      "why": "Od tego zależy, czy OpenLinker pokazuje przycisk „Oznacz jako spakowane”."
+    },
+    "sim-payment": {
+      "title": "Ustaw, kiedy sklep oznacza zamówienie jako opłacone",
+      "tourBody": "Wybierz, czy OpenLinker oznacza zamówienie jako opłacone po płatności kupującego.",
+      "tourTitle": "Płatność w sklepie",
+      "why": "Domyślnie zamówienie zostaje nieopłacone, dopóki sklep sam tego nie zmieni."
+    },
+    "sim-rate-limit": {
+      "title": "Ustaw limit zapytań dla Allegro",
+      "tourBody": "Allegro ma własne limity zapytań. Ustaw limit, żeby OpenLinker nie przekraczał Twojej puli.",
+      "tourTitle": "Zapytania wychodzące",
+      "why": "Limit chroni konto przed blokadą po zbyt wielu zapytaniach naraz."
+    },
+    "sim-routing": {
+      "title": "Sprawdź przypisania dostawy w Allegro",
+      "tourBody": "Zajrzyj do Mapowań i potwierdź przewoźników dla metod z Allegro.",
+      "tourTitle": "Przypisania dostawy",
+      "why": "Metody bez przypisania trafiają do domyślnego przewoźnika."
+    },
+    "sim-sales-doc": {
+      "title": "Wybierz dokument sprzedaży",
+      "tourBody": "Wybierz, czy to połączenie wystawia faktury, czy paragony.",
+      "tourTitle": "Dokumenty sprzedaży",
+      "why": "Bez wyboru automatyczne wystawianie nie ruszy."
+    },
+    "sim-stock-pricing": {
+      "title": "Sprawdź rezerwę stanu i cenę",
+      "tourBody": "Ustaw, ile sztuk zostawiasz w zapasie i jak liczyć cenę na kanale.",
+      "tourTitle": "Stan i cena",
+      "why": "Rezerwa chroni przed zejściem poniżej zera między synchronizacjami."
+    },
+    "sim-who": {
+      "title": "Zdecyduj, kto o czym decyduje",
+      "tourBody": "Wybierz, które decyzje podejmuje OpenLinker, a które Twój system.",
+      "tourTitle": "Kto decyduje",
+      "why": "Ten ekran powstał w tej wersji, więc cel w tourze nie istnieje."
+    },
+    "sim-woo-stock": {
+      "title": "Ustaw rezerwę stanu w WooCommerce",
+      "tourBody": "Zostaw kilka sztuk zapasu, żeby sklep nie sprzedał towaru, którego już nie ma.",
+      "tourTitle": "Rezerwa stanu",
+      "why": "Chroni przed nadsprzedażą między synchronizacjami."
     }
   },
   "tour": {

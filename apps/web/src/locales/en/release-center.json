@@ -8,6 +8,25 @@
       "other": "({n} to do)"
     }
   },
+  "demoMessages": {
+    "failAction": "View details",
+    "failBody": "The store rejected the update. Check the credentials and run the sync again.",
+    "failTitle": "Stock sync failed",
+    "importAction": "View offers",
+    "importBody": "412 products added, 6 skipped.",
+    "importTitle": "Product import finished",
+    "infoBody": "Filters now open in a side panel.",
+    "infoTitle": "New order filters view",
+    "savedAction": "Open connections",
+    "savedBody": "The new settings apply from the next sync.",
+    "savedTitle": "Connection saved",
+    "tokenAction": "Open connections",
+    "tokenBody": "Renew the connection so order sync keeps running.",
+    "tokenTitle": "Allegro token expires in 3 days",
+    "tourAction": "Start the tour",
+    "tourBody": "Two short stops show where to find orders and how to set the list columns.",
+    "tourTitle": "Get to know OpenLinker"
+  },
   "dialog": {
     "back": "Back",
     "close": "Close",
@@ -168,6 +187,102 @@
       "tourBody": "Every delivery method has a sender assigned. Check the list, fix what is wrong, then save on the page.",
       "tourTitle": "Who ships parcels from this channel?",
       "why": "Go to Mappings, Fulfilment tab. Check who ships each delivery method of this channel, fix the assignments and save."
+    },
+    "sim-advanced": {
+      "title": "Przejrzyj ustawienia zaawansowane",
+      "tourBody": "Sprawdź nowe ustawienia w sekcji zaawansowanej.",
+      "tourTitle": "Zaawansowane",
+      "why": "Nic nie trzeba zmieniać, jeśli domyślne wartości pasują."
+    },
+    "sim-columns": {
+      "title": "Hide the columns you do not use",
+      "tourBody": "Keep only the columns you actually read, so the rest does not crowd the list.",
+      "tourTitle": "Hide the columns you do not use",
+      "why": "Keep only the columns you actually read, so the rest does not crowd the list."
+    },
+    "sim-erli-rate": {
+      "title": "Ustaw limit zapytań dla Erli",
+      "tourBody": "Erli ogranicza liczbę zapytań. Ustaw limit poniżej puli swojego konta.",
+      "tourTitle": "Limit zapytań",
+      "why": "Bez limitu synchronizacja może zostać wstrzymana."
+    },
+    "sim-fulfil": {
+      "title": "Sprawdź, kto pakuje zamówienia",
+      "tourBody": "Wskaż, czy zamówienia pakuje sklep, czy OpenLinker.",
+      "tourTitle": "Pakowanie",
+      "why": "Zmienia przyciski dostępne na stanowisku pakowania."
+    },
+    "sim-inpost-label": {
+      "title": "Sprawdź zakup etykiet InPost",
+      "tourBody": "Potwierdź, jak OpenLinker kupuje etykiety w InPost.",
+      "tourTitle": "Etykiety InPost",
+      "why": "Wpływa na to, kiedy powstaje numer przesyłki."
+    },
+    "sim-mappings": {
+      "title": "Assign delivery methods to carriers",
+      "tourBody": "Open Mappings and check which carrier handles each delivery method.",
+      "tourTitle": "Who ships parcels",
+      "why": "Without an assignment some orders fall back to the default carrier."
+    },
+    "sim-missing": {
+      "title": "Przejrzyj nowy ekran, którego nie ma",
+      "tourBody": "Ten krok wskazuje element, który nie istnieje. Sprawdza ścieżkę „nie znaleziono”.",
+      "tourTitle": "Brakujący element",
+      "why": "Test wariantu, w którym tour nie znajduje celu."
+    },
+    "sim-notify": {
+      "title": "Choose when the buyer is notified",
+      "tourBody": "Pick whether the buyer sees Shipped after the label is bought or after dispatch.",
+      "tourTitle": "Buyer notification",
+      "why": "An earlier notice shortens the buyer's wait."
+    },
+    "sim-pack": {
+      "title": "Choose who packs orders",
+      "tourBody": "Decide whether this shop or OpenLinker packs the orders.",
+      "tourTitle": "Packing",
+      "why": "It decides whether OpenLinker shows the Mark as packed button."
+    },
+    "sim-payment": {
+      "title": "Ustaw, kiedy sklep oznacza zamówienie jako opłacone",
+      "tourBody": "Wybierz, czy OpenLinker oznacza zamówienie jako opłacone po płatności kupującego.",
+      "tourTitle": "Płatność w sklepie",
+      "why": "Domyślnie zamówienie zostaje nieopłacone, dopóki sklep sam tego nie zmieni."
+    },
+    "sim-rate-limit": {
+      "title": "Ustaw limit zapytań dla Allegro",
+      "tourBody": "Allegro ma własne limity zapytań. Ustaw limit, żeby OpenLinker nie przekraczał Twojej puli.",
+      "tourTitle": "Zapytania wychodzące",
+      "why": "Limit chroni konto przed blokadą po zbyt wielu zapytaniach naraz."
+    },
+    "sim-routing": {
+      "title": "Sprawdź przypisania dostawy w Allegro",
+      "tourBody": "Zajrzyj do Mapowań i potwierdź przewoźników dla metod z Allegro.",
+      "tourTitle": "Przypisania dostawy",
+      "why": "Metody bez przypisania trafiają do domyślnego przewoźnika."
+    },
+    "sim-sales-doc": {
+      "title": "Wybierz dokument sprzedaży",
+      "tourBody": "Wybierz, czy to połączenie wystawia faktury, czy paragony.",
+      "tourTitle": "Dokumenty sprzedaży",
+      "why": "Bez wyboru automatyczne wystawianie nie ruszy."
+    },
+    "sim-stock-pricing": {
+      "title": "Sprawdź rezerwę stanu i cenę",
+      "tourBody": "Ustaw, ile sztuk zostawiasz w zapasie i jak liczyć cenę na kanale.",
+      "tourTitle": "Stan i cena",
+      "why": "Rezerwa chroni przed zejściem poniżej zera między synchronizacjami."
+    },
+    "sim-who": {
+      "title": "Zdecyduj, kto o czym decyduje",
+      "tourBody": "Wybierz, które decyzje podejmuje OpenLinker, a które Twój system.",
+      "tourTitle": "Kto decyduje",
+      "why": "Ten ekran powstał w tej wersji, więc cel w tourze nie istnieje."
+    },
+    "sim-woo-stock": {
+      "title": "Ustaw rezerwę stanu w WooCommerce",
+      "tourBody": "Zostaw kilka sztuk zapasu, żeby sklep nie sprzedał towaru, którego już nie ma.",
+      "tourTitle": "Rezerwa stanu",
+      "why": "Chroni przed nadsprzedażą między synchronizacjami."
     }
   },
   "tour": {

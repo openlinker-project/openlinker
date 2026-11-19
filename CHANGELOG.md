@@ -12,6 +12,14 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.20.0](https://github.com/openlinker-project/openlinker/compare/v0.19.0...v0.20.0) (2026-11-18)
+
+
+### Features
+
+* **web:** release center with a what's new dialog, notification bell and guided tour ([#4131](https://github.com/openlinker-project/openlinker/issues/4131)) ([aaaaaaa](https://github.com/openlinker-project/openlinker/commit/aaaaaaa))
+* **web:** shipping settings in plain language ([#4135](https://github.com/openlinker-project/openlinker/issues/4135)) ([bbbbbbb](https://github.com/openlinker-project/openlinker/commit/bbbbbbb))
+
 ## [0.19.0](https://github.com/openlinker-project/openlinker/compare/v0.18.0...v0.19.0) (2026-11-10)
 
 

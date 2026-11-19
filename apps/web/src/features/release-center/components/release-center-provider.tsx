@@ -38,6 +38,7 @@ import { RELEASE_STEPS } from '../catalog/release-steps';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseCenterEnabled, useReleaseStateQuery } from '../hooks/use-release-state-query';
 import { useNotificationMessages } from '../hooks/use-notification-messages';
+import { useNotificationDemo } from '../hooks/notification-demo';
 import { useNotificationRules } from '../hooks/use-notification-rules';
 import { useReleaseStepsMutation } from '../hooks/use-release-steps-mutation';
 import {
@@ -137,6 +138,7 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
     bindNotificationsToUser(active ? userId : null);
   }, [active, userId]);
   useNotificationRules();
+  useNotificationDemo(active, userId);
   const messages = useNotificationMessages();
   // An unread warning or error counts toward the badge; a plain info or success only shows its dot.
   const summary = useMemo(() => {

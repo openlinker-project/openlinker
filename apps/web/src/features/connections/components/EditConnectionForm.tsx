@@ -1203,7 +1203,7 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
         title={connection.name}
         short={connection.name}
         description={subtitle ?? copy.meta}
-        sections={sections.filter((section) => !emptySlots.has(section.id))}
+        sections={sections.filter((section) => !emptySlots.has(section.id)).map((section) => ({ ...section, tour: `sim-${section.id}` }))}
         actions={
           <div className="form-actions">
             <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
