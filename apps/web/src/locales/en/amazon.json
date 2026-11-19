@@ -48,6 +48,11 @@
       "description": "Set when the connection was created. A different environment needs a new connection.",
       "label": "Selling Partner API environment"
     },
+    "catalogueMarketplace": {
+      "description": "OpenLinker reads the catalogue from one marketplace: the listing content, the price with tax and its currency, and the country of the tax rate.",
+      "first": "First marketplace ({marketplace})",
+      "label": "Catalogue marketplace"
+    },
     "marketplaces": {
       "addedNote": "Orders from a marketplace you add are read from the last 7 days.",
       "description": "Orders are read and offers written on these marketplaces.",
@@ -61,7 +66,17 @@
       "description": "Set when the connection was created. Another region is another Amazon account and needs a new connection.",
       "label": "Region"
     },
-    "sellerIdMissing": "Without the merchant token, offers cannot be read or written."
+    "sellerIdMissing": "Without the merchant token, offers cannot be read or written.",
+    "taxCodes": {
+      "add": "Add tax code",
+      "code": "Tax code",
+      "description": "Amazon gives a listing a product tax code (for example A_GEN_STANDARD), not a rate. Set the rate of each code your account uses: OpenLinker reads a product's VAT rate from it and sends the code with every offer it publishes.",
+      "empty": "No tax codes have a rate yet, so the VAT rate of Amazon products is not known.",
+      "invalid": "Each row needs a tax code and a rate such as 23, 8, 0 or zw.",
+      "label": "VAT rates of Amazon tax codes",
+      "rate": "Rate",
+      "remove": "Remove tax code {code}"
+    }
   },
   "plugin": {
     "setupCardBadge": "Marketplace",

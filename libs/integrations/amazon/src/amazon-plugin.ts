@@ -15,7 +15,8 @@
  * `OfferManager` with #4180 (listing link by SKU, FBM stock, price, status);
  * `CategoryBrowser`, `EanCategoryMatcher` and `OfferCreator` with #4181, advertised-without-dispatch
  * like Allegro's: resolved by narrowing the `OfferManager` adapter with their
- * guards, never through `getCapabilityAdapter`.
+ * guards, never through `getCapabilityAdapter`. `ProductMaster` with #4182
+ * (the seller's own listings as a catalogue).
  *
  * Authorization: both a self-authorized private app and a public-app OAuth
  * grant end in the same stored LWA credentials (`AmazonCredentials`), so this
@@ -51,7 +52,14 @@ export const amazonAdapterManifest: AdapterMetadata = {
   adapterKey: AMAZON_ADAPTER_KEY,
   platformType: AMAZON_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['OrderSource', 'OfferManager', 'CategoryBrowser', 'EanCategoryMatcher', 'OfferCreator'],
+  supportedCapabilities: [
+    'OrderSource',
+    'OfferManager',
+    'ProductMaster',
+    'CategoryBrowser',
+    'EanCategoryMatcher',
+    'OfferCreator',
+  ],
   // Opt-in: ingesting a seller's Amazon orders creates them in every
   // destination.
   defaultEnabledCapabilities: [],
@@ -103,6 +111,8 @@ export function createAmazonPlugin(): AdapterPlugin {
           {
             OrderSource: async () => factory.createOrderSource(await resolve()) as T,
             OfferManager: async () => factory.createOfferManager(await resolve()) as T,
+            ProductMaster: async () =>
+              factory.createProductMaster(await resolve(), host.identifierMapping, host.cache) as T,
           },
           AMAZON_BRAND,
         );

@@ -42,7 +42,7 @@ describe('Amazon plugin', () => {
     expect(amazonAdapterManifest).toMatchObject({
       adapterKey: 'amazon.spapi.v1',
       platformType: 'amazon',
-      supportedCapabilities: ['OrderSource', 'OfferManager', 'CategoryBrowser', 'EanCategoryMatcher', 'OfferCreator'],
+      supportedCapabilities: ['OrderSource', 'OfferManager', 'ProductMaster', 'CategoryBrowser', 'EanCategoryMatcher', 'OfferCreator'],
       defaultEnabledCapabilities: [],
       buyerDataRetentionDays: 30,
       isDefault: true,
@@ -95,8 +95,8 @@ describe('Amazon plugin', () => {
 
   it('should refuse a capability it does not support with the SDK message', async () => {
     const { host } = registerHost();
-    await expect(createAmazonPlugin().createCapabilityAdapter(connection, 'ProductMaster', host)).rejects.toThrow(
-      /Amazon adapter does not support capability: ProductMaster/,
+    await expect(createAmazonPlugin().createCapabilityAdapter(connection, 'ShippingProviderManager', host)).rejects.toThrow(
+      /Amazon adapter does not support capability: ShippingProviderManager/,
     );
   });
 

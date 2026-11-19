@@ -144,3 +144,24 @@ describe('composeFullListing', () => {
     ]);
   });
 });
+
+describe('product tax code', () => {
+  it('should send the tax code on every marketplace of an offer-only listing', () => {
+    const plan = composeOfferOnlyListing({
+      cmd: command(),
+      asin: 'B0ABCDEFGH',
+      productType: null,
+      marketplaceIds: [FR, DE, PL],
+      taxCode: 'A_GEN_STANDARD',
+    });
+    expect(plan.body.attributes.product_tax_code).toEqual([
+      { value: 'A_GEN_STANDARD', marketplace_id: FR },
+      { value: 'A_GEN_STANDARD', marketplace_id: DE },
+    ]);
+  });
+
+  it('should leave the tax code out when none is resolved', () => {
+    const plan = composeOfferOnlyListing({ cmd: command(), asin: 'B0ABCDEFGH', productType: null, marketplaceIds: [DE] });
+    expect(plan.body.attributes.product_tax_code).toBeUndefined();
+  });
+});
