@@ -49,6 +49,7 @@ import {
   decodeAmazonOrderFeedCursor,
   encodeAmazonOrderFeedCursor,
   nextAmazonOrderFeedCursor,
+  scopeAmazonOrderFeedCursor,
 } from '../../../domain/policies/amazon-order-feed-cursor.policy';
 import { amazonPackageReferenceId } from '../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
@@ -86,7 +87,12 @@ export class AmazonOrderSourceAdapter implements OrderSourcePort, OrderStatusWri
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     const now = this.now();
-    const cursor = decodeAmazonOrderFeedCursor(input.fromCursor, now);
+    // A marketplace added on the connection page rewinds the watermark for it.
+    const cursor = scopeAmazonOrderFeedCursor(
+      decodeAmazonOrderFeedCursor(input.fromCursor, now),
+      this.config.marketplaceIds,
+      now,
+    );
     const response = await this.client.get<AmazonSearchOrdersResponse>(SEARCH_ORDERS_PATH, {
       marketplaceIds: this.config.marketplaceIds,
       lastUpdatedAfter: cursor.since,

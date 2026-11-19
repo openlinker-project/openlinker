@@ -53,7 +53,33 @@ describe('AmazonOrderSourceAdapter.listOrderFeed', () => {
       ['C', 'cancelled'],
     ]);
     expect(result.items[1].eventKey).toBe('B:2026-11-17T10:30:00Z');
-    expect(JSON.parse(result.nextCursor ?? '')).toEqual({ since: '2026-11-17T11:56:00.000Z' });
+    expect(JSON.parse(result.nextCursor ?? '')).toEqual({
+      since: '2026-11-17T11:56:00.000Z',
+      marketplaceIds: ['A1PA6795UKMFR9'],
+    });
+  });
+
+  it('should rewind the watermark and drop the token when the connection gained a marketplace', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { orders: [] } });
+    const wider = new AmazonOrderSourceAdapter(
+      'conn-1',
+      client,
+      { ...CONFIG, marketplaceIds: ['A1PA6795UKMFR9', 'A1C3SOZRARQ6R3'] },
+      () => NOW,
+    );
+    const fromCursor = JSON.stringify({
+      since: '2026-11-17T11:00:00.000Z',
+      paginationToken: 'p2',
+      tokenIssuedAt: '2026-11-17T11:30:00.000Z',
+      marketplaceIds: ['A1PA6795UKMFR9'],
+    });
+
+    await wider.listOrderFeed({ fromCursor, limit: 50 });
+
+    const params = (get.mock.calls[0] as [string, Record<string, unknown>])[1];
+    expect(params.lastUpdatedAfter).toBe('2026-11-10T12:00:00.000Z');
+    expect(params.paginationToken).toBeUndefined();
   });
 
   it('should pass the pagination token while a window has more pages', async () => {

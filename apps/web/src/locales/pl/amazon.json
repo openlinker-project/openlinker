@@ -1,0 +1,172 @@
+{
+  "actions": {
+    "description": "Rejestruje w Amazonie kolejkę powiadomień o zamówieniach i subskrybuje ją do zmian zamówień. Można uruchomić ponownie.",
+    "needsQueue": "Najpierw zapisz adres kolejki SQS.",
+    "register": "Zarejestruj kolejkę",
+    "registering": "Rejestrowanie...",
+    "title": "Powiadomienia o zamówieniach",
+    "toast": {
+      "failedTitle": "Kolejka nie została zarejestrowana",
+      "notAccepted": "Amazon nie przyjął rejestracji.",
+      "registered": "Amazon zgłasza teraz zmiany zamówień do kolejki.",
+      "registeredTitle": "Kolejka zarejestrowana"
+    }
+  },
+  "bulk": {
+    "currency": {
+      "description": "Każda oferta trafia na rynki tego połączenia, które sprzedają w tej walucie.",
+      "label": "Waluta ofert"
+    },
+    "marketplaces": "Oferty trafią na: {countries}.",
+    "noMarketplace": "To połączenie nie ma rynku znanego OpenLinker, więc nie da się wystawić żadnej oferty. Wybierz jego rynki na stronie połączenia."
+  },
+  "credentials": {
+    "awsAccessKeyId": "Identyfikator klucza AWS (opcjonalnie)",
+    "awsHint": "Zostaw oba klucze AWS puste, żeby zachować już zapisane.",
+    "awsPaired": "Podaj oba klucze AWS albo żadnego.",
+    "awsSecretAccessKey": "Tajny klucz AWS",
+    "cancel": "Anuluj",
+    "clientId": "Client ID aplikacji LWA",
+    "clientSecret": "Client secret aplikacji LWA",
+    "environment": "Dostarczane przez środowisko serwera",
+    "label": "Dane dostępowe",
+    "missing": "Brak zapisanych danych dostępowych. Autoryzuj ponownie, żeby korzystać z połączenia.",
+    "missingShort": "Brak",
+    "reauthorize": "Autoryzuj ponownie",
+    "refreshToken": "Refresh token",
+    "save": "Zapisz dane",
+    "saving": "Zapisywanie...",
+    "stored": "Przechowywane w postaci zaszyfrowanej. Autoryzuj ponownie, gdy Amazon zgłosi taką potrzebę albo po zmianie secretu aplikacji.",
+    "storedShort": "Zapisane",
+    "toast": {
+      "description": "Od teraz połączenie używa nowych danych dostępowych.",
+      "title": "Zapisano dane dostępowe"
+    }
+  },
+  "edit": {
+    "account": {
+      "description": "Ustawione przy tworzeniu połączenia. Inne środowisko wymaga nowego połączenia.",
+      "label": "Środowisko Selling Partner API"
+    },
+    "marketplaces": {
+      "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",
+      "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
+      "descriptionSingle": "W tym regionie każdy kraj ma osobne konto sprzedawcy, więc połączenie sprzedaje na jednym rynku.",
+      "label": "Rynki",
+      "placeholder": "Wybierz rynki",
+      "unlisted": "Rynek {id}"
+    },
+    "queueUrlDescription": "Amazon dostarcza zmiany zamówień do tej kolejki. Po zapisaniu zarejestruj ją poniżej.",
+    "region": {
+      "description": "Ustawiony przy tworzeniu połączenia. Inny region to inne konto Amazon i wymaga nowego połączenia.",
+      "label": "Region"
+    },
+    "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać ofert."
+  },
+  "plugin": {
+    "setupCardBadge": "Marketplace",
+    "setupCardDescription": "Sprzedawaj na Amazonie: importuj zamówienia, łącz i wystawiaj oferty, synchronizuj stany i ceny."
+  },
+  "setup": {
+    "accountNotice": {
+      "farEast": "W Japonii, Australii i Singapurze każdy kraj to osobne konto, więc połączenie z regionem Daleki Wschód obejmuje jeden rynek.",
+      "oneRegion": "Ameryka Północna oraz Unia Europejska z Wielką Brytanią mają po jednym koncie dla wszystkich swoich rynków, więc wybierz tam każdy rynek, na którym sprzedajesz.",
+      "regionFixed": "Regionu nie da się później zmienić; dla innego regionu utwórz kolejne połączenie z danymi logowania z tego regionu.",
+      "title": "Jedno połączenie to jedno konto sprzedawcy Amazon w jednym regionie"
+    },
+    "awsAccessKeyId": "Identyfikator klucza AWS",
+    "awsSecretAccessKey": "Tajny klucz AWS",
+    "clientId": "Client ID aplikacji LWA",
+    "clientSecret": "Client secret aplikacji LWA",
+    "connectionName": "Nazwa połączenia",
+    "connectionNamePlaceholder": "Amazon EU",
+    "countries": {
+      "AE": "Zjednoczone Emiraty Arabskie",
+      "AU": "Australia",
+      "BE": "Belgia",
+      "BR": "Brazylia",
+      "CA": "Kanada",
+      "DE": "Niemcy",
+      "EG": "Egipt",
+      "ES": "Hiszpania",
+      "FR": "Francja",
+      "GB": "Wielka Brytania",
+      "IE": "Irlandia",
+      "IN": "Indie",
+      "IT": "Włochy",
+      "JP": "Japonia",
+      "MX": "Meksyk",
+      "NL": "Holandia",
+      "PL": "Polska",
+      "SA": "Arabia Saudyjska",
+      "SE": "Szwecja",
+      "SG": "Singapur",
+      "TR": "Turcja",
+      "US": "Stany Zjednoczone",
+      "ZA": "Republika Południowej Afryki"
+    },
+    "createFailed": "Połączenie nie zostało utworzone: {message}",
+    "created": "Połączenie jest zapisane. Uruchom test połączenia, żeby sprawdzić dane dostępowe w Amazonie.",
+    "createdTitle": "Utworzono połączenie z Amazonem",
+    "creating": "Tworzenie...",
+    "crumb": "Amazon",
+    "description": "Połącz konto Seller Central przez Selling Partner API.",
+    "done": "Otwórz połączenie",
+    "environment": "Środowisko",
+    "environments": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
+    "errors": {
+      "awsKeysPaired": "Podaj oba klucze AWS albo żadnego.",
+      "capabilityRequired": "Wybierz co najmniej zamówienia albo oferty.",
+      "marketplaceOtherRegion": "Któryś rynek obsługuje inny region. Wybierz tylko rynki wybranego regionu.",
+      "marketplaceRequired": "Wybierz co najmniej jeden rynek.",
+      "marketplaceSingle": "Wybierz jeden rynek: w tym regionie każdy kraj to osobne konto. Dla kolejnego utwórz następne połączenie.",
+      "queueUrlInvalid": "Podaj adres kolejki SQS, np. https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications.",
+      "required": "To pole jest wymagane.",
+      "sellerIdInvalid": "Podaj merchant token z Seller Central: od 8 do 20 wielkich liter i cyfr.",
+      "sellerIdRequired": "Merchant token jest potrzebny do zarządzania ofertami."
+    },
+    "marketplaceOption": "{country} ({currency})",
+    "marketplaces": "Rynki",
+    "marketplacesHint": "Zamówienia są pobierane, a oferty wystawiane na wybranych rynkach.",
+    "marketplacesHintSingle": "Każdy kraj w tym regionie to osobne konto sprzedawcy, więc wybierz jeden rynek.",
+    "marketplacesNone": "OpenLinker nie ma jeszcze rynków dla tego regionu.",
+    "marketplacesPlaceholder": "Wybierz rynki",
+    "notifications": "Powiadomienia o zamówieniach (opcjonalnie)",
+    "notificationsHint": "Z kolejką SQS Amazon zgłasza zmiany zamówień w ciągu minuty, a nie przy następnym odpytaniu. Możesz ją dodać później.",
+    "offers": "Oferty",
+    "offersHint": "Łącz istniejące oferty, wystawiaj nowe i aktualizuj stany oraz ceny.",
+    "orders": "Zamówienia",
+    "ordersHint": "Importuj zamówienia z Amazona i odsyłaj numery przesyłek.",
+    "queueUrl": "Adres kolejki SQS",
+    "readOnly": "Twoje konto może przeglądać połączenia, ale nie może ich tworzyć. Poproś administratora o podłączenie Amazona.",
+    "readOnlyTitle": "Dostęp tylko do odczytu",
+    "refreshToken": "Refresh token",
+    "refreshTokenHint": "Wydawany przy autoryzacji aplikacji w Seller Central. Jest przechowywany w postaci zaszyfrowanej.",
+    "region": "Region",
+    "regionHint": "Region Selling Partner API, który obsługuje Twoje rynki.",
+    "regions": {
+      "eu": "Europa (EU)",
+      "fe": "Daleki Wschód (FE)",
+      "na": "Ameryka Północna (NA)"
+    },
+    "role": "Rola Amazona w OpenLinkerze",
+    "roleMaster": "Katalog główny",
+    "roleMasterHint": "Wkrótce: produkty i stany z Amazona do sprzedaży w innych kanałach.",
+    "roleSalesChannel": "Kanał sprzedaży",
+    "roleSalesChannelHint": "Produkty pochodzą z Twojego katalogu; Amazon dostaje oferty i wysyła zamówienia.",
+    "sandboxNotice": "Sandbox odpowiada tylko przykładowymi danymi Amazona. Żadne prawdziwe zamówienia ani oferty nie są czytane ani zmieniane.",
+    "sellerId": "Merchant token",
+    "sellerIdHint": "Seller Central: Ustawienia, Informacje o koncie, Merchant token.",
+    "sellerIdHintRequired": "Wymagany do ofert. Seller Central: Ustawienia, Informacje o koncie, Merchant token.",
+    "submit": "Utwórz połączenie",
+    "test": "Testuj połączenie",
+    "testFailed": "Test połączenia nie powiódł się",
+    "testPassed": "Połączenie działa",
+    "testUnavailable": "Nie udało się uruchomić testu połączenia",
+    "testing": "Testowanie...",
+    "title": "Połącz z Amazonem"
+  }
+}

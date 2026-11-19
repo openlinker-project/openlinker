@@ -26,12 +26,16 @@ Evidence base: `docs/plans/analysis/SPIKE-2881-amazon-sp-api.md` and the product
 { "region": "eu", "environment": "production", "marketplaceIds": ["A1PA6795UKMFR9"] }
 ```
 
-- `region` - `eu` (default), `na` or `fe`. FR, DE and PL are all `eu`.
+- `region` - `eu` (default), `na` or `fe`. FR, DE and PL are all `eu`. Fixed once the connection
+  exists: another region is another seller account, with its own refresh token and merchant token,
+  so a change is refused on save and another region needs a new connection.
 - `environment` - `production` (default) or `sandbox`. The sandbox is Amazon's **static** sandbox: it
   answers canned fixtures, whatever is asked.
 - `marketplaceIds` - at least one. Known ids: FR `A13V1IB3VIYZZH`, DE `A1PA6795UKMFR9`,
   PL `A1C3SOZRARQ6R3`. A known id paired with another region is refused at save; an unknown id is
-  accepted by format alone.
+  accepted by format alone. In `fe` (Japan, Australia, Singapore) each country is a separate seller
+  account, so a connection there names exactly one marketplace. A marketplace added later is read
+  from the last 7 days: the order feed moves its watermark back for it.
 
 ## Credentials
 

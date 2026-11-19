@@ -3816,6 +3816,12 @@ textarea,
   color: var(--status-success-strong);
 }
 
+/* A description inside an inline row (a checkbox or radio label), where a
+   block `<p>` is not allowed: shown on its own line under the label text. */
+.form-field__description--block {
+  display: block;
+}
+
 .form-field__error {
   margin: 0;
   color: var(--status-error-strong);
