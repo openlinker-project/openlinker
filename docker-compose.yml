@@ -379,6 +379,28 @@ services:
       - ./apps/api:/app/apps/api
       - ./libs:/app/libs
 
+  shopify-tools:
+    # Same image as apps/web/Dockerfile, so the repo pins one Node build.
+    image: node:22.23.4-alpine3.24
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-shopify-tools
+    # Shopify is SaaS only - there is no Shopify server to run here (#3928).
+    # This is a one-shot tooling container that seeds YOUR Shopify development
+    # store over the Admin GraphQL API (#3983). Opt-in profile, so a plain
+    # `docker compose up` is unaffected. Run it with:
+    #   pnpm dev:stack:seed-shopify
+    # Setup (store, app, credentials): docker/shopify/README.md
+    profiles: ['shopify']
+    working_dir: /tools
+    environment:
+      SHOPIFY_STORE_DOMAIN: '${SHOPIFY_STORE_DOMAIN:-}'
+      SHOPIFY_API_VERSION: '${SHOPIFY_API_VERSION:-2026-10}'
+      SHOPIFY_ACCESS_TOKEN: '${SHOPIFY_ACCESS_TOKEN:-}'
+      SHOPIFY_CLIENT_ID: '${SHOPIFY_CLIENT_ID:-}'
+      SHOPIFY_CLIENT_SECRET: '${SHOPIFY_CLIENT_SECRET:-}'
+    volumes:
+      - ./docker/shopify:/tools:ro
+    command: ['node', 'seed.mjs']
+
 volumes:
   postgres-data:
   postgres-backups:

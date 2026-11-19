@@ -242,6 +242,21 @@ export interface AdapterMetadata {
   archivable?: boolean;
 
   /**
+   * Whether this adapter's webhooks are signed with a secret minted OUTSIDE
+   * OpenLinker, so `WebhookSecretService.set` may store a value the caller
+   * supplies (#1770, #3981). Absent means `false`: every other adapter's secret
+   * is rotated by OpenLinker, and accepting a pasted value would desync it from
+   * what the platform signs with.
+   *
+   * inFakt declares it (the operator pastes the secret inFakt generated), and
+   * Shopify (the app client secret signs every delivery, and Shopify has no
+   * per-subscription key). Declared here rather than as a platform-name list in
+   * core, for the reason `requiresCredentials` is: the host must not privilege
+   * a plugin by name. Read it through {@link resolveAcceptsCallerSuppliedWebhookSecret}.
+   */
+  acceptsCallerSuppliedWebhookSecret?: boolean;
+
+  /**
    * Config keys any role may read (DEF-02). `ConnectionResponseDto` hides the
    * whole config from non-admins, which also hid facts the UI needs to tell the
    * truth - KSeF's QR code points at a different portal per environment, so an
@@ -347,6 +362,16 @@ export function resolveRequiresCredentials(
   metadata: Pick<AdapterMetadata, 'requiresCredentials'> | undefined | null
 ): boolean {
   return metadata?.requiresCredentials ?? true;
+}
+
+/**
+ * Resolve `AdapterMetadata.acceptsCallerSuppliedWebhookSecret` (#3981),
+ * defaulting to `false`. Same pure-rule shape as {@link resolveRequiresCredentials}.
+ */
+export function resolveAcceptsCallerSuppliedWebhookSecret(
+  metadata: Pick<AdapterMetadata, 'acceptsCallerSuppliedWebhookSecret'> | undefined | null
+): boolean {
+  return metadata?.acceptsCallerSuppliedWebhookSecret === true;
 }
 
 /**

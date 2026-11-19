@@ -78,6 +78,8 @@ export const shoperAdapterManifest: AdapterMetadata = {
     'ShopProductStatusReader',
     // Shop attribute read (#1835): backs the publish edit flow's attribute picker.
     'ShopAttributeReader',
+    // Shop visibility write (#3962): takes a product deleted at the master off sale.
+    'ShopProductVisibilityWriter',
   ],
   // `ProductPublisher` is opt-in as well: it WRITES products to the shop, so a
   // connection that exists only as a catalogue master must not become a publish

@@ -171,6 +171,10 @@ export class OrderRecordService implements IOrderRecordService {
    * @param sourceConnectionId - Source connection ID (where order originated)
    * @param sourceEventId - Optional source event ID
    */
+  countOrdersForSkusSince(skus: readonly string[], since: Date): Promise<number> {
+    return this.repository.countOrdersMatchingSearchSince(skus, since);
+  }
+
   async persistOrder(
     order: Order,
     sourceConnectionId: string,
@@ -722,7 +726,8 @@ export class OrderRecordService implements IOrderRecordService {
    * re-read here would be immediately stale. The caller owns the single
    * refresh.
    *
-   * @returns whether a cancellation instant was written
+   * @returns whether the returned record is now behind the row (a refresh is
+   * owed): true whenever the order is cancelled, false otherwise
    */
   private async recordCancellationIfNeeded(
     internalOrderId: string,
@@ -732,6 +737,11 @@ export class OrderRecordService implements IOrderRecordService {
     if (!isCancelled) {
       return false;
     }
+    // The boolean from the repository says whether THIS call made the transition
+    // (the public `markCancelled` relies on it to relay a cancellation once). Here
+    // the answer owed to the caller is different: `upsert()`'s record never
+    // carries `cancelledAt`, so it is behind the row on EVERY cancelled
+    // ingestion, including a re-poll of an order that was already stamped.
     await this.repository.markCancelled(internalOrderId, cancelledAt);
     return true;
   }
@@ -898,8 +908,8 @@ export class OrderRecordService implements IOrderRecordService {
    * pass-through to the repository's first-write-wins absolute-set — see
    * {@link OrderRecordRepositoryPort.markCancelled}.
    */
-  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
-    await this.repository.markCancelled(internalOrderId, cancelledAt);
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean> {
+    return this.repository.markCancelled(internalOrderId, cancelledAt);
   }
 
   async recordEarlyCancellationSignal(
