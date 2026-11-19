@@ -61,6 +61,7 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       config: config.config,
       credentialSource: credentials.source,
       fetchImpl,
+      ...(cache ? { cache } : {}),
       client: new AmazonSpApiClient(resolveAmazonSpApiHost(config.config), tokens, fetchImpl),
       notificationsClient: new AmazonSpApiClient(
         resolveAmazonSpApiHost(config.config),
@@ -99,6 +100,7 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       resolution.client,
       resolution.config,
       resolution.fetchImpl,
+      resolution.cache,
     );
   }
 }

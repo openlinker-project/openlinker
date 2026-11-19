@@ -92,6 +92,7 @@ import {
   type UpdateOfferFieldsReport,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -122,6 +123,13 @@ import { AmazonProductTypeReader } from './amazon-product-type-reader';
 const LISTINGS_PATH = '/listings/2021-08-01/items';
 /** `searchListingsItems` returns at most 20 items a page. */
 const MAX_PAGE_SIZE = 20;
+/**
+ * A product type's parameters change only when Amazon republishes its schema,
+ * and reading them costs a Product Type Definitions call plus a schema of
+ * several megabytes, once per offer built. Kept a day, as Allegro keeps its
+ * category parameters.
+ */
+const PRODUCT_TYPE_PARAMS_TTL_SEC = 24 * 60 * 60;
 
 export class AmazonOfferManagerAdapter
   implements
@@ -145,6 +153,7 @@ export class AmazonOfferManagerAdapter
     private readonly client: AmazonSpApiClient,
     private readonly config: AmazonConnectionConfig,
     fetchImpl: FetchLike,
+    private readonly cache?: CachePort,
   ) {
     this.catalog = new AmazonCatalogReader(client, config.marketplaceIds[0]);
     this.productTypes = new AmazonProductTypeReader(client, fetchImpl, config.marketplaceIds[0]);
@@ -164,7 +173,19 @@ export class AmazonOfferManagerAdapter
   }
 
   async fetchCategoryParameters(input: { categoryId: string }): Promise<CategoryParameter[]> {
-    return mapProductTypeSchemaToParameters(await this.productTypes.getSchema(input.categoryId));
+    // The schema is the same for every seller of a marketplace in one
+    // environment (no seller is named in the read), so the key is not
+    // per connection.
+    const cacheKey = `amazon:product-type-params:${this.config.environment}:${this.primaryMarketplace()}:${input.categoryId}`;
+    const cached = this.cache ? await this.cache.get<CategoryParameter[]>(cacheKey) : null;
+    if (cached) {
+      return cached;
+    }
+    const parameters = mapProductTypeSchemaToParameters(await this.productTypes.getSchema(input.categoryId));
+    if (this.cache) {
+      await this.cache.set(cacheKey, parameters, PRODUCT_TYPE_PARAMS_TTL_SEC);
+    }
+    return parameters;
   }
 
   async findProductsByBarcode(input: FindProductsByBarcodeInput): Promise<CatalogProductMatchResult> {

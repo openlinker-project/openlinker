@@ -3,6 +3,8 @@
  *
  * @module libs/integrations/amazon/src/infrastructure/adapters/offer-manager/__tests__
  */
+import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
+
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../../domain/exceptions/amazon-config.exception';
 import { AmazonNotSupportedException } from '../../../../domain/exceptions/amazon-not-supported.exception';
@@ -432,5 +434,52 @@ describe('AmazonOfferManagerAdapter taxonomy', () => {
 
     await expect(adapter.fetchCategories()).resolves.toEqual([{ id: 'KITCHEN', name: 'Kitchen', parentId: null, leaf: true }]);
     await expect(adapter.fetchCategories('KITCHEN')).resolves.toEqual([]);
+  });
+});
+
+describe('AmazonOfferManagerAdapter.fetchCategoryParameters', () => {
+  const LINK = 'https://selling-partner-definitions-prod-iad.s3.amazonaws.com/schema/KITCHEN.json?X-Amz-Signature=abc';
+  const SCHEMA = {
+    required: ['color'],
+    properties: { color: { title: 'Colour', items: { properties: { value: { type: 'string', maxLength: 50 } } } } },
+  };
+
+  function setupWithCache(): { adapter: AmazonOfferManagerAdapter; get: jest.Mock; fetchImpl: jest.Mock } {
+    const get = jest.fn().mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: { productType: 'KITCHEN', schema: { link: { resource: LINK, verb: 'GET' } } },
+    });
+    const fetchImpl = jest.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(SCHEMA), { status: 200 })));
+    const client = { get } as unknown as AmazonSpApiClient;
+    const adapter = new AmazonOfferManagerAdapter('conn-amz', client, CONFIG, fetchImpl, new InMemoryCacheAdapter());
+    return { adapter, get, fetchImpl };
+  }
+
+  it('should read a product type schema once and answer the next read from the cache', async () => {
+    const { adapter, get, fetchImpl } = setupWithCache();
+
+    const first = await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+    const second = await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+
+    expect(first).toEqual(second);
+    expect(first).toEqual([expect.objectContaining({ id: 'color', name: 'Colour', required: true })]);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('should read the schema each time when the host has no cache', async () => {
+    const get = jest.fn().mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: { productType: 'KITCHEN', schema: { link: { resource: LINK, verb: 'GET' } } },
+    });
+    const fetchImpl = jest.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(SCHEMA), { status: 200 })));
+    const adapter = new AmazonOfferManagerAdapter('conn-amz', { get } as unknown as AmazonSpApiClient, CONFIG, fetchImpl);
+
+    await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+    await adapter.fetchCategoryParameters({ categoryId: 'KITCHEN' });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
