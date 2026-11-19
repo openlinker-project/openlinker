@@ -420,6 +420,8 @@ export const ApiErrorCodeValues = [
   'OFFER_LIVE_STATUS_UNAVAILABLE',
   /** The marketplace has no category with this id. params: `categoryId`, `connectionId`. */
   'MARKETPLACE_CATEGORY_NOT_FOUND',
+  /** The marketplace could not give this category's parameters. params: `categoryId`, `connectionId`. */
+  'MARKETPLACE_CATEGORY_PARAMETERS_UNAVAILABLE',
   /** The marketplace catalogue has no product with this id. params: `productId`, `connectionId`. */
   'CATALOG_PRODUCT_NOT_FOUND',
   /** The marketplace connection names no master catalogue to read product data from. params: `connectionId`. */
