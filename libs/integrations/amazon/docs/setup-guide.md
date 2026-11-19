@@ -57,6 +57,8 @@ moves to **Needs reauth**: authorize again and paste the new token on the connec
    and create another connection.
 2. **Marketplaces** you sell in, picked from a searchable list of the chosen region's marketplaces
    (e.g. PL `A1C3SOZRARQ6R3`, DE `A1PA6795UKMFR9`). Prices read from a marketplace keep its currency.
+   In the Far East (JP, AU, SG) each country is its own seller account, so the connection takes one
+   marketplace and it is fixed after saving, like the region; another one is another connection.
 3. The **role**: a sales channel (**Orders** and/or **Offers**) or the catalogue master (below). With
    offers on, or as the catalogue master, the **merchant token** is required.
 4. The **LWA client id**, **client secret** and **refresh token** from steps 1-2.

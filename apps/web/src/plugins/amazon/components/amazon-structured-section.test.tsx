@@ -122,22 +122,14 @@ describe('AmazonStructuredSection', () => {
     expect(screen.queryByRole('option', { name: /Germany/ })).toBeNull();
   });
 
-  it('should replace the marketplace instead of adding one in the Far East region', async () => {
-    const sync = vi.fn();
+  it('should show the Far East marketplace read-only, since each marketplace there is another account', async () => {
     renderWithProviders(
-      <Harness
-        sync={sync}
-        config={{ region: 'fe', environment: 'production' }}
-        values={{ amazonMarketplaceIds: 'A1VC38T7YXB528' }}
-      />,
+      <Harness config={{ region: 'fe', environment: 'production' }} values={{ amazonMarketplaceIds: 'A1VC38T7YXB528' }} />,
       admin,
     );
 
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('combobox', { name: 'Marketplaces' }));
-    await user.click(screen.getByRole('option', { name: /Australia/ }));
-
-    expect(sync).toHaveBeenCalledWith('amazonMarketplaceIds', 'A39IBJ37TRP1C6');
+    expect(await screen.findByRole('combobox', { name: 'Marketplaces' })).toBeDisabled();
+    expect(screen.getByText(/another marketplace needs a new connection/)).toBeInTheDocument();
   });
 
   it('should keep a stored marketplace of another region visible as a chip so it can be removed', async () => {

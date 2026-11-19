@@ -70,7 +70,7 @@
     "marketplaces": {
       "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
-      "descriptionSingle": "W tym regionie każdy kraj ma osobne konto sprzedawcy, więc połączenie sprzedaje na jednym rynku.",
+      "descriptionSingle": "Ustawiony przy tworzeniu połączenia. W tym regionie każdy kraj ma osobne konto sprzedawcy, więc inny rynek wymaga nowego połączenia.",
       "label": "Rynki",
       "placeholder": "Wybierz rynki",
       "unlisted": "Rynek {id}"

@@ -13,8 +13,9 @@
  *
  * The region is fixed because another region is another Amazon seller account
  * with its own refresh token and merchant token; the API refuses the change.
- * In a region without a unified account (Far East) the picker takes one
- * marketplace.
+ * In a region without a unified account (Far East) each marketplace is its
+ * own seller account, so the marketplace is shown but not editable, like the
+ * region; another marketplace is a new connection.
  *
  * With the connection as the stock master (#4183), the FBA stock location is
  * picked from OpenLinker's locations; the API refuses it unless the
@@ -132,7 +133,11 @@ export function AmazonStructuredSection({
       <FormField
         label={copy.marketplaces.label}
         name="amazonMarketplaceIds"
-        description={`${singleMarketplace ? copy.marketplaces.descriptionSingle : copy.marketplaces.description} ${copy.marketplaces.addedNote}`}
+        description={
+          singleMarketplace
+            ? copy.marketplaces.descriptionSingle
+            : `${copy.marketplaces.description} ${copy.marketplaces.addedNote}`
+        }
         error={errors.amazonMarketplaceIds?.message}
       >
         <AmazonMarketplacePicker
@@ -153,7 +158,8 @@ export function AmazonStructuredSection({
             })
           }
           placeholder={copy.marketplaces.placeholder}
-          disabled={disabled}
+          // In Far East the marketplace IS the seller account, so it is fixed like the region.
+          disabled={disabled || singleMarketplace}
           invalid={Boolean(errors.amazonMarketplaceIds)}
           single={singleMarketplace}
         />

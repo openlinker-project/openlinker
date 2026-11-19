@@ -70,7 +70,7 @@
     "marketplaces": {
       "addedNote": "Orders from a marketplace you add are read from the last 7 days.",
       "description": "Orders are read and offers written on these marketplaces.",
-      "descriptionSingle": "This region has a separate seller account per country, so the connection sells on one marketplace.",
+      "descriptionSingle": "Set when the connection was created. This region has a separate seller account per country, so another marketplace needs a new connection.",
       "label": "Marketplaces",
       "placeholder": "Choose marketplaces",
       "unlisted": "Marketplace {id}"
