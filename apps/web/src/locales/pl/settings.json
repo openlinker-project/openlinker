@@ -292,7 +292,7 @@
     },
     "description": "Wszystkie obszary konfiguracji, pogrupowane według tego, do czego służą.",
     "environment": {
-      "apiBaseUrl": "Bazowy adres URL API",
+      "apiBaseUrl": "Adres API",
       "environment": "Środowisko",
       "title": "Środowisko",
       "version": "Wersja aplikacji"
