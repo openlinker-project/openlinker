@@ -206,7 +206,7 @@
   },
   "fontSize": {
     "default": "Domyślny",
-    "extraLarge": "Bardzo duży",
+    "extraLarge": "Największy",
     "group": "Rozmiar tekstu",
     "large": "Duży",
     "small": "Mały"
