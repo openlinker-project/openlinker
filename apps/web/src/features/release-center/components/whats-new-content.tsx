@@ -32,7 +32,7 @@ export function WhatsNewContent(): ReactElement {
   const cards = view
     ? view.notifications.filter(
         (notification) =>
-          notification.stepKeys.length > 0 &&
+          (notification.stepKeys.length > 0 || notification.showcaseKeys.length > 0) &&
           notificationStatusOf(view.state, notification.itemKey).status !== 'archived'
       )
     : [];

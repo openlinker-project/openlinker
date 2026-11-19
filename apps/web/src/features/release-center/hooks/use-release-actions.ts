@@ -32,19 +32,22 @@ export interface ReleaseActions {
   markStep: (itemKey: string, status: 'done' | 'not_applicable') => void;
   reopenStep: (itemKey: string) => void;
   markAllDone: (instances: readonly StepInstance[]) => void;
+  /** A showcase tour reached its last stop or was skipped (the caller's own row, quiet). */
+  markShowcaseSeen: (itemKey: string) => void;
+  /** Offers the tour as unseen again. */
+  resetShowcase: (itemKey: string) => void;
 }
 
 export function useReleaseActions(): ReleaseActions {
   const items = useReleaseItemStatesMutation();
   const steps = useReleaseStepsMutation();
   const { showToast } = useToast();
-  // The confirmation toast of the approved mockup: it stays 6s when it offers
+  // The confirmation toast: the app's normal toast, bottom right like every other. It stays 6s when it offers
   // Undo and 3.2s when it only informs.
   const note = useCallback(
     (description: string, action?: ToastAction): void =>
       showToast({
         tone: 'info',
-        variant: 'inverse',
         description,
         action,
         durationMs: action ? 6000 : 3200,
@@ -128,6 +131,8 @@ export function useReleaseActions(): ReleaseActions {
         writeSteps([{ itemKey: key, status: 'open', doneVia: null }]);
         note(copy.toastReopened);
       },
+      markShowcaseSeen: (key) => writeItems([{ itemKey: key, status: 'archived' }]),
+      resetShowcase: (key) => writeItems([{ itemKey: key, status: 'open' }]),
       markAllDone: (instances) => {
         const keys = instances.map((instance) => instance.itemKey);
         if (keys.length === 0) return;

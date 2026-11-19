@@ -22,7 +22,9 @@ import { useReleaseActions } from '../hooks/use-release-actions';
 import { notificationStatusOf } from '../lib/release-notifications';
 import { useReleaseCenterView } from './release-center-provider';
 import { ReleaseIcon } from './release-icon';
+import { BellNudge } from './bell-nudge';
 import { ReleaseCard } from './release-card';
+import { ReleaseMessageRow } from './release-message-row';
 
 type Tab = 'active' | 'archive';
 
@@ -79,15 +81,25 @@ export function ReleaseBell(): ReactElement | null {
   if (!view) return null;
 
   const { summary } = view;
-  const rows = view.notifications.map((notification) => ({
+  // Messages first (newest first), then the release cards; both read their state from the same user rows.
+  const messageRows = view.messages.map((message) => ({
+    kind: 'message' as const,
+    itemKey: message.itemKey,
+    message,
+    ...notificationStatusOf(view.state, message.itemKey),
+  }));
+  const releaseRows = view.notifications.map((notification) => ({
+    kind: 'release' as const,
+    itemKey: notification.itemKey,
     notification,
     ...notificationStatusOf(view.state, notification.itemKey),
   }));
+  const rows = [...messageRows, ...releaseRows];
   const visible = rows.filter((row) => row.status !== 'deleted');
   const active = visible.filter((row) => row.status === 'active');
   const archived = visible.filter((row) => row.status === 'archived');
   const shown = tab === 'active' ? active : archived;
-  const unreadKeys = active.filter((row) => row.unread).map((row) => row.notification.itemKey);
+  const unreadKeys = active.filter((row) => row.unread).map((row) => row.itemKey);
 
   const srText =
     summary.count > 0
@@ -97,6 +109,7 @@ export function ReleaseBell(): ReactElement | null {
         : bell.srNone;
 
   return (
+    <>
     <Popover
       open={open}
       onOpenChange={(next) => {
@@ -113,7 +126,7 @@ export function ReleaseBell(): ReactElement | null {
           aria-haspopup="dialog"
           aria-expanded={open}
         >
-          <ReleaseIcon name="bell" />
+          <ReleaseIcon name="bell" size={18} />
           <span className="release-bell__label">{bell.label}</span>
           <span
             key={summary.count}
@@ -186,17 +199,36 @@ export function ReleaseBell(): ReactElement | null {
               <span>{tab === 'archive' ? panel.emptyArchiveBody : panel.emptyDoneBody}</span>
             </div>
           ) : (
-            shown.map((row) => (
-              <ReleaseCard
-                key={row.notification.itemKey}
-                notification={row.notification}
-                instances={view.instances}
-                onNavigate={() => setOpen(false)}
-              />
-            ))
+            shown.map((row) =>
+              row.kind === 'message' ? (
+                <ReleaseMessageRow
+                  key={row.itemKey}
+                  message={row.message}
+                  unread={row.unread}
+                  archived={row.status === 'archived'}
+                  onNavigate={() => setOpen(false)}
+                />
+              ) : (
+                <ReleaseCard
+                  key={row.itemKey}
+                  notification={row.notification}
+                  instances={view.instances}
+                  onNavigate={() => setOpen(false)}
+                />
+              )
+            )
           )}
         </div>
       </PopoverContent>
     </Popover>
+    <BellNudge
+      triggerRef={triggerRef}
+      panelOpen={open}
+      onOpenPanel={() => {
+        setPlacement(measurePlacement(triggerRef.current));
+        setOpen(true);
+      }}
+    />
+    </>
   );
 }

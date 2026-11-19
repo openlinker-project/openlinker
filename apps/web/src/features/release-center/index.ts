@@ -53,3 +53,11 @@ export {
   type TourRequest,
   type WhatsNewRequest,
 } from './lib/release-center-requests';
+export {
+  publishNotification,
+  type MessageNotification,
+  type NotificationAction,
+  type NotificationDraft,
+  type NotificationSeverity,
+} from './lib/notification-store';
+export { registerNotificationRule, type NotificationRule } from './lib/notification-rules';

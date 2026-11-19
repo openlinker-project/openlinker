@@ -23,12 +23,16 @@ import { useReleaseActions } from '../hooks/use-release-actions';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { requestReleaseTour, requestWhatsNew } from '../lib/release-center-requests';
 import {
+  GENERAL_MINOR,
   notificationStatusOf,
+  showcaseSeenOf,
+  showcaseTally,
   stepStatusOf,
   type ReleaseNotification,
   type StepInstance,
 } from '../lib/release-notifications';
 import { useReleaseCenterView } from './release-center-provider';
+import { ReleaseShowcaseList } from './release-showcase-list';
 import { ReleaseIcon } from './release-icon';
 import { ReleaseStepList } from './release-step-list';
 
@@ -50,6 +54,8 @@ export function ReleaseCard({
   const actions = useReleaseActions();
   const { canWriteSteps } = useReleaseCenterAccess();
   const [open, setOpen] = useState(false);
+  // The list stays mounted while it folds away, so the exit animates real content instead of an empty box.
+  const [mounted, setMounted] = useState(false);
   const regionId = useId();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // The step list unmounts when collapsed, so its scroll offset is kept here.
@@ -79,6 +85,15 @@ export function ReleaseCard({
     if (!open) setEdges({ top: false, bottom: false });
   }, [open]);
 
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      return undefined;
+    }
+    const timer = setTimeout(() => setMounted(false), 420);
+    return () => clearTimeout(timer);
+  }, [open]);
+
   if (!view) return null;
 
   const mine = instances.filter((instance) => notification.stepKeys.includes(instance.itemKey));
@@ -90,10 +105,18 @@ export function ReleaseCard({
   const requiredLeft = open_.filter((instance) => instance.importance === 'required').length;
   const { status, unread } = notificationStatusOf(view.state, notification.itemKey);
   const archived = status === 'archived';
-  const hasSteps = mine.length > 0;
+  const myShowcases = view.showcases.filter((s) => notification.showcaseKeys.includes(s.itemKey));
+  const showcaseOnly = mine.length === 0 && myShowcases.length > 0;
+  const tally = showcaseTally(myShowcases, view.state);
+  const allSeen = myShowcases.every((s) => showcaseSeenOf(view.state, s.itemKey));
+  const hasSteps = mine.length > 0 || myShowcases.length > 0;
   const left = mine.length - done;
 
-  const cta = !canWriteSteps
+  const cta = showcaseOnly
+    ? allSeen
+      ? copy.ctaTourAgain
+      : copy.ctaTour
+    : !canWriteSteps
     ? copy.ctaShowWhere
     : done === 0
       ? copy.ctaGuide
@@ -106,65 +129,79 @@ export function ReleaseCard({
       <div className="release-card__top">
         <div>
           <p className="release-card__title">
-            {interpolate(copy.releaseTitle, { version: notification.version })}
+            {notification.minor === GENERAL_MINOR
+              ? copy.generalTitle
+              : interpolate(copy.releaseTitle, { version: notification.version })}
           </p>
           <div className="release-card__meta">
-            <StatusBadge compact withDot tone="info">
-              {interpolate(copy.versionBadge, { version: notification.version })}
-            </StatusBadge>
+            {notification.minor === GENERAL_MINOR ? null : (
+              <StatusBadge compact withDot tone="info">
+                {interpolate(copy.versionBadge, { version: notification.version })}
+              </StatusBadge>
+            )}
             {archived ? <span>{copy.archivedLabel}</span> : null}
           </div>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <div className="release-card__top-actions">
+          {archived ? (
             <Button
               tone="ghost"
               className="button--icon button--sm"
-              aria-label={copy.itemActions}
+              aria-label={copy.menuRestore}
+              title={copy.menuRestore}
+              onClick={() => actions.restore(notification.itemKey)}
             >
-              <ReleaseIcon name="dots" />
+              <ReleaseIcon name="undo" />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="release-card__menu">
-            {hasSteps && !archived && canWriteSteps && left > 0 ? (
-              <DropdownMenuItem onSelect={() => actions.markAllDone(open_)}>
-                <ReleaseIcon name="check" />
-                {copy.menuMarkAllDone}
-              </DropdownMenuItem>
-            ) : null}
-            {unread && !archived ? (
-              <DropdownMenuItem onSelect={() => actions.markRead([notification.itemKey])}>
-                <ReleaseIcon name="check" />
-                {copy.menuMarkRead}
-              </DropdownMenuItem>
-            ) : null}
-            {archived ? (
-              <DropdownMenuItem onSelect={() => actions.restore(notification.itemKey)}>
-                <ReleaseIcon name="undo" />
-                {copy.menuRestore}
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onSelect={() => actions.archive(notification.itemKey)}>
-                <ReleaseIcon name="archive" />
-                {copy.menuArchive}
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="release-card__menu-danger"
-              onSelect={() => actions.remove(notification.itemKey)}
+          ) : (
+            // Archiving also reads it, so there is no separate "mark as read" to hunt for in a menu.
+            <Button
+              tone="ghost"
+              className="button--icon button--sm"
+              aria-label={copy.menuArchive}
+              title={copy.menuArchive}
+              onClick={() => actions.archive(notification.itemKey)}
             >
-              <ReleaseIcon name="trash" />
-              {copy.menuDelete}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <ReleaseIcon name="archive" />
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button tone="ghost" className="button--icon button--sm" aria-label={copy.itemActions}>
+                <ReleaseIcon name="dots" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="release-card__menu">
+              {hasSteps && !archived && canWriteSteps && left > 0 ? (
+                <>
+                  <DropdownMenuItem onSelect={() => actions.markAllDone(open_)}>
+                    <ReleaseIcon name="check" />
+                    {copy.menuMarkAllDone}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+              <DropdownMenuItem
+                className="release-card__menu-danger"
+                onSelect={() => actions.remove(notification.itemKey)}
+              >
+                <ReleaseIcon name="trash" />
+                {copy.menuDelete}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {hasSteps && !archived ? (
         <>
           <div className="release-progress">
-            <div className="release-progress__bar" role="img" aria-label={copy.progressLabel}>
+            <div
+              className="release-progress__bar"
+              role="img"
+              aria-label={showcaseOnly ? copy.progressShowcase : copy.progressLabel}
+              data-mixed={mine.length > 0 && myShowcases.length > 0}
+            >
               {mine.map((instance, index) => (
                 <span
                   key={instance.itemKey}
@@ -175,16 +212,35 @@ export function ReleaseCard({
                   data-optional={instance.importance === 'optional'}
                 />
               ))}
+              {mine.length > 0 && myShowcases.length > 0 ? (
+                <i className="release-progress__gap" aria-hidden="true" />
+              ) : null}
+              {myShowcases.flatMap((instance) =>
+                instance.showcase.stops.map((_, stop) => (
+                  <span
+                    key={`${instance.itemKey}:${stop}`}
+                    className="release-progress__seg"
+                    data-kind="showcase"
+                    data-done={showcaseSeenOf(view.state, instance.itemKey)}
+                  />
+                ))
+              )}
             </div>
             <div className="release-progress__text">
-              <span>{interpolate(copy.doneOf, { done, total: mine.length })}</span>
-              <span>
-                {!canWriteSteps
-                  ? copy.adminCompletes
-                  : requiredLeft > 0
-                    ? interpolate(copy.requiredLeft, { n: requiredLeft })
-                    : copy.requiredDone}
-              </span>
+              {mine.length > 0 ? (
+                <>
+                  <span>{interpolate(copy.doneOf, { done, total: mine.length })}</span>
+                  <span>
+                    {!canWriteSteps
+                      ? copy.adminCompletes
+                      : requiredLeft > 0
+                        ? interpolate(copy.requiredLeft, { n: requiredLeft })
+                        : copy.requiredDone}
+                  </span>
+                </>
+              ) : (
+                <span>{interpolate(copy.showcaseTally, { viewed: tally.viewed, total: tally.total })}</span>
+              )}
             </div>
           </div>
           <button
@@ -197,7 +253,10 @@ export function ReleaseCard({
               setOpen((value) => !value);
             }}
           >
-            <span>{open ? copy.stepsHide : interpolate(copy.stepsShow, { n: mine.length })}</span>
+            <span className="release-card__toggle-label">
+              {showcaseOnly ? copy.stopsLabel : copy.stepsLabel}
+              <span className="release-card__count">{showcaseOnly ? tally.total : mine.length + myShowcases.length}</span>
+            </span>
             <span className="release-card__chevron" aria-hidden="true" data-open={open}>
               <ReleaseIcon name="chevron" />
             </span>
@@ -217,20 +276,25 @@ export function ReleaseCard({
                   }
                 : {})}
             >
-              {open ? <ReleaseStepList instances={mine} onNavigate={onNavigate} /> : null}
+              {open || mounted ? (
+                <>
+                  {mine.length > 0 ? <ReleaseStepList instances={mine} onNavigate={onNavigate} /> : null}
+                  <ReleaseShowcaseList instances={myShowcases} onNavigate={onNavigate} />
+                </>
+              ) : null}
             </div>
           </div>
           <div className="release-card__actions">
             <Button
               className="button--sm"
               onClick={() => {
-                requestReleaseTour({});
+                requestReleaseTour(showcaseOnly ? { showcaseMinor: notification.minor } : {});
                 onNavigate();
               }}
             >
               {cta} <ReleaseIcon name="arrow-right" size={14} />
             </Button>
-            {hideChangelogLink ? null : (
+            {hideChangelogLink || notification.minor === GENERAL_MINOR ? null : (
               <Button
                 className="button--sm"
                 tone="secondary"

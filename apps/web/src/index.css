@@ -40849,7 +40849,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   flex-wrap: wrap;
   gap: 8px;
   position: sticky;
-  bottom: 0;
+  /* The list pads its bottom by 12px; without this the next card's title shows under the bar. */
+  bottom: -12px;
   z-index: 2;
   margin: 0 -14px -12px;
   padding: 10px 14px 12px;
@@ -42206,3 +42207,357 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .tour-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 2px; }
 .tour-card__text { gap: 6px; }
 .tour-card__stop { font-size: 0.75rem; color: var(--text-muted); }
+/* The pinned actions bar: while it floats over the steps (not yet at the card's bottom edge) its lower
+   corners must be rounder than the card's, and on an unread card it leaves the 3px accent stripe
+   uncovered, so no stub of the stripe pokes out at the corner. */
+.release-card__actions { border-radius: 0 0 var(--radius-xl) var(--radius-xl); }
+.release-card[data-unread='true'] .release-card__actions { margin-left: -11px; padding-left: 11px; }
+/* Message notifications: a flat row, not a card. Severity = shape (icon) + word + a thin accent. */
+.msg {
+  --msg-accent: var(--text-muted);
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 32px;
+  gap: 10px;
+  padding: 10px 8px 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.msg::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--msg-accent);
+}
+.msg--info { --msg-accent: var(--status-info); }
+.msg--warning { --msg-accent: var(--status-warning); }
+.msg--error { --msg-accent: var(--status-error); }
+.msg--success { --msg-accent: var(--status-success); }
+.msg[data-archived='true'] { background: var(--bg-surface-elevated); }
+.msg__icon { color: var(--msg-accent); margin-top: 1px; }
+.msg__main { min-width: 0; display: grid; gap: 2px; }
+.msg__title { margin: 0; font-size: 0.875rem; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.msg[data-unread='true'] .msg__title { font-weight: 600; }
+.msg__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  vertical-align: 1px;
+}
+.msg__body {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.msg__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 4px; font-size: 0.75rem; color: var(--text-muted); }
+.msg__sev { font-weight: 600; color: var(--text-secondary); }
+.msg__action {
+  margin-left: auto;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.msg__action:hover { text-decoration-thickness: 2px; }
+.msg__action:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (hover: none) and (pointer: coarse) {
+  .msg { grid-template-columns: 20px minmax(0, 1fr) 44px; }
+  .msg__action { min-height: 44px; padding-inline: 4px; }
+}
+@media (max-width: 400px) { .msg__action { margin-left: 0; flex-basis: 100%; text-align: left; } }
+@media (forced-colors: active) { .msg::before { background: CanvasText; } }
+/* The popup that drops from the bell when a message arrives. */
+.bell-nudge {
+  --msg-accent: var(--status-info);
+  position: fixed;
+  z-index: 62;
+  width: min(340px, calc(100vw - 16px));
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 28px;
+  gap: 10px;
+  padding: 12px 10px 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  transform-origin: calc(100% - 6px) -8px;
+}
+.bell-nudge[data-severity='warning'] { --msg-accent: var(--status-warning); }
+.bell-nudge[data-severity='error'] { --msg-accent: var(--status-error); }
+.bell-nudge[data-severity='success'] { --msg-accent: var(--status-success); }
+/* The tail points at the bell's centre. */
+.bell-nudge::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: clamp(18px, calc(var(--nudge-tail, 280px) - 5px), calc(100% - 28px));
+  width: 10px;
+  height: 10px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-default);
+  transform: rotate(45deg);
+}
+.bell-nudge__icon { color: var(--msg-accent); margin-top: 1px; }
+.bell-nudge__main { min-width: 0; display: grid; gap: 2px; }
+.bell-nudge__title { margin: 0; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.bell-nudge__body { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bell-nudge__foot { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 0.75rem; }
+.bell-nudge__more { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.bell-nudge__close {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.bell-nudge__close:hover { background: var(--bg-strong); color: var(--text-primary); }
+.bell-nudge__close:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (hover: none) and (pointer: coarse) { .bell-nudge__close { width: 44px; height: 44px; } }
+/* Time left, as a hairline along the bottom; it stops while the pointer or focus is on the card. */
+.bell-nudge__timer {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--msg-accent);
+  opacity: 0.55;
+  transform-origin: left;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bell-nudge { animation: bell-nudge-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .bell-nudge[data-leaving='true'] { animation: bell-nudge-out 150ms ease-in both; }
+  .bell-nudge__timer { animation: bell-nudge-timer var(--nudge-ms, 6000ms) linear both; }
+  .bell-nudge:hover .bell-nudge__timer,
+  .bell-nudge:focus-within .bell-nudge__timer { animation-play-state: paused; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-nudge { animation: bell-nudge-fade 120ms linear both; }
+  .bell-nudge__timer { display: none; }
+}
+@keyframes bell-nudge-in { from { opacity: 0; transform: translateY(-6px) scale(0.94); } }
+@keyframes bell-nudge-out { to { opacity: 0; transform: translateY(-4px) scale(0.96); } }
+@keyframes bell-nudge-fade { from { opacity: 0; } }
+@keyframes bell-nudge-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+/* The message action is a small text button with real padding. A global button style used to fill it
+   with the accent on hover and left it without side padding, so it is set explicitly here. */
+.msg .msg__action,
+.bell-nudge .msg__action {
+  appearance: none;
+  margin-left: auto;
+  margin-right: -6px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent-primary);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out);
+}
+.msg .msg__action:hover,
+.bell-nudge .msg__action:hover {
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: var(--accent-primary);
+  box-shadow: none;
+}
+.msg .msg__action:active,
+.bell-nudge .msg__action:active { background: color-mix(in srgb, var(--accent-primary) 16%, transparent); }
+.msg .msg__action:focus-visible,
+.bell-nudge .msg__action:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (max-width: 400px) { .msg .msg__action { margin-left: -10px; } }
+/* Archive sits next to the item menu: one click, and it reads the item too. */
+.release-card__top-actions,
+.msg__tools { display: flex; align-items: flex-start; gap: 2px; flex-shrink: 0; }
+.msg { grid-template-columns: 20px minmax(0, 1fr) auto; }
+@media (hover: none) and (pointer: coarse) { .msg { grid-template-columns: 20px minmax(0, 1fr) auto; } }
+/* The card in the bell: one row of equal segments. Optional is the lighter grey, done is the accent. */
+.release-progress__bar { gap: 3px; align-items: center; }
+.release-progress__seg { height: 6px; border-radius: 3px; background: var(--bg-strong); box-shadow: none; }
+.release-progress__seg[data-optional='true'] { background: color-mix(in srgb, var(--bg-strong) 50%, var(--bg-surface)); box-shadow: none; }
+.release-progress__gap { flex: 0 0 6px; }
+/* The card in the bell uses the same bar as the tour: flush segments in one capsule, one grey for what is
+   not done, the accent for what is, info blue for tour-only items, a small notch between the groups. */
+.release-progress__bar { gap: 1px; align-items: center; }
+.release-progress__seg,
+.release-progress__seg[data-optional='true'] {
+  height: 8px;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface));
+  box-shadow: none;
+}
+.release-progress__seg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.release-progress__seg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.release-progress__seg[data-kind='showcase'] { background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface)); }
+.release-progress__gap { flex: 0 0 3px; }
+/* One list for the whole release: steps and tour-only items share the marker column, title, chips and actions. */
+.release-step[data-status='done'] .release-step__title,
+.release-step[data-status='not_applicable'] .release-step__title { text-decoration: none; color: var(--text-secondary); }
+.release-showcase { gap: 12px; margin-top: 18px; padding-top: 14px; }
+.release-steps--showcase .release-step { padding-bottom: 14px; }
+.release-steps--showcase .release-step::before,
+.release-steps--showcase .release-step::after { display: none; }
+.release-step[data-kind='showcase'] .release-step__ind {
+  border-style: solid;
+  border-color: var(--status-info);
+  color: var(--status-info);
+  background: var(--bg-surface);
+}
+.release-step[data-kind='showcase'][data-status='done'] .release-step__ind {
+  background: var(--status-info);
+  border-color: transparent;
+  color: var(--text-on-primary);
+  transform: none;
+}
+/* Old standalone-row styles are no longer used. */
+.release-show { display: none; }
+/* One step for several accounts: a title, one explanation, then a quiet row per account. */
+.release-step__targets { display: grid; gap: 10px; margin-top: 2px; }
+.release-step__target { display: grid; gap: 6px; }
+.release-step__target[data-several='true'] {
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+}
+.release-step__single { display: grid; gap: 6px; }
+/* Steps disclosure: a light text control, not a second button bar. Open and close are different motions:
+   it unfolds with an expo-out, its content fades and rises a beat later and the rows arrive one by one;
+   closing is quicker and leads with the fade, so it never feels like it is dragging. */
+.release-card__toggle {
+  width: auto;
+  align-self: start;
+  justify-self: start;
+  gap: 6px;
+  margin-left: -8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+}
+.release-card__toggle:hover,
+.release-card__toggle:active { background: color-mix(in srgb, var(--accent-primary) 8%, transparent); border-color: transparent; }
+.release-card__toggle-label { font-variant-numeric: tabular-nums; }
+.release-card__chevron { transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1); }
+.release-card__chevron[data-open='true'] { transform: rotate(180deg); }
+.release-card__collapse { opacity: 1; transition: grid-template-rows 260ms cubic-bezier(0.32, 0.72, 0, 1); }
+.release-card__collapse[data-open='true'] { transition: grid-template-rows 400ms cubic-bezier(0.16, 1, 0.3, 1); }
+.release-card__collapse > .release-card__steps {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 110ms ease-in, transform 160ms ease-in;
+}
+.release-card__collapse[data-open='true'] > .release-card__steps {
+  opacity: 1;
+  transform: none;
+  transition: opacity 280ms var(--ease-out) 90ms, transform 400ms cubic-bezier(0.16, 1, 0.3, 1) 60ms;
+}
+@keyframes release-row-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: no-preference) {
+  .release-card__collapse[data-open='true'] .release-step,
+  .release-card__collapse[data-open='true'] .release-showcase { animation: release-row-in 360ms var(--ease-out) both; }
+  .release-card__collapse[data-open='true'] .release-step:nth-child(1) { animation-delay: 90ms; }
+  .release-card__collapse[data-open='true'] .release-step:nth-child(2) { animation-delay: 140ms; }
+  .release-card__collapse[data-open='true'] .release-step:nth-child(3) { animation-delay: 190ms; }
+  .release-card__collapse[data-open='true'] .release-step:nth-child(n+4) { animation-delay: 230ms; }
+  .release-card__collapse[data-open='true'] .release-showcase { animation-delay: 250ms; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .release-card__collapse,
+  .release-card__collapse > .release-card__steps,
+  .release-card__chevron { transition: none; }
+  .release-card__collapse > .release-card__steps { transform: none; }
+}
+/* Steps disclosure as an accordion row: label and count on the left, a round chevron on the right, a hairline
+   above. It spans the card, so the target is large and the row reads as a section, not a stray button. */
+.release-card__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  align-self: stretch;
+  margin: 2px 0 0;
+  padding: 10px 0 2px;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.release-card__toggle:hover,
+.release-card__toggle:active { background: transparent; border-color: var(--border-subtle); color: var(--text-primary); }
+.release-card__toggle-label { display: inline-flex; align-items: center; gap: 8px; }
+.release-card__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-strong);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.release-card__chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+.release-card__toggle:hover .release-card__chevron { background: color-mix(in srgb, var(--accent-primary) 12%, transparent); color: var(--accent-primary); }
+.release-card__toggle:hover .release-card__count { background: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-strong)); }
+@media (hover: none) and (pointer: coarse) { .release-card__toggle { min-height: 44px; } }
+/* The steps row keeps its full-width target, but label and count sit right, next to the chevron. */
+.release-card__toggle { justify-content: flex-end; gap: 8px; }
+/* A message's severity accent follows the card's rounded border, like the unread release card, instead of a
+   short bar that stops short of the corners. */
+.msg::before { content: none; }
+.msg {
+  border-color: color-mix(in srgb, var(--msg-accent) 40%, var(--border-subtle));
+  box-shadow: inset 3px 0 0 var(--msg-accent);
+  padding-left: 16px;
+}
+.msg[data-archived='true'] { border-color: var(--border-subtle); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--msg-accent) 50%, transparent); }
+@media (forced-colors: active) { .msg { box-shadow: inset 3px 0 0 CanvasText; } }

@@ -53,6 +53,15 @@ None of it belongs in `users` (identity), `operational-settings` (system knobs) 
 **Migration path:**
 - One migration adds both tables, the indexes, the CHECKs and the `operational_settings` column; `down()` drops them. Existing installs start with an empty cursor, so nothing opens on the first load.
 
+## Amendment: message notifications (#4244)
+
+The bell now also lists plain message notifications (an expiring token, a finished import, a failed sync) that a feature publishes with `publishNotification` or that an action creates through `registerNotificationRule`. They are not release state: there is no server-side source for them, and nothing in the database records their title or body.
+
+- **The one exception to "no browser storage".** The content of a message is kept per signed-in user in this browser (`localStorage`, key `ol:notifications:v1:<user id>`), so it never shows for another account that signs in on the same machine. The exception is confined to `lib/notification-store.ts` (an ESLint override names that single file); the rest of the release center still may not touch browser storage.
+- **What stays in the database.** Whether a message was read, archived or deleted is the caller's own release-state user row (`msg-<dedupe key>`), exactly like a release card, so that part follows the user across devices and the demo and viewer roles behave the same.
+- **Consequences.** A message exists only on the device that published it, so a feature publishes a condition again on each load (the dedupe key makes that a no-op); a one-off event is lost if it was never opened on that device; title and body are stored as published and are not re-translated. A server-side `notifications` table (per-user targeting, jobs as writers, polling) is a separate, larger task and would replace the local store.
+- **A notification action points at a real route.** `pnpm check:release-center-catalog` validates every `to: '/...'` literal in a file that publishes a notification or registers a rule against the router.
+
 ## References
 
 - Related issues: epic #4131, #4140, #4141, #4142, #4143, #4145, #4146

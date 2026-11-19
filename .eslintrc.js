@@ -955,6 +955,17 @@ module.exports = {
     },
 
     {
+      // #4244 / ADR-085 amendment: message notifications have no server-side source yet, so their content is
+      // kept per signed-in user in this browser. Exactly this one file may touch localStorage; every other
+      // file of the release center still may not.
+      files: ['apps/web/src/features/release-center/lib/notification-store.ts'],
+      rules: {
+        'no-restricted-properties': 'off',
+        'no-restricted-globals': 'off',
+      },
+    },
+
+    {
       // Port, capability, and port-local type files form the public contract
       // surface plugin adapters implement. They must import cross-context
       // types via the top-level package barrel — never deep sub-paths — so

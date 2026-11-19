@@ -26,6 +26,7 @@ import {
   type ReactElement,
 } from 'react';
 import { useConnectionsQuery } from '../../connections';
+import { useSession } from '../../../shared/auth/use-session';
 import { useMessages } from '../../../shared/i18n';
 import { interpolate } from '../../../shared/i18n';
 import { APP_VERSION } from '../../../shared/config/app-version';
@@ -36,7 +37,14 @@ import { RELEASE_SHOWCASES } from '../catalog/release-showcases';
 import { RELEASE_STEPS } from '../catalog/release-steps';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseCenterEnabled, useReleaseStateQuery } from '../hooks/use-release-state-query';
+import { useNotificationMessages } from '../hooks/use-notification-messages';
+import { useNotificationRules } from '../hooks/use-notification-rules';
 import { useReleaseStepsMutation } from '../hooks/use-release-steps-mutation';
+import {
+  bindNotificationsToUser,
+  onNotificationArrival,
+  type MessageNotification,
+} from '../lib/notification-store';
 import {
   buildReleaseNotifications,
   buildShowcaseInstances,
@@ -54,6 +62,8 @@ export interface ReleaseCenterView {
   /** Tour-only items; never part of the bell count or the setup tally. */
   showcases: readonly ShowcaseInstance[];
   notifications: readonly ReleaseNotification[];
+  /** Plain messages published by features, newest first. */
+  messages: readonly MessageNotification[];
   summary: BellSummary;
   /** Increments when something new should draw the eye. */
   ringSignal: number;
@@ -70,18 +80,20 @@ export function useReleaseCenterView(): ReleaseCenterView | null {
 const EMPTY_STATE: ReleaseState = { enabled: false, cursor: null, user: [], installation: [] };
 
 export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactElement {
+  // `enabled` is the update switch: the window, the release cards and the guides that belong to a release.
+  // The bell and its messages do not depend on it, only on being allowed to read.
   const enabled = useReleaseCenterEnabled();
   const { canRead, canWriteSteps } = useReleaseCenterAccess();
   const stateQuery = useReleaseStateQuery();
-  const connectionsQuery = useConnectionsQuery(undefined, { enabled: enabled });
+  const connectionsQuery = useConnectionsQuery(undefined, { enabled: canRead && stateQuery.data !== undefined });
   const stepsMutation = useReleaseStepsMutation();
   const { showToast } = useToast();
   const copy = useMessages('release-center');
   const state = stateQuery.data ?? EMPTY_STATE;
 
   const instances = useMemo(
-    () =>
-      buildStepInstances(
+    () => {
+      const all = buildStepInstances(
         RELEASE_STEPS,
         APP_VERSION,
         (connectionsQuery.data ?? [])
@@ -96,24 +108,59 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
         // The carrier-method count needs the mapping reads, which the bell does
         // not issue; a step that is required only because of it reads optional.
         () => 0
-      ),
-    [connectionsQuery.data]
+      );
+      // With the switch off only what belongs to no release is left (a recommended first setup).
+      return enabled ? all : all.filter((instance) => instance.step.introducedIn === undefined);
+    },
+    [connectionsQuery.data, enabled]
   );
-  const showcases = useMemo(() => buildShowcaseInstances(RELEASE_SHOWCASES, APP_VERSION), []);
+  const showcases = useMemo(() => {
+    const all = buildShowcaseInstances(RELEASE_SHOWCASES, APP_VERSION);
+    return enabled ? all : all.filter((instance) => instance.showcase.introducedIn === undefined);
+  }, [enabled]);
   const notifications = useMemo(
-    () => buildReleaseNotifications(instances, Object.keys(RELEASE_HIGHLIGHTS), APP_VERSION, showcases),
-    [instances, showcases]
+    () =>
+      buildReleaseNotifications(
+        instances,
+        enabled ? Object.keys(RELEASE_HIGHLIGHTS) : [],
+        APP_VERSION,
+        showcases
+      ),
+    [instances, showcases, enabled]
   );
   const now = useMemo(() => Date.now(), [state]);
-  const summary = useMemo(() => summarizeBell(instances, state, now), [instances, state, now]);
+  const { session } = useSession();
+  const userId = session.user?.id ?? null;
+  const ready = canRead && stateQuery.data !== undefined;
+  const active = ready;
+  useEffect(() => {
+    bindNotificationsToUser(active ? userId : null);
+  }, [active, userId]);
+  useNotificationRules();
+  const messages = useNotificationMessages();
+  // An unread warning or error counts toward the badge; a plain info or success only shows its dot.
+  const summary = useMemo(() => {
+    const base = summarizeBell(instances, state, now);
+    const alerts = messages.filter((message) => {
+      if (message.severity !== 'warning' && message.severity !== 'error') return false;
+      const row = state.user.find((entry) => entry.itemKey === message.itemKey);
+      return !row;
+    }).length;
+    const count = base.count + alerts;
+    return { ...base, count, showDot: count === 0 && base.optionalLeft > 0 };
+  }, [instances, state, now, messages]);
 
   // Ring when the count goes up or a new notification appears, never on first load.
   const [ringSignal, setRingSignal] = useState(0);
   const previous = useRef<{ count: number; notifications: number; doneKeys: Set<string> } | null>(
     null
   );
+  useEffect(
+    () => onNotificationArrival(() => setRingSignal((value) => value + 1)),
+    []
+  );
   useEffect(() => {
-    if (!enabled || stateQuery.data === undefined) return;
+    if (!ready) return;
     const doneKeys = new Set(
       state.installation.filter((row) => row.status === 'done').map((row) => row.itemKey)
     );
@@ -147,14 +194,15 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
       });
     }
     // Only the data should retrigger this; the helpers are stable per render.
-  }, [state, enabled]);
+  }, [state, ready]);
 
   const value = useMemo<ReleaseCenterView | null>(
     () =>
-      canRead && enabled
-        ? { state, instances, showcases, notifications, summary, ringSignal, now }
+      // The bell stays while something can be in it: release content, or at least one message.
+      ready && (enabled || notifications.length > 0 || messages.length > 0)
+        ? { state, instances, showcases, notifications, messages, summary, ringSignal, now }
         : null,
-    [canRead, enabled, state, instances, showcases, notifications, summary, ringSignal, now]
+    [ready, enabled, state, instances, showcases, notifications, messages, summary, ringSignal, now]
   );
 
   return <ReleaseCenterContext.Provider value={value}>{children}</ReleaseCenterContext.Provider>;

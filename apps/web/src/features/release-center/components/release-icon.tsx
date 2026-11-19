@@ -19,6 +19,7 @@ export type ReleaseIconName =
   | 'close'
   | 'dots'
   | 'list'
+  | 'play'
   | 'sparkle'
   | 'trash'
   | 'undo';
@@ -35,10 +36,10 @@ const PATHS: Record<ReleaseIconName, ReactNode> = {
   // Drawn in the upper part of the box and lifted so the glyph sits on the text's
   // optical centre; the old path occupied y 7 to 15 and read low beside a label.
   bell: (
-    <g transform="translate(0 -3)">
-      <path d="M4 11a4 4 0 0 1 8 0c0 3 1.2 3.8 1.2 3.8H2.8S4 14 4 11Z" />
-      <path d="M6.5 14.8a1.6 1.6 0 0 0 3 0" />
-    </g>
+    <>
+      <path d="M8 1.6c-2.5 0-4.3 1.9-4.3 4.5v2.1c0 .9-.4 1.7-1.1 2.4-.3.3-.1.8.3.8h10.2c.4 0 .6-.5.3-.8-.7-.7-1.1-1.5-1.1-2.4V6.1c0-2.6-1.8-4.5-4.3-4.5Z" />
+      <path d="M6.4 13.3a1.7 1.7 0 0 0 3.2 0" />
+    </>
   ),
   check: <path d="M3 8.5l3.2 3.2L13 4.8" />,
   chevron: <path d="M4 6l4 4 4-4" />,
@@ -55,6 +56,7 @@ const PATHS: Record<ReleaseIconName, ReactNode> = {
   trash: (
     <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" />
   ),
+  play: <path d="M5.5 3.5l7 4.5-7 4.5z" fill="currentColor" />,
   undo: <path d="M5 4L2.5 6.5 5 9M2.5 6.5H9a4 4 0 0 1 0 8H6" />,
 };
 

@@ -56,26 +56,134 @@ export function ReleaseStepList({
     return status !== 'done' && status !== 'not_applicable';
   });
 
+  // Rows of the same step (one per connection) are one step in the list.
+  const groups: { instances: StepInstance[] }[] = [];
+  for (const instance of instances) {
+    const existing = groups.find((group) => group.instances[0].step.id === instance.step.id);
+    if (existing) existing.instances.push(instance);
+    else groups.push({ instances: [instance] });
+  }
+
+  type StatusInfo = {
+    status: ReturnType<typeof stepStatusOf>['status'];
+    doneVia: ReturnType<typeof stepStatusOf>['doneVia'];
+  };
+
+  /** The one badge row of a step: connection, required or optional, and what became of it. */
+  const renderChips = (
+    instance: StepInstance,
+    { status, doneVia }: StatusInfo,
+    parts: { connection: boolean; importance: boolean; state: boolean }
+  ): ReactElement | null => {
+    const required = instance.importance === 'required';
+    const connection = instance.connectionId ? connectionById.get(instance.connectionId) : undefined;
+    const platformType = connection?.platformType ?? null;
+    const chips: ReactElement[] = [];
+    if (parts.importance) {
+      chips.push(
+        <span
+          key="importance"
+          className={`release-chip${required && canWriteSteps ? ' release-chip--accent' : ' release-chip--muted'}`}
+        >
+          {!canWriteSteps ? panel.needsAdmin : required ? panel.stepRequired : panel.stepOptional}
+        </span>
+      );
+    }
+    if (parts.connection && instance.connectionId) {
+      chips.push(
+        <ConnectionChip
+          key="connection"
+          connectionId={instance.connectionId}
+          name={connection?.name ?? instance.connectionName}
+          loading={connections.isLoading}
+          channel={{
+            platformType,
+            label: platformType ? resolvePlatformLabel(platforms, platformType) : null,
+            shortLabel: platformType ? resolvePlatformShortLabel(platforms, platformType) : null,
+            environment: readConnectionEnvironment(connection?.config),
+          }}
+        />
+      );
+    }
+    if (parts.state) {
+      if (status === 'snoozed') chips.push(<span key="snoozed" className="release-chip">{panel.snoozedChip}</span>);
+      if (status === 'done') {
+        chips.push(
+          <span
+            key="done"
+            className={`release-chip ${doneVia === 'auto' ? 'release-chip--success' : 'release-chip--info'}`}
+          >
+            {doneVia === 'auto' ? panel.doneAuto : panel.doneManual}
+          </span>
+        );
+      }
+      if (status === 'not_applicable') chips.push(<span key="na" className="release-chip">{panel.naChip}</span>);
+    }
+    return chips.length > 0 ? <div className="release-step__chips">{chips}</div> : null;
+  };
+
+  const renderActions = (instance: StepInstance, { status }: StatusInfo): ReactElement => {
+    const closed = status === 'done' || status === 'not_applicable';
+    return (
+      <div className="release-step__actions">
+        {!closed ? (
+          <Button
+            className="button--xs"
+            tone="secondary"
+            onClick={() => {
+              requestReleaseTour({ stepId: instance.step.id, connectionId: instance.connectionId });
+              onNavigate?.();
+            }}
+          >
+            {panel.showMe} <ReleaseIcon name="arrow-right" size={12} />
+          </Button>
+        ) : null}
+        {closed ? (
+          <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
+            <Button
+              className="button--xs"
+              tone="ghost"
+              disabled={!canWriteSteps}
+              onClick={() => actions.reopenStep(instance.itemKey)}
+            >
+              {panel.undo}
+            </Button>
+          </ReadOnlyLock>
+        ) : (
+          <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
+            <Button
+              className="button--xs"
+              tone="ghost"
+              disabled={!canWriteSteps}
+              onClick={() => actions.markStep(instance.itemKey, 'done')}
+            >
+              {panel.stayAsIs}
+            </Button>
+          </ReadOnlyLock>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
     <ol className="release-steps" aria-label={panel.progressLabel}>
-      {instances.map((instance, index) => {
-        const { status, doneVia } = stepStatusOf(view.state, instance.itemKey, view.now);
-        const text = stepCopies[instance.step.id];
-        const closed = status === 'done' || status === 'not_applicable';
-        const required = instance.importance === 'required';
-        // The same step repeated per connection explains itself once, on its first row.
-        const explains =
-          instances.findIndex((other) => other.step.id === instance.step.id) === index;
+      {groups.map((group, index) => {
+        const statuses = group.instances.map((instance) => stepStatusOf(view.state, instance.itemKey, view.now));
+        const allClosed = statuses.every((entry) => entry.status === 'done' || entry.status === 'not_applicable');
+        const first = group.instances[0];
+        const text = stepCopies[first.step.id];
+        const several = group.instances.length > 1;
+        const required = group.instances.some((instance) => instance.importance === 'required');
         return (
           <li
-            key={instance.itemKey}
+            key={first.step.id}
             className="release-step"
-            data-status={status}
-            data-importance={instance.importance}
+            data-status={allClosed ? 'done' : 'open'}
+            data-importance={required ? 'required' : 'optional'}
           >
             <span className="release-step__ind">
-              {closed ? (
+              {allClosed ? (
                 <svg
                   className="release-step__check"
                   width="12"
@@ -97,95 +205,31 @@ export function ReleaseStepList({
               )}
             </span>
             <div className="release-step__body">
-              <p className="release-step__title">{text?.title ?? instance.step.id}</p>
-              <div className="release-step__chips">
-                {instance.connectionId ? (
-                  (() => {
-                    const connection = connectionById.get(instance.connectionId);
-                    const platformType = connection?.platformType ?? null;
-                    return (
-                      <ConnectionChip
-                        connectionId={instance.connectionId}
-                        name={connection?.name ?? instance.connectionName}
-                        loading={connections.isLoading}
-                        channel={{
-                          platformType,
-                          label: platformType ? resolvePlatformLabel(platforms, platformType) : null,
-                          shortLabel: platformType
-                            ? resolvePlatformShortLabel(platforms, platformType)
-                            : null,
-                          environment: readConnectionEnvironment(connection?.config),
-                        }}
-                      />
-                    );
-                  })()
-                ) : null}
-                <span
-                  className={`release-chip${required && canWriteSteps ? ' release-chip--accent' : ''}`}
-                >
-                  {!canWriteSteps
-                    ? panel.needsAdmin
-                    : required
-                      ? panel.stepRequired
-                      : panel.stepOptional}
-                </span>
-                {status === 'snoozed' ? (
-                  <span className="release-chip">{panel.snoozedChip}</span>
-                ) : null}
-                {status === 'done' ? (
-                  <span
-                    className={`release-chip ${doneVia === 'auto' ? 'release-chip--success' : 'release-chip--info'}`}
-                  >
-                    {doneVia === 'auto' ? panel.doneAuto : panel.doneManual}
-                  </span>
-                ) : null}
-                {status === 'not_applicable' ? (
-                  <span className="release-chip">{panel.naChip}</span>
-                ) : null}
-              </div>
-              {text?.why && explains ? <p className="release-step__why">{text.why}</p> : null}
-              <div className="release-step__actions">
-                {!closed ? (
-                  <Button
-                    className="button--xs"
-                    tone="secondary"
-                    onClick={() => {
-                      requestReleaseTour({
-                        stepId: instance.step.id,
-                        connectionId: instance.connectionId,
-                      });
-                      onNavigate?.();
-                    }}
-                  >
-                    {panel.showMe} <ReleaseIcon name="arrow-right" size={12} />
-                  </Button>
-                ) : null}
-                {closed ? (
-                  <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
-                    <Button
-                      className="button--xs"
-                      tone="ghost"
-                      disabled={!canWriteSteps}
-                      onClick={() => actions.reopenStep(instance.itemKey)}
+              <p className="release-step__title">{text?.title ?? first.step.id}</p>
+              {/* Title, then the badges, then the explanation, then what to do: the same order everywhere. */}
+              {several ? (
+                renderChips(first, statuses[0], { connection: false, importance: true, state: false })
+              ) : (
+                renderChips(first, statuses[0], { connection: true, importance: true, state: true })
+              )}
+              {text?.why ? <p className="release-step__why">{text.why}</p> : null}
+              {several ? (
+                <div className="release-step__targets">
+                  {group.instances.map((instance, at) => (
+                    <div
+                      key={instance.itemKey}
+                      className="release-step__target"
+                      data-status={statuses[at].status}
+                      data-several="true"
                     >
-                      {panel.undo}
-                    </Button>
-                  </ReadOnlyLock>
-                ) : (
-                  <>
-                    <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
-                      <Button
-                        className="button--xs"
-                        tone="secondary"
-                        disabled={!canWriteSteps}
-                        onClick={() => actions.markStep(instance.itemKey, 'done')}
-                      >
-                        {panel.stayAsIs}
-                      </Button>
-                    </ReadOnlyLock>
-                  </>
-                )}
-              </div>
+                      {renderChips(instance, statuses[at], { connection: true, importance: false, state: true })}
+                      {renderActions(instance, statuses[at])}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                renderActions(first, statuses[0])
+              )}
             </div>
           </li>
         );
