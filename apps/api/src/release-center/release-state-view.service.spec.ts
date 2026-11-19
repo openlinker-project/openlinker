@@ -40,16 +40,17 @@ function build(enabled: boolean) {
 }
 
 describe('ReleaseStateViewService', () => {
-  it('should answer enabled false without reading the tables when disabled', async () => {
+  it('should answer enabled false with the own item states but no cursor or installation state when disabled', async () => {
     const { service, cursors, items } = build(false);
+    const userRow = { itemKey: 'msg-a', status: 'archived' };
+    items.getSnapshot.mockResolvedValue({ user: [userRow], installation: [{ itemKey: 'x', status: 'done' }] });
     await expect(service.getView('u1')).resolves.toEqual({
       enabled: false,
       cursor: null,
-      user: [],
+      user: [userRow],
       installation: [],
     });
     expect(cursors.getState).not.toHaveBeenCalled();
-    expect(items.getSnapshot).not.toHaveBeenCalled();
   });
 
   it('should read cursor and snapshot when enabled', async () => {

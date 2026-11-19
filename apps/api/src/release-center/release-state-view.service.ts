@@ -52,7 +52,11 @@ export class ReleaseStateViewService implements IReleaseStateViewService {
   async getView(userId: string): Promise<ReleaseStateView> {
     const enabled = (await this.settings.resolve()).releaseCenterEnabled.value;
     if (!enabled) {
-      return { enabled: false, cursor: null, user: [], installation: [] };
+      // The switch turns off what an update brings (the window, the release cards, the guides). The
+      // caller's own item states stay readable, because messages in the bell keep them: without them every
+      // archived message would come back unread. There is no cursor and no installation state to report.
+      const snapshot = await this.items.getSnapshot(userId);
+      return { enabled: false, cursor: null, user: snapshot.user, installation: [] };
     }
     const [cursor, snapshot] = await Promise.all([
       this.cursors.getState(userId),
