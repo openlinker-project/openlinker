@@ -15,6 +15,7 @@ import type {
   AmazonMcfPreviewResponse,
   AmazonMcfShippingSpeed,
 } from '../../domain/types/amazon-mcf.types';
+import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 import type { AmazonSpApiClient } from './amazon-spapi-client';
 
 const ORDERS_PATH = '/fba/outbound/2020-07-01/fulfillmentOrders';
@@ -41,7 +42,12 @@ export class AmazonFulfillmentOutboundClient {
     await this.client.post(ORDERS_PATH, request);
   }
 
-  /** The order, or `null` when Amazon has none under this id (a 404). */
+  /**
+   * The order, or `null` when Amazon has none under this id. Amazon answers an
+   * unknown id with 400 InvalidInput "Order Does Not Exist" rather than a 404
+   * (seen on the NA, EU and FE hosts), so both mean "none"; any other 400 is a
+   * real refusal and is thrown.
+   */
   async get(sellerFulfillmentOrderId: string): Promise<AmazonMcfOrderResponse | null> {
     try {
       const response = await this.client.get<AmazonMcfOrderResponse>(
@@ -49,7 +55,7 @@ export class AmazonFulfillmentOutboundClient {
       );
       return response.data;
     } catch (error) {
-      if (typeof error === 'object' && error !== null && (error as { statusCode?: number }).statusCode === 404) {
+      if (isOrderNotFound(error)) {
         return null;
       }
       throw error;
@@ -59,4 +65,17 @@ export class AmazonFulfillmentOutboundClient {
   async cancel(sellerFulfillmentOrderId: string): Promise<void> {
     await this.client.put(`${ORDERS_PATH}/${encodeURIComponent(sellerFulfillmentOrderId)}/cancel`, {});
   }
+}
+
+/** Amazon's answer for a fulfillment order id it does not know. */
+const ORDER_NOT_FOUND_DETAIL = /does not exist|not found/i;
+
+function isOrderNotFound(error: unknown): boolean {
+  if (!(error instanceof AmazonApiError)) {
+    return false;
+  }
+  if (error.statusCode === 404) {
+    return true;
+  }
+  return error.statusCode === 400 && error.errorCode === 'InvalidInput' && ORDER_NOT_FOUND_DETAIL.test(error.detail ?? '');
 }

@@ -12,7 +12,7 @@ export class AmazonApiError extends Error {
   constructor(
     public readonly statusCode: number,
     public readonly errorCode: string | undefined,
-    detail: string | undefined,
+    public readonly detail: string | undefined,
     public readonly requestId: string | undefined,
   ) {
     super(
