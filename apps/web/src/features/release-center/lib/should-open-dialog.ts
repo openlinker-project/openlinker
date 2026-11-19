@@ -58,7 +58,9 @@ export function shouldOpenDialog(
   const hasEntries = releases.some(
     (release) => inRange(release.version) && release.groups.some((g) => g.entries.length > 0)
   );
-  const hasSteps = visibleSteps(steps, appVersion).some((step) => inRange(step.introducedIn));
+  const hasSteps = visibleSteps(steps, appVersion).some(
+    (step) => step.introducedIn !== undefined && inRange(step.introducedIn)
+  );
   if (!hasEntries && !hasSteps) {
     return { open: false, initialiseCursorTo: null, reason: 'nothing-to-show' };
   }

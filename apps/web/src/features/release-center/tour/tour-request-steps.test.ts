@@ -35,4 +35,31 @@ describe('tourStepsForRequest', () => {
     } as unknown as ReleaseState;
     expect(tourStepsForRequest(instances, state, {}).steps.map((s) => s.stepId)).toEqual(['b', 'b']);
   });
+
+  const showcases = [
+    {
+      itemKey: 'showcase-s',
+      showcase: {
+        id: 's',
+        introducedIn: '0.20.0',
+        appliesWhen: () => true,
+        stops: [
+          { routePattern: 'orders', target: 'a' },
+          { routePattern: 'orders', target: 'b' },
+        ],
+      },
+    },
+  ];
+
+  it('should append unseen showcases as one entry per stop after the setup steps', () => {
+    const walk = tourStepsForRequest(instances, undefined, {}, showcases);
+    expect(walk.steps).toHaveLength(5);
+    expect(walk.steps[3].showcase).toEqual({ itemKey: 'showcase-s', stopIndex: 0, stopCount: 2 });
+  });
+
+  it('should walk only the asked showcase for a replay', () => {
+    const walk = tourStepsForRequest(instances, undefined, { showcaseId: 's' }, showcases);
+    expect(walk.steps.map((s) => s.stepId)).toEqual(['s', 's']);
+    expect(walk.startIndex).toBe(0);
+  });
 });

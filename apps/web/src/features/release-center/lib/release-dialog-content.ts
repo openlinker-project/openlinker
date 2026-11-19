@@ -99,7 +99,9 @@ export function buildStepRows(
 ): ReleaseStepRow[] {
   const rows: ReleaseStepRow[] = [];
   const inScope = visibleSteps(steps, appVersion).filter(
-    (step) => !introducedAfter || compareVersions(step.introducedIn, introducedAfter) > 0
+    (step) =>
+      step.introducedIn !== undefined &&
+      (!introducedAfter || compareVersions(step.introducedIn, introducedAfter) > 0)
   );
   for (const step of inScope) {
     const targets: (NamedStepConnection | null)[] =

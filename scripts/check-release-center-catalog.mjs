@@ -18,6 +18,9 @@
  *      every minor that introduces a step, has a highlights list, and every
  *      listed commit hash exists in CHANGELOG.md.
  *   6. CHANGELOG.md has a heading for the package.json version.
+ *   7. Every `to: '/path'` a notification action points at (a file that publishes a notification or
+ *      registers a notification rule) matches a route declared in the router, so a bell link can
+ *      never land on the router's error page.
  *
  * The catalog and highlights files are parsed TEXTUALLY (no TypeScript import)
  * so this stays a zero-dependency `check:invariants` step.
@@ -61,10 +64,35 @@ export function parseCatalogEntries(source) {
     return {
       id: match[1],
       introducedIn: pick('introducedIn'),
+      standalone: pick('introducedIn') === null,
       routePattern: pick('routePattern'),
       target: pick('target'),
     };
   });
+}
+
+/**
+ * Showcases: one catalog block per `id:`, each with 1 to 3 stops written one per line as
+ * `{ routePattern: '...', target: '...' }`. Every stop is flattened to an entry of its own
+ * (`<id>#<n>`) so the route and target checks of a setup step apply to it unchanged.
+ */
+export function parseShowcaseEntries(source) {
+  const starts = [...source.matchAll(/^\s{4}id: '([^']*)',$/gm)];
+  const out = [];
+  starts.forEach((match, i) => {
+    const block = source.slice(match.index, starts[i + 1]?.index ?? source.length);
+    const introducedIn = new RegExp("introducedIn: '([^']*)'").exec(block)?.[1] ?? null;
+    const standalone = introducedIn === null;
+    const stops = [...block.matchAll(/\{\s*routePattern: '([^']*)',\s*target: '([^']*)'\s*\}/g)];
+    if (stops.length < 1 || stops.length > 3) {
+      out.push({ id: `${match[1]}`, introducedIn, standalone, routePattern: null, target: null, stopCountError: stops.length });
+      return;
+    }
+    stops.forEach((stop, n) => {
+      out.push({ id: n === 0 ? match[1] : `${match[1]}#${n}`, introducedIn, standalone, routePattern: stop[1], target: stop[2] });
+    });
+  });
+  return out;
 }
 
 export function parseHighlights(source) {
@@ -87,6 +115,17 @@ const minorCompare = (a, b) => {
   return am !== bm ? Math.sign(am - bm) : Math.sign(an - bn);
 };
 
+/** `/orders/abc` matches the route `orders/:id`; a path with a query or hash is compared without it. */
+export function linkMatchesRoute(path, routes) {
+  const clean = path.split(/[?#]/)[0].replace(/^\/+|\/+$/g, '');
+  if (clean === '') return true;
+  for (const pattern of routes) {
+    const rx = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z0-9_]+/g, '[^/]+')}$`);
+    if (rx.test(clean)) return true;
+  }
+  return false;
+}
+
 /** Pure core of the check. Returns a list of error strings. */
 export function validate({
   entries,
@@ -95,18 +134,26 @@ export function validate({
   routes,
   tourTargets,
   changelog,
-}) {
+  notificationLinks = [],
+  }) {
   const errors = [];
   const pkg = parseSemver(packageVersion);
   if (!pkg) return [`package.json version "${packageVersion}" is not valid semver`];
 
   const seen = new Set();
   for (const e of entries) {
-    if (!ID_PATTERN.test(e.id)) errors.push(`step id "${e.id}" does not match ${ID_PATTERN}`);
+    if (e.stopCountError !== undefined) {
+      errors.push(`showcase "${e.id}": has ${e.stopCountError} stops, it needs 1 to 3`);
+      continue;
+    }
+    const baseId = e.id.split('#')[0];
+    if (!ID_PATTERN.test(baseId)) errors.push(`step id "${e.id}" does not match ${ID_PATTERN}`);
     if (seen.has(e.id)) errors.push(`step id "${e.id}" is declared twice`);
     seen.add(e.id);
-    const intro = parseSemver(e.introducedIn);
-    if (!intro) {
+    const intro = e.standalone ? null : parseSemver(e.introducedIn);
+    if (e.standalone) {
+      // A standalone tour ships with no release, so there is no version or highlight to hold it to.
+    } else if (!intro) {
       errors.push(`step "${e.id}": introducedIn "${e.introducedIn}" is not valid semver`);
     } else if (compareSemver(intro, pkg) > 0) {
       errors.push(
@@ -121,6 +168,12 @@ export function validate({
     }
   }
 
+  for (const link of notificationLinks) {
+    if (!linkMatchesRoute(link.path, routes)) {
+      errors.push(`notification link "${link.path}" in ${link.file} matches no route declared in the router`);
+    }
+  }
+
   const required = new Set();
   const current = minorOf(packageVersion);
   if (highlights.from) {
@@ -131,6 +184,7 @@ export function validate({
     }
   }
   for (const e of entries) {
+    if (e.standalone) continue;
     const m = minorOf(e.introducedIn);
     if (m && current && minorCompare(m, current) <= 0) required.add(m);
   }
@@ -164,6 +218,7 @@ async function walk(dir) {
 
 async function collect() {
   const catalog = await readFile(join(CATALOG_DIR, 'release-steps.ts'), 'utf8');
+  const showcasesSrc = await readFile(join(CATALOG_DIR, 'release-showcases.ts'), 'utf8');
   const highlightsSrc = await readFile(join(CATALOG_DIR, 'release-highlights.ts'), 'utf8');
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   const changelog = await readFile(join(root, 'CHANGELOG.md'), 'utf8');
@@ -181,10 +236,24 @@ async function collect() {
     for (const m of text.matchAll(/data-tour['"]?\s*[=:]\s*\{?\s*['"]([^'"]+)['"]/g)) {
       tourTargets.add(m[1]);
     }
+    // A conditional anchor: data-tour={embedded ? undefined : 'label-master'}.
+    for (const m of text.matchAll(/data-tour=\{[^}]*\?[^}]*:\s*['"]([^'"]+)['"]\s*\}/g)) {
+      tourTargets.add(m[1]);
+    }
+  }
+
+  const notificationLinks = [];
+  for (const file of await walk(WEB_SRC)) {
+    const text = await readFile(file, 'utf8');
+    if (!/publishNotification\(|registerNotificationRule\(/.test(text)) continue;
+    for (const m of text.matchAll(/\bto:\s*'(\/[^']*)'/g)) {
+      notificationLinks.push({ file: file.slice(WEB_SRC.length + 1), path: m[1] });
+    }
   }
 
   return {
-    entries: parseCatalogEntries(catalog),
+    notificationLinks,
+    entries: [...parseCatalogEntries(catalog), ...parseShowcaseEntries(showcasesSrc)],
     highlights: parseHighlights(highlightsSrc),
     packageVersion: pkg.version,
     routes,
@@ -214,6 +283,8 @@ function selfCheck() {
     [{ ...base, highlights: { map: {}, from: '0.20' } }, 1],
     [{ ...base, highlights: { map: { '0.20': ['deadbee'] }, from: '0.20' } }, 1],
     [{ ...base, changelog: '' }, 2],
+    [{ ...base, notificationLinks: [{ file: 'a.ts', path: '/x/42' }] }, 0],
+    [{ ...base, notificationLinks: [{ file: 'a.ts', path: '/jobs' }] }, 1],
   ];
   const parsed = parseCatalogEntries("    id: 'one',\n    introducedIn: '0.1.0',\n    target: 'x',\n");
   if (parsed.length !== 1 || parsed[0].target !== 'x') {

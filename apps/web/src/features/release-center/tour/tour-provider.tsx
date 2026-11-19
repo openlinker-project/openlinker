@@ -17,25 +17,17 @@ import {
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
-import { generatePath, useLocation, useNavigate } from 'react-router-dom';
-import { RELEASE_STEPS } from '../catalog/release-steps';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useReleaseCenterView } from '../components/release-center-provider';
 import { subscribeToTourRequests } from '../lib/release-center-requests';
 import { TourCard } from './tour-card';
 import { TourContext, type TourController, type TourStepInput } from './tour-context';
 import { tourStepsForRequest } from './tour-request-steps';
+import { resolveTourStop } from './tour-stop';
 import { INITIAL_TOUR_STATE, tourReducer } from './tour-reducer';
 
 export function tourPathFor(step: TourStepInput): string | null {
-  const entry = RELEASE_STEPS.find((candidate) => candidate.id === step.stepId);
-  if (!entry) return null;
-  const params = entry.routeParams({
-    connection: step.connectionId
-      ? { id: step.connectionId, platformType: '', capabilities: [], config: {} }
-      : null,
-    unassignedCarrierMethods: 0,
-  });
-  return generatePath(`/${entry.routePattern}`, params);
+  return resolveTourStop(step)?.path ?? null;
 }
 
 export function TourProvider({ children }: PropsWithChildren): ReactElement {
@@ -66,7 +58,7 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
       subscribeToTourRequests((request) => {
         const latest = viewRef.current;
         if (!latest) return;
-        const walk = tourStepsForRequest(latest.instances, latest.state, request);
+        const walk = tourStepsForRequest(latest.instances, latest.state, request, latest.showcases);
         start(walk.steps, null, walk.startIndex);
       }),
     [start]

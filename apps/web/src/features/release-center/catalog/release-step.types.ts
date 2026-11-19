@@ -38,8 +38,12 @@ export interface ReleaseStepEntry {
   /** Stable, kebab-case; never derived from an account name. */
   id: string;
   scope: ReleaseStepScope;
-  /** Written by hand: the minor that ships the step. */
-  introducedIn: string;
+  /**
+   * Written by hand: the minor that ships the step. Leave it out for a standalone step that belongs to no
+   * release (for example a recommended first setup): it appears under "Recommended steps" in the bell
+   * and under "General" in the tour, and is never offered by the update dialog.
+   */
+  introducedIn?: string;
   /** Computed from data, never hard-coded per step. */
   importance: (ctx: ReleaseStepContext) => ReleaseStepImportance;
   /** Permission that can perform the step; a UX marker, the API still decides. */
@@ -51,4 +55,28 @@ export interface ReleaseStepEntry {
   target: string;
   appliesWhen: (ctx: ReleaseStepContext) => boolean;
   completeOn: ReleaseStepCompletion;
+}
+
+/** One place a showcase points at: a screen and the element on it. */
+export interface ReleaseShowcaseStop {
+  routePattern: string;
+  /** Value of the `data-tour` attribute the guided tour highlights. */
+  target: string;
+}
+
+/**
+ * A tour-only item (no setting to change): 1 to 3 ordered stops across screens.
+ * It has no importance, scope or completion rule by construction, so it can
+ * never count as setup work. Its copy lives under `showcases.<id>` in the locale.
+ */
+export interface ReleaseShowcaseEntry {
+  id: string;
+  /**
+   * The release that ships it. Leave it out for a standalone tour (for example one offered to a new
+   * installation): it then belongs to no release, appears in no notification, and is started by id with
+   * `requestReleaseTour({ showcaseId })` from whatever surface decides it is time.
+   */
+  introducedIn?: string;
+  appliesWhen: () => boolean;
+  stops: readonly ReleaseShowcaseStop[];
 }

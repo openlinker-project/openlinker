@@ -41051,7 +41051,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   pointer-events: none;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .tour-ring { transition: top 560ms var(--ease-out), left 560ms var(--ease-out), width 560ms var(--ease-out), height 560ms var(--ease-out), opacity 300ms; }
+  .tour-ring { transition: top 240ms var(--ease-out), left 240ms var(--ease-out), width 240ms var(--ease-out), height 240ms var(--ease-out), opacity 150ms; }
   .tour-card { animation: release-fade-up 380ms var(--ease-out) both; }
   /* Same keyframes under a second name: the card is not remounted between steps, and a changed animation-name is what plays the entrance again. */
   .tour-card[data-parity='1'] { animation-name: release-fade-up-b; }
@@ -42006,3 +42006,203 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* Step list (What's new and the bell): one quiet note instead of a hint under every step. */
 .release-steps__note { margin: 10px 0 0; font-size: 0.75rem; color: var(--text-muted); max-width: 52ch; }
 .release-step__chips .connection-chip { flex: none; }
+/* A control wrapped only to carry a tour target keeps its own box. */
+.tour-anchor { display: inline-flex; }
+/* Showcase (tour-only) items: info hue, so they never read as a task to do. */
+.release-chip--muted {
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-default);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.release-progress__gap { flex: 0 0 8px; }
+.release-progress__seg[data-kind='showcase'] { background: color-mix(in srgb, var(--status-info) 22%, var(--bg-strong)); }
+.release-progress__seg[data-kind='showcase']::after { background: var(--status-info); }
+.release-showcase {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.release-showcase--page { border-top: 0; padding-top: 0; margin-top: 0; }
+.release-card__collapse > div > .release-showcase:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.release-showcase__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.release-showcase__title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.release-showcase__tally { font-size: 0.75rem; color: var(--text-muted); }
+.release-showcase__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.release-show {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 0 12px;
+  padding: 10px 8px;
+  margin-inline: -8px;
+  border-radius: var(--radius-md);
+  transition: background 160ms var(--ease-out);
+}
+.release-show:hover,
+.release-show:focus-within { background: color-mix(in srgb, var(--status-info) 5%, transparent); }
+.release-show__dot {
+  margin-top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--status-info);
+  transition: background 220ms var(--ease-out);
+}
+.release-show[data-viewed='true'] .release-show__dot { background: var(--status-info); }
+.release-show__body { display: grid; gap: 6px; min-width: 0; }
+.release-show__title { margin: 0; font-size: 0.8125rem; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.release-show[data-viewed='true'] .release-show__title { color: var(--text-secondary); }
+.release-show__why { margin: 0; font-size: 0.75rem; color: var(--text-secondary); max-width: 52ch; }
+.release-show__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.release-show__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.release-show__undo {
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.release-show__undo:hover { color: var(--text-primary); text-decoration: underline; }
+.release-show__undo:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (hover: none) and (pointer: coarse) {
+  .release-show .button,
+  .release-show__undo { min-height: 44px; }
+  .release-show__undo { padding-inline: 10px; }
+}
+@media (max-width: 480px) {
+  .release-show { margin-inline: -4px; padding-inline: 4px; }
+  .release-showcase__head { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
+/* In the tour: a showcase segment is info-toned and shows its stops as pips over the bar. */
+.tour-card__seg { position: relative; }
+.tour-card__dot--showcase::after { background: var(--status-info); }
+.tour-card__stops { flex: 1; display: flex; gap: 3px; min-width: 0; }
+.tour-card__stops .tour-card__dot::after { opacity: 0.45; transition: transform 480ms var(--ease-out), opacity 200ms var(--ease-out); }
+/* Every stop is a whole segment: reached ones are tinted, the one on screen is solid. Never a half fill. */
+.tour-card__stops .tour-card__dot--done::after { transform: scaleX(1); }
+.tour-card__stops .tour-card__dot--current::after { transform: scaleX(1); opacity: 1; }
+.tour-card__dot[aria-disabled='true'] { cursor: default; }
+.tour-card__dot[aria-disabled='true']:hover { transform: none; }
+.tour-card__stop { margin: 0; font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: no-preference) {
+  .tour-card__stop { animation: release-fade-up 180ms var(--ease-out) both; }
+}
+/* The close button is a plain icon: a global button style used to give it a white disc and a shadow. */
+.tour-card .tour-card__close {
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-right: -6px;
+  background: transparent;
+  background-image: none;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+}
+.tour-card .tour-card__close:hover { background: var(--bg-strong); box-shadow: none; color: var(--text-primary); }
+.tour-card .tour-card__close:focus-visible { box-shadow: var(--shadow-focus); }
+/* One progress bar. Every step is a flush segment of a single track; a release is one capsule of it, named by a
+   label above, with a small gap to the next. Three tones only: accent (tour: reached tinted, on screen solid),
+   info (tour-only items), grey (not reached; optional is the lighter grey). */
+.tour-card__rail { display: flex; gap: 6px; margin: 0; padding: 0; align-items: flex-end; }
+.tour-card__release { display: grid; gap: 3px; min-width: 26px; }
+.tour-card__release + .tour-card__release { margin-left: 0; padding-left: 0; border-left: 0; }
+.tour-card__segs { display: flex; gap: 1px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.tour-card__release-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  transition: color 200ms var(--ease-out);
+}
+.tour-card__release-label::after { content: none; }
+.tour-card__release[data-active='true'] .tour-card__release-label { color: var(--text-primary); font-weight: 700; }
+.tour-card__seg { flex: 1; min-width: 0; }
+.tour-card__rail .tour-card__dot,
+.tour-card__rail .tour-card__stops .tour-card__dot {
+  height: 6px;
+  margin-block: 6px;
+  border-radius: 0;
+  background: var(--bg-strong);
+  box-shadow: none;
+  transform: none;
+  transition: background-color 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+.tour-card__rail .tour-card__dot::after { display: none; }
+.tour-card__rail .tour-card__dot--optional { background: color-mix(in srgb, var(--bg-strong) 50%, var(--bg-surface)); }
+.tour-card__rail .tour-card__dot--skipped { background: color-mix(in srgb, var(--border-strong) 70%, var(--bg-surface)); }
+.tour-card__rail .tour-card__dot--done { background: color-mix(in srgb, var(--accent-primary) 50%, var(--bg-strong)); }
+.tour-card__rail .tour-card__dot--current { background: var(--accent-primary); }
+.tour-card__rail .tour-card__dot--showcase.tour-card__dot--done { background: color-mix(in srgb, var(--status-info) 50%, var(--bg-strong)); }
+.tour-card__rail .tour-card__dot--showcase.tour-card__dot--current { background: var(--status-info); }
+.tour-card__rail .tour-card__dot:hover { transform: scaleY(1.7); }
+.tour-card__rail .tour-card__dot[aria-disabled='true']:hover { transform: none; }
+/* The ends of a release capsule are round, the joins between its steps are flush. */
+.tour-card__segs > .tour-card__seg:first-child .tour-card__dot,
+.tour-card__segs > .tour-card__seg:first-child .tour-card__stops .tour-card__dot:first-child { border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
+.tour-card__segs > .tour-card__seg:last-child .tour-card__dot,
+.tour-card__segs > .tour-card__seg:last-child .tour-card__stops .tour-card__dot:last-child { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
+.tour-card__stops { gap: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  .tour-card__rail .tour-card__dot,
+  .tour-card__release-label { transition: none; }
+}
+/* One shared bar: the whole run is a single capsule. Steps are 1px apart, a release boundary is a slightly
+   wider 3px notch, and only the two outer ends of the whole bar are round. */
+.tour-card__rail { gap: 3px; }
+.tour-card__segs > .tour-card__seg:first-child .tour-card__dot,
+.tour-card__segs > .tour-card__seg:first-child .tour-card__stops .tour-card__dot:first-child,
+.tour-card__segs > .tour-card__seg:last-child .tour-card__dot,
+.tour-card__segs > .tour-card__seg:last-child .tour-card__stops .tour-card__dot:last-child { border-radius: 0; }
+.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__dot,
+.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__stops .tour-card__dot:first-child { border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
+.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__dot,
+.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__stops .tour-card__dot:last-child { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
+.tour-card__release-label { cursor: default; border-radius: 3px; }
+.tour-card__release-label:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* The release tooltip sits above the tour card and never leaves the screen (collision padding in the component). */
+.tooltip__content.tour-card__tip { z-index: 75; display: grid; gap: 2px; }
+.tour-card__tip strong { font-weight: 600; }
+.tour-card__tip span { opacity: 0.8; font-size: 0.75rem; }
+/* Contrast pass: the unreached part of the bar must read as a track, not disappear into the card. */
+.tour-card__rail .tour-card__dot,
+.tour-card__rail .tour-card__stops .tour-card__dot { height: 8px; margin-block: 5px; background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface)); }
+.tour-card__rail .tour-card__dot--optional { background: color-mix(in srgb, var(--text-muted) 15%, var(--bg-surface)); }
+.tour-card__rail .tour-card__dot--skipped { background: color-mix(in srgb, var(--text-muted) 45%, var(--bg-surface)); }
+.tour-card__rail .tour-card__dot--done { background: color-mix(in srgb, var(--accent-primary) 45%, var(--bg-surface)); }
+.tour-card__rail .tour-card__dot--current { background: var(--accent-primary); }
+.tour-card__rail .tour-card__dot--showcase.tour-card__dot--done { background: color-mix(in srgb, var(--status-info) 45%, var(--bg-surface)); }
+.tour-card__rail .tour-card__dot--showcase.tour-card__dot--current { background: var(--status-info); }
+.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__dot { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__dot { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+/* Polish pass: one grey for everything not reached (the card header already says required or optional),
+   and a small tick above each release boundary that ties its label to its part of the bar. */
+.tour-card__rail .tour-card__dot--optional.tour-card__dot--todo { background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface)); }
+.tour-card__release { position: relative; min-width: 34px; }
+.tour-card__release + .tour-card__release::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 1px;
+  height: 11px;
+  width: 1px;
+  background: var(--border-strong);
+}
+.tour-card__release + .tour-card__release .tour-card__release-label { padding-left: 4px; }
+/* The ring tracks its target in viewport coordinates (see tour-card): a target that is sticky or in a
+   scroller of its own would drift away from a ring pinned to the document. */
+.tour-ring { position: fixed; }
+/* Badge row under the title in the tour card, matching the steps list. */
+.tour-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 2px; }
+.tour-card__text { gap: 6px; }
+.tour-card__stop { font-size: 0.75rem; color: var(--text-muted); }

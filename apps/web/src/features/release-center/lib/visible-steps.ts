@@ -19,6 +19,8 @@ export function visibleSteps<T extends Pick<ReleaseStepEntry, 'introducedIn'>>(
   if (!isValidVersion(appVersion)) return [];
   return steps.filter(
     (step) =>
-      isValidVersion(step.introducedIn) && compareVersions(step.introducedIn, appVersion) <= 0
+      // A step with no release is always on offer.
+      step.introducedIn === undefined ||
+      (isValidVersion(step.introducedIn) && compareVersions(step.introducedIn, appVersion) <= 0)
   );
 }

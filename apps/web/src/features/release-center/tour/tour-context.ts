@@ -16,6 +16,8 @@ export interface TourStepInput {
   /** Set for connection-scoped steps. */
   connectionId: string | null;
   importance: ReleaseStepImportance;
+  /** Set when this entry is one stop of a showcase (a tour-only item); `stepId` is then the showcase id. */
+  showcase?: { itemKey: string; stopIndex: number; stopCount: number };
 }
 
 export interface TourController {

@@ -12,7 +12,11 @@
  *
  * @module features/release-center
  */
-import type { ReleaseStepEntry, ReleaseStepImportance } from '../catalog/release-step.types';
+import type {
+  ReleaseShowcaseEntry,
+  ReleaseStepEntry,
+  ReleaseStepImportance,
+} from '../catalog/release-step.types';
 import type { ReleaseItemState, ReleaseState } from '../api/release-state.types';
 import { compareVersions, isValidVersion } from './compare-versions';
 import { visibleSteps } from './visible-steps';
@@ -20,12 +24,21 @@ import { releaseStepItemKey } from './release-state-merge';
 
 export const SNOOZE_DAYS = 7;
 
+/** `minor` of the card that collects steps which belong to no release. */
+export const GENERAL_MINOR = 'general';
+
 export interface StepInstance {
   step: ReleaseStepEntry;
   connectionId: string | null;
   connectionName: string | null;
   itemKey: string;
   importance: ReleaseStepImportance;
+}
+
+/** A tour-only item: one per showcase, never per connection. */
+export interface ShowcaseInstance {
+  showcase: ReleaseShowcaseEntry;
+  itemKey: string;
 }
 
 export type StepStatus = 'open' | 'done' | 'not_applicable' | 'snoozed';
@@ -38,6 +51,8 @@ export interface ReleaseNotification {
   /** Version shown on the badge. */
   version: string;
   stepKeys: readonly string[];
+  /** Showcase items of this release; kept apart so "N steps" never counts them. */
+  showcaseKeys: readonly string[];
 }
 
 /** Item key of a release notification. */
@@ -57,14 +72,18 @@ function minorOf(version: string): string | null {
 export function buildReleaseNotifications(
   instances: readonly StepInstance[],
   highlightMinors: readonly string[],
-  appVersion: string
+  appVersion: string,
+  showcases: readonly ShowcaseInstance[] = []
 ): ReleaseNotification[] {
   if (!isValidVersion(appVersion)) return [];
-  const byMinor = new Map<string, { version: string; keys: string[] }>();
-  const touch = (minor: string, version: string): { version: string; keys: string[] } => {
+  const byMinor = new Map<string, { version: string; keys: string[]; showcaseKeys: string[] }>();
+  const touch = (
+    minor: string,
+    version: string
+  ): { version: string; keys: string[]; showcaseKeys: string[] } => {
     const existing = byMinor.get(minor);
     if (existing) return existing;
-    const created = { version, keys: [] as string[] };
+    const created = { version, keys: [] as string[], showcaseKeys: [] as string[] };
     byMinor.set(minor, created);
     return created;
   };
@@ -73,9 +92,21 @@ export function buildReleaseNotifications(
     if (isValidVersion(version) && compareVersions(version, appVersion) <= 0) touch(minor, version);
   }
   for (const instance of instances) {
+    // A step with no release goes to the one general card.
+    if (instance.step.introducedIn === undefined) {
+      touch(GENERAL_MINOR, '').keys.push(instance.itemKey);
+      continue;
+    }
     const minor = minorOf(instance.step.introducedIn);
     if (!minor) continue;
     touch(minor, instance.step.introducedIn).keys.push(instance.itemKey);
+  }
+  for (const instance of showcases) {
+    // A standalone tour belongs to no release, so no release notification lists it.
+    const introducedIn = instance.showcase.introducedIn;
+    const minor = introducedIn ? minorOf(introducedIn) : null;
+    if (!introducedIn || !minor) continue;
+    touch(minor, introducedIn).showcaseKeys.push(instance.itemKey);
   }
   return [...byMinor.entries()]
     .map(([minor, value]) => ({
@@ -83,8 +114,15 @@ export function buildReleaseNotifications(
       minor,
       version: value.version,
       stepKeys: value.keys,
+      showcaseKeys: value.showcaseKeys,
     }))
-    .sort((a, b) => compareVersions(b.version, a.version));
+    .sort((a, b) => {
+      // The general card, which has no version, always comes last.
+      if (a.minor === GENERAL_MINOR || b.minor === GENERAL_MINOR) {
+        return a.minor === b.minor ? 0 : a.minor === GENERAL_MINOR ? 1 : -1;
+      }
+      return compareVersions(b.version, a.version);
+    });
 }
 
 /** Instances of every visible step: one per connection for a connection step. */
@@ -209,4 +247,56 @@ export function summarizeBell(
   const { requiredLeft, optionalLeft } = stepsLeft(instances, state, now);
   const count = requiredLeft + unreadAttentionItems;
   return { count, requiredLeft, optionalLeft, showDot: count === 0 && optionalLeft > 0 };
+}
+
+/** Item key of a showcase; the prefix keeps it clear of every step key. */
+export function showcaseItemKey(id: string): string {
+  return `showcase-${id}`;
+}
+
+/** Visible showcases that apply to this installation. */
+export function buildShowcaseInstances(
+  showcases: readonly ReleaseShowcaseEntry[],
+  appVersion: string
+): ShowcaseInstance[] {
+  const released = visibleSteps(
+    showcases.filter((showcase): showcase is ReleaseShowcaseEntry & { introducedIn: string } =>
+      Boolean(showcase.introducedIn)
+    ),
+    appVersion
+  );
+  const standalone = showcases.filter((showcase) => !showcase.introducedIn);
+  return [...released, ...standalone]
+    .filter((showcase) => showcase.appliesWhen())
+    .map((showcase) => ({ showcase, itemKey: showcaseItemKey(showcase.id) }));
+}
+
+/**
+ * A showcase is seen once its tour reached the last stop or was skipped. That is
+ * stored as the caller's own archived row: a person sees a tour, so one admin
+ * watching it must not hide it from everyone else, and every role may write it.
+ */
+export function showcaseSeenOf(state: ReleaseState, itemKey: string): boolean {
+  return rowOf(state.user, itemKey)?.status === 'archived';
+}
+
+export interface ShowcaseTally {
+  /** Stops of the showcases already seen. */
+  viewed: number;
+  /** Stops of every showcase in the list. */
+  total: number;
+}
+
+export function showcaseTally(
+  instances: readonly ShowcaseInstance[],
+  state: ReleaseState
+): ShowcaseTally {
+  let viewed = 0;
+  let total = 0;
+  for (const instance of instances) {
+    const stops = instance.showcase.stops.length;
+    total += stops;
+    if (showcaseSeenOf(state, instance.itemKey)) viewed += stops;
+  }
+  return { viewed, total };
 }

@@ -13,6 +13,10 @@ export interface TourRequest {
   /** Start at this step; absent means from the first step the viewer can act on. */
   stepId?: string;
   connectionId?: string | null;
+  /** Walk only this showcase, from its first stop (replay). */
+  showcaseId?: string;
+  /** Walk the showcases of this `major.minor`, from the first one not seen yet. */
+  showcaseMinor?: string;
 }
 
 export interface WhatsNewRequest {

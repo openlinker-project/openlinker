@@ -92,6 +92,40 @@
     "undo": "Undo",
     "versionBadge": "v{version}"
   },
+  "showcases": {
+    "first-steps": {
+      "stops": {
+        "0": {
+          "body": "Orders from every channel are here. Click a row to open its details.",
+          "title": "Orders list"
+        },
+        "1": {
+          "body": "Choose which columns the list shows. We remember your choice.",
+          "title": "List columns"
+        }
+      },
+      "title": "Get to know OpenLinker",
+      "why": "See where orders are and how to set the list columns."
+    },
+    "orders-views": {
+      "stops": {
+        "0": {
+          "body": "Choose which columns the orders list shows. We remember your choice.",
+          "title": "List columns"
+        },
+        "1": {
+          "body": "Orders from every channel are here. Click a row to open its details.",
+          "title": "Orders list"
+        },
+        "2": {
+          "body": "Add your own tag and colour, then tag orders from the list.",
+          "title": "Order tags"
+        }
+      },
+      "title": "New order views",
+      "why": "See where you pick the list columns and where you manage order tags."
+    }
+  },
   "steps": {
     "inpost-notify-buyer": {
       "title": "Choose when the buyer sees \"shipped\"",
@@ -125,6 +159,8 @@
     "finish": "Done",
     "missing": "This element is not on the screen. Skip to the next step.",
     "next": "Next",
+    "noRelease": "Other",
+    "noReleaseFull": "General, outside any release",
     "optional": "Optional",
     "railLabel": "Tour progress",
     "railState": {
@@ -135,12 +171,19 @@
     },
     "railStep": "Step {current} of {total}: {status}",
     "regionLabel": "Guided tour",
+    "releaseName": "Version {version}",
+    "releaseSteps": "Steps: {n}",
     "required": "Required",
     "requiredReason": "Pick an option to continue. This step is required.",
     "saveFailed": "The setting was not saved. Try again.",
     "saved": "Saved: {choice}",
+    "showcaseChip": "Guide",
     "skip": "Skip step",
+    "skipShowcase": "Skip the tour",
     "stepOf": "Step {current} of {total}",
+    "stepOfRelease": "Version {version}: step {current} of {total}",
+    "stopLive": "Stop {current} of {total}: {title}",
+    "stopOf": "Stop {current} of {total}",
     "viewerHint": "You can see this setting. Only an administrator can change it."
   },
   "whatsNew": {

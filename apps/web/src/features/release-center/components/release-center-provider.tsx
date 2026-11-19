@@ -32,22 +32,27 @@ import { APP_VERSION } from '../../../shared/config/app-version';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { ReleaseState } from '../api/release-state.types';
 import { RELEASE_HIGHLIGHTS } from '../catalog/release-highlights';
+import { RELEASE_SHOWCASES } from '../catalog/release-showcases';
 import { RELEASE_STEPS } from '../catalog/release-steps';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseCenterEnabled, useReleaseStateQuery } from '../hooks/use-release-state-query';
 import { useReleaseStepsMutation } from '../hooks/use-release-steps-mutation';
 import {
   buildReleaseNotifications,
+  buildShowcaseInstances,
   buildStepInstances,
   summarizeBell,
   type BellSummary,
   type ReleaseNotification,
+  type ShowcaseInstance,
   type StepInstance,
 } from '../lib/release-notifications';
 
 export interface ReleaseCenterView {
   state: ReleaseState;
   instances: readonly StepInstance[];
+  /** Tour-only items; never part of the bell count or the setup tally. */
+  showcases: readonly ShowcaseInstance[];
   notifications: readonly ReleaseNotification[];
   summary: BellSummary;
   /** Increments when something new should draw the eye. */
@@ -94,9 +99,10 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
       ),
     [connectionsQuery.data]
   );
+  const showcases = useMemo(() => buildShowcaseInstances(RELEASE_SHOWCASES, APP_VERSION), []);
   const notifications = useMemo(
-    () => buildReleaseNotifications(instances, Object.keys(RELEASE_HIGHLIGHTS), APP_VERSION),
-    [instances]
+    () => buildReleaseNotifications(instances, Object.keys(RELEASE_HIGHLIGHTS), APP_VERSION, showcases),
+    [instances, showcases]
   );
   const now = useMemo(() => Date.now(), [state]);
   const summary = useMemo(() => summarizeBell(instances, state, now), [instances, state, now]);
@@ -146,9 +152,9 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
   const value = useMemo<ReleaseCenterView | null>(
     () =>
       canRead && enabled
-        ? { state, instances, notifications, summary, ringSignal, now }
+        ? { state, instances, showcases, notifications, summary, ringSignal, now }
         : null,
-    [canRead, enabled, state, instances, notifications, summary, ringSignal, now]
+    [canRead, enabled, state, instances, showcases, notifications, summary, ringSignal, now]
   );
 
   return <ReleaseCenterContext.Provider value={value}>{children}</ReleaseCenterContext.Provider>;

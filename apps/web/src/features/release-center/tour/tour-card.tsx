@@ -10,20 +10,33 @@
  */
 import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState, type Dispatch, type ReactElement } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactElement,
+} from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { ReleaseIcon } from '../components/release-icon';
 import { connectionsQueryKeys, useConnectionQuery } from '../../connections';
 import { RELEASE_STEPS } from '../catalog/release-steps';
+import { useReleaseItemStatesMutation } from '../hooks/use-release-item-states-mutation';
+import { showcaseSeenOf } from '../lib/release-notifications';
 import { useReleaseStateQuery } from '../hooks/use-release-state-query';
 import { useReleaseStepsMutation } from '../hooks/use-release-steps-mutation';
 import { installationStatusOf, releaseStepItemKey } from '../lib/release-state-merge';
 import { applyChoice, readChoice, TOUR_CHOICES } from './tour-choices';
+import type { TourStepInput } from './tour-context';
 import type { TourAction, TourState } from './tour-reducer';
 import { bottomReserve, chooseDock, RING_PADDING, ringBoxInDocument, type TourDock } from './tour-geometry';
+import { resolveTourStop, tourItemKey, tourItemMinor } from './tour-stop';
 import { useTourTarget } from './use-tour-target';
 
 function readTopInset(): number {
@@ -52,6 +65,21 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
   const releaseState = useReleaseStateQuery();
   const step = state.steps[state.index];
   const entry = step ? RELEASE_STEPS.find((candidate) => candidate.id === step.stepId) : undefined;
+  const stop = step ? resolveTourStop(step) : null;
+  const showcase = step?.showcase ?? null;
+  const userItems = useReleaseItemStatesMutation();
+  const seenSent = useRef<Set<string>>(new Set());
+  // One rail segment per item: all stops of a showcase share one.
+  const groups = useMemo(() => {
+    const out: { key: string; first: number; step: TourStepInput; minor: string | null }[] = [];
+    state.steps.forEach((entryStep, index) => {
+      const key = tourItemKey(entryStep);
+      if (!out.some((group) => group.key === key)) {
+        out.push({ key, first: index, step: entryStep, minor: tourItemMinor(entryStep) });
+      }
+    });
+    return out;
+  }, [state.steps]);
   const connection = useConnectionQuery(step?.connectionId ?? '', { enabled: Boolean(step?.connectionId) });
   const [savedChoice, setSavedChoice] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
@@ -59,11 +87,17 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
   const cardRef = useRef<HTMLElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
   const reasonId = useId();
-  const target = useTourTarget(entry?.target ?? null, state.active, state.index);
+  const target = useTourTarget(stop?.target ?? null, state.active, state.index);
 
   useEffect(() => {
     if (target.state === 'found') dispatch({ type: 'target', state: 'found' });
-    else if (target.state === 'missing') dispatch({ type: 'target', state: 'missing' });
+    else if (target.state === 'missing') {
+      dispatch({ type: 'target', state: 'missing' });
+      if (showcase) {
+        // eslint-disable-next-line no-console -- developer diagnostics for a catalog target that is not on screen
+        console.warn(`[release-center] tour target "${stop?.target}" not found for showcase "${step?.stepId}" stop ${showcase.stopIndex}`);
+      }
+    }
   }, [target.state, dispatch]);
 
   useEffect(() => {
@@ -71,6 +105,21 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     setSaveFailed(false);
     cardRef.current?.focus();
   }, [state.index]);
+
+  // A showcase counts as seen once its last stop is shown (found or not) or it is skipped; closing early does not count.
+  const markSeen = (itemKey: string): void => {
+    if (seenSent.current.has(itemKey)) return;
+    seenSent.current.add(itemKey);
+    userItems.mutate([{ itemKey, status: 'archived' }]);
+  };
+  useEffect(() => {
+    if (!state.active) {
+      seenSent.current = new Set();
+      return;
+    }
+    if (showcase && showcase.stopIndex === showcase.stopCount - 1) markSeen(showcase.itemKey);
+    // Reaching a stop is the only trigger; the mutation object changes every render.
+  }, [state.index, state.active]);
 
   // A node the router already removed is as good as missing; measuring it parks the ring at the origin.
   const element = target.state === 'found' && target.element.isConnected ? target.element : null;
@@ -97,8 +146,23 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
         topInset,
         current: dock,
       });
+      // The card swaps between the bottom edge and the top corner by changing top/bottom, which cannot be
+      // tweened, so the move is replayed as a glide from the old centre (FLIP). A first placement never glides.
+      const previousDock = card.dataset.dock;
+      const before = previousDock && previousDock !== dock ? card.getBoundingClientRect() : null;
       card.dataset.dock = dock;
       card.style.setProperty('--tour-card-top', `${Math.round(topInset)}px`);
+      if (before && !prefersReducedMotion() && typeof card.animate === 'function') {
+        const after = card.getBoundingClientRect();
+        const dx = before.left + before.width / 2 - (after.left + after.width / 2);
+        const dy = before.top + before.height / 2 - (after.top + after.height / 2);
+        if (Math.abs(dx) + Math.abs(dy) > 2) {
+          card.animate(
+            [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+            { duration: 380, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
+          );
+        }
+      }
     };
 
     // The ring lives in document coordinates, so scrolling moves it natively and
@@ -107,7 +171,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
       const rect = element.getBoundingClientRect();
       const box = ringBoxInDocument(
         { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-        { x: window.scrollX, y: window.scrollY }
+        { x: 0, y: 0 }
       );
       ring.style.width = `${box.width}px`;
       ring.style.height = `${box.height}px`;
@@ -147,7 +211,34 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     ring.style.visibility = 'hidden';
     ring.style.transition = 'none';
     place();
-    window.addEventListener('scroll', scheduleDock, { capture: true, passive: true });
+    // The ring is fixed to the viewport, so it follows what it lights even when that is sticky or inside a
+    // scroller of its own. While the page moves it must not tween (it would trail behind), so the
+    // transition is off for the duration of the scroll and comes back once it settles.
+    let settle = 0;
+    const onScroll = (): void => {
+      ring.style.transition = 'none';
+      schedule();
+      scheduleDock();
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => {
+        ring.style.transition = '';
+      }, 140);
+    };
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    // Belt and braces: whatever moves the target (a sticky header settling, a scroller of its own, a font or
+    // image arriving) shows up in its rect, so the ring follows the rect itself, one cheap read per frame.
+    let followFrame = 0;
+    let lastBox = '';
+    const follow = (): void => {
+      const rect = element.getBoundingClientRect();
+      const box = `${rect.top}|${rect.left}|${rect.width}|${rect.height}`;
+      if (box !== lastBox) {
+        if (lastBox !== '') onScroll();
+        lastBox = box;
+      }
+      followFrame = requestAnimationFrame(follow);
+    };
+    followFrame = requestAnimationFrame(follow);
     window.addEventListener('resize', schedule);
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
     resizeObserver?.observe(element);
@@ -168,7 +259,9 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
       document.documentElement.style.removeProperty('--tour-card-space');
       cancelAnimationFrame(frame);
       cancelAnimationFrame(dockFrame);
-      window.removeEventListener('scroll', scheduleDock, true);
+      cancelAnimationFrame(followFrame);
+      window.clearTimeout(settle);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', schedule);
       resizeObserver?.disconnect();
       mutationObserver.disconnect();
@@ -202,19 +295,42 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
     onError: () => setSaveFailed(true),
   });
 
-  if (!step || !entry) return null;
+  if (!step || (!entry && !showcase)) return null;
 
-  const stepCopy = copy.steps[step.stepId as keyof typeof copy.steps];
+  const showcaseCopy = showcase
+    ? (copy.showcases as unknown as Record<string, { stops: Record<string, { title: string; body: string }> } | undefined>)[step.stepId]
+    : undefined;
+  const stopCopy = showcase ? showcaseCopy?.stops[showcase.stopIndex] : undefined;
+  const stepCopy = showcase
+    ? { tourTitle: stopCopy?.title ?? step.stepId, tourBody: stopCopy?.body ?? '' }
+    : copy.steps[step.stepId as keyof typeof copy.steps];
   const itemKey = releaseStepItemKey(step.stepId, step.connectionId);
   const done = installationStatusOf(releaseState.data, itemKey) === 'done';
-  const total = state.steps.length;
-  const isLast = state.index === total - 1;
-  const blocked = isAdmin && step.importance === 'required' && !done;
+  const total = groups.length;
+  // Several releases in one walk: the progress shows them as separate clusters and the count is per release.
+  const clusters = useMemo(() => {
+    const out: { minor: string | null; items: { group: (typeof groups)[number]; position: number }[] }[] = [];
+    groups.forEach((group, position) => {
+      const last = out[out.length - 1];
+      if (last && last.minor === group.minor) last.items.push({ group, position });
+      else out.push({ minor: group.minor, items: [{ group, position }] });
+    });
+    return out;
+  }, [groups]);
+  const releases = new Set(groups.map((group) => group.minor));
+  const multiRelease = releases.size > 1;
+  const currentMinor = groups.find((group) => group.key === tourItemKey(step))?.minor ?? null;
+  const inRelease = groups.filter((group) => group.minor === currentMinor);
+  const positionInRelease = inRelease.findIndex((group) => group.key === tourItemKey(step));
+  const groupIndex = groups.findIndex((group) => group.key === tourItemKey(step));
+  const isLast = state.index === state.steps.length - 1;
+  const blocked = !showcase && isAdmin && step.importance === 'required' && !done;
   const choiceLabels = tour.choices as Record<string, string>;
   const shownChoice = savedChoice ?? pressed;
 
   let status = '';
-  if (state.target === 'missing') status = tour.missing;
+  // A showcase stop with no target is a developer problem, so the operator reads nothing about it.
+  if (state.target === 'missing' && !showcase) status = tour.missing;
   else if (saveFailed) status = tour.saveFailed;
   else if (shownChoice) status = interpolate(tour.saved, { choice: choiceLabels[shownChoice] ?? shownChoice });
 
@@ -225,6 +341,13 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
   };
 
   // "Stays as it is" is a decision too: it records the step as handled, so it also unblocks a required step.
+  // Skipping a showcase counts as seen and leaves the whole item at once.
+  const handleSkipShowcase = (): void => {
+    if (!showcase) return;
+    markSeen(showcase.itemKey);
+    dispatch({ type: 'skipItem' });
+  };
+
   const handleStaysAsIs = (): void => {
     steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
     if (isLast) onClose();
@@ -245,46 +368,118 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
         aria-label={tour.regionLabel}
         tabIndex={-1}
       >
-        <ol className="tour-card__rail" aria-label={tour.railLabel}>
-          {state.steps.map((other, index) => {
-            const otherDone =
-              installationStatusOf(releaseState.data, releaseStepItemKey(other.stepId, other.connectionId)) ===
-              'done';
+        <div className="tour-card__rail" role="group" aria-label={tour.railLabel}>
+          {clusters.map((cluster) => (
+            <div
+              key={cluster.minor ?? 'none'}
+              className="tour-card__release"
+              style={{ flex: cluster.items.length }}
+              data-active={cluster.minor === currentMinor ? 'true' : undefined}
+              data-labelled={multiRelease ? 'true' : undefined}
+            >
+              {multiRelease ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="tour-card__release-label" tabIndex={0}>
+                      {cluster.minor ?? tour.noRelease}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    className="tour-card__tip"
+                    side="top"
+                    align="start"
+                    collisionPadding={8}
+                    avoidCollisions
+                  >
+                    <strong>
+                      {cluster.minor
+                        ? interpolate(tour.releaseName, { version: cluster.minor })
+                        : tour.noReleaseFull}
+                    </strong>
+                    <span>{interpolate(tour.releaseSteps, { n: cluster.items.length })}</span>
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+              <ol className="tour-card__segs">
+          {cluster.items.map(({ group, position }) => {
+            const other = group.step;
+            const isShowcaseGroup = Boolean(other.showcase);
+            const active = position === groupIndex;
+            const otherDone = other.showcase
+              ? showcaseSeenOf(releaseState.data ?? { enabled: true, cursor: null, user: [], installation: [] }, other.showcase.itemKey)
+              : installationStatusOf(releaseState.data, releaseStepItemKey(other.stepId, other.connectionId)) ===
+                'done';
             const dotState = otherDone
               ? 'done'
-              : index === state.index
+              : active
                 ? 'current'
-                : state.skipped.includes(index)
+                : state.skipped.includes(group.first)
                   ? 'skipped'
                   : 'todo';
+            const stopCount = other.showcase?.stopCount ?? 1;
+            const stopTitle = isShowcaseGroup
+              ? (copy.showcases as unknown as Record<string, { title: string } | undefined>)[other.stepId]?.title
+              : copy.steps[other.stepId as keyof typeof copy.steps]?.tourTitle;
             return (
-              <li key={`${other.stepId}:${other.connectionId ?? ''}`} className="tour-card__seg">
-                <button
-                  type="button"
-                  className={`tour-card__dot tour-card__dot--${dotState}${
-                    other.importance === 'optional' ? ' tour-card__dot--optional' : ''
-                  }`}
-                  aria-current={index === state.index ? 'step' : undefined}
-                  aria-label={interpolate(tour.railStep, {
-                    current: index + 1,
-                    total: state.steps.length,
-                    status: tour.railState[dotState],
-                  })}
-                  title={copy.steps[other.stepId as keyof typeof copy.steps]?.tourTitle}
-                  onClick={() => dispatch({ type: 'go', index })}
-                />
+              <li
+                key={group.key}
+                className="tour-card__seg"
+              >
+                {isShowcaseGroup && active && stopCount > 1 ? (
+                  <span className="tour-card__stops">
+                    {Array.from({ length: stopCount }, (_, stopIndex) => {
+                      const index = group.first + stopIndex;
+                      const reached = index <= state.furthest;
+                      const stopState = index === state.index ? 'current' : reached ? 'done' : 'todo';
+                      return (
+                        <button
+                          key={stopIndex}
+                          type="button"
+                          className={`tour-card__dot tour-card__dot--${stopState} tour-card__dot--showcase`}
+                          aria-current={index === state.index ? 'step' : undefined}
+                          aria-disabled={!reached || undefined}
+                          aria-label={interpolate(tour.stopOf, { current: stopIndex + 1, total: stopCount })}
+                          onClick={() => {
+                            if (reached) dispatch({ type: 'go', index });
+                          }}
+                        />
+                      );
+                    })}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className={`tour-card__dot tour-card__dot--${dotState}${
+                      other.importance === 'optional' && !isShowcaseGroup ? ' tour-card__dot--optional' : ''
+                    }${isShowcaseGroup ? ' tour-card__dot--showcase' : ''}`}
+                    aria-current={active ? 'step' : undefined}
+                    aria-label={interpolate(tour.railStep, {
+                      current: position + 1,
+                      total,
+                      status: tour.railState[dotState],
+                    })}
+                    title={stopTitle}
+                    onClick={() => dispatch({ type: 'go', index: group.first })}
+                  />
+                )}
               </li>
             );
           })}
-        </ol>
+              </ol>
+            </div>
+          ))}
+        </div>
         <div className="tour-card__top">
-          <span>{interpolate(tour.stepOf, { current: state.index + 1, total })}</span>
+          <span>
+            {multiRelease && currentMinor
+              ? interpolate(tour.stepOfRelease, {
+                  version: currentMinor,
+                  current: positionInRelease + 1,
+                  total: inRelease.length,
+                })
+              : interpolate(tour.stepOf, { current: groupIndex + 1, total })}
+          </span>
           <span className="tour-card__top-end">
-            <span
-              className={`release-chip${isAdmin && step.importance === 'required' ? ' release-chip--accent' : ''}`}
-            >
-              {!isAdmin ? tour.adminOnly : step.importance === 'required' ? tour.required : tour.optional}
-            </span>
             <button
               type="button"
               className="tour-card__close"
@@ -298,9 +493,26 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
         </div>
         <div className="tour-card__text">
           <h2 className="tour-card__title">{stepCopy.tourTitle}</h2>
+          {/* The badge sits under the title, as it does in the steps list: one place for it everywhere. */}
+          <div className="tour-card__meta">
+            {showcase ? (
+              <span className="release-chip release-chip--muted">{tour.showcaseChip}</span>
+            ) : (
+              <span
+                className={`release-chip${isAdmin && step.importance === 'required' ? ' release-chip--accent' : ' release-chip--muted'}`}
+              >
+                {!isAdmin ? tour.adminOnly : step.importance === 'required' ? tour.required : tour.optional}
+              </span>
+            )}
+            {showcase && showcase.stopCount > 1 ? (
+              <span className="tour-card__stop" key={showcase.stopIndex}>
+                {interpolate(tour.stopOf, { current: showcase.stopIndex + 1, total: showcase.stopCount })}
+              </span>
+            ) : null}
+          </div>
           <p className="tour-card__body">{stepCopy.tourBody}</p>
         </div>
-        {isAdmin && spec ? (
+        {!showcase && isAdmin && spec ? (
           <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle}>
             {spec.choices.map((choice) => (
               <button
@@ -325,7 +537,15 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
             </div>
           ) : status ? (
             <p className="tour-card__hint">{status}</p>
-          ) : !isAdmin ? (
+          ) : showcase && showcase.stopCount > 1 ? (
+            <p className="sr-only">
+              {interpolate(tour.stopLive, {
+                current: showcase.stopIndex + 1,
+                total: showcase.stopCount,
+                title: stepCopy.tourTitle,
+              })}
+            </p>
+          ) : !isAdmin && !showcase ? (
             <p className="tour-card__hint">{tour.viewerHint}</p>
           ) : null}
         </div>
@@ -335,7 +555,11 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
           </p>
         ) : null}
         <div className="tour-card__footer">
-          {isAdmin && !done && state.target !== 'missing' ? (
+          {showcase ? (
+            <Button tone="ghost" className="button--sm" onClick={handleSkipShowcase}>
+              {tour.skipShowcase}
+            </Button>
+          ) : isAdmin && !done && state.target !== 'missing' ? (
             <Button tone="ghost" className="button--sm" onClick={handleStaysAsIs}>
               {copy.panel.stayAsIs}
             </Button>
@@ -352,7 +576,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
                 <ReleaseIcon name="arrow-left" size={14} />
               </Button>
             ) : null}
-            {state.target === 'missing' ? (
+            {state.target === 'missing' && !showcase ? (
               // A step that cannot be shown must never trap the walk: skipping always moves on.
               <Button tone="primary" className="button--sm" onClick={() => (isLast ? onClose() : dispatch({ type: 'skip' }))}>
                 {tour.skip} <ReleaseIcon name="arrow-right" size={14} />

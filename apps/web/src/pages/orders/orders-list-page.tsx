@@ -1337,10 +1337,12 @@ export function OrdersListPage(): ReactElement {
             </ReadOnlyLock>
           ) : null}
           {/* The control hides itself on a phone — cards ignore columns. */}
-          <OrderColumnVisibilityControl
-            visibleColumnIds={visibleColumnIds}
-            onVisibleColumnIdsChange={setVisibleColumnIds}
-          />
+          <span className="tour-anchor" data-tour="orders-columns">
+            <OrderColumnVisibilityControl
+              visibleColumnIds={visibleColumnIds}
+              onVisibleColumnIdsChange={setVisibleColumnIds}
+            />
+          </span>
           <Button tone="ghost" className="button--sm" onClick={refreshAll}>
             {copy.refresh}
             <span className="button__shortcut">R</span>
@@ -1540,6 +1542,7 @@ export function OrdersListPage(): ReactElement {
               internalOrderIds={(query.data?.items ?? []).map((order) => order.internalOrderId)}
             />
           ) : null}
+          <div data-tour="orders-table">
           <DataTable
             caption={copy.tableCaption}
             columns={visibleColumns}
@@ -1974,6 +1977,7 @@ export function OrdersListPage(): ReactElement {
               },
             }}
           />
+          </div>
 
           <ListPagination
             offset={offset}
