@@ -12,6 +12,39 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.20.0](https://github.com/openlinker-project/openlinker/compare/v0.19.0...v0.20.0) (2026-11-19)
+
+
+### Features
+
+* **connections:** refuse ProductMaster and ProductPublisher on one connection ([#4123](https://github.com/openlinker-project/openlinker/issues/4123)) ([56c6cd1](https://github.com/openlinker-project/openlinker/commit/56c6cd16a9197dd0db52e0a4aad94798bcd896bd))
+* **integrations:** Shopify integration ([#4091](https://github.com/openlinker-project/openlinker/issues/4091)) ([#4100](https://github.com/openlinker-project/openlinker/issues/4100)) ([99754c5](https://github.com/openlinker-project/openlinker/commit/99754c58d670f34eef938fe7def4571c34ebeaea))
+* **orders:** find an order by its OpenLinker id in the list search ([#4231](https://github.com/openlinker-project/openlinker/issues/4231)) ([60842f8](https://github.com/openlinker-project/openlinker/commit/60842f841d3f3d79edb5612b2e98c9d77ca14d88))
+* **shipping:** a label the carrier is still preparing is pending, and order shipments refresh without a reload ([#4106](https://github.com/openlinker-project/openlinker/issues/4106)) ([6710de1](https://github.com/openlinker-project/openlinker/commit/6710de182c32f5533df8c4c459744e0418fcbf17))
+* **web:** animate the account menu like the language and theme switches ([#4102](https://github.com/openlinker-project/openlinker/issues/4102)) ([dfec576](https://github.com/openlinker-project/openlinker/commit/dfec576c56d85f65aea15601dc151dc504a09f4b)), closes [#4101](https://github.com/openlinker-project/openlinker/issues/4101)
+* **web:** reveal the environment badge version on hover and focus ([#4240](https://github.com/openlinker-project/openlinker/issues/4240)) ([130e6cc](https://github.com/openlinker-project/openlinker/commit/130e6ccae7d643734899dabf47c87c012737b66c))
+* **web:** show connection name on the ConnectionChip face, integration on hover ([#4235](https://github.com/openlinker-project/openlinker/issues/4235)) ([c260ebc](https://github.com/openlinker-project/openlinker/commit/c260ebcfb94b2c137cc27d0d2d190d2f9324be6f))
+* **web:** toggle for notifying the shop or marketplace on label purchase ([#4175](https://github.com/openlinker-project/openlinker/issues/4175)) ([ba57a6b](https://github.com/openlinker-project/openlinker/commit/ba57a6be0042726534bfc69460ca93d1654ac288)), closes [#4097](https://github.com/openlinker-project/openlinker/issues/4097)
+
+
+### Bug Fixes
+
+* **allegro:** Allegro Delivery creates and downloads a label ([#4105](https://github.com/openlinker-project/openlinker/issues/4105)) ([1118261](https://github.com/openlinker-project/openlinker/commit/1118261cde1c86236deea4d2cc31ce290475fe30))
+* **core:** record an order for an unlisted offer as awaiting_mapping without retrying ([#4120](https://github.com/openlinker-project/openlinker/issues/4120)) ([1b0767b](https://github.com/openlinker-project/openlinker/commit/1b0767bcbe17690db1784baf40fec6e5bf85501b))
+* **core:** refuse a destination retry on an order OMS routing owns ([#4119](https://github.com/openlinker-project/openlinker/issues/4119)) ([0778c14](https://github.com/openlinker-project/openlinker/commit/0778c14127d047278a26fe73092a2ec31515452a))
+* **core:** retry an order destination that refused us transiently ([#4115](https://github.com/openlinker-project/openlinker/issues/4115)) ([4d641ca](https://github.com/openlinker-project/openlinker/commit/4d641caf067423a982a650a109e913d4603eff8d))
+* **inventory:** retry a sale decrement whose request provably never left ([#4122](https://github.com/openlinker-project/openlinker/issues/4122)) ([5873ba7](https://github.com/openlinker-project/openlinker/commit/5873ba7ef4ea0c9aa8e84df6ba20c8d8fb349ba7))
+* **listings:** block a card-linked variant whose category was changed ([#4114](https://github.com/openlinker-project/openlinker/issues/4114)) ([f8860cc](https://github.com/openlinker-project/openlinker/commit/f8860cc5a6b1bed38ae03998c67d0b0d0c50a811))
+* **listings:** prefill the resumed wizard from the failed records' saved requests ([#4116](https://github.com/openlinker-project/openlinker/issues/4116)) ([5866dab](https://github.com/openlinker-project/openlinker/commit/5866dab0b61b5bbba5e8b44239b039cdc612ce3e))
+* **listings:** price each sibling offer from its own variant price ([#4108](https://github.com/openlinker-project/openlinker/issues/4108)) ([1a213b9](https://github.com/openlinker-project/openlinker/commit/1a213b93a5908af4e600e99d1688e6b81c66da48))
+* **orders:** do not route an order before it is paid ([#4033](https://github.com/openlinker-project/openlinker/issues/4033)) ([#4113](https://github.com/openlinker-project/openlinker/issues/4113)) ([f20c98d](https://github.com/openlinker-project/openlinker/commit/f20c98d806673e08f7e7b60e4257e55541f48b4f))
+* **orders:** list an order bought and cancelled within one poll window ([#4118](https://github.com/openlinker-project/openlinker/issues/4118)) ([25fbe74](https://github.com/openlinker-project/openlinker/commit/25fbe7469dae40b3a7675e7d88301a9009ed6df8))
+* **prestashop:** import orders with the mapped payment module, not only its label ([#4111](https://github.com/openlinker-project/openlinker/issues/4111)) ([107197c](https://github.com/openlinker-project/openlinker/commit/107197cd54b2b64dc713031f24b59ab183e65ef7))
+* **prestashop:** sanitize buyer names to isName rules before provisioning ([#4109](https://github.com/openlinker-project/openlinker/issues/4109)) ([f76cf8e](https://github.com/openlinker-project/openlinker/commit/f76cf8e29799d4c86e160581235c5c1faef0c15c)), closes [#3989](https://github.com/openlinker-project/openlinker/issues/3989)
+* **sync:** keep a product webhook burst from delaying orders of the same shop ([#4124](https://github.com/openlinker-project/openlinker/issues/4124)) ([8d75d15](https://github.com/openlinker-project/openlinker/commit/8d75d15ed5066deb67ba09e4134b31cbfca87c17))
+* **worker:** end an automatic label purchase on a carrier refusal or failed preflight ([#4121](https://github.com/openlinker-project/openlinker/issues/4121)) ([75cb479](https://github.com/openlinker-project/openlinker/commit/75cb479552ba1df4ec0f8d968390f9517bad751a))
+* **worker:** resolve the orders poll default cursor key from the connection's plugin ([#4110](https://github.com/openlinker-project/openlinker/issues/4110)) ([37bb8b2](https://github.com/openlinker-project/openlinker/commit/37bb8b2f48800cb7f3f08f00b61aefd354091de7))
+
 ## [0.19.0](https://github.com/openlinker-project/openlinker/compare/v0.18.0...v0.19.0) (2026-11-10)
 
 
