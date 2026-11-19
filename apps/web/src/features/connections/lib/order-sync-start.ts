@@ -11,6 +11,7 @@
  */
 import { z } from 'zod';
 import {
+  ORDER_IMPORT_ORDER_VALUES,
   ORDER_SYNC_START_MODE_VALUES,
   type OrderSyncStart,
   type OrderSyncStartMode,
@@ -58,6 +59,7 @@ export const orderSyncStartSchema = z
   .object({
     mode: z.enum(ORDER_SYNC_START_MODE_VALUES),
     from: z.string().optional(),
+    order: z.enum(ORDER_IMPORT_ORDER_VALUES).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.mode !== 'from') return;
@@ -81,8 +83,10 @@ export const ORDER_SYNC_START_DEFAULT_VALUE: OrderSyncStartValue = { mode: 'now'
  */
 export function toOrderSyncStart(value: OrderSyncStartValue | undefined): OrderSyncStart | undefined {
   if (!value || value.mode === 'now') return undefined;
-  if (value.mode === 'all') return { mode: 'all' };
-  return { mode: 'from', from: value.from ?? '' };
+  // Oldest-first is what the backend does with no value, so only the other choice is sent.
+  const order = value.order === 'newest-first' ? { order: value.order } : {};
+  if (value.mode === 'all') return { mode: 'all', ...order };
+  return { mode: 'from', from: value.from ?? '', ...order };
 }
 
 /** Whether the order-history step applies to this connection. */
@@ -94,6 +98,8 @@ interface ReviewCopy {
   now: string;
   all: string;
   from: string;
+  /** Appended to "all" and "from" when the newest orders are imported first. */
+  newestFirst?: string;
 }
 
 /** One-line statement of the choice, for the review step and the summary rail. */
@@ -103,12 +109,13 @@ export function describeOrderSyncStart(
   formatDate: (iso: string) => string,
 ): string {
   if (!value || value.mode === 'now') return copy.now;
-  if (value.mode === 'all') return copy.all;
+  const suffix = value.order === 'newest-first' && copy.newestFirst ? ` · ${copy.newestFirst}` : '';
+  if (value.mode === 'all') return `${copy.all}${suffix}`;
   // A date that is still being typed, or that the schema will refuse, must not
   // be echoed back as the operator's choice, and must not read as "only new
   // orders" either: the summary would then contradict the selected card.
   const from = value.from ?? '';
   const usable =
     isRealDate(from) && from <= latestOrderSyncStartDate() && from >= earliestOrderSyncStartDate();
-  return copy.from.replace('{date}', usable ? formatDate(`${from}T12:00:00`) : '…');
+  return `${copy.from.replace('{date}', usable ? formatDate(`${from}T12:00:00`) : '…')}${suffix}`;
 }

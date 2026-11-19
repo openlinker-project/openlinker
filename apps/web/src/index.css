@@ -40479,3 +40479,79 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   top: var(--space-3);
   right: var(--space-3);
 }
+
+/* The second step of the start choice: which end of the history comes first. */
+.order-sync-start__order {
+  display: grid;
+  gap: var(--space-2);
+}
+.order-sync-start__order-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-sync-start__order-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+@media (max-width: 520px) {
+  .order-sync-start__order-options {
+    grid-template-columns: 1fr;
+  }
+}
+.order-sync-start__order-option {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    border-color 120ms var(--ease-out),
+    background-color 120ms var(--ease-out);
+}
+.order-sync-start__order-option:hover:not(.order-sync-start__order-option--disabled) {
+  border-color: var(--accent-primary);
+}
+.order-sync-start__order-option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.order-sync-start__order-option--checked {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+}
+.order-sync-start__order-option--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.order-sync-start__order-label {
+  font-weight: 600;
+}
+.order-sync-start__order-text {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* ── Manual order range import (#4228) ── */
+.order-range {
+  display: grid;
+  gap: var(--space-3);
+}
+.order-range__dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+@media (max-width: 520px) {
+  .order-range__dates {
+    grid-template-columns: 1fr;
+  }
+}

@@ -97,6 +97,8 @@ export function ErliSetupForm(): ReactElement {
   const orderSyncStartModes =
     adaptersQuery.data?.find((a) => a.adapterKey === ERLI_ADAPTER_KEY)?.orderSyncStartModes ??
     ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport =
+    adaptersQuery.data?.find((a) => a.adapterKey === ERLI_ADAPTER_KEY)?.orderWindowImport ?? false;
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -283,6 +285,7 @@ export function ErliSetupForm(): ReactElement {
               form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
             }
             supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
             error={form.formState.errors.orderSyncStart?.from?.message}
           />
         ) : null}

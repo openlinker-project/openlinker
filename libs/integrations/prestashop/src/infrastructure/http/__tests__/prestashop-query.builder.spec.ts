@@ -66,6 +66,12 @@ describe('PrestashopQueryBuilder', () => {
       expect(query).toContain('filter[id]=>[42]');
     });
 
+    it('should build an exclusive id upper-bound filter for newest-first keyset paging (#4228)', () => {
+      const query = PrestashopQueryBuilder.buildQuery('orders', { idBefore: 42 });
+      expect(query).toContain('filter[id]=<[42]');
+      expect(query).not.toContain('date=1');
+    });
+
     it('should add date=1 when sorting by a date column without any date filter', () => {
       // PrestaShop lists date_upd as a sortable field only with date=1; without it the
       // newest-order read of the order feed fails on every shop.
@@ -394,6 +400,25 @@ describe('PrestashopQueryBuilder', () => {
     it('should handle string IDs', () => {
       const path = PrestashopQueryBuilder.buildResourcePath('orders', '456');
       expect(path).toBe('/api/orders/456');
+    });
+  });
+
+  describe('dateAddBetween', () => {
+    it('should emit one inclusive range, with date=1', () => {
+      const url = PrestashopQueryBuilder.buildQuery('orders', {
+        dateAddBetween: { from: '2026-08-01 00:00:00', to: '2026-08-03 23:59:59' },
+      });
+      expect(url).toContain('filter[date_add]=[2026-08-01 00:00:00,2026-08-03 23:59:59]');
+      expect(url).toContain('date=1');
+    });
+
+    it('should close an open end with a sentinel instead of dropping the filter', () => {
+      expect(PrestashopQueryBuilder.buildQuery('orders', { dateAddBetween: { from: '2026-08-01 00:00:00' } })).toContain(
+        'filter[date_add]=[2026-08-01 00:00:00,9999-12-31 23:59:59]'
+      );
+      expect(PrestashopQueryBuilder.buildQuery('orders', { dateAddBetween: { to: '2026-08-03 23:59:59' } })).toContain(
+        'filter[date_add]=[1970-01-01 00:00:00,2026-08-03 23:59:59]'
+      );
     });
   });
 });

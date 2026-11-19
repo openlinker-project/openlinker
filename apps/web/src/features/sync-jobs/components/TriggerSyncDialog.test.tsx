@@ -216,6 +216,70 @@ describe('TriggerSyncDialog', () => {
       });
     });
 
+    describe('order range import (#4228)', () => {
+      const source = {
+        ...sampleConnection,
+        platformType: 'prestashop' as const,
+        adapterKey: 'prestashop.webservice.v1',
+        supportedCapabilities: ['OrderSource' as const],
+      };
+      const adapter = (orderWindowImport: boolean) => ({
+        adapters: {
+          list: vi
+            .fn()
+            .mockResolvedValue([
+              {
+                adapterKey: 'prestashop.webservice.v1',
+                platformType: 'prestashop',
+                isDefault: true,
+                orderWindowImport,
+              },
+            ]),
+        },
+      });
+
+      it('should offer the range import only for a source that can read a window', async () => {
+        renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
+          apiClient: createMockApiClient(adapter(false)),
+        });
+        await screen.findByRole('combobox', { name: /job type/i });
+        expect(screen.queryByRole('option', { name: /date range/i })).not.toBeInTheDocument();
+      });
+
+      it('should require the first day and send the range as one import run', async () => {
+        const mockApi = createMockApiClient(adapter(true));
+        renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
+          apiClient: mockApi,
+        });
+        await screen.findByRole('option', { name: /date range/i });
+        fireEvent.change(screen.getByRole('combobox', { name: /job type/i }), {
+          target: { value: 'marketplace.orders.import' },
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: /^trigger$/i }));
+        expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
+        expect(mockApi.syncJobs.enqueue).not.toHaveBeenCalled();
+
+        fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
+        fireEvent.change(screen.getByLabelText('Read'), { target: { value: 'newest-first' } });
+        fireEvent.click(screen.getByRole('button', { name: /^trigger$/i }));
+        await waitFor(() => {
+          expect(mockApi.syncJobs.enqueue).toHaveBeenCalledWith(
+            expect.objectContaining({
+              jobType: 'marketplace.orders.import',
+              payload: expect.objectContaining({
+                schemaVersion: 1,
+                from: '2026-10-01',
+                direction: 'newest-first',
+                cursor: null,
+                page: 1,
+              }),
+            })
+          );
+        });
+      });
+    });
+
     it('should list saved order positions and send the chosen one', async () => {
       const mockApi = createMockApiClient({
         cursors: {

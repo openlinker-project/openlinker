@@ -93,6 +93,16 @@ export type { OrderFeedBootstrap } from './domain/ports/capabilities/order-feed-
 export { isOrderFeedBootstrap } from './domain/ports/capabilities/order-feed-bootstrap.capability';
 export type { OrderFeedDateBootstrap } from './domain/ports/capabilities/order-feed-date-bootstrap.capability';
 export { isOrderFeedDateBootstrap } from './domain/ports/capabilities/order-feed-date-bootstrap.capability';
+export type {
+  OrderImportDirection,
+  OrderWindowInput,
+  OrderWindowPage,
+  OrderWindowReader,
+} from './domain/ports/capabilities/order-window-reader.capability';
+export {
+  OrderImportDirectionValues,
+  isOrderWindowReader,
+} from './domain/ports/capabilities/order-window-reader.capability';
 export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 // The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a
@@ -408,6 +418,7 @@ export {
   IOrderIngestionService,
   OrderIngestionOptions,
   OrderIngestionResult,
+  OrderImportPageResult,
 } from './application/interfaces/order-ingestion.service.interface';
 
 // #2408: the fulfilment-router resolution seam moved OUT of this context and

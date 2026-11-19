@@ -166,10 +166,13 @@ export const ORDER_SYNC_START_MODE_VALUES = ['now', 'from', 'all'] as const;
 export type OrderSyncStartMode = (typeof ORDER_SYNC_START_MODE_VALUES)[number];
 
 /** Mirrors the backend create-request contract (#4228). `from` is a `YYYY-MM-DD` date. */
+export const ORDER_IMPORT_ORDER_VALUES = ['oldest-first', 'newest-first'] as const;
+export type OrderImportOrder = (typeof ORDER_IMPORT_ORDER_VALUES)[number];
+
 export type OrderSyncStart =
   | { mode: 'now' }
-  | { mode: 'from'; from: string }
-  | { mode: 'all' };
+  | { mode: 'from'; from: string; order?: OrderImportOrder }
+  | { mode: 'all'; order?: OrderImportOrder };
 
 export interface CreateConnectionInput {
   name: string;

@@ -239,6 +239,16 @@ export interface AdapterMetadata {
   orderSyncStartModes?: readonly ('now' | 'from' | 'all')[];
 
   /**
+   * Whether this adapter implements `OrderWindowReader` (#4228): importing
+   * history newest-first, and importing a chosen date range on demand. Absent
+   * means `false`; the UI then shows both choices as unavailable. Declared
+   * statically for the same reason as `orderSyncStartModes`, and the import
+   * job still probes the capability at run time and fails loudly if the
+   * declaration lied.
+   */
+  orderWindowImport?: boolean;
+
+  /**
    * Whether an operator may ARCHIVE a connection on this adapter (#3657).
    * Absent means `true`; an adapter that declares `false` can be disabled but
    * never archived.

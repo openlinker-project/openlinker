@@ -228,6 +228,10 @@
         "description": "Match product variants to marketplace offers by barcode.",
         "label": "Auto-match variants"
       },
+      "importOrders": {
+        "description": "Reads the orders placed in the days you choose, once. It does not change which orders count as new, and orders OpenLinker already has are updated, not copied twice.",
+        "label": "Import orders from a date range"
+      },
       "pollOrders": {
         "description": "Checks the shop now for orders OpenLinker has not imported yet. It does not change which orders count as new.",
         "label": "Check for new orders"
@@ -277,6 +281,22 @@
       "startAction": "Change start…",
       "startText": "Each check reads only what is new since the previous one. To import older orders, or to begin from another day, change the start.",
       "startTitle": "Which orders get imported"
+    },
+    "orderRange": {
+      "directionLabel": "Read",
+      "errors": {
+        "fromInvalid": "Enter a valid date",
+        "fromRequired": "Choose the first day",
+        "fromTooOld": "Choose a day within the last 5 years",
+        "future": "Choose a day that is not in the future",
+        "toBeforeFrom": "The last day cannot be before the first day",
+        "toInvalid": "Enter a valid date"
+      },
+      "fromLabel": "First day",
+      "newestFirst": "Newest first",
+      "oldestFirst": "Oldest first",
+      "toHelp": "Leave empty to read up to the newest order.",
+      "toLabel": "Last day"
     },
     "requiredField": "{field} *",
     "title": "Trigger sync",

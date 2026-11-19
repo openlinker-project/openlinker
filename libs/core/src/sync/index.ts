@@ -100,6 +100,7 @@ export {
 } from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
+  MarketplaceOrdersImportPayloadV1,
   MarketplaceOrderSyncPayloadV1,
   MarketplaceOrderFxStampPayloadV1,
   MarketplaceOrderFxStampSweepPayloadV1,
@@ -223,12 +224,13 @@ export {
 } from './domain/types/order-feed-seed-cursor.types';
 
 // Order sync start intent (#4228)
-export type { OrderSyncStart, OrderSyncStartMode } from './domain/types/order-sync-start.types';
+export type { OrderSyncStart, OrderSyncStartMode, OrderSyncStartOrder } from './domain/types/order-sync-start.types';
 export {
   DEFAULT_ORDER_SYNC_START_MODES,
   ORDER_SYNC_START_CURSOR_KEY,
   ORDER_SYNC_START_MAX_AGE_YEARS,
   OrderSyncStartModeValues,
+  OrderSyncStartOrderValues,
   describeInvalidOrderSyncStartDate,
   parseOrderSyncStart,
   resolveOrderSyncStartModes,

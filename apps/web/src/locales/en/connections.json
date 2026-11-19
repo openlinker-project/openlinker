@@ -1138,10 +1138,23 @@
       "noStock": "Stock is not held for orders that already shipped.",
       "summary": "Starting from now keeps the first import quick and leaves the past alone."
     },
+    "order": {
+      "newest-first": {
+        "description": "The latest orders arrive first and new orders keep flowing while older ones are read.",
+        "title": "Newest first"
+      },
+      "oldest-first": {
+        "description": "Orders are imported in the order they were placed. New orders wait until the history is done.",
+        "title": "Oldest first"
+      },
+      "title": "Which orders come first?",
+      "unsupported": "Not available for this connection yet."
+    },
     "review": {
       "all": "Every order",
       "from": "Since {date}",
       "label": "Orders to import",
+      "newestFirst": "newest first",
       "now": "New orders only"
     },
     "title": "Which orders should OpenLinker bring in?",

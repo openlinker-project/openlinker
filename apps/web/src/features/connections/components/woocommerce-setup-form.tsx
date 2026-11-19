@@ -123,6 +123,7 @@ export function WoocommerceSetupForm(): ReactElement {
   // create-connection request DTO is still strict on `CoreCapabilityValues`
   // (#576), so the wizard only exposes core caps today.
   const orderSyncStartModes = adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport = adapterMetadata?.orderWindowImport ?? false;
   const supportedCapabilities: CoreCapability[] = (
     adapterMetadata?.supportedCapabilities ?? WOOCOMMERCE_FALLBACK_CAPABILITIES
   ).filter((capability): capability is CoreCapability =>
@@ -315,6 +316,7 @@ export function WoocommerceSetupForm(): ReactElement {
               form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
             }
             supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
             error={form.formState.errors.orderSyncStart?.from?.message}
           />
         ) : null}

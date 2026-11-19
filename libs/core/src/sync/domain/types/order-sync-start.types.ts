@@ -24,7 +24,14 @@ export const ORDER_SYNC_START_CURSOR_KEY = 'orders.syncStart';
 export const OrderSyncStartModeValues = ['now', 'from', 'all'] as const;
 export type OrderSyncStartMode = (typeof OrderSyncStartModeValues)[number];
 
-export type OrderSyncStart = { mode: 'now' } | { mode: 'from'; from: string } | { mode: 'all' };
+export const OrderSyncStartOrderValues = ['oldest-first', 'newest-first'] as const;
+/** Which end of the history is imported first; only meaningful for `from` and `all`. */
+export type OrderSyncStartOrder = (typeof OrderSyncStartOrderValues)[number];
+
+export type OrderSyncStart =
+  | { mode: 'now' }
+  | { mode: 'from'; from: string; order?: OrderSyncStartOrder }
+  | { mode: 'all'; order?: OrderSyncStartOrder };
 
 /** Modes an adapter supports when its manifest declares nothing. */
 export const DEFAULT_ORDER_SYNC_START_MODES: readonly OrderSyncStartMode[] = ['now', 'all'];
@@ -68,8 +75,13 @@ export function describeInvalidOrderSyncStartDate(from: unknown, now: Date): str
 
 /** The persisted wire value of an intent. */
 export function serializeOrderSyncStart(start: OrderSyncStart): string {
+  // `oldest-first` is the default and is never written, so an intent stored by an
+  // older build and one stored today for the same choice are the same string.
+  const order = start.mode !== 'now' && start.order === 'newest-first' ? { order: start.order } : {};
   return JSON.stringify(
-    start.mode === 'from' ? { mode: 'from', from: start.from } : { mode: start.mode }
+    start.mode === 'from'
+      ? { mode: 'from', from: start.from, ...order }
+      : { mode: start.mode, ...order }
   );
 }
 
@@ -86,16 +98,21 @@ export function parseOrderSyncStart(raw: string | null | undefined): OrderSyncSt
     return null;
   }
   if (typeof value !== 'object' || value === null) return null;
-  const candidate = value as { mode?: unknown; from?: unknown };
-  if (candidate.mode === 'now' || candidate.mode === 'all') {
-    return { mode: candidate.mode };
+  const candidate = value as { mode?: unknown; from?: unknown; order?: unknown };
+  const order: { order?: OrderSyncStartOrder } =
+    candidate.order === 'newest-first' ? { order: 'newest-first' } : {};
+  if (candidate.mode === 'now') {
+    return { mode: 'now' };
+  }
+  if (candidate.mode === 'all') {
+    return { mode: 'all', ...order };
   }
   if (
     candidate.mode === 'from' &&
     typeof candidate.from === 'string' &&
     candidate.from.trim() !== ''
   ) {
-    return { mode: 'from', from: candidate.from.trim() };
+    return { mode: 'from', from: candidate.from.trim(), ...order };
   }
   return null;
 }

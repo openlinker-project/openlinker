@@ -10,7 +10,12 @@
  * @implements {OrderSourcePort}
  */
 
-import type { OrderFeedBootstrap } from '@openlinker/core/orders';
+import type {
+  OrderFeedBootstrap,
+  OrderWindowReader,
+  OrderWindowInput,
+  OrderWindowPage,
+} from '@openlinker/core/orders';
 import { PAYMENT_STATUS, readSourceBuyerNote, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
@@ -60,6 +65,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import type {
   AllegroCheckoutForm,
+  AllegroCheckoutFormsResponse,
   AllegroDeliveryMethodsResponse,
   AllegroOrderEventsResponse,
   AllegroOrderEventStatsResponse,
@@ -141,7 +147,8 @@ export class AllegroOrderSourceAdapter
     ReturnDecliner,
     OrderBillingDocumentUploader,
     OrderBillingDocumentLinker,
-    OrderFeedBootstrap
+    OrderFeedBootstrap,
+    OrderWindowReader
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -492,10 +499,80 @@ export class AllegroOrderSourceAdapter
    * the poll rather than importing history.
    */
   async headCursor(): Promise<string | null> {
-    const response = await this.httpClient.get<AllegroOrderEventStatsResponse>(
-      '/order/event-stats'
-    );
+    const response =
+      await this.httpClient.get<AllegroOrderEventStatsResponse>('/order/event-stats');
     return response.data.latestEvent?.id ?? null;
+  }
+
+  /**
+   * Window read (#4228): the orders PLACED inside a date range, in a chosen
+   * direction, without touching the live feed.
+   *
+   * The live feed is the `/order/events` journal, which only moves forward and
+   * has no date lookup, so a window is read from the checkout-forms list
+   * (`lineItems.boughtAt` filter and sort) instead.
+   *
+   * That endpoint pages by offset only. To keep pages from overlapping or
+   * skipping while orders keep arriving, the window's upper end is ALWAYS
+   * pinned: when the caller gave no `to`, the instant of the walk's first page
+   * is used and carried in the cursor (`offset:<n>@<iso>`), so a newly placed
+   * order can never shift the offsets of an in-flight walk. The tradeoff is
+   * that orders placed after the walk started are not part of it - they reach
+   * OpenLinker through the live feed.
+   *
+   * The `eventKey` cannot match the journal's (that one is the event id, which
+   * a checkout form does not carry), so it is a deterministic
+   * `window:<checkoutFormId>`; window and live reads still converge because
+   * ingestion dedupes on the order id, not the key.
+   *
+   * Throws on any failure: a swallowed error would look like an empty window.
+   * The maximum offset Allegro accepts on this endpoint is not documented in a
+   * source reachable here, so none is enforced; an Allegro rejection surfaces
+   * as the thrown API error.
+   */
+  async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
+    const limit = Math.min(Math.max(1, input.limit), ALLEGRO_CHECKOUT_FORMS_MAX_LIMIT);
+    const { offset, upperBound } = parseWindowCursor(input.cursor);
+    const lower = input.from ? toWindowInstant(input.from, 'start') : undefined;
+    const upper =
+      upperBound ?? (input.to ? toWindowInstant(input.to, 'end') : new Date().toISOString());
+
+    const queryParams: Record<string, string | number> = {
+      'lineItems.boughtAt.lte': upper,
+      sort: input.direction === 'newest-first' ? '-lineItems.boughtAt' : 'lineItems.boughtAt',
+      limit,
+      offset,
+    };
+    if (lower) {
+      queryParams['lineItems.boughtAt.gte'] = lower;
+    }
+
+    try {
+      const response = await this.httpClient.get<AllegroCheckoutFormsResponse>(
+        '/order/checkout-forms',
+        { queryParams }
+      );
+      const forms = response.data.checkoutForms ?? [];
+      const items: OrderFeedItem[] = forms.map((form) => ({
+        externalOrderId: form.id,
+        eventType: 'created',
+        occurredAt: form.lineItems?.[0]?.boughtAt ?? upper,
+        eventKey: `window:${form.id}`,
+        raw: { source: 'checkout-forms-window' },
+      }));
+      const done = forms.length < limit;
+      return {
+        items,
+        done,
+        nextCursor: done ? null : `offset:${offset + forms.length}@${upper}`,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to list Allegro order window (connection: ${this.connectionId}): ${(error as Error).message}`,
+        error
+      );
+      throw error;
+    }
   }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
@@ -1474,6 +1551,26 @@ function isTransportFailure(error: unknown): boolean {
     error instanceof AllegroApiException &&
     (error.statusCode === undefined || error.statusCode >= 500)
   );
+}
+
+/** Allegro's documented page-size ceiling for the checkout-forms list. */
+const ALLEGRO_CHECKOUT_FORMS_MAX_LIMIT = 100;
+
+/** Date-only bounds are whole UTC days (Allegro dates are UTC instants). */
+function toWindowInstant(value: string, edge: 'start' | 'end'): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return edge === 'start' ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`;
+  }
+  return new Date(value).toISOString();
+}
+
+function parseWindowCursor(cursor: string | null): { offset: number; upperBound?: string } {
+  if (!cursor) return { offset: 0 };
+  const match = /^offset:(\d+)(?:@(.+))?$/.exec(cursor);
+  if (!match) {
+    throw new Error(`Invalid Allegro order window cursor: ${cursor}`);
+  }
+  return { offset: Number(match[1]), upperBound: match[2] };
 }
 
 function mapAllegroEventType(type: string): OrderFeedEventType {

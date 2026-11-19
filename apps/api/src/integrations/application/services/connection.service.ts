@@ -187,7 +187,8 @@ export class ConnectionService implements IConnectionService {
   private assertOrderSyncStart(
     start: OrderSyncStart,
     declaredModes: AdapterMetadata['orderSyncStartModes'],
-    enabledCapabilities: readonly string[]
+    enabledCapabilities: readonly string[],
+    windowImport: boolean
   ): void {
     const field = 'orderSyncStart';
     if (!OrderSyncStartModeValues.includes(start.mode)) {
@@ -213,6 +214,14 @@ export class ConnectionService implements IConnectionService {
         'one-of',
         `${field}.mode "${start.mode}" is not supported by this adapter. Supported: ${modes.join(', ')}`,
         { allowed: allowedValues(modes) }
+      );
+    }
+    if (start.mode !== 'now' && start.order === 'newest-first' && !windowImport) {
+      throw connectionConfigInvalid(
+        `${field}.order`,
+        'one-of',
+        `${field}.order "newest-first" is not supported by this adapter. Supported: oldest-first`,
+        { allowed: allowedValues(['oldest-first']) }
       );
     }
     if (start.mode === 'from') {
@@ -1228,7 +1237,12 @@ export class ConnectionService implements IConnectionService {
       platformType: connection.platformType,
       adapterKey: connection.adapterKey,
     });
-    this.assertOrderSyncStart(start, metadata.orderSyncStartModes, connection.enabledCapabilities);
+    this.assertOrderSyncStart(
+      start,
+      metadata.orderSyncStartModes,
+      connection.enabledCapabilities,
+      metadata.orderWindowImport === true
+    );
     // "New orders only" on a feed that already has a position is what the feed is doing:
     // it reads on from its last check. Resetting it to the shop's head would skip every
     // order placed since that check, so there is nothing to reset.
@@ -1393,7 +1407,8 @@ export class ConnectionService implements IConnectionService {
         this.assertOrderSyncStart(
           orderSyncStart,
           metadata.orderSyncStartModes,
-          enabledCapabilities
+          enabledCapabilities,
+          metadata.orderWindowImport === true
         );
       }
 

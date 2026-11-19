@@ -14,7 +14,9 @@ function Harness({
   initial = { mode: 'now' },
   onValue,
   error,
+  windowImport = true,
 }: {
+  windowImport?: boolean;
   supportedModes?: OrderSyncStartMode[];
   initial?: OrderSyncStartValue;
   onValue?: (value: OrderSyncStartValue) => void;
@@ -26,6 +28,7 @@ function Harness({
       value={value}
       supportedModes={supportedModes}
       error={error}
+      windowImport={windowImport}
       onChange={(next) => {
         setValue(next);
         onValue?.(next);
@@ -119,5 +122,42 @@ describe('OrderSyncStartField', () => {
       'aria-checked',
       'true'
     );
+  });
+
+  describe('import order step', () => {
+    it('should not offer an order for new orders only', () => {
+      renderWithProviders(<Harness />);
+      expect(screen.queryByText('Which orders come first?')).not.toBeInTheDocument();
+    });
+
+    it('should let the operator pick newest first for the whole history', () => {
+      const onValue = vi.fn();
+      renderWithProviders(<Harness initial={{ mode: 'all' }} onValue={onValue} />);
+      fireEvent.click(screen.getByRole('radio', { name: /Newest first/ }));
+      expect(onValue).toHaveBeenLastCalledWith({ mode: 'all', order: 'newest-first' });
+    });
+
+    it('should keep the chosen order when the range changes between a date and all', () => {
+      const onValue = vi.fn();
+      renderWithProviders(
+        <Harness initial={{ mode: 'all', order: 'newest-first' }} onValue={onValue} />
+      );
+      fireEvent.click(screen.getByRole('radio', { name: /Orders since a date/ }));
+      expect(onValue).toHaveBeenLastCalledWith({ mode: 'from', from: '', order: 'newest-first' });
+      fireEvent.click(screen.getByRole('radio', { name: /New orders only/ }));
+      expect(onValue).toHaveBeenLastCalledWith({ mode: 'now' });
+    });
+
+    it('should show newest first as unavailable, and refuse it, for a source that cannot', () => {
+      const onValue = vi.fn();
+      renderWithProviders(
+        <Harness initial={{ mode: 'all' }} onValue={onValue} windowImport={false} />
+      );
+      const card = screen.getByRole('radio', { name: /Newest first/ });
+      expect(card).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByText(/Not available for this connection yet/)).toBeInTheDocument();
+      fireEvent.click(card);
+      expect(onValue).not.toHaveBeenCalled();
+    });
   });
 });

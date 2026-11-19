@@ -32,6 +32,14 @@ import {
   ORDER_POSITION_CUSTOM,
   ORDER_POSITION_DEFAULT,
 } from './order-position-field';
+import { useAdaptersQuery } from '../../adapters';
+import { OrderRangeFields } from './order-range-fields';
+import {
+  ORDER_RANGE_DEFAULT_VALUE,
+  toOrderImportPayload,
+  validateOrderRange,
+  type OrderRangeValue,
+} from '../lib/order-range';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 type TriggerSyncDialogCopy = Messages['sync-jobs']['triggerSyncDialog'];
@@ -120,6 +128,15 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
       requiredCapability: 'OrderSource',
     },
     {
+      jobType: 'marketplace.orders.import',
+      label: jobs.importOrders.label,
+      description: jobs.importOrders.description,
+      payloadFields: [],
+      // Offered only for sources that declare `orderWindowImport`; see the filter in
+      // the dialog, which knows the adapter.
+      requiredCapability: 'OrderSource',
+    },
+    {
       jobType: 'inventory.propagateToMarketplaces',
       label: jobs.propagateInventory.label,
       description: jobs.propagateInventory.description,
@@ -172,14 +189,21 @@ export function TriggerSyncDialog({
   submitDisabled = false,
 }: TriggerSyncDialogProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog;
+  const adapters = useAdaptersQuery();
+  const canImportRange =
+    (
+      adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
+      adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault)
+    )?.orderWindowImport === true;
   const triggerableJobs = useMemo(
     () =>
       buildTriggerableJobs(copy).filter(
         (job) =>
-          !job.requiredCapability ||
-          connection.supportedCapabilities.includes(job.requiredCapability),
+          (job.jobType !== 'marketplace.orders.import' || canImportRange) &&
+          (!job.requiredCapability ||
+            connection.supportedCapabilities.includes(job.requiredCapability)),
       ),
-    [connection.supportedCapabilities, copy],
+    [connection.supportedCapabilities, copy, canImportRange],
   );
 
   const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
@@ -187,6 +211,7 @@ export function TriggerSyncDialog({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [positionChoice, setPositionChoice] = useState(ORDER_POSITION_DEFAULT);
   const [customPositionKey, setCustomPositionKey] = useState('');
+  const [orderRange, setOrderRange] = useState<OrderRangeValue>(ORDER_RANGE_DEFAULT_VALUE);
   // Stable idempotency-key suffix for this dialog open cycle. Reused across
   // retries after a failed submit so the backend dedup (Redis SET NX + DB
   // unique index on idempotency_key) collapses rapid double-clicks into a
@@ -210,6 +235,7 @@ export function TriggerSyncDialog({
       setFieldErrors({});
       setPositionChoice(ORDER_POSITION_DEFAULT);
       setCustomPositionKey('');
+      setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
       setIntentKey(crypto.randomUUID());
       enqueueSyncJob.reset();
     }
@@ -222,6 +248,7 @@ export function TriggerSyncDialog({
     setFieldErrors({});
     setPositionChoice(ORDER_POSITION_DEFAULT);
     setCustomPositionKey('');
+    setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
     enqueueSyncJob.reset();
   };
 
@@ -240,6 +267,11 @@ export function TriggerSyncDialog({
     ) {
       errors.cursorKey = copy.orderPosition.customRequired;
     }
+    if (selectedJob.jobType === 'marketplace.orders.import') {
+      const problems = validateOrderRange(orderRange);
+      if (problems.from) errors.from = copy.orderRange.errors[problems.from];
+      if (problems.to) errors.to = copy.orderRange.errors[problems.to];
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -247,7 +279,10 @@ export function TriggerSyncDialog({
   const handleSubmit = async (): Promise<void> => {
     if (!selectedJob || !validate() || intentKey === null) return;
 
-    const payload: Record<string, unknown> = { schemaVersion: 1 };
+    const payload: Record<string, unknown> =
+      selectedJob.jobType === 'marketplace.orders.import'
+        ? toOrderImportPayload(orderRange, intentKey)
+        : { schemaVersion: 1 };
     for (const field of selectedJob.payloadFields) {
       const raw = payloadValues[field.name]?.trim();
       if (raw) {
@@ -341,6 +376,15 @@ export function TriggerSyncDialog({
               customError={fieldErrors.cursorKey}
               disabled={enqueueSyncJob.isPending}
               onNavigate={() => onOpenChange(false)}
+            />
+          ) : null}
+
+          {selectedJob?.jobType === 'marketplace.orders.import' ? (
+            <OrderRangeFields
+              value={orderRange}
+              onChange={setOrderRange}
+              errors={{ from: fieldErrors.from, to: fieldErrors.to }}
+              disabled={enqueueSyncJob.isPending}
             />
           ) : null}
 

@@ -230,6 +230,10 @@
         "description": "Dopasuj warianty produktów do ofert w marketplace według kodu kreskowego.",
         "label": "Automatycznie dopasuj warianty"
       },
+      "importOrders": {
+        "description": "Jednorazowo pobiera zamówienia złożone w wybranych dniach. Nie zmienia tego, które zamówienia uchodzą za nowe, a zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz.",
+        "label": "Importuj zamówienia z zakresu dat"
+      },
       "pollOrders": {
         "description": "Sprawdza teraz w sklepie, czy są zamówienia, których OpenLinker jeszcze nie pobrał. Nie zmienia tego, które zamówienia uznaje za nowe.",
         "label": "Sprawdź nowe zamówienia"
@@ -279,6 +283,22 @@
       "startAction": "Zmień start…",
       "startText": "Każde sprawdzenie czyta tylko to, co pojawiło się od poprzedniego. Żeby zaimportować starsze zamówienia albo zacząć od innego dnia, zmień start.",
       "startTitle": "Które zamówienia są importowane"
+    },
+    "orderRange": {
+      "directionLabel": "Kolejność",
+      "errors": {
+        "fromInvalid": "Wpisz poprawną datę",
+        "fromRequired": "Wybierz pierwszy dzień",
+        "fromTooOld": "Wybierz dzień z ostatnich 5 lat",
+        "future": "Wybierz dzień, który nie jest w przyszłości",
+        "toBeforeFrom": "Ostatni dzień nie może być przed pierwszym",
+        "toInvalid": "Wpisz poprawną datę"
+      },
+      "fromLabel": "Pierwszy dzień",
+      "newestFirst": "Od najnowszych",
+      "oldestFirst": "Od najstarszych",
+      "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
+      "toLabel": "Ostatni dzień"
     },
     "requiredField": "{field} *",
     "title": "Uruchom synchronizację",

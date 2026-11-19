@@ -936,6 +936,158 @@ describe('OrderIngestionService', () => {
       ]);
     });
 
+    describe('newest-first history import (#4228)', () => {
+      const seededKey = `${cursorKey}.seededAt`;
+      let headCursor: jest.Mock;
+
+      beforeEach(() => {
+        lock.acquire.mockResolvedValue('token-1');
+        lock.release.mockResolvedValue(true);
+        headCursor = jest.fn().mockResolvedValue('event-900');
+        (orderSource as unknown as { headCursor: jest.Mock }).headCursor = headCursor;
+        syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+          Promise.resolve(key === 'orders.syncStart' ? '{"mode":"all","order":"newest-first"}' : null)
+        );
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+      });
+
+      it('should seed the live feed at the head and enqueue the first import page before the marker', async () => {
+        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow = jest.fn();
+        const calls: string[] = [];
+        jobQueue.enqueueBulk.mockImplementation(() => {
+          calls.push('enqueue');
+          return Promise.resolve([]);
+        });
+        syncCursors.advanceCursor.mockImplementation((_c: string, key: string) => {
+          calls.push(`advance:${key}`);
+          return Promise.resolve();
+        });
+
+        const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(calls).toEqual(['enqueue', `advance:${cursorKey}`, `advance:${seededKey}`]);
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
+          expect.objectContaining({
+            type: 'marketplace.orders.import',
+            payload: expect.objectContaining({ direction: 'newest-first', cursor: null, page: 1 }),
+          }),
+        ]);
+        expect(result.nextCursor).toBe('event-900');
+        expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
+      });
+
+      it('should carry the chosen start date into the import window', async () => {
+        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow = jest.fn();
+        syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+          Promise.resolve(
+            key === 'orders.syncStart'
+              ? '{"mode":"from","from":"2026-10-01","order":"newest-first"}'
+              : null
+          )
+        );
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
+          expect.objectContaining({ payload: expect.objectContaining({ from: '2026-10-01' }) }),
+        ]);
+      });
+
+      it('should refuse with a typed error when the adapter cannot read a window', async () => {
+        await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toBeInstanceOf(
+          OrderSyncStartUnavailableError
+        );
+        expect(jobQueue.enqueueBulk).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('importOrderWindow (#4228)', () => {
+      let listOrdersInWindow: jest.Mock;
+      const payload = {
+        schemaVersion: 1 as const,
+        runId: 'run-1',
+        from: '2026-10-01',
+        direction: 'newest-first' as const,
+        cursor: null,
+        page: 1,
+      };
+
+      beforeEach(() => {
+        lock.acquire.mockResolvedValue('token-1');
+        lock.release.mockResolvedValue(true);
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+        listOrdersInWindow = jest.fn();
+        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow =
+          listOrdersInWindow;
+      });
+
+      it('should enqueue the orders and the next page, sharing the live feed dedupe key', async () => {
+        listOrdersInWindow.mockResolvedValue({
+          items: [
+            {
+              externalOrderId: '7',
+              eventType: 'created',
+              occurredAt: '2026-10-02T00:00:00.000Z',
+              eventKey: '7:2026-10-02 00:00:00:created',
+            },
+          ],
+          nextCursor: 'id:7',
+          done: false,
+        });
+
+        const result = await service.importOrderWindow(connectionId, payload);
+
+        expect(listOrdersInWindow).toHaveBeenCalledWith(
+          expect.objectContaining({ from: '2026-10-01', direction: 'newest-first', cursor: null })
+        );
+        expect(jobQueue.enqueueBulk).toHaveBeenNthCalledWith(1, [
+          expect.objectContaining({
+            type: 'marketplace.order.sync',
+            options: {
+              dedupeKey: `marketplace:${connectionId}:order:7:2026-10-02 00:00:00:created`,
+            },
+          }),
+        ]);
+        expect(jobQueue.enqueueBulk).toHaveBeenNthCalledWith(2, [
+          expect.objectContaining({
+            type: 'marketplace.orders.import',
+            payload: expect.objectContaining({ cursor: 'id:7', page: 2, runId: 'run-1' }),
+            options: { dedupeKey: `marketplace:${connectionId}:orders-import:run-1:2` },
+          }),
+        ]);
+        expect(result).toEqual({ fetched: 1, enqueued: 1, done: false, skippedDueToLock: false });
+      });
+
+      it('should end the chain on the last page and never touch the live cursor', async () => {
+        listOrdersInWindow.mockResolvedValue({ items: [], nextCursor: null, done: true });
+
+        const result = await service.importOrderWindow(connectionId, payload);
+
+        expect(result.done).toBe(true);
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledTimes(1);
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+        expect(syncCursors.getCursor).not.toHaveBeenCalled();
+      });
+
+      it('should report a held lock so the caller retries instead of dropping the chain', async () => {
+        lock.acquire.mockResolvedValue(null);
+
+        const result = await service.importOrderWindow(connectionId, payload);
+
+        expect(result.skippedDueToLock).toBe(true);
+        expect(listOrdersInWindow).not.toHaveBeenCalled();
+      });
+
+      it('should not enqueue the next page when enqueueing the orders fails', async () => {
+        listOrdersInWindow.mockResolvedValue({ items: [], nextCursor: 'id:7', done: false });
+        jobQueue.enqueueBulk.mockRejectedValueOnce(new Error('queue down'));
+
+        await expect(service.importOrderWindow(connectionId, payload)).rejects.toThrow('queue down');
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('first-poll seeding (#4228)', () => {
       const seededKey = `${cursorKey}.seededAt`;
       let headCursor: jest.Mock;

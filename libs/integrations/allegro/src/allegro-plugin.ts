@@ -126,6 +126,8 @@ export const allegroAdapterManifest: AdapterMetadata = {
   ],
   // The event journal has no date lookup, so a start date is not offered (#4228).
   orderSyncStartModes: ['now', 'all'],
+  // Window reads use the checkout-forms list, not the journal (#4228).
+  orderWindowImport: true,
   displayName: 'Allegro Public API v1',
   version: '1.0.0',
   isDefault: true,

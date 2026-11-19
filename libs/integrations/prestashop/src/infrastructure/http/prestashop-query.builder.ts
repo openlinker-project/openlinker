@@ -29,6 +29,19 @@ export interface PrestashopQueryFilters {
   dateTo?: Date;
 
   /**
+   * `date_add` window, both ends INCLUSIVE, as the shop's own wall clock
+   * (`YYYY-MM-DD HH:MM:SS`) and emitted verbatim; either end may be omitted.
+   *
+   * A separate filter from `dateFrom`/`dateTo` because those cannot express a
+   * range: the webservice honours a second `filter[date_add]` parameter by
+   * dropping the first, and does not know the `<=` operator at all (measured
+   * against a live shop, where both returned the whole table). The one form it
+   * honours for a bounded range is `[from,to]`, so an open end is closed with a
+   * sentinel instead of being left out.
+   */
+  dateAddBetween?: { from?: string; to?: string };
+
+  /**
    * `date_upd` lower bound, exclusive, as the shop's own wall clock
    * (`YYYY-MM-DD HH:MM:SS`) and emitted verbatim.
    *
@@ -51,6 +64,8 @@ export interface PrestashopQueryFilters {
    * incrementally by resuming after the highest `id` already read.
    */
   idAfter?: number;
+  /** `id` upper bound, exclusive: only rows with `id < idBefore` (newest-first keyset paging). */
+  idBefore?: number;
 
   /**
    * Status filters
@@ -199,7 +214,8 @@ export class PrestashopQueryBuilder {
     // needs it to SORT by a date column: without it `date_upd_DESC` answers 500
     // "Unable to filter by this field" on every shop, which the order feed reads as
     // "this shop refuses date_upd" and falls back to id order for good (#4228).
-    const hasDateFilters = filters?.dateFrom || filters?.dateTo || filters?.updatedAfter;
+    const hasDateFilters =
+      filters?.dateFrom || filters?.dateTo || filters?.updatedAfter || filters?.dateAddBetween;
     const sortsByDate = filters?.sort?.some((entry) => /^date_(add|upd)_(ASC|DESC)$/.test(entry));
     if (hasDateFilters || sortsByDate) {
       params.push('date=1');
@@ -227,6 +243,12 @@ export class PrestashopQueryBuilder {
       params.push(`filter[date_add]=<=[${dateStr}]`);
     }
 
+    if (filters?.dateAddBetween && (filters.dateAddBetween.from || filters.dateAddBetween.to)) {
+      const from = filters.dateAddBetween.from ?? '1970-01-01 00:00:00';
+      const to = filters.dateAddBetween.to ?? '9999-12-31 23:59:59';
+      params.push(`filter[date_add]=[${from},${to}]`);
+    }
+
     // Updated since filter
     if (filters?.updatedAfter) {
       params.push(`filter[date_upd]=>[${filters.updatedAfter}]`);
@@ -235,6 +257,11 @@ export class PrestashopQueryBuilder {
     // Id lower-bound filter (fallback pagination key, #2877)
     if (filters?.idAfter !== undefined) {
       params.push(`filter[id]=>[${filters.idAfter}]`);
+    }
+
+    // Id upper-bound filter (descending keyset paging, #4228)
+    if (filters?.idBefore !== undefined) {
+      params.push(`filter[id]=<[${filters.idBefore}]`);
     }
 
     // Result ordering

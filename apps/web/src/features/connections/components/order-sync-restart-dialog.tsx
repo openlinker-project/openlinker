@@ -28,6 +28,7 @@ import {
   ORDER_SYNC_START_DEFAULT_MODES,
   ORDER_SYNC_START_DEFAULT_VALUE,
   orderSyncStartSchema,
+  toOrderSyncStart,
   type OrderSyncStartValue,
 } from '../lib/order-sync-start';
 import { OrderSyncStartField } from './order-sync-start-field';
@@ -53,6 +54,7 @@ export function OrderSyncRestartDialog({
     adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
     adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault);
   const supportedModes = adapter?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const windowImport = adapter?.orderWindowImport ?? false;
 
   const parsed = orderSyncStartSchema.safeParse(value);
   const dateError = parsed.success ? undefined : parsed.error.issues[0]?.message;
@@ -70,10 +72,7 @@ export function OrderSyncRestartDialog({
 
   async function handleConfirm(): Promise<void> {
     if (!parsed.success) return;
-    const start =
-      value.mode === 'from'
-        ? { mode: 'from' as const, from: value.from ?? '' }
-        : { mode: value.mode };
+    const start = toOrderSyncStart(value) ?? { mode: 'now' as const };
     try {
       await restart.mutateAsync({ connectionId: connection.id, start });
       showToast({
@@ -103,6 +102,7 @@ export function OrderSyncRestartDialog({
             value={value}
             onChange={setValue}
             supportedModes={supportedModes}
+            windowImport={windowImport}
             error={showDateError}
             restart
           />

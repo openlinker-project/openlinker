@@ -6,9 +6,14 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsIn, IsNotEmpty, IsString, ValidateIf } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderSyncStartModeValues, OrderSyncStartMode } from '@openlinker/core/sync';
+import {
+  OrderSyncStartModeValues,
+  OrderSyncStartMode,
+  OrderSyncStartOrderValues,
+  OrderSyncStartOrder,
+} from '@openlinker/core/sync';
 import type { OrderSyncStart } from '@openlinker/core/sync';
 
 /**
@@ -36,6 +41,17 @@ export class OrderSyncStartDto {
   @IsString()
   @IsNotEmpty()
   from?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Which end of the history is imported first, for modes "from" and "all": oldest-first (default) or newest-first. ' +
+      'Newest-first needs an adapter that declares `orderWindowImport`; new orders keep flowing while the history is read. Ignored for "now".',
+    enum: OrderSyncStartOrderValues,
+    example: 'newest-first',
+  })
+  @IsOptional()
+  @IsIn(OrderSyncStartOrderValues)
+  order?: OrderSyncStartOrder;
 }
 
 /**
@@ -44,5 +60,9 @@ export class OrderSyncStartDto {
  */
 export function toOrderSyncStart(dto: OrderSyncStartDto | undefined): OrderSyncStart | undefined {
   if (!dto) return undefined;
-  return dto.mode === 'from' ? { mode: 'from', from: dto.from ?? '' } : { mode: dto.mode };
+  const order = dto.order === 'newest-first' ? { order: dto.order } : {};
+  if (dto.mode === 'now') return { mode: 'now' };
+  return dto.mode === 'from'
+    ? { mode: 'from', from: dto.from ?? '', ...order }
+    : { mode: 'all', ...order };
 }

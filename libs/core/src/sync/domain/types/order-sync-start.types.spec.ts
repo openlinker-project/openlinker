@@ -59,4 +59,28 @@ describe('order sync start intent', () => {
     expect(resolveOrderSyncStartModes(undefined)).toEqual(['now', 'all']);
     expect(resolveOrderSyncStartModes(['now', 'from', 'all'])).toEqual(['now', 'from', 'all']);
   });
+
+  describe('import order (#4228)', () => {
+    it('should keep oldest-first out of the stored value so old and new intents match', () => {
+      expect(serializeOrderSyncStart({ mode: 'all' })).toBe('{"mode":"all"}');
+      expect(serializeOrderSyncStart({ mode: 'all', order: 'oldest-first' })).toBe('{"mode":"all"}');
+    });
+
+    it('should round-trip newest-first for all and from, and never for now', () => {
+      expect(parseOrderSyncStart(serializeOrderSyncStart({ mode: 'all', order: 'newest-first' }))).toEqual({
+        mode: 'all',
+        order: 'newest-first',
+      });
+      expect(
+        parseOrderSyncStart(
+          serializeOrderSyncStart({ mode: 'from', from: '2026-10-01', order: 'newest-first' })
+        )
+      ).toEqual({ mode: 'from', from: '2026-10-01', order: 'newest-first' });
+      expect(parseOrderSyncStart('{"mode":"now","order":"newest-first"}')).toEqual({ mode: 'now' });
+    });
+
+    it('should read an unknown order as the default', () => {
+      expect(parseOrderSyncStart('{"mode":"all","order":"sideways"}')).toEqual({ mode: 'all' });
+    });
+  });
 });

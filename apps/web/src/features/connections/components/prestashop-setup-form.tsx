@@ -132,6 +132,7 @@ export function PrestashopSetupForm(): ReactElement {
   // exposes core caps for editing today. Lift the narrow when the runtime-aware
   // DTO validator follow-up lands.
   const orderSyncStartModes = adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport = adapterMetadata?.orderWindowImport ?? false;
   const supportedCapabilities: CoreCapability[] = (
     adapterMetadata?.supportedCapabilities ?? PRESTASHOP_FALLBACK_CAPABILITIES
   ).filter((capability): capability is CoreCapability =>
@@ -379,6 +380,7 @@ export function PrestashopSetupForm(): ReactElement {
               form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
             }
             supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
             error={form.formState.errors.orderSyncStart?.from?.message}
           />
         ) : null}

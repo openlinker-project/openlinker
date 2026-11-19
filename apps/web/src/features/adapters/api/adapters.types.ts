@@ -31,4 +31,9 @@ export interface AdapterSummary {
    * only some can also filter by date.
    */
   orderSyncStartModes?: Array<'now' | 'from' | 'all'>;
+  /**
+   * Whether the source can import history newest-first and import a chosen date
+   * range on demand (#4228). Absent means no.
+   */
+  orderWindowImport?: boolean;
 }

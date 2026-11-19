@@ -16,7 +16,7 @@ import { Input } from '../../../shared/ui/input';
 import { IconWithOnHoverPopoverTooltip } from '../../../shared/ui/icon-with-popover-tooltip';
 import { InfoIcon, WarningIcon } from '../../../shared/ui/icons';
 import { PopoverCard } from '../../../shared/ui/popover-card';
-import type { OrderSyncStartMode } from '../api/connections.types';
+import type { OrderImportOrder, OrderSyncStartMode } from '../api/connections.types';
 import {
   earliestOrderSyncStartDate,
   latestOrderSyncStartDate,
@@ -33,6 +33,8 @@ interface OrderSyncStartFieldProps {
   error?: string;
   /** Restarting an existing connection: the intro must not claim the choice is final. */
   restart?: boolean;
+  /** The source can import history newest-first (`orderWindowImport` in its manifest). */
+  windowImport?: boolean;
 }
 
 export function OrderSyncStartField({
@@ -41,6 +43,7 @@ export function OrderSyncStartField({
   supportedModes,
   error,
   restart = false,
+  windowImport = false,
 }: OrderSyncStartFieldProps): ReactElement {
   const copy = useMessages('connections').orderSyncStart;
   const format = useFormat();
@@ -53,7 +56,16 @@ export function OrderSyncStartField({
 
   function select(mode: OrderSyncStartMode): void {
     if (!supportedModes.includes(mode) || mode === value.mode) return;
-    onChange(mode === 'from' ? { mode, from: value.from ?? '' } : { mode });
+    const order = value.order === 'newest-first' ? { order: value.order } : {};
+    if (mode === 'now') onChange({ mode });
+    else if (mode === 'from') onChange({ mode, from: value.from ?? '', ...order });
+    else onChange({ mode, ...order });
+  }
+
+  function selectOrder(order: OrderImportOrder): void {
+    if (value.mode === 'now' || (order === 'newest-first' && !windowImport)) return;
+    if (order === (value.order ?? 'oldest-first')) return;
+    onChange({ ...value, order });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>, mode: OrderSyncStartMode): void {
@@ -177,6 +189,55 @@ export function OrderSyncStartField({
           );
         })}
       </div>
+
+      {value.mode !== 'now' ? (
+        <div className="order-sync-start__order">
+          <p className="order-sync-start__order-title" id={`${groupId}-order`}>
+            {copy.order.title}
+          </p>
+          <div
+            className="order-sync-start__order-options"
+            role="radiogroup"
+            aria-labelledby={`${groupId}-order`}
+          >
+            {(['oldest-first', 'newest-first'] as const).map((order) => {
+              const unavailable = order === 'newest-first' && !windowImport;
+              const checked = (value.order ?? 'oldest-first') === order;
+              return (
+                <div
+                  key={order}
+                  role="radio"
+                  tabIndex={unavailable ? -1 : checked ? 0 : -1}
+                  aria-checked={checked}
+                  aria-disabled={unavailable || undefined}
+                  className={[
+                    'order-sync-start__order-option',
+                    checked ? 'order-sync-start__order-option--checked' : '',
+                    unavailable ? 'order-sync-start__order-option--disabled' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={() => selectOrder(order)}
+                  onKeyDown={(event) => {
+                    if (event.key === ' ' || event.key === 'Enter') {
+                      event.preventDefault();
+                      selectOrder(order);
+                    } else if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                      event.preventDefault();
+                      selectOrder(order === 'oldest-first' ? 'newest-first' : 'oldest-first');
+                    }
+                  }}
+                >
+                  <span className="order-sync-start__order-label">{copy.order[order].title}</span>
+                  <span className="order-sync-start__order-text">
+                    {unavailable ? copy.order.unsupported : copy.order[order].description}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="order-sync-start__reveal" key={value.mode}>
         {value.mode === 'from' ? (

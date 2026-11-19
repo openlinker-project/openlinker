@@ -22,6 +22,7 @@ import {
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import { isOrderFeedBootstrap } from '../../domain/ports/capabilities/order-feed-bootstrap.capability';
 import { isOrderFeedDateBootstrap } from '../../domain/ports/capabilities/order-feed-date-bootstrap.capability';
+import { isOrderWindowReader } from '../../domain/ports/capabilities/order-window-reader.capability';
 import {
   ISyncCursorsService,
   SYNC_CURSORS_SERVICE_TOKEN,
@@ -32,6 +33,8 @@ import {
   orderFeedSeededAtCursorKey,
   ORDER_SYNC_START_CURSOR_KEY,
   parseOrderSyncStart,
+  type MarketplaceOrdersImportPayloadV1,
+  type OrderSyncStart,
 } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
@@ -59,6 +62,7 @@ import type {
   IOrderIngestionService,
   OrderIngestionOptions,
   OrderIngestionResult,
+  OrderImportPageResult,
 } from '../interfaces/order-ingestion.service.interface';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
@@ -376,6 +380,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
     const mode = intent?.mode ?? 'now';
 
+    if (intent && intent.mode !== 'now' && intent.order === 'newest-first') {
+      return this.startNewestFirstImport(connectionId, cursorKey, seededKey, orderSource, intent);
+    }
+
     if (mode === 'all') {
       // Only the marker: the history poll below then reads from the beginning,
       // and the marker stops a later cursor-less poll from seeding "now".
@@ -428,6 +436,146 @@ export class OrderIngestionService implements IOrderIngestionService {
       committed: true,
       skippedDueToLock: false,
     };
+  }
+
+  /**
+   * The first poll of a connection whose operator chose to import history
+   * NEWEST-FIRST (#4228). The live feed is seeded at the newest order exactly
+   * like "new orders only", so new orders flow at once and never wait behind the
+   * history; the history itself is walked backwards by a chain of
+   * `marketplace.orders.import` jobs.
+   *
+   * Order matters: the import job is enqueued BEFORE the cursor and marker are
+   * written and the intent is deleted. Once the marker exists this method is never
+   * entered again, so enqueueing after it would lose the history on a crash
+   * between the two; enqueueing first only risks a duplicate chain, which the
+   * downstream dedupe key makes harmless.
+   */
+  private async startNewestFirstImport(
+    connectionId: string,
+    cursorKey: string,
+    seededKey: string,
+    orderSource: OrderSourcePort,
+    intent: Exclude<OrderSyncStart, { mode: 'now' }>
+  ): Promise<OrderIngestionResult> {
+    if (!isOrderWindowReader(orderSource) || !isOrderFeedBootstrap(orderSource)) {
+      throw new OrderSyncStartUnavailableError(
+        `Order import was set to start with the newest orders, but this adapter cannot read orders in that order. Choose "oldest first" instead (connection: ${connectionId})`
+      );
+    }
+    const head = await orderSource.headCursor();
+    if (head === null || head.trim() === '') {
+      this.logger.log(
+        `Order source has no head to start from yet; will retry on the next poll. cursorKey=${cursorKey} (connection: ${connectionId})`
+      );
+      return { fetched: 0, enqueued: 0, nextCursor: null, committed: false, skippedDueToLock: false };
+    }
+
+    const runId = `start:${cursorKey}:${head}`;
+    const first: MarketplaceOrdersImportPayloadV1 = {
+      schemaVersion: 1,
+      runId,
+      ...(intent.mode === 'from' ? { from: intent.from } : {}),
+      direction: 'newest-first',
+      cursor: null,
+      page: 1,
+    };
+    await this.jobQueue.enqueueBulk([this.buildImportRequest(connectionId, first)]);
+
+    await this.syncCursors.advanceCursor(connectionId, cursorKey, head);
+    await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+    await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
+    this.logger.log(
+      `Seeded order cursor at the source head and started a newest-first history import${intent.mode === 'from' ? ` from ${intent.from}` : ''}. cursorKey=${cursorKey}, cursor=${head} (connection: ${connectionId})`
+    );
+    return { fetched: 0, enqueued: 0, nextCursor: head, committed: true, skippedDueToLock: false };
+  }
+
+  private buildImportRequest(
+    connectionId: string,
+    payload: MarketplaceOrdersImportPayloadV1
+  ): {
+    type: 'marketplace.orders.import';
+    connectionId: string;
+    payload: Record<string, unknown>;
+    options: { dedupeKey: string };
+  } {
+    return {
+      type: 'marketplace.orders.import',
+      connectionId,
+      // Spread: an interface is not assignable to an index-signature type, its copy is.
+      payload: { ...payload },
+      options: {
+        dedupeKey: `marketplace:${connectionId}:orders-import:${payload.runId}:${payload.page}`,
+      },
+    };
+  }
+
+  async importOrderWindow(
+    connectionId: string,
+    payload: MarketplaceOrdersImportPayloadV1
+  ): Promise<OrderImportPageResult> {
+    const lockKey = `marketplace:orders:import:${connectionId}`;
+    const token = await this.lock.acquire(lockKey, this.LOCK_TTL_MS);
+    if (!token) {
+      return { fetched: 0, enqueued: 0, done: false, skippedDueToLock: true };
+    }
+    try {
+      const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+        connectionId,
+        'OrderSource'
+      );
+      if (!isOrderWindowReader(orderSource)) {
+        throw new OrderSyncStartUnavailableError(
+          `This connection cannot import orders by date or in a chosen order (connection: ${connectionId})`
+        );
+      }
+
+      const limit = Math.min(Math.max(payload.limit ?? 100, 1), 100);
+      const page = await orderSource.listOrdersInWindow({
+        from: payload.from,
+        to: payload.to,
+        direction: payload.direction,
+        cursor: payload.cursor,
+        limit,
+      });
+
+      const requests = page.items.map((item) => ({
+        type: 'marketplace.order.sync' as const,
+        connectionId,
+        payload: {
+          schemaVersion: 1 as const,
+          externalOrderId: item.externalOrderId,
+          sourceEventId: item.eventKey,
+          eventType: item.eventType,
+          occurredAt: item.occurredAt,
+          eventKey: item.eventKey,
+        },
+        options: { dedupeKey: `marketplace:${connectionId}:order:${item.eventKey}` },
+      }));
+      await this.jobQueue.enqueueBulk(requests);
+
+      const hasMore = !page.done && page.nextCursor !== null && page.nextCursor.trim() !== '';
+      if (hasMore) {
+        // Enqueued after the children: a failure here fails this page, and the retry
+        // re-reads the same cursor, so no page is skipped.
+        await this.jobQueue.enqueueBulk([
+          this.buildImportRequest(connectionId, {
+            ...payload,
+            cursor: page.nextCursor,
+            page: payload.page + 1,
+          }),
+        ]);
+      }
+      return {
+        fetched: page.items.length,
+        enqueued: requests.length,
+        done: !hasMore,
+        skippedDueToLock: false,
+      };
+    } finally {
+      await this.lock.release(lockKey, token);
+    }
   }
 
   async ingestOrders(

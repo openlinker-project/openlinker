@@ -36,6 +36,9 @@ import type {
   OrderPickupPoint,
   OrderFeedBootstrap,
   OrderFeedDateBootstrap,
+  OrderWindowReader,
+  OrderWindowInput,
+  OrderWindowPage,
 } from '@openlinker/core/orders';
 import {
   PAYMENT_STATUS,
@@ -99,7 +102,7 @@ import { Logger } from '@openlinker/shared/logging';
  * why the id is part of the read position and why the timestamp is never
  * interpreted. `null` input means "start from the beginning".
  */
-export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap {
+export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap, OrderWindowReader {
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
 
   /**
@@ -265,6 +268,98 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
     // is still read; a lookback would instead re-import the orders that sit just
     // before the newest one - the very history "new orders only" must leave behind.
     return formatOrderFeedCursor({ updatedAt, lastOrderId: orderId });
+  }
+
+  /**
+   * Read the orders PLACED inside a day window, one id-keyset page at a time
+   * (#4228). It never touches the live feed cursor: the walk position is the
+   * last order id read (`id:<n>`), so the page set cannot shift or repeat while
+   * orders arrive, and `date_add` (when the order was placed) bounds the window.
+   *
+   * A date-only bound means the whole day on the shop's wall clock, so `from`
+   * starts at 00:00:00 and `to` ends at 23:59:59. The webservice offers `>` but
+   * no `>=`, hence the one-second shift on the lower bound.
+   *
+   * Items come from {@link toFeedItem}, so their `eventKey` matches what the live
+   * feed emits and a window read dedupes against it downstream. A failed read is
+   * never swallowed into an empty or unfiltered page.
+   */
+  async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
+    const newestFirst = input.direction === 'newest-first';
+    const lastId = this.parseWindowCursor(input.cursor);
+
+    const filters: {
+      dateAddBetween?: { from?: string; to?: string };
+      idAfter?: number;
+      idBefore?: number;
+      sort: PrestashopSort[];
+    } = { sort: [newestFirst ? 'id_DESC' : 'id_ASC'] };
+
+    // Inclusive on both ends: a bare day is the whole day in the shop's own time.
+    if (input.from !== undefined || input.to !== undefined) {
+      filters.dateAddBetween = {
+        ...(input.from !== undefined ? { from: this.wallClockOfDay(input.from, '00:00:00') } : {}),
+        ...(input.to !== undefined ? { to: this.wallClockOfDay(input.to, '23:59:59') } : {}),
+      };
+    }
+    if (lastId !== null) {
+      if (newestFirst) {
+        filters.idBefore = lastId;
+      } else {
+        filters.idAfter = lastId;
+      }
+    }
+
+    const orderStates = await this.orderStates.load();
+    const rows = await this.httpClient.listResources<PrestashopOrder>(
+      'orders',
+      filters,
+      input.limit,
+      0
+    );
+
+    const items: OrderFeedItem[] = [];
+    let position = lastId;
+    for (const row of rows) {
+      // The cursor moves by raw row id even when the row is unreadable, or a
+      // page of only malformed rows would be re-read for ever.
+      const rawId = Number.parseInt(String(row.id), 10);
+      if (Number.isFinite(rawId)) {
+        position =
+          position === null ? rawId : newestFirst ? Math.min(position, rawId) : Math.max(position, rawId);
+      }
+      const item = this.toFeedItem(row, orderStates);
+      if (item !== null) {
+        items.push(item.feedItem);
+      }
+    }
+
+    const done = rows.length < input.limit;
+    return {
+      items,
+      nextCursor: done || position === null ? null : `id:${position}`,
+      done,
+    };
+  }
+
+  private parseWindowCursor(cursor: string | null): number | null {
+    if (cursor === null) {
+      return null;
+    }
+    const match = /^id:(\d+)$/.exec(cursor);
+    if (match === null) {
+      throw new Error(`Invalid PrestaShop order window cursor "${cursor}" (connection: ${this.connection.id})`);
+    }
+    return Number(match[1]);
+  }
+
+  /** `YYYY-MM-DD <time>` for the date part of an ISO date or instant. */
+  private wallClockOfDay(value: string, time: string): string {
+    const wallClock = normalizeWallClock(`${value.trim().slice(0, 10)} ${time}`);
+    if (wallClock === null) {
+      throw new Error(`Invalid order window date "${value}" (connection: ${this.connection.id})`);
+    }
+    return wallClock;
   }
 
   /**

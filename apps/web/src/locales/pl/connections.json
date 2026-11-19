@@ -1164,10 +1164,23 @@
       "noStock": "Stan magazynowy nie jest blokowany pod zamówienia, które już wysłano.",
       "summary": "Start od teraz jest szybki i nie rusza starych zamówień."
     },
+    "order": {
+      "newest-first": {
+        "description": "Najnowsze zamówienia wchodzą pierwsze, a nowe płyną dalej, gdy czytane są starsze.",
+        "title": "Od najnowszych"
+      },
+      "oldest-first": {
+        "description": "Zamówienia wchodzą w kolejności składania. Nowe czekają, aż skończy się historia.",
+        "title": "Od najstarszych"
+      },
+      "title": "Które zamówienia najpierw?",
+      "unsupported": "Niedostępne dla tego połączenia."
+    },
     "review": {
       "all": "Wszystkie",
       "from": "Od {date}",
       "label": "Zamówienia do importu",
+      "newestFirst": "od najnowszych",
       "now": "Tylko nowe"
     },
     "title": "Które zamówienia OpenLinker ma pobrać?",
