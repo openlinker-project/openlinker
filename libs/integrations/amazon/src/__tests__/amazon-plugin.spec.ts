@@ -7,6 +7,8 @@
  *
  * @module libs/integrations/amazon/src/__tests__
  */
+import { isInboundQueueReader } from '@openlinker/core/integrations';
+import { isRefundExecutor, isReturnSourceReader } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
@@ -42,7 +44,7 @@ describe('Amazon plugin', () => {
     expect(amazonAdapterManifest).toMatchObject({
       adapterKey: 'amazon.spapi.v1',
       platformType: 'amazon',
-      supportedCapabilities: ['OrderSource', 'OfferManager', 'ProductMaster', 'InventoryMaster', 'CategoryBrowser', 'EanCategoryMatcher', 'OfferCreator'],
+      supportedCapabilities: ['OrderSource', 'OfferManager', 'ProductMaster', 'InventoryMaster', 'ReturnSourceReader', 'CategoryBrowser', 'EanCategoryMatcher', 'OfferCreator'],
       defaultEnabledCapabilities: [],
       buyerDataRetentionDays: 30,
       isDefault: true,
@@ -91,6 +93,70 @@ describe('Amazon plugin', () => {
       host,
     );
     expect(typeof source.listOrderFeed).toBe('function');
+    expect(isReturnSourceReader(source)).toBe(true);
+    expect(isRefundExecutor(source)).toBe(false);
+  });
+
+  it('should make the order source a refund executor only when the connection opted in (#4184)', async () => {
+    const host = {
+      credentialsResolver: { get: jest.fn().mockResolvedValue({ clientId: 'c', clientSecret: 's', refreshToken: 'r' }) },
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
+    } as unknown as HostServices;
+    const amazonConnection = {
+      id: 'conn-amz-1',
+      platformType: 'amazon',
+      config: { marketplaceIds: ['A1PA6795UKMFR9'], refundsEnabled: true },
+      credentialsRef: 'db:1',
+    } as unknown as Connection;
+
+    const source = await createAmazonPlugin().createCapabilityAdapter<object>(amazonConnection, 'OrderSource', host);
+
+    expect(isRefundExecutor(source)).toBe(true);
+  });
+
+  it('should keep the queue reader on a refunding order source when the connection has a queue (#4184)', async () => {
+    const host = {
+      credentialsResolver: {
+        get: jest.fn().mockResolvedValue({
+          clientId: 'c',
+          clientSecret: 's',
+          refreshToken: 'r',
+          awsAccessKeyId: 'AKIA',
+          awsSecretAccessKey: 'secret',
+        }),
+      },
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
+    } as unknown as HostServices;
+    const amazonConnection = {
+      id: 'conn-amz-1',
+      platformType: 'amazon',
+      config: {
+        marketplaceIds: ['A1PA6795UKMFR9'],
+        refundsEnabled: true,
+        notificationQueueUrl: 'https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications',
+      },
+      credentialsRef: 'db:1',
+    } as unknown as Connection;
+
+    const source = await createAmazonPlugin().createCapabilityAdapter<object>(amazonConnection, 'OrderSource', host);
+
+    expect(isRefundExecutor(source)).toBe(true);
+    expect(isInboundQueueReader(source)).toBe(true);
+    expect(isReturnSourceReader(source)).toBe(true);
+  });
+
+  it('should register the returns poll and status sync, off by default (#4184)', () => {
+    const { host, scheduler } = registerHost();
+    createAmazonPlugin().register?.(host);
+
+    for (const [taskId, jobType] of [
+      ['amazon-returns-poll', 'marketplace.returns.poll'],
+      ['amazon-returns-status-sync', 'marketplace.returns.statusSync'],
+    ]) {
+      expect(scheduler).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId, jobType, requiredCapability: 'OrderSource', enabledDefault: false }),
+      );
+    }
   });
 
   it('should refuse a capability it does not support with the SDK message', async () => {

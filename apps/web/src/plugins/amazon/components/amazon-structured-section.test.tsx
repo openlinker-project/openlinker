@@ -35,6 +35,7 @@ function Harness({
       amazonSellerId: 'A2EXAMPLE12345',
       amazonNotificationQueueUrl: '',
       amazonFbaLocationId: '',
+      amazonRefundsEnabled: 'false',
       stockLocationOverride: '',
       ...values,
     },
@@ -241,5 +242,14 @@ describe('AmazonStructuredSection', () => {
         vi.unstubAllEnvs();
       }
     });
+  });
+
+  it('should offer the refund opt-in with orders and sync it (#4184)', async () => {
+    const sync = vi.fn();
+    renderWithProviders(<Harness caps={['OrderSource']} sync={sync} />, admin);
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Send refunds to Amazon/ }));
+
+    expect(sync).toHaveBeenCalledWith('amazonRefundsEnabled', 'true');
   });
 });

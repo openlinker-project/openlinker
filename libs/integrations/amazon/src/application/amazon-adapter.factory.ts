@@ -29,6 +29,14 @@ import { AmazonOfferManagerAdapter } from '../infrastructure/adapters/offer-mana
 import { AmazonProductMasterAdapter } from '../infrastructure/adapters/product-master/amazon-product-master.adapter';
 import { AmazonOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-order-source.adapter';
 import { AmazonQueuedOrderSourceAdapter } from '../infrastructure/adapters/order-source/amazon-queued-order-source.adapter';
+import {
+  AmazonQueuedRefundingOrderSourceAdapter,
+  AmazonRefundingOrderSourceAdapter,
+} from '../infrastructure/adapters/order-source/amazon-refunding-order-source.adapter';
+import { AmazonRefundExecutor } from '../infrastructure/adapters/returns/amazon-refund-executor';
+import { AmazonReturnReader } from '../infrastructure/adapters/returns/amazon-return-reader';
+import { AmazonFeedsClient } from '../infrastructure/http/amazon-feeds.client';
+import { AmazonReportsClient } from '../infrastructure/http/amazon-reports.client';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
 
 export class AmazonAdapterFactory implements IAmazonAdapterFactory {
@@ -85,15 +93,47 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
   }
 
   /**
-   * The order source, with the queue reader only when the connection has a
-   * notification queue and its AWS key: without one, `isInboundQueueReader`
-   * answers no and the drain handler reports a configuration fact.
+   * The order source, with the returns report reader (#4184). The queue
+   * reader (#4179) is there only when the connection has a notification queue
+   * and its AWS key: without one, `isInboundQueueReader` answers no and the
+   * drain handler reports a configuration fact. A connection that opted in to
+   * refunds gets the subclass that is also a `RefundExecutor`.
    */
-  createOrderSource(resolution: AmazonResolution): AmazonOrderSourceAdapter {
-    const { connection, client, config, notificationQueue } = resolution;
-    return notificationQueue === undefined
-      ? new AmazonOrderSourceAdapter(connection.id, client, config)
-      : new AmazonQueuedOrderSourceAdapter(connection.id, client, config, notificationQueue);
+  createOrderSource(resolution: AmazonResolution, cache?: CachePort): AmazonOrderSourceAdapter {
+    const { connection, client, config, notificationQueue, fetchImpl } = resolution;
+    const returns = new AmazonReturnReader(
+      new AmazonReportsClient(client, fetchImpl),
+      connection.id,
+      config.marketplaceIds,
+      cache,
+    );
+    if (config.refundsEnabled !== true) {
+      return notificationQueue === undefined
+        ? new AmazonOrderSourceAdapter(connection.id, client, config, undefined, returns)
+        : new AmazonQueuedOrderSourceAdapter(connection.id, client, config, notificationQueue, undefined, returns);
+    }
+    const source =
+      notificationQueue === undefined
+        ? new AmazonRefundingOrderSourceAdapter(connection.id, client, config, undefined, returns)
+        : new AmazonQueuedRefundingOrderSourceAdapter(
+            connection.id,
+            client,
+            config,
+            notificationQueue,
+            undefined,
+            returns,
+          );
+    return source.attachRefundExecutor(
+      (readOrder) =>
+        new AmazonRefundExecutor({
+          connectionId: connection.id,
+          marketplaceIds: config.marketplaceIds,
+          feeds: new AmazonFeedsClient(client, fetchImpl),
+          returns,
+          readOrder,
+          cache,
+        }),
+    );
   }
 
   createOfferManager(resolution: AmazonResolution): AmazonOfferManagerAdapter {

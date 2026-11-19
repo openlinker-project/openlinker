@@ -4,10 +4,11 @@
  * The non-render half of the Amazon edit section: the marketplaces OpenLinker
  * reads orders from and writes offers to, the merchant token the listings API
  * needs, the SQS queue Amazon delivers order notifications to, the rates the
- * account's product tax codes carry (#4182) and the location FBA stock is read
- * into (#4183). Region and environment are fixed at create and only shown:
- * another region is another seller account with its own refresh token, so the
- * API refuses the change and another region is a new connection.
+ * account's product tax codes carry (#4182), the location FBA stock is read
+ * into (#4183) and the refund opt-in (#4184). Region and environment are fixed
+ * at create and only shown: another region is another seller account with its
+ * own refresh token, so the API refuses the change and another region is a new
+ * connection.
  *
  * A marketplace added here is picked up by the order feed, which rewinds its
  * watermark for it (`scopeAmazonOrderFeedCursor`). The catalogue is read from
@@ -49,6 +50,8 @@ declare module '../../shared/plugins/plugin.types' {
      * kept apart from. Only rendered while the host's own control is hidden.
      */
     amazonFbmLocationId?: string;
+    /** `config.refundsEnabled` as `'true'` / `'false'` (#4184). */
+    amazonRefundsEnabled?: string;
   }
 }
 
@@ -147,6 +150,7 @@ const amazonSchemaShape: ConnectionConfigContribution['schemaShape'] = {
     .optional(),
   amazonFbaLocationId: z.string().optional(),
   amazonFbmLocationId: z.string().optional(),
+  amazonRefundsEnabled: z.string().optional(),
 };
 
 function readAmazonConfig(config: Record<string, unknown>): Record<string, string> {
@@ -163,6 +167,7 @@ function readAmazonConfig(config: Record<string, unknown>): Record<string, strin
       typeof config.catalogueMarketplaceId === 'string' ? config.catalogueMarketplaceId : '',
     amazonFbaLocationId: typeof config.fbaLocationId === 'string' ? config.fbaLocationId : '',
     amazonFbmLocationId: typeof config.stockLocationOverride === 'string' ? config.stockLocationOverride : '',
+    amazonRefundsEnabled: config.refundsEnabled === true ? 'true' : 'false',
   };
 }
 
@@ -210,6 +215,11 @@ function applyAmazonConfig(
       rows.length === 0
         ? null
         : Object.fromEntries(rows.map((row) => [row.code.toUpperCase(), canonicalRate(row.rate)]));
+  }
+
+  const refunds = readOptionalConfigString(patch, 'amazonRefundsEnabled');
+  if (refunds !== undefined) {
+    next.refundsEnabled = refunds === 'true';
   }
 
   const fbaLocation = readOptionalConfigString(patch, 'amazonFbaLocationId');

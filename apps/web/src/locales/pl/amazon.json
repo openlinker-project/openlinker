@@ -76,6 +76,10 @@
       "unlisted": "Rynek {id}"
     },
     "queueUrlDescription": "Amazon dostarcza zmiany zamówień do tej kolejki. Po zapisaniu zarejestruj ją poniżej.",
+    "refunds": {
+      "description": "Zwrot pieniędzy zatwierdzony w OpenLinker trafia do Amazona dla zamówień wysyłanych przez sprzedawcę. Gdy wyłączone, OpenLinker tylko zapisuje, że zwróciłeś pieniądze w Seller Central.",
+      "label": "Wysyłaj zwroty pieniędzy do Amazona"
+    },
     "region": {
       "description": "Ustawiony przy tworzeniu połączenia. Inny region to inne konto Amazon i wymaga nowego połączenia.",
       "label": "Region"

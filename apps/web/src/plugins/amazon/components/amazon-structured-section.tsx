@@ -8,7 +8,8 @@
  * the rates of the account's product tax codes when the catalogue or offers
  * are (#4182): Amazon carries a tax code, never a rate. With the catalogue
  * enabled, the marketplace it is read from (price, currency, tax country) is
- * chosen here rather than implied by the order of the marketplaces.
+ * chosen here rather than implied by the order of the marketplaces. With
+ * orders enabled, the opt-in to send refunds to Amazon (#4184).
  *
  * The region is fixed because another region is another Amazon seller account
  * with its own refresh token and merchant token; the API refuses the change.
@@ -268,6 +269,21 @@ export function AmazonStructuredSection({
             invalid={Boolean(errors.amazonNotificationQueueUrl)}
           />
         </FormField>
+      ) : null}
+
+      {ordersEnabled ? (
+        <label className="amazon-checkbox-row">
+          <input
+            type="checkbox"
+            checked={form.watch('amazonRefundsEnabled') === 'true'}
+            disabled={disabled}
+            onChange={(event) => syncStructuredToJson('amazonRefundsEnabled', event.target.checked ? 'true' : 'false')}
+          />
+          <span>
+            <span className="form-field__label">{copy.refunds.label}</span>
+            <span className="form-field__description amazon-checkbox-row__description">{copy.refunds.description}</span>
+          </span>
+        </label>
       ) : null}
 
       {ownsFbmLocation ? (

@@ -49,6 +49,12 @@ export interface AmazonConnectionConfig {
    * pooled and located, and would otherwise retire the FBM position.
    */
   readonly fbaLocationId?: string;
+  /**
+   * Refunds decided in OpenLinker are sent to Amazon through the payment
+   * adjustment feed (#4184). Off by default: a refund then only records that
+   * the seller refunded in Seller Central.
+   */
+  readonly refundsEnabled?: boolean;
 }
 
 export interface AmazonNotificationQueue {

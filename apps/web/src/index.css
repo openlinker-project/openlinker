@@ -40181,3 +40181,21 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .amazon-tax-codes__rate {
   max-width: 6rem;
 }
+
+/* ── Amazon connection checkboxes (#4184) ── */
+.amazon-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.amazon-checkbox-row input {
+  margin-top: 0.2em;
+  flex: none;
+}
+
+.amazon-checkbox-row__description {
+  display: block;
+  margin-top: var(--space-1);
+}
