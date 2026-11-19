@@ -16,7 +16,12 @@
  */
 import { z } from 'zod';
 import type { CoreCapability, CreateConnectionInput } from '../../connections';
-import { AmazonEnvironmentValues, AmazonRegionValues, findMarketplace } from '../lib/amazon-marketplaces';
+import {
+  AmazonEnvironmentValues,
+  AmazonRegionValues,
+  findMarketplace,
+  isSingleMarketplaceRegion,
+} from '../lib/amazon-marketplaces';
 
 export const AMAZON_ADAPTER_KEY = 'amazon.spapi.v1';
 
@@ -24,6 +29,7 @@ export const AmazonSetupErrorKeyValues = [
   'required',
   'marketplaceRequired',
   'marketplaceOtherRegion',
+  'marketplaceSingle',
   'sellerIdInvalid',
   'sellerIdRequired',
   'capabilityRequired',
@@ -59,6 +65,8 @@ export const amazonSetupSchema = z
       fail('marketplaceIds', 'marketplaceRequired');
     } else if (values.marketplaceIds.some((id) => findMarketplace(id)?.region !== values.region)) {
       fail('marketplaceIds', 'marketplaceOtherRegion');
+    } else if (isSingleMarketplaceRegion(values.region) && values.marketplaceIds.length > 1) {
+      fail('marketplaceIds', 'marketplaceSingle');
     }
     if (!values.orders && !values.offers) {
       fail('orders', 'capabilityRequired');

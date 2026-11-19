@@ -28,6 +28,14 @@ export type AmazonEnvironment = (typeof AmazonEnvironmentValues)[number];
 /** Region used when the connection names none: the FR / DE / PL markets are all in `eu`. */
 export const AMAZON_DEFAULT_REGION: AmazonRegion = 'eu';
 
+/**
+ * Regions where one seller account sells on ONE marketplace. North America and
+ * Europe each have a unified account covering every marketplace of the region;
+ * Japan, Australia and Singapore have a separate seller account (and refresh
+ * token) per country, so a connection there names exactly one marketplace.
+ */
+export const AMAZON_SINGLE_MARKETPLACE_REGIONS: readonly AmazonRegion[] = ['fe'];
+
 /** SP-API hosts per region and environment. */
 export const AMAZON_SPAPI_HOSTS: Readonly<Record<AmazonEnvironment, Readonly<Record<AmazonRegion, string>>>> = {
   production: {

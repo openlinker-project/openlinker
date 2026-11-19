@@ -14,6 +14,7 @@ export {
   AmazonRegionValues,
   findMarketplace,
   isAmazonRegion,
+  isSingleMarketplaceRegion,
   marketplacesForRegion,
   type AmazonMarketplace,
   type AmazonRegion,

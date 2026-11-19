@@ -44,6 +44,13 @@ describe('amazonSetupSchema', () => {
     expect(issues({ ...valid, marketplaceIds: [] })).toMatchObject({ marketplaceIds: 'marketplaceRequired' });
   });
 
+  it('should take one marketplace in the Far East region, where each country is its own account', () => {
+    expect(issues({ ...valid, region: 'fe', marketplaceIds: ['A1VC38T7YXB528', 'A39IBJ37TRP1C6'] })).toMatchObject({
+      marketplaceIds: 'marketplaceSingle',
+    });
+    expect(issues({ ...valid, region: 'fe', marketplaceIds: ['A1VC38T7YXB528'] })).toEqual({});
+  });
+
   it('should require the merchant token for offers only', () => {
     expect(issues({ ...valid, sellerId: '' })).toMatchObject({ sellerId: 'sellerIdRequired' });
     expect(issues({ ...valid, sellerId: '', offers: false })).toEqual({});

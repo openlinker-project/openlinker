@@ -12,6 +12,11 @@
  *   - `marketplaceIds` must be a non-empty list of SP-API marketplace ids.
  *     An id we know (`AMAZON_KNOWN_MARKETPLACES`) must belong to the chosen
  *     region; an unknown id is accepted by format alone. Duplicates are dropped.
+ *   - A region without a unified seller account (`fe`) takes ONE marketplace.
+ *   - The region is fixed once the connection exists: another region is
+ *     another seller account with its own refresh token and merchant token,
+ *     so `regionChangeIssue` refuses a change on update. Another region is a
+ *     new connection.
  *
  * @module libs/integrations/amazon/src/domain/policies
  */
@@ -20,6 +25,7 @@ import type { FlatValidationIssue } from '@openlinker/core/integrations';
 import {
   AMAZON_DEFAULT_REGION,
   AMAZON_KNOWN_MARKETPLACES,
+  AMAZON_SINGLE_MARKETPLACE_REGIONS,
   AMAZON_SPAPI_HOSTS,
   AmazonEnvironmentValues,
   AmazonRegionValues,
@@ -94,6 +100,26 @@ export function readNotificationQueue(
   return { url: (value as string).trim(), region, arn: `arn:aws:sqs:${region}:${account}:${name}` };
 }
 
+/**
+ * The issue to raise when an update moves a connection to another region, or
+ * null. Compared on the resolved region, so a stored config without `region`
+ * reads as the default and an unrelated save does not trip it.
+ */
+export function regionChangeIssue(
+  config: Record<string, unknown>,
+  previous: Record<string, unknown>,
+): FlatValidationIssue | null {
+  const before = readEnum(previous.region, AmazonRegionValues, AMAZON_DEFAULT_REGION);
+  const after = readEnum(config.region, AmazonRegionValues, AMAZON_DEFAULT_REGION);
+  if (before === null || after === null || before === after) {
+    return null;
+  }
+  return {
+    path: 'region',
+    message: `cannot change from ${before} to ${after}: another region is another seller account; create a new connection for it`,
+  };
+}
+
 /** The SP-API host a connection talks to. */
 export function resolveAmazonSpApiHost(config: Pick<AmazonConnectionConfig, 'region' | 'environment'>): string {
   return AMAZON_SPAPI_HOSTS[config.environment][config.region];
@@ -135,6 +161,12 @@ function readMarketplaceIds(
       ids.push(id);
     }
   });
+  if (region !== null && AMAZON_SINGLE_MARKETPLACE_REGIONS.includes(region) && ids.length > 1) {
+    issues.push({
+      path: 'marketplaceIds',
+      message: `the ${region} region has a separate seller account per marketplace; choose one marketplace and create another connection for the next`,
+    });
+  }
   return ids;
 }
 

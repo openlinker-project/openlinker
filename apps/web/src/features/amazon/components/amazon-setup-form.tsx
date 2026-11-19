@@ -13,6 +13,11 @@
  * Only the marketplaces of the chosen region are offered, and changing the
  * region drops the ones it does not serve; the schema refuses a mix anyway.
  *
+ * A notice up front says what a connection is on Amazon's side: one seller
+ * account in one region. The region cannot be changed afterwards (the API
+ * refuses it), and in a region without a unified account (Far East) the
+ * picker takes a single marketplace.
+ *
  * @module features/amazon/components
  */
 import { useState, type ReactElement } from 'react';
@@ -33,7 +38,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import { marketplacesForRegion, type AmazonRegion } from '../lib/amazon-marketplaces';
+import { isSingleMarketplaceRegion, marketplacesForRegion, type AmazonRegion } from '../lib/amazon-marketplaces';
 import { AmazonMarketplacePicker } from './amazon-marketplace-picker';
 import {
   AMAZON_SETUP_DEFAULT_VALUES,
@@ -70,12 +75,11 @@ export function AmazonSetupForm(): ReactElement {
 
   const onRegionChange = (next: AmazonRegion): void => {
     const served = new Set(marketplacesForRegion(next).map((marketplace) => marketplace.id));
+    const kept = selected.filter((id) => served.has(id));
     form.setValue('region', next);
-    form.setValue(
-      'marketplaceIds',
-      selected.filter((id) => served.has(id)),
-      { shouldValidate: form.formState.submitCount > 0 },
-    );
+    form.setValue('marketplaceIds', isSingleMarketplaceRegion(next) ? kept.slice(0, 1) : kept, {
+      shouldValidate: form.formState.submitCount > 0,
+    });
   };
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -139,6 +143,7 @@ export function AmazonSetupForm(): ReactElement {
     return text ? [text] : [];
   });
   const marketplaces = marketplacesForRegion(region);
+  const singleMarketplace = isSingleMarketplaceRegion(region);
 
   return (
     <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
@@ -152,6 +157,10 @@ export function AmazonSetupForm(): ReactElement {
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
+
+      <Alert tone="info" title={copy.accountNotice.title}>
+        {copy.accountNotice.oneRegion} {copy.accountNotice.regionFixed} {copy.accountNotice.farEast}
+      </Alert>
 
       <FormField label={copy.connectionName} name="name" error={errorText(errors.name?.message)}>
         <Input {...form.register('name')} placeholder={copy.connectionNamePlaceholder} />
@@ -180,7 +189,13 @@ export function AmazonSetupForm(): ReactElement {
       <FormField
         label={copy.marketplaces}
         name="amazon-marketplaces"
-        description={marketplaces.length > 0 ? copy.marketplacesHint : copy.marketplacesNone}
+        description={
+          marketplaces.length === 0
+            ? copy.marketplacesNone
+            : singleMarketplace
+              ? copy.marketplacesHintSingle
+              : copy.marketplacesHint
+        }
         error={errorText(errors.marketplaceIds?.message)}
       >
         <AmazonMarketplacePicker
@@ -198,6 +213,7 @@ export function AmazonSetupForm(): ReactElement {
           placeholder={copy.marketplacesPlaceholder}
           invalid={Boolean(errors.marketplaceIds)}
           disabled={marketplaces.length === 0}
+          single={singleMarketplace}
         />
       </FormField>
 

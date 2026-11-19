@@ -2,7 +2,8 @@
  * Amazon Marketplace Picker (#4186)
  *
  * Multi-select of the marketplaces an Amazon connection sells on, shared by
- * the setup form and the connection page. A region can have 16 marketplaces,
+ * the setup form and the connection page. `single` turns it into a one-pick
+ * list for a region where each marketplace is its own seller account. A region can have 16 marketplaces,
  * so they are picked from a searchable list instead of a column of
  * checkboxes; the chosen ones show as chips (the first three, then "+N").
  *
@@ -31,6 +32,8 @@ export interface AmazonMarketplacePickerProps {
   readonly 'aria-describedby'?: string;
   readonly 'aria-invalid'?: boolean;
   readonly ariaLabel?: string;
+  /** One marketplace only: a region without a unified seller account. */
+  readonly single?: boolean;
 }
 
 // More than a region ever has, so the whole list shows before any typing.
@@ -38,7 +41,7 @@ const SHOW_ALL_UP_TO = 100;
 
 export const AmazonMarketplacePicker = forwardRef<HTMLButtonElement, AmazonMarketplacePickerProps>(
   function AmazonMarketplacePicker(
-    { marketplaces, selected, onChange, labelOf, extra = [], placeholder, disabled, invalid, ariaLabel, ...aria },
+    { marketplaces, selected, onChange, labelOf, extra = [], placeholder, disabled, invalid, ariaLabel, single, ...aria },
     ref,
   ): ReactElement {
     const options: ComboboxOption[] = [
@@ -48,7 +51,7 @@ export const AmazonMarketplacePicker = forwardRef<HTMLButtonElement, AmazonMarke
     return (
       <Combobox
         ref={ref}
-        mode="multi"
+        mode={single ? 'single' : 'multi'}
         options={options}
         value={{ kind: 'dictionary', ids: [...selected] }}
         onChange={(next) => onChange(next?.kind === 'dictionary' ? next.ids : [])}

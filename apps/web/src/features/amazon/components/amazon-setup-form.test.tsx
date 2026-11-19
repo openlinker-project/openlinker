@@ -38,6 +38,30 @@ describe('AmazonSetupForm', () => {
     expect(screen.getByRole('option', { name: /United States \(USD\)/ })).toBeInTheDocument();
   });
 
+  it('should say up front that a connection is one account in one region', () => {
+    renderWithProviders(<AmazonSetupForm />);
+
+    expect(screen.getByText('One connection is one Amazon seller account in one region')).toBeInTheDocument();
+    expect(screen.getByText(/The region cannot be changed later/)).toBeInTheDocument();
+  });
+
+  it('should keep one marketplace when the Far East region is chosen', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AmazonSetupForm />);
+
+    fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'fe' } });
+    expect(screen.getByText(/choose one marketplace/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'Marketplaces' }));
+    await user.click(screen.getByRole('option', { name: /Japan/ }));
+    await user.click(screen.getByRole('combobox', { name: 'Marketplaces' }));
+    await user.click(screen.getByRole('option', { name: /Australia/ }));
+
+    await user.click(screen.getByRole('combobox', { name: 'Marketplaces' }));
+    expect(screen.getByRole('option', { name: /Australia/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: /Japan/ })).toHaveAttribute('aria-selected', 'false');
+  });
+
   it('should show the sandbox notice and keep the master role unavailable', () => {
     renderWithProviders(<AmazonSetupForm />);
 

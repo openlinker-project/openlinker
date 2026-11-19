@@ -56,6 +56,17 @@ export const AMAZON_MARKETPLACES: readonly AmazonMarketplace[] = [
   { id: 'A1VC38T7YXB528', country: 'JP', region: 'fe', currency: 'JPY' },
 ];
 
+/**
+ * Regions where one seller account sells on ONE marketplace, mirroring
+ * `AMAZON_SINGLE_MARKETPLACE_REGIONS`. North America and Europe have a unified
+ * account per region; Japan, Australia and Singapore have one per country.
+ */
+export const AMAZON_SINGLE_MARKETPLACE_REGIONS: readonly AmazonRegion[] = ['fe'];
+
+export function isSingleMarketplaceRegion(region: AmazonRegion): boolean {
+  return AMAZON_SINGLE_MARKETPLACE_REGIONS.includes(region);
+}
+
 export function marketplacesForRegion(region: AmazonRegion): AmazonMarketplace[] {
   return AMAZON_MARKETPLACES.filter((marketplace) => marketplace.region === region);
 }

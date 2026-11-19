@@ -25,6 +25,20 @@ describe('AmazonConnectionConfigShapeValidatorAdapter', () => {
     expect(error).toBeInstanceOf(InvalidConnectionConfigException);
     expect((error as InvalidConnectionConfigException).errors[0].path).toBe('marketplaceIds');
   });
+
+  it('should refuse an update that changes the region', async () => {
+    const error = await validator
+      .validate({ region: 'na', marketplaceIds: ['ATVPDKIKX0DER'] }, { previous: { region: 'eu' } })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(InvalidConnectionConfigException);
+    expect((error as InvalidConnectionConfigException).errors.map((issue) => issue.path)).toEqual(['region']);
+  });
+
+  it('should accept a create in any region, since there is no stored region yet', async () => {
+    await expect(
+      validator.validate({ region: 'na', marketplaceIds: ['ATVPDKIKX0DER'] }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe('AmazonConnectionCredentialsShapeValidatorAdapter', () => {

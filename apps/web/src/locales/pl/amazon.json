@@ -50,14 +50,14 @@
     },
     "marketplaces": {
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
+      "descriptionSingle": "W tym regionie każdy kraj ma osobne konto sprzedawcy, więc połączenie sprzedaje na jednym rynku.",
       "label": "Rynki",
       "placeholder": "Wybierz rynki",
       "unlisted": "Rynek {id}"
     },
     "queueUrlDescription": "Amazon dostarcza zmiany zamówień do tej kolejki. Po zapisaniu zarejestruj ją poniżej.",
     "region": {
-      "changed": "Zapis przeniesie to połączenie do innego regionu Amazona. Wybierz poniżej jego rynki; Twoje konto sprzedawcy musi na nich sprzedawać.",
-      "description": "Serwer Amazona, z którym rozmawia to połączenie. Zmiana usuwa rynki poprzedniego regionu.",
+      "description": "Ustawiony przy tworzeniu połączenia. Inny region to inne konto Amazon i wymaga nowego połączenia.",
       "label": "Region"
     },
     "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać ofert."
@@ -67,6 +67,12 @@
     "setupCardDescription": "Sprzedawaj na Amazonie: importuj zamówienia, łącz i wystawiaj oferty, synchronizuj stany i ceny."
   },
   "setup": {
+    "accountNotice": {
+      "farEast": "W Japonii, Australii i Singapurze każdy kraj to osobne konto, więc połączenie z regionem Daleki Wschód obejmuje jeden rynek.",
+      "oneRegion": "Ameryka Północna i Europa mają jedno konto dla wszystkich swoich rynków, więc wybierz tam każdy rynek, na którym sprzedajesz.",
+      "regionFixed": "Regionu nie da się później zmienić; dla innego regionu utwórz kolejne połączenie z danymi logowania z tego regionu.",
+      "title": "Jedno połączenie to jedno konto sprzedawcy Amazon w jednym regionie"
+    },
     "awsAccessKeyId": "Identyfikator klucza AWS",
     "awsSecretAccessKey": "Tajny klucz AWS",
     "clientId": "Client ID aplikacji LWA",
@@ -115,6 +121,7 @@
       "capabilityRequired": "Wybierz co najmniej zamówienia albo oferty.",
       "marketplaceOtherRegion": "Któryś rynek obsługuje inny region. Wybierz tylko rynki wybranego regionu.",
       "marketplaceRequired": "Wybierz co najmniej jeden rynek.",
+      "marketplaceSingle": "Wybierz jeden rynek: w tym regionie każdy kraj to osobne konto. Dla kolejnego utwórz następne połączenie.",
       "queueUrlInvalid": "Podaj adres kolejki SQS, np. https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications.",
       "required": "To pole jest wymagane.",
       "sellerIdInvalid": "Podaj merchant token z Seller Central: od 8 do 20 wielkich liter i cyfr.",
@@ -123,6 +130,7 @@
     "marketplaceOption": "{country} ({currency})",
     "marketplaces": "Rynki",
     "marketplacesHint": "Zamówienia są pobierane, a oferty wystawiane na wybranych rynkach.",
+    "marketplacesHintSingle": "Każdy kraj w tym regionie to osobne konto sprzedawcy, więc wybierz jeden rynek.",
     "marketplacesNone": "OpenLinker nie ma jeszcze rynków dla tego regionu.",
     "marketplacesPlaceholder": "Wybierz rynki",
     "notifications": "Powiadomienia o zamówieniach (opcjonalnie)",

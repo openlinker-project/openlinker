@@ -8,6 +8,7 @@ import {
   decodeAmazonOrderFeedCursor,
   encodeAmazonOrderFeedCursor,
   nextAmazonOrderFeedCursor,
+  scopeAmazonOrderFeedCursor,
 } from '../amazon-order-feed-cursor.policy';
 
 const NOW = new Date('2026-11-17T12:00:00.000Z');
@@ -79,5 +80,53 @@ describe('nextAmazonOrderFeedCursor', () => {
     expect(
       nextAmazonOrderFeedCursor({ current, nextToken: undefined, windowEnd: undefined, latestUpdatedOnPage: undefined, now: NOW }),
     ).toEqual(current);
+  });
+});
+
+describe('scopeAmazonOrderFeedCursor', () => {
+  const DE = 'A1PA6795UKMFR9';
+  const PL = 'A1C3SOZRARQ6R3';
+
+  it('should record the marketplaces on a cursor that predates the field, without rewinding', () => {
+    expect(scopeAmazonOrderFeedCursor({ since: '2026-11-17T11:00:00.000Z' }, [DE, PL], NOW)).toEqual({
+      since: '2026-11-17T11:00:00.000Z',
+      marketplaceIds: [DE, PL],
+    });
+  });
+
+  it('should keep the watermark and token when the marketplaces are unchanged', () => {
+    const cursor = {
+      since: '2026-11-17T11:00:00.000Z',
+      paginationToken: 'p2',
+      tokenIssuedAt: '2026-11-17T11:30:00.000Z',
+      marketplaceIds: [DE],
+    };
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE], NOW)).toEqual(cursor);
+  });
+
+  it('should rewind to the bootstrap point and drop the token when a marketplace is added', () => {
+    const cursor = { since: '2026-11-17T11:00:00.000Z', paginationToken: 'p2', marketplaceIds: [DE] };
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE, PL], NOW)).toEqual({
+      since: '2026-11-10T12:00:00.000Z',
+      marketplaceIds: [DE, PL],
+    });
+  });
+
+  it('should never move the watermark forward when rewinding', () => {
+    const cursor = { since: '2026-11-01T00:00:00.000Z', marketplaceIds: [DE] };
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE, PL], NOW).since).toBe('2026-11-01T00:00:00.000Z');
+  });
+
+  it('should only update the list when a marketplace is removed', () => {
+    const cursor = { since: '2026-11-17T11:00:00.000Z', marketplaceIds: [DE, PL] };
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE], NOW)).toEqual({
+      since: '2026-11-17T11:00:00.000Z',
+      marketplaceIds: [DE],
+    });
+  });
+
+  it('should survive an encode and decode round trip', () => {
+    const raw = encodeAmazonOrderFeedCursor({ since: '2026-11-17T11:00:00.000Z', marketplaceIds: [DE] });
+    expect(decodeAmazonOrderFeedCursor(raw, NOW).marketplaceIds).toEqual([DE]);
   });
 });

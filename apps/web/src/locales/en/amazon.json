@@ -50,14 +50,14 @@
     },
     "marketplaces": {
       "description": "Orders are read and offers written on these marketplaces.",
+      "descriptionSingle": "This region has a separate seller account per country, so the connection sells on one marketplace.",
       "label": "Marketplaces",
       "placeholder": "Choose marketplaces",
       "unlisted": "Marketplace {id}"
     },
     "queueUrlDescription": "Amazon delivers order changes to this queue. Register it below after saving.",
     "region": {
-      "changed": "Saving moves this connection to another Amazon region. Choose its marketplaces below; your seller account must sell there.",
-      "description": "The Amazon server this connection talks to. Changing it removes the marketplaces of the old region.",
+      "description": "Set when the connection was created. Another region is another Amazon account and needs a new connection.",
       "label": "Region"
     },
     "sellerIdMissing": "Without the merchant token, offers cannot be read or written."
@@ -67,6 +67,12 @@
     "setupCardDescription": "Sell on Amazon: import orders, link and publish listings, keep stock and prices in sync."
   },
   "setup": {
+    "accountNotice": {
+      "farEast": "In Japan, Australia and Singapore each country is a separate account, so a Far East connection covers one marketplace.",
+      "oneRegion": "North America and Europe each have one account for all their marketplaces, so choose every marketplace you sell on there.",
+      "regionFixed": "The region cannot be changed later; for another region, create another connection with that region's credentials.",
+      "title": "One connection is one Amazon seller account in one region"
+    },
     "awsAccessKeyId": "AWS access key id",
     "awsSecretAccessKey": "AWS secret access key",
     "clientId": "LWA client id",
@@ -115,6 +121,7 @@
       "capabilityRequired": "Choose at least one of orders or offers.",
       "marketplaceOtherRegion": "A marketplace is served by another region. Choose marketplaces of the selected region only.",
       "marketplaceRequired": "Choose at least one marketplace.",
+      "marketplaceSingle": "Choose one marketplace: in this region each country is a separate account. Create another connection for the next one.",
       "queueUrlInvalid": "Enter an SQS queue URL, such as https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications.",
       "required": "This field is required.",
       "sellerIdInvalid": "Enter the merchant token from Seller Central: 8 to 20 capital letters and digits.",
@@ -123,6 +130,7 @@
     "marketplaceOption": "{country} ({currency})",
     "marketplaces": "Marketplaces",
     "marketplacesHint": "Orders are read and offers written on the marketplaces you choose.",
+    "marketplacesHintSingle": "Each country in this region is a separate seller account, so choose one marketplace.",
     "marketplacesNone": "OpenLinker does not list marketplaces for this region yet.",
     "marketplacesPlaceholder": "Choose marketplaces",
     "notifications": "Order notifications (optional)",

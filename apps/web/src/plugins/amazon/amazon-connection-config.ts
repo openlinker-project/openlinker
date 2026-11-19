@@ -4,9 +4,12 @@
  * The non-render half of the Amazon edit section: the marketplaces OpenLinker
  * reads orders from and writes offers to, the merchant token the listings API
  * needs, and the SQS queue Amazon delivers order notifications to. Region and
- * environment is fixed at create and only shown. The region can be changed:
- * the LWA credentials work in every region, and the marketplaces of the old
- * region are dropped with it (the API refuses them on another region's host).
+ * environment are fixed at create and only shown: another region is another
+ * seller account with its own refresh token, so the API refuses the change
+ * and another region is a new connection.
+ *
+ * A marketplace added here is picked up by the order feed, which rewinds its
+ * watermark for it (`scopeAmazonOrderFeedCursor`).
  *
  * Each rule is no stricter than `parseAmazonConfig` on the API, which refuses
  * the same values on save.
@@ -18,7 +21,7 @@
  * @module plugins/amazon
  */
 import { z } from 'zod';
-import { SQS_QUEUE_URL, isAmazonRegion } from '../../features/amazon';
+import { SQS_QUEUE_URL, findMarketplace, isSingleMarketplaceRegion } from '../../features/amazon';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readOptionalConfigString } from '../../shared/plugins';
 import { getAmazonMessages } from './messages';
@@ -31,8 +34,6 @@ declare module '../../shared/plugins/plugin.types' {
     amazonSellerId?: string;
     /** `config.notificationQueueUrl`. */
     amazonNotificationQueueUrl?: string;
-    /** `config.region`: changing it moves the connection to another Amazon server. */
-    amazonRegion?: string;
   }
 }
 
@@ -43,6 +44,17 @@ export function splitMarketplaceIds(value: string): string[] {
     .split(',')
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
+}
+
+/** More than one marketplace where a region has a seller account per marketplace. */
+function exceedsSingleMarketplaceRegion(ids: readonly string[]): boolean {
+  return (
+    ids.length > 1 &&
+    ids.some((id) => {
+      const known = findMarketplace(id);
+      return known !== undefined && isSingleMarketplaceRegion(known.region);
+    })
+  );
 }
 
 function optionalPattern(pattern: RegExp, message: () => string): z.ZodTypeAny {
@@ -61,8 +73,10 @@ const amazonSchemaShape: ConnectionConfigContribution['schemaShape'] = {
     .refine((value) => splitMarketplaceIds(value).length > 0, {
       error: () => getAmazonMessages().setup.errors.marketplaceRequired,
     })
+    .refine((value) => !exceedsSingleMarketplaceRegion(splitMarketplaceIds(value)), {
+      error: () => getAmazonMessages().setup.errors.marketplaceSingle,
+    })
     .optional(),
-  amazonRegion: z.string().optional(),
   amazonSellerId: optionalPattern(SELLER_ID, () => getAmazonMessages().setup.errors.sellerIdInvalid),
   amazonNotificationQueueUrl: optionalPattern(
     SQS_QUEUE_URL,
@@ -76,7 +90,6 @@ function readAmazonConfig(config: Record<string, unknown>): Record<string, strin
     : [];
   return {
     amazonMarketplaceIds: ids.join(','),
-    amazonRegion: typeof config.region === 'string' ? config.region : 'eu',
     amazonSellerId: typeof config.sellerId === 'string' ? config.sellerId : '',
     amazonNotificationQueueUrl:
       typeof config.notificationQueueUrl === 'string' ? config.notificationQueueUrl : '',
@@ -88,11 +101,6 @@ function applyAmazonConfig(
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
   const next: Record<string, unknown> = { ...config };
-
-  const region = readOptionalConfigString(patch, 'amazonRegion');
-  if (region !== undefined && isAmazonRegion(region)) {
-    next.region = region;
-  }
 
   const marketplaces = readOptionalConfigString(patch, 'amazonMarketplaceIds');
   if (marketplaces !== undefined) {

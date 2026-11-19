@@ -5,7 +5,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
 import type { ReactElement } from 'react';
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -94,24 +94,42 @@ describe('AmazonStructuredSection', () => {
     expect(screen.getByLabelText('Merchant token')).toBeDisabled();
   });
 
-  it('should change the region and drop the marketplaces of the old one', async () => {
-    const sync = vi.fn();
-    renderWithProviders(<Harness sync={sync} />, admin);
+  it('should show the region read-only, since another region is another account', async () => {
+    renderWithProviders(<Harness />, admin);
 
-    fireEvent.change(await screen.findByLabelText('Region'), { target: { value: 'na' } });
-
-    expect(sync).toHaveBeenCalledWith('amazonRegion', 'na');
-    expect(sync).toHaveBeenCalledWith('amazonMarketplaceIds', '');
+    const region = await screen.findByLabelText('Region');
+    expect(region).toBeDisabled();
+    expect(region).toHaveValue('Europe (EU)');
   });
 
-  it('should offer the marketplaces of the chosen region and warn about a region change', async () => {
-    renderWithProviders(<Harness values={{ amazonRegion: 'na', amazonMarketplaceIds: 'ATVPDKIKX0DER' }} />, admin);
+  it('should offer the marketplaces of the stored region', async () => {
+    renderWithProviders(
+      <Harness config={{ region: 'na', environment: 'production' }} values={{ amazonMarketplaceIds: 'ATVPDKIKX0DER' }} />,
+      admin,
+    );
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole('combobox', { name: 'Marketplaces' }));
     expect(screen.getByRole('option', { name: /United States \(USD\)/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('option', { name: /Germany/ })).toBeNull();
-    expect(screen.getByText(/moves this connection to another Amazon region/)).toBeInTheDocument();
+  });
+
+  it('should replace the marketplace instead of adding one in the Far East region', async () => {
+    const sync = vi.fn();
+    renderWithProviders(
+      <Harness
+        sync={sync}
+        config={{ region: 'fe', environment: 'production' }}
+        values={{ amazonMarketplaceIds: 'A1VC38T7YXB528' }}
+      />,
+      admin,
+    );
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('combobox', { name: 'Marketplaces' }));
+    await user.click(screen.getByRole('option', { name: /Australia/ }));
+
+    expect(sync).toHaveBeenCalledWith('amazonMarketplaceIds', 'A39IBJ37TRP1C6');
   });
 
   it('should keep a stored marketplace of another region visible as a chip so it can be removed', async () => {

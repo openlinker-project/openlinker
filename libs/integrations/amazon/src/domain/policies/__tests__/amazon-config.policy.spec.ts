@@ -3,7 +3,7 @@
  *
  * @module libs/integrations/amazon/src/domain/policies/__tests__
  */
-import { parseAmazonConfig, resolveAmazonSpApiHost } from '../amazon-config.policy';
+import { parseAmazonConfig, regionChangeIssue, resolveAmazonSpApiHost } from '../amazon-config.policy';
 
 describe('parseAmazonConfig', () => {
   it('should default the region to eu and the environment to production', () => {
@@ -113,5 +113,37 @@ describe('parseAmazonConfig sellerId (#4180)', () => {
   it('should refuse something that is not a merchant token', () => {
     const result = parseAmazonConfig({ marketplaceIds: ['A1PA6795UKMFR9'], sellerId: 'my shop' });
     expect(!result.ok && result.issues[0].path).toBe('sellerId');
+  });
+});
+
+describe('parseAmazonConfig single-marketplace regions', () => {
+  it('should refuse two Far East marketplaces on one connection', () => {
+    const result = parseAmazonConfig({ region: 'fe', marketplaceIds: ['A1VC38T7YXB528', 'A39IBJ37TRP1C6'] });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.issues.map((issue) => issue.path)).toEqual(['marketplaceIds']);
+  });
+
+  it('should accept one Far East marketplace', () => {
+    expect(parseAmazonConfig({ region: 'fe', marketplaceIds: ['A1VC38T7YXB528'] }).ok).toBe(true);
+  });
+
+  it('should keep several marketplaces allowed in a unified region', () => {
+    const result = parseAmazonConfig({ region: 'na', marketplaceIds: ['ATVPDKIKX0DER', 'A2EUQ1WTGCTBG2'] });
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('regionChangeIssue', () => {
+  it('should refuse a move to another region', () => {
+    expect(regionChangeIssue({ region: 'na' }, { region: 'eu' })?.path).toBe('region');
+  });
+
+  it('should read a stored config without a region as the default region', () => {
+    expect(regionChangeIssue({ region: 'eu' }, {})).toBeNull();
+    expect(regionChangeIssue({ region: 'fe' }, {})?.path).toBe('region');
+  });
+
+  it('should pass a save that keeps the region', () => {
+    expect(regionChangeIssue({ region: 'na', sellerId: 'A2EXAMPLE12345' }, { region: 'na' })).toBeNull();
   });
 });
