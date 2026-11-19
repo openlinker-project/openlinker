@@ -78,6 +78,11 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
     // getCapabilityAdapter('ShopProductStatusReader')). Backs the steady-state
     // `ShopStatusSyncService` reconcile scheduler.
     'ShopProductStatusReader',
+    // Shop-side visibility write (#3962). Advertised-without-dispatch: resolved
+    // by narrowing the dispatched ProductPublisher adapter with
+    // `isShopProductVisibilityWriter`. Takes a product deleted at the master
+    // off sale (draft) instead of relying on a stock write.
+    'ShopProductVisibilityWriter',
     // Inventory write-back to published products (#1498). Quantity-only —
     // WooCommerce is a destination shop, not a marketplace: no OfferCreator /
     // OfferLister sub-capabilities, so offer-creation flows (gated on

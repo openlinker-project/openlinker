@@ -341,6 +341,27 @@ describe('seedRows (#1754 pre-selected variants)', () => {
     expect(rows[0].primaryVariant?.id).toBe('v2');
   });
 
+  it('seeds the editor from a failed batch\'s saved request (#4037)', () => {
+    const prefill = new Map([
+      [
+        'v2',
+        {
+          overrides: {
+            title: 'Edited title',
+            categoryId: 'cat-9',
+            parameters: [{ id: 'p1', valuesIds: ['a'], section: 'offer' as const }],
+          },
+          formParameters: { p1: 'a' },
+        },
+      ],
+    ]);
+    const rows = seedRows([makeProduct('p1', ['v1', 'v2'])], new Set(['v2']), prefill);
+    expect(rows[0].override.overrides).toMatchObject({ title: 'Edited title', categoryId: 'cat-9' });
+    expect(rows[0].editFormValues).toEqual({ parameters: { p1: 'a' } });
+    expect(rows[0].variants[1].override.overrides?.title).toBe('Edited title');
+    expect(rows[0].variants[0].override).toEqual({});
+  });
+
   it('leaves out a variant deleted at the master', () => {
     const product = makeProduct('p1', ['base', 'red', 'green']);
     (product.variants![0] as { isStale: boolean }).isStale = true;

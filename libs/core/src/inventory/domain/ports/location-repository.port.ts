@@ -45,6 +45,19 @@ export interface LocationRepositoryPort {
   findById(id: string): Promise<InventoryLocation | null>;
 
   /**
+   * The location a connection's own sync provisioned for one of the master's
+   * locations: `ownerConnectionId` is the connection, `externalRef` the
+   * master's own id. Never matches a location with another owner, so a
+   * reference that happens to coincide across two platforms cannot cross over.
+   *
+   * @returns the location, or `null` when none was provisioned yet
+   */
+  findByOwnerAndExternalRef(
+    ownerConnectionId: string,
+    externalRef: string
+  ): Promise<InventoryLocation | null>;
+
+  /**
    * Batched by-id read — ONE query for a page of ids, never one per id
    * (#3426, the `OrderRecordRepositoryPort.findByIds` / `getProductsByIds`
    * precedent).

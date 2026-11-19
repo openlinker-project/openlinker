@@ -36,6 +36,17 @@ export const OrderSyncStatusValues = [
 ] as const;
 export type OrderSyncStatusValue = (typeof OrderSyncStatusValues)[number];
 
+/**
+ * Last attempt to carry a changed delivery point to a destination copy (#4195).
+ * Mirrors `OrderDeliveryUpdateResponseDto`; `reason` is set for `refused` only.
+ */
+export interface OrderDeliveryUpdate {
+  outcome: 'updated' | 'unchanged' | 'refused' | 'unsupported' | 'failed';
+  reason: 'cancelled' | 'fulfilled' | 'closed' | 'not-found' | null;
+  detail: string | null;
+  at: string;
+}
+
 export interface OrderSyncStatus {
   destinationConnectionId: string;
   status: OrderSyncStatusValue;
@@ -43,6 +54,7 @@ export interface OrderSyncStatus {
   externalOrderId: string | null;
   externalOrderNumber: string | null;
   error: string | null;
+  deliveryUpdate?: OrderDeliveryUpdate | null;
 }
 
 /**
@@ -851,6 +863,12 @@ export interface OrderRecord {
    */
   openReturn?: OrderOpenReturn;
   /**
+   * Refund state derived on read from the refund records (#4130). Absent means
+   * nothing was refunded or the read failed, never "not refunded". Separate
+   * from `paymentStatus`, which the next poll rewrites.
+   */
+  refundState?: OrderRefundState;
+  /**
    * Tag ids assigned to this order (#3532, D34). Absent means "not
    * projected on this read"; an empty array is a positive "no tags".
    */
@@ -875,6 +893,7 @@ export const FulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
+  'routing-awaiting-payment',
 ] as const;
 export type FulfillmentBlockReasonValue = (typeof FulfillmentBlockReasonValues)[number];
 
@@ -904,6 +923,7 @@ export const WaitingFulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
+  'routing-awaiting-payment',
 ] as const satisfies readonly FulfillmentBlockReasonValue[];
 export type WaitingFulfillmentBlockReasonValue = (typeof WaitingFulfillmentBlockReasonValues)[number];
 
@@ -918,6 +938,13 @@ export interface OrderHandledInOpenLinker {
    */
   assignment?: 'single' | 'mixed';
   assignedToUserId?: string | null;
+}
+
+/** Refund state derived by the API from the order's refund records (#4130). */
+export interface OrderRefundState {
+  state: 'none' | 'partial' | 'full' | 'unknown';
+  refundedAmount: string | null;
+  currency: string | null;
 }
 
 /** The open-return badge payload (#2998) — count plus a stage hint. */

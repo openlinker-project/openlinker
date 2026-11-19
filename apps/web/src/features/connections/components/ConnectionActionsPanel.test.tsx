@@ -176,7 +176,7 @@ describe('ConnectionActionsPanel', () => {
   });
 
   it('renders no plugin-specific actions for an unregistered platformType', async () => {
-    const unknownConnection = { ...sampleConnection, platformType: 'shopify' };
+    const unknownConnection = { ...sampleConnection, platformType: 'unregistered-platform' };
     renderWithProviders(<ConnectionActionsPanel connection={unknownConnection} />, adminSession);
     expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();

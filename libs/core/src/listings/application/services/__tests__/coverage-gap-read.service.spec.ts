@@ -33,6 +33,7 @@ describe('CoverageGapReadService', () => {
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),
+      findStaleMappedProductIds: jest.fn().mockResolvedValue([]),
     };
     integrationsService = {
       getAdapter: jest.fn(),

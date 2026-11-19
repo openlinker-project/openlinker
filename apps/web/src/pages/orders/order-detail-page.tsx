@@ -336,6 +336,11 @@ export function OrderDetailPage(): ReactElement {
   const documentEmailEvents = mapDocumentEmailsToEvents(documentEmailsQuery.data ?? []);
   const buyerEmailEvents = mapBuyerEmailsToEvents(buyerEmailsQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
+  // Mirrors the backend refusal (#3990): a live work object or a persisted routing
+  // block means routing owns the order, so a destination retry is a 409. The 409
+  // stays the backstop for the one case this cannot see (a router decision with
+  // neither a work nor a block yet).
+  const isRoutedOrder = Boolean(order.handledInOpenLinker) || Boolean(order.fulfillmentBlockReason);
 
   // #3541 - cancel action inputs. All derived from data the page already holds.
   const sessionCancelResult =
@@ -576,6 +581,7 @@ export function OrderDetailPage(): ReactElement {
         <OrderConfirmRefundAction
           internalOrderId={order.internalOrderId}
           currency={snapshot.totals?.currency ?? null}
+          sourceConnectionId={order.sourceConnectionId}
           orderTotal={
             snapshot.totals
               ? snapshot.totals.total.toFixed(minorUnitExponentFor(snapshot.totals.currency))
@@ -737,14 +743,18 @@ export function OrderDetailPage(): ReactElement {
                     {copy.viewRaw} <span aria-hidden="true">▸</span>
                   </a>
                 </div>
-                <Button
-                  tone="primary"
-                  className="button--sm"
-                  onClick={() => handleRetry(status.destinationConnectionId)}
-                  disabled={pendingDestinationId === status.destinationConnectionId}
-                >
-                  {pendingDestinationId === status.destinationConnectionId ? copy.retrying : copy.retry}
-                </Button>
+                {isRoutedOrder ? (
+                  <span className="order-detail__failed-error">{copy.routedNote}</span>
+                ) : (
+                  <Button
+                    tone="primary"
+                    className="button--sm"
+                    onClick={() => handleRetry(status.destinationConnectionId)}
+                    disabled={pendingDestinationId === status.destinationConnectionId}
+                  >
+                    {pendingDestinationId === status.destinationConnectionId ? copy.retrying : copy.retry}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>

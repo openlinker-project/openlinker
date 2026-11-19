@@ -44,6 +44,7 @@ export const ApiErrorCodeValues = [
   'CONNECTION_CONFIG_NOT_UNIQUE',
   /** Stock master and stock write-back cannot both be on. params: `capabilities`. */
   'CONNECTION_CAPABILITIES_CONFLICT',
+  'CONNECTION_MASTER_PUBLISHER_CONFLICT',
   /** The adapter does not offer these capabilities. params: `adapterKey`, `capabilities`. */
   'CONNECTION_CAPABILITIES_UNSUPPORTED',
   /** Fulfilment routing needs an active inventory location first. */
@@ -161,6 +162,10 @@ export const ApiErrorCodeValues = [
   'ORDER_DESTINATION_NOT_FOUND',
   /** Only a failed destination sync can be retried. params: `orderId`, `connectionId`, `status`. */
   'ORDER_DESTINATION_NOT_RETRYABLE',
+  /** OMS routing owns the order, so a destination mirror is not retryable. params: `orderId`, `connectionId`. */
+  'ORDER_HANDLED_BY_ROUTING',
+  /** A product deleted at the source cannot be put back on sale (409). params: `productId`. */
+  'SALE_HOLD_RELEASE_REFUSED',
   /** The order has no source external id for the connection (500). params: `orderId`, `connectionId`. */
   'ORDER_SOURCE_ID_MISSING',
   /** The routing retry could not be queued; try again. params: `orderId`. */
@@ -283,6 +288,8 @@ export const ApiErrorCodeValues = [
   'SHIPMENT_LABEL_DOCUMENT_UNSUPPORTED',
   /** No label has been generated for the shipment yet. params: `shipmentId`. */
   'SHIPMENT_LABEL_NOT_GENERATED',
+  /** The carrier has the shipment but is still preparing its label; retry shortly. params: `retryAfterMs`. */
+  'SHIPMENT_LABEL_NOT_READY',
   /** The carrier connection cannot generate handover protocols. params: `connectionId`. */
   'HANDOVER_PROTOCOL_UNSUPPORTED',
   /** The carrier rejected OpenLinker's stored credentials. params: `provider`, `connectionId` where known. */
@@ -429,6 +436,8 @@ export const ApiErrorCodeValues = [
   'BULK_OFFER_BATCH_NOT_FOUND',
   /** No bulk shop-publish batch has this id. params: `batchId`. */
   'BULK_SHOP_PUBLISH_BATCH_NOT_FOUND',
+  /** A legacy connection holds both ProductMaster and ProductPublisher, so publishing to it is refused. params: `connectionId`. */
+  'SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT',
   /** Another submit with the same idempotency key is still being resolved; retry. No params. */
   'BULK_SUBMIT_IDEMPOTENCY_CONTENDED',
   /** Every selected variant is already listed on the connection. params: `skippedCount`. */
@@ -544,6 +553,11 @@ export const ApiErrorCodeValues = [
   'OAUTH_ADAPTER_NOT_REGISTERED',
   /** Re-authorizing a connection of another platform. params: `connectionId`, `expectedPlatformType`, `platformType`. */
   'OAUTH_CONNECTION_PLATFORM_MISMATCH',
+  /**
+   * The platform's OAuth redirect failed its signature or store check, so its
+   * code was not exchanged. params: `platformType`, `reason`.
+   */
+  'OAUTH_CALLBACK_UNVERIFIED',
   /** The OAuth credentials could not be stored. */
   'CREDENTIALS_STORE_FAILED',
   /** The connection is not a Subiekt Invoicing connection. params: `connectionId`. */

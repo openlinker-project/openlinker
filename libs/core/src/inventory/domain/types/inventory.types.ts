@@ -203,6 +203,28 @@ export interface InventoryAdjustment {
 }
 
 /**
+ * One variant's COMPLETE set of reported locations, for
+ * `markUnreportedLocationsStaleForSource`.
+ */
+export interface ReportedLocationSet {
+  /** The variant key; `null` for a product-level position. */
+  readonly variantKey: string | null;
+  /** Every OL location the master reported this variant at in this pull. */
+  readonly locationIds: readonly string[];
+}
+
+/**
+ * One variant's COMPLETE set of reported locations, for
+ * `markUnreportedLocationsStaleForSource`.
+ */
+export interface ReportedLocationSet {
+  /** The variant key; `null` for a product-level position. */
+  readonly variantKey: string | null;
+  /** Every OL location the master reported this variant at in this pull. */
+  readonly locationIds: readonly string[];
+}
+
+/**
  * Inventory filters for list queries
  */
 export interface InventoryFilters {

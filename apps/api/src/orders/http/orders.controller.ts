@@ -80,6 +80,7 @@ import {
   NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
+  OrderDestinationHandledByRoutingException,
   MissingSourceExternalIdException,
   IOrderDestinationRetryService,
   ORDER_HOLD_SERVICE_TOKEN,
@@ -117,6 +118,9 @@ import {
   ISalesDocumentViewService,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   PAYMENT_WRITEBACK_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+  deriveOrderRefundState,
+  type IOrderRefundService,
   isPaymentWritebackProblem,
   type IPaymentWritebackService,
 } from '@openlinker/core/orders';
@@ -537,7 +541,10 @@ export class OrdersController {
     private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
     // #3963 - Retry and Mark as handled for a payment that did not reach a shop.
     @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
-    private readonly paymentWriteback: IPaymentWritebackService
+    private readonly paymentWriteback: IPaymentWritebackService,
+    // #4130 - the refund-derived order state, read from the refund records.
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -674,9 +681,17 @@ export class OrdersController {
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the refund summaries for the whole page (#4130): one grouped query,
+    // never a per-row read. Derived on read so the poll that rewrites
+    // `paymentStatus` cannot overwrite it.
+    const refundSummaries = await this.loadRefundSummariesForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order, amendingOrderIds.has(order.internalOrderId));
+        this.applyRefundState(dto, order, refundSummaries);
         const invoice = invoiceByOrderId.get(order.internalOrderId);
         if (invoice) {
           dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
@@ -958,6 +973,11 @@ export class OrdersController {
     // `/orders`. Best-effort: a shortfall projection failing must not take the
     // whole order detail down with it, and the episodes are re-readable.
     dto.reservationShortfalls = await this.loadReservationShortfalls(order.internalOrderId);
+    this.applyRefundState(
+      dto,
+      order,
+      await this.loadRefundSummariesForPage([order.internalOrderId])
+    );
     // Hold projection (#2341). DETAIL ONLY — one query per order, which on the
     // paged list would be N. `activeHold` is derived from the same read rather
     // than a second `getOpenHold` call, so the two answers cannot disagree.
@@ -1122,7 +1142,7 @@ export class OrdersController {
     type: RetryOrderDestinationResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Order or destination row not found' })
-  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state' })
+  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state, or the order is handled by OMS routing (ORDER_HANDLED_BY_ROUTING)' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryDestination(
     @Param('internalOrderId') internalOrderId: string,
@@ -1154,6 +1174,12 @@ export class OrdersController {
           orderId: error.internalOrderId,
           connectionId: error.destinationConnectionId,
           status: error.currentStatus,
+        });
+      }
+      if (error instanceof OrderDestinationHandledByRoutingException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_HANDLED_BY_ROUTING', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
         });
       }
       if (error instanceof MissingSourceExternalIdException) {
@@ -1408,6 +1434,41 @@ export class OrdersController {
       );
       return new Map();
     }
+  }
+
+  /**
+   * Best-effort, like the other batched projections: a failed read renders no
+   * refund state and makes no "not refunded" claim.
+   */
+  private async loadRefundSummariesForPage(
+    internalOrderIds: string[]
+  ): Promise<Awaited<ReturnType<IOrderRefundService['getRefundSummariesForOrders']>>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.orderRefunds.getRefundSummariesForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project refund state for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
+  private applyRefundState(
+    dto: OrderRecordResponseDto,
+    order: OrderRecord,
+    summaries: Awaited<ReturnType<IOrderRefundService['getRefundSummariesForOrders']>>
+  ): void {
+    const view = deriveOrderRefundState(order, summaries.get(order.internalOrderId) ?? null);
+    // `none` stays absent: no field means nothing was refunded or the read
+    // failed, never a positive claim either way.
+    if (view.state === 'none') {
+      return;
+    }
+    dto.refundState = view;
   }
 
   private async loadReservationShortfallsForPage(
@@ -2385,6 +2446,14 @@ export class OrdersController {
       externalOrderId: s.externalOrderId ?? null,
       externalOrderNumber: s.externalOrderNumber ?? null,
       error: s.error ?? null,
+      deliveryUpdate: s.deliveryUpdate
+        ? {
+            outcome: s.deliveryUpdate.outcome,
+            reason: s.deliveryUpdate.reason ?? null,
+            detail: s.deliveryUpdate.detail ?? null,
+            at: s.deliveryUpdate.at.toISOString(),
+          }
+        : null,
     };
   }
 

@@ -503,6 +503,7 @@
       "title": "To więcej niż wartość zamówienia"
     },
     "description": "Zapisz zwrot pieniędzy, który wykonałeś dla kupującego. OpenLinker nie przesyła pieniędzy.",
+    "descriptionShopify": "Potwierdzenie wysyła zwrot do Shopify, które zwraca pieniądze kupującemu.",
     "recorded": "Zwrot pieniędzy zapisany.",
     "title": "Potwierdź zwrot pieniędzy"
   },
@@ -802,6 +803,11 @@
     "unassigned": "Nieprzypisane",
     "waitingOnFact": "Czeka na",
     "waitingReasons": {
+      "routing-awaiting-payment": {
+        "fact": "Płatność",
+        "hint": "OpenLinker wstrzymuje to zamówienie: kupujący jeszcze nie zapłacił. Trafi do pakowania, gdy kanał przekaże płatność.",
+        "label": "Czeka: płatność"
+      },
       "routing-failed": {
         "fact": "Błąd kierowania",
         "hint": "OpenLinker wstrzymuje to zamówienie: nie udało się go skierować. Próba zostanie ponowiona automatycznie.",
@@ -1230,8 +1236,8 @@
     "scopeItem": "{label} {value}",
     "search": {
       "label": "Szukaj zamówień",
-      "placeholderNoPii": "Szukaj po numerze zamówienia, SKU lub numerze przesyłki…",
-      "placeholderWithPii": "Szukaj po numerze zamówienia, kupującym, e-mailu, SKU lub numerze przesyłki…"
+      "placeholderNoPii": "Szukaj po numerze zamówienia, SKU, numerze przesyłki lub ID OpenLinker…",
+      "placeholderWithPii": "Szukaj po numerze zamówienia, kupującym, e-mailu, SKU, numerze przesyłki lub ID OpenLinker…"
     },
     "sectionAny": "Dowolne",
     "sectionNone": "Brak",
@@ -1680,6 +1686,7 @@
     "retryQueuedDescription": "Synchronizacja z kanałem docelowym z błędem jest w kolejce.",
     "retryQueuedTitle": "Ponowienie w kolejce",
     "retrying": "Ponawianie…",
+    "routedNote": "To zamówienie obsługuje routing OMS, więc nie jest kopiowane do miejsc docelowych i nie można go tu ponowić.",
     "summary": {
       "buyerTaxId": "NIP kupującego",
       "orderNumber": "Nr zamówienia",
@@ -2804,6 +2811,7 @@
     "orderTotal": "Wartość zamówienia: {total} {currency}",
     "pending": "Zapisywanie…",
     "preamble": "OpenLinker nie przesyła pieniędzy. Potwierdź, że zwrócono pieniądze kupującemu, a OpenLinker zapisze to przy tym zwrocie i tym zamówieniu.",
+    "preambleShopify": "OpenLinker wysyła ten zwrot do Shopify, które zwraca pieniądze kupującemu. Sprawdź kwotę przed potwierdzeniem, bo stąd nie da się tego cofnąć.",
     "reasonLabel": "Powód",
     "submit": "Potwierdź zwrot pieniędzy"
   },
@@ -2813,6 +2821,11 @@
     "other": "Inny powód",
     "withdrawal": "Kupujący zmienił zdanie",
     "wrongItem": "Wysłano niewłaściwy towar"
+  },
+  "refundStateBadge": {
+    "full": "Zwrócone",
+    "partial": "Częściowo zwrócone",
+    "title": "{label}: {amount}"
   },
   "salesDocumentBlockDetail": {
     "candidates": "Połączenia, które mogą go wystawić: {n}.",

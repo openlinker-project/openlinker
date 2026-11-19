@@ -101,7 +101,8 @@
     "ReturnsAuthority": "Decyduje, co dzieje się z towarem odesłanym przez klienta - czy wraca do sprzedaży i kto to zatwierdza."
   },
   "capabilityMetadata": {
-    "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów."
+    "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów.",
+    "conflictMasterPublisher": "Niedostępne, gdy wybrano {capability} - opublikowane produkty wróciłyby z tego sklepu jako duplikaty. Drugą rolę ustaw na osobnym połączeniu."
   },
   "catalogTrustPanel": {
     "cycleNone": "Brak otwartego",
@@ -196,6 +197,10 @@
     "enabledToast": "Włączono {capability}.",
     "errorTitle": "Nie udało się zaktualizować możliwości",
     "eyebrow": "Możliwości",
+    "legacyMasterPublisher": {
+      "body": "To połączenie jest jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty mogą wracać jako duplikaty. Publikowanie na to połączenie jest odrzucane, dopóki nie wyłączysz roli Źródło produktów.",
+      "title": "Katalog i publikowanie na jednym połączeniu"
+    },
     "none": "To połączenie nie ma możliwości, które można tu przełączać.",
     "noneEnabled": {
       "body": "To połączenie jest nieaktywne dla wszystkich możliwości. Żadne zadanie synchronizacji z niego nie skorzysta.",
@@ -230,6 +235,7 @@
     "ariaLabel": "{name}, {platform}",
     "sandboxFace": "{platform} sandbox",
     "sandboxLabel": "{platform} (sandbox)",
+    "sandboxTag": "sandbox",
     "title": "{name} - {platform}"
   },
   "connectionConfigPanel": {
@@ -845,6 +851,7 @@
       "body": "Popraw poniżej surową konfigurację JSON, zanim zaczniesz edytować pola formularza - są zablokowane, aby własne klucze JSON nie zostały po cichu utracone.",
       "title": "Surowy JSON jest nieprawidłowy"
     },
+    "readOnlyNote": "Masz dostęp tylko do odczytu, więc tych ustawień nie można zmienić.",
     "save": "Zapisz zmiany",
     "saving": "Zapisywanie...",
     "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
@@ -866,6 +873,10 @@
     "notFound": {
       "message": "Nie zwrócono danych połączenia. Sprawdź ID połączenia lub wróć do listy.",
       "title": "Nie znaleziono połączenia"
+    },
+    "readOnly": {
+      "message": "Edycja połączenia wymaga uprawnień do zapisu. Poproś administratora o zmianę tych ustawień.",
+      "title": "Dostęp tylko do odczytu"
     },
     "title": "Edytuj połączenie"
   },
@@ -1077,6 +1088,12 @@
       "batched": "Zbiorczo",
       "manual": "Ręcznie"
     }
+  },
+  "labelPurchaseNotificationSection": {
+    "heading": "Po zakupie etykiety",
+    "help": "Sklep lub marketplace dostaje numer przesyłki i oznacza zamówienie jako wysłane od razu po zakupie etykiety nadawczej. Kupujący może wtedy dostać informację o wysyłce w chwili zakupu etykiety, a nie wtedy, gdy paczka faktycznie wyjedzie. Włącz tylko, jeśli kupujesz etykiety i oddajesz paczki przewoźnikowi w tym samym czasie.",
+    "manualDispatch": "„Oznacz jako nadane” działa niezależnie od tego ustawienia: gdy jest wyłączone, użyj go po oddaniu paczki przewoźnikowi.",
+    "toggle": "Powiadom sklep lub marketplace po zakupie etykiety"
   },
   "newConnectionPage": {
     "backLabel": "Połączenia",
@@ -1697,7 +1714,7 @@
     "title": "Połącz z {platform}"
   },
   "woocommerceSetupSchema": {
-    "capabilityConflict": "W tym samym połączeniu nie można jednocześnie włączyć głównego źródła stanów i zapisu stanów do tego sklepu.",
+    "capabilityConflict": "W tym samym połączeniu nie można jednocześnie włączyć głównego źródła stanów i zapisu stanów do tego sklepu, ani katalogu produktów i publikowania produktów.",
     "consumerKeyPrefix": "Consumer key musi zaczynać się od ck_",
     "consumerKeyRequired": "Consumer key jest wymagany",
     "consumerSecretPrefix": "Consumer secret musi zaczynać się od cs_",

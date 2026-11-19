@@ -50,6 +50,7 @@ describe('InventoryService', () => {
       markStaleExceptVariants: jest.fn().mockResolvedValue(0),
       markLocationlessStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
       markLocatedStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
+      markUnreportedLocationsStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<InventoryRepositoryPort>;
 
     jobQueue = {
@@ -170,6 +171,25 @@ describe('InventoryService', () => {
     await service.setInventory(input);
 
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('enqueues propagation when a previously stale row returns at the same quantity', async () => {
+    const input = createItem({
+      availableQuantity: 5,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+    const previous = createItem({
+      availableQuantity: 5,
+      isStale: true,
+      updatedAt: new Date('2026-01-01T11:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(previous);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
   // #2324 (ADR-058 decision 5) — INVERTED. A located write used to be skipped,
@@ -395,6 +415,33 @@ describe('InventoryService', () => {
       })
     );
   });
+  describe('staleUnreportedLocationsForSource', () => {
+    const scope = { sourceConnectionId: 'connection-a', includeUnattributedProvenance: true };
+
+    it('should delegate to the repository with the provenance scope', async () => {
+      inventoryRepository.markUnreportedLocationsStaleForSource.mockResolvedValue({
+        markedCount: 1,
+        variantIds: ['v1'],
+      });
+      const reported = [{ variantKey: 'v1', locationIds: ['loc-1'] }];
+
+      const result = await service.staleUnreportedLocationsForSource('product-id', reported, scope);
+
+      expect(inventoryRepository.markUnreportedLocationsStaleForSource).toHaveBeenCalledWith(
+        'product-id',
+        reported,
+        scope
+      );
+      expect(result.markedCount).toBe(1);
+    });
+
+    it('should not touch storage when nothing was reported', async () => {
+      await service.staleUnreportedLocationsForSource('product-id', [], scope);
+
+      expect(inventoryRepository.markUnreportedLocationsStaleForSource).not.toHaveBeenCalled();
+    });
+  });
+
   // #3565 — the stock movement ledger, written where `inventory_items` changes.
   describe('stock movement ledger', () => {
     const at = new Date('2026-01-01T12:00:00.000Z');

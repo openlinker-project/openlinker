@@ -46,6 +46,14 @@ export interface ShoperProductWriteBody {
   attributes?: Record<string, string>;
 }
 
+/**
+ * The visibility-only update body (#3962): the `active` flag in one language
+ * and nothing else, so taking a product off sale rewrites none of its content.
+ */
+export interface ShoperVisibilityWriteBody {
+  translations: Record<string, { active: 0 | 1 }>;
+}
+
 /** The attribute values one publish sends, and why any parameter was left out. */
 export interface ShoperAttributeWritePlan {
   readonly attributes: Record<string, string>;

@@ -30,6 +30,8 @@ import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
 import { PaymentWritebackSection } from './payment-writeback-section';
+import { LabelPurchaseNotificationSection } from './label-purchase-notification-section';
+import { readNotifyOnLabelPurchase } from '../lib/label-purchase-notification';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
@@ -43,6 +45,7 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { useSession } from '../../../shared/auth/use-session';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
@@ -437,6 +440,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const navigate = useNavigate();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
+  // Until the session resolves the permission list is empty, which is "not known yet", not "denied":
+  // locking the form then would flash a read-only form at every operator on each page load.
+  const { isReady: sessionReady } = useSession();
+  // The public demo deliberately shows editable inputs with a disabled Save (#1615), so only a real
+  // read-only session locks the whole form.
+  const readOnly = sessionReady && !write.canWrite && !demoMode;
   const [showRawJson, setShowRawJson] = useState(false);
   const plugin = usePlatform(connection.platformType);
   // #1330 — the platform's non-render structured-config half: Zod schema
@@ -516,6 +525,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
       // "When the buyer pays later" (#3963) — platform-neutral.
       paymentWriteback: readPaymentWritebackForm(connection.config),
+      // "Tell the shop when a label is bought" (#4097) — carrier connections.
+      notifyOnLabelPurchase: readNotifyOnLabelPurchase(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -750,6 +761,18 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #4097 — re-serialize `config.shipping.notifyMarketplaceOnLabelPurchase` into
+  // configText. Same shape as `syncFulfilmentOwnershipToJson`: the section sets
+  // the value FIRST; the merge keeps the namespace's other keys.
+  function syncLabelPurchaseNotificationToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      notifyOnLabelPurchase: form.getValues('notifyOnLabelPurchase'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -868,6 +891,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
   return (
     <form className="form-card form-narrow" onSubmit={(event) => void onSubmit(event)} noValidate>
+      {/* A session without the write permission gets a form it can read but not
+          change; the backend refuses the save anyway (403), so offering it only
+          produces a misleading failure. */}
+      <fieldset
+        disabled={readOnly}
+        style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'contents' }}
+      >
+      {readOnly ? <Alert tone="info">{copy.readOnlyNote}</Alert> : null}
       <div className="panel__header">
         <div>
           <p className="eyebrow">{copy.eyebrow}</p>
@@ -1052,6 +1083,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         />
       ) : null}
 
+      {/* #4097 — read only by the label-purchase dispatch path: a carrier connection. */}
+      {connection.enabledCapabilities.includes('ShippingProviderManager') ? (
+        <LabelPurchaseNotificationSection
+          form={form}
+          configIsParseable={configIsParseable}
+          canWrite={write.canWrite}
+          syncLabelPurchaseNotificationToJson={syncLabelPurchaseNotificationToJson}
+        />
+      ) : null}
+
       <div className="config-panel__toggle">
         <Button
           tone="secondary"
@@ -1080,7 +1121,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
       <div className="form-actions">
         <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
-          <Button type="submit" disabled={updateConnection.isPending || write.demoReadOnly}>
+          <Button
+            type="submit"
+            disabled={updateConnection.isPending || write.demoReadOnly || readOnly}
+          >
             {updateConnection.isPending ? copy.saving : copy.save}
           </Button>
         </ReadOnlyLock>
@@ -1088,6 +1132,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           {copy.cancel}
         </Button>
       </div>
+      </fieldset>
     </form>
   );
 }

@@ -36,6 +36,9 @@
  *   2. status 404 (`ShipmentNotFoundException`) -> permanent. NestJS's
  *      default `NotFoundException(message)` body carries no exception-name
  *      field, so status alone is the only, and here unambiguous, signal.
+ *   2b. status 409, code `SHIPMENT_LABEL_NOT_READY` (`LabelNotReadyException`) -> transient.
+ *      The carrier has the shipment but is still preparing the document; the
+ *      download hook has already waited, so this is only reached on timeout.
  *   3. status 422, `error.message` contains 'generate the label first'
  *      (`LabelNotAvailableException`) -> permanent, "not yet".
  *   4. status 422, otherwise (`LabelDocumentNotSupportedException`) ->
@@ -82,6 +85,10 @@ export interface LabelDownloadError {
   title: string;
   description: string;
   retryable: RetryabilityClass;
+  /** True while the carrier is still preparing a label that WAS bought, so a
+   *  caller that normally words every failure as "couldn't fetch" can say the
+   *  accurate thing instead (the label is fine, it just is not ready). */
+  pending: boolean;
   /** Derived from `retryable` alone (see `TONE_BY_RETRYABLE`) - one place
    *  decides how urgent a class reads, so a call site never picks its own
    *  tone per branch and drifts from the other two call sites. */
@@ -107,10 +114,12 @@ const TONE_BY_RETRYABLE: Record<RetryabilityClass, AlertTone> = {
   unknown: 'error',
 };
 
-type UntonedLabelDownloadError = Omit<LabelDownloadError, 'tone'>;
+type UntonedLabelDownloadError = Omit<LabelDownloadError, 'tone' | 'pending'> & {
+  pending?: boolean;
+};
 
 function withTone(result: UntonedLabelDownloadError): LabelDownloadError {
-  return { ...result, tone: TONE_BY_RETRYABLE[result.retryable] };
+  return { ...result, pending: result.pending ?? false, tone: TONE_BY_RETRYABLE[result.retryable] };
 }
 
 function unknownFallback(): UntonedLabelDownloadError {
@@ -137,6 +146,18 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
       title: copy.notFound.title,
       description: copy.notFound.description,
       retryable: 'permanent',
+    });
+  }
+
+  if (error.status === 409 && error.code === 'SHIPMENT_LABEL_NOT_READY') {
+    // Pending, not failed: the label was bought and the carrier is still
+    // rendering it. `useLabelDownload` already waited; this is what is left
+    // when the wait ran out.
+    return withTone({
+      title: copy.notReady.title,
+      description: copy.notReady.description,
+      retryable: 'transient',
+      pending: true,
     });
   }
 

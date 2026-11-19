@@ -453,6 +453,7 @@
       "title": "This is more than the order total"
     },
     "description": "Record the refund you made to the buyer. OpenLinker does not move money.",
+    "descriptionShopify": "Confirming sends the refund to Shopify, which returns the money to the buyer.",
     "recorded": "Refund recorded.",
     "title": "Confirm a refund"
   },
@@ -750,6 +751,11 @@
     "unassigned": "Unassigned",
     "waitingOnFact": "Waiting on",
     "waitingReasons": {
+      "routing-awaiting-payment": {
+        "fact": "Payment",
+        "hint": "OpenLinker is holding this order: the buyer has not paid yet. It goes to packing when the channel reports the payment.",
+        "label": "Waiting: payment"
+      },
       "routing-failed": {
         "fact": "Routing error",
         "hint": "OpenLinker is holding this order: routing it failed. It is retried automatically.",
@@ -1160,8 +1166,8 @@
     "scopeItem": "{label} {value}",
     "search": {
       "label": "Search orders",
-      "placeholderNoPii": "Search by order number, SKU or tracking number…",
-      "placeholderWithPii": "Search by order number, buyer, email, SKU or tracking number…"
+      "placeholderNoPii": "Search by order number, SKU, tracking number or OpenLinker ID…",
+      "placeholderWithPii": "Search by order number, buyer, email, SKU, tracking number or OpenLinker ID…"
     },
     "sectionAny": "Any",
     "sectionNone": "None",
@@ -1590,6 +1596,7 @@
     "retryQueuedDescription": "Sync queued for the failed destination.",
     "retryQueuedTitle": "Retry queued",
     "retrying": "Retrying…",
+    "routedNote": "This order is handled by OMS routing, so it is not copied to destinations and cannot be retried here.",
     "summary": {
       "buyerTaxId": "Buyer tax ID",
       "orderNumber": "Order #",
@@ -2652,6 +2659,7 @@
     "orderTotal": "Order total: {total} {currency}",
     "pending": "Recording…",
     "preamble": "OpenLinker does not move money. Confirm that you have refunded the buyer, and OpenLinker will record it against this return and this order.",
+    "preambleShopify": "OpenLinker sends this refund to Shopify, which returns the money to the buyer. Check the amount before you confirm, because it cannot be undone from here.",
     "reasonLabel": "Reason",
     "submit": "Confirm refund"
   },
@@ -2661,6 +2669,11 @@
     "other": "Something else",
     "withdrawal": "Buyer changed their mind",
     "wrongItem": "Wrong item was sent"
+  },
+  "refundStateBadge": {
+    "full": "Refunded",
+    "partial": "Partially refunded",
+    "title": "{label}: {amount}"
   },
   "salesDocumentBlockDetail": {
     "candidates": "Connections that could issue it: {n}.",

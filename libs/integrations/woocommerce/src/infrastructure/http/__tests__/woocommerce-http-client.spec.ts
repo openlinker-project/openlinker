@@ -12,6 +12,7 @@ import { WooCommerceUnauthorizedException } from '../../../domain/exceptions/woo
 import { WooCommerceNetworkException } from '../../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from '../woocommerce-http-response.exception';
 import { WooCommerceAmbiguousWriteException } from '../../../domain/exceptions/woocommerce-ambiguous-write.exception';
+import { isRequestNotSentError } from '@openlinker/shared/http';
 
 // Mock fetch globally
 global.fetch = jest.fn();
@@ -370,6 +371,57 @@ describe('WooCommerceHttpClient', () => {
         expect(error).toBeInstanceOf(WooCommerceAmbiguousWriteException);
         expect((error as WooCommerceAmbiguousWriteException).statusCode).toBeUndefined();
         expect(stub).toHaveBeenCalledTimes(1);
+      });
+
+      describe('request-not-sent mark (#4041)', () => {
+        const retryCfg = { maxRetries: 2, initialDelayMs: 0, backoffMultiplier: 1, maxDelayMs: 0 };
+        const refused = (): TypeError =>
+          new TypeError('fetch failed', {
+            cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+          });
+        const run = (stub: jest.Mock, call: 'post' | 'put'): Promise<unknown> => {
+          jest.spyOn(global, 'fetch').mockImplementation(stub);
+          const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, retryCfg);
+          return client[call]('/test', {}).then(() => null).catch((e: unknown) => e);
+        };
+
+        it('should mark a non-idempotent write refused before send', async () => {
+          const error = await run(jest.fn().mockRejectedValue(refused()), 'post');
+          expect(isRequestNotSentError(error)).toBe(true);
+        });
+
+        it('should mark an idempotent write only when every retry was refused', async () => {
+          const stub = jest.fn().mockRejectedValue(refused());
+          const error = await run(stub, 'put');
+          expect(error).toBeInstanceOf(WooCommerceNetworkException);
+          expect(stub).toHaveBeenCalledTimes(3);
+          expect(isRequestNotSentError(error)).toBe(true);
+        });
+
+        it('should NOT mark a write when an earlier attempt failed after send and the last was refused', async () => {
+          const reset = new TypeError('fetch failed', {
+            cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+          });
+          const stub = jest
+            .fn()
+            .mockRejectedValueOnce(reset)
+            .mockRejectedValueOnce(refused())
+            .mockRejectedValueOnce(refused());
+          const error = await run(stub, 'put');
+          expect(isRequestNotSentError(error)).toBe(false);
+        });
+
+        it('should NOT mark a connection reset, a bare fetch failed, or a 5xx', async () => {
+          const reset = new TypeError('fetch failed', {
+            cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+          });
+          expect(isRequestNotSentError(await run(jest.fn().mockRejectedValue(reset), 'post'))).toBe(false);
+          expect(
+            isRequestNotSentError(await run(jest.fn().mockRejectedValue(new TypeError('fetch failed')), 'post'))
+          ).toBe(false);
+          const serverError = jest.fn().mockResolvedValue({ ok: false, status: 503, json: () => Promise.resolve({}) });
+          expect(isRequestNotSentError(await run(serverError, 'put'))).toBe(false);
+        });
       });
 
       it('should still retry a 429 (WooCommerce never processed the request)', async () => {

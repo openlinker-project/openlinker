@@ -26,6 +26,7 @@ import {
   type ShopProductPublishPayloadV2,
 } from '@openlinker/core/sync';
 
+import { ensurePublishTargetAllowed } from '../../domain/ensure-publish-target-allowed';
 import { ListingCreationRecordRepositoryPort } from '../../domain/ports/listing-creation-record-repository.port';
 import {
   LISTING_CREATION_STATUS,
@@ -58,6 +59,10 @@ export class ProductPublishEnqueueService implements IProductPublishEnqueueServi
       input.connectionId,
       'ProductPublisher',
     );
+    //    A legacy master+publisher connection is refused before anything is
+    //    persisted or queued (the worker re-checks for jobs queued earlier).
+    const { connection } = await this.integrationsService.getAdapter(input.connectionId);
+    ensurePublishTargetAllowed(connection);
 
     // 2. Pre-create the record so the HTTP response carries an id clients can
     //    poll immediately. `bulkBatchId` is forwarded straight through so

@@ -61,6 +61,40 @@ describe('WooCommerceOfferManagerAdapter', () => {
       });
     });
 
+    it('should PUT under the parent variations path when externalParentId is set (#3962)', async () => {
+      httpClient.put.mockResolvedValue({});
+
+      await adapter.updateOfferQuantity({ offerId: '321', quantity: 4, externalParentId: '100' });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(1);
+      expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/products/100/variations/321', {
+        manage_stock: true,
+        stock_quantity: 4,
+      });
+    });
+
+    it('should keep the variation mapping and fail when the variations path 404s (#3962)', async () => {
+      httpClient.put.mockRejectedValue(
+        new WooCommerceHttpResponseException(404, 'not found', 'woocommerce_rest_product_invalid_id'),
+      );
+
+      await expect(
+        adapter.updateOfferQuantity({ offerId: '321', quantity: 4, externalParentId: '100' }),
+      ).rejects.toBeInstanceOf(WooCommerceHttpResponseException);
+
+      // The stored parent may be the wrong one, so a 404 there proves nothing
+      // about the variation itself.
+      expect(identifierMapping.deleteMapping).not.toHaveBeenCalled();
+    });
+
+    it('should throw before any HTTP call when externalParentId is not numeric (#3962)', async () => {
+      await expect(
+        adapter.updateOfferQuantity({ offerId: '321', quantity: 4, externalParentId: '../x' }),
+      ).rejects.toThrow(WooCommerceInvalidIdentifierException);
+
+      expect(httpClient.put).not.toHaveBeenCalled();
+    });
+
     it('should write quantity 0 when master stock is exhausted (master is authoritative, including 0)', async () => {
       httpClient.put.mockResolvedValue({});
 
