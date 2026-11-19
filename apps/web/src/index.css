@@ -14459,6 +14459,9 @@ a.kpi-card:focus-visible {
   margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
 }
+/* Listings (#4241): the saved-views strip sits where the status tabs did, so it carries the one rule. */
+.list-statusbar--views { border-bottom: 1px solid var(--border-subtle); }
+.list-statusbar--views .sv-strip { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
 .status-tabs-scroll { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .status-tabs-scroll::-webkit-scrollbar { display: none; }
 .status-tabs { position: relative; display: flex; gap: 2px; min-width: max-content; }

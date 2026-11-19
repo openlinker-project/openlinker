@@ -54,4 +54,27 @@ describe('toDataTableColumns', () => {
     screen.getByRole('button', { name: 'Tags, sort' }).click();
     expect(onSort).toHaveBeenCalledWith('tags');
   });
+
+  it('should carry hideBelow, lines and width and draw header-only controls', () => {
+    const registry = {
+      ...testRegistry,
+      columns: [
+        {
+          id: 'stack',
+          label: 'Stack',
+          defaultVisible: true,
+          width: '10%',
+          hideBelow: 768 as const,
+          lines: 2,
+          parts: [{ id: 'one', label: 'One', headerLabel: 'One', render: () => <span>cell</span> }],
+          headerControls: [{ id: 'extra', label: 'Extra', sort: 'total' }],
+        },
+      ],
+    };
+    const [, stack] = toDataTableColumns(registry, { columns: ['stack'], parts: {} }, context());
+    expect(stack).toMatchObject({ width: '10%', hideBelow: 768, lines: 2 });
+    render(<>{stack!.header}</>);
+    expect(screen.getByRole('button', { name: 'Extra, sort' })).toBeInTheDocument();
+    expect(screen.getByText('One')).toBeInTheDocument();
+  });
 });

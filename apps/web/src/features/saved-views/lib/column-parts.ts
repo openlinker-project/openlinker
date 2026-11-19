@@ -45,3 +45,20 @@ export function reorder<T>(items: readonly T[], from: number, to: number): T[] {
   next.splice(to, 0, moved);
   return next;
 }
+
+/** Per-column layout a registry can attach without repeating it inside every column literal. */
+export interface ColumnLayout {
+  hideBelow?: Record<string, 480 | 768 | 1024 | 1280>;
+  lines?: Record<string, number>;
+  width?: Record<string, string>;
+}
+
+/** Returns the columns with the layout values of `layout` set by column id; columns that already declare one keep it. */
+export function withColumnLayout<Row>(columns: ColumnDef<Row>[], layout: ColumnLayout): ColumnDef<Row>[] {
+  return columns.map((column) => ({
+    ...column,
+    hideBelow: column.hideBelow ?? layout.hideBelow?.[column.id],
+    lines: column.lines ?? layout.lines?.[column.id],
+    width: column.width ?? layout.width?.[column.id],
+  }));
+}

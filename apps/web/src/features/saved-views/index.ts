@@ -5,6 +5,12 @@
  * `ListRegistry`, calls `useListView`, and renders the presentational
  * components with the props it returns.
  *
+ * Registry identity: `useListView` memoizes everything it derives on the
+ * identity of the registry object. A page whose cells close over query data
+ * (connection names, formatters) must build the registry in `useMemo` keyed on
+ * that data, or every render recomputes the views and the strip flickers.
+ * `resolveNonViewParams` also caches per registry object.
+ *
  * @module apps/web/src/features/saved-views
  */
 export { createSavedViewsApi } from './api/saved-views.api';
@@ -28,8 +34,8 @@ export type { SaveSummary, SubmitOutcome, ViewDialogsProps, ViewDialogState } fr
 export { ViewsBar } from './components/views-bar';
 export type { ViewsBarProps } from './components/views-bar';
 export { coerceViewDefinition } from './lib/coerce-view-definition';
-export { partIds, partsOf, reorder, setPartsIn } from './lib/column-parts';
-export { normalizeView } from './lib/normalize-view';
+export { partIds, partsOf, reorder, setPartsIn, withColumnLayout } from './lib/column-parts';
+export { decodeStoredQuery, forStorage, normalizeView } from './lib/normalize-view';
 export { defaultColumnIds, definitionFromSystemView, effectiveSort, reconcileView } from './lib/reconcile-view';
 export type {
   CreateSavedViewInput,
@@ -49,14 +55,16 @@ export type {
 export { VIEW_DEFINITION_VERSION } from './lib/saved-view.types';
 export { toDataTableColumns } from './lib/to-data-table-columns';
 export { diffViews, isDirty } from './lib/view-diff';
-export { canonicalQuery, DEFAULT_NON_VIEW_PARAMS, encodeSort, filterEntries, parseSort } from './lib/view-query';
+export { canonicalQuery, DEFAULT_NON_VIEW_PARAMS, encodeSort, filterEntries, parseSort, readSort, resolveNonViewParams, writeSort } from './lib/view-query';
 export type {
   ColumnDef,
   FilterDef,
   ListRegistry,
   LockedColumnDef,
   PartDef,
+  SortCodec,
   SortOption,
+  StoredQueryCodec,
   SystemViewDef,
   ViewHeaderContext,
 } from './lib/view-registry.types';

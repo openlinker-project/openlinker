@@ -31,7 +31,9 @@ function sortField(context: ViewHeaderContext, key: string, label: string): Reac
 
 function columnSortKeys<Row>(column: ColumnDef<Row>, definition: Pick<ViewDefinition, 'parts'>): string[] {
   if (column.parts) {
-    return partsOf(column, definition).flatMap((part) => (part.sort ? [part.sort] : []));
+    const own = partsOf(column, definition).flatMap((part) => (part.sort ? [part.sort] : []));
+    const extra = (column.headerControls ?? []).flatMap((control) => (control.sort ? [control.sort] : []));
+    return own.concat(extra);
   }
   return column.sortKey ? [column.sortKey] : [];
 }
@@ -42,15 +44,20 @@ function columnHeader<Row>(
   context: ViewHeaderContext,
 ): ReactNode {
   if (column.parts) {
-    const labelled = partsOf(column, definition).filter((part) => part.headerLabel);
+    const labelled: Array<{ id: string; sort?: string; label: string }> = [
+      ...partsOf(column, definition)
+        .filter((part) => part.headerLabel)
+        .map((part) => ({ id: part.id, sort: part.sort, label: part.headerLabel ?? part.label })),
+      ...(column.headerControls ?? []),
+    ];
     if (labelled.some((part) => part.sort)) {
       return (
         <SortStack end={column.align === 'right'}>
           {labelled.map((part) =>
             part.sort ? (
-              sortField(context, part.sort, part.headerLabel ?? part.label)
+              sortField(context, part.sort, part.label)
             ) : (
-              <StaticSortLabel key={part.id} label={part.headerLabel} />
+              <StaticSortLabel key={part.id} label={part.label} />
             ),
           )}
         </SortStack>
@@ -79,6 +86,8 @@ export function toDataTableColumns<Row>(
       header: typeof locked.header === 'function' ? locked.header(context) : locked.header,
       cell: locked.render,
       width: locked.width,
+      hideBelow: locked.hideBelow,
+      lines: locked.lines,
       ariaSort: ariaSort(locked.sortKeys ?? []),
     },
   ];
@@ -91,6 +100,8 @@ export function toDataTableColumns<Row>(
       header: columnHeader(column, definition, context),
       align: column.align,
       width: column.width,
+      hideBelow: column.hideBelow,
+      lines: column.lines,
       ariaSort: ariaSort(columnSortKeys(column, definition)),
       cell: (row: Row) =>
         column.parts ? (

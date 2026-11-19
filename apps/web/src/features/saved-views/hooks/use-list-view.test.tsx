@@ -234,4 +234,29 @@ describe('useListView', () => {
       expect(screen.queryByRole('alert')).toBeNull();
     });
   });
+
+  describe('a list with built-in views only', () => {
+    const builtInOnly = { ...testRegistry, pageKey: 'orders-builtin', customViews: false };
+
+    it('should keep the operator\'s columns across a reload', async () => {
+      window.localStorage.removeItem('ol.saved-views.orders-builtin.draft.v1');
+      const user = userEvent.setup();
+      const first = renderWithProviders(<Harness registry={builtInOnly} />, { route: '/orders' });
+      await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'));
+      await user.click(screen.getByRole('button', { name: 'drop-customer' }));
+      await waitFor(() => expect(screen.getByTestId('columns')).toHaveTextContent('total'));
+      first.unmount();
+
+      renderWithProviders(<Harness registry={builtInOnly} />, { route: '/orders' });
+      await waitFor(() => expect(screen.getByTestId('columns').textContent).toBe('total'));
+      window.localStorage.removeItem('ol.saved-views.orders-builtin.draft.v1');
+    });
+
+    it('should not report an unknown sort on a list that has no sorts', async () => {
+      const sortless = { ...builtInOnly, pageKey: 'orders-sortless', sorts: [] };
+      renderWithProviders(<Harness registry={sortless} />, { route: '/orders?sort=old:asc' });
+      await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'));
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+  });
 });

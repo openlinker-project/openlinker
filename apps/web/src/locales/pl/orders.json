@@ -3130,6 +3130,18 @@
       "whyThisKind": "Dlaczego ten rodzaj?"
     }
   },
+  "savedViews": {
+    "channelDestination": "Cel",
+    "channelSource": "Źródło",
+    "customerCity": "Miasto",
+    "customerName": "Imię i nazwisko",
+    "customerNote": "Uwaga kupującego",
+    "document": "Dokument",
+    "orderFields": "Numer, pozycja, kanał, ponów",
+    "shipmentCarrier": "Przewoźnik",
+    "shipmentState": "Status i termin wysyłki",
+    "statusFields": "Stan, znaczniki, powód"
+  },
   "sendDocumentEmail": {
     "language": "Język e-maila",
     "lastSentVia": "{when} · {via}",

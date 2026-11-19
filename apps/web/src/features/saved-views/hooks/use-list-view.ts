@@ -33,7 +33,7 @@ import type { RepairBannerProps } from '../components/repair-banner';
 import type { ViewDialogsProps, ViewDialogState } from '../components/view-dialogs';
 import type { ViewsBarProps } from '../components/views-bar';
 import { coerceViewDefinition } from '../lib/coerce-view-definition';
-import { normalizeView } from '../lib/normalize-view';
+import { decodeStoredQuery, forStorage, normalizeView } from '../lib/normalize-view';
 import { definitionFromSystemView, reconcileView } from '../lib/reconcile-view';
 import type {
   ListView,
@@ -43,7 +43,7 @@ import type {
   ViewSort,
 } from '../lib/saved-view.types';
 import { toDataTableColumns } from '../lib/to-data-table-columns';
-import { filterEntries } from '../lib/view-query';
+import { filterEntries, resolveNonViewParams } from '../lib/view-query';
 import { uniqueCopyName } from '../lib/view-name';
 import type { ListRegistry } from '../lib/view-registry.types';
 import { MAX_PINNED_VIEWS, usePinnedViews } from './use-pinned-views';
@@ -90,7 +90,12 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
   const { showToast } = useToast();
   const isAdmin = useIsAdmin();
   const customViews = registry.customViews !== false;
-  const url = useViewUrlState(registry.nonViewParams);
+  const sortable = registry.sorts.length > 0;
+  const url = useViewUrlState(resolveNonViewParams(registry), {
+    viewParam: registry.viewParam,
+    sortable,
+    sortCodec: registry.sortCodec,
+  });
   const server = useSavedViews(registry.pageKey, customViews);
 
   const systemViews = useMemo<ListView[]>(
@@ -112,13 +117,13 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
             id: view.id,
             name: view.name,
             scope: view.scope,
-            definition: coerceViewDefinition(view.definition),
+            definition: decodeStoredQuery(registry, coerceViewDefinition(view.definition)),
             revision: view.revision,
             stale: view.stale,
             isDefault: view.isDefault,
           }))
         : [],
-    [customViews, server.views],
+    [customViews, server.views, registry],
   );
   const views = useMemo(
     () => [
@@ -155,7 +160,7 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
     [activeView.definition, registry],
   );
   const saved = useMemo(() => normalizeView(registry, reconciled.definition), [registry, reconciled.definition]);
-  const draft = useViewDraft(registry, saved, { query: url.query, sort: url.sort });
+  const draft = useViewDraft(registry, saved, { query: url.query, sort: url.sort }, !customViews);
 
   // ---- load: deep link wins, otherwise apply the default view to the address ----
   const loaded = !customViews || !server.isLoading;
@@ -254,12 +259,12 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
   const saveChanges = useCallback(async () => {
     if (!isSavedView || !canEdit) return;
     try {
-      await server.update(activeView, { definition: draft.current, expectedRevision: activeView.revision ?? 0 });
+      await server.update(activeView, { definition: forStorage(registry, draft.current), expectedRevision: activeView.revision ?? 0 });
       notify(interpolate(copy.toasts.savedChanges, { name: activeView.name }));
     } catch (error) {
       fail(error);
     }
-  }, [isSavedView, canEdit, server, activeView, draft, notify, copy.toasts, fail]);
+  }, [isSavedView, canEdit, server, activeView, draft, registry, notify, copy.toasts, fail]);
 
   const autoPin = useCallback(
     (id: string): { list: string[]; note: string } => {
@@ -287,7 +292,7 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
   const create = useCallback<ViewDialogsProps['onCreate']>(
     async ({ name, scope, asDefault }) => {
       try {
-        const created = await server.create({ name, scope, definition: draft.current });
+        const created = await server.create({ name, scope, definition: forStorage(registry, draft.current) });
         if (asDefault && scope === 'personal') await server.setDefault(created.id);
         const pin = autoPin(created.id);
         setPinned(pin.list);
@@ -305,7 +310,7 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
         return 'error';
       }
     },
-    [server, draft, autoPin, setPinned, url, notify, copy.toasts, fail],
+    [server, draft, registry, autoPin, setPinned, url, notify, copy.toasts, fail],
   );
 
   const rename = useCallback<ViewDialogsProps['onRename']>(
@@ -365,7 +370,7 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
         const created = await server.create({
           name: uniqueCopyName(source.name, views, copy.viewsBar.copyWord),
           scope: 'personal',
-          definition,
+          definition: forStorage(registry, definition),
         });
         pending.current = definition;
         url.apply({ query: definition.query, sort: definition.sort }, created.id);
@@ -445,7 +450,7 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
     () => ({
       filters:
         describeFilters?.(draft.current.query) ??
-        filterEntries(draft.current.query, registry.nonViewParams).map(([key, value]) => `${key}: ${value}`),
+        filterEntries(draft.current.query, resolveNonViewParams(registry)).map(([key, value]) => `${key}: ${value}`),
       sortLabel: sortLabelOf(registry, sort),
       columnCount: draft.current.columns.length + 1,
     }),
@@ -518,7 +523,7 @@ export function useListView<Row>(options: UseListViewOptions<Row>): ListViewStat
       onPartsChange: draft.setPartsFor,
       onRestoreDefaults: () => {
         draft.restoreColumnDefaults();
-        url.setSort(registry.defaultSort);
+        if (sortable) url.setSort(registry.defaultSort);
       },
     },
     dialogs: {

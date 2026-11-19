@@ -15,12 +15,13 @@ import {
   applyQueryToParams,
   canonicalQuery,
   DEFAULT_NON_VIEW_PARAMS,
-  encodeSort,
+  filterEntries,
   hasViewState,
-  parseSort,
-  SORT_PARAM,
+  readSort,
   VIEW_PARAM,
+  writeSort,
 } from '../lib/view-query';
+import type { SortCodec } from '../lib/view-registry.types';
 
 export interface ViewUrlState {
   /** Canonical filter query of the address. */
@@ -38,7 +39,22 @@ export interface ViewUrlState {
   setQuery: (query: string) => void;
 }
 
-export function useViewUrlState(nonViewParams: readonly string[] = DEFAULT_NON_VIEW_PARAMS): ViewUrlState {
+export interface ViewUrlStateOptions {
+  /** Name of the param that carries the applied view's id. Defaults to `view`; a page that already owns `view` renames it. */
+  viewParam?: string;
+  /** False on a list with no sort at all: the address never carries one and a stray `sort` is not a deep link. */
+  sortable?: boolean;
+  /** How the address spells the sort, for a page whose URLs already carry it as something other than `sort=key:dir`. */
+  sortCodec?: SortCodec;
+}
+
+export function useViewUrlState(
+  nonViewParams: readonly string[] = DEFAULT_NON_VIEW_PARAMS,
+  options: ViewUrlStateOptions = {},
+): ViewUrlState {
+  const viewParam = options.viewParam ?? VIEW_PARAM;
+  const sortable = options.sortable !== false;
+  const sortCodec = options.sortCodec;
   const [params, setParams] = useSearchParams();
   const serialized = params.toString();
 
@@ -46,33 +62,36 @@ export function useViewUrlState(nonViewParams: readonly string[] = DEFAULT_NON_V
     const current = new URLSearchParams(serialized);
     return {
       query: canonicalQuery(current, nonViewParams),
-      sort: parseSort(current.get(SORT_PARAM)),
-      viewId: current.get(VIEW_PARAM),
-      hasState: hasViewState(current, nonViewParams),
+      sort: sortable ? readSort(current, sortCodec) : null,
+      viewId: current.get(viewParam),
+      hasState: sortable
+        ? hasViewState(current, nonViewParams, sortCodec)
+        : filterEntries(current, nonViewParams).length > 0,
     };
-  }, [serialized, nonViewParams]);
+  }, [serialized, nonViewParams, viewParam, sortable, sortCodec]);
 
   const apply = useCallback<ViewUrlState['apply']>(
     (state, viewId, options) => {
       setParams(
         (previous) => {
-          const next = applyQueryToParams(previous, state, nonViewParams);
-          if (viewId) next.set(VIEW_PARAM, viewId);
-          else next.delete(VIEW_PARAM);
+          const next = applyQueryToParams(previous, { ...state, sort: sortable ? state.sort : null }, nonViewParams, sortCodec);
+          if (viewId) next.set(viewParam, viewId);
+          else next.delete(viewParam);
           return next;
         },
         { replace: options?.replace ?? false },
       );
     },
-    [nonViewParams, setParams],
+    [nonViewParams, setParams, viewParam, sortable, sortCodec],
   );
 
   const setSort = useCallback(
     (sort: ViewSort) => {
+      if (!sortable) return;
       setParams(
         (previous) => {
           const next = new URLSearchParams(previous);
-          next.set(SORT_PARAM, encodeSort(sort));
+          writeSort(next, sort, sortCodec);
           next.delete('page');
           next.delete('offset');
           next.delete('cursor');
@@ -81,23 +100,23 @@ export function useViewUrlState(nonViewParams: readonly string[] = DEFAULT_NON_V
         { replace: true },
       );
     },
-    [setParams],
+    [setParams, sortable, sortCodec],
   );
 
   const setQuery = useCallback(
     (query: string) => {
       setParams(
         (previous) => {
-          const sort = parseSort(previous.get(SORT_PARAM));
-          const next = applyQueryToParams(previous, { query, sort }, nonViewParams);
-          const viewId = previous.get(VIEW_PARAM);
-          if (viewId) next.set(VIEW_PARAM, viewId);
+          const sort = sortable ? readSort(previous, sortCodec) : null;
+          const next = applyQueryToParams(previous, { query, sort }, nonViewParams, sortCodec);
+          const viewId = previous.get(viewParam);
+          if (viewId) next.set(viewParam, viewId);
           return next;
         },
         { replace: true },
       );
     },
-    [nonViewParams, setParams],
+    [nonViewParams, setParams, viewParam, sortable, sortCodec],
   );
 
   return { ...derived, apply, setSort, setQuery };

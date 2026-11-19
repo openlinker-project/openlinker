@@ -2967,3 +2967,63 @@ repositories.
 **Applies to**: `apps/api/src/main.ts`, any reverse proxy in front of the API, CORS bug reports.
 
 **Source**: #4058
+
+## One foreign key carries one ON DELETE rule, so encode "owner or not" in the column
+
+**Context**: #4241 saved views: a deleted user must take their personal views but leave the shared ones.
+
+**Problem**: "CASCADE for personal, SET NULL for shared" cannot be one foreign key; a column has one delete rule. The `synchronize`-built test schema also has no migration-only FKs, so a harness int-spec cannot show it either way.
+
+**Rule**: make the owner column NULL for shared rows (FK `ON DELETE CASCADE`), pin "personal <=> owner present" with a CHECK, and keep the shared author in a separate un-FK'd column. Prove the delete behaviour against the migrated schema (`fulfillment-work-migration-parity.int-spec.ts`).
+
+**Applies to**: `libs/core/src/saved-views`, any table whose rows are sometimes owned and sometimes shared.
+
+**Source**: #4241
+
+## Strip free-text search from a stored query on the server
+
+**Context**: a saved view stores the list's filter query, and a shared view is visible to every role.
+
+**Problem**: `search` is whatever a person typed, often an email or a name; storing it in a shared view discloses buyer data to others, and a client-side filter is not a boundary.
+
+**Rule**: the server removes `search`, `offset`, `cursor`, `limit` and `withTotal` before persisting (`SAVED_VIEW_STRIPPED_QUERY_KEYS`); the client lists them as non-view params too.
+
+**Applies to**: `apps/api/src/saved-views`, any feature that persists a list query.
+
+**Source**: #4241
+
+## A stored query uses the DTO's key names, not the page's URL param names
+
+**Context**: stored view queries are validated against the page's existing list DTO.
+
+**Problem**: Orders spells `invoicing=blocked` in the address while the DTO validates `salesDocumentBlocked=true`; a view saved with the URL spelling is refused, or a stale link quietly turns into `true`.
+
+**Rule**: give the registry a `storedQuery` codec that renames only the expected value and leaves any other value under its own key so the endpoint refuses it by name. Check each page's DTO keys before adopting views.
+
+**Applies to**: `apps/web/src/features/*/lib/*.list-config.ts`, `ORDER_STORED_QUERY_CODEC`.
+
+**Source**: #4241
+
+## A page's own `view` param may already be taken, so name the saved-view param
+
+**Context**: Listings uses `view` as a mode switch (All listings / Price changes).
+
+**Problem**: the engine's default `view` param carrying the applied view id collided with it.
+
+**Rule**: set `viewParam` on the registry (Listings uses `savedView`) and keep the page's own param in `nonViewParams` so it is never saved into a view.
+
+**Applies to**: any list page with its own `view` param.
+
+**Source**: #4241
+
+## A default view must not override a deep link
+
+**Context**: the default-view chain applies a view to the address on load.
+
+**Problem**: applying the default unconditionally rewrote a link carrying filters or a view id, so shared links stopped reproducing what the sender saw.
+
+**Rule**: apply the default chain only to a bare address; a view param or any filter in the URL wins.
+
+**Applies to**: `apps/web/src/features/saved-views/hooks/use-list-view.ts`.
+
+**Source**: #4241

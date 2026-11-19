@@ -269,6 +269,8 @@ export function ColumnsPanel<Row>(props: ColumnsPanelProps<Row>): ReactElement {
           </div>
         }
       >
+        {/* A list with no sort offers none: an empty select would promise an ordering the list cannot give. */}
+        {props.sortOptions.length > 0 ? (
         <div className="sv-panel-sec">
           <div className="sv-field">
             <label className="sv-field__label" htmlFor="sv-columns-sort">
@@ -293,6 +295,7 @@ export function ColumnsPanel<Row>(props: ColumnsPanelProps<Row>): ReactElement {
             <span className="sv-field__hint">{copy.sortHint}</span>
           </div>
         </div>
+        ) : null}
         <div className="sv-panel-sec">
           <div className="sv-field__label sv-field__label--spaced">{copy.columns}</div>
           <div className="sv-colrow sv-colrow--locked">

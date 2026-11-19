@@ -2970,6 +2970,18 @@
       "whyThisKind": "Why this kind?"
     }
   },
+  "savedViews": {
+    "channelDestination": "Destination",
+    "channelSource": "Source",
+    "customerCity": "City",
+    "customerName": "Name",
+    "customerNote": "Buyer note",
+    "document": "Document",
+    "orderFields": "Number, item, channel, retry",
+    "shipmentCarrier": "Carrier",
+    "shipmentState": "Status and ship-by",
+    "statusFields": "Health, badges, reason"
+  },
   "sendDocumentEmail": {
     "language": "Email language",
     "lastSentVia": "{when} · {via}",

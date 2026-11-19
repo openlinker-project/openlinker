@@ -84,4 +84,10 @@ describe('definitionFromSystemView', () => {
       parts: {},
     });
   });
+
+  it('should not flag a sort on a list that offers none', () => {
+    const sortless = { ...testRegistry, sorts: [] };
+    const result = reconcileView({ ...base, sort: { key: 'whatever', dir: 'asc' } }, sortless);
+    expect(result.issues).toEqual([]);
+  });
 });

@@ -11,7 +11,7 @@
 import { partIds } from './column-parts';
 import type { ReconcileResult, ViewDefinition, ViewIssue, ViewSort } from './saved-view.types';
 import type { ListRegistry, SystemViewDef } from './view-registry.types';
-import { canonicalQuery, filterEntries } from './view-query';
+import { canonicalQuery, filterEntries, resolveNonViewParams } from './view-query';
 
 export function defaultColumnIds<Row>(registry: ListRegistry<Row>): string[] {
   return registry.columns.filter((column) => column.defaultVisible).map((column) => column.id);
@@ -23,7 +23,7 @@ export function definitionFromSystemView<Row>(
 ): ViewDefinition {
   return {
     v: 1,
-    query: canonicalQuery(view.query, registry.nonViewParams),
+    query: canonicalQuery(view.query, resolveNonViewParams(registry)),
     sort: view.sort === undefined ? registry.defaultSort : view.sort,
     columns: view.columns ?? defaultColumnIds(registry),
     parts: view.parts ?? {},
@@ -64,7 +64,7 @@ export function reconcileView<Row>(
   }
 
   const kept = new URLSearchParams();
-  for (const [key, value] of filterEntries(definition.query, registry.nonViewParams)) {
+  for (const [key, value] of filterEntries(definition.query, resolveNonViewParams(registry))) {
     const filter = registry.filters.find((candidate) => candidate.key === key);
     if (!filter) issues.push({ kind: 'unknown-filter', key });
     else if (filter.parse && !filter.parse(value)) issues.push({ kind: 'invalid-filter-value', key, value });
@@ -72,7 +72,7 @@ export function reconcileView<Row>(
   }
 
   let sort = definition.sort;
-  if (sort && !registry.sorts.some((option) => option.key === sort?.key)) {
+  if (sort && registry.sorts.length > 0 && !registry.sorts.some((option) => option.key === sort?.key)) {
     issues.push({ kind: 'unknown-sort', key: sort.key });
     sort = registry.defaultSort;
   }
@@ -82,7 +82,7 @@ export function reconcileView<Row>(
       ...definition,
       columns: columns.length > 0 ? columns : defaultColumnIds(registry),
       parts,
-      query: canonicalQuery(kept, registry.nonViewParams),
+      query: canonicalQuery(kept, resolveNonViewParams(registry)),
       sort,
     },
     issues,

@@ -803,7 +803,7 @@ Not a bounded context - a cross-cutting READ convention, recorded here because #
 - **API**: `/promotions` (list, `PUT /order`, `POST /evaluate`, get, create, replace, `POST /:id/resume`, delete). Reads are admin, operator and viewer; writes are admin and operator. `/gift-rules` no longer exists.
 - **Migration**: `1939500000000-create-promotions` copies each gift rule (ids kept, `doNotCombine` becomes `combinable`, definition hash recomputed), its state, grants and run history, then removes them from the automation tables and drops `automation_rules.position`. `down()` rebuilds them.
 
-### 30. Saved Views
+### 31. Saved Views
 
 *Design of record: `docs/plans/mockups/saved-views/` (#4241).*
 
@@ -815,7 +815,7 @@ Not a bounded context - a cross-cutting READ convention, recorded here because #
 - **The default-view chain never errors**: the caller's own explicit default, then the workspace default, then the system "All" view. A pointer to a view that is gone falls through to the next rung.
 - **Tolerant read, strict write**: `readSavedViewDefinition` coerces whatever a stored row holds and never throws - a view written by another build, or edited by hand, is returned flagged `stale: true` so its owner can repair or delete it; a 500 there would hide the very row that needs fixing. `checkSavedViewDefinition` is the strict write-side check. The definition is otherwise opaque to the backend: unknown column or part ids are reconciled by the frontend on load, not refused on write.
 - **`pageKey` is validated in the API, not in core**: format `^[a-z][a-z0-9-]{1,63}$` and membership in `SAVED_VIEW_PAGE_KEYS` (`apps/api/src/saved-views/saved-view-page-keys.ts`). Adding a list page is one line there.
-- **Orders column presets migrated (#3633)**: the same migration copies `order_column_presets` into `saved_views` (`page_key = 'orders'`) - a user's presets become personal views, the workspace-default row becomes a shared view flagged as the workspace default - narrowed to the orders LIST column ids, skipping presets with none left and presets whose author no longer exists. Idempotent (`ON CONFLICT DO NOTHING`). The preset endpoints and table stay: the export dialog still reads them.
+- **Orders column presets migrated (#3633)**: the same migration copies `order_column_presets` into `saved_views` (`page_key = 'orders'`) - a user's presets become personal views, the workspace-default row becomes a shared view flagged as the workspace default - narrowed to the orders LIST column ids, skipping presets with none left and presets whose author no longer exists. Idempotent (`ON CONFLICT DO NOTHING`). The preset endpoints and table stay: the export dialog still reads them. On the frontend the Orders list adopts views behind `VITE_OL_ORDERS_SAVED_VIEWS_ENABLED` (on by default; only the literal `false` restores the pre-views list with its column presets). Frontend design and the page-adoption contract are in `docs/frontend-architecture.md` § Saved list views.
 
 ---
 

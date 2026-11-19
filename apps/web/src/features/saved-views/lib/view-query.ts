@@ -8,6 +8,7 @@
  * @module apps/web/src/features/saved-views/lib
  */
 import type { ViewSort } from './saved-view.types';
+import type { SortCodec } from './view-registry.types';
 
 export const SORT_PARAM = 'sort';
 export const VIEW_PARAM = 'view';
@@ -24,11 +25,46 @@ export const DEFAULT_NON_VIEW_PARAMS: readonly string[] = [
   'limit',
 ];
 
+const resolved = new WeakMap<object, readonly string[]>();
+
+/**
+ * A registry's non-view params: its own list (or the default) plus its
+ * `extraNonViewParams`. Cached per registry so the array keeps its identity
+ * across renders and can sit in hook dependency lists.
+ */
+export function resolveNonViewParams(registry: {
+  nonViewParams?: string[];
+  extraNonViewParams?: string[];
+}): readonly string[] {
+  const hit = resolved.get(registry);
+  if (hit) return hit;
+  const base = registry.nonViewParams ?? DEFAULT_NON_VIEW_PARAMS;
+  const extra = registry.extraNonViewParams ?? [];
+  const value = extra.length > 0 ? Array.from(new Set([...base, ...extra])) : base;
+  resolved.set(registry, value);
+  return value;
+}
+
 export function parseSort(raw: string | null): ViewSort | null {
   if (!raw) return null;
   const [key, dir] = raw.split(':');
   if (!key) return null;
   return { key, dir: dir === 'asc' ? 'asc' : 'desc' };
+}
+
+/** The sort an address carries, through the page's codec when it has one. */
+export function readSort(params: URLSearchParams, codec?: SortCodec): ViewSort | null {
+  return codec ? codec.parse(params) : parseSort(params.get(SORT_PARAM));
+}
+
+/** Writes a sort over `params`, through the page's codec when it has one. */
+export function writeSort(params: URLSearchParams, sort: ViewSort | null, codec?: SortCodec): void {
+  if (codec) {
+    codec.write(params, sort);
+    return;
+  }
+  params.delete(SORT_PARAM);
+  if (sort) params.set(SORT_PARAM, encodeSort(sort));
 }
 
 export function encodeSort(sort: ViewSort): string {
@@ -70,14 +106,14 @@ export function applyQueryToParams(
   current: URLSearchParams,
   next: { query: string; sort: ViewSort | null },
   nonViewParams: readonly string[] = DEFAULT_NON_VIEW_PARAMS,
+  sortCodec?: SortCodec,
 ): URLSearchParams {
   const params = new URLSearchParams();
   current.forEach((value, key) => {
     if (nonViewParams.includes(key) && !PAGING_PARAMS.includes(key)) params.append(key, value);
   });
-  params.delete(SORT_PARAM);
   for (const [key, value] of filterEntries(next.query, nonViewParams)) params.append(key, value);
-  if (next.sort) params.set(SORT_PARAM, encodeSort(next.sort));
+  writeSort(params, next.sort, sortCodec);
   return params;
 }
 
@@ -87,6 +123,8 @@ const PAGING_PARAMS = ['page', 'offset', 'cursor'];
 export function hasViewState(
   params: URLSearchParams,
   nonViewParams: readonly string[] = DEFAULT_NON_VIEW_PARAMS,
+  sortCodec?: SortCodec,
 ): boolean {
-  return params.has(SORT_PARAM) || filterEntries(params, nonViewParams).length > 0;
+  const hasSort = sortCodec ? sortCodec.parse(params) !== null : params.has(SORT_PARAM);
+  return hasSort || filterEntries(params, nonViewParams).length > 0;
 }

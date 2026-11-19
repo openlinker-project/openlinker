@@ -566,6 +566,15 @@
         "other": "{n} wariantu"
       }
     },
+    "savedViews": {
+      "money": "Cena, aktualizacja, utworzenie",
+      "moneyUpdated": "Ostatnia aktualizacja",
+      "productFields": "Nazwa, SKU",
+      "sourceFields": "Połączenie, status",
+      "views": {
+        "noTaxRate": "Bez stawki VAT"
+      }
+    },
     "sortOptions": {
       "createdAt": "Utworzono",
       "name": "Nazwa",

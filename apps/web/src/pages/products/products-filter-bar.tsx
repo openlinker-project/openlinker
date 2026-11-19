@@ -3,7 +3,7 @@
  *
  * The products list's toolbar on the same system as the orders list (#4026):
  * search (`/`), one joined group Source / Listings / Tax rate / Filters (`F`),
- * the results count, the Sort menu, the applied-filter pills and the Filters
+ * the results count, the applied-filter pills and the Filters
  * side panel (bottom sheet on phones). Stock is not here: the status tabs own
  * it, so it is neither a pill nor cleared by Clear all.
  *
@@ -21,16 +21,7 @@ import { FilterSection } from '../../shared/ui/filter-sheet';
 import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
 import { SidePanel } from '../../shared/ui/side-panel';
-import { SortMenu } from '../../shared/ui/sort-menu';
-import type {
-  ProductGapConnection,
-  ProductListSortDir,
-  ProductListSortField,
-  ProductStockFilter,
-} from '../../features/products';
-
-/** Sort menu entries in menu order; `createdAt` (newest first) is the default. */
-const SORT_KEYS: readonly ProductListSortField[] = ['createdAt', 'updatedAt', 'name', 'sku', 'price', 'stock'];
+import type { ProductGapConnection, ProductStockFilter } from '../../features/products';
 
 export type ProductTaxFilter = 'missing' | 'not-checked';
 
@@ -71,12 +62,10 @@ export interface ProductsFilterBarProps {
 
   /** Exact total, or a floor while the total is still counted; `null` while unknown. */
   resultCount: { value: number; atLeast: boolean } | null;
-  sort: ProductListSortField;
-  dir: ProductListSortDir;
-  defaultDir: Readonly<Record<ProductListSortField, ProductListSortDir>>;
-  onSortChange: (field: ProductListSortField, dir: ProductListSortDir) => void;
   /** Clears every filter except stock (the tabs own it). */
   onClearAll: () => void;
+  /** Controls that belong at the end of the toolbar row, e.g. the saved views' Columns & sort. */
+  trailing?: ReactNode;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -116,10 +105,6 @@ export function ProductsFilterBar(props: ProductsFilterBarProps): ReactElement {
     bundles,
     onBundlesChange,
     resultCount,
-    sort,
-    dir,
-    defaultDir,
-    onSortChange,
     onClearAll,
   } = props;
   const page = useMessages('products').productsListPage;
@@ -470,14 +455,7 @@ export function ProductsFilterBar(props: ProductsFilterBarProps): ReactElement {
                 total: `${resultCount.value}${resultCount.atLeast ? '+' : ''}`,
               })}
         </span>
-        <SortMenu
-          options={SORT_KEYS.map((key) => ({ key, label: COPY.sortMenu[key], dir: defaultDir[key] }))}
-          value={sort}
-          dir={dir}
-          defaultKey="createdAt"
-          onChange={onSortChange}
-          aria-label={COPY.sortMenuAria}
-        />
+        {props.trailing}
       </div>
 
       <ActiveFilterChips
