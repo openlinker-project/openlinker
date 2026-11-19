@@ -110,6 +110,7 @@ export function FontSizeToggle(): ReactElement {
       value={size}
       onChange={setSize}
       labels="always"
+      slideThumb
       aria-label={copy.group}
     />
   );

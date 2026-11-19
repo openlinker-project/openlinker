@@ -16644,7 +16644,16 @@ html[data-density='compact'] .status-badge {
  * text, spacing, radii and icons together. Default (no attribute, or
  * `m`) is 18px-equivalent root; `s` is the pre-switch look.
  */
-html { --ui-zoom: 1.125; }
+/* Registered so the zoom can be transitioned: the page eases to the new size
+ * instead of jumping. Every derived value (--ui-vh, --ui-vw, the zoomed
+ * content) follows the animated number. */
+@property --ui-zoom {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1.125;
+}
+
+html { --ui-zoom: 1.125; transition: --ui-zoom 240ms var(--ease-out); }
 html[data-font-size='s'] { --ui-zoom: 1; }
 html[data-font-size='m'] { --ui-zoom: 1.125; }
 html[data-font-size='l'] { --ui-zoom: 1.25; }
@@ -16652,6 +16661,10 @@ html[data-font-size='xl'] { --ui-zoom: 1.375; }
 
 /* `vh` ignores zoom, so a calc(100 * var(--ui-vh)) shell would overflow the viewport by the
  * zoom factor. Every vh below is written as N * var(--ui-vh). */
+@media (prefers-reduced-motion: reduce) {
+  html { transition: none; }
+}
+
 html { --ui-vw: calc(1vw / var(--ui-zoom)); --ui-vh: calc(1vh / var(--ui-zoom)); --ui-dvh: calc(1dvh / var(--ui-zoom)); }
 
 /* Zoom the CONTENT of body, not <html>: Radix/floating-ui position poppers
@@ -36524,6 +36537,25 @@ legend.analytics-settings-dialog__label {
   box-shadow:
     0 1px 2px rgb(15 18 26 / 0.08),
     0 0 0 1px var(--border-default);
+}
+
+/* `slideThumb`: one thumb moved by option index with a CSS transition, so it
+ * needs no measuring (see the prop). Same box as the option it sits behind:
+ * track padding 3px, gap 2px between the --seg-count columns. */
+.segmented-switch__thumb--slide {
+  inset: auto;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px - (var(--seg-count) - 1) * 2px) / var(--seg-count));
+  transform: translateX(calc(var(--seg-index) * (100% + 2px)));
+  transition: transform 340ms cubic-bezier(0.34, 1.35, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-switch__thumb--slide {
+    transition: none;
+  }
 }
 
 /* The unchosen icons sit a little smaller; `scale` (not `transform`) so it
