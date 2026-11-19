@@ -7,8 +7,9 @@
  * one by one, at most `MAX_ORDERS_PER_CONNECTION` per run, so a backlog drains
  * over several runs instead of one long transaction.
  *
- * For each order it also clears the recipient on the order's buyer-email and
- * document-email delivery records, and after the orders it clears the customer
+ * For each order it first clears the recipient on the order's buyer-email and
+ * document-email delivery records, then marks the order redacted, so a failure
+ * leaves the order a candidate for the next run. After the orders it clears the customer
  * projections (email, names, street address) of customers last seen through
  * this source before the same cutoff.
  *
@@ -43,7 +44,10 @@ import {
   type OrderBuyerDataRetentionConnectionResult,
   type OrderBuyerDataRetentionRunResult,
 } from '../../domain/types/order-buyer-data-retention.types';
-import { BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+  ORDER_RECORD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
 import type { IOrderBuyerDataRetentionService } from './order-buyer-data-retention.service.interface';
 
 export const BUYER_DATA_RETENTION_PAGE_SIZE = 200;
@@ -67,7 +71,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     @Inject(DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN)
     private readonly documentEmailDeliveries: IDocumentEmailDeliveryService,
     @Inject(CUSTOMER_PROJECTION_SERVICE_TOKEN)
-    private readonly customerProjections: ICustomerProjectionService,
+    private readonly customerProjections: ICustomerProjectionService
   ) {}
 
   async runOnce(now: Date = new Date()): Promise<OrderBuyerDataRetentionRunResult> {
@@ -80,7 +84,11 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     const connections: OrderBuyerDataRetentionConnectionResult[] = [];
     for (const source of sources) {
       const days = source.metadata.buyerDataRetentionDays;
-      if (typeof days !== 'number' || !Number.isFinite(days) || days < MIN_BUYER_DATA_RETENTION_DAYS) {
+      if (
+        typeof days !== 'number' ||
+        !Number.isFinite(days) ||
+        days < MIN_BUYER_DATA_RETENTION_DAYS
+      ) {
         continue;
       }
       try {
@@ -88,13 +96,15 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `order_buyer_data_retention_failed connection=${source.connectionId}: ${detail}`,
+          `order_buyer_data_retention_failed connection=${source.connectionId}: ${detail}`
         );
       }
     }
     const redacted = connections.reduce((sum, entry) => sum + entry.redacted, 0);
     if (redacted > 0) {
-      this.logger.log(`Removed buyer data from ${String(redacted)} order(s) past their retention period`);
+      this.logger.log(
+        `Removed buyer data from ${String(redacted)} order(s) past their retention period`
+      );
     }
     return { connections, redacted };
   }
@@ -102,7 +112,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
   private async redactConnection(
     sourceConnectionId: string,
     retentionDays: number,
-    now: Date,
+    now: Date
   ): Promise<OrderBuyerDataRetentionConnectionResult> {
     const anchorBefore = new Date(now.getTime() - retentionDays * MS_PER_DAY);
     const storePii = getEnvBoolean('OL_STORE_PII', true);
@@ -117,6 +127,11 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
         limit: BUYER_DATA_RETENTION_PAGE_SIZE,
       });
       for (const candidate of candidates) {
+        // Recipients first: the order's marker takes it out of the candidate
+        // set, so anything cleared after it would be left behind for good if
+        // that write failed. Both clears are idempotent and retried with the order.
+        await this.buyerEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
+        await this.documentEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
         const orderSnapshot = redactOrderSnapshotBuyerData(candidate.orderSnapshot);
         const done = await this.repository.redactBuyerData({
           internalOrderId: candidate.internalOrderId,
@@ -125,8 +140,6 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
         });
         if (done) {
           redacted += 1;
-          await this.buyerEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
-          await this.documentEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
         }
       }
       processed += candidates.length;
@@ -153,7 +166,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
    */
   private async redactCustomers(
     sourceConnectionId: string,
-    lastSeenBefore: Date,
+    lastSeenBefore: Date
   ): Promise<{ redacted: number; budgetExhausted: boolean }> {
     let redacted = 0;
     while (redacted < BUYER_DATA_RETENTION_MAX_CUSTOMERS_PER_CONNECTION) {

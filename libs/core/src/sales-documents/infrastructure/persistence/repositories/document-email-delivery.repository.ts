@@ -32,7 +32,6 @@ export class DocumentEmailDeliveryRepository implements DocumentEmailDeliveryRep
     return this.toDomain(saved);
   }
 
-
   async clearRecipientsForOrder(internalOrderId: string): Promise<number> {
     const result = await this.ormRepository
       .createQueryBuilder()
@@ -43,6 +42,7 @@ export class DocumentEmailDeliveryRepository implements DocumentEmailDeliveryRep
       .execute();
     return result.affected ?? 0;
   }
+
   async listByOrder(internalOrderId: string, limit: number): Promise<DocumentEmailDelivery[]> {
     const rows = await this.ormRepository.find({
       where: { internalOrderId },

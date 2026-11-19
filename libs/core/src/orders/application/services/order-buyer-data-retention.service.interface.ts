@@ -19,7 +19,10 @@
  *
  * Kept, and stated rather than implied: issued sales documents keep the buyer
  * by law, and a carrier label already generated keeps the recipient printed on
- * it. What a destination shop or ERP received is outside OpenLinker.
+ * it. What a destination shop or ERP received is outside OpenLinker. A customer
+ * projection is shared across sources and keyed by the source it was last seen
+ * through, so a customer who ordered through another source since keeps the
+ * data on that projection until it is past that source's period, if any.
  *
  * @module application/services
  */

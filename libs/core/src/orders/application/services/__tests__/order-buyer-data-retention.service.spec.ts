@@ -23,7 +23,9 @@ function source(connectionId: string, buyerDataRetentionDays?: number): Record<s
 
 function setup(sources: Record<string, unknown>[]): {
   service: OrderBuyerDataRetentionService;
-  repository: jest.Mocked<Pick<OrderRecordRepositoryPort, 'findBuyerDataRetentionCandidates' | 'redactBuyerData'>>;
+  repository: jest.Mocked<
+    Pick<OrderRecordRepositoryPort, 'findBuyerDataRetentionCandidates' | 'redactBuyerData'>
+  >;
   integrations: { listCapabilityAdapters: jest.Mock };
   buyerEmails: { clearRecipientsForOrder: jest.Mock };
   documentEmails: { clearRecipientsForOrder: jest.Mock };
@@ -42,14 +44,18 @@ function setup(sources: Record<string, unknown>[]): {
     integrations as unknown as IIntegrationsService,
     buyerEmails as unknown as BuyerEmailDeliveryRepositoryPort,
     documentEmails as unknown as IDocumentEmailDeliveryService,
-    customers as unknown as ICustomerProjectionService,
+    customers as unknown as ICustomerProjectionService
   );
   return { service, repository, integrations, buyerEmails, documentEmails, customers };
 }
 
 describe('OrderBuyerDataRetentionService', () => {
   it('should look only at sources that declare a retention period, without building adapters', async () => {
-    const { service, repository, integrations } = setup([source('amz', 30), source('shop'), source('bad', 0)]);
+    const { service, repository, integrations } = setup([
+      source('amz', 30),
+      source('shop'),
+      source('bad', 0),
+    ]);
 
     await service.runOnce(NOW);
 
@@ -74,7 +80,14 @@ describe('OrderBuyerDataRetentionService', () => {
         orderSnapshot: {
           orderNumber: '302-1',
           customerEmail: 'abc@marketplace.amazon.de',
-          shippingAddress: { firstName: 'Anna', lastName: 'Schmidt', address1: 'A 1', city: 'B', postalCode: '1', country: 'DE' },
+          shippingAddress: {
+            firstName: 'Anna',
+            lastName: 'Schmidt',
+            address1: 'A 1',
+            city: 'B',
+            postalCode: '1',
+            country: 'DE',
+          },
         },
       },
     ]);
@@ -103,7 +116,10 @@ describe('OrderBuyerDataRetentionService', () => {
     const result = await service.runOnce(NOW);
 
     expect(repository.findBuyerDataRetentionCandidates).toHaveBeenCalledTimes(2);
-    expect(result.connections[0]).toMatchObject({ redacted: BUYER_DATA_RETENTION_PAGE_SIZE, budgetExhausted: false });
+    expect(result.connections[0]).toMatchObject({
+      redacted: BUYER_DATA_RETENTION_PAGE_SIZE,
+      budgetExhausted: false,
+    });
   });
 
   it('should keep going when one connection fails', async () => {
@@ -118,18 +134,33 @@ describe('OrderBuyerDataRetentionService', () => {
     expect(result.redacted).toBe(1);
   });
 
-  it('should clear the email delivery recipients of each order it redacted, and only those', async () => {
+  it('should clear the email delivery recipients of each candidate before marking it redacted', async () => {
     const { service, repository, buyerEmails, documentEmails } = setup([source('amz', 30)]);
     repository.findBuyerDataRetentionCandidates.mockResolvedValueOnce([
       { internalOrderId: 'o1', orderSnapshot: {} },
       { internalOrderId: 'o2', orderSnapshot: {} },
     ]);
-    repository.redactBuyerData.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     await service.runOnce(NOW);
 
-    expect(buyerEmails.clearRecipientsForOrder.mock.calls).toEqual([['o1']]);
-    expect(documentEmails.clearRecipientsForOrder.mock.calls).toEqual([['o1']]);
+    expect(buyerEmails.clearRecipientsForOrder.mock.calls).toEqual([['o1'], ['o2']]);
+    expect(documentEmails.clearRecipientsForOrder.mock.calls).toEqual([['o1'], ['o2']]);
+    expect(documentEmails.clearRecipientsForOrder.mock.invocationCallOrder[0]).toBeLessThan(
+      repository.redactBuyerData.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('should leave the order unmarked when clearing its recipients fails, so the next run retries it', async () => {
+    const { service, repository, buyerEmails } = setup([source('amz', 30)]);
+    repository.findBuyerDataRetentionCandidates.mockResolvedValueOnce([
+      { internalOrderId: 'o1', orderSnapshot: {} },
+    ]);
+    buyerEmails.clearRecipientsForOrder.mockRejectedValueOnce(new Error('db down'));
+
+    const result = await service.runOnce(NOW);
+
+    expect(repository.redactBuyerData).not.toHaveBeenCalled();
+    expect(result.redacted).toBe(0);
   });
 
   it('should clear the customers last seen through the source before the same cutoff, in batches', async () => {
