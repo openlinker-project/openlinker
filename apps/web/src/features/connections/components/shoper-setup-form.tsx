@@ -218,6 +218,15 @@ export function ShoperSetupForm(): ReactElement {
                 },
                 { platform: platformName },
               )}
+              <p>
+                {renderRich(copy.ordersNextStep.shipping, {
+                  link: (text) => (
+                    <Link className="link" to={`/connections/${createdConnectionId}/mappings`}>
+                      {text}
+                    </Link>
+                  ),
+                })}
+              </p>
             </Alert>
           ) : null}
           {testResult ? (

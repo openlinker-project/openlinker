@@ -78,6 +78,12 @@ export interface ResolvedNumberSetting {
   workerMayDiffer?: boolean;
 }
 
+export interface ResolvedBooleanSetting {
+  value: boolean;
+  source: OperationalSettingSource;
+  workerMayDiffer?: boolean;
+}
+
 export interface ResolvedCadenceSetting {
   value: string;
   source: OperationalSettingSource;
@@ -116,6 +122,8 @@ export interface OperationalSettingsView {
   /** Hours a stock observation may age before the stock view flags it stale (#3621). */
   stockStaleSyncThresholdHours: ResolvedNumberSetting;
   deletionAuditCadence: ResolvedCadenceSetting;
+  /** Optional: a response that predates the toggle renders without the panel. */
+  releaseCenterEnabled?: ResolvedBooleanSetting;
   /**
    * How often each sweep runs. Read-only — there is no input for either.
    *
@@ -157,6 +165,8 @@ export interface UpdateOperationalSettingsInput {
   inventoryMovementRetentionDays?: number | null;
   stockStaleSyncThresholdHours?: number | null;
   deletionAuditCadence?: string | null;
+  /** `null` clears back to the .env variable, then to on. */
+  releaseCenterEnabled?: boolean | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.
    *

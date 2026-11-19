@@ -89,6 +89,11 @@
       "require": "./dist/fulfillment-authority/index.js",
       "default": "./dist/fulfillment-authority/index.js"
     },
+    "./release-center": {
+      "types": "./dist/release-center/index.d.ts",
+      "require": "./dist/release-center/index.js",
+      "default": "./dist/release-center/index.js"
+    },
     "./sales-documents": {
       "types": "./dist/sales-documents/index.d.ts",
       "require": "./dist/sales-documents/index.js",

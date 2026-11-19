@@ -1,0 +1,233 @@
+{
+  "bell": {
+    "label": "Powiadomienia",
+    "srNone": "(brak nowych)",
+    "srOptional": "(opcjonalne kroki czekają)",
+    "srTodo": {
+      "few": "({n} do zrobienia)",
+      "many": "({n} do zrobienia)",
+      "one": "({n} do zrobienia)",
+      "other": "({n} do zrobienia)"
+    }
+  },
+  "dialog": {
+    "back": "Wstecz",
+    "close": "Zamknij",
+    "closeIcon": "Zamknij okno",
+    "fullChangelog": "Wszystkie zmiany",
+    "guideLeadAdmin": "Przejdziemy przez ekrany, na których warto coś sprawdzić. Kroki wymagane są oznaczone: bez Twojej decyzji system może działać inaczej, niż oczekujesz.",
+    "guideLeadReadOnly": "Te zmiany wykonuje administrator. Możesz zobaczyć, gdzie się znajdują.",
+    "guideTitle": "Co warto ustawić po aktualizacji",
+    "highlightsLabel": "Najważniejsze zmiany",
+    "later": "Zrobię to później",
+    "moreChanges": {
+      "few": "i {n} inne zmiany w pełnym changelogu (po angielsku)",
+      "many": "i {n} innych zmian w pełnym changelogu (po angielsku)",
+      "one": "i {n} inna zmiana w pełnym changelogu (po angielsku)",
+      "other": "i {n} innej zmiany w pełnym changelogu (po angielsku)"
+    },
+    "needsAdmin": "Wymaga administratora",
+    "newVersion": "Nowa wersja",
+    "optional": "Opcjonalne",
+    "required": "Wymagane",
+    "showWhere": "Pokaż, gdzie to jest",
+    "skipDialog": "Nie pokazuj okna ze zmianami po kolejnych aktualizacjach",
+    "startGuide": "Rozpocznij przewodnik",
+    "stepIndicator": "Krok {current} z {total}",
+    "title": "Zaktualizowano OpenLinker do wersji {version}",
+    "toGuide": "Przejdź do przewodnika"
+  },
+  "panel": {
+    "adminCompletes": "Kroki wykonuje administrator",
+    "archivedLabel": "Archiwum",
+    "close": "Zamknij",
+    "ctaAgain": "Przejdź jeszcze raz",
+    "ctaChangelog": "Zobacz changelog",
+    "ctaContinue": "Kontynuuj",
+    "ctaGuide": "Poprowadź mnie",
+    "ctaShowWhere": "Pokaż, gdzie to jest",
+    "ctaTour": "Zobacz przewodnik",
+    "ctaTourAgain": "Zobacz jeszcze raz",
+    "doneAuto": "Wykryto automatycznie",
+    "doneManual": "Zostaje bez zmian",
+    "doneOf": "{done} z {total} gotowe",
+    "emptyArchiveBody": "Zarchiwizowane powiadomienia pojawią się tutaj.",
+    "emptyArchiveTitle": "Archiwum jest puste",
+    "emptyDoneBody": "Nic nie czeka na Twoją decyzję. Nowe zmiany pokażą się po następnej aktualizacji.",
+    "emptyDoneTitle": "Wszystko zrobione",
+    "generalTitle": "Zalecane kroki",
+    "itemActions": "Akcje powiadomienia",
+    "markRead": "Oznacz jako przeczytane",
+    "menuArchive": "Archiwizuj",
+    "menuDelete": "Usuń",
+    "menuMarkAllDone": "Oznacz wszystkie kroki jako zrobione",
+    "menuMarkRead": "Oznacz jako przeczytane",
+    "menuRestore": "Przywróć z archiwum",
+    "moreActions": "Więcej akcji kroku",
+    "naChip": "Nie dotyczy",
+    "needsAdmin": "Wymaga administratora",
+    "notApplicable": "Nie dotyczy",
+    "nudgeDismiss": "Zamknij powiadomienie",
+    "nudgeMore": "+{n} więcej",
+    "nudgeOpen": "Zobacz wszystkie",
+    "progressLabel": "Postęp konfiguracji",
+    "progressShowcase": "Obejrzane przystanki",
+    "releaseTitle": "Co zmieniło się w OpenLinker {version}",
+    "remind": "Przypomnij za 7 dni",
+    "requiredDone": "Wymagane kroki zrobione",
+    "requiredLeft": "Wymagane do zrobienia: {n}",
+    "severity": {
+      "error": "Błąd",
+      "info": "Informacja",
+      "success": "Sukces",
+      "warning": "Ostrzeżenie"
+    },
+    "showMe": "Pokaż mi to",
+    "showcaseChip": "Przewodnik",
+    "showcaseHeading": "Do obejrzenia",
+    "showcaseTally": "Obejrzane przystanki: {viewed} z {total}",
+    "snoozedChip": "Przypomnimy za 7 dni",
+    "stayAsIs": "Zostaje tak, jak jest",
+    "stepOptional": "Opcjonalne",
+    "stepRequired": "Wymagane",
+    "stepTour": "Obejrzyj",
+    "stepperAdmin": "Krok zaznaczy się automatycznie po zapisaniu zmiany.",
+    "stepperViewer": "Ten krok wykonuje administrator. Możesz zobaczyć, gdzie jest.",
+    "stepsHide": "Zwiń kroki",
+    "stepsLabel": "Kroki",
+    "stepsRegion": "Kroki wydania {version}",
+    "stepsShow": "Pokaż kroki ({n})",
+    "stepsShowShowcase": "Pokaż przystanki ({n})",
+    "stepsToggle": "Kroki ({n})",
+    "stopsLabel": "Przystanki",
+    "stopsToggle": "Przystanki ({n})",
+    "tabActive": "Aktywne",
+    "tabArchive": "Archiwum",
+    "tabsLabel": "Filtr powiadomień",
+    "title": "Powiadomienia",
+    "toastAllDone": "Wszystkie kroki oznaczone jako zrobione.",
+    "toastArchived": "Powiadomienie zarchiwizowane.",
+    "toastAutoDetected": "Krok gotowy: {title}. Wykryto automatycznie.",
+    "toastDeleted": "Powiadomienie usunięte.",
+    "toastFailed": "Nie udało się zapisać zmiany. Spróbuj ponownie.",
+    "toastMarkedRead": "Oznaczono jako przeczytane.",
+    "toastNotApplicable": "Krok oznaczony jako nie dotyczy.",
+    "toastReminded": "Przypomnimy o tym kroku za 7 dni.",
+    "toastReopened": "Krok otwarty ponownie.",
+    "toastStaysAsIs": "Krok oznaczony jako zostaje jak jest.",
+    "undo": "Cofnij",
+    "unreadLabel": "Nieprzeczytane",
+    "versionBadge": "v{version}",
+    "viewedChip": "Obejrzane"
+  },
+  "showcases": {
+    "first-steps": {
+      "stops": {
+        "0": {
+          "body": "Tu są zamówienia ze wszystkich kanałów. Kliknij wiersz, żeby otworzyć szczegóły.",
+          "title": "Lista zamówień"
+        },
+        "1": {
+          "body": "Wybierz, które kolumny widzisz na liście. Twój wybór zapamiętujemy.",
+          "title": "Kolumny listy"
+        }
+      },
+      "title": "Poznaj OpenLinker",
+      "why": "Zobacz, gdzie są zamówienia i jak ustawić kolumny listy."
+    },
+    "orders-views": {
+      "stops": {
+        "0": {
+          "body": "Wybierz, które kolumny widzisz na liście zamówień. Twój wybór zapamiętujemy.",
+          "title": "Kolumny listy"
+        },
+        "1": {
+          "body": "Tu są zamówienia ze wszystkich kanałów. Kliknij wiersz, żeby otworzyć szczegóły.",
+          "title": "Lista zamówień"
+        },
+        "2": {
+          "body": "Dodaj własną etykietę i kolor, a potem oznaczaj nią zamówienia z listy.",
+          "title": "Etykiety zamówień"
+        }
+      },
+      "title": "Nowe widoki zamówień",
+      "why": "Zobacz, gdzie wybierzesz kolumny listy i gdzie zarządzasz etykietami zamówień."
+    }
+  },
+  "steps": {
+    "inpost-notify-buyer": {
+      "title": "Ustaw, kiedy kupujący zobaczy „wysłano”",
+      "tourBody": "Kupujący zobaczy „wysłano” od razu po zakupie etykiety albo dopiero po kliknięciu „Oznacz jako wysłane”. Ustawienie dotyczy tego konta InPost.",
+      "tourTitle": "Kiedy kupujący ma zobaczyć „wysłano”?",
+      "why": "Zakup etykiety nie znaczy jeszcze, że paczka została nadana, dlatego kupujący widzi „wysłano” dopiero po kliknięciu „Oznacz jako wysłane”. Jeśli wolisz, status zmieni się od razu po zakupie etykiety."
+    },
+    "packing-owner": {
+      "title": "Wskaż, kto pakuje zamówienia",
+      "tourBody": "Wskaż, kto pakuje zamówienia z tego sklepu: OpenLinker czy inny system. Zmienia to tylko to, co widzisz w OpenLinkerze, niczego nie blokuje.",
+      "tourTitle": "Kto pakuje zamówienia?",
+      "why": "Jeśli zamówienia pakuje zewnętrzny system magazynowy, zaznacz „Ten system sam pakuje i wysyła zamówienia”. OpenLinker nie pokaże wtedy własnego przycisku „Oznacz jako spakowane”."
+    },
+    "shipping-routing": {
+      "title": "Sprawdź, kto wysyła każdą metodę dostawy",
+      "tourBody": "Każdą metodę dostawy z tego kanału wysyła wskazany przewoźnik lub magazyn. Sprawdź przypisania, popraw te, które się nie zgadzają, i zapisz.",
+      "tourTitle": "Kto wysyła paczki z tego kanału?",
+      "why": "Wejdź w Mapowania, zakładka Realizacja. Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału, popraw przypisania i zapisz."
+    }
+  },
+  "tour": {
+    "adminOnly": "Wymaga administratora",
+    "back": "Wstecz",
+    "choices": {
+      "externalPacking": "Pakuje inny system",
+      "notifyLater": "Dopiero po „Oznacz jako wysłane”",
+      "notifyNow": "Od razu po zakupie etykiety",
+      "ownPacking": "Pakujemy w OpenLinker"
+    },
+    "close": "Zamknij przewodnik",
+    "finish": "Gotowe",
+    "missing": "Tego elementu nie ma na ekranie. Przejdź do następnego kroku.",
+    "next": "Dalej",
+    "noRelease": "Inne",
+    "noReleaseFull": "Ogólne, poza wydaniami",
+    "optional": "Opcjonalne",
+    "railLabel": "Postęp przewodnika",
+    "railState": {
+      "current": "bieżący",
+      "done": "zakończony",
+      "skipped": "pominięty",
+      "todo": "jeszcze nie odwiedzony"
+    },
+    "railStep": "Krok {current} z {total}: {status}",
+    "regionLabel": "Przewodnik",
+    "releaseName": "Wersja {version}",
+    "releaseSteps": "Kroków: {n}",
+    "required": "Wymagane",
+    "requiredReason": "Wybierz opcję, aby iść dalej. Ten krok jest wymagany.",
+    "saveFailed": "Nie zapisano ustawienia. Spróbuj ponownie.",
+    "saved": "Zapisano: {choice}",
+    "showcaseChip": "Przewodnik",
+    "skip": "Pomiń krok",
+    "skipShowcase": "Pomiń przewodnik",
+    "stepOf": "Krok {current} z {total}",
+    "stepOfRelease": "Wersja {version}: krok {current} z {total}",
+    "stopLive": "Przystanek {current} z {total}: {title}",
+    "stopOf": "Przystanek {current} z {total}",
+    "viewerHint": "Widzisz to ustawienie, ale zmienić je może tylko administrator."
+  },
+  "whatsNew": {
+    "allSet": "Wszystko ustawione",
+    "baselineTitle": "Pierwsze śledzone wydanie",
+    "changelogLanguage": "Opisy zmian poniżej są po angielsku.",
+    "changelogUnavailable": "Lista zmian nie jest dostępna w tej wersji aplikacji.",
+    "current": "Bieżąca",
+    "done": "Gotowe",
+    "eyebrow": "Aktualizacje",
+    "intro": "Wszystkie zmiany w OpenLinker, od najnowszej. To, co warto ustawić po aktualizacji, jest w osobnym bloku nad listą.",
+    "noSteps": "Po tej aktualizacji nie ma nic do ustawienia.",
+    "progress": "{done} z {total}",
+    "setNow": "Ustaw teraz",
+    "setupTitle": "Do skonfigurowania",
+    "showWhere": "Pokaż, gdzie to jest",
+    "title": "Co nowego w OpenLinker"
+  }
+}

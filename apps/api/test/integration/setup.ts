@@ -254,6 +254,9 @@ const harness = createIntegrationTestHarness({
     'promotion_state',
     'promotion_grants',
     'promotion_applications',
+    // release center (#4141): sync-built schema has no FK to users, so explicit.
+    'release_item_states',
+    'user_release_state',
     'return_gift_decisions',
     'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace

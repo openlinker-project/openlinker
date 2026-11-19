@@ -173,3 +173,14 @@ export type {
   SegmentedSwitchProps,
 } from './segmented-switch';
 export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';
+
+export { SettingsPageTemplate } from './settings-page-template';
+export type { SettingsPageSection, SettingsPageTemplateProps } from './settings-page-template';
+export { SettingsIndexList, SettingsIndexRow } from './settings-index-row';
+export { SettingsFactsBar } from './settings-facts-bar';
+export type { SettingsFact } from './settings-facts-bar';
+export { SettingsGlyph } from './settings-glyph';
+export type { SettingsGlyphName } from './settings-glyph';
+export type { SettingsIndexRowProps, SettingsRowAction } from './settings-index-row';
+export { SettingsPageFrame } from './settings-page-frame';
+export type { SettingsPageFrameProps } from './settings-page-frame';

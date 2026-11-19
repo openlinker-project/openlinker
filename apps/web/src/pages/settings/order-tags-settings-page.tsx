@@ -17,6 +17,7 @@ import { useId, useRef, useState, type FormEvent, type ReactElement } from 'reac
 import { Link } from 'react-router-dom';
 import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
 import { Alert } from '../../shared/ui/alert';
@@ -46,7 +47,7 @@ import {
   orderTagColorLabel,
   useOrderTagsCopy,
 } from '../../features/orders';
-import { interpolate, renderRich, usePlural } from '../../shared/i18n';
+import { interpolate, renderRich, useMessages, usePlural } from '../../shared/i18n';
 
 function ColourSwatches({
   name,
@@ -114,7 +115,7 @@ function NewTagCard({
   }
 
   return (
-    <form className="panel tag-new" onSubmit={handleSubmit} aria-label={manager.newTag}>
+    <form className="panel tag-new" data-tour="order-tags-new" onSubmit={handleSubmit} aria-label={manager.newTag}>
       <div className="panel__header">
         <h3>{manager.newTag}</h3>
         <span className="panel__meta">{manager.newTagMeta}</span>
@@ -267,6 +268,7 @@ function TagRow({
 
 export function OrderTagsSettingsPage(): ReactElement {
   const manager = useOrderTagsCopy().manager;
+  const tpl = useMessages('settings').template.orderTags;
   const plural = usePlural();
   const { isReady } = useSession();
   const isAdmin = useIsAdmin();
@@ -304,12 +306,13 @@ export function OrderTagsSettingsPage(): ReactElement {
   }
 
   return (
-    <PageLayout
+    <SettingsPageFrame
       backTo={{ to: '/settings', label: manager.backToSettings }}
       eyebrow={manager.eyebrow}
       title={manager.title}
       description={manager.description}
-      actions={
+      short={tpl.short}
+      headerExtra={
         <div className="toolbar__group">
           <Button
             ref={newTagButtonRef}
@@ -324,7 +327,14 @@ export function OrderTagsSettingsPage(): ReactElement {
           </Button>
         </div>
       }
-    >
+      sections={[
+        {
+          id: 'tags',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            <>
       {creating ? <NewTagCard existing={tags} onClose={closeNewTag} /> : null}
 
       {tagsQuery.isLoading ? (
@@ -372,6 +382,10 @@ export function OrderTagsSettingsPage(): ReactElement {
         isConfirming={del.isPending}
         onConfirm={confirmDelete}
       />
-    </PageLayout>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }
