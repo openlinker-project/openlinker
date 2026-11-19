@@ -101,6 +101,7 @@ import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-disp
 import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkStatusPollHandler } from './handlers/fulfillment-work-status-poll.handler';
 import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
 import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventory-sale-decrement-reconcile-sweep.handler';
@@ -227,6 +228,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkTimeoutSweepHandler,
     FulfillmentRoutingReapSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    FulfillmentWorkStatusPollHandler,
     SalesDocumentBatchTickHandler,
     SalesDocumentBatchRunHandler,
     InventorySaleDecrementHandler,

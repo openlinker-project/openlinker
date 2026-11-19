@@ -159,6 +159,20 @@ describe('Amazon plugin', () => {
     }
   });
 
+  it('should register the Multi-Channel Fulfillment status poll, off by default', () => {
+    const { host, scheduler } = registerHost();
+    createAmazonPlugin().register?.(host);
+
+    expect(scheduler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'amazon-mcf-status-poll',
+        jobType: 'fulfillment.work.statusPoll',
+        requiredCapability: 'FulfillmentExecutor',
+        enabledDefault: false,
+      }),
+    );
+  });
+
   it('should refuse a capability it does not support with the SDK message', async () => {
     const { host } = registerHost();
     await expect(createAmazonPlugin().createCapabilityAdapter(connection, 'ShippingProviderManager', host)).rejects.toThrow(

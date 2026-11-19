@@ -317,6 +317,12 @@ export const JobTypeValues = [
   // nil-UUID system connection id, like its timeout-sweep sibling.
   'fulfillment.work.relaySweep',
 
+  // The status poll of a POLLING holder (Amazon Multi-Channel Fulfillment):
+  // reads `FulfillmentStatusSource` for the work the connection accepted and
+  // records the progress through `IFulfillmentProgressService`. Scoped to the
+  // executor connection; enqueued by the plugin's scheduler task.
+  'fulfillment.work.statusPoll',
+
   // The reroute sweep (#3485, epic #3460). With the OMS on, an order the router
   // refused (a line out of stock) or failed to route is HELD in OpenLinker
   // rather than created in every product master; this pass re-enters routing

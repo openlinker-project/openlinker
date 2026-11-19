@@ -13,6 +13,10 @@
  * seller-fulfilled returns report; both OFF by default. They need only
  * `OrderSource`, so they use the host's capability filter.
  *
+ * `amazon-mcf-status-poll` (#4185) reads the progress of the Multi-Channel
+ * Fulfillment orders the connection accepted (`fulfillment.work.statusPoll`).
+ * OFF by default; needs `FulfillmentExecutor`.
+ *
  * @module libs/integrations/amazon/src/infrastructure/scheduler
  */
 import type { Connection, ConnectionFilters } from '@openlinker/core/identifier-mapping';
@@ -100,6 +104,28 @@ export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:returns:status:sync:${timestamp}`,
+    },
+    // Multi-Channel Fulfillment progress (#4185): Amazon pushes no fulfilment
+    // webhook, so the work it accepted is polled through the executor's
+    // `FulfillmentStatusSource`; a shipped order moves the work and is relayed
+    // to the order's source. `getFulfillmentOrder` allows 2 req/s, so 25 works
+    // every 15 minutes stays well inside it. Off by default
+    // (`OL_AMAZON_MCF_STATUS_POLL_SCHEDULER_ENABLED`).
+    {
+      taskId: 'amazon-mcf-status-poll',
+      platformType: AMAZON_PLATFORM_TYPE,
+      requiredCapability: 'FulfillmentExecutor',
+      jobType: 'fulfillment.work.statusPoll',
+      cronExpression: '*/15 * * * *',
+      enabledEnvVar: 'OL_AMAZON_MCF_STATUS_POLL_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        pageLimit: 25,
+        cursorKey: 'amazon.mcf.statusPollOffset',
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `fulfillment:${connection.id}:mcf:status:poll:${timestamp}`,
     },
   ];
 }

@@ -165,6 +165,7 @@ Every Amazon task is off by default; turn on what you use in the worker's enviro
 | `OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` | refreshes each listing's status, price and stock, hourly |
 | `OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED` | reads the returns report |
 | `OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED` | refreshes open returns, hourly |
+| `OL_AMAZON_MCF_STATUS_POLL_SCHEDULER_ENABLED` | reads the progress of Multi-Channel Fulfillment orders every 15 minutes, so a shipped order moves its work and tells the order's source |
 
 Amazon's quotas are low (order search allows about one call every three minutes with a burst of 20),
 which is why the tasks run as slowly as they do.
