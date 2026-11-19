@@ -7,6 +7,7 @@
  *
  * @module libs/integrations/amazon/src/__tests__
  */
+import { isInboundQueueReader } from '@openlinker/core/integrations';
 import { isRefundExecutor, isReturnSourceReader } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HostServices } from '@openlinker/plugin-sdk';
@@ -111,6 +112,37 @@ describe('Amazon plugin', () => {
     const source = await createAmazonPlugin().createCapabilityAdapter<object>(amazonConnection, 'OrderSource', host);
 
     expect(isRefundExecutor(source)).toBe(true);
+  });
+
+  it('should keep the queue reader on a refunding order source when the connection has a queue (#4184)', async () => {
+    const host = {
+      credentialsResolver: {
+        get: jest.fn().mockResolvedValue({
+          clientId: 'c',
+          clientSecret: 's',
+          refreshToken: 'r',
+          awsAccessKeyId: 'AKIA',
+          awsSecretAccessKey: 'secret',
+        }),
+      },
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
+    } as unknown as HostServices;
+    const amazonConnection = {
+      id: 'conn-amz-1',
+      platformType: 'amazon',
+      config: {
+        marketplaceIds: ['A1PA6795UKMFR9'],
+        refundsEnabled: true,
+        notificationQueueUrl: 'https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications',
+      },
+      credentialsRef: 'db:1',
+    } as unknown as Connection;
+
+    const source = await createAmazonPlugin().createCapabilityAdapter<object>(amazonConnection, 'OrderSource', host);
+
+    expect(isRefundExecutor(source)).toBe(true);
+    expect(isInboundQueueReader(source)).toBe(true);
+    expect(isReturnSourceReader(source)).toBe(true);
   });
 
   it('should register the returns poll and status sync, off by default (#4184)', () => {
