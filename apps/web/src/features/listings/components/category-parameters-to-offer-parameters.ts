@@ -24,7 +24,11 @@
  */
 import type { CategoryParameter, OfferParameter } from '../api/listings.types';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
-import { isFormValueEmpty, isParameterVisible } from './category-parameter-visibility';
+import {
+  findDictionaryEntryForFormValue,
+  isFormValueEmpty,
+  isParameterVisible,
+} from './category-parameter-visibility';
 
 /**
  * The form value for a picked dictionary entry on a single-choice parameter
@@ -80,7 +84,7 @@ export function categoryParametersToOfferParameters(
   const out: OfferParameter[] = [];
 
   for (const param of parameters) {
-    if (!isParameterVisible(param, values)) continue;
+    if (!isParameterVisible(param, values, parameters)) continue;
     if (param.section !== 'offer' && param.section !== 'product') {
       // #423 — `section` is required by the CategoryParameter contract.
       // Reaching here means stale data (cache predating #417). Fail loud.
@@ -114,18 +118,14 @@ function mapOne(
     if (trimmed === '') return null;
 
     if (param.restrictions.customValuesEnabled) {
-      const match = param.dictionary?.find(
-        (entry) => entry.value.trim().toLowerCase() === trimmed.toLowerCase(),
-      );
-      if (match) return { id: param.id, valuesIds: [match.id] };
       // A custom-values field normally holds the entry's text, but a writer may
-      // still store the entry id (one that predates #4038, or a new one that
-      // forgets the rule). Sending that id as free text makes the marketplace
-      // read the parameter as missing, so an id that names an entry is that
-      // entry. Keep this even once every writer stores text.
-      const byId = param.dictionary?.find((entry) => entry.id === trimmed);
-      return byId
-        ? { id: param.id, valuesIds: [byId.id] }
+      // still store the entry id (one that predates #4038, or a pick between
+      // two entries that share a label). Sending that id as free text makes the
+      // marketplace read the parameter as missing, so the lookup also accepts
+      // an id that names an entry. Keep this even once every writer stores text.
+      const match = findDictionaryEntryForFormValue(param, trimmed);
+      return match
+        ? { id: param.id, valuesIds: [match.id] }
         : { id: param.id, values: [trimmed] };
     }
 
