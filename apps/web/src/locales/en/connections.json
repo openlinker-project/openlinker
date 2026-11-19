@@ -1111,6 +1111,7 @@
       "documents": "If automatic invoicing is on, OpenLinker issues invoices and receipts for old sales, dated today.",
       "orders": "Each old order is copied again to every connected shop, with its customer.",
       "stock": "Stock is held for orders that already shipped, so available stock can look too low.",
+      "warningLabel": "What happens to old orders",
       "warningTitle": "Old orders are handled like new ones"
     },
     "dateLabel": "First day to import",
@@ -1133,14 +1134,12 @@
         "title": "New orders only"
       }
     },
-    "recommended": "Recommended",
     "review": {
       "all": "Every order",
       "from": "Since {date}",
       "label": "Orders to import",
       "now": "New orders only"
     },
-    "slow": "Slow",
     "title": "Which orders should OpenLinker bring in?",
     "unsupported": {
       "all": "OpenLinker cannot import the full history of this connection yet.",

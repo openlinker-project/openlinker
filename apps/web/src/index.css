@@ -40294,13 +40294,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   animation: order-sync-start-reveal 160ms ease-out;
 }
 
-.order-sync-start__consequences {
-  margin: 0;
-  padding-left: 1.125rem;
-  display: grid;
-  gap: var(--space-1);
-}
-
 @keyframes order-sync-start-reveal {
   from {
     opacity: 0;
@@ -40316,4 +40309,81 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-sync-start__reveal {
     animation: none;
   }
+}
+
+
+/* ── Icon popover tooltips (#4228) ──────────────────────────────────────── */
+/* An icon button that explains itself: `IconWithOnHoverPopoverTooltip` and its
+   Warning variant, on top of `PopoverOnHover`. */
+.icon-tip.button--bare.button--bare {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.icon-tip--warning.button--bare.button--bare {
+  color: var(--status-warning-strong);
+}
+.icon-tip--error.button--bare.button--bare {
+  color: var(--status-error-fg);
+}
+.icon-tip--info.button--bare.button--bare {
+  color: var(--accent-primary);
+}
+.icon-tip--warning.button--bare.button--bare:hover,
+.icon-tip--warning.button--bare.button--bare[aria-expanded='true'] {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-strong);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .icon-tip:hover svg,
+  .icon-tip[aria-expanded='true'] svg {
+    animation: icon-tip-nudge 420ms ease-out;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Once, when the card is chosen: the mark says "there is something to read here"
+     without opening a panel over the confirm button. */
+  .order-sync-start__card--checked .icon-tip svg {
+    animation: icon-tip-nudge 600ms ease-out 120ms;
+  }
+}
+@keyframes icon-tip-nudge {
+  0% { transform: rotate(0); }
+  25% { transform: rotate(-9deg); }
+  55% { transform: rotate(7deg); }
+  100% { transform: rotate(0); }
+}
+
+.motion-popover.popover-on-hover {
+  padding: 0;
+  max-width: calc(100vw - 16px);
+  /* Above the elevated dialog tier (101): the mark usually sits INSIDE a dialog,
+     and a panel behind its own dialog cannot be read. */
+  z-index: 120;
+}
+.motion-popover.popover-on-hover--warning {
+  border-color: var(--status-warning-border);
+}
+.popover-on-hover__body {
+  margin: -6px;
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.popover-on-hover__title {
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.popover-on-hover__list {
+  margin: 0;
+  padding-left: 1.125rem;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.order-sync-start__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
 }

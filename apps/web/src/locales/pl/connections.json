@@ -1137,6 +1137,7 @@
       "documents": "Jeśli włączone jest automatyczne wystawianie, OpenLinker wystawi faktury i paragony za stare sprzedaże, z dzisiejszą datą.",
       "orders": "Każde stare zamówienie zostanie skopiowane do każdego podłączonego sklepu, razem z klientem.",
       "stock": "Stan jest rezerwowany pod zamówienia, które już wysłano, więc dostępny stan może wyglądać na zaniżony.",
+      "warningLabel": "Co się stanie ze starymi zamówieniami",
       "warningTitle": "Stare zamówienia traktujemy jak nowe"
     },
     "dateLabel": "Pierwszy dzień importu",
@@ -1159,14 +1160,12 @@
         "title": "Tylko nowe zamówienia"
       }
     },
-    "recommended": "Zalecane",
     "review": {
       "all": "Wszystkie",
       "from": "Od {date}",
       "label": "Zamówienia do importu",
       "now": "Tylko nowe"
     },
-    "slow": "Wolno",
     "title": "Które zamówienia OpenLinker ma pobrać?",
     "unsupported": {
       "all": "OpenLinker nie umie jeszcze zaimportować pełnej historii tego połączenia.",

@@ -11,10 +11,9 @@
  */
 import { useId, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
-import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
-import { StatusBadge } from '../../../shared/ui/status-badge';
+import { WarningPopoverTooltip } from '../../../shared/ui/warning-popover-tooltip';
 import type { OrderSyncStartMode } from '../api/connections.types';
 import {
   earliestOrderSyncStartDate,
@@ -119,15 +118,25 @@ export function OrderSyncStartField({
             >
               <div className="platform-picker__card-header">
                 <h4 className="platform-picker__card-title">{card.title}</h4>
-                {mode === 'now' && !disabled ? (
-                  <StatusBadge tone="success" compact>
-                    {copy.recommended}
-                  </StatusBadge>
-                ) : null}
-                {mode === 'all' ? (
-                  <StatusBadge tone="warning" compact>
-                    {copy.slow}
-                  </StatusBadge>
+                {mode === 'all' && !disabled ? (
+                  // The icon sits inside a card that selects on click and on Enter/Space;
+                  // the icon has its own Enter/Space (it opens the panel), so the card must
+                  // not also hear them.
+                  <span onKeyDown={(event) => event.stopPropagation()}>
+                    <WarningPopoverTooltip
+                      label={copy.all.warningLabel}
+                      align="end"
+                      width={340}
+                    >
+                      <p className="popover-on-hover__title">{copy.all.warningTitle}</p>
+                      <ul className="popover-on-hover__list">
+                        <li>{copy.all.orders}</li>
+                        <li>{copy.all.documents}</li>
+                        <li>{copy.all.stock}</li>
+                        <li>{copy.all.delay}</li>
+                      </ul>
+                    </WarningPopoverTooltip>
+                  </span>
                 ) : null}
               </div>
               <p id={descriptionId} className="platform-picker__card-description">
@@ -155,21 +164,12 @@ export function OrderSyncStartField({
           </FormField>
         ) : null}
 
-        {value.mode === 'all' ? (
-          <Alert tone="warning" title={copy.all.warningTitle}>
-            <ul className="order-sync-start__consequences">
-              <li>{copy.all.orders}</li>
-              <li>{copy.all.documents}</li>
-              <li>{copy.all.stock}</li>
-              <li>{copy.all.delay}</li>
-            </ul>
-          </Alert>
-        ) : null}
-
-        {value.mode === 'now' ? <Alert tone="info">{copy.info.now}</Alert> : null}
+        {value.mode === 'now' ? <p className="order-sync-start__note">{copy.info.now}</p> : null}
 
         {dateIsUsable ? (
-          <Alert tone="info">{interpolate(copy.info.from, { date: format.date(`${from}T12:00:00`) })}</Alert>
+          <p className="order-sync-start__note">
+            {interpolate(copy.info.from, { date: format.date(`${from}T12:00:00`) })}
+          </p>
         ) : null}
       </div>
     </div>

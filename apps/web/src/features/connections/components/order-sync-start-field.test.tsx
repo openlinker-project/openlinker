@@ -2,7 +2,7 @@
  * Order sync start field tests (#4228)
  */
 import { useState, type ReactElement } from 'react';
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../../test/test-utils';
 import { OrderSyncStartField } from './order-sync-start-field';
@@ -62,11 +62,32 @@ describe('OrderSyncStartField', () => {
     expect(screen.getByText('Choose a day before today')).toBeInTheDocument();
   });
 
-  it('warns about the consequences when all history is chosen', () => {
+  it('does not label cards with Recommended or Slow badges', () => {
     renderWithProviders(<Harness />);
-    fireEvent.click(screen.getByRole('radio', { name: /Every order the shop has/ }));
-    expect(screen.getByText('Old orders are handled like new ones')).toBeInTheDocument();
+    expect(screen.queryByText('Recommended')).not.toBeInTheDocument();
+    expect(screen.queryByText('Slow')).not.toBeInTheDocument();
+  });
+
+  it('explains the consequences of all history in a warning popover behind the icon', async () => {
+    renderWithProviders(<Harness />);
+    expect(screen.queryByText('Old orders are handled like new ones')).not.toBeInTheDocument();
+    fireEvent.focus(screen.getByRole('button', { name: 'What happens to old orders' }));
+    expect(await screen.findByText('Old orders are handled like new ones')).toBeInTheDocument();
     expect(screen.getByText(/copied again to every connected shop/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'What happens to old orders' })).toBeInTheDocument();
+  });
+
+  it('closes the warning on Escape and leaves the card choice alone', async () => {
+    const onValue = vi.fn();
+    renderWithProviders(<Harness onValue={onValue} />);
+    const icon = screen.getByRole('button', { name: 'What happens to old orders' });
+    fireEvent.focus(icon);
+    expect(await screen.findByText('Old orders are handled like new ones')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onValue).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByText('Old orders are handled like new ones')).not.toBeInTheDocument(),
+    );
   });
 
   it('keeps an unsupported card visible, disabled, with the reason, and refuses it', () => {

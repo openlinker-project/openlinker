@@ -416,6 +416,7 @@
   "connections:orderSyncPanel.live.badgeBefore": 26,
   "connections:orderSyncPanel.live.label": 20,
   "connections:orderSyncPanel.retry": 8,
+  "connections:orderSyncStart.all.warningLabel": 48,
   "connections:paymentWriteback.recommended": 16,
   "connections:prestashopRateLimitReadout.refresh": 12,
   "connections:prestashopRateLimitReadout.refreshing": 18,
