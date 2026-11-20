@@ -42725,6 +42725,15 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-top: 0;
   border-radius: 0;
 }
+/* Spacing: the card's content hangs from the title column (icon 28 + gap 12), like a message's text,
+   with more air between its parts. */
+.release-panel .release-card { padding: 16px 16px 16px 20px; gap: 12px; }
+.release-panel .release-card > :not(.release-card__top):not(.release-card__actions) { margin-left: 40px; }
+.release-panel .release-card__actions,
+.release-panel .release-card[data-unread='true'] .release-card__actions {
+  margin: 0 -16px -16px -20px;
+  padding: 12px 16px 16px 60px;
+}
 /* Same icon chip as a message, so the two read as one family; info blue because a release is information. */
 .release-panel .release-card__top { gap: 12px; }
 .release-panel .release-card__top > div { flex: 1; }
