@@ -226,6 +226,29 @@ export interface AdapterMetadata {
   requiresCredentials?: boolean;
 
   /**
+   * Where an operator may start this adapter's ORDER feed when creating a
+   * connection (#4228): `now` (only orders from here on), `from` (from a date,
+   * needs the adapter's `OrderFeedDateBootstrap`) or `all` (the whole history).
+   * Absent means `['now', 'all']`. Declared statically because the wizard and
+   * `ConnectionService.create` must decide BEFORE any adapter instance exists
+   * (an OAuth connection has no credentials yet); the poll still probes the
+   * capability at run time and fails loudly if a declaration lied. Read it
+   * through `resolveOrderSyncStartModes` in `@openlinker/core/sync`. The union is
+   * spelled inline so this context takes no edge on `sync`.
+   */
+  orderSyncStartModes?: readonly ('now' | 'from' | 'all')[];
+
+  /**
+   * Whether this adapter implements `OrderWindowReader` (#4228): importing
+   * history newest-first, and importing a chosen date range on demand. Absent
+   * means `false`; the UI then shows both choices as unavailable. Declared
+   * statically for the same reason as `orderSyncStartModes`, and the import
+   * job still probes the capability at run time and fails loudly if the
+   * declaration lied.
+   */
+  orderWindowImport?: boolean;
+
+  /**
    * Whether an operator may ARCHIVE a connection on this adapter (#3657).
    * Absent means `true`; an adapter that declares `false` can be disabled but
    * never archived.

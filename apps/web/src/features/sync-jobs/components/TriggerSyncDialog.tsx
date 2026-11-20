@@ -27,6 +27,11 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { interpolate, renderRich, useMessages, type Messages } from '../../../shared/i18n';
+import {
+  OrderPositionField,
+  ORDER_POSITION_CUSTOM,
+  ORDER_POSITION_DEFAULT,
+} from './order-position-field';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 type TriggerSyncDialogCopy = Messages['sync-jobs']['triggerSyncDialog'];
@@ -100,18 +105,13 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
       description: jobs.pollOrders.description,
       payloadFields: [
         {
-          name: 'cursorKey',
-          label: fields.cursorKey,
-          required: false,
-          defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
-        },
-        {
           name: 'limit',
-          label: fields.pageLimit,
+          label: copy.orderPosition.limitLabel,
           required: false,
           type: 'number',
           defaultValue: '100',
           placeholder: '100',
+          description: copy.orderPosition.limitHelp,
         },
       ],
       // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
@@ -155,15 +155,10 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
 }
 
 /** Build initial payload values from field defaults. */
-function buildDefaultValues(
-  fields: PayloadField[],
-  context: { platformType: string },
-): Record<string, string> {
+function buildDefaultValues(fields: PayloadField[]): Record<string, string> {
   const defaults: Record<string, string> = {};
   for (const field of fields) {
-    if (field.defaultValueFactory !== undefined) {
-      defaults[field.name] = field.defaultValueFactory(context);
-    } else if (field.defaultValue !== undefined) {
+    if (field.defaultValue !== undefined) {
       defaults[field.name] = field.defaultValue;
     }
   }
@@ -175,6 +170,7 @@ export function TriggerSyncDialog({
   open,
   onOpenChange,
   submitDisabled = false,
+  initialJobType,
 }: TriggerSyncDialogProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog;
   const triggerableJobs = useMemo(
@@ -190,6 +186,8 @@ export function TriggerSyncDialog({
   const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
   const [payloadValues, setPayloadValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [positionChoice, setPositionChoice] = useState(ORDER_POSITION_DEFAULT);
+  const [customPositionKey, setCustomPositionKey] = useState('');
   // Stable idempotency-key suffix for this dialog open cycle. Reused across
   // retries after a failed submit so the backend dedup (Redis SET NX + DB
   // unique index on idempotency_key) collapses rapid double-clicks into a
@@ -201,16 +199,21 @@ export function TriggerSyncDialog({
   const { showToast } = useToast();
 
   const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
+  const isOrderSync = selectedJob?.jobType === 'marketplace.orders.poll';
+  const submittedJobType = selectedJob?.jobType;
   const hasTriggers = triggerableJobs.length > 0;
 
   useEffect(() => {
     if (open) {
-      const firstJob = triggerableJobs[0];
+      const firstJob =
+        triggerableJobs.find((job) => job.jobType === initialJobType) ?? triggerableJobs[0];
       setSelectedJobType(firstJob?.jobType ?? '');
       setPayloadValues(
-        firstJob ? buildDefaultValues(firstJob.payloadFields, connection) : {},
+        firstJob ? buildDefaultValues(firstJob.payloadFields) : {},
       );
       setFieldErrors({});
+      setPositionChoice(ORDER_POSITION_DEFAULT);
+      setCustomPositionKey('');
       setIntentKey(crypto.randomUUID());
       enqueueSyncJob.reset();
     }
@@ -219,8 +222,10 @@ export function TriggerSyncDialog({
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
     setSelectedJobType(jobType);
-    setPayloadValues(job ? buildDefaultValues(job.payloadFields, connection) : {});
+    setPayloadValues(job ? buildDefaultValues(job.payloadFields) : {});
     setFieldErrors({});
+    setPositionChoice(ORDER_POSITION_DEFAULT);
+    setCustomPositionKey('');
     enqueueSyncJob.reset();
   };
 
@@ -231,6 +236,13 @@ export function TriggerSyncDialog({
       if (field.required && !payloadValues[field.name]?.trim()) {
         errors[field.name] = interpolate(copy.fieldRequired, { field: field.label });
       }
+    }
+    if (
+      isOrderSync &&
+      positionChoice === ORDER_POSITION_CUSTOM &&
+      !customPositionKey.trim()
+    ) {
+      errors.cursorKey = copy.orderPosition.customRequired;
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -247,12 +259,17 @@ export function TriggerSyncDialog({
       }
     }
 
+    if (isOrderSync) {
+      const key = positionChoice === ORDER_POSITION_CUSTOM ? customPositionKey.trim() : positionChoice;
+      if (key) payload.cursorKey = key;
+    }
+
     try {
       const result = await enqueueSyncJob.mutateAsync({
         connectionId: connection.id,
-        jobType: selectedJob.jobType,
+        jobType: submittedJobType ?? selectedJob.jobType,
         payload,
-        idempotencyKey: `manual:${connection.id}:${selectedJob.jobType}:${intentKey}`,
+        idempotencyKey: `manual:${connection.id}:${submittedJobType ?? selectedJob.jobType}:${intentKey}`,
       });
 
       onOpenChange(false);
@@ -318,12 +335,25 @@ export function TriggerSyncDialog({
             <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
           ) : null}
 
-          {selectedJob?.payloadFields.map((field) => (
+          {isOrderSync ? (
+            <OrderPositionField
+              connectionId={connection.id}
+              choice={positionChoice}
+              onChoiceChange={setPositionChoice}
+              customKey={customPositionKey}
+              onCustomKeyChange={setCustomPositionKey}
+              customError={fieldErrors.cursorKey}
+              disabled={enqueueSyncJob.isPending}
+            />
+          ) : null}
+
+          {(selectedJob?.payloadFields ?? []).map((field) => (
             <FormField
               key={field.name}
               label={field.required ? interpolate(copy.requiredField, { field: field.label }) : field.label}
               name={field.name}
               error={fieldErrors[field.name]}
+              description={field.description}
             >
               <Input
                 value={payloadValues[field.name] ?? ''}

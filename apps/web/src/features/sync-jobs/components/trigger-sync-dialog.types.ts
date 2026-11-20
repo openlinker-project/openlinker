@@ -17,11 +17,8 @@ export interface PayloadField {
   type?: 'string' | 'number';
   /** Pre-populate the field with this value when the dialog opens. */
   defaultValue?: string;
-  /**
-   * Derive the default value from connection context (takes precedence over defaultValue).
-   * Used when the default depends on the platform type (e.g. cursorKey).
-   */
-  defaultValueFactory?: (context: { platformType: string }) => string;
+  /** Help text shown under the field. */
+  description?: string;
 }
 
 export interface TriggerableJob {
@@ -49,4 +46,6 @@ export interface TriggerSyncDialogProps {
    * the final "Trigger" submit renders disabled with a read-only tooltip.
    */
   submitDisabled?: boolean;
+  /** Job type to preselect when the dialog opens, if the connection offers it. */
+  initialJobType?: string;
 }

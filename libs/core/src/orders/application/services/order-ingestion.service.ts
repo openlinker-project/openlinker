@@ -20,6 +20,9 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
+import { isOrderFeedBootstrap } from '../../domain/ports/capabilities/order-feed-bootstrap.capability';
+import { isOrderFeedDateBootstrap } from '../../domain/ports/capabilities/order-feed-date-bootstrap.capability';
+import { isOrderWindowReader } from '../../domain/ports/capabilities/order-window-reader.capability';
 import {
   ISyncCursorsService,
   SYNC_CURSORS_SERVICE_TOKEN,
@@ -27,6 +30,13 @@ import {
   SYNC_JOB_QUEUE_TOKEN,
   SyncLockPort,
   SYNC_LOCK_TOKEN,
+  orderFeedSeededAtCursorKey,
+  ORDER_SYNC_START_CURSOR_KEY,
+  ORDER_SYNC_STARTED_CURSOR_KEY,
+  parseOrderSyncStart,
+  serializeOrderSyncStarted,
+  type MarketplaceOrdersImportPayloadV1,
+  type OrderSyncStart,
 } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
@@ -54,6 +64,7 @@ import type {
   IOrderIngestionService,
   OrderIngestionOptions,
   OrderIngestionResult,
+  OrderImportPageResult,
 } from '../interfaces/order-ingestion.service.interface';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
@@ -154,6 +165,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
 import { applyOrderEditsToOrder } from '../../domain/types/order-edits.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+import { OrderSyncStartUnavailableError } from '../../domain/exceptions/order-sync-start-unavailable.error';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
 
 /**
@@ -226,6 +238,8 @@ export class OrderIngestionService implements IOrderIngestionService {
 
   // Keep comfortably above worst-case poll+enqueue duration; we currently do not refresh TTL.
   private readonly LOCK_TTL_MS = 5 * 60_000;
+  /** A 14k-order shop is 140 pages at 100 per page; this is a stop for a runaway, not a quota. */
+  private static readonly MAX_IMPORT_PAGES = 2000;
 
   // A cursor shape core cannot order is reported once per (connection, cursorKey).
   // It is a standing property of that adapter's cursor, not a per-poll event, so
@@ -327,6 +341,298 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly orderGifts: IOrderGiftService
   ) {}
 
+  /**
+   * The first poll of a connection with no order cursor (#4228). Returns the
+   * poll result when the start was applied (or deferred) and nothing should be
+   * read from history, or null when the normal history poll should proceed
+   * ("all", a legacy connection, an already-seeded connection, or an adapter
+   * that cannot seed).
+   *
+   * Gate order: a `.seededAt` marker means the intent was already consumed; an
+   * ABSENT intent row means a LEGACY connection (created before this feature, or
+   * inserted by hand) which keeps its old behaviour of reading history, because
+   * seeding "now" there would silently drop orders it was always going to import.
+   * Connection create always writes an intent for order-importing connections, so
+   * "no intent" is never a new connection.
+   *
+   * The intent is one-shot: it is deleted after the marker is written, never
+   * before (a crash in between only re-seeds, which is benign).
+   *
+   * @throws OrderSyncStartUnavailableError when the chosen start can never be
+   * applied (the poll job turns this into a business failure, not a retry loop).
+   */
+  private async startFirstPoll(
+    connectionId: string,
+    cursorKey: string,
+    orderSource: OrderSourcePort
+  ): Promise<OrderIngestionResult | null> {
+    const seededKey = orderFeedSeededAtCursorKey(cursorKey);
+    const seededAt = await this.syncCursors.getCursor(connectionId, seededKey);
+    if (seededAt) {
+      return null;
+    }
+
+    const rawIntent = await this.syncCursors.getCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
+    if (!rawIntent) {
+      return null;
+    }
+    const intent = parseOrderSyncStart(rawIntent);
+    if (intent === null) {
+      this.logger.warn(
+        `Unreadable order sync start intent; starting from now. intent=${rawIntent} (connection: ${connectionId})`
+      );
+    }
+    const mode = intent?.mode ?? 'now';
+
+    if (intent && intent.mode !== 'now' && intent.order === 'newest-first') {
+      return this.startNewestFirstImport(connectionId, cursorKey, seededKey, orderSource, intent);
+    }
+
+    if (mode === 'all') {
+      // Only the marker: the history poll below then reads from the beginning,
+      // and the marker stops a later cursor-less poll from seeding "now".
+      await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+      await this.recordAppliedStart(connectionId, { mode: 'all' });
+      await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
+      this.logger.log(`Order sync starts from the whole history (connection: ${connectionId})`);
+      return null;
+    }
+
+    let startCursor: string | null;
+    if (intent?.mode === 'from') {
+      if (!isOrderFeedDateBootstrap(orderSource)) {
+        throw new OrderSyncStartUnavailableError(
+          `Order sync was set to start from ${intent.from}, but this adapter cannot start from a date. Create the connection again with "from now" or "all orders" (connection: ${connectionId})`
+        );
+      }
+      startCursor = await orderSource.cursorForDate(intent.from);
+    } else if (isOrderFeedBootstrap(orderSource)) {
+      startCursor = await orderSource.headCursor();
+    } else {
+      return null;
+    }
+
+    if (startCursor === null || startCursor.trim() === '') {
+      // The source has no orders yet. Writing the marker here would make the next
+      // poll read the WHOLE history once orders appear, so nothing is written:
+      // the intent stays and the next poll retries the head read.
+      this.logger.log(
+        `Order source has no head to start from yet; will retry on the next poll. cursorKey=${cursorKey} (connection: ${connectionId})`
+      );
+      return {
+        fetched: 0,
+        enqueued: 0,
+        nextCursor: null,
+        committed: false,
+        skippedDueToLock: false,
+      };
+    }
+
+    await this.syncCursors.advanceCursor(connectionId, cursorKey, startCursor);
+    await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+    await this.recordAppliedStart(connectionId, intent ?? { mode: 'now' });
+    await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
+    this.logger.log(
+      `Seeded order cursor (${intent?.mode === 'from' ? `from ${intent.from}` : 'at the source head'}); nothing imported from history. cursorKey=${cursorKey}, cursor=${startCursor} (connection: ${connectionId})`
+    );
+    return {
+      fetched: 0,
+      enqueued: 0,
+      nextCursor: startCursor,
+      committed: true,
+      skippedDueToLock: false,
+    };
+  }
+
+  /**
+   * The first poll of a connection whose operator chose to import history
+   * NEWEST-FIRST (#4228). The live feed is seeded at the newest order exactly
+   * like "new orders only", so new orders flow at once and never wait behind the
+   * history; the history itself is walked backwards by a chain of
+   * `marketplace.orders.import` jobs.
+   *
+   * Order matters: the import job is enqueued BEFORE the cursor and marker are
+   * written and the intent is deleted. Once the marker exists this method is never
+   * entered again, so enqueueing after it would lose the history on a crash
+   * between the two; enqueueing first only risks a duplicate chain, which the
+   * downstream dedupe key makes harmless.
+   */
+  private async startNewestFirstImport(
+    connectionId: string,
+    cursorKey: string,
+    seededKey: string,
+    orderSource: OrderSourcePort,
+    intent: Exclude<OrderSyncStart, { mode: 'now' }>
+  ): Promise<OrderIngestionResult> {
+    if (!isOrderWindowReader(orderSource) || !isOrderFeedBootstrap(orderSource)) {
+      throw new OrderSyncStartUnavailableError(
+        `Order import was set to start with the newest orders, but this adapter cannot read orders in that order. Choose "oldest first" instead (connection: ${connectionId})`
+      );
+    }
+    const head = await orderSource.headCursor();
+    if (head === null || head.trim() === '') {
+      this.logger.log(
+        `Order source has no head to start from yet; will retry on the next poll. cursorKey=${cursorKey} (connection: ${connectionId})`
+      );
+      return { fetched: 0, enqueued: 0, nextCursor: null, committed: false, skippedDueToLock: false };
+    }
+
+    const runId = `start:${cursorKey}:${head}`;
+    const first: MarketplaceOrdersImportPayloadV1 = {
+      schemaVersion: 1,
+      runId,
+      ...(intent.mode === 'from' ? { from: intent.from } : {}),
+      direction: 'newest-first',
+      cursor: null,
+      page: 1,
+    };
+    await this.jobQueue.enqueueBulk([this.buildImportRequest(connectionId, first)]);
+
+    await this.syncCursors.advanceCursor(connectionId, cursorKey, head);
+    await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+    await this.recordAppliedStart(connectionId, intent);
+    await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
+    this.logger.log(
+      `Seeded order cursor at the source head and started a newest-first history import${intent.mode === 'from' ? ` from ${intent.from}` : ''}. cursorKey=${cursorKey}, cursor=${head} (connection: ${connectionId})`
+    );
+    return { fetched: 0, enqueued: 0, nextCursor: head, committed: true, skippedDueToLock: false };
+  }
+
+  /**
+   * Keep the start that was applied, because the intent row is deleted right
+   * after. Best-effort: it is what the operator reads back, not something the
+   * feed depends on, so a failure here must not undo or retry a seed that
+   * already took effect.
+   */
+  private async recordAppliedStart(connectionId: string, start: OrderSyncStart): Promise<void> {
+    try {
+      await this.syncCursors.advanceCursor(
+        connectionId,
+        ORDER_SYNC_STARTED_CURSOR_KEY,
+        serializeOrderSyncStarted(start, new Date())
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not record the applied order sync start (connection: ${connectionId}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  private buildImportRequest(
+    connectionId: string,
+    payload: MarketplaceOrdersImportPayloadV1
+  ): {
+    type: 'marketplace.orders.import';
+    connectionId: string;
+    payload: Record<string, unknown>;
+    options: { dedupeKey: string };
+  } {
+    return {
+      type: 'marketplace.orders.import',
+      connectionId,
+      // Spread: an interface is not assignable to an index-signature type, its copy is.
+      payload: { ...payload },
+      options: {
+        dedupeKey: `marketplace:${connectionId}:orders-import:${payload.runId}:${payload.page}`,
+      },
+    };
+  }
+
+  private assertImportWindowIsSane(payload: MarketplaceOrdersImportPayloadV1): void {
+    if (payload.page > OrderIngestionService.MAX_IMPORT_PAGES) {
+      throw new OrderSyncStartUnavailableError(
+        `The import passed ${OrderIngestionService.MAX_IMPORT_PAGES} pages and was stopped (run: ${payload.runId})`
+      );
+    }
+    const parse = (value: string | undefined): number | null =>
+      value === undefined ? null : new Date(value).getTime();
+    const from = parse(payload.from);
+    const to = parse(payload.to);
+    if (Number.isNaN(from) || Number.isNaN(to) || (from !== null && to !== null && to < from)) {
+      throw new OrderSyncStartUnavailableError(
+        `The import range is not valid (from: ${payload.from ?? '-'}, to: ${payload.to ?? '-'})`
+      );
+    }
+  }
+
+  async importOrderWindow(
+    connectionId: string,
+    payload: MarketplaceOrdersImportPayloadV1
+  ): Promise<OrderImportPageResult> {
+    // A malformed range or a runaway chain is deterministic: retrying the same page
+    // cannot change the answer, so these end as a business failure, not ten retries.
+    this.assertImportWindowIsSane(payload);
+    const lockKey = `marketplace:orders:import:${connectionId}`;
+    const token = await this.lock.acquire(lockKey, this.LOCK_TTL_MS);
+    if (!token) {
+      return { fetched: 0, enqueued: 0, done: false, skippedDueToLock: true };
+    }
+    try {
+      const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+        connectionId,
+        'OrderSource'
+      );
+      if (!isOrderWindowReader(orderSource)) {
+        throw new OrderSyncStartUnavailableError(
+          `This connection cannot import orders by date or in a chosen order (connection: ${connectionId})`
+        );
+      }
+
+      const limit = Math.min(Math.max(payload.limit ?? 100, 1), 100);
+      const page = await orderSource.listOrdersInWindow({
+        from: payload.from,
+        to: payload.to,
+        direction: payload.direction,
+        cursor: payload.cursor,
+        limit,
+      });
+
+      const requests = page.items.map((item) => ({
+        type: 'marketplace.order.sync' as const,
+        connectionId,
+        payload: {
+          schemaVersion: 1 as const,
+          externalOrderId: item.externalOrderId,
+          sourceEventId: item.eventKey,
+          eventType: item.eventType,
+          occurredAt: item.occurredAt,
+          eventKey: item.eventKey,
+        },
+        options: { dedupeKey: `marketplace:${connectionId}:order:${item.eventKey}` },
+      }));
+      await this.jobQueue.enqueueBulk(requests);
+
+      const hasMore = !page.done && page.nextCursor !== null && page.nextCursor.trim() !== '';
+      if (hasMore && page.nextCursor === payload.cursor) {
+        // A shop that ignores the paging filter answers the same page for ever.
+        throw new OrderSyncStartUnavailableError(
+          `The shop returned the same page of orders twice, so the import was stopped (connection: ${connectionId}, page: ${payload.page})`
+        );
+      }
+      if (hasMore) {
+        // Enqueued after the children: a failure here fails this page, and the retry
+        // re-reads the same cursor, so no page is skipped.
+        await this.jobQueue.enqueueBulk([
+          this.buildImportRequest(connectionId, {
+            ...payload,
+            cursor: page.nextCursor,
+            page: payload.page + 1,
+          }),
+        ]);
+      }
+      return {
+        fetched: page.items.length,
+        enqueued: requests.length,
+        done: !hasMore,
+        skippedDueToLock: false,
+      };
+    } finally {
+      await this.lock.release(lockKey, token);
+    }
+  }
+
   async ingestOrders(
     connectionId: string,
     options: OrderIngestionOptions
@@ -352,6 +658,19 @@ export class OrderIngestionService implements IOrderIngestionService {
         connectionId,
         'OrderSource'
       );
+
+      // #4228: a connection that has never polled starts where the operator chose
+      // at create time (default: "now"); a legacy connection with no stored choice
+      // reads history as before. Every failure below propagates so the job retries
+      // (or ends as a business failure for a typed, deterministic one); falling
+      // back to listOrderFeed here would import the source's whole history, which
+      // is what this exists to prevent.
+      if (!fromCursor) {
+        const started = await this.startFirstPoll(connectionId, cursorKey, orderSource);
+        if (started) {
+          return started;
+        }
+      }
 
       const feed = await orderSource.listOrderFeed({
         fromCursor,

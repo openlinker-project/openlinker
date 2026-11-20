@@ -27,6 +27,13 @@ import {
   type PrestashopSetupFormSubmission,
   type PrestashopSetupFormValues,
 } from './prestashop-setup.schema';
+import { OrderSyncStartField } from './order-sync-start-field';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+  readsOrders,
+} from '../lib/order-sync-start';
 import { PrestashopSetupSummary } from './prestashop-setup-summary';
 import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
 import { CAPABILITY_HELP } from '../lib/capability-metadata';
@@ -42,7 +49,7 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
-import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 
@@ -50,24 +57,28 @@ import { describeApiError } from '../../../shared/api/describe-api-error';
 // "Verify credentials" rather than "Test connection": the PrestaShop `/test`
 // endpoint is only reachable after the connection is saved, so this step is a
 // human-review of the entered URL + masked key, not a live probe.
-const STEP_EVENT_IDS = [
-  'Credentials',
-  'Verify credentials',
-  'Capabilities',
-  'Review & connect',
-] as const;
+type StepId = 'credentials' | 'verify' | 'capabilities' | 'orders' | 'review';
+
+const STEP_EVENT_IDS: Record<StepId, string> = {
+  credentials: 'Credentials',
+  verify: 'Verify credentials',
+  capabilities: 'Capabilities',
+  orders: 'Order history',
+  review: 'Review & connect',
+};
 
 // ISO 4217 codes offered as the connection default; their names live in copy.
 const CURRENCY_CODES = [
   'PLN', 'EUR', 'USD', 'GBP', 'CZK', 'HUF', 'RON', 'SEK', 'NOK', 'DKK', 'CHF',
 ] as const;
 
-const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<PrestashopSetupFormValues>>> = [
-  ['name', 'baseUrl', 'webserviceKey', 'shopId', 'storefrontBaseUrl', 'currency'],
-  [],
-  ['enabledCapabilities'],
-  [],
-];
+const STEP_FIELDS: Record<StepId, ReadonlyArray<Path<PrestashopSetupFormValues>>> = {
+  credentials: ['name', 'baseUrl', 'webserviceKey', 'shopId', 'storefrontBaseUrl', 'currency'],
+  verify: [],
+  capabilities: ['enabledCapabilities'],
+  orders: ['orderSyncStart'],
+  review: [],
+};
 
 function maskKey(key: string): string {
   if (key.length <= 4) return '•'.repeat(key.length);
@@ -78,12 +89,6 @@ export function PrestashopSetupForm(): ReactElement {
   const copy = useMessages('connections').prestashopSetupForm;
   const setupCopy = useMessages('connections').setup;
   const platform = usePlatform('prestashop')?.displayName ?? copy.platformFallback;
-  const STEP_LABELS = [
-    copy.steps.credentials,
-    copy.steps.verify,
-    copy.steps.capabilities,
-    copy.steps.review,
-  ];
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -94,7 +99,15 @@ export function PrestashopSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const values = form.watch();
+  // The order-history step only exists for a connection that will read orders.
+  const stepIds: StepId[] = readsOrders(values.enabledCapabilities)
+    ? ['credentials', 'verify', 'capabilities', 'orders', 'review']
+    : ['credentials', 'verify', 'capabilities', 'review'];
+  const STEP_LABELS = stepIds.map((id) => copy.steps[id]);
+
   const [stepIndex, setStepIndex] = useState(0);
+  const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
 
   // Abandon-prevention: warn the operator if they close the tab with unsaved
@@ -110,12 +123,16 @@ export function PrestashopSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
+  const orderStartCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === PRESTASHOP_ADAPTER_KEY);
   // The form's checkbox list is gated on the well-known core capabilities. Plugin
   // adapters (#576) may register additional names, but the create-connection
   // request DTO is still strict on `CoreCapabilityValues`, so the wizard only
   // exposes core caps for editing today. Lift the narrow when the runtime-aware
   // DTO validator follow-up lands.
+  const orderSyncStartModes = adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport = adapterMetadata?.orderWindowImport ?? false;
   const supportedCapabilities: CoreCapability[] = (
     adapterMetadata?.supportedCapabilities ?? PRESTASHOP_FALLBACK_CAPABILITIES
   ).filter((capability): capability is CoreCapability =>
@@ -127,7 +144,7 @@ export function PrestashopSetupForm(): ReactElement {
   );
 
   async function goNext(): Promise<void> {
-    const fields = STEP_FIELDS[stepIndex];
+    const fields = STEP_FIELDS[stepId];
     if (fields.length > 0) {
       const valid = await form.trigger([...fields]);
       if (!valid) return;
@@ -135,7 +152,7 @@ export function PrestashopSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'prestashop',
-      step: STEP_EVENT_IDS[stepIndex],
+      step: STEP_EVENT_IDS[stepId],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -148,7 +165,7 @@ export function PrestashopSetupForm(): ReactElement {
   // advanced to the last step landing on the Create button that replaced Next.
   // Either way it means "Next", never "Create" (the review step must be seen).
   function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
-    if (stepIndex < STEP_LABELS.length - 1) {
+    if (stepIndex < stepIds.length - 1) {
       event.preventDefault();
       void goNext();
       return;
@@ -171,8 +188,6 @@ export function PrestashopSetupForm(): ReactElement {
     }
   });
 
-  const values = form.watch();
-
   return (
     <WizardLayout
       stepper={
@@ -192,7 +207,7 @@ export function PrestashopSetupForm(): ReactElement {
           </Alert>
         ) : null}
 
-        {stepIndex === 0 ? (
+        {stepId === 'credentials' ? (
           <>
             <Alert tone="info" title={copy.beforeYouStart.title}>
               {renderRich(
@@ -296,7 +311,7 @@ export function PrestashopSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 1 ? (
+        {stepId === 'verify' ? (
           <div className="wizard-test-result">
             <Alert tone="info" title={copy.verify.title}>
               {interpolate(copy.verify.body, { platform })}
@@ -330,7 +345,7 @@ export function PrestashopSetupForm(): ReactElement {
           </div>
         ) : null}
 
-        {stepIndex === 2 ? (
+        {stepId === 'capabilities' ? (
           <fieldset className="capability-fieldset">
             <legend className="capability-fieldset__legend">{copy.capabilities.legend}</legend>
             <p className="muted-text capability-fieldset__help">{copy.capabilities.help}</p>
@@ -358,7 +373,19 @@ export function PrestashopSetupForm(): ReactElement {
           </fieldset>
         ) : null}
 
-        {stepIndex === 3 ? (
+        {stepId === 'orders' ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepId === 'review' ? (
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
@@ -392,6 +419,12 @@ export function PrestashopSetupForm(): ReactElement {
                 ? (values.enabledCapabilities ?? []).join(', ')
                 : copy.review.noneSelected}
             </dd>
+            {readsOrders(values.enabledCapabilities) ? (
+              <>
+                <dt>{orderStartCopy.review.label}</dt>
+                <dd>{describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}</dd>
+              </>
+            ) : null}
           </dl>
         ) : null}
 
@@ -404,7 +437,7 @@ export function PrestashopSetupForm(): ReactElement {
             ) : null}
           </div>
           <div className="wizard-actions__group">
-            {stepIndex < STEP_LABELS.length - 1 ? (
+            {stepIndex < stepIds.length - 1 ? (
               <Button key="next" type="button" onClick={() => void goNext()}>
                 {setupCopy.next}
               </Button>

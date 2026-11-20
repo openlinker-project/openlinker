@@ -322,6 +322,7 @@
       "config": "Konfiguracja",
       "gifts": "Gratisy na dokumentach",
       "health": "Kondycja",
+      "orders": "Zamówienia",
       "overview": "Przegląd"
     }
   },
@@ -954,6 +955,7 @@
     },
     "steps": {
       "credentials": "Dane dostępowe",
+      "orders": "Historia zamówień",
       "review": "Sprawdź i połącz",
       "salesDocuments": "Dokumenty sprzedaży"
     },
@@ -1101,6 +1103,196 @@
     "title": "Dodaj połączenie",
     "wizardsChip": "Kreatory dla każdej platformy"
   },
+  "orderSyncPanel": {
+    "change": "Importuj starsze zamówienia…",
+    "checkNowStartedMessage": "OpenLinker sprawdza teraz w sklepie nowe zamówienia.",
+    "checkNowStartedTitle": "Sprawdzanie rozpoczęte",
+    "errorTitle": "Nie udało się wczytać importu zamówień",
+    "health": {
+      "failures": {
+        "count": {
+          "few": "{n} zamówienia",
+          "many": "{n} zamówień",
+          "one": "{n} zamówienie",
+          "other": "{n} zamówienia"
+        },
+        "fixLabel": "Co zrobić:",
+        "latest": "Ostatnie: zamówienie {order}, {when}",
+        "original": "Oryginalny komunikat (nieprzetłumaczony):",
+        "reasons": {
+          "missing-mapping": {
+            "fix": "Zsynchronizuj produkty ze sklepu, a potem użyj poniżej Ponów nieudane zamówienia.",
+            "text": "W tych zamówieniach jest produkt, którego OpenLinker nie zna, więc nie da się ich utworzyć.",
+            "title": "nieznany produkt"
+          },
+          "other": {
+            "fix": "Przeczytaj błąd, usuń przyczynę, a potem użyj poniżej Ponów nieudane zamówienia.",
+            "text": "OpenLinker nie mógł zaimportować tych zamówień. Oryginalny komunikat jest poniżej.",
+            "title": "inny błąd"
+          }
+        },
+        "retryAll": "Ponów nieudane zamówienia",
+        "retryDone": "Nieudane zamówienia wróciły do kolejki.",
+        "retrying": "Ponawianie…",
+        "syncProducts": "Synchronizuj produkty…",
+        "title": "Zamówienia, które się nie udały"
+      },
+      "fromDay": "od {date}",
+      "fromStart": "od początku",
+      "importRunning": "Trwa import historii",
+      "imported": "Zaimportowane w ostatnich 24 godz.",
+      "lastChecked": "Ostatnie sprawdzanie nowych zamówień",
+      "neverChecked": "Jeszcze nie sprawdzano",
+      "newestFirst": "Od najnowszych",
+      "oldestFirst": "Od najstarszych",
+      "startedAgo": "Rozpoczęto {when}",
+      "toDay": "do {date}",
+      "viewJobs": "Otwórz Zadania w tle i logi",
+      "waiting": "Czekają na import"
+    },
+    "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
+    "loadingTitle": "Wczytywanie importu zamówień",
+    "nextLabel": "Co zrobić:",
+    "noCheck": "Jeszcze nie sprawdzano",
+    "orderPhrase": {
+      "newest": "od najnowszych",
+      "oldest": "od najstarszych"
+    },
+    "restart": {
+      "cancel": "Anuluj",
+      "confirm": "Zastosuj zmianę",
+      "confirming": "Zapisywanie…",
+      "description": "Zamówienia, które OpenLinker już ma, zostają. Wybierz, jak daleko wstecz czytać ze sklepu.",
+      "failedTitle": "Nie udało się zmienić startu",
+      "kind": {
+        "label": "Co chcesz zrobić?",
+        "range": {
+          "text": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Nowe zamówienia synchronizują się jak dotąd.",
+          "title": "Zaimportować okres"
+        },
+        "start": {
+          "text": "Zmienia, które zamówienia OpenLinker czyta ze sklepu od teraz.",
+          "title": "Przesunąć początek synchronizacji"
+        }
+      },
+      "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia.",
+      "rangeConfirm": "Importuj zamówienia",
+      "rangeFailedTitle": "Nie udało się rozpocząć importu",
+      "rangeNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
+      "rangeSuccessMessage": "Zamówienia z tego okresu są właśnie importowane. Postęp widać na tej karcie.",
+      "rangeSuccessTitle": "Import rozpoczęty",
+      "repeatNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
+      "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
+      "successNowMessage": "Nic się nie zmieniło. Nowe zamówienia nadal wpływają.",
+      "successTitle": "Start zmieniony",
+      "title": "Importuj starsze zamówienia"
+    },
+    "retry": "Ponów",
+    "startText": {
+      "all": "Wszystkie zamówienia ze sklepu, {order}.",
+      "from": "Zamówienia od {date}, {order}. Wcześniejsze zostają w sklepie.",
+      "now": "Tylko nowe zamówienia, od {date}. Starsze zostają w sklepie.",
+      "pending": "Zacznie się przy następnym sprawdzeniu: {what}.",
+      "started": "Import trwa od {date}. Nie mamy zapisu, jaką opcję wybrano.",
+      "unknown": "Nie zapisano początku importu.",
+      "whatAll": "wszystkie zamówienia, {order}",
+      "whatFrom": "zamówienia od {date}, {order}",
+      "whatNow": "tylko nowe zamówienia"
+    },
+    "syncNow": "Sprawdź nowe zamówienia",
+    "title": "Import zamówień",
+    "verdict": {
+      "behind": "Opóźnione",
+      "failing": "Wymaga uwagi",
+      "notChecked": "Jeszcze nie sprawdzano",
+      "ok": "Aktualne",
+      "unknown": "Nieznany"
+    },
+    "verdictNext": {
+      "behind": "Kliknij Sprawdź nowe zamówienia. Jeśli sklep nadal nie jest sprawdzany, zajrzyj do zakładki Kondycja.",
+      "notChecked": "Kliknij Sprawdź nowe zamówienia albo poczekaj na następne zaplanowane sprawdzenie.",
+      "unknown": "Odśwież stronę. Jeśli to zostaje, zajrzyj do zakładki Kondycja."
+    },
+    "verdictText": {
+      "behind": "Sklepu nie sprawdzano od {when}.",
+      "failing": "Nie wszystkie zamówienia udało się zaimportować. Szczegóły poniżej.",
+      "notChecked": "Sklep nie miał jeszcze udanego sprawdzenia.",
+      "ok": "Sklep był niedawno sprawdzany i wszystkie zamówienia wchodzą bez błędów.",
+      "unknown": "Dane o imporcie zamówień są teraz niedostępne."
+    }
+  },
+  "orderSyncStart": {
+    "all": {
+      "analytics": "Chcesz dokładnych analiz całej historii? Trzeba zaimportować każde zamówienie, a ta opcja robi dokładnie to.",
+      "delay": "Nowe zamówienia czekają za importem i mogą dotrzeć nawet po kilku godzinach.",
+      "documents": "Jeśli włączone jest automatyczne wystawianie, OpenLinker wystawi faktury i paragony za stare sprzedaże, z dzisiejszą datą.",
+      "orders": "Każde stare zamówienie zostanie skopiowane do każdego podłączonego sklepu, razem z klientem.",
+      "stock": "Stan jest rezerwowany pod zamówienia, które już wysłano, więc dostępny stan może wyglądać na zaniżony.",
+      "summary": "Wszystko, co jest już w sklepie, zostanie skopiowane i przetworzone.",
+      "warningLabel": "Co się stanie ze starymi zamówieniami",
+      "warningTitle": "Stare zamówienia traktujemy jak nowe"
+    },
+    "dateLabel": "Pierwszy dzień importu",
+    "info": {
+      "from": "Zamówienia złożone przed {date} nie zostaną zaimportowane.",
+      "now": "Zamówienia, które już są w sklepie, tam zostają i nie są importowane. Importujemy tylko te złożone od teraz."
+    },
+    "intro": "Każde pobrane zamówienie OpenLinker kopiuje do Twoich pozostałych sklepów i systemów. Wybierz, od kiedy zacząć, żeby nie kopiować zamówień, które są już obsłużone.",
+    "modes": {
+      "all": {
+        "description": "Cała historia, nawet najstarsza. Wybierz tylko wtedy, gdy chcesz mieć każde zamówienie w OpenLinker.",
+        "title": "Wszystkie zamówienia ze sklepu"
+      },
+      "from": {
+        "description": "Zamówienia złożone od wybranego dnia oraz wszystkie nowe po nim.",
+        "title": "Zamówienia od wybranej daty"
+      },
+      "now": {
+        "description": "Zamówienia złożone od teraz. Starsze zostają w sklepie i nie są kopiowane.",
+        "title": "Tylko nowe zamówienia"
+      }
+    },
+    "now": {
+      "analytics": "Chcesz dokładnych analiz za minione okresy? I tak trzeba zaimportować każde zamówienie.",
+      "infoLabel": "Dlaczego to polecamy",
+      "infoTitle": "Dlaczego polecamy ten wybór",
+      "noFlood": "Twoje sklepy i faktury nie dostają lawiny dawnej sprzedaży.",
+      "noQueue": "Nowe zamówienia nie czekają za zaległościami.",
+      "noStock": "Stan magazynowy nie jest blokowany pod zamówienia, które już wysłano.",
+      "summary": "Start od teraz jest szybki i nie rusza starych zamówień."
+    },
+    "order": {
+      "newest-first": {
+        "description": "Najnowsze zamówienia wchodzą pierwsze, a nowe płyną dalej, gdy czytane są starsze.",
+        "title": "Od najnowszych"
+      },
+      "oldest-first": {
+        "description": "Zamówienia wchodzą w kolejności składania. Nowe czekają, aż skończy się historia.",
+        "title": "Od najstarszych"
+      },
+      "title": "Które zamówienia najpierw?",
+      "unsupported": "Niedostępne dla tego połączenia."
+    },
+    "review": {
+      "all": "Wszystkie",
+      "from": "Od {date}",
+      "label": "Zamówienia do importu",
+      "newestFirst": "od najnowszych",
+      "now": "Tylko nowe"
+    },
+    "title": "Które zamówienia OpenLinker ma zaimportować?",
+    "unsupported": {
+      "all": "OpenLinker nie umie jeszcze zaimportować pełnej historii tego połączenia.",
+      "from": "Wybór daty startu nie jest jeszcze dostępny dla tego połączenia.",
+      "now": "Start od teraz nie jest jeszcze dostępny dla tego połączenia."
+    }
+  },
+  "orderSyncStartSchema": {
+    "dateFuture": "Wybierz dzień wcześniejszy niż dzisiaj",
+    "dateInvalid": "Podaj poprawną datę",
+    "dateRequired": "Wybierz pierwszy dzień importu",
+    "dateTooOld": "Wybierz dzień z ostatnich 5 lat"
+  },
   "paymentWriteback": {
     "factCod": "Zamówienia za pobraniem i anulowane nigdy nie są oznaczane jako opłacone.",
     "factFailure": "Jeśli sklep tego nie przyjmie, zamówienie pojawi się w Zamówieniach pod filtrem „Płatność nie trafiła do sklepu”.",
@@ -1203,6 +1395,7 @@
     "steps": {
       "capabilities": "Możliwości",
       "credentials": "Dane dostępowe",
+      "orders": "Historia zamówień",
       "review": "Sprawdź i połącz",
       "verify": "Sprawdź dane dostępowe"
     },
@@ -1703,6 +1896,7 @@
     "steps": {
       "capabilities": "Możliwości",
       "credentials": "Dane dostępowe API",
+      "orders": "Historia zamówień",
       "review": "Sprawdź i utwórz",
       "store": "Dane sklepu"
     }

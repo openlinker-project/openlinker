@@ -7,6 +7,7 @@
  * @module apps/api/src/integrations/application/interfaces
  */
 import type { ConnectionCreate } from '@openlinker/core/identifier-mapping';
+import type { OrderSyncStart } from '@openlinker/core/sync';
 
 /**
  * Connection create input accepted by the API service.
@@ -19,4 +20,10 @@ import type { ConnectionCreate } from '@openlinker/core/identifier-mapping';
 export type ConnectionCreateInput = Omit<ConnectionCreate, 'credentialsRef'> & {
   credentialsRef?: string;
   credentials?: Record<string, unknown>;
+  /**
+   * Where the connection's order feed starts (#4228). Absent means `now`.
+   * Validated against the adapter's declared `orderSyncStartModes` and stored
+   * as a one-shot intent cursor, never in `config`.
+   */
+  orderSyncStart?: OrderSyncStart;
 };

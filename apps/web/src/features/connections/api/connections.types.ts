@@ -162,6 +162,18 @@ export interface ConnectionFilters {
   status?: ConnectionStatus;
 }
 
+export const ORDER_SYNC_START_MODE_VALUES = ['now', 'from', 'all'] as const;
+export type OrderSyncStartMode = (typeof ORDER_SYNC_START_MODE_VALUES)[number];
+
+/** Mirrors the backend create-request contract (#4228). `from` is a `YYYY-MM-DD` date. */
+export const ORDER_IMPORT_ORDER_VALUES = ['oldest-first', 'newest-first'] as const;
+export type OrderImportOrder = (typeof ORDER_IMPORT_ORDER_VALUES)[number];
+
+export type OrderSyncStart =
+  | { mode: 'now' }
+  | { mode: 'from'; from: string; order?: OrderImportOrder }
+  | { mode: 'all'; order?: OrderImportOrder };
+
 export interface CreateConnectionInput {
   name: string;
   platformType: PlatformType;
@@ -178,6 +190,11 @@ export interface CreateConnectionInput {
    * runtime-aware DTO validator follow-up lands (#576).
    */
   enabledCapabilities?: CoreCapability[];
+  /**
+   * Where order sync starts (#4228). Absent means "only new orders", which is
+   * what the backend does with no value.
+   */
+  orderSyncStart?: OrderSyncStart;
 }
 
 export interface UpdateConnectionInput {
@@ -395,6 +412,46 @@ export const CONNECTION_BACKLOG_STATUS_VALUES = [
 
 export type ConnectionBacklogStatus = (typeof CONNECTION_BACKLOG_STATUS_VALUES)[number];
 
+export interface OrderStartStatus {
+  mode: 'now' | 'from' | 'all';
+  from: string | null;
+  order: 'oldest-first' | 'newest-first';
+  /** When the choice took effect; null while it waits for the next check. */
+  appliedAt: string | null;
+  pending: boolean;
+}
+
+export interface ActiveOrderImport {
+  runId: string;
+  direction: 'oldest-first' | 'newest-first';
+  from: string | null;
+  to: string | null;
+  /** Pages read so far; the total is unknown. */
+  pagesDone: number;
+  startedAt: string;
+}
+
+export interface OrderImportFailureReason {
+  code: 'missing-mapping' | 'other';
+  count: number;
+  lastFailedAt: string;
+  /** Source id of the most recent order that failed for this reason. */
+  sampleOrderId: string | null;
+  /** The stored English message of that failure; shown only as the original text. */
+  sampleMessage: string;
+}
+
+export interface OrderImportStatus {
+  importedLast24h: number;
+  /** Last successful poll of the shop for orders (last 7 days), or null. */
+  lastPolledAt: string | null;
+  failedLast7d: number;
+  failures: OrderImportFailureReason[];
+  waiting: number;
+  lastImportedAt: string | null;
+  activeImport: ActiveOrderImport | null;
+}
+
 export interface ConnectionSyncStatus {
   connectionId: string;
   generatedAt: string;
@@ -422,6 +479,12 @@ export interface ConnectionSyncStatus {
   attemptDurationSampleSize: number;
   /** Null is normal for a webhook-fed connection, which keeps no cursor. */
   lastCursorAdvanceAt: string | null;
+  /** When order sync was started from now; null means no start was recorded. */
+  orderSyncStartedAt: string | null;
+  /** How the order import is doing; null means the figures could not be read. */
+  orderImport: OrderImportStatus | null;
+  /** The start choice for order import; null when none was recorded. */
+  orderStart: OrderStartStatus | null;
   observationWindowMs: number;
   alertHorizonMs: number;
   historyWindowMs: number;

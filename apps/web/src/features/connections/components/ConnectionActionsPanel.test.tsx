@@ -194,6 +194,17 @@ describe('ConnectionActionsPanel', () => {
     expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_sync_dialog_opened', {});
   });
 
+  it('opens the Trigger sync dialog on Sync orders when sent here with ?sync=orders', async () => {
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, {
+      ...adminSession,
+      route: `/connections/${sampleConnection.id}?tab=actions&sync=orders`,
+    });
+
+    expect(await screen.findByRole('combobox', { name: /job type/i })).toHaveValue(
+      'marketplace.orders.poll',
+    );
+  });
+
   describe('demo read-only viewer (#1615)', () => {
     const viewerSession = { sessionAdapter: createAuthenticatedSessionAdapter({
       id: 'u2',

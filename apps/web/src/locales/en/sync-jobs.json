@@ -216,7 +216,6 @@
     "enqueuing": "Enqueuing…",
     "fieldRequired": "{field} is required",
     "fields": {
-      "cursorKey": "Cursor key",
       "externalId": "External ID",
       "maxInvoices": "Max invoices",
       "objectType": "Object type",
@@ -230,8 +229,8 @@
         "label": "Auto-match variants"
       },
       "pollOrders": {
-        "description": "Fetch new orders from the marketplace event stream.",
-        "label": "Poll marketplace orders"
+        "description": "Reads orders from the shop into OpenLinker.",
+        "label": "Sync orders"
       },
       "propagateInventory": {
         "description": "Push current inventory levels to all connected marketplaces.",
@@ -263,6 +262,35 @@
       }
     },
     "noTriggers": "No sync triggers available for this connection.",
+    "orderPosition": {
+      "customHelp": "Use this only if support gave you a key.",
+      "customLabel": "Position key",
+      "customRequired": "Enter the position key, or pick another option above.",
+      "limitHelp": "OpenLinker reads up to this many orders in one go. The default is 100.",
+      "limitLabel": "Most orders to read",
+      "positionCustom": "Another position (own key)…",
+      "positionDefault": "Where the last check stopped (recommended)",
+      "positionDefaultHint": "OpenLinker remembers how far it has read the shop's order list. Leave this as it is unless support told you otherwise.",
+      "positionDefaultHintSaved": "Saved at {key}, last moved {when}.",
+      "positionLabel": "Read orders from",
+      "positionSaved": "Saved position {key}, moved {when}"
+    },
+    "orderRange": {
+      "directionLabel": "Start with",
+      "errors": {
+        "fromInvalid": "Enter a valid date",
+        "fromRequired": "Choose the first day",
+        "fromTooOld": "Choose a day within the last 5 years",
+        "future": "Choose a day that is not in the future",
+        "toBeforeFrom": "The last day cannot be before the first day",
+        "toInvalid": "Enter a valid date"
+      },
+      "fromLabel": "First day",
+      "newestFirst": "Start with the newest orders",
+      "oldestFirst": "Start with the oldest orders",
+      "toHelp": "Leave empty to read up to the newest order.",
+      "toLabel": "Last day"
+    },
     "requiredField": "{field} *",
     "title": "Trigger sync",
     "toast": {

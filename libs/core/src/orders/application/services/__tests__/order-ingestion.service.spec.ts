@@ -40,6 +40,7 @@ import type {
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
+import { OrderSyncStartUnavailableError } from '../../../domain/exceptions/order-sync-start-unavailable.error';
 import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
@@ -64,7 +65,7 @@ describe('OrderIngestionService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   // Only the two methods the SUT actually calls — tight Pick<> mock surface
   // per #718 review.
-  let syncCursors: jest.Mocked<Pick<ISyncCursorsService, 'getCursor' | 'advanceCursor'>>;
+  let syncCursors: jest.Mocked<Pick<ISyncCursorsService, 'getCursor' | 'advanceCursor' | 'deleteCursor'>>;
   let jobQueue: jest.Mocked<SyncJobQueuePort>;
   let lock: jest.Mocked<SyncLockPort>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
@@ -118,6 +119,7 @@ describe('OrderIngestionService', () => {
     syncCursors = {
       getCursor: jest.fn(),
       advanceCursor: jest.fn(),
+      deleteCursor: jest.fn(),
     };
 
     jobQueue = {
@@ -932,6 +934,486 @@ describe('OrderIngestionService', () => {
           options: { dedupeKey: `marketplace:${connectionId}:order:event-101` },
         }),
       ]);
+    });
+
+    describe('newest-first history import (#4228)', () => {
+      const seededKey = `${cursorKey}.seededAt`;
+      let headCursor: jest.Mock;
+
+      beforeEach(() => {
+        lock.acquire.mockResolvedValue('token-1');
+        lock.release.mockResolvedValue(true);
+        headCursor = jest.fn().mockResolvedValue('event-900');
+        (orderSource as unknown as { headCursor: jest.Mock }).headCursor = headCursor;
+        syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+          Promise.resolve(key === 'orders.syncStart' ? '{"mode":"all","order":"newest-first"}' : null)
+        );
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+      });
+
+      it('should seed the live feed at the head and enqueue the first import page before the marker', async () => {
+        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow = jest.fn();
+        const calls: string[] = [];
+        jobQueue.enqueueBulk.mockImplementation(() => {
+          calls.push('enqueue');
+          return Promise.resolve([]);
+        });
+        syncCursors.advanceCursor.mockImplementation((_c: string, key: string) => {
+          calls.push(`advance:${key}`);
+          return Promise.resolve();
+        });
+
+        const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(calls).toEqual([
+          'enqueue',
+          `advance:${cursorKey}`,
+          `advance:${seededKey}`,
+          'advance:orders.syncStarted',
+        ]);
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
+          expect.objectContaining({
+            type: 'marketplace.orders.import',
+            payload: expect.objectContaining({ direction: 'newest-first', cursor: null, page: 1 }),
+          }),
+        ]);
+        expect(result.nextCursor).toBe('event-900');
+        expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
+      });
+
+      it('should carry the chosen start date into the import window', async () => {
+        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow = jest.fn();
+        syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+          Promise.resolve(
+            key === 'orders.syncStart'
+              ? '{"mode":"from","from":"2026-10-01","order":"newest-first"}'
+              : null
+          )
+        );
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
+          expect.objectContaining({ payload: expect.objectContaining({ from: '2026-10-01' }) }),
+        ]);
+      });
+
+      it('should refuse with a typed error when the adapter cannot read a window', async () => {
+        await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toBeInstanceOf(
+          OrderSyncStartUnavailableError
+        );
+        expect(jobQueue.enqueueBulk).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('importOrderWindow (#4228)', () => {
+      let listOrdersInWindow: jest.Mock;
+      const payload = {
+        schemaVersion: 1 as const,
+        runId: 'run-1',
+        from: '2026-10-01',
+        direction: 'newest-first' as const,
+        cursor: null,
+        page: 1,
+      };
+
+      beforeEach(() => {
+        lock.acquire.mockResolvedValue('token-1');
+        lock.release.mockResolvedValue(true);
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+        listOrdersInWindow = jest.fn();
+        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow =
+          listOrdersInWindow;
+      });
+
+      it('should enqueue the orders and the next page, sharing the live feed dedupe key', async () => {
+        listOrdersInWindow.mockResolvedValue({
+          items: [
+            {
+              externalOrderId: '7',
+              eventType: 'created',
+              occurredAt: '2026-10-02T00:00:00.000Z',
+              eventKey: '7:2026-10-02 00:00:00:created',
+            },
+          ],
+          nextCursor: 'id:7',
+          done: false,
+        });
+
+        const result = await service.importOrderWindow(connectionId, payload);
+
+        expect(listOrdersInWindow).toHaveBeenCalledWith(
+          expect.objectContaining({ from: '2026-10-01', direction: 'newest-first', cursor: null })
+        );
+        expect(jobQueue.enqueueBulk).toHaveBeenNthCalledWith(1, [
+          expect.objectContaining({
+            type: 'marketplace.order.sync',
+            options: {
+              dedupeKey: `marketplace:${connectionId}:order:7:2026-10-02 00:00:00:created`,
+            },
+          }),
+        ]);
+        expect(jobQueue.enqueueBulk).toHaveBeenNthCalledWith(2, [
+          expect.objectContaining({
+            type: 'marketplace.orders.import',
+            payload: expect.objectContaining({ cursor: 'id:7', page: 2, runId: 'run-1' }),
+            options: { dedupeKey: `marketplace:${connectionId}:orders-import:run-1:2` },
+          }),
+        ]);
+        expect(result).toEqual({ fetched: 1, enqueued: 1, done: false, skippedDueToLock: false });
+      });
+
+      it('should end the chain on the last page and never touch the live cursor', async () => {
+        listOrdersInWindow.mockResolvedValue({ items: [], nextCursor: null, done: true });
+
+        const result = await service.importOrderWindow(connectionId, payload);
+
+        expect(result.done).toBe(true);
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledTimes(1);
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+        expect(syncCursors.getCursor).not.toHaveBeenCalled();
+      });
+
+      it('should report a held lock so the caller retries instead of dropping the chain', async () => {
+        lock.acquire.mockResolvedValue(null);
+
+        const result = await service.importOrderWindow(connectionId, payload);
+
+        expect(result.skippedDueToLock).toBe(true);
+        expect(listOrdersInWindow).not.toHaveBeenCalled();
+      });
+
+      it('should stop with a business failure when the shop answers the same page twice', async () => {
+        listOrdersInWindow.mockResolvedValue({ items: [], nextCursor: 'id:7', done: false });
+
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, cursor: 'id:7', page: 2 })
+        ).rejects.toThrow('same page of orders twice');
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledTimes(1);
+      });
+
+      it('should stop a chain that runs past the page ceiling without reading the shop', async () => {
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, page: 2001 })
+        ).rejects.toThrow('passed 2000 pages');
+        expect(listOrdersInWindow).not.toHaveBeenCalled();
+        expect(lock.acquire).not.toHaveBeenCalled();
+      });
+
+      it('should refuse a range whose end is before its start or that is not a date', async () => {
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, from: '2026-10-05', to: '2026-10-01' })
+        ).rejects.toThrow('not valid');
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, from: 'garbage' })
+        ).rejects.toThrow('not valid');
+        expect(listOrdersInWindow).not.toHaveBeenCalled();
+      });
+
+      it('should not enqueue the next page when enqueueing the orders fails', async () => {
+        listOrdersInWindow.mockResolvedValue({ items: [], nextCursor: 'id:7', done: false });
+        jobQueue.enqueueBulk.mockRejectedValueOnce(new Error('queue down'));
+
+        await expect(service.importOrderWindow(connectionId, payload)).rejects.toThrow('queue down');
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('first-poll seeding (#4228)', () => {
+      const seededKey = `${cursorKey}.seededAt`;
+      let headCursor: jest.Mock;
+
+      beforeEach(() => {
+        lock.acquire.mockResolvedValue('token-1');
+        lock.release.mockResolvedValue(true);
+        headCursor = jest.fn();
+        (orderSource as unknown as { headCursor: jest.Mock }).headCursor = headCursor;
+        // A connection created after #4228 always carries an intent; absence is a legacy one.
+        syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+          Promise.resolve(key === 'orders.syncStart' ? '{"mode":"now"}' : null)
+        );
+      });
+
+      it('should seed the cursor at the head and enqueue nothing on the first poll', async () => {
+        headCursor.mockResolvedValue('event-900');
+
+        const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        expect(jobQueue.enqueueBulk).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(connectionId, cursorKey, 'event-900');
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          connectionId,
+          seededKey,
+          expect.any(String)
+        );
+        expect(result).toEqual({
+          fetched: 0,
+          enqueued: 0,
+          nextCursor: 'event-900',
+          committed: true,
+          skippedDueToLock: false,
+        });
+        expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
+      });
+
+      it('should keep the applied start, since the intent row is deleted right after', async () => {
+        headCursor.mockResolvedValue('event-900');
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          connectionId,
+          'orders.syncStarted',
+          expect.stringContaining('"mode":"now"')
+        );
+      });
+
+      it('should write the marker before deleting the intent so a crash in between only re-seeds', async () => {
+        headCursor.mockResolvedValue('event-900');
+        const order: string[] = [];
+        syncCursors.advanceCursor.mockImplementation((_c: string, key: string) => {
+          order.push(`advance:${key}`);
+          return Promise.resolve();
+        });
+        syncCursors.deleteCursor.mockImplementation(() => {
+          order.push('delete');
+          return Promise.resolve();
+        });
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(order).toEqual([
+          `advance:${cursorKey}`,
+          `advance:${seededKey}`,
+          'advance:orders.syncStarted',
+          'delete',
+        ]);
+      });
+
+      it('should keep reading history, seeding nothing, for a legacy connection with no intent', async () => {
+        syncCursors.getCursor.mockResolvedValue(null);
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(headCursor).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+        expect(syncCursors.deleteCursor).not.toHaveBeenCalled();
+        expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
+          expect.objectContaining({ fromCursor: null })
+        );
+      });
+
+      it('should poll normally when the seeded marker already exists', async () => {
+        syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+          Promise.resolve(key === seededKey ? '2026-01-01T00:00:00.000Z' : null)
+        );
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(headCursor).not.toHaveBeenCalled();
+        expect(orderSource.listOrderFeed).toHaveBeenCalled();
+      });
+
+      it('should propagate the error and commit nothing when the head read fails', async () => {
+        headCursor.mockRejectedValue(new Error('head failed'));
+
+        await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toThrow(
+          'head failed'
+        );
+
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+      });
+
+      it('should write nothing and read no history while the source has no orders yet', async () => {
+        headCursor.mockResolvedValue(null);
+
+        const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+        expect(syncCursors.deleteCursor).not.toHaveBeenCalled();
+        expect(result.committed).toBe(false);
+        expect(result.nextCursor).toBeNull();
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+      });
+
+      it('should seed on the third poll after two empty head reads, never reading history in between', async () => {
+        headCursor
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce('')
+          .mockResolvedValueOnce('event-900');
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+
+        const third = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(third.committed).toBe(true);
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(connectionId, cursorKey, 'event-900');
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+      });
+
+      it('should not seed when the connection already has a cursor', async () => {
+        syncCursors.getCursor.mockResolvedValue('event-100');
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(headCursor).not.toHaveBeenCalled();
+        expect(orderSource.listOrderFeed).toHaveBeenCalled();
+      });
+
+      it('should keep today behaviour when the adapter has no bootstrap capability', async () => {
+        delete (orderSource as unknown as { headCursor?: jest.Mock }).headCursor;
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
+          expect.objectContaining({ fromCursor: null })
+        );
+      });
+
+      describe('the operator start choice', () => {
+        const intentKey = 'orders.syncStart';
+        let cursorForDate: jest.Mock;
+
+        const withIntent = (raw: string | null): void => {
+          syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+            Promise.resolve(key === intentKey ? raw : null)
+          );
+        };
+
+        beforeEach(() => {
+          cursorForDate = jest.fn();
+          (orderSource as unknown as { cursorForDate: jest.Mock }).cursorForDate = cursorForDate;
+          headCursor.mockResolvedValue('event-900');
+          orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+          jobQueue.enqueueBulk.mockResolvedValue([]);
+        });
+
+        it('should seed at the head when the intent says now', async () => {
+          withIntent('{"mode":"now"}');
+
+          await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+          expect(headCursor).toHaveBeenCalled();
+          expect(cursorForDate).not.toHaveBeenCalled();
+          expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        });
+
+        it('should read the whole history and write only the marker when the intent says all', async () => {
+          withIntent('{"mode":"all"}');
+
+          await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+          expect(headCursor).not.toHaveBeenCalled();
+          // The marker, and the record of the start that was applied; never the feed cursor.
+          expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(2);
+          expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+            connectionId,
+            seededKey,
+            expect.any(String)
+          );
+          expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+            connectionId,
+            'orders.syncStarted',
+            expect.stringContaining('"mode":"all"')
+          );
+          expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, intentKey);
+          expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
+            expect.objectContaining({ fromCursor: null })
+          );
+        });
+
+        it('should commit the date cursor and enqueue nothing when the intent says from', async () => {
+          withIntent('{"mode":"from","from":"2026-10-01"}');
+          cursorForDate.mockResolvedValue('2026-10-01 00:00:00|0');
+
+          const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+          expect(cursorForDate).toHaveBeenCalledWith('2026-10-01');
+          expect(headCursor).not.toHaveBeenCalled();
+          expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+          expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+            connectionId,
+            cursorKey,
+            '2026-10-01 00:00:00|0'
+          );
+          expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+            connectionId,
+            seededKey,
+            expect.any(String)
+          );
+          expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, intentKey);
+          expect(result.committed).toBe(true);
+        });
+
+        it('should let a typed unavailable error from the adapter propagate untouched', async () => {
+          withIntent('{"mode":"from","from":"2026-10-01"}');
+          cursorForDate.mockRejectedValue(new OrderSyncStartUnavailableError('shop refuses'));
+
+          await expect(
+            service.ingestOrders(connectionId, { cursorKey, limit: 10 })
+          ).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+          expect(syncCursors.deleteCursor).not.toHaveBeenCalled();
+        });
+
+        it('should throw and commit nothing when from is chosen but the adapter cannot do dates', async () => {
+          withIntent('{"mode":"from","from":"2026-10-01"}');
+          delete (orderSource as unknown as { cursorForDate?: jest.Mock }).cursorForDate;
+
+          await expect(
+            service.ingestOrders(connectionId, { cursorKey, limit: 10 })
+          ).rejects.toThrow(OrderSyncStartUnavailableError);
+
+          expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+          expect(syncCursors.deleteCursor).not.toHaveBeenCalled();
+          expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        });
+
+        it('should propagate a failed date lookup without committing', async () => {
+          withIntent('{"mode":"from","from":"2026-10-01"}');
+          cursorForDate.mockRejectedValue(new Error('no date'));
+
+          await expect(
+            service.ingestOrders(connectionId, { cursorKey, limit: 10 })
+          ).rejects.toThrow('no date');
+
+          expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+        });
+
+        it('should start from now when the stored intent is unreadable', async () => {
+          withIntent('garbage');
+
+          await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+          expect(headCursor).toHaveBeenCalled();
+          expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        });
+
+        it('should ignore the intent once the seeded marker exists', async () => {
+          syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
+            Promise.resolve(
+              key === seededKey ? '2026-01-01T00:00:00.000Z' : key === intentKey ? '{"mode":"all"}' : null
+            )
+          );
+
+          await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+          expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+          expect(orderSource.listOrderFeed).toHaveBeenCalled();
+        });
+      });
     });
 
     it('does not commit cursor when enqueueBulk fails', async () => {

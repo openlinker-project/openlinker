@@ -100,6 +100,7 @@
     "steps": {
       "credentials": "Dane dostępowe",
       "environment": "Środowisko",
+      "orders": "Historia zamówień",
       "productCatalogue": "Katalog produktów",
       "review": "Sprawdź i połącz",
       "salesDocuments": "Dokumenty sprzedaży"

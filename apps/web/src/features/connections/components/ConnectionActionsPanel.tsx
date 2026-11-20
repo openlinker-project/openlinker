@@ -1,6 +1,6 @@
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { canArchive, hasMissingCredentials } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
@@ -22,6 +22,12 @@ import { captureDemoEvent } from '../../demo';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
+/** Which job the trigger dialog opens on, by the `?sync=` value another tab sends. */
+const SYNC_TARGET_JOB: Record<string, string | undefined> = {
+  orders: 'marketplace.orders.poll',
+  products: 'master.product.syncAll',
+};
+
 interface ConnectionActionsPanelProps {
   connection: Connection;
   /** Replaces "Edit connection" for a connection configured elsewhere (the OMS). */
@@ -36,12 +42,31 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   const { showToast } = useToast();
   const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
+  // The Orders tab sends the operator here with ?sync=orders (or =products): the dialog
+  // opens on that job, and the param is dropped so a reload does not reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [triggerInitialJob, setTriggerInitialJob] = useState<string | undefined>(undefined);
   const plugin = usePlatform(connection.platformType);
   const PluginActions = plugin?.ConnectionActions;
 
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const sync = useWriteAccess('sync:write', demoMode);
+
+  const syncTarget = SYNC_TARGET_JOB[searchParams.get('sync') ?? ''];
+  useEffect(() => {
+    if (!syncTarget || !sync.visible) return;
+    setTriggerInitialJob(syncTarget);
+    setIsTriggerDialogOpen(true);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete('sync');
+        return params;
+      },
+      { replace: true }
+    );
+  }, [syncTarget, sync.visible, setSearchParams]);
 
   const isDisabled = connection.status === 'disabled';
   // #3657 — an archived connection has no credential and resolves no adapter,
@@ -192,6 +217,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
               tone="primary"
               onClick={() => {
                 captureDemoEvent('demo_connection_sync_dialog_opened', {});
+                setTriggerInitialJob(undefined);
                 setIsTriggerDialogOpen(true);
               }}
             >
@@ -255,6 +281,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         open={isTriggerDialogOpen}
         onOpenChange={setIsTriggerDialogOpen}
         submitDisabled={sync.demoReadOnly}
+        initialJobType={triggerInitialJob}
       />
 
       <ConfirmDialog

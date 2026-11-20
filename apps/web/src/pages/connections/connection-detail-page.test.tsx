@@ -373,6 +373,73 @@ describe('ConnectionDetailPage', () => {
     });
   });
 
+  describe('order sync panel on the Orders tab (#4228)', () => {
+    async function openTab(connection: Connection, tab: 'Orders' | 'Health' | 'Actions'): Promise<void> {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        connections: {
+          getById: vi.fn().mockResolvedValue(connection),
+          getSyncStatus: vi.fn().mockResolvedValue({
+            connectionId: connection.id,
+            generatedAt: '2026-11-18T10:00:00.000Z',
+            status: 'idle',
+            alerting: false,
+            queuedCount: 0,
+            deferredCount: 0,
+            runningCount: 0,
+            deadCount: 0,
+            deadInWindow: 0,
+            lastSucceededAt: null,
+            arrivalRatePerHour: 0,
+            drainRatePerHour: 0,
+            alertThresholdJobs: 0,
+            estimatedClearanceMs: null,
+            oldestQueuedWaitMs: null,
+            averageAttemptDurationMs: null,
+            attemptDurationSampleSize: 0,
+            lastCursorAdvanceAt: null,
+            orderSyncStartedAt: '2026-11-18T08:00:00.000Z',
+            orderImport: null,
+            orderStart: null,
+            observationWindowMs: 3600000,
+            alertHorizonMs: 86400000,
+            historyWindowMs: 604800000,
+          }),
+        },
+      });
+      await renderDetailPage(connection, apiClient);
+      await user.click(screen.getByRole('tab', { name: tab }));
+    }
+
+    const orderSource = (): Connection =>
+      makeAllegro({ enabledCapabilities: ['OfferManager', 'OrderSource'] });
+
+    it('should show the order import, with its change control, on the Orders tab', async () => {
+      await openTab(orderSource(), 'Orders');
+
+      expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
+      expect(await screen.findByText('Unknown')).toBeInTheDocument();
+    });
+
+    it('should keep the order import off the Health and Actions tabs', async () => {
+      await openTab(orderSource(), 'Health');
+      expect(screen.queryByRole('heading', { name: 'Order import' })).not.toBeInTheDocument();
+    });
+
+    it('should not offer an Orders tab for a connection that is not an order source', async () => {
+      const connection = makeAllegro();
+      await renderDetailPage(
+        connection,
+        createMockApiClient({
+          connections: { getById: vi.fn().mockResolvedValue(connection) },
+        }),
+      );
+
+      expect(screen.getByRole('tab', { name: 'Health' })).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'Orders' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('routing readiness panel on the Health tab (#3634)', () => {
     afterEach(() => {
       vi.unstubAllEnvs();

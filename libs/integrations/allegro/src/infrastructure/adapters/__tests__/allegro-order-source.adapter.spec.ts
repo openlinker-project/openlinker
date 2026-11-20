@@ -468,6 +468,31 @@ describe('AllegroOrderSourceAdapter', () => {
     });
   });
 
+  describe('headCursor (#4228)', () => {
+    it('should return the id of the latest order event', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: { latestEvent: { id: 'evt-9', occurredAt: '2024-01-01T00:00:00Z' } },
+        status: 200,
+        headers: {},
+      });
+
+      await expect(adapter.headCursor()).resolves.toBe('evt-9');
+      expect(httpClient.get).toHaveBeenCalledWith('/order/event-stats');
+    });
+
+    it('should return null when the seller has no order events', async () => {
+      httpClient.get.mockResolvedValueOnce({ data: {}, status: 200, headers: {} });
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should propagate a read failure', async () => {
+      httpClient.get.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.headCursor()).rejects.toThrow('boom');
+    });
+  });
+
   describe('listOrderFeed', () => {
     it('should deduplicate events by checkoutFormId, map Allegro event types, and surface lastEventId as nextCursor', async () => {
       const mockResponse: AllegroOrderEventsResponse = {

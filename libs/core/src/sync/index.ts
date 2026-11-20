@@ -70,6 +70,13 @@ export {
 export type {
   ConnectionBacklogStatus,
   ConnectionBacklogStats,
+  ActiveOrderImport,
+  OrderImportStats,
+  OrderStartStatus,
+  OrderImportFailureCode,
+  OrderImportFailureReason,
+  OrderImportFailureCodeValues,
+  OrderImportStatus,
   ConnectionSyncStatus,
 } from './domain/types/connection-sync-status.types';
 export {
@@ -100,6 +107,7 @@ export {
 } from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
+  MarketplaceOrdersImportPayloadV1,
   MarketplaceOrderSyncPayloadV1,
   MarketplaceOrderFxStampPayloadV1,
   MarketplaceOrderFxStampSweepPayloadV1,
@@ -215,6 +223,34 @@ export {
   masterSweepRemainingCountCursorKey,
   masterSweepLockKey,
 } from './domain/types/master-sweep-cursor.types';
+
+// Order feed seed marker key (#4228)
+export {
+  ORDER_FEED_SEEDED_AT_SUFFIX,
+  orderFeedSeededAtCursorKey,
+} from './domain/types/order-feed-seed-cursor.types';
+
+// Order sync start intent (#4228)
+export type {
+  OrderSyncStart,
+  OrderSyncStartMode,
+  OrderSyncStartOrder,
+  OrderSyncStartedRecord,
+} from './domain/types/order-sync-start.types';
+export {
+  DEFAULT_ORDER_SYNC_START_MODES,
+  ORDER_SYNC_START_CURSOR_KEY,
+  ORDER_SYNC_STARTED_CURSOR_KEY,
+  parseOrderSyncStarted,
+  serializeOrderSyncStarted,
+  ORDER_SYNC_START_MAX_AGE_YEARS,
+  OrderSyncStartModeValues,
+  OrderSyncStartOrderValues,
+  describeInvalidOrderSyncStartDate,
+  parseOrderSyncStart,
+  resolveOrderSyncStartModes,
+  serializeOrderSyncStart,
+} from './domain/types/order-sync-start.types';
 
 // Cursor overview + guarded rewind (#4023)
 export type {

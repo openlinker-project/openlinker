@@ -24,8 +24,13 @@
  * @module tests/order-ingestion
  */
 import { test, expect } from '../../src/fixtures/test';
-import { buildPrestashopWebserviceClient, synthesizeOrder } from '../../src/support/order-synthesis';
+import {
+  buildPrestashopWebserviceClient,
+  resolvePrestashopStore,
+  synthesizeOrder,
+} from '../../src/support/order-synthesis';
 import { narrowOrderSnapshot } from '../../src/support/order-snapshot';
+import { ensureOrderFeedSeeded } from '../../src/support/order-feed-seed';
 
 /** The slice of the snapshot this spec reads. */
 interface CurrencySnapshot {
@@ -57,6 +62,10 @@ test.describe('order ingestion: per-order currency (#2277)', () => {
       test.skip(!id, `the shop carries no ${iso} currency, so a per-order comparison is impossible`);
       currencyIds.set(iso, id!);
     }
+
+    // The feed starts from "now" (#4228): seed it before the orders exist.
+    const store = resolvePrestashopStore(world);
+    if (store) await ensureOrderFeedSeeded(api, jobs, store.id);
 
     const observed = new Map<string, string>();
     for (const iso of CURRENCIES) {
