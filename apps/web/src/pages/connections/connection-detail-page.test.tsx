@@ -373,8 +373,8 @@ describe('ConnectionDetailPage', () => {
     });
   });
 
-  describe('order sync panel on the Sync tab (#4228)', () => {
-    async function openTab(connection: Connection, tab: 'Sync' | 'Health' | 'Actions'): Promise<void> {
+  describe('order sync panel on the Orders tab (#4228)', () => {
+    async function openTab(connection: Connection, tab: 'Orders' | 'Health' | 'Actions'): Promise<void> {
       const user = userEvent.setup();
       const apiClient = createMockApiClient({
         connections: {
@@ -413,8 +413,8 @@ describe('ConnectionDetailPage', () => {
     const orderSource = (): Connection =>
       makeAllegro({ enabledCapabilities: ['OfferManager', 'OrderSource'] });
 
-    it('should show the order import, with its change control, on the Sync tab', async () => {
-      await openTab(orderSource(), 'Sync');
+    it('should show the order import, with its change control, on the Orders tab', async () => {
+      await openTab(orderSource(), 'Orders');
 
       expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
       expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
@@ -425,10 +425,17 @@ describe('ConnectionDetailPage', () => {
       expect(screen.queryByRole('heading', { name: 'Order import' })).not.toBeInTheDocument();
     });
 
-    it('should not show the order sync panel for a connection that is not an order source', async () => {
-      await openTab(makeAllegro(), 'Sync');
+    it('should not offer an Orders tab for a connection that is not an order source', async () => {
+      const connection = makeAllegro();
+      await renderDetailPage(
+        connection,
+        createMockApiClient({
+          connections: { getById: vi.fn().mockResolvedValue(connection) },
+        }),
+      );
 
-      expect(screen.queryByRole('heading', { name: 'Order import' })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Health' })).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'Orders' })).not.toBeInTheDocument();
     });
   });
 

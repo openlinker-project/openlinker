@@ -46,4 +46,6 @@ export interface TriggerSyncDialogProps {
    * the final "Trigger" submit renders disabled with a read-only tooltip.
    */
   submitDisabled?: boolean;
+  /** Job type to preselect when the dialog opens, if the connection offers it. */
+  initialJobType?: string;
 }

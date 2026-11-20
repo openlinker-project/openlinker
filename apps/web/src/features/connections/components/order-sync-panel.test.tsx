@@ -3,6 +3,7 @@
  *
  * @module features/connections/components
  */
+import type { ReactElement } from 'react';
 import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -11,7 +12,13 @@ import {
   createMockApiClient,
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
+import { useLocation } from 'react-router-dom';
 import { OrderSyncPanel } from './order-sync-panel';
+
+function LocationProbe(): ReactElement {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname + location.search}</div>;
+}
 import type { ConnectionSyncStatus } from '../api/connections.types';
 
 function makeStatus(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSyncStatus {
@@ -105,6 +112,26 @@ describe('OrderSyncPanel', () => {
     expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
     expect(screen.getByText('Start date was not recorded')).toBeInTheDocument();
     expect(screen.queryByText(/^Since /)).not.toBeInTheDocument();
+  });
+
+  it('sends the operator to the Trigger sync dialog on Actions from Sync orders', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
+    });
+    renderWithProviders(
+      <>
+        <OrderSyncPanel connection={CONNECTION} />
+        <LocationProbe />
+      </>,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+
+    await user.click(await screen.findByRole('button', { name: /Sync orders/ }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/connections/conn_1?tab=actions&sync=orders'
+    );
   });
 
   describe('import health details', () => {

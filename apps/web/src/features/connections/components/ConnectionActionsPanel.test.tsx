@@ -32,11 +32,12 @@ describe('ConnectionActionsPanel', () => {
   });
   afterEach(cleanup);
 
-  it('renders edit and disable actions for an active connection', async () => {
+  it('renders edit, trigger sync, and disable actions for an active connection', async () => {
     renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
 
     // findByRole waits for the session to hydrate (canWrite starts false)
     expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /trigger sync/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument();
   });
 
@@ -45,6 +46,7 @@ describe('ConnectionActionsPanel', () => {
     renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />, adminSession);
 
     expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /trigger sync/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
     // #1940 — the recovery control the panel used to omit entirely.
     expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
@@ -84,7 +86,8 @@ describe('ConnectionActionsPanel', () => {
 
       expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /test connection/i })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /trigger sync/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Enable' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
     });
@@ -152,6 +155,13 @@ describe('ConnectionActionsPanel', () => {
     expect(editLink).toHaveAttribute('href', `/connections/${sampleConnection.id}/edit`);
   });
 
+  it('shows trigger sync button for non-prestashop connections too', async () => {
+    const allegroConnection = { ...sampleConnection, platformType: 'allegro' };
+    renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />, adminSession);
+
+    expect(await screen.findByRole('button', { name: /trigger sync/i })).toBeInTheDocument();
+  });
+
   it('renders the PrestaShop plugin\'s "Configure webhooks" action for prestashop connections', async () => {
     renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
     expect(await screen.findByRole('button', { name: /configure webhooks/i })).toBeInTheDocument();
@@ -161,7 +171,7 @@ describe('ConnectionActionsPanel', () => {
     const allegroConnection = { ...sampleConnection, platformType: 'allegro' };
     renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />, adminSession);
     // Wait for session to hydrate, then confirm no webhook button
-    await screen.findByRole('link', { name: 'Edit' });
+    await screen.findByRole('button', { name: /trigger sync/i });
     expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();
   });
 
@@ -170,6 +180,29 @@ describe('ConnectionActionsPanel', () => {
     renderWithProviders(<ConnectionActionsPanel connection={unknownConnection} />, adminSession);
     expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /trigger sync/i })).toBeInTheDocument();
+  });
+
+  it('opens the TriggerSyncDialog when "Trigger sync…" is clicked', async () => {
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
+
+    fireEvent.click(await screen.findByRole('button', { name: /trigger sync/i }));
+
+    // Dialog is now open — job type select should be visible
+    expect(screen.getByRole('combobox', { name: /job type/i })).toBeInTheDocument();
+
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_sync_dialog_opened', {});
+  });
+
+  it('opens the Trigger sync dialog on Sync orders when sent here with ?sync=orders', async () => {
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, {
+      ...adminSession,
+      route: `/connections/${sampleConnection.id}?tab=actions&sync=orders`,
+    });
+
+    expect(await screen.findByRole('combobox', { name: /job type/i })).toHaveValue(
+      'marketplace.orders.poll',
+    );
   });
 
   describe('demo read-only viewer (#1615)', () => {
@@ -193,6 +226,7 @@ describe('ConnectionActionsPanel', () => {
 
       expect(await screen.findByRole('button', { name: 'Test connection' })).toBeDisabled();
       expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /trigger sync/i })).not.toBeDisabled();
       expect(screen.getByRole('button', { name: 'Disable' })).toBeDisabled();
       expect(screen.getByRole('button', { name: /configure webhooks/i })).toBeDisabled();
 
@@ -212,6 +246,19 @@ describe('ConnectionActionsPanel', () => {
       expect(await screen.findByRole('button', { name: 'Enable' })).toBeDisabled();
     });
 
+    it('opens the TriggerSyncDialog with an enabled job type select but a disabled Trigger submit', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, {
+        apiClient: demoApiClient(),
+        ...viewerSession,
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: /trigger sync/i }));
+
+      const jobTypeSelect = screen.getByRole('combobox', { name: /job type/i });
+      expect(jobTypeSelect).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: /^trigger$/i })).toBeDisabled();
+    });
+
     it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
       renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, viewerSession);
 
@@ -220,7 +267,8 @@ describe('ConnectionActionsPanel', () => {
         expect(screen.queryByRole('button', { name: 'Test connection' })).not.toBeInTheDocument();
       });
       expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /trigger sync/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
     });
   });
 });

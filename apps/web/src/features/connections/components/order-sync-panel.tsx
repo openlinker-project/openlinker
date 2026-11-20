@@ -15,6 +15,7 @@
  * @module features/connections/components
  */
 import { useState, type ReactElement } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
@@ -35,6 +36,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const [restartOpen, setRestartOpen] = useState(false);
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
+  const sync = useWriteAccess('sync:write', demoMode);
+  const navigate = useNavigate();
   const copy = useMessages('connections').orderSyncPanel;
   const format = useFormat();
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
@@ -48,15 +51,25 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
           <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title">{copy.title}</h3>
         </div>
-        {write.visible ? (
-          <Button
-            tone="secondary"
-            onClick={() => setRestartOpen(true)}
-            disabled={write.demoReadOnly}
-          >
-            {copy.restart.action}
-          </Button>
-        ) : null}
+        <div className="order-sync-panel__actions">
+          {sync.visible ? (
+            <Button
+              tone="primary"
+              onClick={() => navigate(`/connections/${connectionId}?tab=actions&sync=orders`)}
+            >
+              {copy.syncNow}
+            </Button>
+          ) : null}
+          {write.visible ? (
+            <Button
+              tone="secondary"
+              onClick={() => setRestartOpen(true)}
+              disabled={write.demoReadOnly}
+            >
+              {copy.restart.action}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {statusQuery.isLoading ? (

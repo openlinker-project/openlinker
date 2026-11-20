@@ -411,6 +411,7 @@
   "connections:inpostSetupPage.title": 40,
   "connections:newConnectionPage.wizardsChip": 32,
   "connections:orderSyncPanel.retry": 8,
+  "connections:orderSyncPanel.syncNow": 28,
   "connections:orderSyncStart.all.warningLabel": 48,
   "connections:orderSyncStart.now.infoLabel": 48,
   "connections:paymentWriteback.recommended": 16,

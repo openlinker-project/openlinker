@@ -11,7 +11,6 @@ import { ConnectionConfigPanel } from '../../features/connections/components/Con
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import { CatalogTrustPanel } from '../../features/connections/components/catalog-trust-panel';
 import { OrderSyncPanel } from '../../features/connections/components/order-sync-panel';
-import { SyncTriggerCard } from '../../features/connections/components/sync-trigger-card';
 import { ConnectionSyncStatusPanel } from '../../features/connections/components/connection-sync-status-panel';
 import { RouterReadinessPanel } from '../../features/connections/components/router-readiness-panel';
 import {
@@ -214,7 +213,7 @@ function ArchivedBanner({ connection }: { connection: Connection }): ReactElemen
   );
 }
 
-const TAB_VALUES = ['overview', 'sync', 'health', 'actions', 'config', 'gifts'] as const;
+const TAB_VALUES = ['overview', 'orders', 'health', 'actions', 'config', 'gifts'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(value: string | null): value is TabValue {
@@ -503,7 +502,9 @@ export function ConnectionDetailPage(): ReactElement {
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="tabs__list--scroll">
             <TabsTrigger value="overview">{copy.tabs.overview}</TabsTrigger>
-            {isOms ? null : <TabsTrigger value="sync">{copy.tabs.sync}</TabsTrigger>}
+            {isOrderSource && !isOms ? (
+              <TabsTrigger value="orders">{copy.tabs.orders}</TabsTrigger>
+            ) : null}
             <TabsTrigger value="health">{copy.tabs.health}</TabsTrigger>
             {isOms ? null : <TabsTrigger value="actions">{copy.tabs.actions}</TabsTrigger>}
             {isOms ? null : <TabsTrigger value="config">{copy.tabs.config}</TabsTrigger>}
@@ -570,22 +571,21 @@ export function ConnectionDetailPage(): ReactElement {
             <ConnectionCapabilitiesPanel connection={connection} readOnly={isOms} />
           </TabsContent>
 
-          {/* The whole sync story in one place: how orders come in, the queue, the
-              catalogue, and running a sync by hand. The OMS has no sync of its own. */}
-          {isOms ? null : (
-            <TabsContent value="sync">
-              {isOrderSource ? <OrderSyncPanel connection={connection} /> : null}
-              <ConnectionSyncStatusPanel connectionId={connection.id} />
-              {connection.enabledCapabilities.includes('ProductMaster') ? (
-                <CatalogTrustPanel connectionId={connection.id} />
-              ) : null}
-              <SyncTriggerCard connection={connection} />
+          {/* How orders come in: where the import started, how it is doing, and moving
+              the start. The queue and catalogue stay on Health, and "Trigger sync"
+              stays on Actions because it also runs product and inventory syncs. */}
+          {isOrderSource && !isOms ? (
+            <TabsContent value="orders">
+              <OrderSyncPanel connection={connection} />
             </TabsContent>
-          )}
+          ) : null}
 
           <TabsContent value="health">
             <ConnectionDiagnosticsPanel connectionId={connection.id} />
-            {isOms ? <ConnectionSyncStatusPanel connectionId={connection.id} /> : null}
+            <ConnectionSyncStatusPanel connectionId={connection.id} />
+            {connection.enabledCapabilities.includes('ProductMaster') ? (
+              <CatalogTrustPanel connectionId={connection.id} />
+            ) : null}
             {/* #2407 — install-wide precondition, rendered here because this is
                 where routing gets switched on. Deliberately not capability-gated:
                 the claim lives in config, and `enabledCapabilities` is stamped at

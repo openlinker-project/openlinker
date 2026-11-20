@@ -40678,3 +40678,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   line-height: 1.45;
   color: var(--text-muted);
 }
+
+.order-sync-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

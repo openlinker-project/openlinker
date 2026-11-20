@@ -45,12 +45,12 @@ export class ConnectionDetailPage {
    * "Trigger sync…" action lives under the Actions tab, so default there so the
    * button is mounted and visible.
    */
-  async goto(connectionId: string, tab: 'overview' | 'sync' | 'health' | 'actions' | 'config' = 'actions'): Promise<void> {
+  async goto(connectionId: string, tab: 'overview' | 'orders' | 'health' | 'actions' | 'config' = 'actions'): Promise<void> {
     await this.page.goto(`/connections/${connectionId}?tab=${tab}`);
   }
 
   /**
-   * The "Order import" panel (on the sync tab, with its change-start control) (#4228): its heading and the
+   * The "Order import" panel (on the orders tab, with its change-start control) (#4228): its heading and the
    * "New" row that says the feed is syncing. Selectors are role/text based, so
    * they follow the operator-visible copy rather than any class name.
    */

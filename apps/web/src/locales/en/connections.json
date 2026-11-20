@@ -112,7 +112,7 @@
     "disabled": "Disabled",
     "enabled": "Enabled",
     "errorTitle": "Unable to load catalog trust",
-    "eyebrow": "Sync",
+    "eyebrow": "Health",
     "lastReconciled": "Deletion last reconciled",
     "loadingMessage": "Reading the master's declared sync capability.",
     "loadingTitle": "Loading catalog trust",
@@ -178,7 +178,6 @@
     },
     "sync": {
       "action": "Trigger sync…",
-      "eyebrow": "Manual",
       "help": "Manually enqueue a sync job for this connection. Choose job type and payload in the next step.",
       "title": "Trigger sync"
     },
@@ -320,8 +319,8 @@
       "config": "Config",
       "gifts": "Gifts on documents",
       "health": "Health",
-      "overview": "Overview",
-      "sync": "Sync"
+      "orders": "Orders",
+      "overview": "Overview"
     }
   },
   "connectionDiagnosticsPanel": {
@@ -515,7 +514,7 @@
       "waitingToRetry": "Waiting to retry"
     },
     "errorTitle": "Unable to load the sync queue",
-    "eyebrow": "Sync",
+    "eyebrow": "Health",
     "headline": {
       "clearance": "About {wait} to clear at the current pace.",
       "empty": "No work is waiting for this connection.",
@@ -1130,6 +1129,7 @@
     "retry": "Retry",
     "since": "Since {date}",
     "sinceUnknown": "Start date was not recorded",
+    "syncNow": "Sync orders…",
     "title": "Order import"
   },
   "orderSyncStart": {

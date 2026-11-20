@@ -178,6 +178,7 @@ export function TriggerSyncDialog({
   open,
   onOpenChange,
   submitDisabled = false,
+  initialJobType,
 }: TriggerSyncDialogProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog;
   const adapters = useAdaptersQuery();
@@ -223,7 +224,8 @@ export function TriggerSyncDialog({
 
   useEffect(() => {
     if (open) {
-      const firstJob = triggerableJobs[0];
+      const firstJob =
+        triggerableJobs.find((job) => job.jobType === initialJobType) ?? triggerableJobs[0];
       setSelectedJobType(firstJob?.jobType ?? '');
       setPayloadValues(
         firstJob ? buildDefaultValues(firstJob.payloadFields) : {},
