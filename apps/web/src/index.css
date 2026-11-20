@@ -42616,6 +42616,70 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .msg[data-archived='true'] { border-color: var(--border-subtle); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--msg-accent) 50%, transparent); }
 @media (forced-colors: active) { .msg { box-shadow: inset 3px 0 0 CanvasText; } }
+
+/* In the bell panel messages are flat rows, not cards. A card per message put a coloured outline, a
+   coloured bar and a coloured icon on every row, so six identical successes read as six green alarm
+   boxes. Now: a hairline between rows, a tinted icon chip for severity, an accent wash plus a dot in
+   the gutter for unread, and the archive/more tools only on hover or focus. The popup that announces a
+   message keeps the card look; only rows inside the panel are flattened. */
+.release-panel .msg,
+.release-panel .msg[data-archived='true'] {
+  margin-inline: -12px;
+  padding: 12px 14px 12px 20px;
+  gap: 12px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  transition: background-color 120ms var(--ease-out);
+}
+/* Consecutive rows form one list: cancel the panel's card gap between them. */
+.release-panel .msg + .msg { margin-top: -10px; }
+.release-panel .msg:hover,
+.release-panel .msg:focus-within { background: var(--bg-surface-hover); }
+.release-panel .msg[data-unread='true'] { background: color-mix(in srgb, var(--accent-primary) 6%, transparent); }
+.release-panel .msg[data-unread='true']:hover,
+.release-panel .msg[data-unread='true']:focus-within {
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
+}
+.release-panel .msg[data-archived='true'] .msg__main { opacity: 0.75; }
+.release-panel .msg__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--msg-accent) 14%, transparent);
+}
+/* The dot lives in its own gutter so read and unread titles line up. */
+.release-panel .msg__dot { position: absolute; left: 8px; top: 21px; width: 7px; height: 7px; margin: 0; }
+/* Severity is the icon's job; the word stays for screen readers. */
+.release-panel .msg__sev {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.release-panel .msg__foot { margin-top: 2px; }
+.release-panel .msg .msg__action { margin-left: auto; }
+.release-panel .msg__tools { opacity: 0; transition: opacity 120ms var(--ease-out); }
+.release-panel .msg:hover .msg__tools,
+.release-panel .msg:focus-within .msg__tools,
+.release-panel .msg__tools:has([aria-expanded='true']) { opacity: 1; }
+@media (hover: none) { .release-panel .msg__tools { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .release-panel .msg,
+  .release-panel .msg__tools { transition: none; }
+}
+@media (forced-colors: active) {
+  .release-panel .msg { border-bottom-color: CanvasText; }
+  .release-panel .msg__icon { background: transparent; border: 1px solid CanvasText; }
+}
 /* A page can ask for one column: the sections alone, with no rail beside them. */
 .settings-page[data-single] .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
 .settings-page[data-single] .settings-page__toc { display: none; }
