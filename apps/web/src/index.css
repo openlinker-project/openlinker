@@ -42680,6 +42680,53 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .release-panel .msg { border-bottom-color: CanvasText; }
   .release-panel .msg__icon { background: transparent; border: 1px solid CanvasText; }
 }
+
+/* Release cards in the panel are rows too, so a message and a release read as one list: same hairline,
+   same unread wash and gutter dot, no outline. Solid fills (not transparent) because the pinned actions
+   bar inherits the card's background. */
+.release-panel .release-card {
+  margin-inline: -12px;
+  padding: 14px 14px 14px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--bg-surface);
+  transition: background-color 120ms var(--ease-out);
+}
+.release-panel .release-card:hover { background: var(--bg-surface-hover); }
+.release-panel .release-card[data-unread='true'] {
+  border-color: var(--border-subtle);
+  box-shadow: none;
+  background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-surface));
+}
+.release-panel .release-card[data-unread='true']::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 21px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+.release-panel .release-card[data-unread='true']:hover {
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
+}
+.release-panel .release-card + .release-card,
+.release-panel .release-card + .msg,
+.release-panel .msg + .release-card { margin-top: -10px; }
+.release-panel .msg:has(+ .release-card),
+.release-panel .release-card:last-child { border-bottom: 1px solid var(--border-subtle); }
+.release-panel .release-card__actions,
+.release-panel .release-card[data-unread='true'] .release-card__actions {
+  margin: 0 -14px -14px -20px;
+  padding: 10px 14px 14px 20px;
+  border-top: 0;
+  border-radius: 0;
+}
+@media (prefers-reduced-motion: reduce) { .release-panel .release-card { transition: none; } }
+@media (forced-colors: active) { .release-panel .release-card { border-bottom-color: CanvasText; } }
 /* A page can ask for one column: the sections alone, with no rail beside them. */
 .settings-page[data-single] .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
 .settings-page[data-single] .settings-page__toc { display: none; }
