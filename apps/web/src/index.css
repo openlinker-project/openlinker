@@ -42736,7 +42736,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 /* Same icon chip as a message, so the two read as one family; info blue because a release is information. */
 .release-panel .release-card__top { gap: 12px; }
-.release-panel .release-card__top > div { flex: 1; }
+.release-panel .release-card__top > div:not(.release-card__top-actions) { flex: 1; }
+.release-panel .release-card__top-actions { margin-left: auto; flex: none; }
 .release-card__icon {
   display: grid;
   place-items: center;
