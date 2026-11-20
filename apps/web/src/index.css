@@ -20154,7 +20154,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   /* The label changes colour while the thumb is travelling, a beat after it leaves, so white never
      sits on the grey track. */
   transition:
-    color 160ms var(--ease-standard) 50ms,
+    color 120ms var(--ease-standard) 40ms,
     background-color var(--duration-fast) var(--ease-standard);
 }
 
@@ -20194,7 +20194,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .segmented-control__option--active {
   color: var(--text-on-primary);
-  font-weight: 600;
 }
 
 .segmented-control__option:focus-visible {
@@ -20205,7 +20204,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .segmented-control__hint {
   font-family: var(--font-mono);
   font-size: 0.625rem;
-  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.segmented-control__option--active .segmented-control__hint {
+  color: inherit;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-on-primary) 16%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .segmented-control .segmented-control__option { transition: none; }
 }
 
 @media (forced-colors: active) {
@@ -42964,4 +42973,26 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .popover-card:not(:has(.popover-card__footer)) {
   padding-bottom: var(--space-4);
+}
+
+/* Notification centre accessibility (audit): a solid focus ring instead of the 30% halo, which is not
+   3:1 against the panel; the action link darkened toward the text colour so 12px bold text clears 4.5:1
+   in the light theme (the same mix lightens it in the dark theme); and outlines that survive forced
+   colours, where box-shadow rings and the tour ring are dropped. */
+.release-panel :focus-visible,
+.tour-card :focus-visible,
+.bell-nudge :focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.msg .msg__action,
+.bell-nudge .msg__action {
+  color: color-mix(in srgb, var(--accent-primary) 62%, var(--text-primary));
+}
+@media (forced-colors: active) {
+  .release-panel :focus-visible,
+  .tour-card :focus-visible,
+  .bell-nudge :focus-visible { outline: 2px solid Highlight; }
+  .tour-ring { outline: 2px solid Highlight; box-shadow: none; }
 }

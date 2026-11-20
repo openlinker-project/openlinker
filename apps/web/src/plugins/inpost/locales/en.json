@@ -69,12 +69,12 @@
     "notifyMarketplace": {
       "hintLabel": "How marketplace notification works",
       "infoOffTerm": "Off (default):",
-      "infoOffText": "Buying a label does not tell the marketplace. It is told \"shipped\" when you click Mark dispatched.",
+      "infoOffText": "Told when you click Mark dispatched.",
       "infoOnTerm": "On:",
-      "infoOnText": "Shortly after the label is bought, the marketplace is told \"shipped\". The tracking number follows in a second update once InPost issues it. A sent notice cannot be recalled.",
-      "infoSummary": "Choose whether buying a label already counts as shipping the parcel.",
+      "infoOnText": "Told shortly after the label is bought; the tracking number follows. Cannot be recalled.",
+      "infoSummary": "A label is often bought hours before the courier collects the parcel.",
       "infoTitle": "When the marketplace is told \"shipped\"",
-      "infoWhyText": "Off by default: a label is often bought hours before the courier collects the parcel.",
+      "infoWhyText": "Off by default.",
       "label": "Tell the marketplace \"shipped\" as soon as a label is bought",
       "scope": "Applies to labels OpenLinker buys on the InPost account \"{account}\", for orders from any sales channel. Orders the marketplace ships itself are not affected.",
       "title": "Marketplace shipment notification"

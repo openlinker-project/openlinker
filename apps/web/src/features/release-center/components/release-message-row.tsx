@@ -97,7 +97,19 @@ export function ReleaseMessageRow({
             className="button--icon button--sm"
             aria-label={copy.menuArchive}
             title={copy.menuArchive}
-            onClick={() => actions.archive(message.itemKey)}
+            onClick={(event) => {
+              const row = event.currentTarget.closest('.msg');
+              const neighbour = row?.nextElementSibling ?? row?.previousElementSibling ?? null;
+              const target = neighbour?.matches('.msg') ? neighbour.querySelector('.msg__tools button') : null;
+              actions.archive(message.itemKey);
+              // The row leaves the DOM; without this, keyboard focus falls to the page.
+              setTimeout(() => {
+                const next = target instanceof HTMLElement && target.isConnected
+                  ? target
+                  : document.querySelector<HTMLElement>('.release-panel [role="radio"][aria-checked="true"]');
+                next?.focus();
+              }, 0);
+            }}
           >
             <ReleaseIcon name="archive" />
           </Button>

@@ -163,6 +163,22 @@ function SegmentedControlInner<T extends string>(
         if (previous !== null) selectAt(previous);
         break;
       }
+      case 'Home': {
+        event.preventDefault();
+        const first = options.findIndex((option) => option.disabled !== true);
+        if (first >= 0) selectAt(first);
+        break;
+      }
+      case 'End': {
+        event.preventDefault();
+        for (let index = options.length - 1; index >= 0; index -= 1) {
+          if (options[index]?.disabled !== true) {
+            selectAt(index);
+            break;
+          }
+        }
+        break;
+      }
       default:
         break;
     }

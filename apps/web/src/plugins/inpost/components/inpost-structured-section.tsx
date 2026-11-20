@@ -277,12 +277,13 @@ export function InpostStructuredSection({
           </label>
           <IconWithOnHoverPopoverTooltip
             icon={<InfoIcon />}
-            tone="info"
+            tone="neutral"
             label={notifyCopy.hintLabel}
             width={320}
+            placement="up"
           >
             <PopoverCard
-              tone="info"
+              tone="neutral"
               icon={<InfoIcon />}
               title={notifyCopy.infoTitle}
               summary={notifyCopy.infoSummary}
