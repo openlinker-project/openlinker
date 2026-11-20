@@ -1,5 +1,7 @@
+import { motion } from 'motion/react';
 import {
   forwardRef,
+  useId,
   useRef,
   type ComponentPropsWithoutRef,
   type ForwardedRef,
@@ -7,6 +9,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { THUMB_SPRING } from './motion-presets';
 
 export interface SegmentedControlOption<T extends string> {
   value: T;
@@ -48,6 +51,10 @@ export interface SegmentedControlProps<T extends string>
  * A single-select segmented toggle (Shopify/Linear-style). Wraps the shared
  * `.segmented-control` CSS so features don't hand-roll one-off inline controls.
  *
+ * The selection is a thumb that slides (spring, shared `layoutId`) to the chosen
+ * option instead of the fill jumping; `MotionProvider`'s `reducedMotion="user"`
+ * turns that into an instant switch for anyone who asks for less motion.
+ *
  * Uses the ARIA radiogroup idiom (`role="radiogroup"` + `role="radio"` /
  * `aria-checked`) rather than toggle buttons, because the control is a
  * single-select "pick one of N" — that communicates the intent precisely to
@@ -64,6 +71,8 @@ function SegmentedControlInner<T extends string>(
   ref: ForwardedRef<HTMLDivElement>,
 ): ReactElement {
   const classes = ['segmented-control', className].filter(Boolean).join(' ');
+  // One id per control, so two controls on a screen never share (and so never fly between) thumbs.
+  const thumbId = useId();
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const hasActive = options.some((option) => option.value === value);
   // The tab stop when nothing is checked yet. Never a disabled option: parking
@@ -149,6 +158,14 @@ function SegmentedControlInner<T extends string>(
             }}
             onKeyDown={(event) => handleKeyDown(event, index)}
           >
+            {active ? (
+              <motion.span
+                className="segmented-control__thumb"
+                layoutId={`${thumbId}-thumb`}
+                transition={THUMB_SPRING}
+                aria-hidden="true"
+              />
+            ) : null}
             <span className="segmented-control__label">{option.label}</span>
             {option.hint !== undefined && (
               <span className="segmented-control__hint" aria-hidden="true">

@@ -20115,67 +20115,78 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
 }
 
-/* Segmented control — shared SegmentedControl primitive (shared/ui). */
+/* Segmented control — shared SegmentedControl primitive (shared/ui).
+ * A quiet track with a thumb that slides to the chosen option (the thumb is a Motion layout element in
+ * the active option). No dividers and no per-option borders: the track is the only edge, so the
+ * control reads as one piece and the selection is the only thing that moves. */
 .segmented-control {
   display: inline-flex;
   align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
 }
 
 .segmented-control__option {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
   position: relative;
-  padding: var(--space-2) var(--space-3);
+  isolation: isolate;
+  padding: 6px var(--space-3);
   border: none;
-  border-right: 1px solid var(--border-default);
-  background: var(--bg-surface);
+  border-radius: calc(var(--radius-lg) - 3px);
+  background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-sans);
   font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.3;
   /* Labels are authored in their final case; `capitalize` title-cased every word of a phrase ("Nie Drukuj"). */
   text-transform: none;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-standard);
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
 }
 
-.segmented-control__option:first-child {
-  border-top-left-radius: var(--radius-md);
-  border-bottom-left-radius: var(--radius-md);
+.segmented-control__option:hover:not(.segmented-control__option--active) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
-.segmented-control__option:last-child {
-  border-right: none;
-  border-top-right-radius: var(--radius-md);
-  border-bottom-right-radius: var(--radius-md);
-}
-
-.segmented-control__option:hover {
-  background: var(--bg-surface-hover);
+.segmented-control__thumb {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--accent-primary);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-primary) 40%, transparent);
 }
 
 .segmented-control__option--active {
-  background: var(--accent-primary);
   color: var(--text-on-primary);
   font-weight: 600;
-}
-
-.segmented-control__option--active:hover {
-  background: var(--accent-primary-hover);
 }
 
 .segmented-control__option:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
-  z-index: 1;
 }
 
 .segmented-control__hint {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   opacity: 0.7;
+}
+
+@media (forced-colors: active) {
+  .segmented-control__thumb { background: Highlight; }
+  .segmented-control__option--active { color: HighlightText; }
 }
 
 /* COD reveal (#1425) — checkbox toggle; the amount row mounts only when on. */
