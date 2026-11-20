@@ -67,8 +67,13 @@
       "unset": "- not set -"
     },
     "notifyMarketplace": {
-      "hint": "Example: you print labels in the morning and parcels are collected in the afternoon. Leave this off to tell the buyer \"shipped\" only when you mark the parcel dispatched.",
       "hintLabel": "About: notifying the marketplace on label purchase",
+      "infoOffTerm": "Off (default)",
+      "infoOffText": "The buyer sees \"shipped\" only after you mark the parcel as dispatched in OpenLinker.",
+      "infoOnTerm": "On",
+      "infoOnText": "The marketplace is told \"shipped\" the moment the label is bought, with the tracking number once InPost has issued it.",
+      "infoWhyTerm": "Why it is off by default",
+      "infoWhyText": "Buying a label and handing the parcel to the courier are two different moments. If you print labels in the morning and the courier comes in the afternoon, an early \"shipped\" starts the buyer's delivery clock for a parcel that has not left yet.",
       "label": "Notify the marketplace as soon as a label is bought",
       "scope": "Applies to labels bought by the InPost account \"{account}\", regardless of which sales channel the order came from.",
       "title": "Marketplace shipment notification"

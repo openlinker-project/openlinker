@@ -28,7 +28,7 @@ import type { ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
+import { Infotip } from '../../../shared/ui/infotip';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { useInpostMessages } from '../messages';
 
@@ -275,14 +275,14 @@ export function InpostStructuredSection({
             />
             <span>{notifyCopy.label}</span>
           </label>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" className="pm-qmark" aria-label={notifyCopy.hintLabel}>
-                ?
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{notifyCopy.hint}</TooltipContent>
-          </Tooltip>
+          <Infotip
+            ariaLabel={notifyCopy.hintLabel}
+            definitions={[
+              { term: notifyCopy.infoOffTerm, text: notifyCopy.infoOffText },
+              { term: notifyCopy.infoOnTerm, text: notifyCopy.infoOnText },
+              { term: notifyCopy.infoWhyTerm, text: notifyCopy.infoWhyText },
+            ]}
+          />
         </div>
         <p className="form-field__description" id="inpost-notify-on-label-purchase-scope">
           {notifyCopy.scope.replace('{account}', connection.name)}
