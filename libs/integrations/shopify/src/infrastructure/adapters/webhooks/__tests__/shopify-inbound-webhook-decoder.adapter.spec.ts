@@ -1,0 +1,183 @@
+import { createHmac } from 'node:crypto';
+
+import { ShopifyInboundWebhookDecoderAdapter } from '../shopify-inbound-webhook-decoder.adapter';
+
+const SECRET = 'client-secret';
+
+function sign(body: string, secret = SECRET): string {
+  return createHmac('sha256', secret).update(Buffer.from(body)).digest('base64');
+}
+
+function headers(topic: string, extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    'x-shopify-topic': topic,
+    'x-shopify-webhook-id': 'wh-1',
+    'x-shopify-triggered-at': '2026-11-10T10:00:00.000Z',
+    ...extra,
+  };
+}
+
+describe('ShopifyInboundWebhookDecoderAdapter', () => {
+  const decoder = new ShopifyInboundWebhookDecoderAdapter();
+  const body = '{"id":820982911946154500,"admin_graphql_api_id":"gid://shopify/Order/820982911946154508"}';
+
+  describe('verify', () => {
+    it('should accept a body signed with the client secret and report no timestamp', () => {
+      expect(
+        decoder.verify({ rawBody: Buffer.from(body), headers: { 'X-Shopify-Hmac-Sha256': sign(body) }, secret: SECRET }),
+      ).toEqual({ ok: true });
+    });
+
+    it('should refuse a signature made with another secret', () => {
+      expect(
+        decoder.verify({
+          rawBody: Buffer.from(body),
+          headers: { 'x-shopify-hmac-sha256': sign(body, 'other') },
+          secret: SECRET,
+        }).ok,
+      ).toBe(false);
+    });
+
+    it('should refuse a body changed after signing', () => {
+      expect(
+        decoder.verify({
+          rawBody: Buffer.from(`${body} `),
+          headers: { 'x-shopify-hmac-sha256': sign(body) },
+          secret: SECRET,
+        }).ok,
+      ).toBe(false);
+    });
+
+    it('should refuse a missing or malformed signature without throwing', () => {
+      expect(decoder.verify({ rawBody: Buffer.from(body), headers: {}, secret: SECRET }).ok).toBe(false);
+      expect(
+        decoder.verify({ rawBody: Buffer.from(body), headers: { 'x-shopify-hmac-sha256': 'not base64!' }, secret: SECRET })
+          .ok,
+      ).toBe(false);
+    });
+
+    it('should refuse everything when no secret is stored', () => {
+      expect(
+        decoder.verify({ rawBody: Buffer.from(body), headers: { 'x-shopify-hmac-sha256': sign(body, '') }, secret: '' })
+          .ok,
+      ).toBe(false);
+    });
+  });
+
+  describe('extractEnvelope', () => {
+    it('should route an order with the exact id from the GID and the webhook id combined with a body hash as the event id', () => {
+      expect(decoder.extractEnvelope(Buffer.from(body), headers('orders/create'))).toEqual({
+        action: 'route',
+        envelope: {
+          eventId: expect.stringMatching(/^wh-1:[0-9a-f]{16}$/),
+          eventType: 'orders/create',
+          occurredAt: '2026-11-10T10:00:00.000Z',
+          objectType: 'order',
+          externalId: '820982911946154508',
+          payload: { id: '820982911946154508' },
+        },
+      });
+    });
+
+    it('should read the exact digits of a large id from a delete body that carries no GID', () => {
+      const result = decoder.extractEnvelope(Buffer.from('{"id":9007199254740993}'), headers('products/delete'));
+
+      expect(result).toMatchObject({ action: 'route', envelope: { objectType: 'product', externalId: '9007199254740993' } });
+    });
+
+    it('should pack the inventory item and location of an inventory_levels/update into the id, exactly', () => {
+      const level =
+        '{"inventory_item_id":9007199254740993,"location_id":905684977,"available":6,' +
+        '"updated_at":"2026-11-10T10:00:00-05:00","admin_graphql_api_id":"gid://shopify/InventoryLevel/523463154?inventory_item_id=9007199254740993"}';
+
+      expect(decoder.extractEnvelope(Buffer.from(level), headers('inventory_levels/update'))).toEqual({
+        action: 'route',
+        envelope: {
+          eventId: expect.stringMatching(/^wh-1:[0-9a-f]{16}$/),
+          eventType: 'inventory_levels/update',
+          occurredAt: '2026-11-10T10:00:00.000Z',
+          objectType: 'inventory',
+          externalId: 'inventory-item:9007199254740993:905684977',
+          payload: { inventoryItemId: '9007199254740993', locationId: '905684977' },
+        },
+      });
+    });
+
+    it('should ignore an inventory_levels/update that names no item or no location', () => {
+      expect(
+        decoder.extractEnvelope(Buffer.from('{"location_id":1}'), headers('inventory_levels/update')),
+      ).toMatchObject({ action: 'ignore' });
+      expect(
+        decoder.extractEnvelope(Buffer.from('{"inventory_item_id":1}'), headers('inventory_levels/update')),
+      ).toMatchObject({ action: 'ignore' });
+    });
+
+    it('should ignore a topic OpenLinker does not handle', () => {
+      expect(decoder.extractEnvelope(Buffer.from(body), headers('customers/create'))).toMatchObject({
+        action: 'ignore',
+      });
+    });
+
+    it('should reject a delivery without a topic or with a body that is not an object', () => {
+      expect(decoder.extractEnvelope(Buffer.from(body), {})).toMatchObject({ action: 'reject' });
+      expect(decoder.extractEnvelope(Buffer.from('not json'), headers('orders/create'))).toMatchObject({
+        action: 'reject',
+      });
+      expect(decoder.extractEnvelope(Buffer.from('[1]'), headers('orders/create'))).toMatchObject({
+        action: 'reject',
+      });
+    });
+
+    it('should ignore a body with no usable id', () => {
+      expect(decoder.extractEnvelope(Buffer.from('{"name":"x"}'), headers('orders/updated'))).toMatchObject({
+        action: 'ignore',
+      });
+    });
+
+    it('should derive a stable event id when the webhook id header is missing', () => {
+      const plain = { 'x-shopify-topic': 'orders/updated' };
+      const eventIdOf = (raw: string): string | null => {
+        const result = decoder.extractEnvelope(Buffer.from(raw), plain);
+        return result.action === 'route' ? result.envelope.eventId : null;
+      };
+
+      expect(eventIdOf(body)).toMatch(/^[0-9a-f]{64}$/);
+      expect(eventIdOf(body)).toBe(eventIdOf(body));
+      expect(eventIdOf(body)).not.toBe(eventIdOf('{"id":5}'));
+    });
+
+    it('should keep the event id for a genuine retry (same id, same body) and change it when the body differs', () => {
+      const eventIdOf = (raw: string, id = 'wh-1'): string | null => {
+        const result = decoder.extractEnvelope(Buffer.from(raw), headers('orders/updated', { 'x-shopify-webhook-id': id }));
+        return result.action === 'route' ? result.envelope.eventId : null;
+      };
+
+      expect(eventIdOf(body)).toBe(eventIdOf(body));
+      // The HMAC covers the body but not the id header, so the body hash stops a different body
+      // sent under a replayed id from collapsing into the original delivery.
+      expect(eventIdOf(`${body} `)).not.toBe(eventIdOf(body));
+      expect(eventIdOf(body, 'wh-2')).not.toBe(eventIdOf(body));
+    });
+
+    // Without `x-shopify-webhook-id` the dedup gate is keyed by topic + body, so
+    // a retry Shopify sends with a new trigger time is still the same delivery,
+    // while any change to the body (or the topic) is a new one. A re-signed,
+    // altered body therefore passes the gate - it costs one re-read of the
+    // resource, since the body is only a trigger (#4100 review).
+    it('should key a delivery without the webhook id on topic and body only', () => {
+      const eventIdOf = (topic: string, raw: string, triggeredAt: string): string | null => {
+        const result = decoder.extractEnvelope(Buffer.from(raw), {
+          'x-shopify-topic': topic,
+          'x-shopify-triggered-at': triggeredAt,
+        });
+        return result.action === 'route' ? result.envelope.eventId : null;
+      };
+      const first = eventIdOf('orders/updated', body, '2026-11-10T10:00:00.000Z');
+
+      expect(first).not.toBeNull();
+      expect(eventIdOf('orders/updated', body, '2026-11-10T13:59:00.000Z')).toBe(first);
+      expect(eventIdOf('orders/updated', `${body} `, '2026-11-10T10:00:00.000Z')).not.toBe(first);
+      expect(eventIdOf('orders/create', body, '2026-11-10T10:00:00.000Z')).not.toBe(first);
+    });
+  });
+});

@@ -40,6 +40,7 @@ import {
   stockLocationOverrideInvalid,
 } from './connection-errors';
 import { codedHttpError } from '../../../common/errors/coded-http.exception';
+import { hasMasterAndPublisher, masterPublisherConflictError } from './connection-capability-rules';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import type {
   Connection,
@@ -85,6 +86,8 @@ import {
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsRewriterRegistryService,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  ConnectionArchiveHookRegistryService,
+  CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
   InvalidConnectionConfigException,
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
@@ -172,6 +175,8 @@ export class ConnectionService implements IConnectionService {
     private readonly destinationTaxonomy: IDestinationTaxonomyService,
     @Inject(LOCATION_SERVICE_TOKEN)
     private readonly locations: ILocationService,
+    @Inject(CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN)
+    private readonly connectionArchiveHookRegistry: ConnectionArchiveHookRegistryService,
     // #4228: where the one-shot order-sync start choice is stored.
     @Inject(SYNC_CURSORS_SERVICE_TOKEN)
     private readonly syncCursors: ISyncCursorsService
@@ -431,19 +436,9 @@ export class ConnectionService implements IConnectionService {
     enabledCapabilities: string[],
     previouslyEnabled: string[] | null
   ): void {
-    const hasBoth = (caps: string[]): boolean =>
-      caps.includes('ProductMaster') && caps.includes('ProductPublisher');
-    if (!hasBoth(enabledCapabilities)) return;
-    if (previouslyEnabled !== null && hasBoth(previouslyEnabled)) return;
-    throw codedHttpError(
-      HttpStatus.BAD_REQUEST,
-      'CONNECTION_MASTER_PUBLISHER_CONFLICT',
-      'ProductMaster and ProductPublisher cannot both be enabled on the same connection: ' +
-        'products published to a shop would be read back by its own catalog sync as new ' +
-        'master products, creating duplicates. Keep ProductMaster on the connection that ' +
-        'owns the catalog and use ProductPublisher on a separate connection (or vice versa).',
-      { capabilities: 'ProductMaster, ProductPublisher' }
-    );
+    if (!hasMasterAndPublisher(enabledCapabilities)) return;
+    if (previouslyEnabled !== null && hasMasterAndPublisher(previouslyEnabled)) return;
+    throw masterPublisherConflictError();
   }
 
   /**
@@ -1939,8 +1934,28 @@ export class ConnectionService implements IConnectionService {
       credentialsRef: '',
     });
     this.httpTransportFactory.evict(connectionId);
+    await this.runArchiveHook(metadata.adapterKey, connection);
     this.logger.log(`Connection archived: ${connection.id} (${connection.name})`);
     return connection;
+  }
+
+  /**
+   * Plugin-held state derived from the deleted credential (a minted token in
+   * the shared cache, #3974) is the plugin's to drop. Best effort: the archive
+   * has already happened, so a failing hook is logged, never surfaced.
+   */
+  private async runArchiveHook(adapterKey: string, connection: Connection): Promise<void> {
+    const hook = this.connectionArchiveHookRegistry.get(adapterKey);
+    if (!hook) return;
+    try {
+      await hook.onArchived(connection);
+    } catch (error) {
+      this.logger.warn(
+        `Archive cleanup for connection ${connection.id} (${adapterKey}) failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   /**

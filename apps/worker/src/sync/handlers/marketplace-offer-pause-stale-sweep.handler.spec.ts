@@ -32,7 +32,7 @@ const EMPTY_RESULT: StaleOfferPauseResult = {
   variantsConsidered: 0,
   variantsStillStale: 0,
   offersPaused: 0,
-  offersSkipped: 0,
+  offersSkipped: 0, shopProductsHidden: 0, shopListingsZeroed: 0, shopListingsNotStopped: 0,
 };
 
 describe('MarketplaceOfferPauseStaleSweepHandler', () => {

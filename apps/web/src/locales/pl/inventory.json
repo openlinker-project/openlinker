@@ -408,10 +408,10 @@
       "title": "Nie zapisano jeszcze stanu tego produktu"
     },
     "gone": {
-      "few": "{master} przestał zgłaszać {variants}, więc ich oferty zostały wstrzymane. Jeśli usunięto je celowo, nie trzeba nic więcej robić.",
-      "many": "{master} przestał zgłaszać {variants}, więc ich oferty zostały wstrzymane. Jeśli usunięto je celowo, nie trzeba nic więcej robić.",
-      "one": "{master} przestał zgłaszać {variants}, więc jego oferty zostały wstrzymane. Jeśli usunięto go celowo, nie trzeba nic więcej robić.",
-      "other": "{master} przestał zgłaszać {variants}, więc ich oferty zostały wstrzymane. Jeśli usunięto je celowo, nie trzeba nic więcej robić."
+      "few": "{master} przestał zgłaszać {variants}, więc OpenLinker wycofuje je ze sprzedaży wszędzie, gdzie może. Sekcja Kanały sprzedaży powyżej pokazuje, gdzie nadal są w sprzedaży i co tam zrobić.",
+      "many": "{master} przestał zgłaszać {variants}, więc OpenLinker wycofuje je ze sprzedaży wszędzie, gdzie może. Sekcja Kanały sprzedaży powyżej pokazuje, gdzie nadal są w sprzedaży i co tam zrobić.",
+      "one": "{master} przestał zgłaszać {variants}, więc OpenLinker wycofuje go ze sprzedaży wszędzie, gdzie może. Sekcja Kanały sprzedaży powyżej pokazuje, gdzie nadal jest w sprzedaży i co tam zrobić.",
+      "other": "{master} przestał zgłaszać {variants}, więc OpenLinker wycofuje je ze sprzedaży wszędzie, gdzie może. Sekcja Kanały sprzedaży powyżej pokazuje, gdzie nadal są w sprzedaży i co tam zrobić."
     },
     "loading": {
       "few": "Ustalanie, co można sprzedać, dla {n} wariantów…",
@@ -1036,8 +1036,8 @@
     "sourceTerm": "{n} w {source}",
     "stockHistory": "Historia stanów",
     "stockSource": "Źródło stanu",
-    "stoppedReporting": "{master} przestał zgłaszać <b>{key}</b>. Nie jest już liczony, więc do sprzedania jest <b>0</b>, a jego oferty są wstrzymane. Jeśli wariant usunięto celowo, nie trzeba nic więcej robić.",
-    "stoppedReportingOn": "{master} przestał zgłaszać <b>{key}</b> <time></time>. Nie jest już liczony, więc do sprzedania jest <b>0</b>, a jego oferty są wstrzymane. Jeśli wariant usunięto celowo, nie trzeba nic więcej robić.",
+    "stoppedReporting": "{master} przestał zgłaszać <b>{key}</b>. Nie jest już liczony, więc do sprzedania jest <b>0</b>. OpenLinker wycofuje jego oferty ze sprzedaży tam, gdzie może; sekcja Kanały sprzedaży pokazuje kanały, na których nadal jest w sprzedaży.",
+    "stoppedReportingOn": "{master} przestał zgłaszać <b>{key}</b> <time></time>. Nie jest już liczony, więc do sprzedania jest <b>0</b>. OpenLinker wycofuje jego oferty ze sprzedaży tam, gdzie może; sekcja Kanały sprzedaży pokazuje kanały, na których nadal jest w sprzedaży.",
     "toSell": "do sprzedania",
     "unknownNote": "<b>{n}</b> w {master}. OpenLinker nie może teraz ustalić liczby zarezerwowanych sztuk, więc nie wysyła stanów do kanałów."
   },

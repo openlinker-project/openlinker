@@ -47,6 +47,12 @@ export interface GenerateAuthorizationUrlInput {
   initialConfig?: Record<string, unknown>;
   /** Where order sync starts for a NEW connection (#4228); ignored on re-auth. */
   orderSyncStart?: OrderSyncStart;
+  /**
+   * Capabilities the created connection enables. Absent, the adapter manifest's
+   * default applies. Ignored on the re-auth-in-place path, which rotates
+   * credentials only.
+   */
+  enabledCapabilities?: string[];
 }
 
 /**
@@ -70,6 +76,8 @@ export interface OAuthStateData {
   initialConfig?: Record<string, unknown>;
   /** The start choice survives the Redis round trip so the callback can store it (#4228). */
   orderSyncStart?: OrderSyncStart;
+  /** Capabilities chosen at connect time; see `GenerateAuthorizationUrlInput`. */
+  enabledCapabilities?: string[];
 }
 
 /**

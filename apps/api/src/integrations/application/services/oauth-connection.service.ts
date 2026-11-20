@@ -22,6 +22,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { randomUUID, randomBytes } from 'crypto';
 import { RedisClientType } from 'redis';
 import type { Connection, ConnectionConfig } from '@openlinker/core/identifier-mapping';
+import type { CoreCapability } from '@openlinker/core/integrations';
 import {
   CREDENTIALS_SERVICE_TOKEN,
   ICredentialsService,
@@ -79,6 +80,7 @@ export class OAuthConnectionService implements IOAuthConnectionService {
       connectionId: input.connectionId,
       initialConfig: input.initialConfig,
       orderSyncStart: input.orderSyncStart,
+      enabledCapabilities: input.enabledCapabilities,
     };
     await this.redisClient.setEx(
       `${this.STATE_KEY_PREFIX}${state}`,
@@ -280,6 +282,9 @@ export class OAuthConnectionService implements IOAuthConnectionService {
       credentialsRef: `db:${credentialRef}`, // db: prefix selects the database credentials backend
       adapterKey: stateData.adapterKey,
       ...(stateData.orderSyncStart ? { orderSyncStart: stateData.orderSyncStart } : {}),
+      ...(stateData.enabledCapabilities
+        ? { enabledCapabilities: stateData.enabledCapabilities as CoreCapability[] }
+        : {}),
     });
 
     this.logger.log(

@@ -68,3 +68,4 @@ export {
   useCostSummaryQuery,
   COST_COVERAGE_DAYS,
 } from './hooks/use-cost-coverage-query';
+export { buildShopProductUrl } from './lib/shop-product-url';

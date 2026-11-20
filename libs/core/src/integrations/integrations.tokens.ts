@@ -41,3 +41,6 @@ export const CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN = Symbol(
   'ConnectionCredentialsRewriterRegistryService',
 );
 
+export const CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN = Symbol(
+  'ConnectionArchiveHookRegistryService',
+);

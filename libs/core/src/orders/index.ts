@@ -32,6 +32,23 @@ export {
 // asked on the create-skip path only, best-effort.
 export type { OrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
 export { isOrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
+// Delivery-point edit of an order the destination already holds (#4195): asked
+// on the create-skip path when the source changed the locker or shipping method.
+export type { OrderDeliveryUpdater } from './domain/ports/capabilities/order-delivery-updater.capability';
+export { isOrderDeliveryUpdater } from './domain/ports/capabilities/order-delivery-updater.capability';
+export type {
+  OrderDeliveryRefusalReason,
+  OrderDeliveryUpdateOutcome,
+  OrderDeliveryUpdateReport,
+  OrderDeliveryUpdateResult,
+} from './domain/types/order-delivery-update.types';
+export {
+  OrderDeliveryRefusalReasonValues,
+  OrderDeliveryUpdateOutcomeValues,
+  computeDeliveryFingerprint,
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+} from './domain/types/order-delivery-update.types';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
 // shipment-status projection from the OMP's view.
 export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
@@ -381,6 +398,11 @@ export type {
   EvaluateRefundCeilingInput,
 } from './domain/types/refund-ceiling.types';
 
+// Refund-derived order state (#4130) - derived on read, never stored, so the
+// poll that rewrites `paymentStatus` cannot overwrite it.
+export { deriveOrderRefundState, OrderRefundStateValues } from './domain/types/refund-state.types';
+export type { OrderRefundState, OrderRefundStateView } from './domain/types/refund-state.types';
+
 // Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
 // speaks. Declared here rather than in `returns` because the vocabulary is
 // orders' own and a refund is not inherently about a return.
@@ -569,6 +591,26 @@ export type {
 export { FULFILLMENT_DISPATCH_RELAY_ORIGIN } from './application/services/fulfillment-dispatch-relay.service';
 export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
 export { OrderRefundService } from './application/services/order-refund.service';
+export type {
+  IOrderRefundObservationService,
+  RefundObservationResult,
+} from './application/interfaces/order-refund-observation.service.interface';
+export {
+  OrderRefundObservationService,
+  buildObservedRefundIdempotencyKey,
+} from './application/services/order-refund-observation.service';
+export type {
+  IOrderRefundRelayService,
+  RefundRelayResult,
+} from './application/interfaces/order-refund-relay.service.interface';
+export { OrderRefundRelayService } from './application/services/order-refund-relay.service';
+export type { SourceRefundObservation } from './domain/types/source-refund-observation.types';
+export type { RefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
+export { isRefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
+export {
+  isRefundObservationEnabled,
+  REFUND_OBSERVATION_ENV_VAR,
+} from './domain/types/refund-observation-flag.types';
 export type {
   ITaxRateBackfillService,
   TaxRateBackfillPageInput,

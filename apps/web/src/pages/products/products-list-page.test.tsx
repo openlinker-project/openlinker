@@ -125,6 +125,38 @@ describe('ProductsListPage', () => {
   });
   afterEach(cleanup);
 
+  it('should warn that deleted products are still on sale and link to the listings filter', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      listings: { getSaleHoldAttentionCount: vi.fn().mockResolvedValue({ productsStillOnSale: 3 }) } as never,
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    const banner = await screen.findByTestId('sale-hold-banner');
+    expect(banner).toHaveTextContent('3 products deleted at the source are still on sale');
+    expect(screen.getByRole('link', { name: 'Show these listings' })).toHaveAttribute(
+      'href',
+      '/listings?staleSignal=selling',
+    );
+  });
+
+  it('should say the count could not be read instead of showing nothing', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      listings: { getSaleHoldAttentionCount: vi.fn().mockRejectedValue(new Error('down')) } as never,
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    expect(await screen.findByTestId('sale-hold-banner-failed')).toBeInTheDocument();
+  });
+
+  it('should show no sale-hold banner when nothing deleted is still on sale', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    await screen.findAllByRole('status');
+    expect(screen.queryByTestId('sale-hold-banner')).not.toBeInTheDocument();
+  });
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       products: {
@@ -259,7 +291,11 @@ describe('ProductsListPage', () => {
     // unresolved connection; what must never carry it is a stock badge.
     const unknownLabels = within(table)
       .queryAllByText('Unknown')
-      .filter((el) => !el.classList.contains('connection-chip__name'));
+      .filter(
+        (el) =>
+          !el.classList.contains('connection-chip__label') &&
+          !el.classList.contains('connection-chip__name'),
+      );
     expect(unknownLabels).toHaveLength(0);
     expect(within(table).queryByText('Out of stock')).toBeNull();
   });
@@ -1202,7 +1238,9 @@ describe('ProductsListPage', () => {
       const chip = cell.querySelector('.connection-chip');
       expect(chip).not.toBeNull();
       expect(chip).toHaveAttribute('data-channel', 'prestashop');
-      expect(chip!.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      // #4232: the name leads the face; the integration slides out.
+      expect(chip!.querySelector('.connection-chip__face')).toHaveTextContent('PrestaShop Terra Store');
+      expect(chip!.querySelector('.connection-chip__reveal')).toHaveTextContent('PrestaShop');
       expect(within(cell).getAllByRole('link')).toHaveLength(1);
 
       // Name over a shortened, copyable id — the fact the old cell dropped.
@@ -1310,7 +1348,7 @@ describe('ProductsListPage', () => {
       expect(getById).not.toHaveBeenCalled();
       // The pill still resolves: its platformType is on the product's own
       // external-id row, not on the connection the page could not find.
-      expect(cell.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      expect(cell.querySelector('.connection-chip__reveal')).toHaveTextContent('PrestaShop');
     });
 
     it('renders erli and woocommerce source pills through the plugin registry, not the lowercase slug', async () => {

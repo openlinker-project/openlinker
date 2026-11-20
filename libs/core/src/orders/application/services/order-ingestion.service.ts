@@ -786,6 +786,18 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     const incoming = await orderSource.getOrder({ externalOrderId });
 
+    // An order the source says OpenLinker created is an echo by its own
+    // account. Checked before any id is minted: the mapping-based guard below
+    // cannot see it while the creating sync has not yet saved its external-id
+    // mapping, and minting an id here would give the echo an order of its own.
+    if (incoming.createdFromInternalOrderId !== undefined) {
+      this.logger.debug(
+        `Skipping destination-echo re-ingestion of external order ${incoming.externalOrderId} ` +
+          `on connection ${connectionId}: created from ${incoming.createdFromInternalOrderId}`
+      );
+      return [];
+    }
+
     // Step 1: resolve order + customer IDs (no item mapping yet)
     const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Order,
@@ -1202,6 +1214,34 @@ export class OrderIngestionService implements IOrderIngestionService {
           (error as Error).stack
         );
       }
+
+      // A cancel that arrives as an ordinary order UPDATE (Allegro's status
+      // change, a re-read) used to reach only the stock restore: the relay to
+      // destinations ran solely for a feed event typed `cancelled`, so a copy
+      // already created in a destination stayed live and its stock stayed
+      // consumed. Relay here too, but only where THIS call made the cancelled
+      // transition: `persistIncomingSnapshot` returns a record carrying
+      // `cancelledAt` only when its `markCancelled` reported the transition, so a
+      // concurrent cancel event that stamped first (and relays itself) is not
+      // relayed a second time from here.
+      if (!existing?.isCancelled && snapshotRecord.cancelledAt != null) {
+        try {
+          const relayed = await this.orderLifecycleRelay.relay({
+            internalOrderId,
+            originConnectionId: connectionId,
+            event: { type: 'cancelled' },
+          });
+          this.logger.log(
+            `Cancellation relayed for order ${internalOrderId} on update: ` +
+              (relayed.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') || 'no targets')
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to relay the cancellation of order ${internalOrderId} to its destinations`,
+            (error as Error).stack
+          );
+        }
+      }
     }
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
@@ -1317,6 +1357,12 @@ export class OrderIngestionService implements IOrderIngestionService {
               syncedAt: new Date(),
               externalOrderId: result.orderRef.orderId,
               externalOrderNumber: result.orderRef.orderNumber,
+              // #4195: what the destination copy now carries about delivery, so
+              // the next re-ingestion relays only a real change.
+              ...(result.deliveryFingerprint !== undefined
+                ? { deliveryFingerprint: result.deliveryFingerprint }
+                : {}),
+              ...(result.deliveryUpdate ? { deliveryUpdate: result.deliveryUpdate } : {}),
             }
           );
         } else if (result.status === 'skipped_held') {
@@ -1384,6 +1430,17 @@ export class OrderIngestionService implements IOrderIngestionService {
               error: withheldOnHoldError(result.holdReason),
             }
           );
+        } else if (
+          result.status === 'skipped_cancelled' &&
+          existing?.syncStatus.some(
+            (entry) =>
+              entry.destinationConnectionId === result.destinationConnectionId && entry.status === 'synced'
+          )
+        ) {
+          // The destination already holds this order. "Cancelled before the
+          // create" would be false, and it would erase the external id the
+          // cancellation relay needs to find the copy.
+          return Promise.resolve();
         } else if (result.status === 'skipped_cancelled') {
           // #2284 — terminal, and NOT a failure: the source cancelled before the
           // destination create ran, so provisioning was withheld. `error` carries

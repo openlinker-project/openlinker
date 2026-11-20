@@ -239,6 +239,27 @@ describe('OAuthConnectionService', () => {
       expect(firstCallArgs(connectionService.create)[0]).not.toHaveProperty('orderSyncStart');
     });
 
+    it('creates the connection with the capability set chosen at connect time', async () => {
+      connectionService.create.mockResolvedValue({ id: 'c', name: 'n' } as unknown as Connection);
+
+      await service.completeAuthorization(
+        'auth-code',
+        makeState({ enabledCapabilities: ['ProductPublisher'] }),
+      );
+
+      expect(firstCallArgs(connectionService.create)[0]).toMatchObject({
+        enabledCapabilities: ['ProductPublisher'],
+      });
+    });
+
+    it('leaves the capability set to the manifest default when none was chosen', async () => {
+      connectionService.create.mockResolvedValue({ id: 'c', name: 'n' } as unknown as Connection);
+
+      await service.completeAuthorization('auth-code', makeState());
+
+      expect('enabledCapabilities' in (firstCallArgs(connectionService.create)[0] as object)).toBe(false);
+    });
+
     it('omits oauthAccountId when the platform reports no identity (optional-identity)', async () => {
       adapter.fetchAccountIdentity.mockResolvedValue(undefined);
       connectionService.create.mockResolvedValue({ id: 'c', name: 'n' } as unknown as Connection);

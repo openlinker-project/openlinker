@@ -9,6 +9,7 @@
  *
  * @module domain/types
  */
+import type { OrderDeliveryUpdateReport } from './order-delivery-update.types';
 import type { OrderSyncStatusFilter } from './order-record.types';
 
 /**
@@ -34,6 +35,16 @@ export interface OrderSyncStatus {
   externalOrderNumber?: string;
   /** Error message (for failed status) */
   error?: string;
+  /**
+   * Digest of the delivery point and shipping method the destination copy was
+   * last given (#4195). The relay compares it with the order's current digest,
+   * so a change is carried once however often it is re-ingested. Absent on a
+   * copy created before the relay existed: it reads as "unknown", and the
+   * current value is recorded as the baseline instead of being relayed.
+   */
+  deliveryFingerprint?: string;
+  /** What the last delivery relay to this destination did (#4195). */
+  deliveryUpdate?: OrderDeliveryUpdateReport;
 }
 
 /**

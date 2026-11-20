@@ -26,6 +26,8 @@ import type {
   DispatchCarrierHint,
   MappingOption,
   ReturnSourceReader,
+  RefundSourceReader,
+  SourceRefundObservation,
   ReturnDecliner,
   OrderBillingDocumentUploader,
   OrderBillingDocumentLinker,
@@ -73,6 +75,13 @@ import type {
   AllegroShippingRateDetailResponse,
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
+import { toSourceRefundObservations } from './allegro-payment-refund.mapper';
+import {
+  ALLEGRO_REFUND_MAX_PAGES,
+  ALLEGRO_REFUND_PAGE_LIMIT,
+  type AllegroPaymentRefundWire,
+  type AllegroPaymentRefundsResponse,
+} from '../../domain/types/allegro-payment-refund.types';
 import { deriveAllegroPaymentMethod } from './allegro-payment-method';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
 import type {
@@ -144,6 +153,7 @@ export class AllegroOrderSourceAdapter
     OrderStatusWriteback,
     OrderFulfillmentReadback,
     ReturnSourceReader,
+    RefundSourceReader,
     ReturnDecliner,
     OrderBillingDocumentUploader,
     OrderBillingDocumentLinker,
@@ -996,6 +1006,37 @@ export class AllegroOrderSourceAdapter
     const raw = Number(process.env.OL_ALLEGRO_RETURNS_BOOTSTRAP_DAYS);
     const days = Number.isFinite(raw) && raw > 0 ? raw : 30;
     return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  /**
+   * Settled payment refunds Allegro holds for one checkout form (#4126).
+   *
+   * `GET /payments/refunds?order.id=` (`checkoutForm.id` is silently ignored by the
+   * endpoint and returns every refund of the seller, so it must not be used; the
+   * mapper additionally keeps only rows naming this order). The checkout form itself carries
+   * no refund signal (`payment.paidAmount` stays at the original total), so this
+   * is the only place a seller-side "refund payment" is visible. Only `SUCCESS`
+   * is returned - a pending or failed refund moved no money. `totalValue` is the
+   * whole refund (lines plus delivery), which is what the record needs.
+   */
+  async listRefunds(input: { externalOrderId: string }): Promise<SourceRefundObservation[]> {
+    const wires: AllegroPaymentRefundWire[] = [];
+    for (let page = 0; page < ALLEGRO_REFUND_MAX_PAGES; page += 1) {
+      const response = await this.httpClient.get<AllegroPaymentRefundsResponse>(
+        '/payments/refunds',
+        {
+          queryParams: {
+            'order.id': input.externalOrderId,
+            limit: ALLEGRO_REFUND_PAGE_LIMIT,
+            offset: page * ALLEGRO_REFUND_PAGE_LIMIT,
+          },
+        }
+      );
+      const rows = response.data.refunds ?? [];
+      wires.push(...rows);
+      if (rows.length < ALLEGRO_REFUND_PAGE_LIMIT) break;
+    }
+    return toSourceRefundObservations(wires, input.externalOrderId);
   }
 
   /**

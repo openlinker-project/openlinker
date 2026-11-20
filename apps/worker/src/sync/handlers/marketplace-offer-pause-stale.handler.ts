@@ -44,10 +44,11 @@ export class MarketplaceOfferPauseStaleHandler implements SyncJobHandler {
     try {
       const result = await this.staleOfferPause.pauseOffersForVariants({
         variantIds: payload.variantIds,
+        internalProductId: payload.internalProductId,
         correlationId: payload.correlationId,
       });
       this.logger.log(
-        `Stale-offer pause complete: considered=${result.variantsConsidered}, stillStale=${result.variantsStillStale}, paused=${result.offersPaused}, skipped=${result.offersSkipped} (correlationId=${payload.correlationId})`
+        `Stale pause complete: considered=${result.variantsConsidered}, stillStale=${result.variantsStillStale}, offersPaused=${result.offersPaused}, offersSkipped=${result.offersSkipped}, shopHidden=${result.shopProductsHidden}, shopZeroed=${result.shopListingsZeroed}, shopNotStopped=${result.shopListingsNotStopped} (correlationId=${payload.correlationId})`
       );
       return { outcome: 'ok' };
     } catch (error) {
@@ -68,8 +69,9 @@ export class MarketplaceOfferPauseStaleHandler implements SyncJobHandler {
       !payload ||
       typeof payload !== 'object' ||
       typeof payload.internalProductId !== 'string' ||
+      // An empty list is a product-level deletion row (#3962): every variant
+      // of `internalProductId` is then the subject.
       !Array.isArray(payload.variantIds) ||
-      payload.variantIds.length === 0 ||
       !payload.variantIds.every((id) => typeof id === 'string') ||
       typeof payload.correlationId !== 'string'
     ) {

@@ -7,6 +7,7 @@
  * @module libs/core/src/listings/application/services/__tests__
  */
 
+import { ShopPublishMasterPublisherConflictException } from '../../../domain/exceptions/shop-publish-master-publisher-conflict.exception';
 import { ListingCreationRecord } from '../../../domain/entities/listing-creation-record.entity';
 import { ProductPublishEnqueueService } from '../product-publish-enqueue.service';
 
@@ -28,7 +29,7 @@ function makeRecord(id = 'rec-1', bulkBatchId: string | null = null): ListingCre
 }
 
 describe('ProductPublishEnqueueService', () => {
-  let integrations: { getCapabilityAdapter: jest.Mock };
+  let integrations: { getCapabilityAdapter: jest.Mock; getAdapter: jest.Mock };
   let records: { create: jest.Mock };
   let jobEnqueue: { enqueueJob: jest.Mock };
   let service: ProductPublishEnqueueService;
@@ -43,6 +44,7 @@ describe('ProductPublishEnqueueService', () => {
   beforeEach(() => {
     integrations = {
       getCapabilityAdapter: jest.fn().mockResolvedValue({ publishProduct: jest.fn() }),
+      getAdapter: jest.fn().mockResolvedValue({ connection: { id: CONN, enabledCapabilities: ['ProductPublisher'] } }),
     };
     records = { create: jest.fn().mockResolvedValue(makeRecord()) };
     jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1' }) };
@@ -144,6 +146,17 @@ describe('ProductPublishEnqueueService', () => {
   it('should propagate a capability resolution failure (no record, no enqueue)', async () => {
     integrations.getCapabilityAdapter.mockRejectedValue(new Error('capability not supported'));
     await expect(service.enqueuePublish(input)).rejects.toThrow('capability not supported');
+    expect(records.create).not.toHaveBeenCalled();
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
+  it('should refuse a connection holding both ProductMaster and ProductPublisher (no record, no enqueue)', async () => {
+    integrations.getAdapter.mockResolvedValue({
+      connection: { id: CONN, enabledCapabilities: ['ProductMaster', 'ProductPublisher'] },
+    });
+    await expect(service.enqueuePublish(input)).rejects.toBeInstanceOf(
+      ShopPublishMasterPublisherConflictException,
+    );
     expect(records.create).not.toHaveBeenCalled();
     expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
   });

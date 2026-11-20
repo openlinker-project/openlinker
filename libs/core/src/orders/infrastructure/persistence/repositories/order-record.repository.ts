@@ -35,6 +35,11 @@ import type { OrderLineItemDraft } from '../../../domain/order-analytics-project
 import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import {
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+  type OrderDeliveryUpdateReport,
+} from '../../../domain/types/order-delivery-update.types';
+import {
   isFulfillmentRoutingSkipReason,
   type FulfillmentRoutingSkipReason,
 } from '../../../domain/types/fulfillment-routing-eligibility.types';
@@ -214,6 +219,22 @@ export class OrderRecordRepository
    */
   private get dataSource(): DataSource {
     return this.repository.manager.connection;
+  }
+
+  async countOrdersMatchingSearchSince(terms: readonly string[], since: Date): Promise<number> {
+    const patterns = terms
+      .map((term) => normalizeOrderSearchText(term))
+      .filter((normalized) => normalized.length > 0)
+      .map((normalized) => `%${OrderRecordRepository.escapeLikePattern(normalized)}%`);
+    if (patterns.length === 0) return 0;
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec."createdAt" >= :since', { since });
+    qb.andWhere(
+      `(${patterns.map((_, index) => `rec."searchText" LIKE :p${index} ESCAPE '\\'`).join(' OR ')})`,
+      Object.fromEntries(patterns.map((pattern, index) => [`p${index}`, pattern])),
+    );
+    return qb.getCount();
   }
 
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
@@ -794,26 +815,52 @@ export class OrderRecordRepository
       if (normalized.length > 0) {
         const pattern = `%${OrderRecordRepository.escapeLikePattern(normalized)}%`;
         const trackingOrderIds = filters.searchTrackingOrderIds ?? [];
+        const idNeedle = OrderRecordRepository.toOrderIdNeedle(normalized);
+        const idPattern =
+          idNeedle === null ? null : `%${OrderRecordRepository.escapeLikePattern(idNeedle)}%`;
+        // #4229 - the id predicate is built separately from the text one, so it
+        // can drop dashes and the shared prefix; `null` means "do not match ids".
+        const matches = ['rec."searchText" LIKE :searchPattern ESCAPE \'\\\''];
+        const params: Record<string, unknown> = { searchPattern: pattern };
+        if (idPattern !== null) {
+          matches.push('rec."internalOrderId" LIKE :searchIdPattern ESCAPE \'\\\'');
+          params.searchIdPattern = idPattern;
+        }
         if (trackingOrderIds.length > 0) {
-          // #3528 — the tracking-number search resolves a shipment's owning
+          // #3528 - the tracking-number search resolves a shipment's owning
           // order BEFORE `orders` is ever asked (`orders` must not import
           // `shipping`, which already depends on `orders`), so by the time
           // this filter runs it is just a plain id list. ORed with the text
           // match, never ANDed: both are alternate ways ONE query can match
           // an order, not two conditions the order must satisfy together.
-          qb.andWhere(
-            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" IN (:...searchTrackingOrderIds))',
-            { searchPattern: pattern, searchTrackingOrderIds: trackingOrderIds }
-          );
-        } else {
-          qb.andWhere('rec."searchText" LIKE :searchPattern ESCAPE \'\\\'', {
-            searchPattern: pattern,
-          });
+          matches.push('rec."internalOrderId" IN (:...searchTrackingOrderIds)');
+          params.searchTrackingOrderIds = trackingOrderIds;
         }
+        qb.andWhere(`(${matches.join(' OR ')})`, params);
       }
     }
 
     return qb;
+  }
+
+  /**
+   * The substring to match against `internalOrderId`, or `null` when the query
+   * should not match ids at all (#4229 review). Every id is
+   * `ol_order_<uuid without dashes>`, so dashes are dropped (a UUID pasted from
+   * a log still matches), the shared prefix is stripped, and a query that lies
+   * inside the prefix (`ol`, `order`, `_`) or is under 3 characters is refused -
+   * it would match every order and only add noise to a text search.
+   */
+  private static toOrderIdNeedle(normalized: string): string | null {
+    const prefix = 'ol_order_';
+    let needle = normalized.replace(/-/g, '');
+    if (prefix.includes(needle)) {
+      return null;
+    }
+    if (needle.startsWith(prefix)) {
+      needle = needle.slice(prefix.length);
+    }
+    return needle.length >= 3 ? needle : null;
   }
 
   /** Escape LIKE metacharacters so a search term is matched literally. */
@@ -2982,14 +3029,19 @@ export class OrderRecordRepository
    * `Repository.update()`'s partial-entity API cannot express a `COALESCE(...)`
    * right-hand side without an unsafe string-interpolated function value.
    * No-op (no throw, no rows affected) when the order row doesn't exist yet.
+   * Returns true only when this call wrote the instant (the first transition).
    */
-  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
-    await this.repository.query(
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean> {
+    // `WHERE "cancelledAt" IS NULL` keeps first-write-wins and makes the affected
+    // count the answer to "did THIS call make the transition"; for a raw UPDATE
+    // the count is `result[1]` (rows.length is always 2 on this driver).
+    const result = (await this.repository.query(
       `UPDATE "order_records"
-       SET "cancelledAt" = COALESCE("cancelledAt", $1)
-       WHERE "internalOrderId" = $2`,
+       SET "cancelledAt" = $1
+       WHERE "internalOrderId" = $2 AND "cancelledAt" IS NULL`,
       [cancelledAt, internalOrderId]
-    );
+    )) as [unknown, number];
+    return result[1] > 0;
   }
 
   /**
@@ -4235,6 +4287,15 @@ export class OrderRecordRepository
       externalOrderId: status.externalOrderId,
       externalOrderNumber: status.externalOrderNumber,
       error: status.error,
+      deliveryFingerprint: status.deliveryFingerprint,
+      deliveryUpdate: status.deliveryUpdate
+        ? {
+            outcome: status.deliveryUpdate.outcome,
+            reason: status.deliveryUpdate.reason,
+            detail: status.deliveryUpdate.detail,
+            at: status.deliveryUpdate.at.toISOString(),
+          }
+        : undefined,
     };
 
     const newAttemptRow: SyncAttemptJson = {
@@ -4315,6 +4376,8 @@ export class OrderRecordRepository
       externalOrderId: s.externalOrderId,
       externalOrderNumber: s.externalOrderNumber,
       error: s.error,
+      deliveryFingerprint: s.deliveryFingerprint,
+      deliveryUpdate: toDeliveryUpdateReport(s.deliveryUpdate),
     }));
 
     const syncAttempts: SyncAttempt[] = (entity.syncAttempts ?? []).map((a) => ({
@@ -4632,4 +4695,27 @@ export class OrderRecordRepository
     entity.unitCostCurrency = item.cost.unitCostCurrency;
     return entity;
   }
+}
+
+/**
+ * Coerce a persisted delivery-relay report (#4195). An unrecognised outcome
+ * reads as absent rather than being surfaced as something this build cannot
+ * describe, and a malformed instant is dropped with it.
+ */
+function toDeliveryUpdateReport(
+  json: OrderSyncStatusJson['deliveryUpdate']
+): OrderDeliveryUpdateReport | undefined {
+  if (!json || !isOrderDeliveryUpdateOutcome(json.outcome)) {
+    return undefined;
+  }
+  const at = new Date(json.at);
+  if (Number.isNaN(at.getTime())) {
+    return undefined;
+  }
+  return {
+    outcome: json.outcome,
+    ...(isOrderDeliveryRefusalReason(json.reason) ? { reason: json.reason } : {}),
+    ...(json.detail ? { detail: json.detail } : {}),
+    at,
+  };
 }

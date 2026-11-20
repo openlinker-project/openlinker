@@ -200,6 +200,10 @@ const ALLOW_LIST = new Map([
     new Set(['SyncJobRepositoryPort']),
   ],
   [
+    'apps/worker/test/integration/inventory-propagate-offer-key-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
     'apps/worker/test/integration/job-intake-execution.int-spec.ts',
     new Set(['SyncJobRepositoryPort']),
   ],
