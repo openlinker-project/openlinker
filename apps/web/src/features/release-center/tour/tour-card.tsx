@@ -23,6 +23,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { ReleaseIcon } from '../components/release-icon';
 import { connectionsQueryKeys, useConnectionQuery } from '../../connections';
@@ -52,13 +53,15 @@ interface TourCardProps {
   onClose: () => void;
   /** The operator asked to leave early (the close button); the provider confirms first. */
   onDismiss: () => void;
+  /** Tells the provider a confirmation is open, so Esc answers that dialog instead of the tour. */
+  onModalChange: (open: boolean) => void;
 }
 
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function TourCard({ state, dispatch, onClose, onDismiss }: TourCardProps): ReactElement | null {
+export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }: TourCardProps): ReactElement | null {
   const copy = useMessages('release-center');
   const tour = copy.tour;
   const apiClient = useApiClient();
@@ -86,6 +89,11 @@ export function TourCard({ state, dispatch, onClose, onDismiss }: TourCardProps)
   const connection = useConnectionQuery(step?.connectionId ?? '', { enabled: Boolean(step?.connectionId) });
   const [savedChoice, setSavedChoice] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  useEffect(() => {
+    onModalChange(confirmSkip);
+    return () => onModalChange(false);
+  }, [confirmSkip, onModalChange]);
 
   const cardRef = useRef<HTMLElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
@@ -347,6 +355,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss }: TourCardProps)
   // Skipping a showcase counts as seen and leaves the whole item at once.
   const handleSkipShowcase = (): void => {
     if (!showcase) return;
+    setConfirmSkip(false);
     markSeen(showcase.itemKey);
     dispatch({ type: 'skipItem' });
   };
@@ -559,7 +568,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss }: TourCardProps)
         ) : null}
         <div className="tour-card__footer">
           {showcase ? (
-            <Button tone="ghost" className="button--sm" onClick={handleSkipShowcase}>
+            <Button tone="ghost" className="button--sm" onClick={() => setConfirmSkip(true)}>
               {tour.skipShowcase}
             </Button>
           ) : isAdmin && !done && state.target !== 'missing' ? (
@@ -598,6 +607,18 @@ export function TourCard({ state, dispatch, onClose, onDismiss }: TourCardProps)
           </div>
         </div>
       </section>
+      <ConfirmDialog
+        open={confirmSkip}
+        onOpenChange={setConfirmSkip}
+        title={tour.skipConfirm.title}
+        description={tour.skipConfirm.description}
+        cancelLabel={tour.skipConfirm.stay}
+        confirmLabel={tour.skipConfirm.confirm}
+        onConfirm={handleSkipShowcase}
+        initialFocus="cancel"
+        className="dialog__content--elevated"
+        overlayClassName="dialog__overlay--elevated"
+      />
     </>
   );
 }

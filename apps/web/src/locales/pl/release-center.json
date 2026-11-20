@@ -213,6 +213,12 @@
     "saved": "Zapisano: {choice}",
     "showcaseChip": "Przewodnik",
     "skip": "Pomiń krok",
+    "skipConfirm": {
+      "confirm": "Pomiń przewodnik",
+      "description": "Oznaczymy go jako obejrzany i nie będzie już sam wracał.",
+      "stay": "Zostań w przewodniku",
+      "title": "Pominąć przewodnik?"
+    },
     "skipShowcase": "Pomiń przewodnik",
     "stepOf": "Krok {current} z {total}",
     "stepOfRelease": "Wersja {version}: krok {current} z {total}",

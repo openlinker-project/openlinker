@@ -42,6 +42,8 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   const location = useLocation();
   const triggerRef = useRef<HTMLElement | null>(null);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  // The card's own confirmation (skip the guide): Esc must answer that dialog, not open a second one.
+  const [cardModalOpen, setCardModalOpen] = useState(false);
   const leaveCopy = useMessages('release-center').tour.leave;
 
   const close = useCallback((): void => {
@@ -86,14 +88,14 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   useEffect(() => {
     if (!state.active) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || confirmingLeave) return;
+      if (event.key !== 'Escape' || confirmingLeave || cardModalOpen) return;
       event.preventDefault();
       event.stopPropagation();
       requestLeave();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [state.active, confirmingLeave, requestLeave]);
+  }, [state.active, confirmingLeave, cardModalOpen, requestLeave]);
 
   const controller = useMemo<TourController>(
     () => ({ isActive: state.active, start, close }),
@@ -104,7 +106,12 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
     <TourContext.Provider value={controller}>
       {children}
       {state.active ? (
-        <TourCard state={state} dispatch={dispatch} onClose={close} onDismiss={requestLeave} />
+        <TourCard
+          state={state}
+          dispatch={dispatch}
+          onClose={close} onDismiss={requestLeave}
+          onModalChange={setCardModalOpen}
+        />
       ) : null}
       {/* Elevated classes lift it over the tour card (z-index 61). Focus starts on
           "stay" because leaving is the one action that loses the operator's place. */}

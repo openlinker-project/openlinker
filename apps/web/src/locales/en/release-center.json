@@ -209,6 +209,12 @@
     "saved": "Saved: {choice}",
     "showcaseChip": "Guide",
     "skip": "Skip step",
+    "skipConfirm": {
+      "confirm": "Skip the tour",
+      "description": "We will mark it as seen and it will not come back on its own.",
+      "stay": "Keep going",
+      "title": "Skip this tour?"
+    },
     "skipShowcase": "Skip the tour",
     "stepOf": "Step {current} of {total}",
     "stepOfRelease": "Version {version}: step {current} of {total}",

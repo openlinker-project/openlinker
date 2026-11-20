@@ -193,7 +193,9 @@ export function ReleaseCard({
         </div>
       </div>
 
-      {hasSteps && !archived ? (
+      {/* Archived cards keep their progress and steps: archiving files the notice away, it does not
+          take away the way back to a step or the view of what is done. */}
+      {hasSteps ? (
         <>
           <div className="release-progress">
             <div
@@ -309,7 +311,7 @@ export function ReleaseCard({
           </div>
         </>
       ) : null}
-      {!hasSteps || archived ? (
+      {!hasSteps ? (
         <div className="release-card__actions">
           <Button
             className="button--sm"
