@@ -20,20 +20,31 @@ interface OrderImportHealthProps {
   orderImport: OrderImportStatus | null;
 }
 
-export function OrderImportHealth({ orderImport }: OrderImportHealthProps): ReactElement {
+export function OrderImportHealth({ orderImport }: OrderImportHealthProps): ReactElement | null {
   const copy = useMessages('connections').orderSyncPanel.health;
   const format = useFormat();
 
   if (orderImport === null) {
-    return <p className="order-sync-panel__note">{copy.unavailable}</p>;
+    return null;
   }
 
-  const { importedLast24h, failedLast7d, failures, waiting, lastImportedAt, activeImport } =
-    orderImport;
+  const {
+    importedLast24h,
+    lastPolledAt,
+    failedLast7d,
+    failures,
+    waiting,
+    lastImportedAt,
+    activeImport,
+  } = orderImport;
 
   return (
     <div className="order-import-health">
       <dl className="order-import-health__stats">
+        <div className="order-import-health__stat">
+          <dt>{copy.lastChecked}</dt>
+          <dd>{lastPolledAt === null ? copy.neverChecked : format.relativeTime(lastPolledAt)}</dd>
+        </div>
         <div className="order-import-health__stat">
           <dt>{copy.imported}</dt>
           <dd>{format.number(importedLast24h)}</dd>
@@ -42,21 +53,18 @@ export function OrderImportHealth({ orderImport }: OrderImportHealthProps): Reac
           <dt>{copy.lastOrder}</dt>
           <dd>{lastImportedAt === null ? copy.noneRecently : format.relativeTime(lastImportedAt)}</dd>
         </div>
-        <div className="order-import-health__stat">
-          <dt>{copy.waiting}</dt>
-          <dd>{format.number(waiting)}</dd>
-        </div>
-        <div
-          className={[
-            'order-import-health__stat',
-            failedLast7d > 0 ? 'order-import-health__stat--warn' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          <dt>{copy.failed}</dt>
-          <dd>{format.number(failedLast7d)}</dd>
-        </div>
+        {waiting > 0 ? (
+          <div className="order-import-health__stat">
+            <dt>{copy.waiting}</dt>
+            <dd>{format.number(waiting)}</dd>
+          </div>
+        ) : null}
+        {failedLast7d > 0 ? (
+          <div className="order-import-health__stat order-import-health__stat--warn">
+            <dt>{copy.failed}</dt>
+            <dd>{format.number(failedLast7d)}</dd>
+          </div>
+        ) : null}
       </dl>
 
       {failedLast7d > 0 ? (
@@ -109,7 +117,7 @@ export function OrderImportHealth({ orderImport }: OrderImportHealthProps): Reac
                 activeImport.to === null
                   ? null
                   : interpolate(copy.toDay, { date: format.date(`${activeImport.to}T12:00:00`) }),
-                interpolate(copy.pagesRead, { n: format.number(activeImport.pagesDone) }),
+                interpolate(copy.startedAgo, { when: format.relativeTime(activeImport.startedAt) }),
               ]
                 .filter((part): part is string => part !== null)
                 .join(' · ')}

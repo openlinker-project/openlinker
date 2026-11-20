@@ -46,9 +46,29 @@ export class OrderImportFailureReasonDto {
   sampleMessage!: string;
 }
 
+export class OrderStartStatusDto {
+  @ApiProperty({ enum: ['now', 'from', 'all'], description: 'Which orders import starts with' })
+  mode!: 'now' | 'from' | 'all';
+
+  @ApiProperty({ nullable: true, type: String, description: 'First day, for mode "from"' })
+  from!: string | null;
+
+  @ApiProperty({ enum: ['oldest-first', 'newest-first'], description: 'Which end of the history is imported first' })
+  order!: 'oldest-first' | 'newest-first';
+
+  @ApiProperty({ nullable: true, type: String, description: 'ISO timestamp the choice took effect; null while it waits for the next check' })
+  appliedAt!: string | null;
+
+  @ApiProperty({ description: 'True when the choice was made and nothing has been read under it yet' })
+  pending!: boolean;
+}
+
 export class OrderImportStatusDto {
   @ApiProperty({ description: 'Orders imported in the last 24 hours' })
   importedLast24h!: number;
+
+  @ApiProperty({ nullable: true, type: String, description: 'ISO timestamp of the last successful poll of the shop for orders (last 7 days), or null' })
+  lastPolledAt!: string | null;
 
   @ApiProperty({ description: 'Order imports that failed for good in the last 7 days' })
   failedLast7d!: number;
@@ -194,6 +214,13 @@ export class ConnectionSyncStatusResponseDto {
     description: 'How the order import is doing. Null when the figures could not be read.',
   })
   orderImport!: OrderImportStatusDto | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: OrderStartStatusDto,
+    description: 'The start choice for order import, or null when none was recorded.',
+  })
+  orderStart!: OrderStartStatusDto | null;
 
   @ApiProperty({ description: 'Observation window used for the rate figures, in ms' })
   observationWindowMs!: number;

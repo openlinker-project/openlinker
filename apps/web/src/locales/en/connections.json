@@ -1075,7 +1075,7 @@
     "errorTitle": "Could not load order import",
     "eyebrow": "Orders",
     "health": {
-      "failed": "Failed (7 days)",
+      "failed": "Failed orders (7 days)",
       "failures": {
         "count": "Orders: {n}",
         "latest": "Latest: order {order}, {when}",
@@ -1095,24 +1095,27 @@
       "fromDay": "from {date}",
       "fromStart": "from the beginning",
       "importRunning": "History import in progress",
-      "imported": "Imported (24 h)",
-      "lastOrder": "Last order",
+      "imported": "Orders received (24 h)",
+      "lastChecked": "Shop last checked",
+      "lastOrder": "Last order received",
+      "neverChecked": "Not checked yet",
       "newestFirst": "Newest first",
       "noneRecently": "None this week",
       "oldestFirst": "Oldest first",
-      "pagesRead": "Pages read: {n}",
+      "startedAgo": "Started {when}",
       "toDay": "to {date}",
-      "unavailable": "Order import figures are not available right now.",
       "viewJobs": "See Jobs & Logs",
-      "waiting": "Waiting"
+      "waiting": "Waiting to import"
     },
-    "lastCheckLabel": "Last check",
     "loadingMessage": "Checking where order import starts.",
     "loadingTitle": "Loading order import",
     "noCheck": "Not checked yet",
-    "note": "Orders placed before the start stay in the shop. They are copied only if you chose to import them.",
+    "orderPhrase": {
+      "newest": "newest first",
+      "oldest": "oldest first"
+    },
     "restart": {
-      "action": "Change start…",
+      "action": "Change import start…",
       "cancel": "Cancel",
       "confirm": "Apply change",
       "confirming": "Saving…",
@@ -1123,17 +1126,40 @@
       "successMessage": "The next order check uses the new start.",
       "successNowMessage": "Order import continues from the last check.",
       "successTitle": "Start changed",
-      "title": "Change where order sync starts"
+      "title": "Change where order import starts"
     },
     "retry": "Retry",
-    "startLabel": "Import starts",
-    "startUnknown": "Not recorded",
+    "startText": {
+      "all": "Every order the shop has, {order}.",
+      "from": "Orders since {date}, {order}. Earlier orders stay in the shop.",
+      "now": "New orders only, from {date}. Older orders stay in the shop.",
+      "pending": "Starts on the next check: {what}.",
+      "started": "Started {date}. What was chosen was not recorded.",
+      "unknown": "The start was not recorded.",
+      "whatAll": "every order, {order}",
+      "whatFrom": "orders since {date}, {order}",
+      "whatNow": "new orders only"
+    },
     "syncNow": "Sync orders…",
     "syncNowHint": {
-      "text": "The Trigger sync dialog opens there, already set to Sync orders.",
+      "text": "The import window opens there with orders already chosen.",
       "title": "You will be taken to Actions"
     },
-    "title": "Order import"
+    "title": "Order import",
+    "verdict": {
+      "behind": "Behind",
+      "failing": "Needs attention",
+      "notChecked": "Not checked yet",
+      "ok": "Up to date",
+      "unknown": "Unknown"
+    },
+    "verdictText": {
+      "behind": "The shop has not been checked for {when}.",
+      "failing": "Some orders could not be imported.",
+      "notChecked": "There is no successful check of the shop yet.",
+      "ok": "The shop was checked recently and no order is failing.",
+      "unknown": "Order import figures are not available right now."
+    }
   },
   "orderSyncStart": {
     "all": {
@@ -1194,7 +1220,7 @@
       "newestFirst": "newest first",
       "now": "New orders only"
     },
-    "title": "Which orders should OpenLinker bring in?",
+    "title": "Which orders should OpenLinker import?",
     "unsupported": {
       "all": "OpenLinker cannot import the full history of this connection yet.",
       "from": "Choosing a start date is not available for this connection yet.",

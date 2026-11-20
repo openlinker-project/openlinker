@@ -214,6 +214,11 @@ export interface ConnectionSyncStatus {
    * as zero orders.
    */
   orderImport: OrderImportStatus | null;
+  /**
+   * The start choice that took effect for this connection's order import, or
+   * null when none was recorded (a connection that predates the record).
+   */
+  orderStart: OrderStartStatus | null;
   /** The observation window used, so a consumer can state what the rates are over. */
   observationWindowMs: number;
   /** The alert horizon used, for the same reason. */
@@ -258,9 +263,11 @@ export interface OrderImportFailureReason {
 
 /** The raw per-connection order-import figures, aggregated from `sync_jobs`. */
 export interface OrderImportStats {
-  /** `marketplace.order.sync` jobs that succeeded in the last 24 hours. */
+  /** Distinct orders the feed delivered and OpenLinker processed in the last 24 hours. */
   importedLast24h: number;
-  /** `marketplace.order.sync` jobs that ended dead in the last 7 days, cancelled ones excluded. */
+  /** When the shop was last polled for orders by a poll that succeeded (last 7 days), or null. */
+  lastPolledAt: Date | null;
+  /** Distinct orders whose import ended dead in the last 7 days and has not succeeded since; cancelled jobs excluded. */
   failedLast7d: number;
   /** The failures grouped by reason, most frequent first. */
   failures: OrderImportFailureReason[];
@@ -272,3 +279,15 @@ export interface OrderImportStats {
 }
 
 export type OrderImportStatus = OrderImportStats;
+
+/** What the operator chose for where order import starts, as the screen states it. */
+export interface OrderStartStatus {
+  mode: 'now' | 'from' | 'all';
+  /** First day, for `from`. */
+  from: string | null;
+  order: 'oldest-first' | 'newest-first';
+  /** When the choice took effect, or null for a choice that is still waiting for the next check. */
+  appliedAt: Date | null;
+  /** The choice was made and will take effect on the next check; nothing has been read under it yet. */
+  pending: boolean;
+}

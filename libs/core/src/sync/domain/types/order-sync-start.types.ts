@@ -21,6 +21,15 @@
 
 export const ORDER_SYNC_START_CURSOR_KEY = 'orders.syncStart';
 
+/**
+ * The record of the start that was APPLIED (#4228): the intent row above is
+ * one-shot and deleted at the first poll, so without this the choice the operator
+ * made (new orders only, since a date, everything, and in which order) would be
+ * lost the moment it took effect. It is not a feed cursor: it carries no
+ * platform prefix, so a restart never deletes it and the next seed overwrites it.
+ */
+export const ORDER_SYNC_STARTED_CURSOR_KEY = 'orders.syncStarted';
+
 export const OrderSyncStartModeValues = ['now', 'from', 'all'] as const;
 export type OrderSyncStartMode = (typeof OrderSyncStartModeValues)[number];
 
@@ -115,4 +124,27 @@ export function parseOrderSyncStart(raw: string | null | undefined): OrderSyncSt
     return { mode: 'from', from: candidate.from.trim(), ...order };
   }
   return null;
+}
+
+/** The start choice that was applied, and when OpenLinker applied it. */
+export interface OrderSyncStartedRecord {
+  start: OrderSyncStart;
+  /** When the choice took effect (the feed was seeded). */
+  at: Date;
+}
+
+export function serializeOrderSyncStarted(start: OrderSyncStart, at: Date): string {
+  return JSON.stringify({ ...JSON.parse(serializeOrderSyncStart(start)), at: at.toISOString() });
+}
+
+/** Read the applied-start record back; anything unreadable is null, never a guess. */
+export function parseOrderSyncStarted(raw: string | null | undefined): OrderSyncStartedRecord | null {
+  const start = parseOrderSyncStart(raw);
+  if (start === null || !raw) return null;
+  try {
+    const at = new Date((JSON.parse(raw) as { at?: unknown }).at as string);
+    return Number.isNaN(at.getTime()) ? null : { start, at };
+  } catch {
+    return null;
+  }
 }

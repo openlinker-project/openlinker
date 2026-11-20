@@ -711,7 +711,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     // running rows, so it scales with the live queue, never with history.
     const ordersSql = `
       SELECT
-        COUNT(*) FILTER (
+        COUNT(DISTINCT "payloadJson"->>'externalOrderId') FILTER (
           WHERE status = 'succeeded' AND "updatedAt" >= $2
         )::int AS imported_24h,
         COUNT(*) FILTER (WHERE status IN ('queued', 'running'))::int AS waiting,
@@ -729,7 +729,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
           WHEN "lastError" ILIKE '%Missing mapping for order item%' THEN 'missing-mapping'
           ELSE 'other'
         END AS code,
-        COUNT(*)::int AS cnt,
+        COUNT(DISTINCT "payloadJson"->>'externalOrderId')::int AS cnt,
         MAX("updatedAt") AS last_failed_at,
         (array_agg("payloadJson"->>'externalOrderId' ORDER BY "updatedAt" DESC))[1] AS sample_order_id,
         (array_agg(LEFT(COALESCE("lastError", ''), 300) ORDER BY "updatedAt" DESC))[1] AS sample_message
@@ -739,8 +739,28 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         AND status = 'dead'
         AND "createdAt" >= $2
         AND COALESCE("lastError", '') NOT ILIKE 'cancelled%'
+        -- An order whose import later succeeded (a retry, or a newer event) is no longer failing.
+        AND NOT EXISTS (
+          SELECT 1 FROM sync_jobs ok
+          WHERE ok."connectionId" = $1
+            AND ok."jobType" = 'marketplace.order.sync'
+            AND ok.status = 'succeeded'
+            AND ok."payloadJson"->>'externalOrderId' = sync_jobs."payloadJson"->>'externalOrderId'
+            AND ok."updatedAt" > sync_jobs."updatedAt"
+        )
       GROUP BY 1
       ORDER BY cnt DESC
+    `;
+    // The shop was "last checked" when a poll last SUCCEEDED, not when any cursor
+    // last moved: a quiet shop moves no cursor, and a product sweep moves some that
+    // have nothing to do with orders.
+    const pollSql = `
+      SELECT MAX("updatedAt") AS last_polled_at
+      FROM sync_jobs
+      WHERE "connectionId" = $1
+        AND "jobType" = 'marketplace.orders.poll'
+        AND status = 'succeeded'
+        AND "createdAt" >= $2
     `;
     const importSql = `
       WITH active AS (
@@ -774,7 +794,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         ) AS started_at
       FROM active a
     `;
-    const [orderRows, importRows, failureRows] = await Promise.all([
+    const [orderRows, importRows, failureRows, pollRows] = await Promise.all([
       this.dataSource.query<Array<Record<string, unknown>>>(ordersSql, [
         connectionId,
         since24h,
@@ -784,6 +804,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       // going after a week is reported with the pages it has shown this week.
       this.dataSource.query<Array<Record<string, unknown>>>(importSql, [connectionId, since7d]),
       this.dataSource.query<Array<Record<string, unknown>>>(failuresSql, [connectionId, since7d]),
+      this.dataSource.query<Array<Record<string, unknown>>>(pollSql, [connectionId, since7d]),
     ]);
     const o = orderRows[0] ?? {};
     const a = importRows[0];
@@ -796,6 +817,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     }));
     return {
       importedLast24h: Number(o.imported_24h ?? 0),
+      lastPolledAt: pollRows[0]?.last_polled_at ? new Date(pollRows[0].last_polled_at as string) : null,
       failedLast7d: failures.reduce((sum, f) => sum + f.count, 0),
       failures,
       waiting: Number(o.waiting ?? 0),

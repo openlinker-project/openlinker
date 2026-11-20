@@ -1101,7 +1101,7 @@
     "errorTitle": "Nie udało się wczytać importu zamówień",
     "eyebrow": "Zamówienia",
     "health": {
-      "failed": "Błędy (7 dni)",
+      "failed": "Nieudane zamówienia (7 dni)",
       "failures": {
         "count": "Zamówienia: {n}",
         "latest": "Ostatnie: zamówienie {order}, {when}",
@@ -1121,24 +1121,27 @@
       "fromDay": "od {date}",
       "fromStart": "od początku",
       "importRunning": "Trwa import historii",
-      "imported": "Zaimportowane (24 h)",
-      "lastOrder": "Ostatnie zamówienie",
+      "imported": "Odebrane zamówienia (24 h)",
+      "lastChecked": "Ostatnio sprawdzono sklep",
+      "lastOrder": "Ostatnio odebrane zamówienie",
+      "neverChecked": "Jeszcze nie sprawdzano",
       "newestFirst": "Od najnowszych",
       "noneRecently": "Brak w tym tygodniu",
       "oldestFirst": "Od najstarszych",
-      "pagesRead": "Odczytane strony: {n}",
+      "startedAgo": "Rozpoczęto {when}",
       "toDay": "do {date}",
-      "unavailable": "Dane o imporcie zamówień są teraz niedostępne.",
       "viewJobs": "Zobacz Zadania i logi",
-      "waiting": "Czekają"
+      "waiting": "Czekają na import"
     },
-    "lastCheckLabel": "Ostatnie sprawdzenie",
     "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
     "loadingTitle": "Wczytywanie importu zamówień",
     "noCheck": "Jeszcze nie sprawdzano",
-    "note": "Zamówienia złożone przed startem zostają w sklepie. OpenLinker skopiuje je tylko wtedy, gdy wybrano ich import.",
+    "orderPhrase": {
+      "newest": "od najnowszych",
+      "oldest": "od najstarszych"
+    },
     "restart": {
-      "action": "Zmień start…",
+      "action": "Zmień początek importu…",
       "cancel": "Anuluj",
       "confirm": "Zastosuj zmianę",
       "confirming": "Zapisywanie…",
@@ -1149,17 +1152,40 @@
       "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
       "successNowMessage": "Import zamówień trwa dalej od ostatniego sprawdzenia.",
       "successTitle": "Start zmieniony",
-      "title": "Zmień, od kiedy pobierane są zamówienia"
+      "title": "Zmień początek importu zamówień"
     },
     "retry": "Ponów",
-    "startLabel": "Początek importu",
-    "startUnknown": "Nie zapisano",
+    "startText": {
+      "all": "Wszystkie zamówienia ze sklepu, {order}.",
+      "from": "Zamówienia od {date}, {order}. Wcześniejsze zostają w sklepie.",
+      "now": "Tylko nowe zamówienia, od {date}. Starsze zostają w sklepie.",
+      "pending": "Zacznie się przy następnym sprawdzeniu: {what}.",
+      "started": "Zaczęto {date}. Nie zapisano, co wybrano.",
+      "unknown": "Nie zapisano początku importu.",
+      "whatAll": "wszystkie zamówienia, {order}",
+      "whatFrom": "zamówienia od {date}, {order}",
+      "whatNow": "tylko nowe zamówienia"
+    },
     "syncNow": "Synchronizuj zamówienia…",
     "syncNowHint": {
-      "text": "Otworzy się tam okno uruchamiania synchronizacji, od razu ustawione na synchronizację zamówień.",
+      "text": "Otworzy się tam okno importu z już wybranymi zamówieniami.",
       "title": "Przejdziesz do Akcji"
     },
-    "title": "Import zamówień"
+    "title": "Import zamówień",
+    "verdict": {
+      "behind": "Opóźnione",
+      "failing": "Wymaga uwagi",
+      "notChecked": "Jeszcze nie sprawdzano",
+      "ok": "Aktualne",
+      "unknown": "Nieznany"
+    },
+    "verdictText": {
+      "behind": "Sklepu nie sprawdzano od {when}.",
+      "failing": "Nie wszystkie zamówienia udało się zaimportować.",
+      "notChecked": "Sklep nie miał jeszcze udanego sprawdzenia.",
+      "ok": "Sklep był niedawno sprawdzany i żadne zamówienie się nie psuje.",
+      "unknown": "Dane o imporcie zamówień są teraz niedostępne."
+    }
   },
   "orderSyncStart": {
     "all": {
@@ -1220,7 +1246,7 @@
       "newestFirst": "od najnowszych",
       "now": "Tylko nowe"
     },
-    "title": "Które zamówienia OpenLinker ma pobrać?",
+    "title": "Które zamówienia OpenLinker ma zaimportować?",
     "unsupported": {
       "all": "OpenLinker nie umie jeszcze zaimportować pełnej historii tego połączenia.",
       "from": "Wybór daty startu nie jest jeszcze dostępny dla tego połączenia.",

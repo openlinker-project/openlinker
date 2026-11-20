@@ -16,7 +16,7 @@
  */
 import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useFormat, useMessages } from '../../../shared/i18n';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { describeApiError } from '../../../shared/api/describe-api-error';
@@ -26,9 +26,19 @@ import { Button } from '../../../shared/ui/button';
 import { InfoIcon } from '../../../shared/ui/icons';
 import { PopoverCard } from '../../../shared/ui/popover-card';
 import { PopoverOnHover } from '../../../shared/ui/popover-on-hover';
-import type { Connection } from '../api/connections.types';
+import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { Connection, OrderStartStatus } from '../api/connections.types';
+import { deriveOrderImportVerdict, type OrderImportVerdict } from '../lib/order-import-verdict';
 import { OrderImportHealth } from './order-import-health';
 import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
+
+const VERDICT_TONE: Record<OrderImportVerdict, StatusBadgeTone> = {
+  ok: 'success',
+  behind: 'warning',
+  failing: 'warning',
+  notChecked: 'neutral',
+  unknown: 'neutral',
+};
 
 interface OrderSyncPanelProps {
   connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'>;
@@ -46,6 +56,33 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
   const data = statusQuery.data;
   const startedAt = data?.orderSyncStartedAt ?? null;
+  const verdict = deriveOrderImportVerdict(data?.orderImport ?? null);
+
+  // The start is stated as the SETTING it is (what was chosen and what that means for
+  // older orders), never as activity, and never with a date that is only the time a
+  // marker was written.
+  function describeStart(start: OrderStartStatus | null, fallbackAt: string | null): string {
+    if (start === null) {
+      return fallbackAt === null
+        ? copy.startText.unknown
+        : interpolate(copy.startText.started, { date: format.dateTime(fallbackAt) });
+    }
+    const order = start.order === 'newest-first' ? copy.orderPhrase.newest : copy.orderPhrase.oldest;
+    const date = start.from !== null ? format.date(`${start.from}T12:00:00`) : '';
+    if (start.pending) {
+      const what =
+        start.mode === 'now'
+          ? copy.startText.whatNow
+          : start.mode === 'from'
+            ? interpolate(copy.startText.whatFrom, { date, order })
+            : interpolate(copy.startText.whatAll, { order });
+      return interpolate(copy.startText.pending, { what });
+    }
+    const when = start.appliedAt === null ? '' : format.dateTime(start.appliedAt);
+    if (start.mode === 'now') return interpolate(copy.startText.now, { date: when });
+    if (start.mode === 'from') return interpolate(copy.startText.from, { date, order });
+    return interpolate(copy.startText.all, { order });
+  }
 
   return (
     <div className="panel panel--dense">
@@ -63,7 +100,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               trigger={(triggerProps) => (
                 <Button
                   {...triggerProps}
-                  tone="primary"
+                  tone="secondary"
                   onClick={(event) => {
                     triggerProps.onClick?.(event);
                     void navigate(`/connections/${connectionId}?tab=actions&sync=orders`);
@@ -115,22 +152,20 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
 
       {data ? (
         <>
-          <dl className="order-sync-panel__facts">
-            <div className="order-sync-panel__fact">
-              <dt>{copy.startLabel}</dt>
-              <dd>{startedAt === null ? copy.startUnknown : format.dateTime(startedAt)}</dd>
-            </div>
-            <div className="order-sync-panel__fact">
-              <dt>{copy.lastCheckLabel}</dt>
-              <dd>
-                {data.lastCursorAdvanceAt === null
-                  ? copy.noCheck
-                  : format.relativeTime(data.lastCursorAdvanceAt)}
-              </dd>
-            </div>
-          </dl>
+          <div className="order-sync-panel__verdict" role="status">
+            <StatusBadge tone={VERDICT_TONE[verdict]} withDot>
+              {copy.verdict[verdict]}
+            </StatusBadge>
+            <p className="order-sync-panel__verdict-text">
+              {interpolate(copy.verdictText[verdict], {
+                when: data.orderImport?.lastPolledAt
+                  ? format.relativeTime(data.orderImport.lastPolledAt)
+                  : '',
+              })}
+            </p>
+          </div>
+          <p className="order-sync-panel__start">{describeStart(data.orderStart, startedAt)}</p>
           <OrderImportHealth orderImport={data.orderImport} />
-          <p className="order-sync-panel__note">{copy.note}</p>
         </>
       ) : null}
       <OrderSyncRestartDialog

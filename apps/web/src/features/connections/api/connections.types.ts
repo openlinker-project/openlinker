@@ -412,6 +412,15 @@ export const CONNECTION_BACKLOG_STATUS_VALUES = [
 
 export type ConnectionBacklogStatus = (typeof CONNECTION_BACKLOG_STATUS_VALUES)[number];
 
+export interface OrderStartStatus {
+  mode: 'now' | 'from' | 'all';
+  from: string | null;
+  order: 'oldest-first' | 'newest-first';
+  /** When the choice took effect; null while it waits for the next check. */
+  appliedAt: string | null;
+  pending: boolean;
+}
+
 export interface ActiveOrderImport {
   runId: string;
   direction: 'oldest-first' | 'newest-first';
@@ -434,6 +443,8 @@ export interface OrderImportFailureReason {
 
 export interface OrderImportStatus {
   importedLast24h: number;
+  /** Last successful poll of the shop for orders (last 7 days), or null. */
+  lastPolledAt: string | null;
   failedLast7d: number;
   failures: OrderImportFailureReason[];
   waiting: number;
@@ -472,6 +483,8 @@ export interface ConnectionSyncStatus {
   orderSyncStartedAt: string | null;
   /** How the order import is doing; null means the figures could not be read. */
   orderImport: OrderImportStatus | null;
+  /** The start choice for order import; null when none was recorded. */
+  orderStart: OrderStartStatus | null;
   observationWindowMs: number;
   alertHorizonMs: number;
   historyWindowMs: number;

@@ -32,7 +32,9 @@ import {
   SYNC_LOCK_TOKEN,
   orderFeedSeededAtCursorKey,
   ORDER_SYNC_START_CURSOR_KEY,
+  ORDER_SYNC_STARTED_CURSOR_KEY,
   parseOrderSyncStart,
+  serializeOrderSyncStarted,
   type MarketplaceOrdersImportPayloadV1,
   type OrderSyncStart,
 } from '@openlinker/core/sync';
@@ -388,6 +390,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       // Only the marker: the history poll below then reads from the beginning,
       // and the marker stops a later cursor-less poll from seeding "now".
       await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+      await this.recordAppliedStart(connectionId, { mode: 'all' });
       await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
       this.logger.log(`Order sync starts from the whole history (connection: ${connectionId})`);
       return null;
@@ -425,6 +428,7 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     await this.syncCursors.advanceCursor(connectionId, cursorKey, startCursor);
     await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+    await this.recordAppliedStart(connectionId, intent ?? { mode: 'now' });
     await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
     this.logger.log(
       `Seeded order cursor (${intent?.mode === 'from' ? `from ${intent.from}` : 'at the source head'}); nothing imported from history. cursorKey=${cursorKey}, cursor=${startCursor} (connection: ${connectionId})`
@@ -484,11 +488,34 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     await this.syncCursors.advanceCursor(connectionId, cursorKey, head);
     await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+    await this.recordAppliedStart(connectionId, intent);
     await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
     this.logger.log(
       `Seeded order cursor at the source head and started a newest-first history import${intent.mode === 'from' ? ` from ${intent.from}` : ''}. cursorKey=${cursorKey}, cursor=${head} (connection: ${connectionId})`
     );
     return { fetched: 0, enqueued: 0, nextCursor: head, committed: true, skippedDueToLock: false };
+  }
+
+  /**
+   * Keep the start that was applied, because the intent row is deleted right
+   * after. Best-effort: it is what the operator reads back, not something the
+   * feed depends on, so a failure here must not undo or retry a seed that
+   * already took effect.
+   */
+  private async recordAppliedStart(connectionId: string, start: OrderSyncStart): Promise<void> {
+    try {
+      await this.syncCursors.advanceCursor(
+        connectionId,
+        ORDER_SYNC_STARTED_CURSOR_KEY,
+        serializeOrderSyncStarted(start, new Date())
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not record the applied order sync start (connection: ${connectionId}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   private buildImportRequest(

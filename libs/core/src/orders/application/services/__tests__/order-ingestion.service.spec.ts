@@ -965,7 +965,12 @@ describe('OrderIngestionService', () => {
 
         const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
-        expect(calls).toEqual(['enqueue', `advance:${cursorKey}`, `advance:${seededKey}`]);
+        expect(calls).toEqual([
+          'enqueue',
+          `advance:${cursorKey}`,
+          `advance:${seededKey}`,
+          'advance:orders.syncStarted',
+        ]);
         expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
           expect.objectContaining({
             type: 'marketplace.orders.import',
@@ -1126,6 +1131,18 @@ describe('OrderIngestionService', () => {
         expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
       });
 
+      it('should keep the applied start, since the intent row is deleted right after', async () => {
+        headCursor.mockResolvedValue('event-900');
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          connectionId,
+          'orders.syncStarted',
+          expect.stringContaining('"mode":"now"')
+        );
+      });
+
       it('should write the marker before deleting the intent so a crash in between only re-seeds', async () => {
         headCursor.mockResolvedValue('event-900');
         const order: string[] = [];
@@ -1140,7 +1157,12 @@ describe('OrderIngestionService', () => {
 
         await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
-        expect(order).toEqual([`advance:${cursorKey}`, `advance:${seededKey}`, 'delete']);
+        expect(order).toEqual([
+          `advance:${cursorKey}`,
+          `advance:${seededKey}`,
+          'advance:orders.syncStarted',
+          'delete',
+        ]);
       });
 
       it('should keep reading history, seeding nothing, for a legacy connection with no intent', async () => {
@@ -1268,11 +1290,17 @@ describe('OrderIngestionService', () => {
           await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
           expect(headCursor).not.toHaveBeenCalled();
-          expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(1);
+          // The marker, and the record of the start that was applied; never the feed cursor.
+          expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(2);
           expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
             connectionId,
             seededKey,
             expect.any(String)
+          );
+          expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+            connectionId,
+            'orders.syncStarted',
+            expect.stringContaining('"mode":"all"')
           );
           expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, intentKey);
           expect(orderSource.listOrderFeed).toHaveBeenCalledWith(

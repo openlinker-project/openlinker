@@ -40651,3 +40651,20 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-weight: 600;
   color: var(--text-primary);
 }
+
+.order-sync-panel__verdict {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.order-sync-panel__verdict-text,
+.order-sync-panel__start {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.order-sync-panel__start {
+  margin-top: var(--space-3);
+  color: var(--text-primary);
+}

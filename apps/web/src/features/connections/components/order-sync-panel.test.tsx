@@ -43,6 +43,7 @@ function makeStatus(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSy
     lastCursorAdvanceAt: null,
     orderSyncStartedAt: null,
     orderImport: null,
+    orderStart: null,
     observationWindowMs: 3600000,
     alertHorizonMs: 86400000,
     historyWindowMs: 604800000,
@@ -88,29 +89,63 @@ describe('OrderSyncPanel', () => {
     expect(await screen.findByText('Could not load order import')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByText('Import starts')).toBeInTheDocument();
+    expect(await screen.findByText('Unknown')).toBeInTheDocument();
   });
 
-  it('shows the start date and last check when a start was recorded', async () => {
+  it('states the recorded start as a setting, with the mode and what it means for older orders', async () => {
     renderPanel(
       vi.fn<GetSyncStatus>().mockResolvedValue(
         makeStatus({
-          orderSyncStartedAt: '2026-11-18T08:00:00.000Z',
-          lastCursorAdvanceAt: '2026-11-18T09:55:00.000Z',
+          orderStart: {
+            mode: 'now',
+            from: null,
+            order: 'oldest-first',
+            appliedAt: '2026-11-18T08:00:00.000Z',
+            pending: false,
+          },
         })
       )
     );
 
-    expect(await screen.findByText('Import starts')).toBeInTheDocument();
-    expect(screen.getByText('Last check')).toBeInTheDocument();
-    expect(screen.queryByText('Not recorded')).not.toBeInTheDocument();
+    expect(await screen.findByText(/^New orders only, from .*Older orders stay in the shop\./)).toBeInTheDocument();
+  });
+
+  it('states a whole-history start with its order, not a marker date', async () => {
+    renderPanel(
+      vi.fn<GetSyncStatus>().mockResolvedValue(
+        makeStatus({
+          orderStart: {
+            mode: 'all',
+            from: null,
+            order: 'newest-first',
+            appliedAt: '2026-11-18T08:00:00.000Z',
+            pending: false,
+          },
+        })
+      )
+    );
+
+    expect(await screen.findByText('Every order the shop has, newest first.')).toBeInTheDocument();
+  });
+
+  it('says a restarted choice starts on the next check', async () => {
+    renderPanel(
+      vi.fn<GetSyncStatus>().mockResolvedValue(
+        makeStatus({
+          orderStart: { mode: 'now', from: null, order: 'oldest-first', appliedAt: null, pending: true },
+        })
+      )
+    );
+
+    expect(
+      await screen.findByText('Starts on the next check: new orders only.')
+    ).toBeInTheDocument();
   });
 
   it('shows an honest absence, not a date, when no start was recorded', async () => {
     renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderSyncStartedAt: null })));
 
-    expect(await screen.findByText('Import starts')).toBeInTheDocument();
-    expect(screen.getByText('Not recorded')).toBeInTheDocument();
+    expect(await screen.findByText('The start was not recorded.')).toBeInTheDocument();
   });
 
   it('sends the operator to the Trigger sync dialog on Actions from Sync orders', async () => {
@@ -151,6 +186,7 @@ describe('OrderSyncPanel', () => {
   describe('import health details', () => {
     const importFigures = {
       importedLast24h: 42,
+      lastPolledAt: new Date().toISOString(),
       failedLast7d: 2,
       failures: [
         {
@@ -186,14 +222,15 @@ describe('OrderSyncPanel', () => {
     it('should show the import figures, the failures and a running history import', async () => {
       renderHealth(makeStatus({ orderImport: importFigures }));
 
-      expect(await screen.findByText('Imported (24 h)')).toBeInTheDocument();
+      expect(await screen.findByText('Orders received (24 h)')).toBeInTheDocument();
       expect(screen.getByText('42')).toBeInTheDocument();
       expect(screen.getByText('What failed')).toBeInTheDocument();
       expect(screen.getByText(/A product in the order is not linked/)).toBeInTheDocument();
       expect(screen.getByText(/Orders: 2 · Latest: order 37/)).toBeInTheDocument();
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
-      expect(screen.getByText(/Newest first · from .* · Pages read: 4/)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Change start/ })).toBeInTheDocument();
+      expect(screen.getByText(/Newest first · from .* · Started /)).toBeInTheDocument();
+      expect(screen.getByText('Needs attention')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Change import start/ })).toBeInTheDocument();
     });
 
     it('should not mention failures or a running import when there are none', async () => {
@@ -203,7 +240,7 @@ describe('OrderSyncPanel', () => {
         }),
       );
 
-      expect(await screen.findByText('Imported (24 h)')).toBeInTheDocument();
+      expect(await screen.findByText('Orders received (24 h)')).toBeInTheDocument();
       expect(screen.queryByText('What failed')).not.toBeInTheDocument();
       expect(screen.queryByText('History import in progress')).not.toBeInTheDocument();
     });
@@ -214,19 +251,30 @@ describe('OrderSyncPanel', () => {
       expect(
         await screen.findByText('Order import figures are not available right now.'),
       ).toBeInTheDocument();
-      expect(screen.queryByText('Imported (24 h)')).not.toBeInTheDocument();
+      expect(screen.getByText('Unknown')).toBeInTheDocument();
+      expect(screen.queryByText('Orders received (24 h)')).not.toBeInTheDocument();
     });
   });
 
-  it('states that earlier orders stay in the shop, with no import action', async () => {
-    renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
-
-    expect(
-      await screen.findByText(
-        'Orders placed before the start stay in the shop. They are copied only if you chose to import them.'
+  it('shows waiting orders only when there are some', async () => {
+    renderPanel(
+      vi.fn<GetSyncStatus>().mockResolvedValue(
+        makeStatus({
+          orderImport: {
+            importedLast24h: 3,
+            lastPolledAt: new Date().toISOString(),
+            failedLast7d: 0,
+            failures: [],
+            waiting: 0,
+            lastImportedAt: null,
+            activeImport: null,
+          },
+        })
       )
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /import/i })).not.toBeInTheDocument();
+    );
+
+    expect(await screen.findByText('Up to date')).toBeInTheDocument();
+    expect(screen.queryByText('Waiting to import')).not.toBeInTheDocument();
   });
 
   describe('restart', () => {
@@ -234,7 +282,7 @@ describe('OrderSyncPanel', () => {
       const user = userEvent.setup();
       renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
 
-      await user.click(await screen.findByRole('button', { name: /Change start/ }));
+      await user.click(await screen.findByRole('button', { name: /Change import start/ }));
 
       expect(
         await screen.findByText(
@@ -267,7 +315,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: /Change start/ }));
+      await user.click(await screen.findByRole('button', { name: /Change import start/ }));
       await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
       await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
@@ -297,7 +345,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: /Change start/ }));
+      await user.click(await screen.findByRole('button', { name: /Change import start/ }));
       await user.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
 
       expect(screen.getByRole('button', { name: 'Apply change' })).toBeDisabled();

@@ -53,7 +53,7 @@ async function fillAndReachReview(
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByText('How should delivery appear on receipts and invoices?');
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText('Which orders should OpenLinker bring in?');
+  await screen.findByText('Which orders should OpenLinker import?');
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByRole('button', { name: 'Connect Erli' });
 }

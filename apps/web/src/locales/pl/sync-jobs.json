@@ -296,7 +296,7 @@
     "orderScope": {
       "label": "Co synchronizować",
       "new": "Nowe zamówienia od ostatniego sprawdzenia",
-      "newHint": "Sprawdza sklep pod kątem zamówień, których OpenLinker jeszcze nie zaimportował. Nie zmienia tego, które zamówienia uchodzą za nowe.",
+      "newHint": "Sprawdza, czy w sklepie są niezaimportowane zamówienia, bez przesuwania początku importu.",
       "range": "Zamówienia z zakresu dat",
       "rangeHint": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz."
     },

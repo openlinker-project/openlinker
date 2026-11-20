@@ -56,7 +56,7 @@ export class ConnectionDetailPage {
    */
   async expectOrderSyncPanel(): Promise<void> {
     await expect(this.page.getByRole('heading', { name: 'Order import', exact: true })).toBeVisible();
-    await expect(this.page.getByText('Import starts', { exact: true })).toBeVisible();
+    await expect(this.page.getByText('Order import', { exact: true })).toBeVisible();
   }
 
   // No trigger-sync accessors: every suite enqueues jobs through the API

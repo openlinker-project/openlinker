@@ -34,6 +34,7 @@ function renderPanel(overrides: Partial<ConnectionSyncStatus> = {}): void {
     lastCursorAdvanceAt: null,
     orderSyncStartedAt: null,
     orderImport: null,
+    orderStart: null,
     observationWindowMs: HOUR,
     alertHorizonMs: DAY,
     historyWindowMs: 7 * DAY,

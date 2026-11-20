@@ -79,6 +79,7 @@ export class ConnectionSyncStatusController {
         ? null
         : {
             importedLast24h: status.orderImport.importedLast24h,
+            lastPolledAt: status.orderImport.lastPolledAt?.toISOString() ?? null,
             failedLast7d: status.orderImport.failedLast7d,
             failures: status.orderImport.failures.map((f) => ({
               ...f,
@@ -94,6 +95,10 @@ export class ConnectionSyncStatusController {
                     startedAt: status.orderImport.activeImport.startedAt.toISOString(),
                   },
           };
+    dto.orderStart =
+      status.orderStart === null
+        ? null
+        : { ...status.orderStart, appliedAt: status.orderStart.appliedAt?.toISOString() ?? null };
     dto.observationWindowMs = status.observationWindowMs;
     dto.alertHorizonMs = status.alertHorizonMs;
     dto.historyWindowMs = status.historyWindowMs;

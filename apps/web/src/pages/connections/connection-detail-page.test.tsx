@@ -400,6 +400,7 @@ describe('ConnectionDetailPage', () => {
             lastCursorAdvanceAt: null,
             orderSyncStartedAt: '2026-11-18T08:00:00.000Z',
             orderImport: null,
+            orderStart: null,
             observationWindowMs: 3600000,
             alertHorizonMs: 86400000,
             historyWindowMs: 604800000,
@@ -417,7 +418,7 @@ describe('ConnectionDetailPage', () => {
       await openTab(orderSource(), 'Orders');
 
       expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
-      expect(await screen.findByText('Import starts')).toBeInTheDocument();
+      expect(await screen.findByText('Unknown')).toBeInTheDocument();
     });
 
     it('should keep the order import off the Health and Actions tabs', async () => {

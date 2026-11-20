@@ -294,7 +294,7 @@
     "orderScope": {
       "label": "What to sync",
       "new": "New orders since the last check",
-      "newHint": "Checks the shop for orders OpenLinker has not imported yet. It does not change which orders count as new.",
+      "newHint": "Checks the shop for orders not imported yet, without moving the import start.",
       "range": "Orders from a date range",
       "rangeHint": "Reads the orders placed between two days, once. Orders OpenLinker already has are updated, not copied twice."
     },

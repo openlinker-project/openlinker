@@ -30,6 +30,7 @@ function status(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSyncSt
     lastCursorAdvanceAt: null,
     orderSyncStartedAt: null,
     orderImport: null,
+    orderStart: null,
     observationWindowMs: HOUR,
     alertHorizonMs: 24 * HOUR,
     historyWindowMs: 7 * 24 * HOUR,
@@ -112,6 +113,7 @@ describe('ConnectionSyncStatusController', () => {
       status({
         orderImport: {
           importedLast24h: 12,
+          lastPolledAt: new Date('2026-08-20T09:55:00.000Z'),
           failedLast7d: 1,
           failures: [
             {
@@ -140,6 +142,7 @@ describe('ConnectionSyncStatusController', () => {
 
     expect(dto.orderImport).toEqual({
       importedLast24h: 12,
+      lastPolledAt: '2026-08-20T09:55:00.000Z',
       failedLast7d: 1,
       failures: [
         {
