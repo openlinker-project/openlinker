@@ -20158,10 +20158,28 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     background-color var(--duration-fast) var(--ease-standard);
 }
 
-.segmented-control__option:hover:not(.segmented-control__option--active) {
+/* The global `button` rules paint every button orange with a raised shadow, and `button:hover` /
+   `:active` repaint it on press. An option is only text on the track; the thumb is the fill. These win
+   by specificity (a class on a class, then the state) so no state ever fills the option itself. */
+.segmented-control .segmented-control__option,
+.segmented-control .segmented-control__option:hover,
+.segmented-control .segmented-control__option:active {
+  height: auto;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.segmented-control .segmented-control__option:hover:not(.segmented-control__option--active),
+.segmented-control .segmented-control__option:active:not(.segmented-control__option--active) {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
+.segmented-control .segmented-control__option--active,
+.segmented-control .segmented-control__option--active:hover,
+.segmented-control .segmented-control__option--active:active {
+  color: var(--text-on-primary);
+}
+.segmented-control .segmented-control__option:focus-visible { box-shadow: var(--shadow-focus); }
 
 .segmented-control__thumb {
   position: absolute;
@@ -42756,6 +42774,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: none;
   border-top: 0;
   border-radius: 0;
+}
+/* No scroll box inside the scrolling panel. The step list used to scroll on its own (max-height plus
+   overflow), which left a nested scroller whose own end could show as a blank band above the card's
+   buttons. The list now simply takes the height it needs and the panel scrolls once. */
+.release-panel .release-card__collapse > .release-card__steps {
+  max-height: none;
+  overflow-y: hidden;
+  mask-image: none;
 }
 /* A closed step list is zero tall but still sits between two grid gaps; take one back. */
 .release-panel .release-card__collapse[data-open='false'] { margin-top: -12px; }
