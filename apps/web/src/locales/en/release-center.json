@@ -152,10 +152,10 @@
   },
   "steps": {
     "inpost-notify-buyer": {
-      "title": "Choose when the buyer sees \"shipped\"",
-      "tourBody": "The marketplace shows \"shipped\" either as soon as the label is bought or only after you click \"Mark dispatched\". This applies to this InPost account.",
-      "tourTitle": "When should the buyer see \"shipped\"?",
-      "why": "Buying a label does not mean the parcel has been handed over, so the buyer sees \"shipped\" only after you click \"Mark dispatched\". If you prefer, the status changes right after the label is bought."
+      "title": "Choose when the marketplace is told \"shipped\"",
+      "tourBody": "The marketplace is told \"shipped\" either shortly after the label is bought or only after you click \"Mark dispatched\". This applies to this InPost account.",
+      "tourTitle": "When is the marketplace told \"shipped\"?",
+      "why": "Buying a label does not mean the parcel has been handed over, so by default the marketplace is told \"shipped\" only after you click \"Mark dispatched\". If you prefer, it is told shortly after the label is bought."
     },
     "packing-owner": {
       "title": "Say whether another system packs parcels",
