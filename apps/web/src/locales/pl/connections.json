@@ -1100,7 +1100,6 @@
   "orderSyncPanel": {
     "errorTitle": "Nie udało się wczytać importu zamówień",
     "eyebrow": "Zamówienia",
-    "headline": "Pobieramy nowe zamówienia",
     "health": {
       "failed": "Błędy (7 dni)",
       "failures": {
@@ -1133,7 +1132,7 @@
       "viewJobs": "Zobacz Zadania i logi",
       "waiting": "Czekają"
     },
-    "lastCheck": "Ostatnie sprawdzenie: {when}",
+    "lastCheckLabel": "Ostatnie sprawdzenie",
     "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
     "loadingTitle": "Wczytywanie importu zamówień",
     "noCheck": "Jeszcze nie sprawdzano",
@@ -1153,8 +1152,8 @@
       "title": "Zmień, od kiedy pobierane są zamówienia"
     },
     "retry": "Ponów",
-    "since": "Od {date}",
-    "sinceUnknown": "Data startu nie została zapisana",
+    "startLabel": "Początek importu",
+    "startUnknown": "Nie zapisano",
     "syncNow": "Synchronizuj zamówienia…",
     "syncNowHint": {
       "text": "Otworzy się tam okno uruchamiania synchronizacji, od razu ustawione na synchronizację zamówień.",

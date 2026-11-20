@@ -1074,7 +1074,6 @@
   "orderSyncPanel": {
     "errorTitle": "Could not load order import",
     "eyebrow": "Orders",
-    "headline": "Importing new orders",
     "health": {
       "failed": "Failed (7 days)",
       "failures": {
@@ -1107,7 +1106,7 @@
       "viewJobs": "See Jobs & Logs",
       "waiting": "Waiting"
     },
-    "lastCheck": "Last check {when}",
+    "lastCheckLabel": "Last check",
     "loadingMessage": "Checking where order import starts.",
     "loadingTitle": "Loading order import",
     "noCheck": "Not checked yet",
@@ -1127,8 +1126,8 @@
       "title": "Change where order sync starts"
     },
     "retry": "Retry",
-    "since": "Since {date}",
-    "sinceUnknown": "Start date was not recorded",
+    "startLabel": "Import starts",
+    "startUnknown": "Not recorded",
     "syncNow": "Sync orders…",
     "syncNowHint": {
       "text": "The Trigger sync dialog opens there, already set to Sync orders.",

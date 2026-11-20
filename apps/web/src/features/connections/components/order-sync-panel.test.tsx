@@ -88,7 +88,7 @@ describe('OrderSyncPanel', () => {
     expect(await screen.findByText('Could not load order import')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
+    expect(await screen.findByText('Import starts')).toBeInTheDocument();
   });
 
   it('shows the start date and last check when a start was recorded', async () => {
@@ -101,17 +101,16 @@ describe('OrderSyncPanel', () => {
       )
     );
 
-    expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
-    expect(screen.getByText(/^Since /)).toBeInTheDocument();
-    expect(screen.getByText(/Last check /)).toBeInTheDocument();
+    expect(await screen.findByText('Import starts')).toBeInTheDocument();
+    expect(screen.getByText('Last check')).toBeInTheDocument();
+    expect(screen.queryByText('Not recorded')).not.toBeInTheDocument();
   });
 
   it('shows an honest absence, not a date, when no start was recorded', async () => {
     renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderSyncStartedAt: null })));
 
-    expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
-    expect(screen.getByText('Start date was not recorded')).toBeInTheDocument();
-    expect(screen.queryByText(/^Since /)).not.toBeInTheDocument();
+    expect(await screen.findByText('Import starts')).toBeInTheDocument();
+    expect(screen.getByText('Not recorded')).toBeInTheDocument();
   });
 
   it('sends the operator to the Trigger sync dialog on Actions from Sync orders', async () => {

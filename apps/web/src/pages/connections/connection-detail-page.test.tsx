@@ -417,7 +417,7 @@ describe('ConnectionDetailPage', () => {
       await openTab(orderSource(), 'Orders');
 
       expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
-      expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
+      expect(await screen.findByText('Import starts')).toBeInTheDocument();
     });
 
     it('should keep the order import off the Health and Actions tabs', async () => {

@@ -7788,60 +7788,6 @@ html:has(.login-stage) {
   overflow-y: auto;
 }
 
-.order-sync-panel__status {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-
-.order-sync-panel__dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  margin-top: 0.4rem;
-  border-radius: 50%;
-  background: var(--status-success);
-  box-shadow: 0 0 0 4px var(--status-success-soft);
-}
-
-.order-sync-panel__dot--idle {
-  background: var(--text-muted);
-  box-shadow: 0 0 0 4px var(--bg-surface-hover);
-}
-
-.order-sync-panel__headline {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--text-primary);
-}
-
-.order-sync-panel__since,
-.order-sync-panel__fact {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  color: var(--text-secondary);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .order-sync-panel__dot:not(.order-sync-panel__dot--idle) {
-    animation: order-sync-panel-pulse 2.4s var(--ease-out) infinite;
-  }
-}
-
-@keyframes order-sync-panel-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 4px var(--status-success-soft);
-  }
-
-  50% {
-    box-shadow: 0 0 0 7px transparent;
-  }
-}
-
 /* ── Connection sync-status panel (#2615) ── */
 .connection-sync-status__headline {
   margin: var(--space-2) 0 0;
@@ -40684,4 +40630,24 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.order-sync-panel__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6, 2rem);
+  margin: 0;
+}
+.order-sync-panel__fact {
+  display: grid;
+  gap: var(--space-1);
+}
+.order-sync-panel__fact dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.order-sync-panel__fact dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
 }

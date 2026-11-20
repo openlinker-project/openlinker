@@ -16,7 +16,7 @@
  */
 import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
+import { useFormat, useMessages } from '../../../shared/i18n';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { describeApiError } from '../../../shared/api/describe-api-error';
@@ -115,32 +115,20 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
 
       {data ? (
         <>
-          <div className="order-sync-panel__status">
-            <span
-              className={[
-                'order-sync-panel__dot',
-                startedAt === null ? 'order-sync-panel__dot--idle' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              aria-hidden="true"
-            />
-            <div>
-              <p className="order-sync-panel__headline">{copy.headline}</p>
-              <p className="order-sync-panel__since">
-                {startedAt === null
-                  ? copy.sinceUnknown
-                  : interpolate(copy.since, { date: format.dateTime(startedAt) })}
-              </p>
-              <p className="order-sync-panel__fact">
+          <dl className="order-sync-panel__facts">
+            <div className="order-sync-panel__fact">
+              <dt>{copy.startLabel}</dt>
+              <dd>{startedAt === null ? copy.startUnknown : format.dateTime(startedAt)}</dd>
+            </div>
+            <div className="order-sync-panel__fact">
+              <dt>{copy.lastCheckLabel}</dt>
+              <dd>
                 {data.lastCursorAdvanceAt === null
                   ? copy.noCheck
-                  : interpolate(copy.lastCheck, {
-                      when: format.relativeTime(data.lastCursorAdvanceAt),
-                    })}
-              </p>
+                  : format.relativeTime(data.lastCursorAdvanceAt)}
+              </dd>
             </div>
-          </div>
+          </dl>
           <OrderImportHealth orderImport={data.orderImport} />
           <p className="order-sync-panel__note">{copy.note}</p>
         </>
