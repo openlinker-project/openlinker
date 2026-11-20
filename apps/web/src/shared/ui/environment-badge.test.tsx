@@ -36,7 +36,7 @@ describe('EnvironmentBadge', () => {
     );
   });
 
-  it('renders the environment name with the release version below it', () => {
+  it('renders the environment name with the release version in a reveal clip', () => {
     render(<EnvironmentBadge appEnv="production" version="1.4.0" />);
 
     expect(screen.getByText('Production')).toBeInTheDocument();
@@ -46,11 +46,18 @@ describe('EnvironmentBadge', () => {
     );
   });
 
-  it('renders the compact short label with the version below it', () => {
+  it('renders the compact short label with the version', () => {
     render(<EnvironmentBadge appEnv="production" compact version="1.4.0" />);
 
     expect(screen.getByText('Prod')).toBeInTheDocument();
     expect(screen.getByText('v1.4.0')).toBeInTheDocument();
+  });
+
+  it('gives the labelled badge a role and a title carrying the version', () => {
+    render(<EnvironmentBadge appEnv="production" version="1.4.0" />);
+
+    const badge = screen.getByRole('img', { name: 'Environment Production, version 1.4.0' });
+    expect(badge).toHaveAttribute('title', 'Environment Production, version 1.4.0');
   });
 
   it('omits the version line when no version is available', () => {
@@ -59,5 +66,19 @@ describe('EnvironmentBadge', () => {
     expect(screen.getByText('Production')).toBeInTheDocument();
     expect(screen.queryByText(/^v/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Environment Production')).toBeInTheDocument();
+  });
+
+  it('makes the badge focusable only when a version can be revealed', () => {
+    const { rerender } = render(<EnvironmentBadge appEnv="production" version="1.4.0" />);
+    const badge = screen.getByLabelText('Environment Production, version 1.4.0');
+
+    expect(badge).toHaveAttribute('tabindex', '0');
+    expect(badge).toHaveClass('environment-badge--reveal');
+
+    rerender(<EnvironmentBadge appEnv="production" version="" />);
+    const bare = screen.getByLabelText('Environment Production');
+
+    expect(bare).not.toHaveAttribute('tabindex');
+    expect(bare).not.toHaveClass('environment-badge--reveal');
   });
 });
