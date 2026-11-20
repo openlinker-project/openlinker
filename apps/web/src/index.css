@@ -42558,7 +42558,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .release-card__chevron { transition: none; }
   .release-card__collapse > .release-card__steps { transform: none; }
 }
-/* Steps disclosure as an accordion row: label and count on the left, a round chevron on the right, a hairline
+/* Steps disclosure as an accordion row: label and count on the left, a round chevron on the right, no rule
    above. It spans the card, so the target is large and the row reads as a section, not a stray button. */
 .release-card__toggle {
   display: flex;
@@ -42567,9 +42567,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   width: 100%;
   align-self: stretch;
   margin: 2px 0 0;
-  padding: 10px 0 2px;
+  padding: 6px 0 2px;
   border: 0;
-  border-top: 1px solid var(--border-subtle);
   border-radius: 0;
   background: transparent;
   color: var(--text-primary);
@@ -42577,7 +42576,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-weight: 600;
 }
 .release-card__toggle:hover,
-.release-card__toggle:active { background: transparent; border-color: var(--border-subtle); color: var(--text-primary); }
+.release-card__toggle:active { background: transparent; border-color: transparent; color: var(--text-primary); }
 .release-card__toggle-label { display: inline-flex; align-items: center; gap: 8px; }
 .release-card__count {
   display: inline-grid;
