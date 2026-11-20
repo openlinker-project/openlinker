@@ -852,6 +852,36 @@ describe('BulkListingSubmitService', () => {
       expect(ids).toEqual(['ol_variant_a', 'ol_variant_b', 'ol_variant_c']);
     });
 
+    it('drops a sibling whose master barcode was cleared with an empty override EAN (#4036)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '111' },
+          { id: 'ol_variant_b', ean: '222' }, // has a master barcode, operator cleared it
+          { id: 'ol_variant_c', ean: '333' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 2 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 2 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 2 },
+        ]
+      );
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 7, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_b: { overrides: { ean: '' } },
+        },
+      });
+
+      // The master EAN must not count as a barcode once the operator cleared it,
+      // otherwise the sibling is kept and smart-linked by the removed value.
+      const ids = enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId);
+      expect(ids).toEqual(['ol_variant_a', 'ol_variant_c']);
+    });
+
     it('keeps an explicit per-variant productCardId through clearProductCard', async () => {
       wireMultiVariant(
         [
