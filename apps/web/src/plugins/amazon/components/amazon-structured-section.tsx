@@ -79,6 +79,10 @@ export function AmazonStructuredSection({
   const offersEnabled = connection.enabledCapabilities.includes('OfferManager');
   const catalogueEnabled = connection.enabledCapabilities.includes('ProductMaster');
   const mcfEnabled = connection.enabledCapabilities.includes('FulfillmentExecutor');
+  // Offers and the catalogue master both read the seller's listings, which
+  // need the merchant token (the setup schema requires it for both roles).
+  const sellerIdNeeded =
+    offersEnabled || catalogueEnabled || connection.enabledCapabilities.includes('InventoryMaster');
 
   const taxRows = parseTaxCodeRows(form.watch('amazonTaxCodeRates') ?? '');
   const writeTaxRows = (rows: readonly AmazonTaxCodeRow[]): void =>
@@ -165,7 +169,7 @@ export function AmazonStructuredSection({
         />
       </FormField>
 
-      {offersEnabled ? (
+      {sellerIdNeeded ? (
         <FormField
           label={messages.setup.sellerId}
           name="amazonSellerId"
@@ -182,7 +186,7 @@ export function AmazonStructuredSection({
           />
         </FormField>
       ) : null}
-      {offersEnabled && (form.watch('amazonSellerId') ?? '').trim() === '' ? (
+      {sellerIdNeeded && (form.watch('amazonSellerId') ?? '').trim() === '' ? (
         <Alert tone="warning" density="compact">
           {copy.sellerIdMissing}
         </Alert>

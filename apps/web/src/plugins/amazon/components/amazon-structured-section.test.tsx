@@ -88,6 +88,16 @@ describe('AmazonStructuredSection', () => {
     expect(screen.getByText(/Without the merchant token/)).toBeInTheDocument();
   });
 
+  it('should show the merchant token on a catalogue master without offers', async () => {
+    renderWithProviders(
+      <Harness caps={['ProductMaster', 'InventoryMaster']} values={{ amazonSellerId: '' }} />,
+      admin
+    );
+
+    expect(await screen.findByLabelText('Merchant token')).toBeInTheDocument();
+    expect(screen.getByText(/Without the merchant token/)).toBeInTheDocument();
+  });
+
   it('should disable the inputs for a read-only session', async () => {
     const viewer = createAuthenticatedSessionAdapter({
       id: 'u-viewer',

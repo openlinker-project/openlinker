@@ -93,7 +93,7 @@
       "description": "Set when the connection was created. Another region is another Amazon account and needs a new connection.",
       "label": "Region"
     },
-    "sellerIdMissing": "Without the merchant token, offers cannot be read or written.",
+    "sellerIdMissing": "Without the merchant token, your Amazon offers, catalogue and stock cannot be read or written.",
     "taxCodes": {
       "add": "Add tax code",
       "code": "Tax code",
@@ -168,8 +168,9 @@
       "queueUrlInvalid": "Enter an SQS queue URL, such as https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications.",
       "required": "This field is required.",
       "sellerIdInvalid": "Enter the merchant token from Seller Central: 8 to 20 capital letters and digits.",
-      "sellerIdRequired": "The merchant token is required to manage offers."
+      "sellerIdRequired": "The merchant token is required to read your Amazon offers, catalogue and stock."
     },
+    "handles": "What OpenLinker handles",
     "marketplaceOption": "{country} ({currency})",
     "marketplaces": "Marketplaces",
     "marketplacesHint": "Orders are read and offers written on the marketplaces you choose.",
@@ -203,7 +204,7 @@
     "sandboxNotice": "The sandbox answers with Amazon's sample data only. No real orders or listings are read or changed.",
     "sellerId": "Merchant token",
     "sellerIdHint": "Seller Central: Settings, Account info, Merchant token.",
-    "sellerIdHintRequired": "Required for offers. Seller Central: Settings, Account info, Merchant token.",
+    "sellerIdHintRequired": "Required for offers and the catalogue. Seller Central: Settings, Account info, Merchant token.",
     "submit": "Create connection",
     "test": "Test connection",
     "testFailed": "The connection test failed",
