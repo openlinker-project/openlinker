@@ -39,11 +39,16 @@ describe('mapAmazonOrderToIncomingOrder', () => {
     expect(order.totals.shippingGross).toBeUndefined();
   });
 
-  it('should key a line by seller SKU, and by ASIN when there is none', () => {
+  it('should key a line by seller SKU as an offer, and by ASIN when there is none', () => {
     const [mug, coaster] = mapAmazonOrderToIncomingOrder(amazonFbmOrder()).items;
-    expect(mug).toMatchObject({ id: '11111111111111', productRef: { type: 'sku', externalId: 'MUG-BLUE' }, sku: 'MUG-BLUE', quantity: 2, price: 19.95 });
+    expect(mug).toMatchObject({ id: '11111111111111', productRef: { type: 'offer', externalId: 'MUG-BLUE' }, sku: 'MUG-BLUE', quantity: 2, price: 19.95 });
     expect(coaster.productRef).toEqual({ type: 'offer', externalId: 'B0ZZZZZZZZ' });
     expect(coaster.taxRate).toBeUndefined();
+  });
+
+  it('should key a line by seller SKU as a variant when the connection is the catalogue', () => {
+    const [mug] = mapAmazonOrderToIncomingOrder(amazonFbmOrder(), 'variant').items;
+    expect(mug.productRef).toEqual({ type: 'variant', externalId: 'MUG-BLUE' });
   });
 
   it('should say the address was withheld when Amazon sends none', () => {

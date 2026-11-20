@@ -68,7 +68,7 @@
       "none": "Bez lokalizacji"
     },
     "marketplaces": {
-      "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",
+      "addedNote": "Zamówienia z dodanego rynku są pobierane od początku historii.",
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
       "descriptionSingle": "Ustawiony przy tworzeniu połączenia. W tym regionie każdy kraj ma osobne konto sprzedawcy, więc inny rynek wymaga nowego połączenia.",
       "label": "Rynki",

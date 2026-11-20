@@ -73,6 +73,7 @@ import {
 } from '../../../domain/types/amazon-order.types';
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
 import { mapAmazonOrderToIncomingOrder } from '../../mappers/amazon-incoming-order.mapper';
+import type { AmazonOrderLineRef } from '../../../domain/policies/amazon-order-line-ref.policy';
 import { AMAZON_TERMINAL_RETURN_STATUSES } from '../../mappers/amazon-return.mapper';
 import type { AmazonReturnReader } from '../returns/amazon-return-reader';
 import { resolveAmazonCarrier } from './amazon-carrier-code';
@@ -98,6 +99,8 @@ export class AmazonOrderSourceAdapter
     private readonly now: () => Date = (): Date => new Date(),
     /** The returns report reader (#4184); absent only in tests that do not read returns. */
     protected readonly returns?: AmazonReturnReader,
+    /** Which mapping an order line resolves through (`resolveAmazonOrderLineRef`). */
+    private readonly orderLineRef: AmazonOrderLineRef = 'offer',
   ) {}
 
   /** Return request statuses after which Amazon changes nothing more (#4184). */
@@ -124,7 +127,6 @@ export class AmazonOrderSourceAdapter
     const cursor = scopeAmazonOrderFeedCursor(
       decodeAmazonOrderFeedCursor(input.fromCursor, now),
       this.config.marketplaceIds,
-      now,
     );
     const response = await this.client.get<AmazonSearchOrdersResponse>(SEARCH_ORDERS_PATH, {
       marketplaceIds: this.config.marketplaceIds,
@@ -155,7 +157,7 @@ export class AmazonOrderSourceAdapter
 
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
     const order = await this.readOrder(input.externalOrderId);
-    return mapAmazonOrderToIncomingOrder(order);
+    return mapAmazonOrderToIncomingOrder(order, this.orderLineRef);
   }
 
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {

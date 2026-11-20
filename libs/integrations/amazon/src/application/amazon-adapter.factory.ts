@@ -44,6 +44,7 @@ import { AmazonFulfillmentOutboundClient } from '../infrastructure/http/amazon-f
 import { AmazonMcfFulfillmentExecutorAdapter } from '../infrastructure/adapters/fulfillment-executor/amazon-mcf-fulfillment-executor.adapter';
 import { AmazonReportsClient } from '../infrastructure/http/amazon-reports.client';
 import type { AmazonResolution, IAmazonAdapterFactory } from './interfaces/amazon-adapter.factory.interface';
+import { resolveAmazonOrderLineRef } from '../domain/policies/amazon-order-line-ref.policy';
 
 export class AmazonAdapterFactory implements IAmazonAdapterFactory {
   async resolve(
@@ -113,14 +114,15 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
       config.marketplaceIds,
       cache,
     );
+    const lineRef = resolveAmazonOrderLineRef(connection.enabledCapabilities);
     if (config.refundsEnabled !== true) {
       return notificationQueue === undefined
-        ? new AmazonOrderSourceAdapter(connection.id, client, config, undefined, returns)
-        : new AmazonQueuedOrderSourceAdapter(connection.id, client, config, notificationQueue, undefined, returns);
+        ? new AmazonOrderSourceAdapter(connection.id, client, config, undefined, returns, lineRef)
+        : new AmazonQueuedOrderSourceAdapter(connection.id, client, config, notificationQueue, undefined, returns, lineRef);
     }
     const source =
       notificationQueue === undefined
-        ? new AmazonRefundingOrderSourceAdapter(connection.id, client, config, undefined, returns)
+        ? new AmazonRefundingOrderSourceAdapter(connection.id, client, config, undefined, returns, lineRef)
         : new AmazonQueuedRefundingOrderSourceAdapter(
             connection.id,
             client,
@@ -128,6 +130,7 @@ export class AmazonAdapterFactory implements IAmazonAdapterFactory {
             notificationQueue,
             undefined,
             returns,
+            lineRef,
           );
     return source.attachRefundExecutor(
       (readOrder) =>

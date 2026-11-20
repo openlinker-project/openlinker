@@ -44,7 +44,7 @@ describe('AmazonOrderSourceAdapter.listOrderFeed', () => {
 
     expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders', {
       marketplaceIds: ['A1PA6795UKMFR9'],
-      lastUpdatedAfter: '2026-11-10T12:00:00.000Z',
+      lastUpdatedAfter: '2000-01-01T00:00:00.000Z',
       maxResultsPerPage: 100,
     });
     expect(result.items.map((item) => [item.externalOrderId, item.eventType])).toEqual([
@@ -78,7 +78,7 @@ describe('AmazonOrderSourceAdapter.listOrderFeed', () => {
     await wider.listOrderFeed({ fromCursor, limit: 50 });
 
     const params = (get.mock.calls[0] as [string, Record<string, unknown>])[1];
-    expect(params.lastUpdatedAfter).toBe('2026-11-10T12:00:00.000Z');
+    expect(params.lastUpdatedAfter).toBe('2000-01-01T00:00:00.000Z');
     expect(params.paginationToken).toBeUndefined();
   });
 
@@ -105,6 +105,19 @@ describe('AmazonOrderSourceAdapter.getOrder', () => {
       includedData: ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
     });
     expect(order.externalOrderId).toBe('302-1234567-7654321');
+  });
+
+  it('should key lines by the reference the connection role resolves through', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { order: amazonFbmOrder() } });
+
+    const asOffer = await adapter(client).getOrder({ externalOrderId: '302-1234567-7654321' });
+    const asVariant = await new AmazonOrderSourceAdapter('conn-1', client, CONFIG, () => NOW, undefined, 'variant').getOrder({
+      externalOrderId: '302-1234567-7654321',
+    });
+
+    expect(asOffer.items[0].productRef).toEqual({ type: 'offer', externalId: 'MUG-BLUE' });
+    expect(asVariant.items[0].productRef).toEqual({ type: 'variant', externalId: 'MUG-BLUE' });
   });
 });
 

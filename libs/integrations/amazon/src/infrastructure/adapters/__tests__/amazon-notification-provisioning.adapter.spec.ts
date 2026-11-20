@@ -103,6 +103,20 @@ describe('AmazonNotificationProvisioningAdapter', () => {
     expect(seller.post).not.toHaveBeenCalled();
   });
 
+  it('should report a grantless scope refused by LWA (invalid_scope) as a warning, not an error', async () => {
+    const { adapter, grantless, seller } = setup();
+    // The shape the token provider really throws: LWA answers 400 invalid_scope.
+    grantless.get.mockRejectedValue(
+      new AmazonApiError(400, 'invalid_scope', 'The request has an invalid parameter : scope', undefined),
+    );
+
+    const result = await adapter.install('conn-amz');
+
+    expect(result).toMatchObject({ webhooksConfigured: false, testPingTriggered: false });
+    expect(result.warning).toContain('Notifications role');
+    expect(seller.post).not.toHaveBeenCalled();
+  });
+
   it('should report a missing Notifications role as a warning, not an error', async () => {
     const { adapter, seller } = setup();
     seller.get.mockRejectedValue(new AmazonApiError(403, 'Unauthorized', 'Access to requested resource is denied.', 'r'));

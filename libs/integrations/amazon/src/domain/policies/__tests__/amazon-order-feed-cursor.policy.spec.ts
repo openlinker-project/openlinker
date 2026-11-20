@@ -4,6 +4,7 @@
  * @module libs/integrations/amazon/src/domain/policies/__tests__
  */
 import {
+  AMAZON_ORDER_FEED_HISTORY_START,
   AMAZON_ORDER_FEED_OVERLAP_MS,
   decodeAmazonOrderFeedCursor,
   encodeAmazonOrderFeedCursor,
@@ -14,13 +15,13 @@ import {
 const NOW = new Date('2026-11-17T12:00:00.000Z');
 
 describe('decodeAmazonOrderFeedCursor', () => {
-  it('should start seven days back when there is no cursor', () => {
-    expect(decodeAmazonOrderFeedCursor(null, NOW)).toEqual({ since: '2026-11-10T12:00:00.000Z' });
+  it('should start at the beginning of the order history when there is no cursor', () => {
+    expect(decodeAmazonOrderFeedCursor(null, NOW)).toEqual({ since: AMAZON_ORDER_FEED_HISTORY_START });
   });
 
   it('should start fresh on an unreadable cursor', () => {
     for (const raw of ['nope', '{}', '{"since":"not a date"}', '[]']) {
-      expect(decodeAmazonOrderFeedCursor(raw, NOW).since).toBe('2026-11-10T12:00:00.000Z');
+      expect(decodeAmazonOrderFeedCursor(raw, NOW).since).toBe(AMAZON_ORDER_FEED_HISTORY_START);
     }
   });
 
@@ -88,7 +89,7 @@ describe('scopeAmazonOrderFeedCursor', () => {
   const PL = 'A1C3SOZRARQ6R3';
 
   it('should record the marketplaces on a cursor that predates the field, without rewinding', () => {
-    expect(scopeAmazonOrderFeedCursor({ since: '2026-11-17T11:00:00.000Z' }, [DE, PL], NOW)).toEqual({
+    expect(scopeAmazonOrderFeedCursor({ since: '2026-11-17T11:00:00.000Z' }, [DE, PL])).toEqual({
       since: '2026-11-17T11:00:00.000Z',
       marketplaceIds: [DE, PL],
     });
@@ -101,25 +102,25 @@ describe('scopeAmazonOrderFeedCursor', () => {
       tokenIssuedAt: '2026-11-17T11:30:00.000Z',
       marketplaceIds: [DE],
     };
-    expect(scopeAmazonOrderFeedCursor(cursor, [DE], NOW)).toEqual(cursor);
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE])).toEqual(cursor);
   });
 
-  it('should rewind to the bootstrap point and drop the token when a marketplace is added', () => {
+  it('should rewind to the history start and drop the token when a marketplace is added', () => {
     const cursor = { since: '2026-11-17T11:00:00.000Z', paginationToken: 'p2', marketplaceIds: [DE] };
-    expect(scopeAmazonOrderFeedCursor(cursor, [DE, PL], NOW)).toEqual({
-      since: '2026-11-10T12:00:00.000Z',
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE, PL])).toEqual({
+      since: AMAZON_ORDER_FEED_HISTORY_START,
       marketplaceIds: [DE, PL],
     });
   });
 
-  it('should never move the watermark forward when rewinding', () => {
+  it('should read an added marketplace from the history start even when the watermark is older', () => {
     const cursor = { since: '2026-11-01T00:00:00.000Z', marketplaceIds: [DE] };
-    expect(scopeAmazonOrderFeedCursor(cursor, [DE, PL], NOW).since).toBe('2026-11-01T00:00:00.000Z');
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE, PL]).since).toBe(AMAZON_ORDER_FEED_HISTORY_START);
   });
 
   it('should only update the list when a marketplace is removed', () => {
     const cursor = { since: '2026-11-17T11:00:00.000Z', marketplaceIds: [DE, PL] };
-    expect(scopeAmazonOrderFeedCursor(cursor, [DE], NOW)).toEqual({
+    expect(scopeAmazonOrderFeedCursor(cursor, [DE])).toEqual({
       since: '2026-11-17T11:00:00.000Z',
       marketplaceIds: [DE],
     });
