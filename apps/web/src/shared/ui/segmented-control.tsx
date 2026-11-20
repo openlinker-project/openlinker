@@ -1,15 +1,17 @@
 import { motion } from 'motion/react';
 import {
   forwardRef,
-  useId,
+  useCallback,
+  useLayoutEffect,
   useRef,
+  useState,
   type ComponentPropsWithoutRef,
   type ForwardedRef,
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { THUMB_SPRING } from './motion-presets';
+import { SEGMENT_THUMB_SPRING } from './motion-presets';
 
 export interface SegmentedControlOption<T extends string> {
   value: T;
@@ -51,9 +53,10 @@ export interface SegmentedControlProps<T extends string>
  * A single-select segmented toggle (Shopify/Linear-style). Wraps the shared
  * `.segmented-control` CSS so features don't hand-roll one-off inline controls.
  *
- * The selection is a thumb that slides (spring, shared `layoutId`) to the chosen
- * option instead of the fill jumping; `MotionProvider`'s `reducedMotion="user"`
- * turns that into an instant switch for anyone who asks for less motion.
+ * The selection is one thumb that glides to the chosen option (a critically damped
+ * spring on its position and width, measured from the option, so it never stretches or
+ * warps the way a scaled layout animation does). `MotionProvider`'s
+ * `reducedMotion="user"` turns it into an instant switch for anyone who asks for less motion.
  *
  * Uses the ARIA radiogroup idiom (`role="radiogroup"` + `role="radio"` /
  * `aria-checked`) rather than toggle buttons, because the control is a
@@ -71,8 +74,50 @@ function SegmentedControlInner<T extends string>(
   ref: ForwardedRef<HTMLDivElement>,
 ): ReactElement {
   const classes = ['segmented-control', className].filter(Boolean).join(' ');
-  // One id per control, so two controls on a screen never share (and so never fly between) thumbs.
-  const thumbId = useId();
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const setTrackRef = useCallback(
+    (node: HTMLDivElement | null): void => {
+      trackRef.current = node;
+      if (typeof ref === 'function') ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref],
+  );
+  // Where the thumb belongs: the active option's box inside the track. Measured, not layout-animated,
+  // because a scaled layout animation stretches the thumb's corners and shadow while it travels.
+  const [thumb, setThumb] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const activeIndex = options.findIndex((option) => option.value === value);
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    const button = activeIndex >= 0 ? optionRefs.current[activeIndex] : null;
+    if (!track || !button) {
+      setThumb(null);
+      return undefined;
+    }
+    const measure = (): void => {
+      setThumb((previous) => {
+        const next = {
+          x: button.offsetLeft,
+          y: button.offsetTop,
+          width: button.offsetWidth,
+          height: button.offsetHeight,
+        };
+        return previous &&
+          previous.x === next.x &&
+          previous.y === next.y &&
+          previous.width === next.width &&
+          previous.height === next.height
+          ? previous
+          : next;
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(track);
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, [activeIndex, options]);
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const hasActive = options.some((option) => option.value === value);
   // The tab stop when nothing is checked yet. Never a disabled option: parking
@@ -124,7 +169,17 @@ function SegmentedControlInner<T extends string>(
   };
 
   return (
-    <div ref={ref} role="radiogroup" className={classes} {...rest}>
+    <div ref={setTrackRef} role="radiogroup" className={classes} {...rest}>
+      {thumb ? (
+        <motion.span
+          className="segmented-control__thumb"
+          aria-hidden="true"
+          // First paint places it without travelling from the origin.
+          initial={false}
+          animate={{ x: thumb.x, y: thumb.y, width: thumb.width, height: thumb.height }}
+          transition={SEGMENT_THUMB_SPRING}
+        />
+      ) : null}
       {options.map((option, index) => {
         const active = option.value === value;
         const isDisabled = option.disabled === true;
@@ -158,14 +213,6 @@ function SegmentedControlInner<T extends string>(
             }}
             onKeyDown={(event) => handleKeyDown(event, index)}
           >
-            {active ? (
-              <motion.span
-                className="segmented-control__thumb"
-                layoutId={`${thumbId}-thumb`}
-                transition={THUMB_SPRING}
-                aria-hidden="true"
-              />
-            ) : null}
             <span className="segmented-control__label">{option.label}</span>
             {option.hint !== undefined && (
               <span className="segmented-control__hint" aria-hidden="true">

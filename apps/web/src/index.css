@@ -20122,6 +20122,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .segmented-control {
   display: inline-flex;
   align-self: flex-start;
+  position: relative;
+  isolation: isolate;
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--border-default);
@@ -20135,7 +20137,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   justify-content: center;
   gap: var(--space-1);
   position: relative;
-  isolation: isolate;
+  z-index: 1;
   padding: 6px var(--space-3);
   border: none;
   border-radius: calc(var(--radius-lg) - 3px);
@@ -20149,8 +20151,10 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   text-transform: none;
   white-space: nowrap;
   cursor: pointer;
+  /* The label changes colour while the thumb is travelling, a beat after it leaves, so white never
+     sits on the grey track. */
   transition:
-    color var(--duration-fast) var(--ease-standard),
+    color 160ms var(--ease-standard) 50ms,
     background-color var(--duration-fast) var(--ease-standard);
 }
 
@@ -20161,9 +20165,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .segmented-control__thumb {
   position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: calc(var(--radius-lg) - 3px);
+  pointer-events: none;
   background: var(--accent-primary);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-primary) 40%, transparent);
 }
