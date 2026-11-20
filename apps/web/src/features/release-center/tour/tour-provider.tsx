@@ -3,8 +3,11 @@
  *
  * Owns the tour state (local `useReducer`), navigates with the router to the
  * screen of the current step, and renders the card. Nothing is persisted, so a
- * reload ends the tour by design. Esc is handled in the capture phase so it
- * closes only the tour and never the dialog or panel underneath.
+ * reload ends the tour by design. Leaving early (Esc or the close button) asks
+ * first, in the shared ConfirmDialog; finishing the last step does not. Esc is
+ * handled in the capture phase so it only ever reaches the tour and never the
+ * dialog or panel underneath, and it steps aside while the confirmation is open
+ * so that dialog's own Esc ("stay") works.
  *
  * @module features/release-center/tour
  */
@@ -14,10 +17,13 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ConfirmDialog } from '../../../shared/ui';
+import { useMessages } from '../../../shared/i18n';
 import { useReleaseCenterView } from '../components/release-center-provider';
 import { subscribeToTourRequests } from '../lib/release-center-requests';
 import { TourCard } from './tour-card';
@@ -35,14 +41,19 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   const navigate = useNavigate();
   const location = useLocation();
   const triggerRef = useRef<HTMLElement | null>(null);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const leaveCopy = useMessages('release-center').tour.leave;
 
   const close = useCallback((): void => {
+    setConfirmingLeave(false);
     dispatch({ type: 'close' });
     const trigger = triggerRef.current;
     triggerRef.current = null;
     // Focus returns after the card unmounts so it is not stolen back by it.
     if (trigger) setTimeout(() => trigger.focus(), 0);
   }, []);
+
+  const requestLeave = useCallback((): void => setConfirmingLeave(true), []);
 
   const start = useCallback((steps: readonly TourStepInput[], trigger?: HTMLElement | null, startIndex?: number): void => {
     triggerRef.current =
@@ -75,14 +86,14 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   useEffect(() => {
     if (!state.active) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || confirmingLeave) return;
       event.preventDefault();
       event.stopPropagation();
-      close();
+      requestLeave();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [state.active, close]);
+  }, [state.active, confirmingLeave, requestLeave]);
 
   const controller = useMemo<TourController>(
     () => ({ isActive: state.active, start, close }),
@@ -92,7 +103,23 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   return (
     <TourContext.Provider value={controller}>
       {children}
-      {state.active ? <TourCard state={state} dispatch={dispatch} onClose={close} /> : null}
+      {state.active ? (
+        <TourCard state={state} dispatch={dispatch} onClose={close} onDismiss={requestLeave} />
+      ) : null}
+      {/* Elevated classes lift it over the tour card (z-index 61). Focus starts on
+          "stay" because leaving is the one action that loses the operator's place. */}
+      <ConfirmDialog
+        open={state.active && confirmingLeave}
+        onOpenChange={setConfirmingLeave}
+        title={leaveCopy.title}
+        description={leaveCopy.description}
+        cancelLabel={leaveCopy.stay}
+        confirmLabel={leaveCopy.confirm}
+        onConfirm={close}
+        initialFocus="cancel"
+        className="dialog__content--elevated"
+        overlayClassName="dialog__overlay--elevated"
+      />
     </TourContext.Provider>
   );
 }

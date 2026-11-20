@@ -185,6 +185,12 @@
     },
     "close": "Zamknij przewodnik",
     "finish": "Gotowe",
+    "leave": {
+      "confirm": "Zamknij przewodnik",
+      "description": "Przewodnik się zamknie i nie zapamięta, na którym kroku skończyłeś. Wrócisz do niego z dzwonka.",
+      "stay": "Zostań w przewodniku",
+      "title": "Zamknąć przewodnik?"
+    },
     "missing": "Tego elementu nie ma na ekranie. Przejdź do następnego kroku.",
     "next": "Dalej",
     "noRelease": "Inne",

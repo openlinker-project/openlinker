@@ -48,14 +48,17 @@ function readTopInset(): number {
 interface TourCardProps {
   state: TourState;
   dispatch: Dispatch<TourAction>;
+  /** The walk ended normally (last step done); closes without asking. */
   onClose: () => void;
+  /** The operator asked to leave early (the close button); the provider confirms first. */
+  onDismiss: () => void;
 }
 
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElement | null {
+export function TourCard({ state, dispatch, onClose, onDismiss }: TourCardProps): ReactElement | null {
   const copy = useMessages('release-center');
   const tour = copy.tour;
   const apiClient = useApiClient();
@@ -485,7 +488,7 @@ export function TourCard({ state, dispatch, onClose }: TourCardProps): ReactElem
               className="tour-card__close"
               aria-label={tour.close}
               title={tour.close}
-              onClick={onClose}
+              onClick={onDismiss}
             >
               <ReleaseIcon name="close" size={14} />
             </button>

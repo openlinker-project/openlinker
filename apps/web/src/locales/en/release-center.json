@@ -181,6 +181,12 @@
     },
     "close": "Close the tour",
     "finish": "Done",
+    "leave": {
+      "confirm": "Close the guide",
+      "description": "The guide will close and will not remember where you stopped. You can start it again from the bell.",
+      "stay": "Keep going",
+      "title": "Close the guide?"
+    },
     "missing": "This element is not on the screen. Skip to the next step.",
     "next": "Next",
     "noRelease": "Other",
