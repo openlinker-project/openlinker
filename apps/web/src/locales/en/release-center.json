@@ -153,9 +153,9 @@
   "steps": {
     "inpost-notify-buyer": {
       "title": "Choose when the buyer sees \"shipped\"",
-      "tourBody": "The marketplace shows \"shipped\" either as soon as the label is bought or only after you click \"Mark as shipped\". This applies to this InPost account.",
+      "tourBody": "The marketplace shows \"shipped\" either as soon as the label is bought or only after you click \"Mark dispatched\". This applies to this InPost account.",
       "tourTitle": "When should the buyer see \"shipped\"?",
-      "why": "Buying a label does not mean the parcel has been handed over, so the buyer sees \"shipped\" only after you click \"Mark as shipped\". If you prefer, the status changes right after the label is bought."
+      "why": "Buying a label does not mean the parcel has been handed over, so the buyer sees \"shipped\" only after you click \"Mark dispatched\". If you prefer, the status changes right after the label is bought."
     },
     "packing-owner": {
       "title": "Say whether another system packs parcels",
@@ -175,7 +175,7 @@
     "back": "Back",
     "choices": {
       "externalPacking": "Another system packs",
-      "notifyLater": "After I mark it as shipped",
+      "notifyLater": "After I mark it dispatched",
       "notifyNow": "When the label is bought",
       "ownPacking": "OpenLinker packs"
     },

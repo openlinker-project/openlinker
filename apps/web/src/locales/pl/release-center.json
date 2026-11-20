@@ -157,9 +157,9 @@
   "steps": {
     "inpost-notify-buyer": {
       "title": "Ustaw, kiedy kupujący zobaczy „wysłano”",
-      "tourBody": "Kupujący zobaczy „wysłano” od razu po zakupie etykiety albo dopiero po kliknięciu „Oznacz jako wysłane”. Ustawienie dotyczy tego konta InPost.",
+      "tourBody": "Kupujący zobaczy „wysłano” od razu po zakupie etykiety albo dopiero po kliknięciu „Oznacz jako nadane”. Ustawienie dotyczy tego konta InPost.",
       "tourTitle": "Kiedy kupujący ma zobaczyć „wysłano”?",
-      "why": "Zakup etykiety nie znaczy jeszcze, że paczka została nadana, dlatego kupujący widzi „wysłano” dopiero po kliknięciu „Oznacz jako wysłane”. Jeśli wolisz, status zmieni się od razu po zakupie etykiety."
+      "why": "Zakup etykiety nie znaczy jeszcze, że paczka została nadana, dlatego kupujący widzi „wysłano” dopiero po kliknięciu „Oznacz jako nadane”. Jeśli wolisz, status zmieni się od razu po zakupie etykiety."
     },
     "packing-owner": {
       "title": "Wskaż, kto pakuje zamówienia",
@@ -179,7 +179,7 @@
     "back": "Wstecz",
     "choices": {
       "externalPacking": "Pakuje inny system",
-      "notifyLater": "Dopiero po „Oznacz jako wysłane”",
+      "notifyLater": "Dopiero po „Oznacz jako nadane”",
       "notifyNow": "Od razu po zakupie etykiety",
       "ownPacking": "Pakujemy w OpenLinker"
     },
