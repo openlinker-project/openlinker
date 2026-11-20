@@ -4585,7 +4585,8 @@ export class OrderRecordRepository
       // #3963 - coerced at the mapping boundary: an entry this build does not
       // recognise is absent, never present-and-unrenderable.
       readPaymentWriteback(entity.paymentWriteback),
-      readSalesDocumentBlockParams(entity.salesDocumentBlockParams)
+      readSalesDocumentBlockParams(entity.salesDocumentBlockParams),
+      entity.buyerDataRedactedAt ?? null
     );
   }
 

@@ -18,7 +18,7 @@ import { OrderBuyerDataRetentionSweepService } from '../order-buyer-data-retenti
 
 const DONE: OrderBuyerDataRetentionRunResult = {
   connections: [
-    { sourceConnectionId: 'amz', retentionDays: 30, redacted: 2, customersRedacted: 0, budgetExhausted: false },
+    { sourceConnectionId: 'amz', retentionDays: 30, redacted: 2, failed: 0, customersRedacted: 0, budgetExhausted: false },
   ],
   redacted: 2,
 };

@@ -163,6 +163,38 @@ describe('OrderBuyerDataRetentionService', () => {
     expect(result.redacted).toBe(0);
   });
 
+  it('should redact the other orders and the customers when one order fails', async () => {
+    const { service, repository, buyerEmails, customers } = setup([source('amz', 30)]);
+    repository.findBuyerDataRetentionCandidates.mockResolvedValueOnce([
+      { internalOrderId: 'bad', orderSnapshot: {} },
+      { internalOrderId: 'o2', orderSnapshot: {} },
+    ]);
+    buyerEmails.clearRecipientsForOrder.mockRejectedValueOnce(new Error('row locked'));
+
+    const result = await service.runOnce(NOW);
+
+    expect(repository.redactBuyerData).toHaveBeenCalledTimes(1);
+    expect(repository.redactBuyerData.mock.calls[0][0].internalOrderId).toBe('o2');
+    expect(customers.redactPersonalDataLastSeenBefore).toHaveBeenCalled();
+    expect(result.connections[0]).toMatchObject({ redacted: 1, failed: 1 });
+  });
+
+  it('should stop paging when a page holds only orders that already failed this run', async () => {
+    const { service, repository, buyerEmails } = setup([source('amz', 30)]);
+    const stuck = Array.from({ length: BUYER_DATA_RETENTION_PAGE_SIZE }, (_, i) => ({
+      internalOrderId: `stuck${String(i)}`,
+      orderSnapshot: {},
+    }));
+    repository.findBuyerDataRetentionCandidates.mockResolvedValue(stuck);
+    buyerEmails.clearRecipientsForOrder.mockRejectedValue(new Error('row locked'));
+
+    const result = await service.runOnce(NOW);
+
+    expect(repository.findBuyerDataRetentionCandidates).toHaveBeenCalledTimes(2);
+    expect(buyerEmails.clearRecipientsForOrder).toHaveBeenCalledTimes(BUYER_DATA_RETENTION_PAGE_SIZE);
+    expect(result.connections[0]).toMatchObject({ redacted: 0, failed: BUYER_DATA_RETENTION_PAGE_SIZE });
+  });
+
   it('should clear the customers last seen through the source before the same cutoff, in batches', async () => {
     const { service, customers } = setup([source('amz', 30)]);
     customers.redactPersonalDataLastSeenBefore

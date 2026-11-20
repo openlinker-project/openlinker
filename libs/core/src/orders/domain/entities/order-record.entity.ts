@@ -566,7 +566,15 @@ export class OrderRecord {
      * read; `null` when the block has none or predates the column. Appended
      * LAST: positional constructor.
      */
-    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null
+    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null,
+    /**
+     * When the buyer's personal data was removed because the source's
+     * retention period passed (#4178); `null` = not removed. Read-only here:
+     * sole writer `OrderRecordRepository.redactBuyerData`, never in `toOrm`.
+     * Ingestion reads it so a re-import writes no personal data back to the
+     * customer projections. Appended LAST: positional constructor.
+     */
+    public readonly buyerDataRedactedAt: Date | null = null
   ) {}
 
   /**

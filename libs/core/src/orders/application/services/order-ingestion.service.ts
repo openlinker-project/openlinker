@@ -535,10 +535,17 @@ export class OrderIngestionService implements IOrderIngestionService {
     // above is untouched: an echo is not an amendment.
     await this.recordSourceAmendment(existing, incoming, internalOrderId, connectionId);
 
+    // An order whose buyer data was removed because its source's retention
+    // period passed (#4178) writes no personal data back on a re-import: the
+    // order snapshot is handled by `OrderRecordService`, and the customer
+    // projections are left alone here (identity is still resolved). A first
+    // sight cannot have been redacted. Read from the record already loaded above.
+    const buyerDataRemoved = (existing?.buyerDataRedactedAt ?? null) !== null;
     const internalCustomerId = await this.resolveCustomerId(
       incoming,
       connectionId,
-      internalOrderId
+      internalOrderId,
+      buyerDataRemoved
     );
 
     // Step 2: persist raw snapshot immediately — operator can see the order even if item resolution fails
@@ -927,8 +934,10 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
     // a destination failure can't drop projection updates. Failure here is swallowed —
-    // projections are non-authoritative and must never block order sync.
-    if (internalCustomerId) {
+    // projections are non-authoritative and must never block order sync. A
+    // redacted order (#4178) skips it: the projections would take the buyer's
+    // names and addresses back and restart the retention clock.
+    if (internalCustomerId && !buyerDataRemoved) {
       try {
         await this.customerProjectionUpdater.updateProjectionsForOrder(
           order,
@@ -2408,7 +2417,8 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async resolveCustomerId(
     incoming: IncomingOrder,
     connectionId: string,
-    internalOrderId: string
+    internalOrderId: string,
+    buyerDataRemoved = false
   ): Promise<string | undefined> {
     if (incoming.customerExternalId) {
       if (incoming.customerEmail) {
@@ -2416,6 +2426,7 @@ export class OrderIngestionService implements IOrderIngestionService {
           externalBuyerId: incoming.customerExternalId,
           email: incoming.customerEmail,
           sourceConnectionId: connectionId,
+          buyerDataRemoved,
         });
         return resolution.internalCustomerId;
       }
@@ -2438,6 +2449,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         externalBuyerId: incoming.customerEmail,
         email: incoming.customerEmail,
         sourceConnectionId: connectionId,
+        buyerDataRemoved,
       });
       return resolution.internalCustomerId;
     }
