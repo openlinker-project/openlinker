@@ -51,7 +51,7 @@ describe('AmazonOfferManagerAdapter.listOffers', () => {
 
     expect(get).toHaveBeenCalledWith('/listings/2021-08-01/items/A2SELLER123', {
       marketplaceIds: ['A1PA6795UKMFR9'],
-      includedData: ['summaries', 'fulfillmentAvailability'],
+      includedData: ['summaries', 'attributes', 'fulfillmentAvailability'],
       sortBy: 'sku',
       sortOrder: 'ASC',
       pageSize: 20,
@@ -63,6 +63,21 @@ describe('AmazonOfferManagerAdapter.listOffers', () => {
       raw: { fulfilledByAmazon: false },
     });
     expect(result.nextCursor).toBe('next');
+  });
+
+  it('should carry the listing EAN so offer linking can match it in the master catalogue', async () => {
+    const { adapter, get } = setup();
+    const withEan = fbmListing({
+      attributes: {
+        externally_assigned_product_identifier: [{ type: 'ean', value: '5901234123457', marketplace_id: 'A1PA6795UKMFR9' }],
+      },
+    });
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { numberOfResults: 2, items: [withEan, fbmListing()] } });
+
+    const result = await adapter.listOffers({ cursor: null, limit: 20 });
+
+    expect(result.items[0].ean).toBe('5901234123457');
+    expect(result.items[1].ean).toBeNull();
   });
 
   it('should pass the page token on', async () => {

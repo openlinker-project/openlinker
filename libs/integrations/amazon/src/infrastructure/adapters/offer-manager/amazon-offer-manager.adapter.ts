@@ -125,6 +125,7 @@ import {
   type AmazonListingPlan,
 } from '../../mappers/amazon-listing-composer';
 import { mapProductTypeSchemaToParameters } from '../../mappers/amazon-product-type-schema.mapper';
+import { listingEan } from '../../mappers/amazon-product.mapper';
 import { AmazonCatalogReader, normalizeEan } from './amazon-catalog-reader';
 import { AmazonProductTypeReader } from './amazon-product-type-reader';
 
@@ -293,7 +294,9 @@ export class AmazonOfferManagerAdapter
   async listOffers(input: OfferFeedInput): Promise<OfferFeedOutput> {
     const response = await this.client.get<AmazonListingSearchResults>(`${LISTINGS_PATH}/${this.sellerPath()}`, {
       marketplaceIds: [this.primaryMarketplace()],
-      includedData: ['summaries', 'fulfillmentAvailability'],
+      // `attributes` carries the listing's EAN, which offer linking matches
+      // within the master catalogue; without it only a unique SKU links.
+      includedData: ['summaries', 'attributes', 'fulfillmentAvailability'],
       sortBy: 'sku',
       sortOrder: 'ASC',
       pageSize: Math.min(Math.max(input.limit, 1), MAX_PAGE_SIZE),
@@ -305,6 +308,7 @@ export class AmazonOfferManagerAdapter
         return {
           offerId: item.sku,
           sku: item.sku,
+          ean: listingEan(item, this.primaryMarketplace()),
           externalRef: summary?.asin ?? null,
           raw: {
             asin: summary?.asin ?? null,
