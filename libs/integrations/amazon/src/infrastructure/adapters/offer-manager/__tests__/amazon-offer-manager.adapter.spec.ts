@@ -7,6 +7,7 @@ import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../../domain/exceptions/amazon-config.exception';
+import { AmazonListingUpdateNotSupportedException } from '../../../../domain/exceptions/amazon-listing-update-not-supported.exception';
 import { AmazonNotSupportedException } from '../../../../domain/exceptions/amazon-not-supported.exception';
 import type { AmazonConnectionConfig } from '../../../../domain/types/amazon-config.types';
 import type { AmazonListingItem } from '../../../../domain/types/amazon-listing.types';
@@ -147,8 +148,8 @@ describe('AmazonOfferManagerAdapter.updateOfferQuantity', () => {
       },
     });
     const error = await adapter.updateOfferQuantity({ offerId: 'MUG-BLUE', quantity: 3 }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(AmazonApiError);
-    expect(error).toMatchObject({ errorCode: '90220' });
+    expect(error).toBeInstanceOf(AmazonListingUpdateNotSupportedException);
+    expect(error).toMatchObject({ issueCode: '90220', sku: 'MUG-BLUE' });
   });
 
   it('should not write back to the listings of a stock-master connection (#4183)', async () => {

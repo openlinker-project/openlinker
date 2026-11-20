@@ -94,6 +94,22 @@ const MAX_RESULTS_PER_PAGE = 100;
 /** What `getOrder` asks Amazon to include. `RECIPIENT` needs the D2C Shipping role; without it Amazon omits the address. */
 const GET_ORDER_INCLUDED_DATA = ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'];
 
+/**
+ * The blocks that carry the buyer's personal data. A read that does not show
+ * the buyer leaves them out: fetching restricted data a call does not use is
+ * what Amazon's Data Protection Policy forbids.
+ */
+const BUYER_DATA_BLOCKS: ReadonlySet<string> = new Set(['BUYER', 'RECIPIENT']);
+
+/**
+ * Every block of the full read except the buyer's data: the shipment
+ * confirmation and a refund read the items, amounts, channel and packages, and
+ * keeping the rest of the full read means no field they rely on goes missing.
+ */
+export const ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA: readonly string[] = GET_ORDER_INCLUDED_DATA.filter(
+  (block) => !BUYER_DATA_BLOCKS.has(block),
+);
+
 /** The fulfilment read-back needs the status and the packages only, never the buyer's data. */
 const READ_FULFILLMENT_INCLUDED_DATA = ['FULFILLMENT', 'PACKAGES'];
 
@@ -188,7 +204,7 @@ export class AmazonOrderSourceAdapter
               detail: 'Amazon needs a tracking number to confirm a shipment; sent once the carrier issues it',
             };
           }
-          const order = await this.readOrder(event.externalOrderId);
+          const order = await this.readOrder(event.externalOrderId, ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA);
           if (order.fulfillment?.fulfilledBy === 'AMAZON') {
             return { outcome: 'unsupported', detail: 'Amazon ships this order itself (FBA)' };
           }

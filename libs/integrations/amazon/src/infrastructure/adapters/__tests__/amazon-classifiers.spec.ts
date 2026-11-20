@@ -6,6 +6,7 @@
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonAuthenticationError } from '../../../domain/exceptions/amazon-authentication.error';
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
+import { AmazonListingUpdateNotSupportedException } from '../../../domain/exceptions/amazon-listing-update-not-supported.exception';
 import { AmazonNetworkError } from '../../../domain/exceptions/amazon-network.error';
 import { AmazonNotSupportedException } from '../../../domain/exceptions/amazon-not-supported.exception';
 import { AmazonAuthFailureClassifierAdapter } from '../amazon-auth-failure-classifier.adapter';
@@ -23,6 +24,14 @@ describe('AmazonRetryClassifierAdapter', () => {
     for (const status of [400, 403, 404, 413, 415]) {
       expect(classifier.isNonRetryable(api(status))).toBe(true);
     }
+  });
+
+  it('should make a listing patch Amazon answered INVALID terminal, named the way core reads a refusal', () => {
+    const refused = new AmazonListingUpdateNotSupportedException('MUG', '90220', 'quantity is required', 'req');
+    expect(classifier.isNonRetryable(refused)).toBe(true);
+    // The shape `inventory-correction.service.ts` reads as a master refusal, not an unknown outcome.
+    expect(/NotSupported(Exception|Error)?$/.test(refused.name)).toBe(true);
+    expect(refused.message).toBe('Amazon refused the update of listing MUG (90220: quantity is required)');
   });
 
   it('should retry network failures, 408, 429 and 5xx', () => {

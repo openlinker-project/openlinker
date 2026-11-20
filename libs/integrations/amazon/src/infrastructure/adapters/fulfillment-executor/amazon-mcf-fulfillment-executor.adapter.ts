@@ -158,14 +158,19 @@ export class AmazonMcfFulfillmentExecutorAdapter implements FulfillmentExecutorP
       });
     } catch (error) {
       if (error instanceof AmazonApiError && error.statusCode === 400) {
-        // A create that raced a retry is answered by reading the order; any
-        // other refusal is Amazon's decision about this work.
+        // A create that raced a retry is answered by reading the order. An
+        // `InvalidInput` refusal (an address field, a listing state) is
+        // Amazon's verdict on this order and would be repeated, so it is
+        // blocking: a non-blocking rejection lets re-sourcing pick Amazon again
+        // for the same work, in a loop (fulfillment-execution types, property
+        // (a)). Any other 400 may clear (an SKU still activating) and leaves
+        // Amazon a candidate.
         const raced = await this.outbound.get(orderId);
         if (raced !== null) {
           await this.rememberOrder(req.work.workId, orderId);
           return accepted(orderId, raced);
         }
-        return rejected('refused-by-amazon', false, error.message);
+        return rejected('refused-by-amazon', error.errorCode === 'InvalidInput', error.message);
       }
       throw error;
     }

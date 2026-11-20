@@ -134,6 +134,10 @@ describe('AmazonOrderSourceAdapter.write', () => {
     });
 
     expect(result).toEqual({ outcome: 'applied' });
+    // The confirmation reads no buyer data (Amazon's Data Protection Policy).
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/302-1234567-7654321', {
+      includedData: ['PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
+    });
     expect(post).toHaveBeenCalledWith('/orders/v0/orders/302-1234567-7654321/shipmentConfirmation', {
       marketplaceId: 'A1PA6795UKMFR9',
       packageDetail: {
