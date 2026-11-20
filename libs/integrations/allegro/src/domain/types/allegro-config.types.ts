@@ -8,6 +8,7 @@
  *
  * @module libs/integrations/allegro/src/domain/types
  */
+import type { ShipmentAddress } from '@openlinker/core/shipping';
 import type { AllegroSellerDefaultsConfig } from './allegro-seller-defaults.types';
 
 /**
@@ -26,6 +27,20 @@ export type AllegroEnvironment = (typeof AllegroEnvironmentValues)[number];
  * Configuration for an Allegro connection. Stored in Connection.configJson.
  * Credentials are stored separately via credentialsRef indirection.
  */
+/**
+ * The sender a "Wysyłam z Allegro" shipment ships FROM. Allegro's create-command
+ * requires `sender` on every shipment (live sandbox 400 `input.sender`), so it is
+ * connection configuration the same way InPost's and DPD's sender is.
+ */
+export interface AllegroSenderContact {
+  name?: string;
+  company?: string;
+  email: string;
+  /** International format with a prefix (Allegro makes the prefix mandatory from 2026-10-01). */
+  phone: string;
+  address: ShipmentAddress;
+}
+
 export interface AllegroConnectionConfig {
   /**
    * Allegro environment (sandbox or production)
@@ -65,6 +80,13 @@ export interface AllegroConnectionConfig {
    * re-auth.
    */
   sellerId?: string;
+
+  /**
+   * Sender for Allegro Delivery shipments. Optional so connections that never
+   * generate labels stay valid; generating a label without it is refused
+   * pre-call with a readable error rather than sent to Allegro to be rejected.
+   */
+  senderAddress?: AllegroSenderContact;
 }
 
 

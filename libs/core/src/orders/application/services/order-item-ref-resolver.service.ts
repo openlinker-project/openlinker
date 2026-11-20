@@ -188,6 +188,18 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (!internalId) {
+          // A shop that nulls the variant of a deleted line (Shopify) leaves
+          // only the sku, and sku refs have no identifier mapping there. A sku
+          // that matches a STALE catalogue variant is the master-side deletion
+          // (#1689), not a mapping gap that will heal. Only stale matches are
+          // acted on: a live match is not guessed at, since a sku is not a
+          // unique key across connections.
+          const stale = (await this.productsService.getVariantsBySkus([productRef.externalId])).filter(
+            (v) => v.isStale
+          );
+          if (stale.length === 1) {
+            throw new StaleOrderItemError(connectionId, productRef, stale[0].id);
+          }
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,

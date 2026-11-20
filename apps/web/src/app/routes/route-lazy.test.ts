@@ -158,8 +158,11 @@ const lazyRoutes = collectLazyRoutes([
  *
  * The gifts branch (#3935) and the batch screen (#3584) were counted on separate
  * branches; where they meet the registered tree holds 85 lazy routes.
+ *
+ * #3974 adds the Shopify plugin's guided setup route (`connections/new/shopify`)
+ * and its OAuth callback (`integrations/shopify/connect/callback`), from 85 to 87.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 85;
+const EXPECTED_LAZY_ROUTE_COUNT = 87;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

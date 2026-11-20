@@ -37,6 +37,7 @@
     "@openlinker/integrations-prestashop": "workspace:*",
     "@openlinker/integrations-amazon": "workspace:*",
     "@openlinker/integrations-shoper": "workspace:*",
+    "@openlinker/integrations-shopify": "workspace:*",
     "@openlinker/integrations-subiekt": "workspace:*",
     "@openlinker/integrations-subiekt-nexo": "workspace:*",
     "@openlinker/integrations-woocommerce": "workspace:*",

@@ -883,7 +883,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .andWhere('pv."isStale" = true')
       .andWhere('pv."staleAt" >= :staleSince', { staleSince: options.staleSince })
       .orderBy('pv."staleAt"', 'DESC')
-      .take(options.limit)
+      .limit(options.limit)
       .getRawMany<{ variantId: string; externalOfferId: string; staleAt: Date }>();
 
     return rows.map((row) => ({

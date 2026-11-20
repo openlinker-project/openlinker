@@ -9,6 +9,7 @@
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
+import { ContendedWriteError } from '@openlinker/core/sync';
 
 import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 import {
@@ -56,7 +57,8 @@ describe('ProductPublishExecutionService', () => {
     createMapping: jest.Mock;
     deleteMapping: jest.Mock;
   };
-  let integrations: { getCapabilityAdapter: jest.Mock };
+  let syncLock: { acquire: jest.Mock; release: jest.Mock };
+  let integrations: { getCapabilityAdapter: jest.Mock; getAdapter: jest.Mock };
   let adapter: { publishProduct: jest.Mock };
   let service: ProductPublishExecutionService;
 
@@ -90,13 +92,23 @@ describe('ProductPublishExecutionService', () => {
     adapter = {
       publishProduct: jest.fn().mockResolvedValue({ externalProductId: EXT, status: 'published' }),
     };
-    integrations = { getCapabilityAdapter: jest.fn().mockResolvedValue(adapter) };
+    integrations = {
+      getCapabilityAdapter: jest.fn().mockResolvedValue(adapter),
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: { id: CONN, enabledCapabilities: ['ProductPublisher'] },
+      }),
+    };
 
+    syncLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+    };
     service = new ProductPublishExecutionService(
       builder as never,
       records as never,
       identifierMapping as never,
-      integrations as never
+      integrations as never,
+      syncLock as never
     );
   });
 
@@ -311,6 +323,36 @@ describe('ProductPublishExecutionService', () => {
           groupAttributeValues: { Color: ['Red', 'Blue'] },
         },
       });
+    });
+
+    it('should serialise sibling publishes on one lock per connection and product (#3962)', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: VARIATION_EXT,
+        status: 'published',
+        externalParentProductId: PARENT_EXT,
+      });
+
+      await service.executePublish(input);
+
+      expect(syncLock.acquire).toHaveBeenCalledWith(`shop-publish-group:${CONN}:${GROUP_ID}`, expect.any(Number));
+      expect(syncLock.release).toHaveBeenCalledWith(`shop-publish-group:${CONN}:${GROUP_ID}`, 'lock-token');
+    });
+
+    it('should defer with ContendedWriteError and publish nothing when a sibling holds the lock (#3962)', async () => {
+      syncLock.acquire.mockResolvedValue(null);
+
+      await expect(service.executePublish(input)).rejects.toBeInstanceOf(ContendedWriteError);
+      expect(adapter.publishProduct).not.toHaveBeenCalled();
+      expect(syncLock.release).not.toHaveBeenCalled();
+    });
+
+    it('should release the lock when the publish throws (#3962)', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      adapter.publishProduct.mockRejectedValue(new Error('shop down'));
+
+      await expect(service.executePublish(input)).rejects.toThrow('shop down');
+      expect(syncLock.release).toHaveBeenCalled();
     });
 
     it('should resolve no existing parent, publish, and persist both variant + parent mappings on first publish', async () => {
@@ -659,6 +701,27 @@ describe('ProductPublishExecutionService', () => {
       expect(result.outcome).toBe('ok');
     });
 
+    it('should replace a stale variant-grain mapping left by a deleted shop product instead of adding a second', async () => {
+      identifierMapping.getExternalIds.mockImplementation((entityType: string) =>
+        Promise.resolve(
+          entityType === 'ShopProductVariant'
+            ? [{ externalId: 'old-418', connectionId: CONN, entityType, platformType: 'shoper' }]
+            : []
+        )
+      );
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: EXT,
+        externalVariantId: STOCK,
+        status: 'published',
+      });
+
+      await service.executePublish(input);
+
+      expect(identifierMapping.deleteMapping).toHaveBeenCalledWith('ShopProductVariant', 'old-418', CONN);
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith('ShopProductVariant', STOCK, CONN, VARIANT);
+    });
+
     it('should write no variant-grain mapping when the adapter reports no variant id', async () => {
       await service.executePublish(input);
 
@@ -737,5 +800,22 @@ describe('ProductPublishExecutionService', () => {
 
       expect(result.outcome).toBe('ok');
     });
+  });
+
+  it('should record a terminal business_failure without publishing when the connection is both ProductMaster and ProductPublisher', async () => {
+    integrations.getAdapter.mockResolvedValue({
+      connection: { id: CONN, enabledCapabilities: ['ProductMaster', 'ProductPublisher'] },
+    });
+    records.updateStatus.mockResolvedValue(makeRecord('failed'));
+
+    const result = await service.executePublish(input);
+
+    expect(result.outcome).toBe('business_failure');
+    expect(adapter.publishProduct).not.toHaveBeenCalled();
+    expect(records.updateStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'failed',
+      [expect.objectContaining({ code: 'SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT' })]
+    );
   });
 });

@@ -1160,11 +1160,26 @@ describe('OrderRecordService', () => {
       order.status = 'cancelled';
       const refetched = { cancelledAt: new Date() } as unknown as OrderRecord;
       repository.upsertWithLineItems.mockResolvedValue({ cancelledAt: null } as unknown as OrderRecord);
+      repository.markCancelled.mockResolvedValue(true);
       repository.findById.mockResolvedValue(refetched);
 
       const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
 
       expect(result).toBe(refetched);
+    });
+
+    it('re-reads the record when markCancelled reports no transition (already stamped), because upsert never carries cancelledAt', async () => {
+      const order = createMockOrder();
+      order.status = 'cancelled';
+      const saved = { cancelledAt: null } as unknown as OrderRecord;
+      const stamped = { cancelledAt: new Date('2026-08-01T00:00:00Z') } as unknown as OrderRecord;
+      repository.upsertWithLineItems.mockResolvedValue(saved);
+      repository.markCancelled.mockResolvedValue(false);
+      repository.findById.mockResolvedValue(stamped);
+
+      const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(result).toBe(stamped);
     });
 
     it('does not call markCancelled or re-fetch for a non-cancelled order', async () => {

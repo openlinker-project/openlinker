@@ -1121,3 +1121,54 @@ export type AttributeProjectionPreviewEntry =
 export interface AttributeProjectionPreviewResponse {
   entries: AttributeProjectionPreviewEntry[];
 }
+
+/**
+ * #3962 - where a product is on sale after it was deleted at the source:
+ * one row per listing (marketplace offer or shop product), and what
+ * OpenLinker did about it. Mirrors `ProductSaleStatusResponseDto`.
+ */
+export type ListingSaleState = 'on_sale' | 'off_sale' | 'unknown';
+export type ListingSaleHoldMethod = 'stock_zero' | 'unpublished' | 'none';
+export type ListingSaleHoldOutcome = 'applied' | 'not_possible' | 'failed';
+export type ListingSaleHoldReason = 'stock_sync_off' | 'no_stock_write' | 'error';
+
+export interface ListingSaleRowHold {
+  id: string;
+  method: ListingSaleHoldMethod;
+  outcome: ListingSaleHoldOutcome;
+  outcomeReason: ListingSaleHoldReason | null;
+  appliedAt: string;
+}
+
+export interface ListingSaleRow {
+  connectionId: string;
+  entityType: 'Offer' | 'ShopProduct';
+  externalId: string;
+  externalParentId: string | null;
+  internalVariantId: string | null;
+  channelStatus: string | null;
+  quantity: number | null;
+  lastCheckedAt: string | null;
+  hold: ListingSaleRowHold | null;
+  state: ListingSaleState;
+}
+
+export interface ProductSaleStatusResponse {
+  productId: string;
+  deletedAtSource: boolean;
+  deletedAt: string | null;
+  staleVariantIds: string[];
+  staleSkus: string[];
+  ordersSinceDeletion: number | null;
+  checkedAt: string | null;
+  rows: ListingSaleRow[];
+}
+
+export interface ReleaseSaleHoldsResponse {
+  released: string[];
+  failed: { holdId: string; message: string }[];
+}
+
+export interface SaleHoldAttentionCountResponse {
+  productsStillOnSale: number;
+}

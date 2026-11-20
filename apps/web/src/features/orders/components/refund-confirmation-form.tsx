@@ -75,6 +75,12 @@ interface RefundConfirmationFormProps {
    * protection against a wrong currency reaching `RefundRecord`.
    */
   currency: string | null;
+  /**
+   * True when confirming sends the refund to the store (see
+   * `useRefundSentToShopify`), which changes what the preamble may claim. A prop
+   * rather than a read here, so the form stays free of server state.
+   */
+  sentToShopify?: boolean;
   /** Rendered BESIDE the amount as context. Never placed in the input. */
   orderTotal?: string | null;
   pending: boolean;
@@ -115,6 +121,7 @@ type RefundFormValues = z.infer<ReturnType<typeof createRefundConfirmationSchema
 
 export function RefundConfirmationForm({
   currency,
+  sentToShopify = false,
   orderTotal = null,
   pending,
   error,
@@ -164,7 +171,7 @@ export function RefundConfirmationForm({
       }}
     >
       <p className="refund-confirmation-form__preamble">
-        {copy.preamble}
+        {sentToShopify ? copy.preambleShopify : copy.preamble}
       </p>
 
       <FormErrorSummary errors={messages} title={copy.heading} />

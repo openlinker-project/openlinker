@@ -100,3 +100,12 @@ describe('RefundConfirmationForm (#2382)', () => {
     expect(screen.getByLabelText(/Amount refunded/)).toBeDisabled();
   });
 });
+
+describe('RefundConfirmationForm preamble (#4091 O25)', () => {
+  it('should say OpenLinker sends the refund to Shopify, not that it moves no money, when it does', () => {
+    renderForm({ sentToShopify: true });
+
+    expect(screen.getByText(/OpenLinker sends this refund to Shopify/)).toBeInTheDocument();
+    expect(screen.queryByText(/does not move money/)).not.toBeInTheDocument();
+  });
+});

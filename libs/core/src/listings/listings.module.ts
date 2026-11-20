@@ -55,6 +55,9 @@ import { BulkShopPublishRetryService } from './application/services/bulk-shop-pu
 import { ShopStatusSyncService } from './application/services/shop-status-sync.service';
 import { ShopProductStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/shop-product-status-snapshot.orm-entity';
 import { ShopProductStatusSnapshotRepository } from './infrastructure/persistence/repositories/shop-product-status-snapshot.repository';
+import { ListingSaleHoldOrmEntity } from './infrastructure/persistence/entities/listing-sale-hold.orm-entity';
+import { ListingSaleHoldRepository } from './infrastructure/persistence/repositories/listing-sale-hold.repository';
+import { ListingSaleStatusService } from './application/services/listing-sale-status.service';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
 import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
 import { SellerPoliciesService } from './application/services/seller-policies.service';
@@ -136,6 +139,8 @@ import {
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
   STALE_OFFER_PAUSE_SERVICE_TOKEN,
+  LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
   COVERAGE_GAP_READ_SERVICE_TOKEN,
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
   DESTINATION_TAXONOMY_SERVICE_TOKEN,
@@ -191,6 +196,8 @@ export {
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
   STALE_OFFER_PAUSE_SERVICE_TOKEN,
+  LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
   COVERAGE_GAP_READ_SERVICE_TOKEN,
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
 } from './listings.tokens';
@@ -207,6 +214,7 @@ export {
       OfferStatusSnapshotOrmEntity,
       OfferCommercialSnapshotOrmEntity,
       ShopProductStatusSnapshotOrmEntity,
+      ListingSaleHoldOrmEntity,
       DestinationCategoryOrmEntity,
       PriceChangeEpisodeOrmEntity,
       PriceChangeAutoAppliedLogOrmEntity,
@@ -251,6 +259,8 @@ export {
     BulkShopPublishRetryService,
     ShopStatusSyncService,
     ShopProductStatusSnapshotRepository,
+    ListingSaleHoldRepository,
+    ListingSaleStatusService,
     OfferCreationEnqueueService,
     BulkListingSubmitService,
     BulkListingRetryService,
@@ -412,6 +422,14 @@ export {
       useExisting: ShopProductStatusSnapshotRepository,
     },
     {
+      provide: LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+      useExisting: ListingSaleHoldRepository,
+    },
+    {
+      provide: LISTING_SALE_STATUS_SERVICE_TOKEN,
+      useExisting: ListingSaleStatusService,
+    },
+    {
       provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
       useExisting: OfferCreationEnqueueService,
     },
@@ -552,6 +570,10 @@ export {
     PUBLISHED_VARIANTS_SERVICE_TOKEN,
     SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
     STALE_OFFER_PAUSE_SERVICE_TOKEN,
+    LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+    LISTING_SALE_STATUS_SERVICE_TOKEN,
+  LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
     COVERAGE_GAP_READ_SERVICE_TOKEN,
     STOCK_AT_RISK_READ_SERVICE_TOKEN,
     DESTINATION_TAXONOMY_SERVICE_TOKEN,

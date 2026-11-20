@@ -26,6 +26,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useRecordOrderRefundMutation } from '../hooks/use-record-order-refund-mutation';
+import { useRefundSentToShopify } from '../lib/refund-sent-to-shopify';
 import { readRefundCeilingFigures } from '../lib/order-cancel';
 import {
   RefundConfirmationForm,
@@ -41,6 +42,8 @@ export interface ConfirmOrderRefundDialogProps {
   currency: string | null;
   /** Order total as a plain decimal string, shown beside the amount as context. */
   orderTotal: string | null;
+  /** The order's source connection, used to word what a confirmed refund does. */
+  sourceConnectionId?: string | null;
 }
 
 function newIdempotencyKey(): string {
@@ -53,10 +56,12 @@ export function ConfirmOrderRefundDialog({
   internalOrderId,
   currency,
   orderTotal,
+  sourceConnectionId = null,
 }: ConfirmOrderRefundDialogProps): ReactElement {
   const copy = useMessages('orders').confirmOrderRefund;
   const { showToast } = useToast();
   const mutation = useRecordOrderRefundMutation();
+  const sentToShopify = useRefundSentToShopify(sourceConnectionId);
   const [acknowledged, setAcknowledged] = useState(false);
   const keyRef = useRef<string>(newIdempotencyKey());
 
@@ -98,7 +103,9 @@ export function ConfirmOrderRefundDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="order-hold-dialog" data-testid="order-refund-dialog">
         <DialogTitle>{copy.title}</DialogTitle>
-        <DialogDescription>{copy.description}</DialogDescription>
+        <DialogDescription>
+          {sentToShopify ? copy.descriptionShopify : copy.description}
+        </DialogDescription>
 
         {ceiling ? (
           <Alert tone="warning" title={copy.ceiling.title} data-testid="order-refund-ceiling">
@@ -127,6 +134,7 @@ export function ConfirmOrderRefundDialog({
 
         <RefundConfirmationForm
           currency={currency}
+          sentToShopify={sentToShopify}
           orderTotal={orderTotal}
           pending={mutation.isPending}
           error={

@@ -57,6 +57,7 @@ describe('InventoryLocationsController', () => {
       countPositionsAtLocation: jest.fn(),
       countActiveLocations: jest.fn(),
       bootstrapDefaultLocations: jest.fn(),
+      resolveMasterLocation: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

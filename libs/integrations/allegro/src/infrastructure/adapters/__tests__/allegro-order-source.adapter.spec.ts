@@ -2066,4 +2066,83 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
   });
+
+  describe('listRefunds (#4100)', () => {
+    const refund = (id: string, orderId: string, status = 'SUCCESS'): unknown => ({
+      id,
+      status,
+      order: { id: orderId },
+      totalValue: { amount: '12.50', currency: 'PLN' },
+      createdAt: '2026-11-16T20:44:36.650Z',
+    });
+
+    it('should filter by order.id and page with limit and offset', async () => {
+      httpClient.get.mockResolvedValue({ data: { refunds: [refund('r1', 'cf-1')] } } as never);
+
+      const result = await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledWith('/payments/refunds', {
+        queryParams: { 'order.id': 'cf-1', limit: 100, offset: 0 },
+      });
+      expect(result).toEqual([
+        {
+          externalRefundId: 'r1',
+          amount: '12.50',
+          currency: 'PLN',
+          occurredAt: new Date('2026-11-16T20:44:36.650Z'),
+        },
+      ]);
+    });
+
+    it('should drop refunds that name another order and unsettled ones', async () => {
+      httpClient.get.mockResolvedValue({
+        data: {
+          refunds: [
+            refund('mine', 'cf-1'),
+            refund('other', 'cf-2'),
+            refund('pending', 'cf-1', 'PENDING'),
+          ],
+        },
+      } as never);
+
+      const result = await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(result.map((r) => r.externalRefundId)).toEqual(['mine']);
+    });
+
+    it('should return an empty list when the order has no refunds', async () => {
+      httpClient.get.mockResolvedValue({ data: {} } as never);
+
+      await expect(adapter.listRefunds({ externalOrderId: 'cf-1' })).resolves.toEqual([]);
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should propagate a 4xx so the caller decides how to report it', async () => {
+      httpClient.get.mockRejectedValue(new AllegroApiException('Forbidden', 403));
+
+      await expect(adapter.listRefunds({ externalOrderId: 'cf-1' })).rejects.toThrow('Forbidden');
+    });
+
+    it('should stop after the page bound even when every page is full', async () => {
+      const fullPage = Array.from({ length: 100 }, (_, i) => refund(`r${i}`, 'cf-1'));
+      httpClient.get.mockResolvedValue({ data: { refunds: fullPage } } as never);
+
+      await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledTimes(10);
+    });
+
+    it('should stop paging at the first short page', async () => {
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { refunds: Array.from({ length: 100 }, (_, i) => refund(`a${i}`, 'cf-1')) },
+        } as never)
+        .mockResolvedValueOnce({ data: { refunds: [refund('b1', 'cf-1')] } } as never);
+
+      const result = await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledTimes(2);
+      expect(result).toHaveLength(101);
+    });
+  });
 });

@@ -13,6 +13,8 @@ import {
   SlaStateValues,
   FulfillmentRollupStateValues,
   PaymentMethodValues,
+  OrderRefundStateValues,
+  type OrderRefundState,
 } from '@openlinker/core/orders';
 import {
   OrderRecordStatus,
@@ -102,6 +104,17 @@ export class OrderMultipackHoldDto {
   variantId!: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) productName!: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+}
+
+export class OrderRefundStateDto {
+  @ApiProperty({ enum: OrderRefundStateValues })
+  state!: OrderRefundState;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Decimal string, or null when unknown.' })
+  refundedAmount!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  currency!: string | null;
 }
 
 export class OrderRecordResponseDto {
@@ -329,6 +342,18 @@ export class OrderRecordResponseDto {
       'the projection is best-effort and degrades to absent on failure.',
   })
   reservationShortfalls?: OrderReservationShortfallDto[];
+
+  @ApiPropertyOptional({
+    type: OrderRefundStateDto,
+    description:
+      'Refund state derived on read from the order\'s refund records (#4130): `partial` when ' +
+      'refunds are between zero and the order total, `full` when they reach it, `unknown` when ' +
+      'a currency mismatch, a tax-exclusive total or a missing total makes the comparison ' +
+      'meaningless. A separate fact from the channel-reported payment status, which the next ' +
+      'poll rewrites. Absent means no refund was recorded or the read failed, never a positive ' +
+      '"not refunded" claim.',
+  })
+  refundState?: OrderRefundStateDto;
 
   @ApiPropertyOptional({
     type: OrderOpenReturnDto,
