@@ -94,6 +94,9 @@ const MAX_RESULTS_PER_PAGE = 100;
 /** What `getOrder` asks Amazon to include. `RECIPIENT` needs the D2C Shipping role; without it Amazon omits the address. */
 const GET_ORDER_INCLUDED_DATA = ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'];
 
+/** The fulfilment read-back needs the status and the packages only, never the buyer's data. */
+const READ_FULFILLMENT_INCLUDED_DATA = ['FULFILLMENT', 'PACKAGES'];
+
 /** Payment method names the Orders API documents (`PaymentExecution.paymentMethod`). */
 const DOCUMENTED_PAYMENT_METHODS = ['CashOnDelivery', 'ConvenienceStore', 'CreditCard', 'Invoice', 'Pix'];
 
@@ -216,7 +219,7 @@ export class AmazonOrderSourceAdapter
 
   async readFulfillment(input: { externalOrderId: string }): Promise<SourceFulfillmentReadback> {
     try {
-      const order = await this.readOrder(input.externalOrderId);
+      const order = await this.readOrder(input.externalOrderId, READ_FULFILLMENT_INCLUDED_DATA);
       const rawStatus = order.fulfillment?.fulfillmentStatus ?? null;
       return {
         outcome: 'read',
@@ -227,7 +230,7 @@ export class AmazonOrderSourceAdapter
           .filter((pkg) => typeof pkg.trackingNumber === 'string' && pkg.trackingNumber.trim().length > 0)
           .map((pkg) => ({
             waybill: (pkg.trackingNumber as string).trim(),
-            ...(pkg.carrier ? { carrierId: pkg.carrier, carrierName: pkg.carrier } : {}),
+            ...(pkg.carrier ? { carrierName: pkg.carrier } : {}),
           })),
       };
     } catch (error) {
@@ -251,10 +254,13 @@ export class AmazonOrderSourceAdapter
     return Promise.resolve(DOCUMENTED_PAYMENT_METHODS.map((value) => ({ value, label: value })));
   }
 
-  protected async readOrder(orderId: string): Promise<AmazonOrder> {
+  protected async readOrder(
+    orderId: string,
+    includedData: readonly string[] = GET_ORDER_INCLUDED_DATA,
+  ): Promise<AmazonOrder> {
     const response = await this.client.get<AmazonGetOrderResponse>(
       `${SEARCH_ORDERS_PATH}/${encodeURIComponent(orderId)}`,
-      { includedData: GET_ORDER_INCLUDED_DATA },
+      { includedData },
     );
     return response.data.order;
   }

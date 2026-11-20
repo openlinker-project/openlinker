@@ -23,7 +23,7 @@ import { codedHttpError } from '../../../common/errors/coded-http.exception';
  */
 export function publisherRole(
   capabilities: readonly string[],
-  supportedCapabilities: readonly string[] = []
+  supportedCapabilities: readonly string[]
 ): 'ProductPublisher' | 'OfferManager' | null {
   if (capabilities.includes('ProductPublisher')) return 'ProductPublisher';
   if (capabilities.includes('OfferManager') && supportedCapabilities.includes('OfferCreator')) {
@@ -35,7 +35,7 @@ export function publisherRole(
 /** True when one connection would be both a catalogue master and a publisher (#3985). */
 export function hasMasterAndPublisher(
   capabilities: readonly string[],
-  supportedCapabilities: readonly string[] = []
+  supportedCapabilities: readonly string[]
 ): boolean {
   return capabilities.includes('ProductMaster') && publisherRole(capabilities, supportedCapabilities) !== null;
 }

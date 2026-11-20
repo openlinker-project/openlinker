@@ -60,8 +60,10 @@
  *    (`OrderRecord.isFulfilledBySource`: Amazon FBA, Allegro One
  *    Fulfillment): OL never routes nor ships such an order, so a bare "sent"
  *    cannot be OL's own, and it is recorded as a source-observed row without
- *    a tracking number. Nothing is relayed for it (there is no waybill), and
- *    once that row exists a later waybill still fills it in.
+ *    a tracking number. Nothing is relayed for it (there is no waybill). A
+ *    waybill the source adds later still fills the row in, but only within
+ *    `SOURCE_SHIPPED_WAYBILL_WAIT_MS` of the dispatch: some sources (Amazon
+ *    FBA) never report one, and the row is then not read again.
  *
  * The reverse loop - this relay reaching a destination whose own branch-1
  * read-back then reports the parcel and relays it back to the source - is
@@ -168,6 +170,15 @@ interface RecordOutcome {
 }
 
 const SKIPPED: RecordOutcome = { kind: 'skipped', relayed: false };
+
+/**
+ * How long a source-observed row without a waybill, on an order the source
+ * ships itself, is still read for a late waybill. A carrier number normally
+ * follows the dispatch within hours (Allegro One Fulfillment); some sources
+ * never report one (Amazon FBA), and reading those for the whole scan window
+ * would spend the source's request quota for nothing.
+ */
+export const SOURCE_SHIPPED_WAYBILL_WAIT_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
  * Waybills are compared trimmed and case-folded: two spellings of one parcel
@@ -302,6 +313,17 @@ export class SourceFulfillmentStatusSyncService implements ISourceFulfillmentSta
     if (sourceRow !== null && sourceRow.trackingNumber !== null) {
       const redriven = await this.relayIfOwed(record, sourceRow, sourceRow.trackingNumber);
       return { kind: 'skipped', relayed: redriven };
+    }
+
+    // An order the source ships itself, already recorded as sent without a
+    // waybill: past the wait window nothing more is expected from the source.
+    if (
+      record.isFulfilledBySource &&
+      sourceRow !== null &&
+      sourceRow.dispatchedAt !== null &&
+      Date.now() - sourceRow.dispatchedAt.getTime() > SOURCE_SHIPPED_WAYBILL_WAIT_MS
+    ) {
+      return SKIPPED;
     }
 
     // OL already knows a live parcel for this order (its own label, a

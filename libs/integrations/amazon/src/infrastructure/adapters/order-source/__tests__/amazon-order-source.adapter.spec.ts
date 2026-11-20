@@ -263,9 +263,8 @@ describe('AmazonOrderSourceAdapter.readFulfillment', () => {
 
     const result = await adapter(client).readFulfillment({ externalOrderId: 'x' });
 
-    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/x', {
-      includedData: expect.arrayContaining(['FULFILLMENT', 'PACKAGES']),
-    });
+    // Status and packages only: the read-back never fetches the buyer's data.
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/x', { includedData: ['FULFILLMENT', 'PACKAGES'] });
     expect(result).toEqual({ outcome: 'read', rawStatus: 'SHIPPED', dispatched: true, waybills: [] });
   });
 
@@ -287,7 +286,7 @@ describe('AmazonOrderSourceAdapter.readFulfillment', () => {
 
     const result = await adapter(client).readFulfillment({ externalOrderId: 'x' });
 
-    expect(result.waybills).toEqual([{ waybill: '0950123', carrierId: 'DPD', carrierName: 'DPD' }]);
+    expect(result.waybills).toEqual([{ waybill: '0950123', carrierName: 'DPD' }]);
   });
 
   it('should read an unshipped order as not dispatched and an unknown status as unknown', async () => {
