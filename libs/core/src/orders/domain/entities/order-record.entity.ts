@@ -566,7 +566,15 @@ export class OrderRecord {
      * read; `null` when the block has none or predates the column. Appended
      * LAST: positional constructor.
      */
-    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null
+    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null,
+    /**
+     * When the buyer's personal data was removed because the source's
+     * retention period passed (#4178); `null` = not removed. Read-only here:
+     * sole writer `OrderRecordRepository.redactBuyerData`, never in `toOrm`.
+     * Ingestion reads it so a re-import writes no personal data back to the
+     * customer projections. Appended LAST: positional constructor.
+     */
+    public readonly buyerDataRedactedAt: Date | null = null
   ) {}
 
   /**
@@ -797,6 +805,16 @@ export class OrderRecord {
    */
   get isCancelled(): boolean {
     return this.cancelledAt !== null;
+  }
+
+  /**
+   * True when the source asserted it ships this order itself (#3636: Allegro
+   * One Fulfillment, Amazon FBA). Read from the snapshot, where ingestion
+   * persists it; absent means "not asserted", never "the seller ships".
+   * Pure derivation of an already-loaded field (ADR-011).
+   */
+  get isFulfilledBySource(): boolean {
+    return this.orderSnapshot.fulfilledBySource === true;
   }
 
   /**

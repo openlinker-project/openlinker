@@ -21,6 +21,7 @@ import type { AmazonSqsClient } from '../../http/amazon-sqs-client';
 import { mapAmazonNotificationMessage } from '../../mappers/amazon-notification.mapper';
 import type { AmazonReturnReader } from '../returns/amazon-return-reader';
 import { AmazonOrderSourceAdapter } from './amazon-order-source.adapter';
+import type { AmazonOrderLineRef } from '../../../domain/policies/amazon-order-line-ref.policy';
 
 export class AmazonQueuedOrderSourceAdapter extends AmazonOrderSourceAdapter implements InboundQueueReader {
   constructor(
@@ -30,8 +31,9 @@ export class AmazonQueuedOrderSourceAdapter extends AmazonOrderSourceAdapter imp
     private readonly notificationQueue: AmazonSqsClient,
     now?: () => Date,
     returns?: AmazonReturnReader,
+    orderLineRef?: AmazonOrderLineRef,
   ) {
-    super(connectionId, client, config, now, returns);
+    super(connectionId, client, config, now, returns, orderLineRef);
   }
 
   async receiveInboundMessages(input: { readonly maxMessages: number }): Promise<InboundQueueMessage[]> {

@@ -155,6 +155,16 @@ function describeRefusal(error: unknown): string | null {
       'register a queue; otherwise check the client id and secret.'
     );
   }
+  // LWA answers a scope the app may not use with `invalid_scope`, which the
+  // token provider leaves an ordinary AmazonApiError: it is not a credential
+  // rejection and must not send the connection to `needs_reauth`.
+  if (error instanceof AmazonApiError && error.errorCode === 'invalid_scope') {
+    return (
+      'Amazon refused the token for its Notifications API: this app may not use it. An app still in ' +
+      'Draft or Sandbox status, or one without the Notifications role, cannot register a queue. ' +
+      'Add the role in Developer Central, then authorize the app again.'
+    );
+  }
   if (error instanceof AmazonApiError && error.statusCode === 403) {
     return 'Amazon refused the call: the app lacks the Notifications role. Add it in Developer Central, then authorize the app again.';
   }

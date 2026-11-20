@@ -317,6 +317,12 @@ export const JobTypeValues = [
   // nil-UUID system connection id, like its timeout-sweep sibling.
   'fulfillment.work.relaySweep',
 
+  // The status poll of a POLLING holder (Amazon Multi-Channel Fulfillment):
+  // reads `FulfillmentStatusSource` for the work the connection accepted and
+  // records the progress through `IFulfillmentProgressService`. Scoped to the
+  // executor connection; enqueued by the plugin's scheduler task.
+  'fulfillment.work.statusPoll',
+
   // The reroute sweep (#3485, epic #3460). With the OMS on, an order the router
   // refused (a line out of stock) or failed to route is HELD in OpenLinker
   // rather than created in every product master; this pass re-enters routing
@@ -498,6 +504,10 @@ export const JobOutcomeReasonValues = [
   // burned the ladder. Transient carrier errors (5xx, 408, 429) still retry.
   'auto_dispatch_carrier_refused',
   'auto_dispatch_preflight_failed',
+  // #4179: a notifications drain on a connection whose adapter has no inbound
+  // queue reader (no queue URL or no AWS access key). A configuration fact
+  // only an operator edit changes, so the job ends instead of retrying.
+  'notification_queue_not_configured',
 ] as const;
 
 /**

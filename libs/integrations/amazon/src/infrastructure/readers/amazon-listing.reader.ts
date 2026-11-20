@@ -6,7 +6,8 @@
  *
  *   - `read(sku)`: one listing with attributes, summaries, offers and
  *     relationships, served from a per-instance cache that `prefetch` fills
- *     with `searchListingsItems(identifiersType=SKU)`, 20 SKUs a call.
+ *     with `searchListingsItems(identifiersType=SKU)`, 20 SKUs a call. Only
+ *     a `getListingsItem` 404 caches a listing as gone; a search miss does not.
  *   - `page(index)`: one page of `searchListingsItems`, ordered by SKU.
  *     Amazon pages with a token, never an offset, so the token that opens
  *     each page is remembered in the host cache: page N is one call once
@@ -55,12 +56,19 @@ export class AmazonListingReader {
     return this.refresh(sku);
   }
 
-  /** Reads `sku` from Amazon even when cached: a stock write starts from Amazon's current quantity (#4183). */
-  async refresh(sku: string): Promise<AmazonListingItem | null> {
+  /**
+   * Reads `sku` from Amazon even when cached: a stock write starts from Amazon's
+   * current quantity (#4183). `withIssues` also asks for the listing's issues,
+   * which is how a patch Amazon accepted and then failed shows (#4183 review).
+   */
+  async refresh(sku: string, options: { readonly withIssues?: boolean } = {}): Promise<AmazonListingItem | null> {
     try {
       const response = await this.client.get<AmazonListingItem>(
         `${LISTINGS_PATH}/${encodeURIComponent(this.sellerId)}/${encodeURIComponent(sku)}`,
-        { marketplaceIds: [this.marketplaceId], includedData: FULL_DATA },
+        {
+          marketplaceIds: [this.marketplaceId],
+          includedData: options.withIssues === true ? [...FULL_DATA, 'issues'] : FULL_DATA,
+        },
       );
       this.cached.set(sku, response.data);
       return response.data;
@@ -74,9 +82,13 @@ export class AmazonListingReader {
   }
 
   /**
-   * Reads up to 20 SKUs per call into the cache. An SKU Amazon did not return
-   * is cached as absent, so the caller's read reports it gone without a
-   * second call.
+   * Reads up to 20 SKUs per call into the cache. An SKU the search did not
+   * return is NOT cached as absent: a search answer can omit a listing that
+   * exists (index lag on a fresh listing), and an absence read as a deletion
+   * would retire the product's variants and pause its offers everywhere
+   * (#1689). Such an SKU stays unread, so the caller's `read` asks
+   * `getListingsItem`, whose 404 is the only answer taken as "gone". The
+   * prefetch is a request-count optimisation and changes no outcome.
    */
   async prefetch(skus: readonly string[]): Promise<void> {
     for (let start = 0; start < skus.length; start += AMAZON_LISTING_PAGE_SIZE) {
@@ -91,9 +103,8 @@ export class AmazonListingReader {
           pageSize: AMAZON_LISTING_PAGE_SIZE,
         },
       );
-      const found = new Map(response.data.items.map((item) => [item.sku, item]));
-      for (const sku of batch) {
-        this.cached.set(sku, found.get(sku) ?? null);
+      for (const item of response.data.items) {
+        if (batch.includes(item.sku)) this.cached.set(item.sku, item);
       }
     }
   }

@@ -44,7 +44,10 @@ describe('NotificationsDrainHandler', () => {
 
   it('should end as a business failure when the adapter reads no queue', async () => {
     const { handler, drain } = setup({ listOrderFeed: jest.fn() });
-    await expect(handler.execute(job)).resolves.toEqual({ outcome: 'business_failure' });
+    await expect(handler.execute(job)).resolves.toEqual({
+      outcome: 'business_failure',
+      outcomeReason: 'notification_queue_not_configured',
+    });
     expect(drain).not.toHaveBeenCalled();
   });
 

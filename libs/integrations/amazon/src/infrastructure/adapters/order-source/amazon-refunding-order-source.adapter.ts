@@ -17,7 +17,7 @@ import type { ExecuteRefundCommand, RefundExecutionResult, RefundExecutor } from
 
 import type { AmazonOrder } from '../../../domain/types/amazon-order.types';
 import type { AmazonRefundExecutor } from '../returns/amazon-refund-executor';
-import { AmazonOrderSourceAdapter } from './amazon-order-source.adapter';
+import { AmazonOrderSourceAdapter, ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA } from './amazon-order-source.adapter';
 import { AmazonQueuedOrderSourceAdapter } from './amazon-queued-order-source.adapter';
 
 export type AmazonOrderReader = (orderId: string) => Promise<AmazonOrder>;
@@ -45,7 +45,7 @@ export class AmazonRefundingOrderSourceAdapter extends AmazonOrderSourceAdapter 
 
   /** Set once by the factory, which builds the executor around this adapter's order read. */
   attachRefundExecutor(build: (readOrder: AmazonOrderReader) => AmazonRefundExecutor): this {
-    this.refunds.attach(build((orderId) => this.readOrder(orderId)));
+    this.refunds.attach(build((orderId) => this.readOrder(orderId, ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA)));
     return this;
   }
 
@@ -59,7 +59,7 @@ export class AmazonQueuedRefundingOrderSourceAdapter extends AmazonQueuedOrderSo
 
   /** Set once by the factory, which builds the executor around this adapter's order read. */
   attachRefundExecutor(build: (readOrder: AmazonOrderReader) => AmazonRefundExecutor): this {
-    this.refunds.attach(build((orderId) => this.readOrder(orderId)));
+    this.refunds.attach(build((orderId) => this.readOrder(orderId, ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA)));
     return this;
   }
 

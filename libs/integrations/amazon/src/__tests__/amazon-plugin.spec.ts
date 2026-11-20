@@ -85,6 +85,7 @@ describe('Amazon plugin', () => {
       platformType: 'amazon',
       config: { marketplaceIds: ['A1PA6795UKMFR9'] },
       credentialsRef: 'db:1',
+      enabledCapabilities: ['OrderSource'],
     } as unknown as Connection;
 
     const source = await createAmazonPlugin().createCapabilityAdapter<{ listOrderFeed: unknown }>(
@@ -107,6 +108,7 @@ describe('Amazon plugin', () => {
       platformType: 'amazon',
       config: { marketplaceIds: ['A1PA6795UKMFR9'], refundsEnabled: true },
       credentialsRef: 'db:1',
+      enabledCapabilities: ['OrderSource'],
     } as unknown as Connection;
 
     const source = await createAmazonPlugin().createCapabilityAdapter<object>(amazonConnection, 'OrderSource', host);
@@ -136,6 +138,7 @@ describe('Amazon plugin', () => {
         notificationQueueUrl: 'https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications',
       },
       credentialsRef: 'db:1',
+      enabledCapabilities: ['OrderSource'],
     } as unknown as Connection;
 
     const source = await createAmazonPlugin().createCapabilityAdapter<object>(amazonConnection, 'OrderSource', host);
@@ -157,6 +160,20 @@ describe('Amazon plugin', () => {
         expect.objectContaining({ taskId, jobType, requiredCapability: 'OrderSource', enabledDefault: false }),
       );
     }
+  });
+
+  it('should register the Multi-Channel Fulfillment status poll, off by default', () => {
+    const { host, scheduler } = registerHost();
+    createAmazonPlugin().register?.(host);
+
+    expect(scheduler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'amazon-mcf-status-poll',
+        jobType: 'fulfillment.work.statusPoll',
+        requiredCapability: 'FulfillmentExecutor',
+        enabledDefault: false,
+      }),
+    );
   });
 
   it('should refuse a capability it does not support with the SDK message', async () => {

@@ -1532,6 +1532,7 @@
   "sync-jobs:syncJobStatusBadge.outcomeReasons.auto_dispatch_no_delivery_method": 29,
   "sync-jobs:syncJobStatusBadge.outcomeReasons.auto_dispatch_shipment_claimed_by_sibling_work": 36,
   "sync-jobs:syncJobStatusBadge.outcomeReasons.master_deleted": 23,
+  "sync-jobs:syncJobStatusBadge.outcomeReasons.notification_queue_not_configured": 23,
   "sync-jobs:syncJobsPage.columns.attempts": 13,
   "sync-jobs:syncJobsPage.columns.connection": 16,
   "sync-jobs:syncJobsPage.columns.created": 12,

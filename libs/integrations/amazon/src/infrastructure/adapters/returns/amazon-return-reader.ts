@@ -13,7 +13,9 @@
  *      report is the only way to see it); Amazon allows at most 60 days a
  *      report, so the window never starts further back than that;
  *   2. while Amazon builds it, report no returns and keep the cursor;
- *   3. when it is done, hand the returns to core a page at a time.
+ *   3. when it is done, hand the returns to core a page at a time. A report
+ *      Amazon could not build (`FATAL`) closes the cycle with a warning; the
+ *      next one's re-check window covers its returns.
  *
  * A new cycle starts at most once per `AMAZON_RETURN_REPORT_INTERVAL_MS`.
  *
@@ -29,6 +31,7 @@
  */
 import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
 import type { CachePort } from '@openlinker/shared';
+import { Logger } from '@openlinker/shared/logging';
 
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import {
@@ -57,6 +60,7 @@ const REPORT_END_LAG_MS = 2 * 60 * 1000;
 const RETURN_CACHE_TTL_SECONDS = 40 * 24 * 60 * 60;
 
 export class AmazonReturnReader {
+  private readonly logger = new Logger(AmazonReturnReader.name);
   private readonly local = new Map<string, AmazonReturnObservation>();
 
   constructor(
@@ -134,12 +138,15 @@ export class AmazonReturnReader {
         }
         return this.readPage(report.reportDocumentId, cursor.until, 0, limit);
       case 'FATAL':
-        throw new AmazonApiError(
-          502,
-          'ReportFatal',
-          `Amazon could not build returns report ${cursor.reportId} (connection: ${this.connectionId})`,
-          undefined,
+        // A FATAL report never changes state, so keeping the cursor on it
+        // would fail every tick and never request another report. The cycle is
+        // closed instead; the next one reaches back `AMAZON_RETURN_RECHECK_DAYS`,
+        // so the returns this report would have carried are read then.
+        this.logger.warn(
+          `amazon_returns_report_fatal: Amazon could not build returns report ${cursor.reportId}; ` +
+            `a new report is requested next cycle (connection: ${this.connectionId})`,
         );
+        return { items: [], nextCursor: encodeAmazonReturnFeedCursor({ step: 'idle', until: cursor.until }) };
     }
   }
 

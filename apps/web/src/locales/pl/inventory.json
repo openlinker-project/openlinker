@@ -579,6 +579,10 @@
         "body": "Dwa połączenia zgłaszają ten stan jako swój, więc OpenLinker nie będzie zgadywać, które zmienić.",
         "title": "Więcej niż jedno połączenie zgłasza ten stan"
       },
+      "multipleLocations": {
+        "body": "Ten wariant leży w więcej niż jednej lokalizacji, więc OpenLinker nie wie, którą zmienić. Skoryguj go w połączeniu głównym.",
+        "title": "Ten stan jest w więcej niż jednej lokalizacji"
+      },
       "noInventoryMaster": {
         "body": "Żadne połączenie nie jest ustawione jako główne źródło stanu tego produktu, więc nie ma gdzie zapisać zmiany.",
         "title": "Ten stan nie należy do żadnego połączenia"

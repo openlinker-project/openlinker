@@ -40331,11 +40331,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   max-width: 6rem;
 }
 
-/* ── Amazon connection checkboxes (#4184) ── */
+/* ── Amazon connection checkboxes and radios (#4184, #4186) ──
+ * One row for the setup form and the connection page: a 44px touch row. */
 .amazon-checkbox-row {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
+  min-height: 44px;
+  padding-block: var(--space-2);
   cursor: pointer;
 }
 

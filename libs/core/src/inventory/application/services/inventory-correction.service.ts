@@ -696,6 +696,10 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
       };
     }
 
+    if (countOwnerLocations(positions, variant.productId, variant.id) > 1) {
+      return { kind: 'refused', reason: 'multiple-locations' };
+    }
+
     const candidate = candidates.find((entry) => entry.connectionId === owner.ownerConnectionId);
     if (candidate === undefined) {
       return { kind: 'refused', reason: 'adapter-unresolved' };
@@ -718,6 +722,27 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
 /** Result marker: the pre-write read found the product deleted at the master. */
 class MasterProductGoneAtRead {
   constructor(readonly detail: string) {}
+}
+
+/**
+ * How many distinct locations hold the variant's live stock, counted on the
+ * same rows `resolveInventoryPositionOwner` reads (variant rows, else
+ * product-level ones). The owner's adapter takes one quantity per variant, so
+ * with more than one location a correction would be written to the master
+ * while the mirror changed an arbitrary one of the rows (#4183).
+ */
+function countOwnerLocations(
+  positions: readonly InventoryOwnerPosition[],
+  productId: string,
+  productVariantId: string
+): number {
+  const ofProduct = positions.filter((position) => position.productId === productId);
+  const variantRows = ofProduct.filter((position) => position.productVariantId === productVariantId);
+  const rows =
+    variantRows.length > 0
+      ? variantRows
+      : ofProduct.filter((position) => position.productVariantId === null);
+  return new Set(rows.map((position) => position.locationId)).size;
 }
 
 /**

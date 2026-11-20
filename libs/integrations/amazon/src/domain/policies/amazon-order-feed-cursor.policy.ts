@@ -6,9 +6,10 @@
  * token. Core treats it as an opaque string; only this file reads it.
  *
  * Rules:
- *   - No cursor: start `AMAZON_ORDER_FEED_BOOTSTRAP_DAYS` back, so a new
- *     connection picks up the orders still open on Amazon without replaying
- *     the whole account history.
+ *   - No cursor: start at `AMAZON_ORDER_FEED_HISTORY_START`, so a new
+ *     connection reads the account's whole order history, as the other order
+ *     sources do. Amazon sets no lower bound on `lastUpdatedAfter`; the
+ *     history arrives in pages at the `searchOrders` quota.
  *   - A pagination token expires 24 h after it was issued. A cursor holding an
  *     older one restarts the window from its watermark instead of sending a
  *     token Amazon will refuse; re-reading is safe because order sync is
@@ -19,15 +20,16 @@
  *   - An unreadable cursor starts a fresh bootstrap rather than wedging the feed.
  *   - The cursor records the marketplaces its watermark covers. When the
  *     connection gains a marketplace, the watermark is moved back to the
- *     bootstrap point (never forward) and any pagination token dropped, so the
- *     new marketplace's open orders are read like a new connection's. A cursor
+ *     history start and any pagination token dropped, so the new
+ *     marketplace's orders are read like a new connection's. A cursor
  *     written before this rule carries no list and is taken to cover the
  *     connection's current marketplaces.
  *
  * @module libs/integrations/amazon/src/domain/policies
  */
 
-export const AMAZON_ORDER_FEED_BOOTSTRAP_DAYS = 7;
+/** Earlier than any order the Selling Partner API can return. */
+export const AMAZON_ORDER_FEED_HISTORY_START = '2000-01-01T00:00:00.000Z';
 export const AMAZON_ORDER_FEED_OVERLAP_MS = 2 * 60 * 1000;
 export const AMAZON_PAGINATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -42,12 +44,8 @@ export interface AmazonOrderFeedCursor {
   readonly marketplaceIds?: readonly string[];
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 export function decodeAmazonOrderFeedCursor(raw: string | null, now: Date): AmazonOrderFeedCursor {
-  const bootstrap: AmazonOrderFeedCursor = {
-    since: new Date(now.getTime() - AMAZON_ORDER_FEED_BOOTSTRAP_DAYS * DAY_MS).toISOString(),
-  };
+  const bootstrap: AmazonOrderFeedCursor = { since: AMAZON_ORDER_FEED_HISTORY_START };
   if (raw === null || raw.length === 0) {
     return bootstrap;
   }
@@ -81,24 +79,21 @@ export function decodeAmazonOrderFeedCursor(raw: string | null, now: Date): Amaz
  * The cursor for the connection's CURRENT marketplaces.
  *
  * A marketplace the cursor does not cover moves the watermark back to the
- * bootstrap point and drops the pagination token (it was issued for the old
- * marketplace list). Re-reading the other marketplaces' recent orders is
- * safe: order sync is idempotent. A removed marketplace changes nothing but
+ * history start and drops the pagination token (it was issued for the old
+ * marketplace list). Re-reading the other marketplaces' orders is safe: order
+ * sync is idempotent. A removed marketplace changes nothing but
  * the recorded list.
  */
 export function scopeAmazonOrderFeedCursor(
   cursor: AmazonOrderFeedCursor,
   marketplaceIds: readonly string[],
-  now: Date,
 ): AmazonOrderFeedCursor {
   const covered = cursor.marketplaceIds;
   const added = covered === undefined ? [] : marketplaceIds.filter((id) => !covered.includes(id));
   if (added.length === 0) {
     return { ...cursor, marketplaceIds: [...marketplaceIds] };
   }
-  const bootstrap = now.getTime() - AMAZON_ORDER_FEED_BOOTSTRAP_DAYS * DAY_MS;
-  const since = Math.min(Date.parse(cursor.since), bootstrap);
-  return { since: new Date(since).toISOString(), marketplaceIds: [...marketplaceIds] };
+  return { since: AMAZON_ORDER_FEED_HISTORY_START, marketplaceIds: [...marketplaceIds] };
 }
 
 export function encodeAmazonOrderFeedCursor(cursor: AmazonOrderFeedCursor): string {

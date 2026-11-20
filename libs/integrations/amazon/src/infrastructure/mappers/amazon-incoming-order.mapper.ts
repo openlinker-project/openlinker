@@ -5,9 +5,10 @@
  * Pure: no I/O, no clock.
  *
  * Rules worth knowing:
- *   - **Lines are keyed by seller SKU** (`productRef: sku`), which is what an
- *     FBM seller shares with their master catalogue. A line without a SKU
- *     falls back to the ASIN as an offer reference.
+ *   - **Lines are keyed by seller SKU**, through the reference the caller
+ *     names (`resolveAmazonOrderLineRef`): the variant when the connection is
+ *     the catalogue, the offer when Amazon only carries offers. A line without
+ *     a SKU falls back to the ASIN under the same reference.
  *   - **Money comes from the item proceeds.** Amazon reports `ITEM`,
  *     `SHIPPING`, `TAX`, `DISCOUNT` and the smaller charges per order item
  *     (`orderItems[].proceeds.breakdowns`); the order-level breakdowns, when
@@ -54,10 +55,11 @@ import type {
   AmazonOrderItem,
   AmazonProceedsBreakdown,
 } from '../../domain/types/amazon-order.types';
+import type { AmazonOrderLineRef } from '../../domain/policies/amazon-order-line-ref.policy';
 
 const COD_PAYMENT_METHOD = 'CashOnDelivery';
 
-export function mapAmazonOrderToIncomingOrder(order: AmazonOrder): IncomingOrder {
+export function mapAmazonOrderToIncomingOrder(order: AmazonOrder, lineRef: AmazonOrderLineRef = 'offer'): IncomingOrder {
   const currency = findCurrency(order);
   const fulfillmentStatus = order.fulfillment?.fulfillmentStatus;
   const paymentMethod = readPaymentMethod(order);
@@ -75,9 +77,7 @@ export function mapAmazonOrderToIncomingOrder(order: AmazonOrder): IncomingOrder
     const price = unitPrice(money.taxTreatment === 'exclusive' ? line.net : line.amount, quantity);
     return {
       id: item.orderItemId,
-      productRef: item.product.sellerSku
-        ? { type: 'sku', externalId: item.product.sellerSku }
-        : { type: 'offer', externalId: item.product.asin ?? item.orderItemId },
+      productRef: { type: lineRef, externalId: item.product.sellerSku ?? item.product.asin ?? item.orderItemId },
       quantity,
       price,
       unitPriceGross: unitPrice(line.gross, quantity),

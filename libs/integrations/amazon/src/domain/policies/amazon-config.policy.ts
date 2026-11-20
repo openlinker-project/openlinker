@@ -25,7 +25,10 @@
  *   - The region is fixed once the connection exists: another region is
  *     another seller account with its own refresh token and merchant token,
  *     so `regionChangeIssue` refuses a change on update. Another region is a
- *     new connection.
+ *     new connection. The environment is fixed for the same reason (sandbox
+ *     and production are different accounts and hosts), and in a region
+ *     without a unified account (`fe`) so is the marketplace: there the
+ *     marketplace IS the account. `fixedAccountIssues` checks all three.
  *
  * @module libs/integrations/amazon/src/domain/policies
  */
@@ -145,6 +148,74 @@ export function regionChangeIssue(
     path: 'region',
     message: `cannot change from ${before} to ${after}: another region is another seller account; create a new connection for it`,
   };
+}
+
+/**
+ * The issue to raise when an update moves a connection to the other
+ * environment, or null. Sandbox and production are different hosts with
+ * different data, so the same connection cannot switch between them.
+ */
+export function environmentChangeIssue(
+  config: Record<string, unknown>,
+  previous: Record<string, unknown>,
+): FlatValidationIssue | null {
+  const before = readEnum(previous.environment, AmazonEnvironmentValues, 'production');
+  const after = readEnum(config.environment, AmazonEnvironmentValues, 'production');
+  if (before === null || after === null || before === after) {
+    return null;
+  }
+  return {
+    path: 'environment',
+    message: `cannot change from ${before} to ${after}: sandbox and production are separate; create a new connection for it`,
+  };
+}
+
+/**
+ * The issue to raise when an update swaps the marketplace of a connection in
+ * a region without a unified seller account (`fe`), or null. There each
+ * marketplace is its own seller account with its own refresh token, so a new
+ * marketplace is a new connection, exactly like a new region.
+ */
+export function singleMarketplaceChangeIssue(
+  config: Record<string, unknown>,
+  previous: Record<string, unknown>,
+): FlatValidationIssue | null {
+  const region = readEnum(config.region, AmazonRegionValues, AMAZON_DEFAULT_REGION);
+  if (region === null || !AMAZON_SINGLE_MARKETPLACE_REGIONS.includes(region)) {
+    return null;
+  }
+  const before = firstMarketplaceId(previous.marketplaceIds);
+  const after = firstMarketplaceId(config.marketplaceIds);
+  if (before === null || after === null || before === after) {
+    return null;
+  }
+  return {
+    path: 'marketplaceIds',
+    message: `cannot change from ${before} to ${after}: in the ${region} region each marketplace is a separate seller account; create a new connection for it`,
+  };
+}
+
+/**
+ * Every issue an update raises against the fields that identify the seller
+ * account: the region, the environment and, in `fe`, the marketplace.
+ */
+export function fixedAccountIssues(
+  config: Record<string, unknown>,
+  previous: Record<string, unknown>,
+): FlatValidationIssue[] {
+  return [
+    regionChangeIssue(config, previous),
+    environmentChangeIssue(config, previous),
+    singleMarketplaceChangeIssue(config, previous),
+  ].filter((issue): issue is FlatValidationIssue => issue !== null);
+}
+
+function firstMarketplaceId(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const first: unknown = value[0];
+  return typeof first === 'string' && first.trim() !== '' ? first.trim() : null;
 }
 
 /** The SP-API host a connection talks to. */

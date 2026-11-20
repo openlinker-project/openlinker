@@ -39,6 +39,7 @@ import {
   SHOPIFY_LOCATION_READER_TOKEN,
   SHOPIFY_PLATFORM_TYPE,
   checkShopifyOAuthCallback,
+  shopifyAdapterManifest,
   parseShopifyConfig,
   type IShopifyLocationReader,
   type ShopifyLocationSummary,
@@ -61,6 +62,7 @@ import { toConfigShapeErrorBody } from '../application/services/connection-shape
 import {
   hasMasterAndPublisher,
   masterPublisherConflictError,
+  publisherRole,
 } from '../application/services/connection-capability-rules';
 import { ShopifyOAuthCallbackDto } from './dto/shopify-oauth-callback.dto';
 import { ShopifyOAuthConnectDto } from './dto/shopify-oauth-connect.dto';
@@ -154,8 +156,13 @@ export class ShopifyController {
     }
     // The connection is created only after the merchant approved the app, so a
     // combination core would refuse is refused here, before the redirect.
-    if (dto.enabledCapabilities && hasMasterAndPublisher(dto.enabledCapabilities)) {
-      throw masterPublisherConflictError();
+    if (
+      dto.enabledCapabilities &&
+      hasMasterAndPublisher(dto.enabledCapabilities, shopifyAdapterManifest.supportedCapabilities)
+    ) {
+      throw masterPublisherConflictError(
+        publisherRole(dto.enabledCapabilities, shopifyAdapterManifest.supportedCapabilities) ?? 'ProductPublisher',
+      );
     }
     const storeDomain = parsed.config.storeDomain;
     return this.oauthService.generateAuthorizationUrl({

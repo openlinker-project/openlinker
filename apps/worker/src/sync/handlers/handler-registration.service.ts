@@ -71,6 +71,7 @@ import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.hand
 import { FulfillmentWorkAutoDispatchHandler } from './fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkStatusPollHandler } from './fulfillment-work-status-poll.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
 import { MarketplaceSourceFulfillmentStatusSyncHandler } from './marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
@@ -148,6 +149,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly salesDocumentBatchTickHandler: SalesDocumentBatchTickHandler,
     private readonly salesDocumentBatchRunHandler: SalesDocumentBatchRunHandler,
     private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
+    private readonly fulfillmentWorkStatusPollHandler: FulfillmentWorkStatusPollHandler,
     private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
     private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler,
     private readonly inventorySaleDecrementReconcileSweepHandler: InventorySaleDecrementReconcileSweepHandler,
@@ -712,6 +714,16 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.relaySweep',
       this.fulfillmentWorkRelaySweepHandler,
+      'bulk'
+    );
+
+    // The status poll of a polling holder (Amazon MCF). 'bulk': a cron-paced
+    // read of work already accepted, one holder call per work, nothing a buyer
+    // waits on in seconds; the dispatch relay it triggers is best-effort and
+    // backstopped by the relay sweep above.
+    this.handlerRegistry.register(
+      'fulfillment.work.statusPoll',
+      this.fulfillmentWorkStatusPollHandler,
       'bulk'
     );
 

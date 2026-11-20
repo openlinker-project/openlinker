@@ -41,6 +41,7 @@ import { BuyerEmailDeliveryRepositoryPort } from '../../domain/ports/buyer-email
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import {
   MIN_BUYER_DATA_RETENTION_DAYS,
+  type OrderBuyerDataRetentionCandidate,
   type OrderBuyerDataRetentionConnectionResult,
   type OrderBuyerDataRetentionRunResult,
 } from '../../domain/types/order-buyer-data-retention.types';
@@ -120,26 +121,35 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     let processed = 0;
 
     let ordersExhausted = true;
+    // Orders that failed this run. They stay candidates (the frontier is
+    // oldest first), so a page made only of them means nothing else can be
+    // reached this run; the loop stops instead of re-reading them.
+    const failedIds = new Set<string>();
     while (processed < BUYER_DATA_RETENTION_MAX_ORDERS_PER_CONNECTION) {
       const candidates = await this.repository.findBuyerDataRetentionCandidates({
         sourceConnectionId,
         anchorBefore,
         limit: BUYER_DATA_RETENTION_PAGE_SIZE,
       });
+      if (candidates.length > 0 && candidates.every((candidate) => failedIds.has(candidate.internalOrderId))) {
+        break;
+      }
       for (const candidate of candidates) {
-        // Recipients first: the order's marker takes it out of the candidate
-        // set, so anything cleared after it would be left behind for good if
-        // that write failed. Both clears are idempotent and retried with the order.
-        await this.buyerEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
-        await this.documentEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
-        const orderSnapshot = redactOrderSnapshotBuyerData(candidate.orderSnapshot);
-        const done = await this.repository.redactBuyerData({
-          internalOrderId: candidate.internalOrderId,
-          orderSnapshot,
-          searchText: deriveOrderSearchText(orderSnapshot, { storePii }),
-        });
-        if (done) {
-          redacted += 1;
+        if (failedIds.has(candidate.internalOrderId)) continue;
+        // One order that cannot be redacted must not stop the others: the
+        // frontier is oldest first, so a rethrow would put it at the head of
+        // every later run and stall retention for the whole connection.
+        try {
+          if (await this.redactOrder(candidate, storePii)) {
+            redacted += 1;
+          }
+        } catch (error) {
+          failedIds.add(candidate.internalOrderId);
+          const detail = error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `order_buyer_data_retention_order_failed order=${candidate.internalOrderId} ` +
+              `connection=${sourceConnectionId}: ${detail}`
+          );
         }
       }
       processed += candidates.length;
@@ -154,9 +164,29 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
       sourceConnectionId,
       retentionDays,
       redacted,
+      failed: failedIds.size,
       customersRedacted: customers.redacted,
       budgetExhausted: ordersExhausted || customers.budgetExhausted,
     };
+  }
+
+  /**
+   * Recipients first: the order's marker takes it out of the candidate set, so
+   * anything cleared after it would be left behind for good if that write
+   * failed. Both clears are idempotent and retried with the order.
+   */
+  private async redactOrder(
+    candidate: OrderBuyerDataRetentionCandidate,
+    storePii: boolean
+  ): Promise<boolean> {
+    await this.buyerEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
+    await this.documentEmailDeliveries.clearRecipientsForOrder(candidate.internalOrderId);
+    const orderSnapshot = redactOrderSnapshotBuyerData(candidate.orderSnapshot);
+    return this.repository.redactBuyerData({
+      internalOrderId: candidate.internalOrderId,
+      orderSnapshot,
+      searchText: deriveOrderSearchText(orderSnapshot, { storePii }),
+    });
   }
 
   /**

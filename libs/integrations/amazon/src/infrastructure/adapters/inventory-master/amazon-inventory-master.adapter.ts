@@ -25,9 +25,17 @@
  *   - `adjustInventory`: FBM only, `patchListingsItem` replacing the `DEFAULT`
  *     quantity, computed from a fresh read of the listing (never the warm
  *     copy). FBA stock is never written: an adjustment at the FBA location or
- *     on a listing Amazon fulfils is refused. Not atomic (Amazon has no
- *     conditional stock write): a sale landing between the read and the patch
- *     is overwritten. An idempotency key is honoured through the host cache
+ *     on a listing Amazon fulfils is refused. Amazon applies an accepted patch
+ *     minutes later, so a read inside that window still shows the old
+ *     quantity: the written quantity is kept in the host cache for that window
+ *     and the next adjustment starts from it (plus whatever Amazon changed
+ *     since), or two back-to-back decrements would both start from the old
+ *     number and one would be lost. Core runs sale decrements and stock
+ *     corrections of one position under one lock, so those read and write the
+ *     entry one at a time; a return restock writes outside that lock and can
+ *     still race one of them. Without a cache this falls back to Amazon's
+ *     read and the window stays open. Still not atomic (Amazon has no conditional stock write): a
+ *     sale landing between the read and the patch is overwritten. An idempotency key is honoured through the host cache
  *     for seven days, recorded only after Amazon accepted the patch; without a
  *     cache it is reported `unsupported`. Amazon applies an accepted patch a
  *     few minutes later and reports no instant, so `appliedAt` is `null` and
@@ -71,7 +79,7 @@ import { AmazonStockUnreadableException } from '../../../domain/exceptions/amazo
 import { resolveCatalogueMarketplaceId } from '../../../domain/policies/amazon-config.policy';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import type { AmazonFbaStock } from '../../../domain/types/amazon-fba-inventory.types';
-import type { AmazonListingItem } from '../../../domain/types/amazon-listing.types';
+import type { AmazonListingItem, AmazonPendingStockWrite } from '../../../domain/types/amazon-listing.types';
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
 import { isAmazonFulfilledOnly, sellerFulfilledQuantity } from '../../mappers/amazon-inventory.mapper';
 import { variationLinks } from '../../mappers/amazon-product.mapper';
@@ -81,6 +89,20 @@ import { patchAmazonListing, sellerQuantityPatch } from '../../writers/amazon-li
 
 /** How long a honoured idempotency key is remembered, the WooCommerce / PrestaShop window (#2368). */
 const ADJUSTMENT_IDEMPOTENCY_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * How long an accepted stock patch is assumed possibly unapplied: Amazon's
+ * stated "a few minutes" plus a margin. Kept short because a patch Amazon
+ * accepts and then fails without an issue on the listing would otherwise be
+ * built on for the whole window.
+ */
+const PENDING_STOCK_WRITE_TTL_SECONDS = 10 * 60;
+
+/** The listing attribute a seller-fulfilled stock patch writes. */
+const STOCK_ATTRIBUTE = 'fulfillment_availability';
+
+/** How many unapplied written quantities are kept per listing; older ones no longer matter. */
+const PENDING_STOCK_WRITE_CHAIN_LIMIT = 20;
 
 export class AmazonInventoryMasterAdapter implements InventoryMasterPort, BulkInventoryReader {
   private readonly logger = new Logger(AmazonInventoryMasterAdapter.name);
@@ -201,17 +223,18 @@ export class AmazonInventoryMasterAdapter implements InventoryMasterPort, BulkIn
     const sku = await this.adjustmentSku(adjustment);
     const idempotency = this.idempotencySupport(adjustment);
 
-    const item = await this.listings.refresh(sku);
+    const item = await this.listings.refresh(sku, { withIssues: true });
     if (item === null) {
       throw new MasterProductNotFoundError(adjustment.productId, this.connection.id);
     }
     if (isAmazonFulfilledOnly(item)) {
       throw new AmazonNotSupportedException(`writing the stock of listing ${sku}; Amazon fulfils it`);
     }
-    const current = sellerFulfilledQuantity(item);
-    if (current === null) {
+    const read = sellerFulfilledQuantity(item);
+    if (read === null) {
       throw new AmazonStockUnreadableException(sku, this.connection.id);
     }
+    const { base: current, pending } = await this.stockBase(sku, read, hasStockIssue(item));
 
     // Ids are resolved BEFORE the write: failing after the patch would report
     // an error for a change that landed.
@@ -250,6 +273,7 @@ export class AmazonInventoryMasterAdapter implements InventoryMasterPort, BulkIn
         `(connection: ${this.connection.id})`,
     );
     await patchAmazonListing(this.client, this.sellerId, item, this.config.marketplaceIds, [sellerQuantityPatch(next)]);
+    await this.rememberPendingWrite(sku, read, pending, next);
 
     if (idempotency === 'honoured') {
       await this.rememberAppliedKey(adjustment.idempotencyKey);
@@ -401,6 +425,94 @@ export class AmazonInventoryMasterAdapter implements InventoryMasterPort, BulkIn
     return externalId;
   }
 
+  /**
+   * The quantity an adjustment starts from, and the unapplied chain it extends.
+   * Amazon's read, unless patches this adapter wrote may still be unapplied:
+   *   - the read equals the newest written quantity: Amazon applied it, the
+   *     chain is dropped and the read is the base;
+   *   - the read is the pre-chain quantity or an older written one: Amazon has
+   *     not caught up and nothing else changed, the newest written is the base;
+   *   - the listing carries an error on its stock attribute: an accepted patch
+   *     failed, the chain is dropped and the read is the base;
+   *   - anything else: Amazon changed the stock itself (an FBM order) on top of
+   *     the pre-chain quantity, and that change is applied to the newest
+   *     written quantity. A sale landing on top of an already-applied earlier
+   *     patch is read the same way, which is the residual ambiguity.
+   * A cache failure falls back to Amazon's read.
+   */
+  private async stockBase(
+    sku: string,
+    read: number,
+    stockIssue: boolean,
+  ): Promise<{ base: number; pending: AmazonPendingStockWrite | null }> {
+    if (this.cache === undefined) return { base: read, pending: null };
+    const key = this.pendingWriteCacheKey(sku);
+    try {
+      const pending = await this.cache.get<AmazonPendingStockWrite>(key);
+      const written = pending?.writtenQuantities ?? [];
+      const newest = written[written.length - 1];
+      if (pending === null || newest === undefined) return { base: read, pending: null };
+      if (stockIssue) {
+        // Amazon reports an error on the stock attribute: an accepted patch
+        // failed, so the written quantities never applied. Amazon's read is the truth.
+        this.logger.warn(
+          `Amazon listing ${sku} reports a stock error; dropping the unapplied patch to ${newest} ` +
+            `and adjusting from ${read} (connection: ${this.connection.id})`,
+        );
+        await this.cache.delete(key);
+        return { base: read, pending: null };
+      }
+      if (read === newest) {
+        await this.cache.delete(key);
+        return { base: read, pending: null };
+      }
+      const base =
+        read === pending.readQuantity || written.includes(read)
+          ? newest
+          : Math.max(0, newest + (read - pending.readQuantity));
+      this.logger.log(
+        `Amazon listing ${sku} reads ${read} while a stock patch to ${newest} may be unapplied; ` +
+          `adjusting from ${base} (connection: ${this.connection.id})`,
+      );
+      return { base, pending };
+    } catch (error) {
+      this.logger.warn(
+        `Amazon pending stock write unreadable for listing ${sku}; adjusting from Amazon's read ` +
+          `(connection: ${this.connection.id}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { base: read, pending: null };
+    }
+  }
+
+  /** Best effort: the patch already landed, so a cache failure must not fail the adjustment. */
+  private async rememberPendingWrite(
+    sku: string,
+    read: number,
+    pending: AmazonPendingStockWrite | null,
+    written: number,
+  ): Promise<void> {
+    if (this.cache === undefined) return;
+    const next: AmazonPendingStockWrite =
+      pending === null
+        ? { readQuantity: read, writtenQuantities: [written] }
+        : {
+            readQuantity: pending.readQuantity,
+            writtenQuantities: [...pending.writtenQuantities, written].slice(-PENDING_STOCK_WRITE_CHAIN_LIMIT),
+          };
+    try {
+      await this.cache.set(this.pendingWriteCacheKey(sku), next, PENDING_STOCK_WRITE_TTL_SECONDS);
+    } catch (error) {
+      this.logger.warn(
+        `Amazon pending stock write not remembered for listing ${sku} (connection: ${this.connection.id}): ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private pendingWriteCacheKey(sku: string): string {
+    return `amazon:inventory-pending-write:${this.connection.id}:${sku}`;
+  }
+
   private idempotencySupport(adjustment: InventoryAdjustment): InventoryIdempotencySupport {
     if (!adjustment.idempotencyKey) return 'not_requested';
     return this.cache === undefined ? 'unsupported' : 'honoured';
@@ -419,4 +531,11 @@ export class AmazonInventoryMasterAdapter implements InventoryMasterPort, BulkIn
     if (!key || this.cache === undefined) return;
     await this.cache.set(this.idempotencyCacheKey(key), true, ADJUSTMENT_IDEMPOTENCY_TTL_SECONDS);
   }
+}
+
+/** Whether Amazon reports an error on the listing's seller-fulfilled stock attribute. */
+function hasStockIssue(item: AmazonListingItem): boolean {
+  return (item.issues ?? []).some(
+    (issue) => issue.severity === 'ERROR' && (issue.attributeNames ?? []).includes(STOCK_ATTRIBUTE),
+  );
 }

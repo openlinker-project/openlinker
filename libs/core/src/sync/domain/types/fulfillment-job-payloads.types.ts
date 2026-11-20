@@ -177,6 +177,19 @@ export interface FulfillmentWorkRelaySweepPayloadV1 {
 }
 
 /**
+ * `fulfillment.work.statusPoll`: reads a POLLING holder's progress for the
+ * work its connection accepted. Scoped to that executor connection (never a
+ * synthetic id, #2609). `cursorKey` names the connection cursor holding the
+ * rolling scan offset, so a connection with more live work than one page is
+ * read through over several ticks.
+ */
+export interface FulfillmentWorkStatusPollPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+  readonly cursorKey?: string;
+}
+
+/**
  * `fulfillment.work.rerouteSweep` (#3485).
  *
  * A scheduler tick carries only `schemaVersion`; `pageLimit` exists so an
