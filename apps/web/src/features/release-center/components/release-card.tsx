@@ -127,6 +127,9 @@ export function ReleaseCard({
   return (
     <article className="release-card" data-unread={unread && !archived} data-archived={archived}>
       <div className="release-card__top">
+        <span className="release-card__icon" aria-hidden="true">
+          <ReleaseIcon name={showcaseOnly ? 'play' : 'sparkle'} size={16} />
+        </span>
         <div>
           <p className="release-card__title">
             {notification.minor === GENERAL_MINOR

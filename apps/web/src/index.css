@@ -42725,6 +42725,31 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-top: 0;
   border-radius: 0;
 }
+/* Same icon chip as a message, so the two read as one family; info blue because a release is information. */
+.release-panel .release-card__top { gap: 12px; }
+.release-panel .release-card__top > div { flex: 1; }
+.release-card__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--status-info);
+  background: color-mix(in srgb, var(--status-info) 14%, transparent);
+}
+/* A message's tools sit over the row's corner instead of reserving a column, so the text uses the full width. */
+.release-panel .msg,
+.release-panel .msg[data-archived='true'] { grid-template-columns: 28px minmax(0, 1fr); }
+.release-panel .msg__tools {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-hover);
+}
+.release-panel .msg[data-unread='true'] .msg__tools { background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover)); }
 @media (prefers-reduced-motion: reduce) { .release-panel .release-card { transition: none; } }
 @media (forced-colors: active) { .release-panel .release-card { border-bottom-color: CanvasText; } }
 /* A page can ask for one column: the sections alone, with no rail beside them. */
