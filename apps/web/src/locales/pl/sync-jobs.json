@@ -288,8 +288,8 @@
         "toInvalid": "Wpisz poprawną datę"
       },
       "fromLabel": "Pierwszy dzień",
-      "newestFirst": "Najnowszych zamówień",
-      "oldestFirst": "Najstarszych zamówień",
+      "newestFirst": "Zacznij od najnowszych",
+      "oldestFirst": "Zacznij od najstarszych",
       "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
       "toLabel": "Ostatni dzień"
     },

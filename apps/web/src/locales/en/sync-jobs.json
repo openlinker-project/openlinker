@@ -286,8 +286,8 @@
         "toInvalid": "Enter a valid date"
       },
       "fromLabel": "First day",
-      "newestFirst": "Newest orders",
-      "oldestFirst": "Oldest orders",
+      "newestFirst": "Start with the newest orders",
+      "oldestFirst": "Start with the oldest orders",
       "toHelp": "Leave empty to read up to the newest order.",
       "toLabel": "Last day"
     },

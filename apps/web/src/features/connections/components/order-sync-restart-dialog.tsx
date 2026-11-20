@@ -8,7 +8,7 @@
  *
  * @module features/connections/components
  */
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
@@ -61,6 +61,7 @@ export function OrderSyncRestartDialog({
   const restart = useRestartOrderSyncMutation();
   const enqueue = useEnqueueSyncJobMutation();
   const [kind, setKind] = useState<ImportKind>('range');
+  const kindRefs = useRef<Partial<Record<ImportKind, HTMLDivElement | null>>>({});
   const [range, setRange] = useState<OrderRangeValue>(ORDER_RANGE_DEFAULT_VALUE);
   const [intentKey, setIntentKey] = useState<string>(() => crypto.randomUUID());
   const [rangeTouched, setRangeTouched] = useState(false);
@@ -172,7 +173,11 @@ export function OrderSyncRestartDialog({
                   return (
                     <div
                       key={option}
+                      ref={(node) => {
+                        kindRefs.current[option] = node;
+                      }}
                       role="radio"
+                      aria-describedby={`order-import-kind-${option}`}
                       aria-checked={checked}
                       tabIndex={checked ? 0 : -1}
                       className={[
@@ -186,19 +191,23 @@ export function OrderSyncRestartDialog({
                         if (event.key === ' ' || event.key === 'Enter') {
                           event.preventDefault();
                           setKind(option);
-                        } else if (event.key.startsWith('Arrow')) {
+                        } else if (
+                          event.key === 'ArrowRight' ||
+                          event.key === 'ArrowLeft' ||
+                          event.key === 'ArrowDown' ||
+                          event.key === 'ArrowUp'
+                        ) {
                           event.preventDefault();
                           const next = option === 'range' ? 'start' : 'range';
                           setKind(next);
-                          (event.currentTarget.parentElement?.querySelector(
-                            `[data-kind="${next}"]`,
-                          ) as HTMLElement | null)?.focus();
+                          kindRefs.current[next]?.focus();
                         }
                       }}
-                      data-kind={option}
                     >
                       <span className="order-sync-start__order-label">{copy.kind[option].title}</span>
-                      <span className="order-sync-start__order-text">{copy.kind[option].text}</span>
+                      <span className="order-sync-start__order-text" id={`order-import-kind-${option}`}>
+                        {copy.kind[option].text}
+                      </span>
                     </div>
                   );
                 })}

@@ -1,9 +1,10 @@
 /**
  * Order Sync Panel
  *
- * Connection detail health-tab panel for the order import (#4228): where it
- * started, when the shop was last checked and how the import is doing. The
- * "Change start…" sits in the header; the whole sync lives on the Sync tab. Presentation only - the read is the existing
+ * Orders-tab panel for the order import (#4228): where it started, when the
+ * shop was last checked and how the import is doing. "Check for new orders" runs
+ * the check from here; "Import older orders…" opens the one dialog for a period
+ * or a new start. Presentation only - the read is the existing
  * `use-connection-sync-status-query` (same query key as the queue panel, so no
  * extra request).
  *
@@ -17,7 +18,7 @@
 import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { useRetryGroupedSyncJobsMutation } from '../../sync-jobs';
+import { useEnqueueSyncJobMutation, useRetryGroupedSyncJobsMutation } from '../../sync-jobs';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
@@ -25,9 +26,6 @@ import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
-import { InfoIcon } from '../../../shared/ui/icons';
-import { PopoverCard } from '../../../shared/ui/popover-card';
-import { PopoverOnHover } from '../../../shared/ui/popover-on-hover';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { Connection, OrderStartStatus } from '../api/connections.types';
 import { deriveOrderImportVerdict, type OrderImportVerdict } from '../lib/order-import-verdict';
@@ -59,6 +57,27 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const retryJobs = useRetryGroupedSyncJobsMutation();
   const { showToast } = useToast();
 
+  const enqueueCheck = useEnqueueSyncJobMutation();
+
+  async function checkNow(): Promise<void> {
+    try {
+      await enqueueCheck.mutateAsync({
+        connectionId,
+        jobType: 'marketplace.orders.poll',
+        payload: { schemaVersion: 1 },
+        idempotencyKey: `manual:${connectionId}:marketplace.orders.poll:${crypto.randomUUID()}`,
+      });
+      showToast({
+        tone: 'success',
+        title: copy.checkNowStartedTitle,
+        description: copy.checkNowStartedMessage,
+      });
+      void statusQuery.refetch();
+    } catch (error) {
+      showToast({ tone: 'error', description: describeApiError(error, 'connections') });
+    }
+  }
+
   async function retryFailed(): Promise<void> {
     try {
       await retryJobs.mutateAsync({ connectionId, jobType: 'marketplace.order.sync' });
@@ -70,7 +89,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   }
   const data = statusQuery.data;
   const startedAt = data?.orderSyncStartedAt ?? null;
-  const verdict = deriveOrderImportVerdict(data?.orderImport ?? null);
+  const verdict = deriveOrderImportVerdict(data?.orderImport ?? null, new Date(), data?.status);
   // What to do about the verdict. Failures carry their own fix inside each cause's card.
   const nextStep =
     verdict === 'ok' || verdict === 'failing' ? null : copy.verdictNext[verdict];
@@ -107,30 +126,13 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         <h3 className="section-title">{copy.title}</h3>
         <div className="order-sync-panel__actions">
           {sync.visible ? (
-            <PopoverOnHover
-              width={300}
-              align="end"
-              ariaLabel={copy.syncNowHint.title}
-              trigger={(triggerProps) => (
-                <Button
-                  {...triggerProps}
-                  tone="secondary"
-                  onClick={(event) => {
-                    triggerProps.onClick?.(event);
-                    void navigate(`/connections/${connectionId}?tab=actions&sync=orders`);
-                  }}
-                >
-                  {copy.syncNow}
-                </Button>
-              )}
+            <Button
+              tone="secondary"
+              onClick={() => void checkNow()}
+              disabled={enqueueCheck.isPending || sync.demoReadOnly}
             >
-              <PopoverCard
-                tone="info"
-                icon={<InfoIcon />}
-                title={copy.syncNowHint.title}
-                summary={copy.syncNowHint.text}
-              />
-            </PopoverOnHover>
+              {copy.syncNow}
+            </Button>
           ) : null}
         </div>
       </div>

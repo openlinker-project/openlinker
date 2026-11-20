@@ -1099,6 +1099,8 @@
   },
   "orderSyncPanel": {
     "change": "Importuj starsze zamówienia…",
+    "checkNowStartedMessage": "OpenLinker sprawdza teraz w sklepie nowe zamówienia.",
+    "checkNowStartedTitle": "Sprawdzanie rozpoczęte",
     "errorTitle": "Nie udało się wczytać importu zamówień",
     "health": {
       "failures": {
@@ -1113,12 +1115,12 @@
         "original": "Oryginalny komunikat (nieprzetłumaczony):",
         "reasons": {
           "missing-mapping": {
-            "fix": "Zsynchronizuj produkty ze sklepu, a potem ponów nieudane zamówienia w sekcji",
+            "fix": "Zsynchronizuj produkty ze sklepu, a potem użyj poniżej Ponów nieudane zamówienia.",
             "text": "W tych zamówieniach jest produkt, którego OpenLinker nie zna, więc nie da się ich utworzyć.",
             "title": "nieznany produkt"
           },
           "other": {
-            "fix": "Przeczytaj błąd i ponów zamówienia w sekcji",
+            "fix": "Przeczytaj błąd, usuń przyczynę, a potem użyj poniżej Ponów nieudane zamówienia.",
             "text": "OpenLinker nie mógł zaimportować tych zamówień. Oryginalny komunikat jest poniżej.",
             "title": "inny błąd"
           }
@@ -1132,14 +1134,14 @@
       "fromDay": "od {date}",
       "fromStart": "od początku",
       "importRunning": "Trwa import historii",
-      "imported": "Zaimportowane zamówienia (24 h)",
-      "lastChecked": "Ostatnio sprawdzono sklep",
+      "imported": "Zaimportowane w ostatnich 24 godz.",
+      "lastChecked": "Ostatnie sprawdzanie nowych zamówień",
       "neverChecked": "Jeszcze nie sprawdzano",
       "newestFirst": "Od najnowszych",
       "oldestFirst": "Od najstarszych",
       "startedAgo": "Rozpoczęto {when}",
       "toDay": "do {date}",
-      "viewJobs": "Zadania w tle i logi",
+      "viewJobs": "Otwórz Zadania w tle i logi",
       "waiting": "Czekają na import"
     },
     "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
@@ -1167,7 +1169,7 @@
           "title": "Przesunąć początek synchronizacji"
         }
       },
-      "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia, więc nic nie zostanie pominięte.",
+      "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia.",
       "rangeConfirm": "Importuj zamówienia",
       "rangeFailedTitle": "Nie udało się rozpocząć importu",
       "rangeNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
@@ -1175,7 +1177,7 @@
       "rangeSuccessTitle": "Import rozpoczęty",
       "repeatNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
       "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
-      "successNowMessage": "Import zamówień trwa dalej od ostatniego sprawdzenia.",
+      "successNowMessage": "Nic się nie zmieniło. Nowe zamówienia nadal wpływają.",
       "successTitle": "Start zmieniony",
       "title": "Importuj starsze zamówienia"
     },
@@ -1185,17 +1187,13 @@
       "from": "Zamówienia od {date}, {order}. Wcześniejsze zostają w sklepie.",
       "now": "Tylko nowe zamówienia, od {date}. Starsze zostają w sklepie.",
       "pending": "Zacznie się przy następnym sprawdzeniu: {what}.",
-      "started": "Import od {date}. Brak zapisanego wyboru.",
+      "started": "Import trwa od {date}. Nie mamy zapisu, jaką opcję wybrano.",
       "unknown": "Nie zapisano początku importu.",
       "whatAll": "wszystkie zamówienia, {order}",
       "whatFrom": "zamówienia od {date}, {order}",
       "whatNow": "tylko nowe zamówienia"
     },
-    "syncNow": "Synchronizuj zamówienia…",
-    "syncNowHint": {
-      "text": "Otworzy się tam okno importu z już wybranymi zamówieniami.",
-      "title": "Przejdziesz do Akcji"
-    },
+    "syncNow": "Sprawdź nowe zamówienia",
     "title": "Import zamówień",
     "verdict": {
       "behind": "Opóźnione",
@@ -1205,8 +1203,8 @@
       "unknown": "Nieznany"
     },
     "verdictNext": {
-      "behind": "Uruchom synchronizację zamówień teraz. Jeśli sklep nadal nie jest sprawdzany, zajrzyj do zakładki Kondycja.",
-      "notChecked": "Uruchom synchronizację zamówień albo poczekaj na następne zaplanowane sprawdzenie.",
+      "behind": "Kliknij Sprawdź nowe zamówienia. Jeśli sklep nadal nie jest sprawdzany, zajrzyj do zakładki Kondycja.",
+      "notChecked": "Kliknij Sprawdź nowe zamówienia albo poczekaj na następne zaplanowane sprawdzenie.",
       "unknown": "Odśwież stronę. Jeśli to zostaje, zajrzyj do zakładki Kondycja."
     },
     "verdictText": {

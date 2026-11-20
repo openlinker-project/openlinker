@@ -41,4 +41,12 @@ describe('deriveOrderImportVerdict', () => {
   it('should say ok for a recent check with nothing failing', () => {
     expect(deriveOrderImportVerdict(figures(), NOW)).toBe('ok');
   });
+
+  it('should say behind when the job queue is backlogged even after a fresh poll', () => {
+    expect(deriveOrderImportVerdict(figures(), NOW, 'backlogged')).toBe('behind');
+  });
+
+  it('should still say failing before behind', () => {
+    expect(deriveOrderImportVerdict(figures({ failedLast7d: 1 }), NOW, 'backlogged')).toBe('failing');
+  });
 });

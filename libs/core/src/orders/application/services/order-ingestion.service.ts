@@ -238,6 +238,8 @@ export class OrderIngestionService implements IOrderIngestionService {
 
   // Keep comfortably above worst-case poll+enqueue duration; we currently do not refresh TTL.
   private readonly LOCK_TTL_MS = 5 * 60_000;
+  /** A 14k-order shop is 140 pages at 100 per page; this is a stop for a runaway, not a quota. */
+  private static readonly MAX_IMPORT_PAGES = 2000;
 
   // A cursor shape core cannot order is reported once per (connection, cursorKey).
   // It is a standing property of that adapter's cursor, not a per-poll event, so
@@ -538,10 +540,30 @@ export class OrderIngestionService implements IOrderIngestionService {
     };
   }
 
+  private assertImportWindowIsSane(payload: MarketplaceOrdersImportPayloadV1): void {
+    if (payload.page > OrderIngestionService.MAX_IMPORT_PAGES) {
+      throw new OrderSyncStartUnavailableError(
+        `The import passed ${OrderIngestionService.MAX_IMPORT_PAGES} pages and was stopped (run: ${payload.runId})`
+      );
+    }
+    const parse = (value: string | undefined): number | null =>
+      value === undefined ? null : new Date(value).getTime();
+    const from = parse(payload.from);
+    const to = parse(payload.to);
+    if (Number.isNaN(from) || Number.isNaN(to) || (from !== null && to !== null && to < from)) {
+      throw new OrderSyncStartUnavailableError(
+        `The import range is not valid (from: ${payload.from ?? '-'}, to: ${payload.to ?? '-'})`
+      );
+    }
+  }
+
   async importOrderWindow(
     connectionId: string,
     payload: MarketplaceOrdersImportPayloadV1
   ): Promise<OrderImportPageResult> {
+    // A malformed range or a runaway chain is deterministic: retrying the same page
+    // cannot change the answer, so these end as a business failure, not ten retries.
+    this.assertImportWindowIsSane(payload);
     const lockKey = `marketplace:orders:import:${connectionId}`;
     const token = await this.lock.acquire(lockKey, this.LOCK_TTL_MS);
     if (!token) {
@@ -583,6 +605,12 @@ export class OrderIngestionService implements IOrderIngestionService {
       await this.jobQueue.enqueueBulk(requests);
 
       const hasMore = !page.done && page.nextCursor !== null && page.nextCursor.trim() !== '';
+      if (hasMore && page.nextCursor === payload.cursor) {
+        // A shop that ignores the paging filter answers the same page for ever.
+        throw new OrderSyncStartUnavailableError(
+          `The shop returned the same page of orders twice, so the import was stopped (connection: ${connectionId}, page: ${payload.page})`
+        );
+      }
       if (hasMore) {
         // Enqueued after the children: a failure here fails this page, and the retry
         // re-reads the same cursor, so no page is skipped.

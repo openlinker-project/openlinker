@@ -1084,6 +1084,33 @@ describe('OrderIngestionService', () => {
         expect(listOrdersInWindow).not.toHaveBeenCalled();
       });
 
+      it('should stop with a business failure when the shop answers the same page twice', async () => {
+        listOrdersInWindow.mockResolvedValue({ items: [], nextCursor: 'id:7', done: false });
+
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, cursor: 'id:7', page: 2 })
+        ).rejects.toThrow('same page of orders twice');
+        expect(jobQueue.enqueueBulk).toHaveBeenCalledTimes(1);
+      });
+
+      it('should stop a chain that runs past the page ceiling without reading the shop', async () => {
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, page: 2001 })
+        ).rejects.toThrow('passed 2000 pages');
+        expect(listOrdersInWindow).not.toHaveBeenCalled();
+        expect(lock.acquire).not.toHaveBeenCalled();
+      });
+
+      it('should refuse a range whose end is before its start or that is not a date', async () => {
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, from: '2026-10-05', to: '2026-10-01' })
+        ).rejects.toThrow('not valid');
+        await expect(
+          service.importOrderWindow(connectionId, { ...payload, from: 'garbage' })
+        ).rejects.toThrow('not valid');
+        expect(listOrdersInWindow).not.toHaveBeenCalled();
+      });
+
       it('should not enqueue the next page when enqueueing the orders fails', async () => {
         listOrdersInWindow.mockResolvedValue({ items: [], nextCursor: 'id:7', done: false });
         jobQueue.enqueueBulk.mockRejectedValueOnce(new Error('queue down'));

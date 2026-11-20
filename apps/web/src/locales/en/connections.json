@@ -1073,6 +1073,8 @@
   },
   "orderSyncPanel": {
     "change": "Import older orders…",
+    "checkNowStartedMessage": "OpenLinker is checking the shop for new orders now.",
+    "checkNowStartedTitle": "Check started",
     "errorTitle": "Could not load order import",
     "health": {
       "failures": {
@@ -1085,12 +1087,12 @@
         "original": "Original message (not translated):",
         "reasons": {
           "missing-mapping": {
-            "fix": "Sync products from the shop, then retry the failed orders in",
+            "fix": "Sync products from the shop, then use Retry failed orders below.",
             "text": "These orders contain a product OpenLinker does not know, so they cannot be created.",
             "title": "unknown product"
           },
           "other": {
-            "fix": "Read the error and retry the orders in",
+            "fix": "Read the error, fix the cause, then use Retry failed orders below.",
             "text": "OpenLinker could not import these orders. The original message is below.",
             "title": "other error"
           }
@@ -1104,14 +1106,14 @@
       "fromDay": "from {date}",
       "fromStart": "from the beginning",
       "importRunning": "History import in progress",
-      "imported": "Orders imported (24 h)",
-      "lastChecked": "Shop last checked",
+      "imported": "Imported in the last 24 hours",
+      "lastChecked": "Last check for new orders",
       "neverChecked": "Not checked yet",
       "newestFirst": "Newest first",
       "oldestFirst": "Oldest first",
       "startedAgo": "Started {when}",
       "toDay": "to {date}",
-      "viewJobs": "Jobs & Logs",
+      "viewJobs": "Open Jobs & Logs",
       "waiting": "Waiting to import"
     },
     "loadingMessage": "Checking where order import starts.",
@@ -1139,7 +1141,7 @@
           "title": "Move where syncing starts"
         }
       },
-      "nowNote": "OpenLinker keeps importing new orders from the last check, so nothing is skipped.",
+      "nowNote": "OpenLinker keeps importing new orders from the last check.",
       "rangeConfirm": "Import orders",
       "rangeFailedTitle": "Could not start the import",
       "rangeNote": "Orders OpenLinker already has are updated, not created twice.",
@@ -1147,7 +1149,7 @@
       "rangeSuccessTitle": "Import started",
       "repeatNote": "Orders OpenLinker already has are updated, not created twice.",
       "successMessage": "The next order check uses the new start.",
-      "successNowMessage": "Order import continues from the last check.",
+      "successNowMessage": "Nothing changed. New orders keep coming in.",
       "successTitle": "Start changed",
       "title": "Import older orders"
     },
@@ -1157,17 +1159,13 @@
       "from": "Orders since {date}, {order}. Earlier orders stay in the shop.",
       "now": "New orders only, from {date}. Older orders stay in the shop.",
       "pending": "Starts on the next check: {what}.",
-      "started": "Started {date}. The choice was not recorded.",
+      "started": "Importing since {date}. We have no record of the option chosen.",
       "unknown": "The start was not recorded.",
       "whatAll": "every order, {order}",
       "whatFrom": "orders since {date}, {order}",
       "whatNow": "new orders only"
     },
-    "syncNow": "Sync orders…",
-    "syncNowHint": {
-      "text": "The import window opens there with orders already chosen.",
-      "title": "You will be taken to Actions"
-    },
+    "syncNow": "Check for new orders",
     "title": "Order import",
     "verdict": {
       "behind": "Behind",
@@ -1177,8 +1175,8 @@
       "unknown": "Unknown"
     },
     "verdictNext": {
-      "behind": "Run Sync orders now. If the shop is still not checked, look at the Health tab.",
-      "notChecked": "Run Sync orders, or wait for the next scheduled check.",
+      "behind": "Click Check for new orders. If the shop is still not checked, look at the Health tab.",
+      "notChecked": "Click Check for new orders, or wait for the next scheduled check.",
       "unknown": "Reload the page. If this stays, look at the Health tab."
     },
     "verdictText": {
