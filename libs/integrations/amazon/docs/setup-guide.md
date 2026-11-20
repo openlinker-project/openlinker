@@ -161,10 +161,11 @@ Every Amazon task is off by default; turn on what you use in the worker's enviro
 |---|---|
 | `OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED` | imports orders every 5 minutes |
 | `OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED` | reads the SQS queue every minute |
-| `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED` | links your listings to OpenLinker variants by SKU, hourly |
+| `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED` | links your listings to OpenLinker variants by SKU or EAN, hourly |
 | `OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` | refreshes each listing's status, price and stock, hourly |
 | `OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED` | reads the returns report |
 | `OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED` | refreshes open returns, hourly |
+| `OL_AMAZON_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED` | asks Amazon every 30 minutes whether open orders left, so an order Amazon ships (FBA) or one you confirmed in Seller Central shows as sent, not overdue |
 | `OL_AMAZON_MCF_STATUS_POLL_SCHEDULER_ENABLED` | reads the progress of Multi-Channel Fulfillment orders every 15 minutes, so a shipped order moves its work and tells the order's source |
 
 Amazon's quotas are low (order search allows about one call every three minutes with a burst of 20),
