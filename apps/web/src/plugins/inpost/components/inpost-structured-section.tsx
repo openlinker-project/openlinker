@@ -28,7 +28,7 @@ import type { ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
-import { Infotip } from '../../../shared/ui/infotip';
+import { IconWithOnHoverPopoverTooltip, InfoIcon, PopoverCard } from '../../../shared/ui';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { useInpostMessages } from '../messages';
 
@@ -275,14 +275,28 @@ export function InpostStructuredSection({
             />
             <span>{notifyCopy.label}</span>
           </label>
-          <Infotip
-            ariaLabel={notifyCopy.hintLabel}
-            definitions={[
-              { term: notifyCopy.infoOffTerm, text: notifyCopy.infoOffText },
-              { term: notifyCopy.infoOnTerm, text: notifyCopy.infoOnText },
-              { term: notifyCopy.infoWhyTerm, text: notifyCopy.infoWhyText },
-            ]}
-          />
+          <IconWithOnHoverPopoverTooltip
+            icon={<InfoIcon />}
+            tone="info"
+            label={notifyCopy.hintLabel}
+            width={320}
+          >
+            <PopoverCard
+              tone="info"
+              icon={<InfoIcon />}
+              title={notifyCopy.infoTitle}
+              summary={notifyCopy.infoSummary}
+              items={[
+                <>
+                  <strong>{notifyCopy.infoOffTerm}</strong> {notifyCopy.infoOffText}
+                </>,
+                <>
+                  <strong>{notifyCopy.infoOnTerm}</strong> {notifyCopy.infoOnText}
+                </>,
+              ]}
+              footer={notifyCopy.infoWhyText}
+            />
+          </IconWithOnHoverPopoverTooltip>
         </div>
         <p className="form-field__description" id="inpost-notify-on-label-purchase-scope">
           {notifyCopy.scope.replace('{account}', connection.name)}

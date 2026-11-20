@@ -72,8 +72,9 @@
       "infoOffText": "Kupujący zobaczy „wysłano” dopiero wtedy, gdy oznaczysz paczkę w OpenLinker jako wysłaną.",
       "infoOnTerm": "Włączone",
       "infoOnText": "Marketplace dostaje „wysłano” od razu po zakupie etykiety, razem z numerem przesyłki, gdy tylko InPost go nada.",
-      "infoWhyTerm": "Dlaczego domyślnie wyłączone",
-      "infoWhyText": "Kupno etykiety i wydanie paczki kurierowi to dwa różne momenty. Gdy etykiety drukujesz rano, a kurier przyjeżdża po południu, zbyt wczesne „wysłano” zaczyna kupującemu odliczać czas dostawy, choć paczka jeszcze nie wyjechała.",
+      "infoSummary": "Wybierz, kiedy marketplace dostaje informację, że paczka została wysłana.",
+      "infoTitle": "Kiedy kupujący usłyszy „wysłano”",
+      "infoWhyText": "Domyślnie wyłączone: kupno etykiety i wydanie paczki kurierowi to dwa różne momenty. Gdy etykiety drukujesz rano, a kurier przyjeżdża po południu, zbyt wczesne „wysłano” zaczyna kupującemu odliczać czas dostawy, choć paczka jeszcze nie wyjechała.",
       "label": "Powiadom marketplace od razu po zakupie etykiety",
       "scope": "Dotyczy etykiet kupionych na koncie InPost „{account}”, niezależnie od kanału sprzedaży, z którego pochodzi zamówienie.",
       "title": "Powiadomienie marketplace o wysyłce"
