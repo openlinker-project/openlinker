@@ -455,7 +455,11 @@ describe('AmazonOfferManagerAdapter.createOffer', () => {
     expect(body.attributes).toMatchObject({
       brand: [{ value: 'Acme', language_tag: 'de_DE', marketplace_id: 'A1PA6795UKMFR9' }, {}],
       externally_assigned_product_identifier: [{ type: 'ean', value: '5901234123457' }, {}],
-      color: [{ value: 'Blue' }],
+      // A text attribute goes to every marketplace of the connection, each with its language.
+      color: [
+        { value: 'Blue', language_tag: 'de_DE', marketplace_id: 'A1PA6795UKMFR9' },
+        { value: 'Blue', language_tag: 'fr_FR', marketplace_id: 'A13V1IB3VIYZZH' },
+      ],
     });
   });
 
