@@ -1098,44 +1098,50 @@
     "wizardsChip": "Kreatory dla każdej platformy"
   },
   "orderSyncPanel": {
+    "change": "Zmień",
     "errorTitle": "Nie udało się wczytać importu zamówień",
-    "eyebrow": "Zamówienia",
     "health": {
-      "failed": "Nieudane zamówienia (7 dni)",
       "failures": {
-        "count": "Zamówienia: {n}",
+        "count": {
+          "few": "{n} zamówienia",
+          "many": "{n} zamówień",
+          "one": "{n} zamówienie",
+          "other": "{n} zamówienia"
+        },
+        "fixLabel": "Co zrobić:",
         "latest": "Ostatnie: zamówienie {order}, {when}",
         "original": "Oryginalny komunikat (nieprzetłumaczony):",
         "reasons": {
           "missing-mapping": {
-            "text": "Produkt z tych zamówień nie jest powiązany z żadnym produktem w OpenLinker, więc nie da się utworzyć zamówienia.",
-            "title": "Produkt z zamówienia nie jest powiązany"
+            "fix": "Zsynchronizuj produkty ze sklepu, a potem ponów nieudane zamówienia w sekcji",
+            "text": "W tych zamówieniach jest produkt, którego OpenLinker nie zna, więc nie da się ich utworzyć.",
+            "title": "nieznany produkt"
           },
           "other": {
+            "fix": "Przeczytaj błąd i ponów zamówienia w sekcji",
             "text": "OpenLinker nie mógł zaimportować tych zamówień. Oryginalny komunikat jest poniżej.",
-            "title": "Zamówienia nie udały się z innego powodu"
+            "title": "inny błąd"
           }
         },
-        "title": "Co się nie udało"
+        "syncProducts": "Synchronizuj produkty…",
+        "title": "Zamówienia, które się nie udały"
       },
       "fromDay": "od {date}",
       "fromStart": "od początku",
       "importRunning": "Trwa import historii",
-      "imported": "Odebrane zamówienia (24 h)",
+      "imported": "Zaimportowane zamówienia (24 h)",
       "lastChecked": "Ostatnio sprawdzono sklep",
-      "lastOrder": "Ostatnio odebrane zamówienie",
       "neverChecked": "Jeszcze nie sprawdzano",
       "newestFirst": "Od najnowszych",
-      "noneRecently": "Brak w tym tygodniu",
       "oldestFirst": "Od najstarszych",
       "startedAgo": "Rozpoczęto {when}",
       "toDay": "do {date}",
-      "viewJobs": "Zobacz Zadania i logi",
+      "viewJobs": "Zadania w tle i logi",
       "waiting": "Czekają na import"
     },
     "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
     "loadingTitle": "Wczytywanie importu zamówień",
-    "nextLabel": "Co zrobić",
+    "nextLabel": "Co zrobić:",
     "noCheck": "Jeszcze nie sprawdzano",
     "orderPhrase": {
       "newest": "od najnowszych",
@@ -1161,7 +1167,7 @@
       "from": "Zamówienia od {date}, {order}. Wcześniejsze zostają w sklepie.",
       "now": "Tylko nowe zamówienia, od {date}. Starsze zostają w sklepie.",
       "pending": "Zacznie się przy następnym sprawdzeniu: {what}.",
-      "started": "Zaczęto {date}. Nie zapisano, co wybrano.",
+      "started": "Import od {date}. Brak zapisanego wyboru.",
       "unknown": "Nie zapisano początku importu.",
       "whatAll": "wszystkie zamówienia, {order}",
       "whatFrom": "zamówienia od {date}, {order}",
@@ -1182,18 +1188,14 @@
     },
     "verdictNext": {
       "behind": "Uruchom synchronizację zamówień teraz. Jeśli sklep nadal nie jest sprawdzany, zajrzyj do zakładki Kondycja.",
-      "failing": {
-        "missingMapping": "Zsynchronizuj katalog, żeby OpenLinker poznał brakujące produkty, a potem ponów nieudane zamówienia w Zadaniach i logach.",
-        "other": "Otwórz nieudane zamówienia w Zadaniach i logach, przeczytaj błąd i ponów je."
-      },
       "notChecked": "Uruchom synchronizację zamówień albo poczekaj na następne zaplanowane sprawdzenie.",
       "unknown": "Odśwież stronę. Jeśli to zostaje, zajrzyj do zakładki Kondycja."
     },
     "verdictText": {
       "behind": "Sklepu nie sprawdzano od {when}.",
-      "failing": "Zamówienia, których nie udało się zaimportować: {n}.",
+      "failing": "Nie wszystkie zamówienia udało się zaimportować. Szczegóły poniżej.",
       "notChecked": "Sklep nie miał jeszcze udanego sprawdzenia.",
-      "ok": "Sklep był niedawno sprawdzany i żadne zamówienie się nie psuje.",
+      "ok": "Sklep był niedawno sprawdzany i wszystkie zamówienia wchodzą bez błędów.",
       "unknown": "Dane o imporcie zamówień są teraz niedostępne."
     }
   },

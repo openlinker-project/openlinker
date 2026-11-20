@@ -1072,44 +1072,48 @@
     "wizardsChip": "Per-platform wizards"
   },
   "orderSyncPanel": {
+    "change": "Change",
     "errorTitle": "Could not load order import",
-    "eyebrow": "Orders",
     "health": {
-      "failed": "Failed orders (7 days)",
       "failures": {
-        "count": "Orders: {n}",
+        "count": {
+          "one": "{n} order",
+          "other": "{n} orders"
+        },
+        "fixLabel": "What to do:",
         "latest": "Latest: order {order}, {when}",
         "original": "Original message (not translated):",
         "reasons": {
           "missing-mapping": {
-            "text": "A product in these orders is not linked to a product in OpenLinker, so the order cannot be created.",
-            "title": "A product in the order is not linked"
+            "fix": "Sync products from the shop, then retry the failed orders in",
+            "text": "These orders contain a product OpenLinker does not know, so they cannot be created.",
+            "title": "unknown product"
           },
           "other": {
+            "fix": "Read the error and retry the orders in",
             "text": "OpenLinker could not import these orders. The original message is below.",
-            "title": "Orders failed for another reason"
+            "title": "other error"
           }
         },
-        "title": "What failed"
+        "syncProducts": "Sync products…",
+        "title": "Orders that failed"
       },
       "fromDay": "from {date}",
       "fromStart": "from the beginning",
       "importRunning": "History import in progress",
-      "imported": "Orders received (24 h)",
+      "imported": "Orders imported (24 h)",
       "lastChecked": "Shop last checked",
-      "lastOrder": "Last order received",
       "neverChecked": "Not checked yet",
       "newestFirst": "Newest first",
-      "noneRecently": "None this week",
       "oldestFirst": "Oldest first",
       "startedAgo": "Started {when}",
       "toDay": "to {date}",
-      "viewJobs": "See Jobs & Logs",
+      "viewJobs": "Jobs & Logs",
       "waiting": "Waiting to import"
     },
     "loadingMessage": "Checking where order import starts.",
     "loadingTitle": "Loading order import",
-    "nextLabel": "What to do",
+    "nextLabel": "What to do:",
     "noCheck": "Not checked yet",
     "orderPhrase": {
       "newest": "newest first",
@@ -1135,7 +1139,7 @@
       "from": "Orders since {date}, {order}. Earlier orders stay in the shop.",
       "now": "New orders only, from {date}. Older orders stay in the shop.",
       "pending": "Starts on the next check: {what}.",
-      "started": "Started {date}. What was chosen was not recorded.",
+      "started": "Started {date}. The choice was not recorded.",
       "unknown": "The start was not recorded.",
       "whatAll": "every order, {order}",
       "whatFrom": "orders since {date}, {order}",
@@ -1156,18 +1160,14 @@
     },
     "verdictNext": {
       "behind": "Run Sync orders now. If the shop is still not checked, look at the Health tab.",
-      "failing": {
-        "missingMapping": "Sync the catalogue so OpenLinker knows the missing products, then retry the failed orders in Jobs & Logs.",
-        "other": "Open the failed orders in Jobs & Logs, read the error and retry them."
-      },
       "notChecked": "Run Sync orders, or wait for the next scheduled check.",
       "unknown": "Reload the page. If this stays, look at the Health tab."
     },
     "verdictText": {
       "behind": "The shop has not been checked for {when}.",
-      "failing": "Orders that could not be imported: {n}.",
+      "failing": "Some orders could not be imported. Details below.",
       "notChecked": "There is no successful check of the shop yet.",
-      "ok": "The shop was checked recently and no order is failing.",
+      "ok": "The shop was checked recently and every order came in without errors.",
       "unknown": "Order import figures are not available right now."
     }
   },

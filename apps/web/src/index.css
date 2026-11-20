@@ -40496,22 +40496,24 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   margin-top: var(--space-4);
 }
 .order-import-health__stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) 0;
   margin: 0;
 }
 .order-import-health__stat {
   display: grid;
   gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface-hover);
+  padding-right: var(--space-6, 2rem);
+  min-width: 8rem;
+}
+.order-import-health__stat + .order-import-health__stat {
+  padding-left: var(--space-6, 2rem);
+  border-left: 1px solid var(--border-subtle);
 }
 .order-import-health__stat dt {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .order-import-health__stat dd {
   margin: 0;
@@ -40519,13 +40521,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
-}
-.order-import-health__stat--warn {
-  border-color: var(--status-warning-border);
-  background: var(--status-warning-soft);
-}
-.order-import-health__stat--warn dd {
-  color: var(--status-warning-strong);
 }
 .order-import-health__run {
   display: flex;
@@ -40568,16 +40563,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   }
 }
 
-.order-import-health__failures {
-  display: grid;
-  gap: var(--space-3);
-}
-.order-import-health__failures-title {
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
 .order-import-health__failure-list {
   margin: 0;
   padding: 0;
@@ -40590,9 +40575,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   gap: var(--space-1);
   margin: 0;
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--status-warning-border);
+  border-left: 3px solid var(--status-warning);
   border-radius: var(--radius-md);
   background: var(--status-warning-soft);
+  overflow-wrap: anywhere;
 }
 .order-import-health__failure p {
   margin: 0;
@@ -40608,22 +40594,20 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-import-health__failure-meta,
 .order-import-health__failure-original {
   font-size: 0.8125rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
+}
+.order-import-health__failure-fix {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-primary);
 }
 .order-import-health__failure-original span {
   font-weight: 600;
 }
-.order-import-health__failure-link {
-  margin: 0;
-  font-size: 0.875rem;
-}
 
-.order-sync-panel__note {
-  margin: var(--space-4) 0 0;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: var(--text-muted);
-}
 
 .order-sync-panel__actions {
   display: flex;
@@ -40673,4 +40657,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   margin: var(--space-2) 0 0;
   font-size: 0.875rem;
   color: var(--text-primary);
+}
+
+/* "Change" next to the start sentence reads as a link, not as a second page action. */
+.order-sync-panel__start .button.button--ghost {
+  min-height: 0;
+  padding: 0 var(--space-1);
+  color: var(--accent-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  vertical-align: baseline;
 }

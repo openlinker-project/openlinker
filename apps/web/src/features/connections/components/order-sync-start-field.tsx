@@ -49,6 +49,7 @@ export function OrderSyncStartField({
   const format = useFormat();
   const groupId = useId();
   const cardRefs = useRef<Partial<Record<OrderSyncStartMode, HTMLDivElement | null>>>({});
+  const orderRefs = useRef<Partial<Record<OrderImportOrder, HTMLDivElement | null>>>({});
 
   const enabledModes = MODES.filter((mode) => supportedModes.includes(mode));
   // Roving tabindex: the checked card is the tab stop, or the first one that can be chosen.
@@ -206,6 +207,9 @@ export function OrderSyncStartField({
               return (
                 <div
                   key={order}
+                  ref={(node) => {
+                    orderRefs.current[order] = node;
+                  }}
                   role="radio"
                   tabIndex={unavailable ? -1 : checked ? 0 : -1}
                   aria-checked={checked}
@@ -222,9 +226,18 @@ export function OrderSyncStartField({
                     if (event.key === ' ' || event.key === 'Enter') {
                       event.preventDefault();
                       selectOrder(order);
-                    } else if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                    } else if (
+                      event.key === 'ArrowRight' ||
+                      event.key === 'ArrowLeft' ||
+                      event.key === 'ArrowDown' ||
+                      event.key === 'ArrowUp'
+                    ) {
                       event.preventDefault();
-                      selectOrder(order === 'oldest-first' ? 'newest-first' : 'oldest-first');
+                      const next = order === 'oldest-first' ? 'newest-first' : 'oldest-first';
+                      if (next === 'newest-first' && !windowImport) return;
+                      selectOrder(next);
+                      // The checked option is the tab stop, so focus must follow the choice.
+                      orderRefs.current[next]?.focus();
                     }
                   }}
                 >
@@ -248,7 +261,7 @@ export function OrderSyncStartField({
               min={earliestOrderSyncStartDate()}
               max={latestOrderSyncStartDate()}
               invalid={Boolean(error)}
-              onChange={(event) => onChange({ mode: 'from', from: event.target.value })}
+              onChange={(event) => onChange({ ...value, mode: 'from', from: event.target.value })}
             />
           </FormField>
         ) : null}

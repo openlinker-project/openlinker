@@ -219,21 +219,90 @@ describe('OrderSyncPanel', () => {
       });
     }
 
-    it('should show the import figures, the failures and a running history import', async () => {
+    it('should show the figures, each failing cause with its fix, and a running history import', async () => {
       renderHealth(makeStatus({ orderImport: importFigures }));
 
-      expect(await screen.findByText('Orders received (24 h)')).toBeInTheDocument();
+      expect(await screen.findByText('Orders imported (24 h)')).toBeInTheDocument();
       expect(screen.getByText('42')).toBeInTheDocument();
-      expect(screen.getByText('What failed')).toBeInTheDocument();
-      expect(screen.getByText(/A product in the order is not linked/)).toBeInTheDocument();
-      expect(screen.getByText(/Orders: 2 · Latest: order 37/)).toBeInTheDocument();
+      expect(screen.getByText('Needs attention')).toBeInTheDocument();
+      expect(screen.getByText(/2 orders · unknown product/)).toBeInTheDocument();
+      expect(screen.getByText(/Latest: order 37/)).toBeInTheDocument();
+      expect(screen.getByText(/Sync products from the shop, then retry the failed orders in/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Sync products…' })).toBeInTheDocument();
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
       expect(screen.getByText(/Newest first · from .* · Started /)).toBeInTheDocument();
-      expect(screen.getByText('Needs attention')).toBeInTheDocument();
-      expect(screen.getByText('Orders that could not be imported: 2.')).toBeInTheDocument();
-      expect(screen.getByText('What to do')).toBeInTheDocument();
-      expect(screen.getByText(/Sync the catalogue so OpenLinker knows the missing products/)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Change import start/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    });
+
+    it('should send the operator to Actions on the product sync from the failure card', async () => {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        connections: {
+          getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderImport: importFigures })),
+        },
+      });
+      renderWithProviders(
+        <>
+          <OrderSyncPanel connection={CONNECTION} />
+          <LocationProbe />
+        </>,
+        { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+      );
+
+      await user.click(await screen.findByRole('button', { name: 'Sync products…' }));
+
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/connections/conn_1?tab=actions&sync=products'
+      );
+    });
+
+    it('should fall back to the generic cause for a failure code this build does not know', async () => {
+      renderHealth(
+        makeStatus({
+          orderImport: {
+            ...importFigures,
+            failures: [
+              {
+                code: 'something-new' as never,
+                count: 1,
+                lastFailedAt: '2026-11-18T09:30:00.000Z',
+                sampleOrderId: null,
+                sampleMessage: 'boom',
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(await screen.findByText(/1 order · other error/)).toBeInTheDocument();
+      expect(screen.getByText(/boom/)).toBeInTheDocument();
+    });
+
+    it('should say behind, with a next step, when the shop has not been checked for over an hour', async () => {
+      renderHealth(
+        makeStatus({
+          orderImport: {
+            ...importFigures,
+            failedLast7d: 0,
+            failures: [],
+            lastPolledAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+          },
+        }),
+      );
+
+      expect(await screen.findByText('Behind')).toBeInTheDocument();
+      expect(screen.getByText('What to do:')).toBeInTheDocument();
+      expect(screen.getByText(/Run Sync orders now/)).toBeInTheDocument();
+    });
+
+    it('should say not checked yet when the shop was never polled successfully', async () => {
+      renderHealth(
+        makeStatus({
+          orderImport: { ...importFigures, failedLast7d: 0, failures: [], lastPolledAt: null },
+        }),
+      );
+
+      expect(await screen.findByText('There is no successful check of the shop yet.')).toBeInTheDocument();
     });
 
     it('should not mention failures or a running import when there are none', async () => {
@@ -243,9 +312,10 @@ describe('OrderSyncPanel', () => {
         }),
       );
 
-      expect(await screen.findByText('Orders received (24 h)')).toBeInTheDocument();
-      expect(screen.queryByText('What failed')).not.toBeInTheDocument();
+      expect(await screen.findByText('Orders imported (24 h)')).toBeInTheDocument();
+      expect(screen.queryByText(/unknown product/)).not.toBeInTheDocument();
       expect(screen.queryByText('History import in progress')).not.toBeInTheDocument();
+      expect(screen.queryByText('What to do:')).not.toBeInTheDocument();
     });
 
     it('should say the figures are unavailable rather than show zero orders', async () => {
@@ -255,7 +325,7 @@ describe('OrderSyncPanel', () => {
         await screen.findByText('Order import figures are not available right now.'),
       ).toBeInTheDocument();
       expect(screen.getByText('Unknown')).toBeInTheDocument();
-      expect(screen.queryByText('Orders received (24 h)')).not.toBeInTheDocument();
+      expect(screen.queryByText('Orders imported (24 h)')).not.toBeInTheDocument();
     });
   });
 
@@ -285,7 +355,7 @@ describe('OrderSyncPanel', () => {
       const user = userEvent.setup();
       renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
 
-      await user.click(await screen.findByRole('button', { name: /Change import start/ }));
+      await user.click(await screen.findByRole('button', { name: 'Change' }));
 
       expect(
         await screen.findByText(
@@ -318,7 +388,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: /Change import start/ }));
+      await user.click(await screen.findByRole('button', { name: 'Change' }));
       await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
       await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
@@ -348,7 +418,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: /Change import start/ }));
+      await user.click(await screen.findByRole('button', { name: 'Change' }));
       await user.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
 
       expect(screen.getByRole('button', { name: 'Apply change' })).toBeDisabled();

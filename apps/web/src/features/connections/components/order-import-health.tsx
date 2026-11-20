@@ -13,30 +13,29 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
+import { Button } from '../../../shared/ui/button';
 import type { OrderImportStatus } from '../api/connections.types';
 
 interface OrderImportHealthProps {
   orderImport: OrderImportStatus | null;
+  /** Opens the manual product sync, the fix for orders that name a product OpenLinker does not know. */
+  onSyncProducts?: () => void;
 }
 
-export function OrderImportHealth({ orderImport }: OrderImportHealthProps): ReactElement | null {
+export function OrderImportHealth({
+  orderImport,
+  onSyncProducts,
+}: OrderImportHealthProps): ReactElement | null {
   const copy = useMessages('connections').orderSyncPanel.health;
   const format = useFormat();
+  const plural = usePlural();
 
   if (orderImport === null) {
     return null;
   }
 
-  const {
-    importedLast24h,
-    lastPolledAt,
-    failedLast7d,
-    failures,
-    waiting,
-    lastImportedAt,
-    activeImport,
-  } = orderImport;
+  const { importedLast24h, lastPolledAt, failures, waiting, activeImport } = orderImport;
 
   return (
     <div className="order-import-health">
@@ -49,60 +48,57 @@ export function OrderImportHealth({ orderImport }: OrderImportHealthProps): Reac
           <dt>{copy.imported}</dt>
           <dd>{format.number(importedLast24h)}</dd>
         </div>
-        <div className="order-import-health__stat">
-          <dt>{copy.lastOrder}</dt>
-          <dd>{lastImportedAt === null ? copy.noneRecently : format.relativeTime(lastImportedAt)}</dd>
-        </div>
         {waiting > 0 ? (
           <div className="order-import-health__stat">
             <dt>{copy.waiting}</dt>
             <dd>{format.number(waiting)}</dd>
           </div>
         ) : null}
-        {failedLast7d > 0 ? (
-          <div className="order-import-health__stat order-import-health__stat--warn">
-            <dt>{copy.failed}</dt>
-            <dd>{format.number(failedLast7d)}</dd>
-          </div>
-        ) : null}
       </dl>
 
-      {failedLast7d > 0 ? (
-        <section className="order-import-health__failures" aria-label={copy.failures.title}>
-          <h4 className="order-import-health__failures-title">{copy.failures.title}</h4>
-          <ul className="order-import-health__failure-list">
-            {failures.map((failure) => (
+      {failures.length > 0 ? (
+        <ul className="order-import-health__failure-list" aria-label={copy.failures.title}>
+          {failures.map((failure) => {
+            // A cause this build does not know is shown as the generic one, never as a crash.
+            const reason = copy.failures.reasons[failure.code] ?? copy.failures.reasons.other;
+            return (
               <li key={failure.code} className="order-import-health__failure">
                 <p className="order-import-health__failure-head">
-                  {copy.failures.reasons[failure.code].title}
+                  {plural(failure.count, copy.failures.count)} · {reason.title}
                 </p>
-                <p className="order-import-health__failure-text">
-                  {copy.failures.reasons[failure.code].text}
-                </p>
+                <p className="order-import-health__failure-text">{reason.text}</p>
                 <p className="order-import-health__failure-meta">
-                  {interpolate(copy.failures.count, { n: format.number(failure.count) })}
-                  {' · '}
-                  {interpolate(copy.failures.latest, {
-                    order: failure.sampleOrderId ?? '?',
-                    when: format.relativeTime(failure.lastFailedAt),
-                  })}
+                  {failure.sampleOrderId === null
+                    ? format.relativeTime(failure.lastFailedAt)
+                    : interpolate(copy.failures.latest, {
+                        order: failure.sampleOrderId,
+                        when: format.relativeTime(failure.lastFailedAt),
+                      })}
                 </p>
-                {failure.code === 'other' && failure.sampleMessage !== '' ? (
+                {failure.code !== 'missing-mapping' && failure.sampleMessage !== '' ? (
                   <p className="order-import-health__failure-original">
                     <span>{copy.failures.original}</span> {failure.sampleMessage}
                   </p>
                 ) : null}
+                <p className="order-import-health__failure-fix">
+                  <strong>{copy.failures.fixLabel}</strong> {reason.fix}{' '}
+                  <Link to="/jobs-logs" className="link">
+                    {copy.viewJobs}
+                  </Link>
+                  {failure.code === 'missing-mapping' && onSyncProducts ? (
+                    <>
+                      {' '}
+                      <Button tone="secondary" onClick={onSyncProducts}>
+                        {copy.failures.syncProducts}
+                      </Button>
+                    </>
+                  ) : null}
+                </p>
               </li>
-            ))}
-          </ul>
-          <p className="order-import-health__failure-link">
-            <Link to="/jobs-logs" className="link">
-              {copy.viewJobs}
-            </Link>
-          </p>
-        </section>
+            );
+          })}
+        </ul>
       ) : null}
-
       {activeImport ? (
         <div className="order-import-health__run" role="status">
           <span className="order-import-health__run-bar" aria-hidden="true" />

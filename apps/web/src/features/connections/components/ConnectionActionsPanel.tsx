@@ -22,6 +22,12 @@ import { captureDemoEvent } from '../../demo';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
+/** Which job the trigger dialog opens on, by the `?sync=` value another tab sends. */
+const SYNC_TARGET_JOB: Record<string, string | undefined> = {
+  orders: 'marketplace.orders.poll',
+  products: 'master.product.syncAll',
+};
+
 interface ConnectionActionsPanelProps {
   connection: Connection;
   /** Replaces "Edit connection" for a connection configured elsewhere (the OMS). */
@@ -36,8 +42,8 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   const { showToast } = useToast();
   const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
-  // "Sync orders" on the Orders tab sends the operator here with ?sync=orders: the
-  // dialog opens on that job, and the param is dropped so a reload does not reopen it.
+  // The Orders tab sends the operator here with ?sync=orders (or =products): the dialog
+  // opens on that job, and the param is dropped so a reload does not reopen it.
   const [searchParams, setSearchParams] = useSearchParams();
   const [triggerInitialJob, setTriggerInitialJob] = useState<string | undefined>(undefined);
   const plugin = usePlatform(connection.platformType);
@@ -47,10 +53,10 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   const write = useWriteAccess('connections:write', demoMode);
   const sync = useWriteAccess('sync:write', demoMode);
 
-  const wantsOrderSync = searchParams.get('sync') === 'orders';
+  const syncTarget = SYNC_TARGET_JOB[searchParams.get('sync') ?? ''];
   useEffect(() => {
-    if (!wantsOrderSync || !sync.visible) return;
-    setTriggerInitialJob('marketplace.orders.poll');
+    if (!syncTarget || !sync.visible) return;
+    setTriggerInitialJob(syncTarget);
     setIsTriggerDialogOpen(true);
     setSearchParams(
       (prev) => {
@@ -60,7 +66,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
       },
       { replace: true }
     );
-  }, [wantsOrderSync, sync.visible, setSearchParams]);
+  }, [syncTarget, sync.visible, setSearchParams]);
 
   const isDisabled = connection.status === 'disabled';
   // #3657 — an archived connection has no credential and resolves no adapter,

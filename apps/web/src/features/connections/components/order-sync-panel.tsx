@@ -57,15 +57,9 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const data = statusQuery.data;
   const startedAt = data?.orderSyncStartedAt ?? null;
   const verdict = deriveOrderImportVerdict(data?.orderImport ?? null);
-  // What to do about the verdict. For failures it follows the most frequent cause, since
-  // that is where fixing one thing clears the most orders.
-  const topFailure = data?.orderImport?.failures[0]?.code;
+  // What to do about the verdict. Failures carry their own fix inside each cause's card.
   const nextStep =
-    verdict === 'ok'
-      ? null
-      : verdict === 'failing'
-        ? copy.verdictNext.failing[topFailure === 'missing-mapping' ? 'missingMapping' : 'other']
-        : copy.verdictNext[verdict];
+    verdict === 'ok' || verdict === 'failing' ? null : copy.verdictNext[verdict];
 
   // The start is stated as the SETTING it is (what was chosen and what that means for
   // older orders), never as activity, and never with a date that is only the time a
@@ -96,10 +90,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   return (
     <div className="panel panel--dense">
       <div className="panel__header">
-        <div>
-          <p className="eyebrow">{copy.eyebrow}</p>
-          <h3 className="section-title">{copy.title}</h3>
-        </div>
+        <h3 className="section-title">{copy.title}</h3>
         <div className="order-sync-panel__actions">
           {sync.visible ? (
             <PopoverOnHover
@@ -127,15 +118,6 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               />
             </PopoverOnHover>
           ) : null}
-          {write.visible ? (
-            <Button
-              tone="secondary"
-              onClick={() => setRestartOpen(true)}
-              disabled={write.demoReadOnly}
-            >
-              {copy.restart.action}
-            </Button>
-          ) : null}
         </div>
       </div>
 
@@ -159,28 +141,53 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         />
       ) : null}
 
-      {data ? (
-        <>
-          <div className="order-sync-panel__verdict" role="status">
+      <div className="order-sync-panel__verdict" role="status">
+        {data ? (
+          <>
             <StatusBadge tone={VERDICT_TONE[verdict]} withDot>
               {copy.verdict[verdict]}
             </StatusBadge>
             <p className="order-sync-panel__verdict-text">
               {interpolate(copy.verdictText[verdict], {
-                n: format.number(data.orderImport?.failedLast7d ?? 0),
                 when: data.orderImport?.lastPolledAt
                   ? format.relativeTime(data.orderImport.lastPolledAt)
                   : '',
               })}
             </p>
-          </div>
+          </>
+        ) : null}
+      </div>
+
+      {data ? (
+        <>
           {nextStep !== null ? (
             <p className="order-sync-panel__next">
               <strong>{copy.nextLabel}</strong> {nextStep}
             </p>
           ) : null}
-          <p className="order-sync-panel__start">{describeStart(data.orderStart, startedAt)}</p>
-          <OrderImportHealth orderImport={data.orderImport} />
+          <p className="order-sync-panel__start">
+            {describeStart(data.orderStart, startedAt)}
+            {write.visible ? (
+              <>
+                {' '}
+                <Button
+                  tone="ghost"
+                  onClick={() => setRestartOpen(true)}
+                  disabled={write.demoReadOnly}
+                >
+                  {copy.change}
+                </Button>
+              </>
+            ) : null}
+          </p>
+          <OrderImportHealth
+            orderImport={data.orderImport}
+            onSyncProducts={
+              sync.visible
+                ? () => void navigate(`/connections/${connectionId}?tab=actions&sync=products`)
+                : undefined
+            }
+          />
         </>
       ) : null}
       <OrderSyncRestartDialog

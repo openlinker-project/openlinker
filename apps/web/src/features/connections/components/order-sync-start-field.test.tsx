@@ -148,6 +148,31 @@ describe('OrderSyncStartField', () => {
       expect(onValue).toHaveBeenLastCalledWith({ mode: 'now' });
     });
 
+    it('should keep newest first when a date is typed', () => {
+      const onValue = vi.fn();
+      renderWithProviders(
+        <Harness initial={{ mode: 'from', from: '', order: 'newest-first' }} onValue={onValue} />,
+      );
+      fireEvent.change(screen.getByLabelText('First day to import'), {
+        target: { value: '2026-01-05' },
+      });
+      expect(onValue).toHaveBeenLastCalledWith({
+        mode: 'from',
+        from: '2026-01-05',
+        order: 'newest-first',
+      });
+    });
+
+    it('should move focus with the arrow keys between the two orders', () => {
+      renderWithProviders(<Harness initial={{ mode: 'all' }} />);
+      const oldest = screen.getByRole('radio', { name: /Oldest first/ });
+      oldest.focus();
+      fireEvent.keyDown(oldest, { key: 'ArrowDown' });
+      const newest = screen.getByRole('radio', { name: /Newest first/ });
+      expect(newest).toHaveAttribute('aria-checked', 'true');
+      expect(newest).toHaveFocus();
+    });
+
     it('should show newest first as unavailable, and refuse it, for a source that cannot', () => {
       const onValue = vi.fn();
       renderWithProviders(
