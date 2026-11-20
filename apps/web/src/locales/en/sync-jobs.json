@@ -228,13 +228,9 @@
         "description": "Match product variants to marketplace offers by barcode.",
         "label": "Auto-match variants"
       },
-      "importOrders": {
-        "description": "Reads the orders placed between two days, once. It does not change which orders count as new, and orders OpenLinker already has are updated, not copied twice.",
-        "label": "Sync orders"
-      },
       "pollOrders": {
-        "description": "Checks the shop now for orders OpenLinker has not imported yet. It does not change which orders count as new.",
-        "label": "Check for new orders"
+        "description": "Reads orders from the shop into OpenLinker.",
+        "label": "Sync orders"
       },
       "propagateInventory": {
         "description": "Push current inventory levels to all connected marketplaces.",
@@ -294,6 +290,13 @@
       "oldestFirst": "Oldest orders",
       "toHelp": "Leave empty to read up to the newest order.",
       "toLabel": "Last day"
+    },
+    "orderScope": {
+      "label": "What to sync",
+      "new": "New orders since the last check",
+      "newHint": "Checks the shop for orders OpenLinker has not imported yet. It does not change which orders count as new.",
+      "range": "Orders from a date range",
+      "rangeHint": "Reads the orders placed between two days, once. Orders OpenLinker already has are updated, not copied twice."
     },
     "requiredField": "{field} *",
     "title": "Trigger sync",

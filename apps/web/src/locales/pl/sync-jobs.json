@@ -230,13 +230,9 @@
         "description": "Dopasuj warianty produktów do ofert w marketplace według kodu kreskowego.",
         "label": "Automatycznie dopasuj warianty"
       },
-      "importOrders": {
-        "description": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Nie zmienia tego, które zamówienia uchodzą za nowe, a zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz.",
-        "label": "Synchronizuj zamówienia"
-      },
       "pollOrders": {
-        "description": "Sprawdza teraz w sklepie, czy są zamówienia, których OpenLinker jeszcze nie pobrał. Nie zmienia tego, które zamówienia uznaje za nowe.",
-        "label": "Sprawdź nowe zamówienia"
+        "description": "Pobiera zamówienia ze sklepu do OpenLinker.",
+        "label": "Synchronizuj zamówienia"
       },
       "propagateInventory": {
         "description": "Wyślij bieżące stany magazynowe do wszystkich podłączonych marketplace.",
@@ -296,6 +292,13 @@
       "oldestFirst": "Najstarszych zamówień",
       "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
       "toLabel": "Ostatni dzień"
+    },
+    "orderScope": {
+      "label": "Co synchronizować",
+      "new": "Nowe zamówienia od ostatniego sprawdzenia",
+      "newHint": "Sprawdza sklep pod kątem zamówień, których OpenLinker jeszcze nie zaimportował. Nie zmienia tego, które zamówienia uchodzą za nowe.",
+      "range": "Zamówienia z zakresu dat",
+      "rangeHint": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz."
     },
     "requiredField": "{field} *",
     "title": "Uruchom synchronizację",

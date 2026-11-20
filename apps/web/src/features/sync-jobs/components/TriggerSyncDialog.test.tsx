@@ -242,8 +242,11 @@ describe('TriggerSyncDialog', () => {
         renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
           apiClient: createMockApiClient(adapter(false)),
         });
-        await screen.findByRole('combobox', { name: /job type/i });
-        expect(screen.queryByRole('option', { name: /^sync orders$/i })).not.toBeInTheDocument();
+        fireEvent.change(await screen.findByRole('combobox', { name: /job type/i }), {
+          target: { value: 'marketplace.orders.poll' },
+        });
+        expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+        expect(screen.getByRole('combobox', { name: /read orders from/i })).toBeInTheDocument();
       });
 
       it('should require the first day and send the range as one import run', async () => {
@@ -253,8 +256,12 @@ describe('TriggerSyncDialog', () => {
         });
         await screen.findByRole('option', { name: /^sync orders$/i });
         fireEvent.change(screen.getByRole('combobox', { name: /job type/i }), {
-          target: { value: 'marketplace.orders.import' },
+          target: { value: 'marketplace.orders.poll' },
         });
+        fireEvent.change(await screen.findByRole('combobox', { name: /what to sync/i }), {
+          target: { value: 'range' },
+        });
+        expect(screen.queryByRole('combobox', { name: /read orders from/i })).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: /^trigger$/i }));
         expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
