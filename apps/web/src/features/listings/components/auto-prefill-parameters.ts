@@ -20,6 +20,7 @@ import type {
   CategoryParameterFormValues,
   FormParameterValue,
 } from './category-parameter-form.types';
+import { dictionaryEntryFormValue } from './category-parameters-to-offer-parameters';
 
 /**
  * Known fragility — these matchers are case-insensitive *exact* string
@@ -198,7 +199,7 @@ function prefillOne(
     const newOption = param.dictionary?.find((entry) =>
       NEW_VALUE_PATTERNS.includes(entry.value.toLowerCase().trim())
     );
-    if (newOption) return newOption.id;
+    if (newOption) return dictionaryEntryFormValue(param, newOption);
   }
 
   // Marka (brand) — exact case-insensitive match against the dictionary.
@@ -215,7 +216,7 @@ function prefillOne(
       const matches = (param.dictionary ?? []).filter(
         (entry) => entry.value.toLowerCase().trim() === target
       );
-      if (matches.length === 1) return matches[0].id;
+      if (matches.length === 1) return dictionaryEntryFormValue(param, matches[0]);
       // 0 or >1 matches → leave blank, hint surfaces elsewhere.
     }
   }
@@ -372,7 +373,9 @@ function mapCatalogValueToFormValue(
   if (target.type === 'dictionary') {
     const ids = catalogParam.valueIds ?? [];
     if (ids.length === 0) return undefined;
-    return target.restrictions.multipleChoices ? ids : ids[0];
+    if (target.restrictions.multipleChoices) return ids;
+    const entry = target.dictionary?.find((e) => e.id === ids[0]);
+    return entry ? dictionaryEntryFormValue(target, entry) : ids[0];
   }
   // string / integer / float (non-range). Range types aren't surfaced by
   // the catalog endpoint today; skip rather than guess.
