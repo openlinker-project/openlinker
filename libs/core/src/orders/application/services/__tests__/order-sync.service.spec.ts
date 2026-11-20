@@ -31,6 +31,7 @@ import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
 } from '@openlinker/core/identifier-mapping';
+import { computeDeliveryFingerprint } from '../../../domain/types/order-delivery-update.types';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
@@ -466,6 +467,7 @@ describe('OrderSyncService', () => {
           status: 'success',
           orderRef: { orderId: 'dest_order_789', orderNumber: 'DEST-001' },
           created: true,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -498,6 +500,7 @@ describe('OrderSyncService', () => {
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-1' },
           created: false,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -575,6 +578,7 @@ describe('OrderSyncService', () => {
         status: 'success',
         orderRef: { orderId: 'ok-1' },
         created: true,
+        deliveryFingerprint: expect.any(String),
       });
       expect(badResult).toEqual({
         destinationConnectionId: 'dest-bad',
@@ -1021,6 +1025,7 @@ describe('OrderSyncService', () => {
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-42' },
           created: false,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -1053,6 +1058,7 @@ describe('OrderSyncService', () => {
           status: 'success',
           orderRef: { orderId: 'dest-1' },
           created: true,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -2061,6 +2067,187 @@ describe('OrderSyncService', () => {
       expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
       expect(results).toHaveLength(1);
       expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
+    });
+  });
+
+  describe('delivery point change on an order the destination already holds (#4195)', () => {
+    type DeliveryAdapter = jest.Mocked<OrderProcessorManagerPort> & {
+      updateOrderDelivery: jest.Mock;
+    };
+    const makeDeliveryAdapter = (
+      update: jest.Mock = jest.fn().mockResolvedValue({ outcome: 'updated' })
+    ): DeliveryAdapter =>
+      ({
+        createOrder: jest.fn().mockResolvedValue({ orderId: 'should-not-be-used' }),
+        updateOrderDelivery: update,
+      }) as unknown as DeliveryAdapter;
+
+    const mapExisting = (): void => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'SHOP-42', connectionId: 'dest-a', platformType: 'shopify', entityType: 'Order' },
+      ]);
+    };
+    const orderWithLocker = (id: string) =>
+      ({ ...createOrder(), pickupPoint: { id } }) as ReturnType<typeof createOrder>;
+    const storedFor = (order: ReturnType<typeof createOrder>, extra: object = {}) =>
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        syncStatus: [
+          {
+            destinationConnectionId: 'dest-a',
+            status: 'synced',
+            deliveryFingerprint: computeDeliveryFingerprint({
+              shipping: order.shipping,
+              pickupPoint: order.pickupPoint,
+            }),
+            ...extra,
+          },
+        ],
+      } as never);
+
+    it('should relay a changed pickup point once and report the new fingerprint', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).toHaveBeenCalledTimes(1);
+      expect(adapter.updateOrderDelivery).toHaveBeenCalledWith({
+        externalOrderId: 'SHOP-42',
+        order: expect.objectContaining({ pickupPoint: { id: 'KRK01M' } }),
+      });
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryFingerprint: computeDeliveryFingerprint({ pickupPoint: { id: 'KRK01M' }, shipping: createOrder().shipping }),
+        deliveryUpdate: { outcome: 'updated' },
+      });
+    });
+
+    it('should carry a caveat the destination reports on an update into the report', async () => {
+      const adapter = makeDeliveryAdapter(
+        jest.fn().mockResolvedValue({ outcome: 'updated', detail: 'lost the VAT line' })
+      );
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        deliveryUpdate: { outcome: 'updated', detail: 'lost the VAT line' },
+      });
+    });
+
+    it('should not relay the same delivery point twice', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('KRK01M'));
+
+      await service.syncOrder({ order: orderWithLocker('KRK01M'), sourceConnectionId: 'source-1' });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should record a baseline and relay nothing when no fingerprint was ever stored', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        syncStatus: [{ destinationConnectionId: 'dest-a', status: 'synced' }],
+      } as never);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({ deliveryFingerprint: expect.any(String) });
+    });
+
+    it('should store the fingerprint of a freshly created order without relaying', async () => {
+      const adapter = makeDeliveryAdapter();
+      (adapter.createOrder as jest.Mock).mockResolvedValue({ orderId: 'SHOP-NEW' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({ created: true, deliveryFingerprint: expect.any(String) });
+    });
+
+    it('should report a destination without the capability as unsupported and not fail it', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'unsupported' },
+      });
+    });
+
+    it('should record a refusal with its reason and the new fingerprint so it is not retried', async () => {
+      const adapter = makeDeliveryAdapter(
+        jest.fn().mockResolvedValue({ outcome: 'refused', reason: 'fulfilled', detail: 'already fulfilled' })
+      );
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', detail: 'already fulfilled' },
+      });
+      expect((results[0] as { deliveryFingerprint: string }).deliveryFingerprint).toBe(
+        computeDeliveryFingerprint({ pickupPoint: { id: 'KRK01M' }, shipping: createOrder().shipping })
+      );
+    });
+
+    it('should keep the old fingerprint when the update throws so the next run retries', async () => {
+      const adapter = makeDeliveryAdapter(jest.fn().mockRejectedValue(new Error('shop down')));
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      const previous = orderWithLocker('WAW14A');
+      storedFor(previous);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'failed', detail: 'shop down' },
+        deliveryFingerprint: computeDeliveryFingerprint({
+          shipping: previous.shipping,
+          pickupPoint: previous.pickupPoint,
+        }),
+      });
     });
   });
 });

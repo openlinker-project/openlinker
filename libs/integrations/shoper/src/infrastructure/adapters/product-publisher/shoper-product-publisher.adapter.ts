@@ -55,6 +55,9 @@
  * silently drop (a group not bound to the product's category) is not sent and
  * comes back as a warning naming it.
  *
+ * It also implements `ShopProductVisibilityWriter` (#3962): a product deleted at
+ * the master is taken off sale by switching its translation's `active` flag off.
+ *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
  * the worker retries the job.
@@ -73,6 +76,7 @@ import {
   type ProvisionCategoryResult,
   type PublishProductCommand,
   type PublishProductResult,
+  type SetShopProductVisibilityCommand,
   type ShopAttribute,
   type ShopAttributeReader,
   type ShopAttributeTerm,
@@ -81,6 +85,7 @@ import {
   type ShopProductManagerPort,
   type ShopProductStatusReadResult,
   type ShopProductStatusReader,
+  type ShopProductVisibilityWriter,
 } from '@openlinker/core/listings';
 import type { Category } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
@@ -93,6 +98,7 @@ import type {
   ShoperImageWriteBody,
   ShoperPublishedProduct,
   ShoperPublishedProductRead,
+  ShoperVisibilityWriteBody,
 } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
@@ -137,7 +143,8 @@ export class ShoperProductPublisherAdapter
     CategoryProvisioner,
     ShopCategoryBrowser,
     ShopProductStatusReader,
-    ShopAttributeReader
+    ShopAttributeReader,
+    ShopProductVisibilityWriter
 {
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
   private readonly categoryReader: ShoperCategoryReader;
@@ -389,6 +396,39 @@ export class ShoperProductPublisherAdapter
       );
     }
     return { publicationStatus };
+  }
+
+  /**
+   * Visibility-only write (#3962, `ShopProductVisibilityWriter`): a partial
+   * `PUT /products/:id` carrying ONLY `translations.<lang>.active`, in the shop
+   * default language the publisher writes the flag in. Shoper accepts any
+   * subset on an update, so name, price, stock and categories stay untouched.
+   *
+   * Inactive rather than deleted, so the product, its history and its mapping
+   * survive and the operator can put it back on sale.
+   */
+  async setShopProductVisibility(cmd: SetShopProductVisibilityCommand): Promise<void> {
+    const { language } = await this.shopContext.get();
+    if (language.length === 0) {
+      throw this.refuse(
+        'shoper_language_unknown',
+        "The shop did not report a default language, so the product's visibility cannot be addressed.",
+      );
+    }
+
+    const body: ShoperVisibilityWriteBody = {
+      translations: { [language]: { active: cmd.visible ? 1 : 0 } },
+    };
+    this.logger.debug(
+      `Setting visibility=${cmd.visible ? 'active' : 'inactive'} for product=${cmd.externalProductId} ` +
+        `connection=${this.connection.id}`,
+    );
+
+    try {
+      await this.client.put(`${PRODUCTS_PATH}/${encodeURIComponent(cmd.externalProductId)}`, body);
+    } catch (error) {
+      throw this.toPublishError(error, cmd.externalProductId);
+    }
   }
 
   /**

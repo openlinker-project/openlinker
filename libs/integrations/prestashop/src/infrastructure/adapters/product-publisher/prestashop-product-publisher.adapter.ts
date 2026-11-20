@@ -13,6 +13,10 @@
  * Stock is set via the auto-created `stock_availables` row after create/upsert —
  * PS WS does not accept `quantity` inline on the product body.
  *
+ * `ShopProductVisibilityWriter` (#3962) takes a product deleted at the master
+ * off sale by flipping its `active` flag (read-modify-write, see
+ * `setShopProductVisibility`).
+ *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/product-publisher
  */
 import { Logger } from '@openlinker/shared/logging';
@@ -21,6 +25,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   type DescriptionFormat,
   ProductPublishRejectedException,
+  ProductPublishTargetNotFoundException,
   type CategoryProvisioner,
   type OfferParameter,
   type ProvisionCategoryCommand,
@@ -28,13 +33,18 @@ import {
   type PublishProductCommand,
   type PublishProductResult,
   type PublishProductStatus,
+  type SetShopProductVisibilityCommand,
   type ShopProductManagerPort,
+  type ShopProductVisibilityWriter,
 } from '@openlinker/core/listings';
 
 import { PRESTASHOP_DESCRIPTION_FORMAT } from './prestashop-description-format';
 import type { PrestashopTaxRateResolver } from '../../provisioners/prestashop-tax-rate.resolver';
 import type { PrestashopSalesCountryResolver } from '../../provisioners/prestashop-sales-country.resolver';
-import { PrestashopApiException } from '@openlinker/integrations-prestashop';
+import {
+  PrestashopApiException,
+  PrestashopResourceNotFoundException,
+} from '@openlinker/integrations-prestashop';
 import { findAcrossPrestashopResourcePages } from '../../http/prestashop-paged-read';
 
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
@@ -55,12 +65,42 @@ import type {
 
 const DEFAULT_ADAPTER_KEY = 'prestashop.webservice.v1';
 
+/**
+ * Product fields the webservice reports but refuses on a PUT (no setter), plus
+ * `position_in_category`, which IS writable but would move the product inside
+ * its category: a visibility write must change visibility and nothing else.
+ */
+const PRODUCT_FIELDS_NOT_WRITTEN_BACK = [
+  'manufacturer_name',
+  'quantity',
+  'position_in_category',
+] as const;
+
+/**
+ * A multi-language field as the JSON read reports it (`[{ id, value }]`),
+ * which is a different shape from the XML the write sends.
+ */
+function isJsonLangField(value: unknown): value is Array<{ id: string | number; value: unknown }> {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === 'object' &&
+        'id' in entry &&
+        'value' in entry &&
+        Object.keys(entry as object).length === 2,
+    )
+  );
+}
+
 function langField(value: string, languageId = '1'): PrestashopLangField {
   return { language: [{ '@_id': languageId, '#text': value }] };
 }
 
 export class PrestashopProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner
+  implements ShopProductManagerPort, CategoryProvisioner, ShopProductVisibilityWriter
 {
   private readonly logger = new Logger(PrestashopProductPublisherAdapter.name);
 
@@ -176,6 +216,87 @@ export class PrestashopProductPublisherAdapter
       status,
       ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  /**
+   * Visibility-only write (#3962, `ShopProductVisibilityWriter`): set the
+   * product's `active` flag and nothing else.
+   *
+   * The webservice PUT replaces the whole resource, so the product is read and
+   * written back with only `active` changed. Three adjustments keep that
+   * round trip from changing anything else: multi-language fields are turned
+   * from the JSON read shape into the XML write shape (sent as read they would
+   * overwrite the names and descriptions), `associations` are left out so the
+   * shop keeps its own categories, images and stock rows untouched, and the
+   * fields the webservice refuses on a PUT are dropped.
+   *
+   * Inactive rather than deleted, so the product, its history and its mapping
+   * survive and the operator can put it back on sale.
+   */
+  async setShopProductVisibility(cmd: SetShopProductVisibilityCommand): Promise<void> {
+    const productId = cmd.externalProductId;
+    let product: Record<string, unknown>;
+    try {
+      product = await this.client.getResource<Record<string, unknown>>('products', productId);
+    } catch (err) {
+      throw this.toVisibilityError(err, productId);
+    }
+
+    const active = cmd.visible ? '1' : '0';
+    if (String(product.active) === active) {
+      // Already in the requested state: skip the full-body write rather than
+      // risk it for nothing.
+      return;
+    }
+
+    this.logger.debug(
+      `Setting active=${active} for product=${productId} connection=${this.connection.id}`
+    );
+
+    try {
+      await this.client.updateResource('products', productId, {
+        ...this.toWritableProductBody(product),
+        id: productId,
+        active,
+      });
+    } catch (err) {
+      throw this.toVisibilityError(err, productId);
+    }
+  }
+
+  /** The read product as a PUT body: XML lang fields, no associations, no read-only fields. */
+  private toWritableProductBody(product: Record<string, unknown>): Record<string, unknown> {
+    const body: Record<string, unknown> = {};
+    const skipped = new Set<string>([...PRODUCT_FIELDS_NOT_WRITTEN_BACK, 'associations']);
+    for (const [key, value] of Object.entries(product)) {
+      if (skipped.has(key)) continue;
+      body[key] = isJsonLangField(value)
+        ? {
+            language: value.map((entry) => ({
+              '@_id': String(entry.id),
+              '#text':
+                typeof entry.value === 'string' || typeof entry.value === 'number'
+                  ? String(entry.value)
+                  : '',
+            })),
+          }
+        : value;
+    }
+    return body;
+  }
+
+  /** A product gone shop-side is a stale mapping; everything else maps like a publish. */
+  private toVisibilityError(error: unknown, productId: string): unknown {
+    if (
+      error instanceof PrestashopResourceNotFoundException ||
+      (error instanceof PrestashopApiException && error.statusCode === 404)
+    ) {
+      return new ProductPublishTargetNotFoundException(
+        this.connection.adapterKey ?? DEFAULT_ADAPTER_KEY,
+        productId
+      );
+    }
+    return this.toPublishError(error);
   }
 
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {

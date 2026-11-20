@@ -92,6 +92,7 @@ describe('Shoper plugin', () => {
         'ShopCategoryBrowser',
         'ShopProductStatusReader',
         'ShopAttributeReader',
+        'ShopProductVisibilityWriter',
       ],
       isDefault: true,
     });

@@ -40,7 +40,7 @@ describe('OrderItemRefResolverService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   // Only the products-service method the SUT actually calls — keeps the mock
   // surface tight per #718 review.
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getProduct' | 'getVariantsByProductId'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getProduct' | 'getVariantsByProductId' | 'getVariantsBySkus'>>;
   let service: OrderItemRefResolverService;
 
   beforeEach(() => {
@@ -58,6 +58,7 @@ describe('OrderItemRefResolverService', () => {
       getVariant: jest.fn(),
       getProduct: jest.fn(),
       getVariantsByProductId: jest.fn().mockResolvedValue([]),
+      getVariantsBySkus: jest.fn().mockResolvedValue([]),
     };
 
     service = new OrderItemRefResolverService(
@@ -175,6 +176,28 @@ describe('OrderItemRefResolverService', () => {
       await expect(
         service.resolve(connectionId, { type: 'sku', externalId: 'SKU-1' })
       ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    it('throws StaleOrderItemError when an unmapped sku matches a stale catalogue variant (deleted Shopify variant)', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce(null);
+      productsService.getVariantsBySkus.mockResolvedValueOnce([
+        makeStaleVariant('ol_variant_1', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'sku', externalId: 'SKU-1' })
+      ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    it('keeps the missing-mapping error when an unmapped sku matches only a live variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce(null);
+      productsService.getVariantsBySkus.mockResolvedValueOnce([
+        makeVariant('ol_variant_1', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'sku', externalId: 'SKU-1' })
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
     });
 
     it('tryResolve surfaces a stale variant as resolved=false with a message-rich reason', async () => {

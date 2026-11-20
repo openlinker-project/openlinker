@@ -113,6 +113,7 @@ export { OrderTotalsPanel } from './components/order-totals-panel';
 // stay domain-agnostic (frontend-architecture.md § Dependency Rules).
 export { RefundConfirmationForm } from './components/refund-confirmation-form';
 export type { RefundConfirmationSubmission } from './components/refund-confirmation-form';
+export { useRefundSentToShopify } from './lib/refund-sent-to-shopify';
 export { REFUND_REASON_VALUES, describeRefundReason, isRefundReason } from './lib/refund-reason';
 export type { RefundReason } from './lib/refund-reason';
 

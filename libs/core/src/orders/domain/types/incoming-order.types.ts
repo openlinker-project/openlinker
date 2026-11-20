@@ -42,6 +42,16 @@ export interface IncomingOrder {
   externalUrl?: string;
 
   /**
+   * Internal OpenLinker order id this order was CREATED FROM, when the source
+   * platform recorded it at creation (OpenLinker stamps it on every order it
+   * pushes into a destination). Its presence proves the order is an echo of
+   * one OpenLinker itself created, which the destination-echo guard otherwise
+   * infers from an external-id mapping - a mapping that does not exist yet
+   * while the creating sync is still in flight (#4091 echo race).
+   */
+  createdFromInternalOrderId?: string;
+
+  /**
    * Status as provided/mapped by adapter.
    */
   status: string;

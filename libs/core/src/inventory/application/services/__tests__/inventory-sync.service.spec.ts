@@ -164,7 +164,10 @@ describe('InventorySyncService', () => {
 
     expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(2);
     expect(result.succeeded).toEqual(['o1']);
-    expect(result.failed).toEqual([{ offerId: 'o2', errorCode: 'unknown', message: 'boom' }]);
+    expect(result.failed).toEqual([
+      { offerId: 'o2', errorCode: 'unknown', message: 'boom', cause: expect.any(Error) },
+    ]);
+    expect(result.failed[0].cause?.message).toBe('boom');
   });
 
   it('should short-circuit with an empty result when items is empty (no adapter resolution)', async () => {

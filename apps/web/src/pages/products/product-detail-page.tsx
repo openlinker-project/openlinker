@@ -30,6 +30,7 @@ import { useBundleProbeQuery } from '../../features/bundles/hooks/use-bundle-que
 import { BundleGuide, BundleGuideButton } from '../../features/bundles/components/bundle-guide';
 import { useBundleUsedInManyQuery } from '../../features/bundles/hooks/use-bundle-queries';
 import { BundleProductView } from '../../features/bundles/components/bundle-product-view';
+import { SalesChannelsSection } from '../../features/listings';
 import { ProductOverview, ConnectionChips } from './product-overview';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
@@ -494,6 +495,18 @@ export function ProductDetailPage(): ReactElement {
           {isBundle && variants[0] ? (
             <BundleProductView bundleVariantId={variants[0].id} productId={product.id} />
           ) : (
+            <>
+            <SalesChannelsSection
+              productId={product.id}
+              variants={variants.map((v) => ({
+                id: v.id,
+                sku: v.sku ?? null,
+                attributes: v.attributes ?? null,
+                isStale: v.isStale,
+              }))}
+              sourceName={sourceName ?? copy.kpis.theMaster}
+              canWrite={write.canWrite}
+            />
             <ProductOverview
               product={product}
               variants={variants}
@@ -547,6 +560,7 @@ export function ProductDetailPage(): ReactElement {
               moreOpen={moreOpen}
               onMoreOpenChange={setMoreOpen}
             />
+            </>
           )}
         </TabsContent>
 
