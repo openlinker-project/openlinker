@@ -22,7 +22,7 @@ import { Link } from 'react-router-dom';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { SETUP_STEP_NUMBERS, TURN_ON_STEP, WIZARD_STEPS } from '../lib/onboarding-state';
 import { isRoutingRequiresLocationError } from '../lib/routing-requires-location-error';
 import type { SetupStepsView } from '../hooks/use-setup-steps';
@@ -57,6 +57,7 @@ function RowLink({ testId, label, onClick }: { testId: string; label: string; on
 }
 
 export function StepTurnOn(props: StepTurnOnProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const rows: SetupChecklistRow[] = [
     {
       key: 'masters',
@@ -86,7 +87,7 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
   if (props.setup !== null) {
     for (const key of SetupStepKeys) {
       const state = props.setup.states[key];
-      const { title, detail } = describeSetupStep(key, state);
+      const { title, detail } = describeSetupStep(key, state, COPY);
       rows.push({
         key,
         ok: state === 'done' || state === 'skipped',

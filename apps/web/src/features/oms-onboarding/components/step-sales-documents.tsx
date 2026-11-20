@@ -25,7 +25,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../../connections';
 import { SalesDocumentsPanel, deriveSalesDocumentRows } from '../../sales-documents';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { SETUP_STEP_NUMBERS } from '../lib/onboarding-state';
 import { SETUP_STEP_PATHS, hasAutomaticDocumentIssuing } from '../lib/setup-steps';
 import { StepPanel } from './step-panel';
@@ -52,6 +52,7 @@ export function StepSalesDocuments({
   onContinue,
   onSetSkipped,
 }: StepSalesDocumentsProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const rows = deriveSalesDocumentRows(connections);
   const hasProvider = rows.length > 0;
   // Required, not advised: the OMS setup is not done while documents wait for
