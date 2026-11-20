@@ -28,6 +28,7 @@ const SOURCE_ORDER_ID = '1001';
 function makeRecord(
   overrides: {
     cancelled?: boolean;
+    fulfilledBySource?: boolean;
     syncedTo?: Array<{ destinationConnectionId: string; externalOrderId?: string }>;
   } = {},
 ): OrderRecord {
@@ -39,6 +40,7 @@ function makeRecord(
     ],
     orderSnapshot: {},
     isCancelled: overrides.cancelled ?? false,
+    isFulfilledBySource: overrides.fulfilledBySource ?? false,
   } as unknown as OrderRecord;
 }
 
@@ -388,6 +390,56 @@ describe('SourceFulfillmentStatusSyncService', () => {
 
       expect(shipments.create).not.toHaveBeenCalled();
       expect(result.skipped).toBe(1);
+    });
+  });
+
+  describe('an order the source ships itself (Amazon FBA, Allegro One Fulfillment)', () => {
+    beforeEach(() => {
+      orderRecords.findMany.mockResolvedValue({ items: [makeRecord({ fulfilledBySource: true })], total: 1 });
+    });
+
+    it('should record a dispatch with no waybill as a source-observed row without tracking, relaying nothing', async () => {
+      readFulfillment.mockResolvedValue(readback({ rawStatus: 'SHIPPED', waybills: [] }));
+
+      const result = await service.sync(SHOPER, { limit: 100 });
+
+      expect(shipments.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: ORDER,
+          connectionId: SHOPER,
+          shippingMethod: 'omp',
+          initialStatus: 'dispatched',
+        }),
+      );
+      expect(shipments.create.mock.calls[0][0]).not.toHaveProperty('trackingNumber');
+      expect(recompute).toHaveBeenCalledWith(ORDER);
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(result.created).toBe(1);
+    });
+
+    it('should not record it twice once a source-observed row exists', async () => {
+      shipments.findByOrderId.mockResolvedValue([makeShipment({ trackingNumber: null })]);
+      readFulfillment.mockResolvedValue(readback({ waybills: [] }));
+
+      const result = await service.sync(SHOPER, { limit: 100 });
+
+      expect(shipments.create).not.toHaveBeenCalled();
+      expect(result.skipped).toBe(1);
+    });
+
+    it('should still record nothing while the source says it has not shipped', async () => {
+      readFulfillment.mockResolvedValue(readback({ dispatched: false, waybills: [] }));
+
+      await service.sync(SHOPER, { limit: 100 });
+
+      expect(shipments.create).not.toHaveBeenCalled();
+    });
+
+    it('should record and relay a waybill the source reports, as for any order', async () => {
+      const result = await service.sync(SHOPER, { limit: 100 });
+
+      expect(shipments.create).toHaveBeenCalledWith(expect.objectContaining({ trackingNumber: 'TP-3RD-PARTY-1' }));
+      expect(result.relayed).toBe(1);
     });
   });
 

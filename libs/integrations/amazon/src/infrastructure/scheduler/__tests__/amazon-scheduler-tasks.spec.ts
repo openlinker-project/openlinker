@@ -5,7 +5,11 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
-import { buildAmazonNotificationsDrainTask, buildAmazonOfferTasks } from '../amazon-scheduler-tasks';
+import {
+  buildAmazonNotificationsDrainTask,
+  buildAmazonOfferTasks,
+  buildAmazonSchedulerTasks,
+} from '../amazon-scheduler-tasks';
 
 const QUEUE_URL = 'https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications';
 
@@ -58,5 +62,26 @@ describe('buildAmazonOfferTasks', () => {
       expect(task.enabledDefault).toBe(false);
     }
     expect(listConnections).toHaveBeenCalledWith({ platformType: 'amazon', status: 'active' });
+  });
+});
+
+describe('buildAmazonSchedulerTasks', () => {
+  it('should register the source fulfillment read-back, off by default and needing only OrderSource', () => {
+    const task = buildAmazonSchedulerTasks().find(
+      (entry) => entry.taskId === 'amazon-source-fulfillment-status-sync',
+    );
+
+    expect(task).toMatchObject({
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      requiredCapability: 'OrderSource',
+      enabledEnvVar: 'OL_AMAZON_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+    });
+    expect(task?.generatePayload({} as Connection)).toEqual({
+      schemaVersion: 1,
+      limit: 20,
+      cursorKey: 'amazon.sourceFulfillmentStatus.scanOffset',
+      updatedSinceDays: 30,
+    });
   });
 });

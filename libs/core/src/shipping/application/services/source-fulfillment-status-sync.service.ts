@@ -56,7 +56,12 @@
  *  - a dispatch with no waybill at all is ignored, because OL relays
  *    tracking-less dispatches too (a destination that shipped without a
  *    number, a fulfilment work) and a bare "sent" cannot be told apart from
- *    that echo.
+ *    that echo. The one exception is an order the source ships ITSELF
+ *    (`OrderRecord.isFulfilledBySource`: Amazon FBA, Allegro One
+ *    Fulfillment): OL never routes nor ships such an order, so a bare "sent"
+ *    cannot be OL's own, and it is recorded as a source-observed row without
+ *    a tracking number. Nothing is relayed for it (there is no waybill), and
+ *    once that row exists a later waybill still fills it in.
  *
  * The reverse loop - this relay reaching a destination whose own branch-1
  * read-back then reports the parcel and relays it back to the source - is
@@ -324,7 +329,7 @@ export class SourceFulfillmentStatusSyncService implements ISourceFulfillmentSta
 
     const waybill = this.firstUnknownWaybill(readback.waybills, orderShipments);
     if (waybill === null) {
-      return SKIPPED;
+      return this.recordSourceShippedWithoutWaybill(connectionId, record, sourceRow);
     }
 
     let row: Shipment;
@@ -354,6 +359,33 @@ export class SourceFulfillmentStatusSyncService implements ISourceFulfillmentSta
     }
 
     return { kind, relayed: await this.relayIfOwed(record, row, waybill) };
+  }
+
+  /**
+   * A dispatch the source reports with no waybill OL does not already know.
+   * Recorded only for an order the source ships itself (see the echo guard in
+   * the header), and only once: an existing source-observed row already says
+   * the order left. Nothing is relayed, because there is no waybill to relay.
+   */
+  private async recordSourceShippedWithoutWaybill(
+    connectionId: string,
+    record: OrderRecord,
+    sourceRow: Shipment | null,
+  ): Promise<RecordOutcome> {
+    if (!record.isFulfilledBySource || sourceRow !== null) {
+      return SKIPPED;
+    }
+    await this.shipments.create({
+      orderId: record.internalOrderId,
+      connectionId,
+      shippingMethod: SHIPPING_METHOD.Omp,
+      initialStatus: SHIPMENT_STATUS.Dispatched,
+      // OL's clock: the readback carries no dispatch instant.
+      dispatchedAt: new Date(),
+    });
+    // A new dispatched shipment moves the order rollup (#1108).
+    await this.fulfillmentProjection.recompute(record.internalOrderId);
+    return { kind: 'created', relayed: false };
   }
 
   /**

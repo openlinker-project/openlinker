@@ -13,6 +13,12 @@
  * seller-fulfilled returns report; both OFF by default. They need only
  * `OrderSource`, so they use the host's capability filter.
  *
+ * `amazon-source-fulfillment-status-sync` asks Amazon whether an order left
+ * (`marketplace.sourceFulfillment.statusSync`), so an order Amazon ships
+ * itself (FBA) or one the seller confirmed in Seller Central is recorded as
+ * sent instead of reading as overdue. OFF by default; one `getOrder` per open
+ * order of the last 30 days, 20 a tick.
+ *
  * `amazon-mcf-status-poll` (#4185) reads the progress of the Multi-Channel
  * Fulfillment orders the connection accepted (`fulfillment.work.statusPoll`).
  * OFF by default; needs `FulfillmentExecutor`.
@@ -104,6 +110,27 @@ export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:returns:status:sync:${timestamp}`,
+    },
+    // Amazon's own view of an order's dispatch: an FBA order, or a parcel the
+    // seller confirmed in Seller Central, is recorded as a shipment made
+    // outside OpenLinker. Off by default
+    // (`OL_AMAZON_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED`).
+    {
+      taskId: 'amazon-source-fulfillment-status-sync',
+      platformType: AMAZON_PLATFORM_TYPE,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      cronExpression: '*/30 * * * *',
+      enabledEnvVar: 'OL_AMAZON_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: 20,
+        cursorKey: 'amazon.sourceFulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:source:fulfillment:status:sync:${timestamp}`,
     },
     // Multi-Channel Fulfillment progress (#4185): Amazon pushes no fulfilment
     // webhook, so the work it accepted is polled through the executor's

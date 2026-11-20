@@ -26,6 +26,13 @@
  *   Never throws; a failure is `rejected`, transient when it was a transport
  *   failure or a throttle.
  *
+ * Fulfilment read-back (`OrderFulfillmentReadback`): the order's
+ * `fulfillmentStatus` (`SHIPPED` is dispatched) and the tracking numbers of
+ * its packages. An order Amazon ships itself (FBA) reports `SHIPPED` with no
+ * package tracking; core records that as a shipment made outside OpenLinker
+ * for an order its source fulfils. Never throws: a failed read is
+ * `unavailable`.
+ *
  * Returns (`ReturnSourceReader`, #4184): delegated to `AmazonReturnReader`,
  * which reads Amazon's seller-fulfilled returns report. Refunds
  * (`RefundExecutor`) are on the refunding subclasses the factory builds only
@@ -43,11 +50,14 @@ import type {
   OrderFeedOutput,
   OrderLifecycleEvent,
   OrderSourcePort,
+  OrderFulfillmentReadback,
   OrderStatusWriteback,
   OrderWritebackResult,
   ReturnSourceReader,
+  SourceFulfillmentReadback,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
+import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
@@ -88,7 +98,12 @@ const GET_ORDER_INCLUDED_DATA = ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT'
 const DOCUMENTED_PAYMENT_METHODS = ['CashOnDelivery', 'ConvenienceStore', 'CreditCard', 'Invoice', 'Pix'];
 
 export class AmazonOrderSourceAdapter
-  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader, ReturnSourceReader
+  implements
+    OrderSourcePort,
+    OrderStatusWriteback,
+    OrderFulfillmentReadback,
+    SourceOptionsReader,
+    ReturnSourceReader
 {
   private readonly logger = new Logger(AmazonOrderSourceAdapter.name);
 
@@ -199,6 +214,31 @@ export class AmazonOrderSourceAdapter
     }
   }
 
+  async readFulfillment(input: { externalOrderId: string }): Promise<SourceFulfillmentReadback> {
+    try {
+      const order = await this.readOrder(input.externalOrderId);
+      const rawStatus = order.fulfillment?.fulfillmentStatus ?? null;
+      return {
+        outcome: 'read',
+        rawStatus,
+        dispatched: amazonDispatchedFlag(rawStatus),
+        // PACKAGES is always requested, so an order without packages answered "none".
+        waybills: (order.packages ?? [])
+          .filter((pkg) => typeof pkg.trackingNumber === 'string' && pkg.trackingNumber.trim().length > 0)
+          .map((pkg) => ({
+            waybill: (pkg.trackingNumber as string).trim(),
+            ...(pkg.carrier ? { carrierId: pkg.carrier, carrierName: pkg.carrier } : {}),
+          })),
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Amazon fulfillment readback failed for order ${input.externalOrderId}: ${detail} (connection: ${this.connectionId})`,
+      );
+      return unavailableSourceFulfillmentReadback(`Amazon did not answer for order ${input.externalOrderId}`);
+    }
+  }
+
   listOrderStatuses(): Promise<MappingOption[]> {
     return Promise.resolve(AmazonFulfillmentStatusValues.map((value) => ({ value, label: value })));
   }
@@ -255,6 +295,26 @@ function toFeedItem(order: AmazonOrder): OrderFeedItem {
     occurredAt: order.lastUpdatedTime,
     eventKey: `${order.orderId}:${order.lastUpdatedTime}`,
   };
+}
+
+/**
+ * Whether Amazon's `fulfillmentStatus` means the order left. `null` for a
+ * status this build does not know, which the caller reads as "unknown".
+ */
+function amazonDispatchedFlag(status: string | null): boolean | null {
+  switch (status) {
+    case 'SHIPPED':
+      return true;
+    case 'PENDING_AVAILABILITY':
+    case 'PENDING':
+    case 'UNSHIPPED':
+    case 'PARTIALLY_SHIPPED':
+    case 'CANCELLED':
+    case 'UNFULFILLABLE':
+      return false;
+    default:
+      return null;
+  }
 }
 
 function isTransient(error: unknown): boolean {

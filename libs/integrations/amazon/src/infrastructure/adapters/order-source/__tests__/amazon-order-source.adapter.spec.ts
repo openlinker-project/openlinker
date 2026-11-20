@@ -251,3 +251,69 @@ describe('AmazonQueuedOrderSourceAdapter (#4179)', () => {
     expect(isInboundQueueReader(adapter(client))).toBe(false);
   });
 });
+
+describe('AmazonOrderSourceAdapter.readFulfillment', () => {
+  it('should report an FBA order Amazon shipped as dispatched with no waybills', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: { order: amazonFbmOrder({ fulfillment: { fulfillmentStatus: 'SHIPPED', fulfilledBy: 'AMAZON' } }) },
+    });
+
+    const result = await adapter(client).readFulfillment({ externalOrderId: 'x' });
+
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/x', {
+      includedData: expect.arrayContaining(['FULFILLMENT', 'PACKAGES']),
+    });
+    expect(result).toEqual({ outcome: 'read', rawStatus: 'SHIPPED', dispatched: true, waybills: [] });
+  });
+
+  it('should report the tracking numbers of the packages the seller confirmed', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: {
+        order: amazonFbmOrder({
+          fulfillment: { fulfillmentStatus: 'SHIPPED', fulfilledBy: 'MERCHANT' },
+          packages: [
+            { packageReferenceId: '1', carrier: 'DPD', trackingNumber: ' 0950123 ' },
+            { packageReferenceId: '2', carrier: 'DPD' },
+          ],
+        }),
+      },
+    });
+
+    const result = await adapter(client).readFulfillment({ externalOrderId: 'x' });
+
+    expect(result.waybills).toEqual([{ waybill: '0950123', carrierId: 'DPD', carrierName: 'DPD' }]);
+  });
+
+  it('should read an unshipped order as not dispatched and an unknown status as unknown', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValueOnce({
+      status: 200,
+      requestId: 'r',
+      data: { order: amazonFbmOrder({ fulfillment: { fulfillmentStatus: 'UNSHIPPED' } }) },
+    });
+    get.mockResolvedValueOnce({
+      status: 200,
+      requestId: 'r',
+      data: { order: amazonFbmOrder({ fulfillment: { fulfillmentStatus: 'SOMETHING_NEW' } }) },
+    });
+
+    await expect(adapter(client).readFulfillment({ externalOrderId: 'x' })).resolves.toMatchObject({ dispatched: false });
+    await expect(adapter(client).readFulfillment({ externalOrderId: 'x' })).resolves.toMatchObject({ dispatched: null });
+  });
+
+  it('should report a failed read as unavailable, never throw', async () => {
+    const { client, get } = clientStub();
+    get.mockRejectedValue(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'));
+
+    await expect(adapter(client).readFulfillment({ externalOrderId: 'x' })).resolves.toMatchObject({
+      outcome: 'unavailable',
+      rawStatus: null,
+    });
+  });
+});
