@@ -134,7 +134,7 @@ export function ReleaseCard({
           <p className="release-card__title">
             {notification.minor === GENERAL_MINOR
               ? copy.generalTitle
-              : interpolate(copy.releaseTitle, { version: notification.version })}
+              : copy.releaseTitle}
           </p>
           <div className="release-card__meta">
             {notification.minor === GENERAL_MINOR ? null : (
