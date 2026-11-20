@@ -69,12 +69,12 @@
     "notifyMarketplace": {
       "hintLabel": "Jak działa informowanie marketplace",
       "infoOffTerm": "Wyłączone (domyślnie):",
-      "infoOffText": "Marketplace dostaje „wysłano” dopiero po kliknięciu „Oznacz jako nadane”.",
+      "infoOffText": "Kupno etykiety nie informuje marketplace. Dostaje „wysłano” dopiero po kliknięciu „Oznacz jako nadane”.",
       "infoOnTerm": "Włączone:",
-      "infoOnText": "Marketplace dostaje „wysłano” zaraz po kupnie etykiety. Numer przesyłki dochodzi, gdy InPost go nada. Wysłanego powiadomienia nie da się cofnąć.",
+      "infoOnText": "Krótko po kupnie etykiety marketplace dostaje „wysłano”. Numer przesyłki dochodzi drugą aktualizacją, gdy InPost go nada. Wysłanego powiadomienia nie da się cofnąć.",
       "infoSummary": "Wybierz, czy samo kupno etykiety ma już oznaczać wysłanie paczki.",
       "infoTitle": "Kiedy marketplace dostaje „wysłano”",
-      "infoWhyText": "Wcześniej każdy zakup etykiety informował marketplace. Teraz jest wyłączone, bo etykietę często kupuje się na wiele godzin przed odbiorem paczki przez kuriera.",
+      "infoWhyText": "Domyślnie wyłączone: etykietę często kupuje się na kilka godzin przed odbiorem paczki przez kuriera.",
       "label": "Informuj marketplace o wysyłce zaraz po kupnie etykiety",
       "scope": "Dotyczy etykiet, które OpenLinker kupuje na koncie InPost „{account}”, dla zamówień z każdego kanału sprzedaży. Nie dotyczy zamówień, które marketplace wysyła sam.",
       "title": "Powiadomienie marketplace o wysyłce"
