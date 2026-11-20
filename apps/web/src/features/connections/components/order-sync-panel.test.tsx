@@ -134,6 +134,21 @@ describe('OrderSyncPanel', () => {
     );
   });
 
+  it('explains on hover that Sync orders leads to Actions', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
+    });
+    renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await user.hover(await screen.findByRole('button', { name: /Sync orders/ }));
+
+    expect(await screen.findByText('You will be taken to Actions')).toBeInTheDocument();
+  });
+
   describe('import health details', () => {
     const importFigures = {
       importedLast24h: 42,

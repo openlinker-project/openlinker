@@ -1156,6 +1156,10 @@
     "since": "Od {date}",
     "sinceUnknown": "Data startu nie została zapisana",
     "syncNow": "Synchronizuj zamówienia…",
+    "syncNowHint": {
+      "text": "Otworzy się tam okno uruchamiania synchronizacji, od razu ustawione na synchronizację zamówień.",
+      "title": "Przejdziesz do Akcji"
+    },
     "title": "Import zamówień"
   },
   "orderSyncStart": {

@@ -1130,6 +1130,10 @@
     "since": "Since {date}",
     "sinceUnknown": "Start date was not recorded",
     "syncNow": "Sync orders…",
+    "syncNowHint": {
+      "text": "The Trigger sync dialog opens there, already set to Sync orders.",
+      "title": "You will be taken to Actions"
+    },
     "title": "Order import"
   },
   "orderSyncStart": {

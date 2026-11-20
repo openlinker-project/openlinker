@@ -23,6 +23,9 @@ import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useDemoMode } from '../../system';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
+import { InfoIcon } from '../../../shared/ui/icons';
+import { PopoverCard } from '../../../shared/ui/popover-card';
+import { PopoverOnHover } from '../../../shared/ui/popover-on-hover';
 import type { Connection } from '../api/connections.types';
 import { OrderImportHealth } from './order-import-health';
 import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
@@ -53,12 +56,30 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         </div>
         <div className="order-sync-panel__actions">
           {sync.visible ? (
-            <Button
-              tone="primary"
-              onClick={() => navigate(`/connections/${connectionId}?tab=actions&sync=orders`)}
+            <PopoverOnHover
+              width={300}
+              align="end"
+              ariaLabel={copy.syncNowHint.title}
+              trigger={(triggerProps) => (
+                <Button
+                  {...triggerProps}
+                  tone="primary"
+                  onClick={(event) => {
+                    triggerProps.onClick?.(event);
+                    void navigate(`/connections/${connectionId}?tab=actions&sync=orders`);
+                  }}
+                >
+                  {copy.syncNow}
+                </Button>
+              )}
             >
-              {copy.syncNow}
-            </Button>
+              <PopoverCard
+                tone="info"
+                icon={<InfoIcon />}
+                title={copy.syncNowHint.title}
+                summary={copy.syncNowHint.text}
+              />
+            </PopoverOnHover>
           ) : null}
           {write.visible ? (
             <Button
