@@ -22,9 +22,13 @@ export class AddOrderBuyerDataRedactedAt1940000000000 implements MigrationInterf
     await queryRunner.query(
       `ALTER TABLE "order_records" ADD COLUMN "buyerDataRedactedAt" TIMESTAMP WITH TIME ZONE`
     );
+    // `createdAt` is a TIMESTAMP without time zone while the other two are
+    // timestamptz, so a bare COALESCE casts it through the session time zone,
+    // which Postgres refuses in an index expression. OpenLinker writes it in
+    // UTC; the repository's retention query uses the same expression.
     await queryRunner.query(
       `CREATE INDEX "IDX_order_records_buyer_data_retention" ON "order_records" ` +
-        `("sourceConnectionId", (COALESCE("dispatchByAt", "placedAt", "createdAt"))) ` +
+        `("sourceConnectionId", (COALESCE("dispatchByAt", "placedAt", "createdAt" AT TIME ZONE 'UTC'))) ` +
         `WHERE "buyerDataRedactedAt" IS NULL`
     );
   }

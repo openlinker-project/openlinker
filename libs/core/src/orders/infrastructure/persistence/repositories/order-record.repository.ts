@@ -193,6 +193,14 @@ function orderRecordColumnProperties(): readonly string[] {
 /** Rollup states that mean the order's parcels left (#3554, `order.shipped`). */
 const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
 
+/**
+ * The buyer-data retention anchor (#4178). Written exactly as the expression of
+ * `IDX_order_records_buyer_data_retention` so the planner can use that index:
+ * `createdAt` is a TIMESTAMP without time zone, read as UTC.
+ */
+const BUYER_DATA_RETENTION_ANCHOR =
+  `COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt" AT TIME ZONE 'UTC')`;
+
 @Injectable()
 export class OrderRecordRepository
   implements OrderRecordRepositoryPort, OrderGiftReportReaderPort
@@ -1708,10 +1716,10 @@ export class OrderRecordRepository
         sourceConnectionId: input.sourceConnectionId,
       })
       .andWhere('rec."buyerDataRedactedAt" IS NULL')
-      .andWhere('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt") < :anchorBefore', {
+      .andWhere(`${BUYER_DATA_RETENTION_ANCHOR} < :anchorBefore`, {
         anchorBefore: input.anchorBefore,
       })
-      .orderBy('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt")', 'ASC')
+      .orderBy(BUYER_DATA_RETENTION_ANCHOR, 'ASC')
       .addOrderBy('rec."internalOrderId"', 'ASC')
       .limit(input.limit)
       .getRawMany<{ internal_order_id: string; order_snapshot: unknown }>();
