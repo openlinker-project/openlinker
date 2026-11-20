@@ -188,6 +188,13 @@
     "uploading": "Uploading…",
     "wrongType": "File type \"{type}\" is not accepted. Allowed: {accept}."
   },
+  "fontSize": {
+    "default": "Default",
+    "extraLarge": "Largest",
+    "group": "Text size",
+    "large": "Large",
+    "small": "Small"
+  },
   "formErrorSummary": {
     "title": "Please correct the highlighted fields."
   },
