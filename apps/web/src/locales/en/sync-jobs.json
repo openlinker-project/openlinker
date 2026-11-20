@@ -291,13 +291,6 @@
       "toHelp": "Leave empty to read up to the newest order.",
       "toLabel": "Last day"
     },
-    "orderScope": {
-      "label": "What to sync",
-      "new": "New orders since the last check",
-      "newHint": "Checks the shop for orders not imported yet, without moving the import start.",
-      "range": "Orders from a date range",
-      "rangeHint": "Reads the orders placed between two days, once. Orders OpenLinker already has are updated, not copied twice."
-    },
     "requiredField": "{field} *",
     "title": "Trigger sync",
     "toast": {

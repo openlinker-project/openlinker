@@ -410,7 +410,6 @@
   "connections:inpostSetupPage.chip": 16,
   "connections:inpostSetupPage.title": 40,
   "connections:newConnectionPage.wizardsChip": 32,
-  "connections:orderSyncPanel.restart.action": 30,
   "connections:orderSyncPanel.retry": 8,
   "connections:orderSyncPanel.syncNow": 30,
   "connections:orderSyncStart.all.warningLabel": 48,

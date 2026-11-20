@@ -4,7 +4,7 @@
  * @module features/connections/components
  */
 import type { ReactElement } from 'react';
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
@@ -231,7 +231,7 @@ describe('OrderSyncPanel', () => {
       expect(screen.getByRole('button', { name: 'Sync products…' })).toBeInTheDocument();
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
       expect(screen.getByText(/Newest first · from .* · Started /)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Import older orders…' })).toBeInTheDocument();
     });
 
     it('should send the operator to Actions on the product sync from the failure card', async () => {
@@ -350,12 +350,55 @@ describe('OrderSyncPanel', () => {
     expect(screen.queryByText('Waiting to import')).not.toBeInTheDocument();
   });
 
+  describe('import older orders', () => {
+    it('imports a period once as a range run when the shop can read a window', async () => {
+      const user = userEvent.setup();
+      const enqueue = vi.fn().mockResolvedValue({ jobId: 'job_1' });
+      const apiClient = createMockApiClient({
+        connections: {
+          getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()),
+        },
+        syncJobs: { enqueue },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'prestashop.webservice.v1',
+              platformType: 'prestashop',
+              orderSyncStartModes: ['now', 'from', 'all'],
+              orderWindowImport: true,
+            },
+          ]),
+        },
+      });
+      renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await user.click(await screen.findByRole('button', { name: 'Import older orders…' }));
+      await user.click(await screen.findByRole('button', { name: 'Import orders' }));
+      expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
+      expect(enqueue).not.toHaveBeenCalled();
+
+      fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
+      await user.click(screen.getByRole('button', { name: 'Import orders' }));
+
+      expect(enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn_1',
+          jobType: 'marketplace.orders.import',
+          payload: expect.objectContaining({ from: '2026-10-01', direction: 'oldest-first' }),
+        })
+      );
+    });
+  });
+
   describe('restart', () => {
     it('says nothing is skipped when restarting to new orders only', async () => {
       const user = userEvent.setup();
       renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
 
-      await user.click(await screen.findByRole('button', { name: 'Change' }));
+      await user.click(await screen.findByRole('button', { name: 'Import older orders…' }));
 
       expect(
         await screen.findByText(
@@ -388,7 +431,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: 'Change' }));
+      await user.click(await screen.findByRole('button', { name: 'Import older orders…' }));
       await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
       await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
@@ -418,7 +461,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: 'Change' }));
+      await user.click(await screen.findByRole('button', { name: 'Import older orders…' }));
       await user.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
 
       expect(screen.getByRole('button', { name: 'Apply change' })).toBeDisabled();

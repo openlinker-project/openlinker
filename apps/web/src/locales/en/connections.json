@@ -1072,7 +1072,7 @@
     "wizardsChip": "Per-platform wizards"
   },
   "orderSyncPanel": {
-    "change": "Change",
+    "change": "Import older orders…",
     "errorTitle": "Could not load order import",
     "health": {
       "failures": {
@@ -1095,6 +1095,9 @@
             "title": "other error"
           }
         },
+        "retryAll": "Retry failed orders",
+        "retryDone": "Failed orders are back in the queue.",
+        "retrying": "Retrying…",
         "syncProducts": "Sync products…",
         "title": "Orders that failed"
       },
@@ -1120,18 +1123,33 @@
       "oldest": "oldest first"
     },
     "restart": {
-      "action": "Change import start…",
       "cancel": "Cancel",
       "confirm": "Apply change",
       "confirming": "Saving…",
-      "description": "Orders OpenLinker already has stay. This only decides which orders it reads from the shop next.",
+      "description": "Orders OpenLinker already has stay. Choose how far back to read from the shop.",
       "failedTitle": "Could not change the start",
+      "kind": {
+        "label": "What do you want to do?",
+        "range": {
+          "text": "Reads the orders placed between two days, once. New orders keep syncing as before.",
+          "title": "Import a period"
+        },
+        "start": {
+          "text": "Changes which orders OpenLinker reads from the shop from now on.",
+          "title": "Move where syncing starts"
+        }
+      },
       "nowNote": "OpenLinker keeps importing new orders from the last check, so nothing is skipped.",
+      "rangeConfirm": "Import orders",
+      "rangeFailedTitle": "Could not start the import",
+      "rangeNote": "Orders OpenLinker already has are updated, not created twice.",
+      "rangeSuccessMessage": "The orders from this period are being imported. Progress shows on this tab.",
+      "rangeSuccessTitle": "Import started",
       "repeatNote": "Orders OpenLinker already has are updated, not created twice.",
       "successMessage": "The next order check uses the new start.",
       "successNowMessage": "Order import continues from the last check.",
       "successTitle": "Start changed",
-      "title": "Change where order import starts"
+      "title": "Import older orders"
     },
     "retry": "Retry",
     "startText": {

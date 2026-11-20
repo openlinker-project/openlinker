@@ -16,6 +16,8 @@
  */
 import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../../../shared/ui/toast-provider';
+import { useRetryGroupedSyncJobsMutation } from '../../sync-jobs';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
@@ -54,6 +56,18 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const copy = useMessages('connections').orderSyncPanel;
   const format = useFormat();
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
+  const retryJobs = useRetryGroupedSyncJobsMutation();
+  const { showToast } = useToast();
+
+  async function retryFailed(): Promise<void> {
+    try {
+      await retryJobs.mutateAsync({ connectionId, jobType: 'marketplace.order.sync' });
+      showToast({ tone: 'success', title: copy.health.failures.retryDone, description: '' });
+      await statusQuery.refetch();
+    } catch (error) {
+      showToast({ tone: 'error', description: describeApiError(error, 'connections') });
+    }
+  }
   const data = statusQuery.data;
   const startedAt = data?.orderSyncStartedAt ?? null;
   const verdict = deriveOrderImportVerdict(data?.orderImport ?? null);
@@ -182,6 +196,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
           </p>
           <OrderImportHealth
             orderImport={data.orderImport}
+            onRetry={sync.visible && !sync.demoReadOnly ? () => void retryFailed() : undefined}
+            retrying={retryJobs.isPending}
             onSyncProducts={
               sync.visible
                 ? () => void navigate(`/connections/${connectionId}?tab=actions&sync=products`)

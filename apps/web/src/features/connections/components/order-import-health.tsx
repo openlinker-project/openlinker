@@ -21,11 +21,16 @@ interface OrderImportHealthProps {
   orderImport: OrderImportStatus | null;
   /** Opens the manual product sync, the fix for orders that name a product OpenLinker does not know. */
   onSyncProducts?: () => void;
+  /** Puts every failed order of this connection back in the queue; absent when the user cannot retry. */
+  onRetry?: () => void;
+  retrying?: boolean;
 }
 
 export function OrderImportHealth({
   orderImport,
   onSyncProducts,
+  onRetry,
+  retrying = false,
 }: OrderImportHealthProps): ReactElement | null {
   const copy = useMessages('connections').orderSyncPanel.health;
   const format = useFormat();
@@ -98,6 +103,13 @@ export function OrderImportHealth({
             );
           })}
         </ul>
+      ) : null}
+      {failures.length > 0 && onRetry ? (
+        <p className="order-import-health__retry">
+          <Button tone="secondary" onClick={onRetry} disabled={retrying}>
+            {retrying ? copy.failures.retrying : copy.failures.retryAll}
+          </Button>
+        </p>
       ) : null}
       {activeImport ? (
         <div className="order-import-health__run" role="status">

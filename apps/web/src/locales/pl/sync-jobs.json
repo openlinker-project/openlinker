@@ -293,13 +293,6 @@
       "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
       "toLabel": "Ostatni dzień"
     },
-    "orderScope": {
-      "label": "Co synchronizować",
-      "new": "Nowe zamówienia od ostatniego sprawdzenia",
-      "newHint": "Sprawdza, czy w sklepie są niezaimportowane zamówienia, bez przesuwania początku importu.",
-      "range": "Zamówienia z zakresu dat",
-      "rangeHint": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz."
-    },
     "requiredField": "{field} *",
     "title": "Uruchom synchronizację",
     "toast": {

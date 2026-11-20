@@ -40668,3 +40668,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   text-underline-offset: 2px;
   vertical-align: baseline;
 }
+
+.order-import-health__retry {
+  margin: var(--space-3) 0 0;
+}
