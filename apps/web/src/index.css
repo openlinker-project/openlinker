@@ -40668,3 +40668,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   margin-top: var(--space-3);
   color: var(--text-primary);
 }
+
+.order-sync-panel__next {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}

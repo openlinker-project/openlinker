@@ -230,6 +230,9 @@ describe('OrderSyncPanel', () => {
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
       expect(screen.getByText(/Newest first · from .* · Started /)).toBeInTheDocument();
       expect(screen.getByText('Needs attention')).toBeInTheDocument();
+      expect(screen.getByText('Orders that could not be imported: 2.')).toBeInTheDocument();
+      expect(screen.getByText('What to do')).toBeInTheDocument();
+      expect(screen.getByText(/Sync the catalogue so OpenLinker knows the missing products/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Change import start/ })).toBeInTheDocument();
     });
 

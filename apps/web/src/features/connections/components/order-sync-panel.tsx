@@ -57,6 +57,15 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const data = statusQuery.data;
   const startedAt = data?.orderSyncStartedAt ?? null;
   const verdict = deriveOrderImportVerdict(data?.orderImport ?? null);
+  // What to do about the verdict. For failures it follows the most frequent cause, since
+  // that is where fixing one thing clears the most orders.
+  const topFailure = data?.orderImport?.failures[0]?.code;
+  const nextStep =
+    verdict === 'ok'
+      ? null
+      : verdict === 'failing'
+        ? copy.verdictNext.failing[topFailure === 'missing-mapping' ? 'missingMapping' : 'other']
+        : copy.verdictNext[verdict];
 
   // The start is stated as the SETTING it is (what was chosen and what that means for
   // older orders), never as activity, and never with a date that is only the time a
@@ -158,12 +167,18 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
             </StatusBadge>
             <p className="order-sync-panel__verdict-text">
               {interpolate(copy.verdictText[verdict], {
+                n: format.number(data.orderImport?.failedLast7d ?? 0),
                 when: data.orderImport?.lastPolledAt
                   ? format.relativeTime(data.orderImport.lastPolledAt)
                   : '',
               })}
             </p>
           </div>
+          {nextStep !== null ? (
+            <p className="order-sync-panel__next">
+              <strong>{copy.nextLabel}</strong> {nextStep}
+            </p>
+          ) : null}
           <p className="order-sync-panel__start">{describeStart(data.orderStart, startedAt)}</p>
           <OrderImportHealth orderImport={data.orderImport} />
         </>

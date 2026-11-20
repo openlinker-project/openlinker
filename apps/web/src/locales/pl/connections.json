@@ -1108,11 +1108,11 @@
         "original": "Oryginalny komunikat (nieprzetłumaczony):",
         "reasons": {
           "missing-mapping": {
-            "text": "Produkt z tych zamówień nie jest powiązany z żadnym produktem w OpenLinker, więc nie da się utworzyć zamówienia. Zsynchronizuj katalog, a potem ponów zamówienie w Zadaniach i logach.",
+            "text": "Produkt z tych zamówień nie jest powiązany z żadnym produktem w OpenLinker, więc nie da się utworzyć zamówienia.",
             "title": "Produkt z zamówienia nie jest powiązany"
           },
           "other": {
-            "text": "OpenLinker nie mógł zaimportować tych zamówień. Otwórz zadanie w Zadaniach i logach, żeby zobaczyć szczegóły i ponowić.",
+            "text": "OpenLinker nie mógł zaimportować tych zamówień. Oryginalny komunikat jest poniżej.",
             "title": "Zamówienia nie udały się z innego powodu"
           }
         },
@@ -1135,6 +1135,7 @@
     },
     "loadingMessage": "Sprawdzamy, od kiedy pobierane są zamówienia.",
     "loadingTitle": "Wczytywanie importu zamówień",
+    "nextLabel": "Co zrobić",
     "noCheck": "Jeszcze nie sprawdzano",
     "orderPhrase": {
       "newest": "od najnowszych",
@@ -1179,9 +1180,18 @@
       "ok": "Aktualne",
       "unknown": "Nieznany"
     },
+    "verdictNext": {
+      "behind": "Uruchom synchronizację zamówień teraz. Jeśli sklep nadal nie jest sprawdzany, zajrzyj do zakładki Kondycja.",
+      "failing": {
+        "missingMapping": "Zsynchronizuj katalog, żeby OpenLinker poznał brakujące produkty, a potem ponów nieudane zamówienia w Zadaniach i logach.",
+        "other": "Otwórz nieudane zamówienia w Zadaniach i logach, przeczytaj błąd i ponów je."
+      },
+      "notChecked": "Uruchom synchronizację zamówień albo poczekaj na następne zaplanowane sprawdzenie.",
+      "unknown": "Odśwież stronę. Jeśli to zostaje, zajrzyj do zakładki Kondycja."
+    },
     "verdictText": {
       "behind": "Sklepu nie sprawdzano od {when}.",
-      "failing": "Nie wszystkie zamówienia udało się zaimportować.",
+      "failing": "Zamówienia, których nie udało się zaimportować: {n}.",
       "notChecked": "Sklep nie miał jeszcze udanego sprawdzenia.",
       "ok": "Sklep był niedawno sprawdzany i żadne zamówienie się nie psuje.",
       "unknown": "Dane o imporcie zamówień są teraz niedostępne."
