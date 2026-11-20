@@ -1,9 +1,9 @@
 /**
  * Order Sync Panel
  *
- * Connection detail health-tab panel stating where order sync starts (#4228):
- * a new connection reads orders from the moment it was connected, and past
- * orders are not imported. Presentation only - the read is the existing
+ * Connection detail health-tab panel for the order import (#4228): where it
+ * started, when the shop was last checked and how the import is doing. The
+ * "Change start…" sits in the header; the whole sync lives on the Sync tab. Presentation only - the read is the existing
  * `use-connection-sync-status-query` (same query key as the queue panel, so no
  * extra request).
  *
@@ -28,14 +28,9 @@ import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
 
 interface OrderSyncPanelProps {
   connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'>;
-  /** Health tab: state only. The Actions tab carries the control that changes it. */
-  statusOnly?: boolean;
 }
 
-export function OrderSyncPanel({
-  connection,
-  statusOnly = false,
-}: OrderSyncPanelProps): ReactElement {
+export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElement {
   const connectionId = connection.id;
   const [restartOpen, setRestartOpen] = useState(false);
   const demoMode = useDemoMode();
@@ -53,7 +48,7 @@ export function OrderSyncPanel({
           <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title">{copy.title}</h3>
         </div>
-        {write.visible && !statusOnly ? (
+        {write.visible ? (
           <Button
             tone="secondary"
             onClick={() => setRestartOpen(true)}
@@ -112,20 +107,15 @@ export function OrderSyncPanel({
               </p>
             </div>
           </div>
-          {statusOnly ? (
-            <OrderImportHealth orderImport={data.orderImport} />
-          ) : (
-            <p className="order-sync-panel__note">{copy.note}</p>
-          )}
+          <OrderImportHealth orderImport={data.orderImport} />
+          <p className="order-sync-panel__note">{copy.note}</p>
         </>
       ) : null}
-      {statusOnly ? null : (
-        <OrderSyncRestartDialog
-          connection={connection}
-          open={restartOpen}
-          onOpenChange={setRestartOpen}
-        />
-      )}
+      <OrderSyncRestartDialog
+        connection={connection}
+        open={restartOpen}
+        onOpenChange={setRestartOpen}
+      />
     </div>
   );
 }

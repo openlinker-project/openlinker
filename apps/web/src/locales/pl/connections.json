@@ -112,7 +112,7 @@
     "disabled": "Wyłączony",
     "enabled": "Włączony",
     "errorTitle": "Nie udało się wczytać wiarygodności katalogu",
-    "eyebrow": "Kondycja",
+    "eyebrow": "Synchronizacja",
     "lastReconciled": "Ostatnie uzgodnienie usunięć",
     "loadingMessage": "Odczytywanie zadeklarowanej przez system główny możliwości synchronizacji.",
     "loadingTitle": "Wczytywanie wiarygodności katalogu",
@@ -178,6 +178,7 @@
     },
     "sync": {
       "action": "Synchronizuj…",
+      "eyebrow": "Ręcznie",
       "help": "Ręcznie dodaj do kolejki zadanie synchronizacji dla tego połączenia. Typ zadania i dane wybierzesz w kolejnym kroku.",
       "title": "Uruchom synchronizację"
     },
@@ -321,7 +322,8 @@
       "config": "Konfiguracja",
       "gifts": "Gratisy na dokumentach",
       "health": "Kondycja",
-      "overview": "Przegląd"
+      "overview": "Przegląd",
+      "sync": "Synchronizacja"
     }
   },
   "connectionDiagnosticsPanel": {
@@ -525,7 +527,7 @@
       "waitingToRetry": "Czeka na ponowienie"
     },
     "errorTitle": "Nie udało się wczytać kolejki synchronizacji",
-    "eyebrow": "Kondycja",
+    "eyebrow": "Synchronizacja",
     "headline": {
       "clearance": "Około {wait} do opróżnienia przy obecnym tempie.",
       "empty": "Dla tego połączenia nic nie czeka.",

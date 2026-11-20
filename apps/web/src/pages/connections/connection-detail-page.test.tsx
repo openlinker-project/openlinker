@@ -373,8 +373,8 @@ describe('ConnectionDetailPage', () => {
     });
   });
 
-  describe('order sync panel on the Health and Actions tabs (#4228)', () => {
-    async function openTab(connection: Connection, tab: 'Health' | 'Actions'): Promise<void> {
+  describe('order sync panel on the Sync tab (#4228)', () => {
+    async function openTab(connection: Connection, tab: 'Sync' | 'Health' | 'Actions'): Promise<void> {
       const user = userEvent.setup();
       const apiClient = createMockApiClient({
         connections: {
@@ -413,23 +413,20 @@ describe('ConnectionDetailPage', () => {
     const orderSource = (): Connection =>
       makeAllegro({ enabledCapabilities: ['OfferManager', 'OrderSource'] });
 
-    it('should show the import status, without the change control, on the Health tab', async () => {
-      await openTab(orderSource(), 'Health');
+    it('should show the order import, with its change control, on the Sync tab', async () => {
+      await openTab(orderSource(), 'Sync');
 
       expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
       expect(await screen.findByText('Importing new orders')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Change start/ })).not.toBeInTheDocument();
     });
 
-    it('should carry the full panel, with its note, on the Actions tab', async () => {
-      await openTab(orderSource(), 'Actions');
-
-      expect(await screen.findByRole('heading', { name: 'Order import' })).toBeInTheDocument();
-      expect(await screen.findByText(/stay in the shop/)).toBeInTheDocument();
+    it('should keep the order import off the Health and Actions tabs', async () => {
+      await openTab(orderSource(), 'Health');
+      expect(screen.queryByRole('heading', { name: 'Order import' })).not.toBeInTheDocument();
     });
 
     it('should not show the order sync panel for a connection that is not an order source', async () => {
-      await openTab(makeAllegro(), 'Health');
+      await openTab(makeAllegro(), 'Sync');
 
       expect(screen.queryByRole('heading', { name: 'Order import' })).not.toBeInTheDocument();
     });

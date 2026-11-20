@@ -107,7 +107,7 @@ describe('OrderSyncPanel', () => {
     expect(screen.queryByText(/^Since /)).not.toBeInTheDocument();
   });
 
-  describe('health details (statusOnly)', () => {
+  describe('import health details', () => {
     const importFigures = {
       importedLast24h: 42,
       failedLast7d: 2,
@@ -136,7 +136,7 @@ describe('OrderSyncPanel', () => {
       const apiClient = createMockApiClient({
         connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(status) },
       });
-      renderWithProviders(<OrderSyncPanel connection={CONNECTION} statusOnly />, {
+      renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
         apiClient,
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
@@ -152,7 +152,7 @@ describe('OrderSyncPanel', () => {
       expect(screen.getByText(/Orders: 2 · Latest: order 37/)).toBeInTheDocument();
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
       expect(screen.getByText(/Newest first · from .* · Pages read: 4/)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Change start/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Change start/ })).toBeInTheDocument();
     });
 
     it('should not mention failures or a running import when there are none', async () => {

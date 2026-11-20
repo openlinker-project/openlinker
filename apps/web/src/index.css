@@ -7825,15 +7825,6 @@ html:has(.login-stage) {
   color: var(--text-secondary);
 }
 
-.order-sync-panel__note {
-  margin: var(--space-4) 0 0;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-subtle);
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: var(--text-muted);
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .order-sync-panel__dot:not(.order-sync-panel__dot--idle) {
     animation: order-sync-panel-pulse 2.4s var(--ease-out) infinite;
@@ -40679,4 +40670,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-import-health__failure-link {
   margin: 0;
   font-size: 0.875rem;
+}
+
+.order-sync-panel__note {
+  margin: var(--space-4) 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
 }

@@ -321,14 +321,14 @@ test.describe('order ingestion: order sync start (#4228)', () => {
     );
   });
 
-  test('the connection health tab shows the order import status', async ({
+  test('the connection sync tab shows the order import status', async ({
     page,
     pages,
   }) => {
     requireSeeded();
     const connection = created.find((c) => c.name.startsWith('e2e-sync-start-now-'));
     test.skip(!connection, 'the "now" connection was not created');
-    await pages.connectionDetail.goto(connection!.id, 'health');
+    await pages.connectionDetail.goto(connection!.id, 'sync');
     await pages.connectionDetail.expectOrderSyncPanel();
     await expect(page).toHaveURL(new RegExp(`/connections/${connection!.id}`));
   });
