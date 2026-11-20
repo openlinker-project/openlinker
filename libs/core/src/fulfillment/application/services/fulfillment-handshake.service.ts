@@ -143,6 +143,7 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
       // column the router owns, and a second source could disagree with it.
       deliveryMethod: current.deliveryMethod,
       idempotencyKey,
+      deliveryAddress: input.deliveryAddress ?? null,
     });
 
     // An unrecognised arm is refused rather than persisted. Stamping a status

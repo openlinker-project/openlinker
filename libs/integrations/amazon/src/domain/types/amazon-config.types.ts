@@ -1,0 +1,72 @@
+/**
+ * Amazon Connection Config Types
+ *
+ * The non-secret half of an Amazon connection, stored in `Connection.config`.
+ * One connection is one seller account in one region, selling in one or more
+ * of that region's marketplaces; `marketplaceIds` is passed per call.
+ *
+ * Whether one connection per marketplace is the better grain is an open
+ * question (#3741, AC4); this shape keeps the marketplace axis inside the
+ * connection, which a single refresh token covering every EU marketplace
+ * already implies.
+ *
+ * @module libs/integrations/amazon/src/domain/types
+ */
+import type { AmazonEnvironment, AmazonRegion } from '../../amazon.constants';
+import type { AmazonMcfShippingSpeed } from './amazon-mcf.types';
+
+export interface AmazonConnectionConfig {
+  readonly region: AmazonRegion;
+  readonly environment: AmazonEnvironment;
+  /** At least one; the marketplaces this connection sells in. */
+  readonly marketplaceIds: readonly string[];
+  /**
+   * The operator's SQS queue Amazon delivers notifications to (#4179). Absent
+   * means orders arrive by polling only.
+   */
+  readonly notificationQueue?: AmazonNotificationQueue;
+  /**
+   * The seller's merchant token (Seller Central: Settings > Account Info >
+   * Your Merchant Token). The Listings Items API addresses every listing by
+   * it, and no SP-API call returns it to a self-authorized app (#4180).
+   */
+  readonly sellerId?: string;
+  /**
+   * Amazon `product_tax_code` -> the VAT rate code OpenLinker records
+   * (`'23'`, `'8'`, `'zw'`, #4182). Amazon carries a tax CODE, not a rate, so a
+   * catalogue read reports the rate as not known unless the operator maps it.
+   */
+  readonly taxCodeRates?: Readonly<Record<string, string>>;
+  /**
+   * The marketplace the catalogue is read from (#4182): its listing content,
+   * its gross price and currency (ADR-077) and its country for the tax rate.
+   * One of `marketplaceIds`; absent means the first of them.
+   */
+  readonly catalogueMarketplaceId?: string;
+  /**
+   * The OpenLinker location FBA stock is reported at (#4183). Absent means FBA
+   * stock is not read. Requires the connection's `stockLocationOverride` (the
+   * FBM location) to be set and different: core cannot hold one variant both
+   * pooled and located, and would otherwise retire the FBM position.
+   */
+  readonly fbaLocationId?: string;
+  /**
+   * Refunds decided in OpenLinker are sent to Amazon through the payment
+   * adjustment feed (#4184). Off by default: a refund then only records that
+   * the seller refunded in Seller Central.
+   */
+  readonly refundsEnabled?: boolean;
+  /**
+   * The Multi-Channel Fulfillment shipping speed for orders Amazon ships for
+   * other channels (#4185). Absent means `Standard`.
+   */
+  readonly mcfShippingSpeed?: AmazonMcfShippingSpeed;
+}
+
+export interface AmazonNotificationQueue {
+  readonly url: string;
+  /** AWS region of the queue, read from its URL. */
+  readonly region: string;
+  /** `arn:aws:sqs:{region}:{account}:{name}`, what Amazon's Notifications API needs. */
+  readonly arn: string;
+}

@@ -57,6 +57,7 @@ describe('CustomersController', () => {
       upsertAddress: jest.fn(),
       findDestinationAddressMapping: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

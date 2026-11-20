@@ -105,6 +105,36 @@ export interface FulfillmentRequest {
   readonly shipTo: RoutingShipTo;
   readonly deliveryMethod: string | null;
   readonly idempotencyKey: string;
+  /**
+   * Where the parcel goes, for a holder that SHIPS it itself (a 3PL, Amazon
+   * MCF, #4185; ADR-062 § Amendment (#4185)). `shipTo` above is what ROUTING
+   * may see and stays the routing-shaped projection; a holder outside
+   * OpenLinker cannot ship to a postcode.
+   *
+   * Present only when OpenLinker stores buyer data (`OL_STORE_PII=true`) and
+   * the order has a shipping address; `null` otherwise. An executor that needs
+   * it rejects work without it rather than guessing. An in-process executor
+   * (OL-OMS) never reads it. A router never receives it: `RoutingInput` is a
+   * separate type.
+   */
+  readonly deliveryAddress: FulfillmentDeliveryAddress | null;
+}
+
+/**
+ * The delivery address handed to a shipping holder (#4185), an explicit
+ * allowlist like every projection that crosses to a plugin: what a carrier
+ * label needs, never the buyer's email or tax id.
+ */
+export interface FulfillmentDeliveryAddress {
+  readonly recipientName: string;
+  readonly company: string | null;
+  readonly addressLine1: string;
+  readonly addressLine2: string | null;
+  readonly city: string;
+  readonly region: string | null;
+  readonly postalCode: string;
+  readonly countryIso2: string;
+  readonly phone: string | null;
 }
 
 /**
@@ -201,6 +231,74 @@ export const FULFILLMENT_REQUEST_ALLOWED_KEYS = [
   'shipTo',
   'deliveryMethod',
   'idempotencyKey',
+  'deliveryAddress',
+] as const;
+
+/** What a host reads a delivery address from: the order's stored shipping address. */
+export interface FulfillmentDeliveryAddressSource {
+  readonly firstName?: string | null;
+  readonly lastName?: string | null;
+  readonly company?: string | null;
+  readonly address1?: string | null;
+  readonly address2?: string | null;
+  readonly city?: string | null;
+  readonly state?: string | null;
+  readonly postalCode?: string | null;
+  readonly country?: string | null;
+  readonly phone?: string | null;
+}
+
+/**
+ * The delivery address a shipping holder receives (#4185), or `null`.
+ *
+ * `null` when buyer data is not stored (`storePii: false`: the snapshot's
+ * address has been redacted, so anything built from it would be a wrong
+ * destination), or when the address lacks a street, city, postcode, country
+ * or any name to address the parcel to. Pure: the only rule for building it.
+ */
+export function buildFulfillmentDeliveryAddress(
+  source: FulfillmentDeliveryAddressSource,
+  options: { readonly storePii: boolean },
+): FulfillmentDeliveryAddress | null {
+  if (!options.storePii) {
+    return null;
+  }
+  const text = (value: string | null | undefined): string | null =>
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  const name = [text(source.firstName), text(source.lastName)].filter((part) => part !== null).join(' ');
+  const company = text(source.company);
+  const recipientName = name.length > 0 ? name : company;
+  const addressLine1 = text(source.address1);
+  const city = text(source.city);
+  const postalCode = text(source.postalCode);
+  const countryIso2 = text(source.country);
+  if (recipientName === null || addressLine1 === null || city === null || postalCode === null || countryIso2 === null) {
+    return null;
+  }
+  return {
+    recipientName,
+    company,
+    addressLine1,
+    addressLine2: text(source.address2),
+    city,
+    region: text(source.state),
+    postalCode,
+    countryIso2: countryIso2.toUpperCase(),
+    phone: text(source.phone),
+  };
+}
+
+/** The delivery address allowlist (#4185), as data like the request's own. */
+export const FULFILLMENT_DELIVERY_ADDRESS_ALLOWED_KEYS = [
+  'recipientName',
+  'company',
+  'addressLine1',
+  'addressLine2',
+  'city',
+  'region',
+  'postalCode',
+  'countryIso2',
+  'phone',
 ] as const;
 
 /**

@@ -19,7 +19,7 @@ describe('DocumentEmailDeliveryService', () => {
   const original = process.env.OL_STORE_PII;
 
   beforeEach(() => {
-    repository = { record: jest.fn(), listByOrder: jest.fn() };
+    repository = { record: jest.fn(), listByOrder: jest.fn(), clearRecipientsForOrder: jest.fn() };
     service = new DocumentEmailDeliveryService(repository);
   });
 

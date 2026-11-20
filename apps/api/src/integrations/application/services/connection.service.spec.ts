@@ -1957,6 +1957,44 @@ describe('ConnectionService', () => {
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
 
+      it('should reject ProductMaster beside an OfferManager that creates listings (#4182)', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'amazon.spapi.v1',
+          platformType: 'amazon',
+          supportedCapabilities: ['OrderSource', 'OfferManager', 'ProductMaster', 'OfferCreator'],
+        } as never);
+
+        await expect(
+          service.create({
+            name: 'Amazon',
+            config: {},
+            credentialsRef: 'db:existing-ref',
+            platformType: 'amazon',
+            enabledCapabilities: ['ProductMaster', 'OfferManager'] as never,
+          })
+        ).rejects.toMatchObject({
+          response: { code: 'CONNECTION_MASTER_PUBLISHER_CONFLICT' },
+        });
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should allow ProductMaster beside an OfferManager that only writes stock back', async () => {
+        const shop = { ...mockConnection, enabledCapabilities: ['ProductMaster'] };
+        connectionPort.get.mockResolvedValue(shop);
+        connectionPort.update.mockResolvedValue({ ...shop, enabledCapabilities: ['ProductMaster', 'OfferManager'] });
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'woocommerce.restapi.v3',
+          platformType: 'woocommerce',
+          supportedCapabilities: ['ProductMaster', 'OfferManager', 'ProductPublisher'],
+        } as never);
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductMaster', 'OfferManager'] as never,
+        });
+
+        expect(connectionPort.update).toHaveBeenCalled();
+      });
+
       it('should reject update when the patch moves a connection into the combination', async () => {
         connectionPort.get.mockResolvedValue({
           ...mockConnection,

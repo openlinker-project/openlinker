@@ -187,6 +187,18 @@ export const FULFILLMENT_EXECUTOR_CONTRACT_REQUEST: FulfillmentRequest = Object.
   }),
   deliveryMethod: null,
   idempotencyKey: 'work:ol_fulfillmentwork_contract_fixture:1',
+  // A shipping holder needs it (#4185); an in-process one ignores it.
+  deliveryAddress: Object.freeze({
+    recipientName: 'Contract Fixture',
+    company: null,
+    addressLine1: 'Prosta 1',
+    addressLine2: null,
+    city: 'Warszawa',
+    region: null,
+    postalCode: '00-001',
+    countryIso2: 'PL',
+    phone: null,
+  }),
 }) as FulfillmentRequest;
 
 const CANCELLATION_REQUEST: FulfillmentCancellationRequest = Object.freeze({

@@ -51,4 +51,8 @@ export class DocumentEmailDeliveryService implements IDocumentEmailDeliveryServi
   listForOrder(internalOrderId: string): Promise<DocumentEmailDelivery[]> {
     return this.repository.listByOrder(internalOrderId, DOCUMENT_EMAIL_LIST_LIMIT);
   }
+
+  async clearRecipientsForOrder(internalOrderId: string): Promise<number> {
+    return this.repository.clearRecipientsForOrder(internalOrderId);
+  }
 }

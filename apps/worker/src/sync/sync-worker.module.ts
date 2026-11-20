@@ -10,7 +10,13 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { RedisClientType } from 'redis';
 import { createClient } from 'redis';
-import { SyncModule } from '@openlinker/core/sync';
+import {
+  SyncModule,
+  InboundRoutingPolicyService,
+  InboundQueueDrainService,
+  INBOUND_ROUTING_POLICY_TOKEN,
+  INBOUND_QUEUE_DRAIN_SERVICE_TOKEN,
+} from '@openlinker/core/sync';
 import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -37,6 +43,7 @@ import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './handlers/orders-poll.handler';
+import { NotificationsDrainHandler } from './handlers/notifications-drain.handler';
 import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './handlers/marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './handlers/marketplace-order-fx-stamp-sweep.handler';
@@ -147,6 +154,14 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     SyncJobHandlerRegistry,
     InventoryPropagateToMarketplacesHandler,
     OrdersPollHandler,
+    // #4179 — pull-based inbound notifications. The routing policy is bound
+    // host-side, as the API's WebhooksModule binds it; its only dependency is
+    // JOB_ENQUEUE_TOKEN from SyncModule.
+    InboundRoutingPolicyService,
+    { provide: INBOUND_ROUTING_POLICY_TOKEN, useExisting: InboundRoutingPolicyService },
+    InboundQueueDrainService,
+    { provide: INBOUND_QUEUE_DRAIN_SERVICE_TOKEN, useExisting: InboundQueueDrainService },
+    NotificationsDrainHandler,
     MarketplaceOrderSyncHandler,
     MarketplaceOrderFxStampHandler,
     MarketplaceOrderFxStampSweepHandler,

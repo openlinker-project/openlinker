@@ -93,6 +93,10 @@ import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
 } from '../../../domain/types/order-search-text-reindex.types';
+import type {
+  OrderBuyerDataRedaction,
+  OrderBuyerDataRetentionCandidate,
+} from '../../../domain/types/order-buyer-data-retention.types';
 import {
   AuthorityAttentionCountedReasonValues,
   buildAuthorityAttentionPayload,
@@ -1683,6 +1687,75 @@ export class OrderRecordRepository
         searchText: row.search_text ?? '',
       };
     });
+  }
+
+  /**
+   * Retention candidates (#4178), see the port. The anchor is
+   * `COALESCE(dispatchByAt, placedAt, createdAt)`: the ship-by deadline and the
+   * placement both precede delivery, so a deletion counted from them is never
+   * later than one counted from delivery.
+   */
+  async findBuyerDataRetentionCandidates(input: {
+    sourceConnectionId: string;
+    anchorBefore: Date;
+    limit: number;
+  }): Promise<OrderBuyerDataRetentionCandidate[]> {
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."orderSnapshot"', 'order_snapshot')
+      .where('rec."sourceConnectionId" = :sourceConnectionId', {
+        sourceConnectionId: input.sourceConnectionId,
+      })
+      .andWhere('rec."buyerDataRedactedAt" IS NULL')
+      .andWhere('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt") < :anchorBefore', {
+        anchorBefore: input.anchorBefore,
+      })
+      .orderBy('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt")', 'ASC')
+      .addOrderBy('rec."internalOrderId"', 'ASC')
+      .limit(input.limit)
+      .getRawMany<{ internal_order_id: string; order_snapshot: unknown }>();
+
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      orderSnapshot:
+        typeof row.order_snapshot === 'object' && row.order_snapshot !== null
+          ? (row.order_snapshot as Record<string, unknown>)
+          : {},
+    }));
+  }
+
+  /**
+   * One-shot buyer-data removal (#4178), see the port. `updatedAt` is assigned
+   * to itself, as in `rewriteSearchText`: nothing about the order changed.
+   */
+  async redactBuyerData(redaction: OrderBuyerDataRedaction): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({
+        orderSnapshot: () => 'CAST(:orderSnapshot AS jsonb)',
+        searchText: redaction.searchText,
+        buyerNote: null,
+        buyerTaxId: null,
+        orderEdits: () => `CASE WHEN "orderEdits" ? 'address' THEN "orderEdits" - 'address' ELSE "orderEdits" END`,
+        buyerDataRedactedAt: () => 'now()',
+        updatedAt: () => '"updatedAt"',
+      })
+      .setParameter('orderSnapshot', JSON.stringify(redaction.orderSnapshot))
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId: redaction.internalOrderId })
+      .andWhere('"buyerDataRedactedAt" IS NULL')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async isBuyerDataRedacted(internalOrderId: string): Promise<boolean> {
+    const row = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec."buyerDataRedactedAt"', 'redacted_at')
+      .where('rec."internalOrderId" = :internalOrderId', { internalOrderId })
+      .getRawOne<{ redacted_at: Date | null }>();
+    return row !== undefined && row !== null && row.redacted_at !== null;
   }
 
   /**

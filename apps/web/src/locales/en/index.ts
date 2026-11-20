@@ -14,6 +14,7 @@
 import adapters from './adapters.json';
 import aiProviderSettings from './ai-provider-settings.json';
 import allegroCore from './allegro-core.json';
+import amazon from './amazon.json';
 import analytics from './analytics.json';
 import app from './app.json';
 import auth from './auth.json';
@@ -69,6 +70,7 @@ export const en = {
   adapters,
   'ai-provider-settings': aiProviderSettings,
   'allegro-core': allegroCore,
+  amazon,
   analytics,
   app,
   auth,

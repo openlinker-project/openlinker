@@ -53,6 +53,7 @@ describe('OrderRecordService', () => {
   beforeEach(async () => {
     process.env.OL_PII_HASH_SALT = 'test-salt-for-hashing';
     repository = {
+      isBuyerDataRedacted: jest.fn().mockResolvedValue(false),
       findById: jest.fn(),
       findByIds: jest.fn(),
       findEarliestOrderDateByConnection: jest.fn(),
@@ -280,6 +281,21 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot.shippingAddress).toEqual(order.shippingAddress);
       expect(callArg.orderSnapshot.billingAddress).toEqual(order.billingAddress);
       expect(callArg.recordStatus).toBe('ready');
+    });
+
+    it('should keep a re-imported order redacted once its buyer data was removed (#4178)', async () => {
+      const order = createMockOrder();
+      repository.isBuyerDataRedacted.mockResolvedValueOnce(true);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(repository.isBuyerDataRedacted).toHaveBeenCalledWith(order.id);
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot.shippingAddress).toEqual(
+        expect.objectContaining({ address1: '[REDACTED]', city: '[REDACTED]' }),
+      );
+      expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
 
     it('should keep cost out of the order snapshot and forward the candidates to the line derivation (#3588)', async () => {

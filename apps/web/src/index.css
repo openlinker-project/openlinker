@@ -3847,6 +3847,12 @@ textarea,
   color: var(--status-success-strong);
 }
 
+/* A description inside an inline row (a checkbox or radio label), where a
+   block `<p>` is not allowed: shown on its own line under the label text. */
+.form-field__description--block {
+  display: block;
+}
+
 .form-field__error {
   margin: 0;
   color: var(--status-error-strong);
@@ -40299,4 +40305,46 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .sync-guide__section-body { transition: none; }
   .sync-progress__confirm,
   .sync-guide__item[data-focus='true'] { animation: none; }
+}
+
+/* ── Amazon tax code rates (#4182) ── */
+.amazon-tax-codes {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.amazon-tax-codes > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+
+.amazon-tax-codes__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.amazon-tax-codes__rate {
+  max-width: 6rem;
+}
+
+/* ── Amazon connection checkboxes (#4184) ── */
+.amazon-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.amazon-checkbox-row input {
+  margin-top: 0.2em;
+  flex: none;
+}
+
+.amazon-checkbox-row__description {
+  display: block;
+  margin-top: var(--space-1);
 }

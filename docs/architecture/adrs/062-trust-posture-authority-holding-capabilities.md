@@ -95,3 +95,23 @@ ADR — its own decision text already routes that pressure here.
 - Related ADRs: [ADR-003](./003-plugin-sdk-trust-model.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md), [ADR-061](./061-advisory-reservations-and-availability-authority.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md) §9
 - Review record: [REVIEW-oms-authority-model](../../plans/analysis/REVIEW-oms-authority-model.md)
+
+## Amendment (#4185): a holder that ships the parcel receives the delivery address
+
+Decision (2) bounds what ROUTING may see, and `FulfillmentRequest.shipTo` reused that
+projection. That is enough for the in-process OL-OMS executor, which reads the order itself,
+and not enough for a holder that ships the parcel outside OpenLinker (a 3PL, Amazon
+Multi-Channel Fulfillment): it cannot address a parcel to a postcode.
+
+`FulfillmentRequest` therefore carries `deliveryAddress`, an explicit allowlist
+(`FULFILLMENT_DELIVERY_ADDRESS_ALLOWED_KEYS`: recipient name, company, address lines, city,
+region, postcode, country, phone; never the buyer's email or tax id), built by the one pure
+rule `buildFulfillmentDeliveryAddress`. Three limits keep decision (2) intact:
+
+- **Routing never receives it.** `RoutingInput` is a separate type and is unchanged; the
+  address is added only on the executor request, after a holder was chosen.
+- **It exists only while OpenLinker stores buyer data** (`OL_STORE_PII=true`). Under
+  hash-only storage the snapshot's address is redacted, so the field is `null`, and an
+  executor that needs it rejects the work rather than shipping to a guessed destination.
+- **It is handed to the holder the operator assigned the work to**, the party that has to
+  print the label; no other plugin sees it.

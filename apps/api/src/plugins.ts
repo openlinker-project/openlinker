@@ -40,6 +40,7 @@ import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openl
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { ShoperIntegrationModule } from '@openlinker/integrations-shoper';
+import { AmazonIntegrationModule } from '@openlinker/integrations-amazon';
 import { ShopifyIntegrationModule } from '@openlinker/integrations-shopify';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
@@ -74,6 +75,10 @@ export const apiPlugins: PluginEntry[] = [
   // CategoryProvisioner, OrderProcessorManager and OrderSource, plus signed
   // webhooks and one request budget shared by every connection to a shop.
   ShoperIntegrationModule,
+  // #3741: Amazon SP-API - plugin foundation (connection, LWA credentials,
+  // tester, classifiers). No capability yet; OrderSource and OfferManager land
+  // with their own children of the epic.
+  AmazonIntegrationModule,
   // #3974: Shopify - connection, token (client credentials, pre-issued token or
   // OAuth install), tester and classifiers, plus ProductMaster, InventoryMaster,
   // OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner
