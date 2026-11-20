@@ -110,6 +110,11 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
    * legacy job and the stale-offer pause carry none.
    */
   productVariantId?: string;
+  /**
+   * Parent product external id when `offerId` is a variation of a grouped
+   * shop product (#3962) - see `UpdateOfferQuantityCommand.externalParentId`.
+   */
+  externalParentId?: string;
 }
 
 export interface MarketplaceOfferFieldUpdatePayloadV1 {

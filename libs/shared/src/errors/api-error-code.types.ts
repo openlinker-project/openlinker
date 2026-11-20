@@ -164,6 +164,8 @@ export const ApiErrorCodeValues = [
   'ORDER_DESTINATION_NOT_RETRYABLE',
   /** OMS routing owns the order, so a destination mirror is not retryable. params: `orderId`, `connectionId`. */
   'ORDER_HANDLED_BY_ROUTING',
+  /** A product deleted at the source cannot be put back on sale (409). params: `productId`. */
+  'SALE_HOLD_RELEASE_REFUSED',
   /** The order has no source external id for the connection (500). params: `orderId`, `connectionId`. */
   'ORDER_SOURCE_ID_MISSING',
   /** The routing retry could not be queued; try again. params: `orderId`. */
@@ -436,6 +438,8 @@ export const ApiErrorCodeValues = [
   'BULK_OFFER_BATCH_NOT_FOUND',
   /** No bulk shop-publish batch has this id. params: `batchId`. */
   'BULK_SHOP_PUBLISH_BATCH_NOT_FOUND',
+  /** A legacy connection holds both ProductMaster and ProductPublisher, so publishing to it is refused. params: `connectionId`. */
+  'SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT',
   /** Another submit with the same idempotency key is still being resolved; retry. No params. */
   'BULK_SUBMIT_IDEMPOTENCY_CONTENDED',
   /** Every selected variant is already listed on the connection. params: `skippedCount`. */
@@ -551,6 +555,11 @@ export const ApiErrorCodeValues = [
   'OAUTH_ADAPTER_NOT_REGISTERED',
   /** Re-authorizing a connection of another platform. params: `connectionId`, `expectedPlatformType`, `platformType`. */
   'OAUTH_CONNECTION_PLATFORM_MISMATCH',
+  /**
+   * The platform's OAuth redirect failed its signature or store check, so its
+   * code was not exchanged. params: `platformType`, `reason`.
+   */
+  'OAUTH_CALLBACK_UNVERIFIED',
   /** The OAuth credentials could not be stored. */
   'CREDENTIALS_STORE_FAILED',
   /** The connection is not a Subiekt Invoicing connection. params: `connectionId`. */

@@ -52,6 +52,7 @@ import { ksefPlugin } from './ksef';
 import { omsPlugin } from './oms';
 import { prestashopPlugin } from './prestashop';
 import { shoperPlugin } from './shoper';
+import { shopifyPlugin } from './shopify';
 import { subiektPlugin } from './subiekt-gt';
 // Two SEPARATE InsERT products, two bridges, two wire contracts - never joined.
 import { subiektNexoPlugin } from './subiekt-nexo';
@@ -71,6 +72,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   infaktPlugin,
   eparagonyPlugin,
   shoperPlugin,
+  shopifyPlugin,
   omsPlugin,
 ];
 

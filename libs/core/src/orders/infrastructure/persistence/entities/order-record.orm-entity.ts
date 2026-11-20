@@ -22,6 +22,13 @@ export interface OrderSyncStatusJson {
   externalOrderId?: string;
   externalOrderNumber?: string;
   error?: string;
+  deliveryFingerprint?: string;
+  deliveryUpdate?: {
+    outcome: string;
+    reason?: string;
+    detail?: string;
+    at: string;
+  };
 }
 
 /**

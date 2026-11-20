@@ -197,6 +197,7 @@ export class InventorySyncService implements IInventorySyncService {
           offerId: item.offerId,
           errorCode: 'unknown',
           message: error instanceof Error ? error.message : String(error),
+          ...(error instanceof Error ? { cause: error } : {}),
         });
       }
     }

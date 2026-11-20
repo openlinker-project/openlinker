@@ -198,7 +198,7 @@
     "errorTitle": "Unable to update capabilities",
     "eyebrow": "Capabilities",
     "legacyMasterPublisher": {
-      "body": "This connection is both a catalog source and a publish target, so its published products can come back as duplicates. Turn one of the two off.",
+      "body": "This connection is both a catalog source and a publish target, so its published products can come back as duplicates. Publishing to it is refused until Product master is switched off.",
       "title": "Catalog and publishing on one connection"
     },
     "none": "This connection has no capabilities available to toggle here.",
@@ -235,6 +235,7 @@
     "ariaLabel": "{name}, {platform}",
     "sandboxFace": "{platform} sandbox",
     "sandboxLabel": "{platform} (sandbox)",
+    "sandboxTag": "sandbox",
     "title": "{name} - {platform}"
   },
   "connectionConfigPanel": {
@@ -824,6 +825,7 @@
       "body": "Fix the raw config JSON below before editing the structured inputs - they are locked so your custom JSON keys are not silently lost.",
       "title": "Raw JSON is invalid"
     },
+    "readOnlyNote": "You have read-only access, so these settings cannot be changed.",
     "save": "Save changes",
     "saving": "Saving...",
     "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
@@ -845,6 +847,10 @@
     "notFound": {
       "message": "No connection data was returned. Check the connection ID or return to the list.",
       "title": "Connection not found"
+    },
+    "readOnly": {
+      "message": "Editing a connection needs write access. Ask an administrator to change these settings.",
+      "title": "Read-only access"
     },
     "title": "Edit connection"
   },

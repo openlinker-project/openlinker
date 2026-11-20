@@ -1,0 +1,465 @@
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
+import type { CachePort } from '@openlinker/shared';
+
+import { ShopifyLocationNotOwnedException } from '../../../../domain/exceptions/shopify-location-not-owned.exception';
+import { ShopifyNotSupportedException } from '../../../../domain/exceptions/shopify-not-supported.exception';
+import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopify-user-errors.exception';
+import type { ShopifyInventoryVariant } from '../../../../domain/types/shopify-api.types';
+import type { ShopifyGraphqlClient } from '../../../http/shopify-graphql-client';
+import { ShopifyInventoryReader } from '../../../readers/shopify-inventory.reader';
+import type { ShopifyShopContextProvider } from '../../../shop-context/shopify-shop-context.provider';
+import { ShopifyInventoryMasterAdapter } from '../shopify-inventory-master.adapter';
+
+const LOCATION = 'gid://shopify/Location/1';
+
+function variant(id: string, available: number | null, tracked = true): ShopifyInventoryVariant {
+  return {
+    id: `gid://shopify/ProductVariant/${id}`,
+    inventoryItem: {
+      id: `gid://shopify/InventoryItem/${id}`,
+      tracked,
+      inventoryLevel:
+        available === null
+          ? null
+          : {
+              updatedAt: '2026-11-04T10:00:00Z',
+              quantities: [
+                { name: 'available', quantity: available },
+                { name: 'on_hand', quantity: available + 2 },
+                { name: 'committed', quantity: 2 },
+              ],
+            },
+    },
+  };
+}
+
+function productAnswer(variants: ShopifyInventoryVariant[], status = 'ACTIVE'): unknown {
+  return {
+    product: {
+      id: 'gid://shopify/Product/7',
+      status,
+      variants: { nodes: variants, pageInfo: { hasNextPage: false, endCursor: null } },
+    },
+  };
+}
+
+function mapping(): IdentifierMappingPort {
+  return {
+    getExternalIds: jest.fn((entityType: string, internalId: string) =>
+      Promise.resolve(
+        entityType === 'ProductVariant'
+          ? [{ connectionId: 'c1', externalId: internalId.replace('ol_v', '') }]
+          : [{ connectionId: 'c1', externalId: '7' }],
+      ),
+    ),
+    batchGetOrCreateInternalIds: jest.fn((requests: Array<{ externalId: string; connectionId: string }>) =>
+      Promise.resolve(new Map(requests.map((r) => [`${r.externalId}:${r.connectionId}`, `ol_${r.externalId}`]))),
+    ),
+  } as unknown as IdentifierMappingPort;
+}
+
+function memoryCache(): CachePort {
+  const store = new Map<string, unknown>();
+  return {
+    get: jest.fn((k: string) => Promise.resolve((store.get(k) ?? null) as never)),
+    set: jest.fn((k: string, v: unknown) => {
+      store.set(k, v);
+      return Promise.resolve();
+    }),
+    delete: jest.fn(),
+  } as unknown as CachePort;
+}
+
+interface Fakes {
+  query: jest.Mock;
+  mutate: jest.Mock;
+}
+
+function build(fakes: Fakes, cache?: CachePort, unmanaged: number | null = null): ShopifyInventoryMasterAdapter {
+  const client = fakes as unknown as ShopifyGraphqlClient;
+  return new ShopifyInventoryMasterAdapter(
+    client,
+    mapping(),
+    { get: jest.fn().mockResolvedValue({ locationGid: LOCATION }) } as unknown as ShopifyShopContextProvider,
+    new ShopifyInventoryReader(client, 'c1'),
+    { id: 'c1' } as Connection,
+    unmanaged,
+    cache,
+  );
+}
+
+const adjusted = (createdAt = '2026-11-04T22:07:21Z', after = 6): unknown => ({
+  inventoryAdjustmentGroup: { createdAt, changes: [{ name: 'available', quantityAfterChange: after }] },
+});
+
+const stale = new ShopifyUserErrorsException('inventoryAdjustQuantities', [
+  { message: 'The changeFromQuantity argument no longer matches', code: 'CHANGE_FROM_QUANTITY_STALE' },
+]);
+
+describe('ShopifyInventoryMasterAdapter', () => {
+  describe('reads', () => {
+    it('should report each variant at the configured location, pooled, with committed as reserved', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 4), variant('2', null)]));
+
+      const rows = await build({ query, mutate: jest.fn() }).listInventory('ol_7');
+
+      expect(rows).toEqual([
+        expect.objectContaining({ variantId: 'ol_1', available: 4, quantity: 6, reserved: 2, locationId: undefined }),
+        expect.objectContaining({ variantId: 'ol_2', available: 0, quantity: 0, reserved: 0 }),
+      ]);
+      expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ locationId: LOCATION });
+    });
+
+    it('should report an untracked variant at the unmanaged cap, 1000 by default (L-I1)', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', null, false)]));
+
+      await expect(build({ query, mutate: jest.fn() }).listInventory('ol_7')).resolves.toEqual([
+        expect.objectContaining({ available: 1000 }),
+      ]);
+      await expect(build({ query, mutate: jest.fn() }, undefined, 25).listInventory('ol_7')).resolves.toEqual([
+        expect.objectContaining({ available: 25 }),
+      ]);
+    });
+
+    it('should raise the neutral not-found error for a deleted or archived product', async () => {
+      const deleted = jest.fn().mockResolvedValue({ product: null });
+      const archived = jest.fn().mockResolvedValue(productAnswer([variant('1', 1)], 'ARCHIVED'));
+
+      await expect(build({ query: deleted, mutate: jest.fn() }).listInventory('ol_7')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
+      await expect(build({ query: archived, mutate: jest.fn() }).listInventory('ol_7')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
+    });
+
+    it('should warm a batch with one bulk read and never throw', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce({ nodes: [{ id: 'gid://shopify/Product/7', status: 'ACTIVE', variants: { nodes: [variant('1', 3)] } }] })
+        .mockRejectedValue(new Error('should not be read again'));
+      const adapter = build({ query, mutate: jest.fn() });
+
+      await adapter.prefetchInventory(['ol_7']);
+      await expect(adapter.listInventory('ol_7')).resolves.toEqual([expect.objectContaining({ available: 3 })]);
+      await expect(adapter.prefetchInventory(['ol_8'])).resolves.toBeUndefined();
+    });
+  });
+
+  describe('adjustInventory', () => {
+    it('should write a compare-and-set delta on available with Shopify own instant as appliedAt', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 4)]));
+      const mutate = jest.fn().mockResolvedValue(adjusted());
+
+      const result = await build({ query, mutate }).adjustInventory({
+        productId: 'ol_7',
+        quantity: 2,
+        reason: 'manual_correction',
+        idempotencyKey: 'manual:m1',
+      });
+
+      expect(result).toMatchObject({ available: 6 });
+      expect(result.adjustmentOutcome).toEqual({
+        disposition: 'applied',
+        idempotency: 'unsupported',
+        appliedAt: new Date('2026-11-04T22:07:21Z'),
+      });
+      const variables = (mutate.mock.calls[0] as unknown[])[1] as {
+        key: string;
+        input: { name: string; reason: string; changes: Array<Record<string, unknown>> };
+      };
+      expect(variables.input).toMatchObject({ name: 'available', reason: 'correction' });
+      expect(variables.input.changes[0]).toEqual({
+        inventoryItemId: 'gid://shopify/InventoryItem/1',
+        locationId: LOCATION,
+        delta: 2,
+        changeFromQuantity: 4,
+      });
+      expect(variables.key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    });
+
+    it('should apply a correction once and answer a replay of the key as deduplicated (A18)', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 4)]));
+      const mutate = jest.fn().mockResolvedValue(adjusted());
+      const cache = memoryCache();
+      const adjustment = { productId: 'ol_7', quantity: 2, idempotencyKey: 'manual:m1' };
+
+      await build({ query, mutate }, cache).adjustInventory(adjustment);
+      const replay = await build({ query, mutate }, cache).adjustInventory(adjustment);
+
+      expect(mutate).toHaveBeenCalledTimes(1);
+      expect(replay.adjustmentOutcome).toEqual({
+        disposition: 'deduplicated',
+        idempotency: 'honoured',
+        appliedAt: new Date('2026-11-04T22:07:21Z'),
+      });
+    });
+
+    it('should re-read and retry when the level moved since it was read, never overwriting it (G05)', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce(productAnswer([variant('1', 4)]))
+        .mockResolvedValueOnce(productAnswer([variant('1', 7)]));
+      const mutate = jest.fn().mockRejectedValueOnce(stale).mockResolvedValueOnce(adjusted(undefined, 9));
+
+      const result = await build({ query, mutate }).adjustInventory({
+        productId: 'ol_7',
+        quantity: 2,
+        idempotencyKey: 'sale:k',
+      });
+
+      expect(result.available).toBe(9);
+      const first = (mutate.mock.calls[0] as unknown[])[1] as { key: string; input: { changes: Array<{ changeFromQuantity: number }> } };
+      const second = (mutate.mock.calls[1] as unknown[])[1] as { key: string; input: { changes: Array<{ changeFromQuantity: number }> } };
+      expect(first.input.changes[0].changeFromQuantity).toBe(4);
+      expect(second.input.changes[0].changeFromQuantity).toBe(7);
+      expect(second.key).not.toBe(first.key);
+    });
+
+    it('should give up after three stale attempts and let the error out', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 4)]));
+      const mutate = jest.fn().mockRejectedValue(stale);
+
+      await expect(
+        build({ query, mutate }).adjustInventory({ productId: 'ol_7', quantity: 1 }),
+      ).rejects.toBe(stale);
+      expect(mutate).toHaveBeenCalledTimes(3);
+    });
+
+    it('should write nothing and report no outcome for a zero delta, never claiming it applied', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 0)]));
+      const mutate = jest.fn();
+
+      const result = await build({ query, mutate }).adjustInventory({ productId: 'ol_7', quantity: -3, idempotencyKey: 'k' });
+
+      expect(mutate).not.toHaveBeenCalled();
+      expect(result.adjustmentOutcome).toBeUndefined();
+    });
+
+    it('should clamp a removal past zero to zero', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 3)]));
+      const mutate = jest.fn().mockResolvedValue(adjusted(undefined, 0));
+
+      await build({ query, mutate }).adjustInventory({ productId: 'ol_7', quantity: -5 });
+
+      expect(((mutate.mock.calls[0] as unknown[])[1] as { input: { changes: Array<{ delta: number }> } }).input.changes[0].delta).toBe(-3);
+    });
+
+    it.each([
+      ['an untracked variant', [variant('1', null, false)], undefined],
+      ['a variant not stocked at the location', [variant('1', null)], undefined],
+      ['a product with several variants and none named', [variant('1', 1), variant('2', 1)], undefined],
+      ['a variant that is not the product own', [variant('1', 1)], 'ol_v9'],
+    ])('should refuse %s as not supported, writing nothing', async (_label, variants, variantId) => {
+      const query = jest.fn().mockResolvedValue(productAnswer(variants));
+      const mutate = jest.fn();
+
+      await expect(
+        build({ query, mutate }).adjustInventory({ productId: 'ol_7', quantity: 1, variantId }),
+      ).rejects.toBeInstanceOf(ShopifyNotSupportedException);
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it('should use the restock reason for a return restock', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 4)]));
+      const mutate = jest.fn().mockResolvedValue(adjusted());
+
+      await build({ query, mutate }).adjustInventory({ productId: 'ol_7', quantity: 1, reason: 'return_restock' });
+
+      expect(((mutate.mock.calls[0] as unknown[])[1] as { input: { reason: string } }).input.reason).toBe('restock');
+    });
+  });
+});
+
+describe('ShopifyInventoryMasterAdapter.resolveEventProductExternalId', () => {
+  it('should resolve the packed inventory item to its product with one read', async () => {
+    const query = jest.fn<Promise<unknown>, [string, Record<string, unknown>]>().mockResolvedValue({
+      inventoryItem: {
+        id: 'gid://shopify/InventoryItem/55',
+        variant: { id: 'gid://shopify/ProductVariant/6', product: { id: 'gid://shopify/Product/7' } },
+      },
+    });
+    const adapter = build({ query, mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('inventory-item:55:1')).resolves.toBe('7');
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0][1]).toEqual({ id: 'gid://shopify/InventoryItem/55' });
+  });
+
+  it('should ignore a delivery for a location other than the connection\'s without reading anything', async () => {
+    const query = jest.fn();
+    const adapter = build({ query, mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('inventory-item:55:2')).resolves.toBeNull();
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('should ignore an inventory item Shopify no longer knows', async () => {
+    const adapter = build({ query: jest.fn().mockResolvedValue({ inventoryItem: null }), mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('inventory-item:55:1')).resolves.toBeNull();
+  });
+
+  it('should pass a plain product id through untouched', async () => {
+    const query = jest.fn();
+    const adapter = build({ query, mutate: jest.fn() });
+
+    await expect(adapter.resolveEventProductExternalId('7')).resolves.toBe('7');
+
+    expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe('ShopifyInventoryMasterAdapter in all-locations mode', () => {
+  const LOC_A = 'gid://shopify/Location/1';
+  const LOC_B = 'gid://shopify/Location/2';
+
+  function buildAll(
+    query: jest.Mock,
+    mutate: jest.Mock = jest.fn(),
+    resolver?: { resolveShopifyLocationId: jest.Mock },
+  ): ShopifyInventoryMasterAdapter {
+    const client = { query, mutate } as unknown as ShopifyGraphqlClient;
+    return new ShopifyInventoryMasterAdapter(
+      client,
+      mapping(),
+      {
+        get: jest.fn().mockResolvedValue({
+          locationGid: LOC_A,
+          activeLocations: [
+            { gid: LOC_A, name: 'Warsaw' },
+            { gid: LOC_B, name: 'Krakow' },
+          ],
+        }),
+      } as unknown as ShopifyShopContextProvider,
+      new ShopifyInventoryReader(client, 'c1', true),
+      { id: 'c1' } as Connection,
+      null,
+      undefined,
+      true,
+      resolver,
+    );
+  }
+
+  const level = (location: string, available: number): unknown => ({
+    location: { id: location },
+    updatedAt: '2026-11-04T10:00:00Z',
+    quantities: [
+      { name: 'available', quantity: available },
+      { name: 'on_hand', quantity: available },
+      { name: 'committed', quantity: 0 },
+    ],
+  });
+
+  it('should report one position per active location, named by the master, with an explicit 0 where unstocked', async () => {
+    const v = variant('1', 4) as unknown as { inventoryItem: Record<string, unknown> };
+    v.inventoryItem.levels = { nodes: [level(LOC_A, 4)] };
+    const query = jest.fn().mockResolvedValue(productAnswer([v as unknown as ShopifyInventoryVariant]));
+
+    const rows = await buildAll(query).listInventory('ol_7');
+
+    expect(rows).toEqual([
+      expect.objectContaining({ variantId: 'ol_1', available: 4, masterLocation: { ref: '1', name: 'Warsaw' } }),
+      expect.objectContaining({ variantId: 'ol_1', available: 0, masterLocation: { ref: '2', name: 'Krakow' } }),
+    ]);
+    expect(rows[0].id).not.toBe(rows[1].id);
+    expect(rows.every((r) => r.locationId === undefined)).toBe(true);
+    expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ allLocations: true });
+  });
+
+  it('should keep an untracked variant as one pooled position', async () => {
+    const query = jest.fn().mockResolvedValue(productAnswer([variant('1', null, false)]));
+
+    const rows = await buildAll(query).listInventory('ol_7');
+
+    expect(rows).toEqual([expect.objectContaining({ available: 1000 })]);
+    expect(rows[0]).not.toHaveProperty('masterLocation');
+  });
+
+  it('should resolve a stock event at a location other than the configured one', async () => {
+    const query = jest.fn().mockResolvedValue({
+      inventoryItem: {
+        id: 'gid://shopify/InventoryItem/55',
+        variant: { id: 'gid://shopify/ProductVariant/6', product: { id: 'gid://shopify/Product/7' } },
+      },
+    });
+
+    await expect(buildAll(query).resolveEventProductExternalId('inventory-item:55:2')).resolves.toBe('7');
+  });
+
+  it('should declare the location set complete when every level was read', async () => {
+    const v = variant('1', 4) as unknown as { inventoryItem: Record<string, unknown> };
+    v.inventoryItem.levels = { nodes: [level(LOC_A, 4)], pageInfo: { hasNextPage: false, endCursor: null } };
+    const query = jest.fn().mockResolvedValue(productAnswer([v as unknown as ShopifyInventoryVariant]));
+
+    const rows = await buildAll(query).listInventory('ol_7');
+
+    expect(rows.every((r) => r.locationSetComplete === true)).toBe(true);
+  });
+
+  it('should not declare the set complete while a page of levels is unread', async () => {
+    const v = variant('1', 4) as unknown as { inventoryItem: Record<string, unknown> };
+    v.inventoryItem.levels = { nodes: [level(LOC_A, 4)], pageInfo: { hasNextPage: true, endCursor: 'c' } };
+    const query = jest.fn().mockResolvedValue(productAnswer([v as unknown as ShopifyInventoryVariant]));
+
+    const rows = await buildAll(query).listInventory('ol_7');
+
+    expect(rows.some((r) => r.locationSetComplete === true)).toBe(false);
+  });
+
+  describe('adjustInventory at a named location', () => {
+    it('should write at the Shopify location the OL location resolves to', async () => {
+      const query = jest.fn().mockResolvedValue(productAnswer([variant('1', 4)]));
+      const mutate = jest.fn().mockResolvedValue(adjusted());
+      const resolver = { resolveShopifyLocationId: jest.fn().mockResolvedValue('2') };
+
+      await buildAll(query, mutate, resolver).adjustInventory({
+        productId: 'ol_7',
+        quantity: 1,
+        locationId: 'ol_location_krk',
+      });
+
+      expect(resolver.resolveShopifyLocationId).toHaveBeenCalledWith('c1', 'ol_location_krk');
+      expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ locationId: LOC_B });
+      const input = ((mutate.mock.calls[0] as unknown[])[1] as { input: { changes: Array<Record<string, unknown>> } })
+        .input;
+      expect(input.changes[0]).toMatchObject({ locationId: LOC_B });
+    });
+
+    it('should refuse a location this connection does not own, writing nothing', async () => {
+      const mutate = jest.fn();
+      const resolver = { resolveShopifyLocationId: jest.fn().mockResolvedValue(null) };
+
+      const adjust = buildAll(jest.fn(), mutate, resolver).adjustInventory({
+        productId: 'ol_7',
+        quantity: 1,
+        locationId: 'ol_location_other',
+      });
+
+      await expect(adjust).rejects.toBeInstanceOf(ShopifyLocationNotOwnedException);
+      await expect(adjust).rejects.toBeInstanceOf(ShopifyNotSupportedException);
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a location that is no longer an active shop location', async () => {
+      const resolver = { resolveShopifyLocationId: jest.fn().mockResolvedValue('99') };
+
+      await expect(
+        buildAll(jest.fn(), jest.fn(), resolver).adjustInventory({
+          productId: 'ol_7',
+          quantity: 1,
+          locationId: 'ol_location_gone',
+        }),
+      ).rejects.toBeInstanceOf(ShopifyLocationNotOwnedException);
+    });
+
+    it('should refuse a located write when the host supplied no resolver', async () => {
+      await expect(
+        buildAll(jest.fn()).adjustInventory({ productId: 'ol_7', quantity: 1, locationId: 'ol_location_x' }),
+      ).rejects.toBeInstanceOf(ShopifyLocationNotOwnedException);
+    });
+  });
+});

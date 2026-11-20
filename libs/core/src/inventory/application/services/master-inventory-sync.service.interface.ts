@@ -63,6 +63,14 @@ export interface MasterInventorySyncResult {
    * `master.*.stale` event: re-pooling is not a deletion.
    */
   locatedPositionsStaled?: number;
+  /**
+   * Set when the sync ended without reading or writing anything because the
+   * master's `InventoryEventTargetResolver` said the event concerns nothing
+   * this connection tracks (another location, an item that is gone). The
+   * numeric fields are then zero and `internalProductId` is empty. Not a
+   * failure: the handler reports `ok`.
+   */
+  skipped?: 'event-not-applicable';
 }
 
 /** One product the batch could not sync, and why (#2648). */

@@ -5,9 +5,12 @@
  * usually truncated name link: the large recognisable element did nothing and
  * the clickable one was a fragment. The chip is now the link.
  *
- * At rest it shows only the platform (`Allegro`, `Subiekt GT`) - plus `sandbox`
- * for a sandbox connection, so it never reads the same as its production twin -
- * and the connection name slides out to the right on hover or keyboard focus.
+ * At rest it shows the connection name the operator chose (`e-box`) - plus a
+ * `sandbox` tag for a sandbox connection, so it never reads the same as its
+ * production twin - and the integration (`Shoper`, `Allegro (sandbox)`) slides
+ * out to the right on hover or keyboard focus (#4232). A surface that already
+ * prints the name beside the chip (the Insights health tables) passes
+ * `lead="platform"` to keep the platform on the face instead.
  * The slide-out is absolutely positioned so the row never reflows, and on a
  * device with no hover it is rendered statically instead, because a name that
  * only appears on hover would otherwise never appear there at all.
@@ -49,6 +52,13 @@ export interface ConnectionChipProps {
   name: string | null;
   loading?: boolean;
   channel: ConnectionChipChannel;
+  /**
+   * What the face leads with. `name` (default) shows the connection name and
+   * slides the integration out; `platform` is the pre-#4232 layout, for a
+   * surface that already prints the name next to the chip and would otherwise
+   * show it twice.
+   */
+  lead?: 'name' | 'platform';
   className?: string;
 }
 
@@ -57,6 +67,7 @@ export function ConnectionChip({
   name,
   loading = false,
   channel,
+  lead = 'name',
   className = '',
 }: ConnectionChipProps): ReactElement {
   const copy = useMessages('connections').connectionChip;
@@ -92,8 +103,13 @@ export function ConnectionChip({
       ? interpolate(copy.title, { name: target.displayName, platform: label })
       : target.displayName || label || undefined);
 
+  // Without a platform label there is nothing to slide out: the name is the
+  // face whichever way the chip leads.
+  const nameFirst = lead === 'name' && faceLabel !== null;
+
   const classes = [
     'connection-chip',
+    nameFirst ? 'connection-chip--name-first' : null,
     linked ? 'connection-chip--link' : null,
     label ? null : 'connection-chip--name-only',
     unknown ? 'connection-chip--unknown' : null,
@@ -114,7 +130,27 @@ export function ConnectionChip({
     </svg>
   ) : null;
 
-  const body = faceLabel ? (
+  const body = nameFirst ? (
+    <>
+      <span className="connection-chip__face">
+        <span className="connection-chip__dot" aria-hidden="true" />
+        <span className="connection-chip__label" aria-busy={target.loading ? true : undefined}>
+          {nameText}
+        </span>
+        {sandbox ? <span className="connection-chip__env">{copy.sandboxTag}</span> : null}
+      </span>
+      {/* The integration is always in the DOM - only its visibility is animated -
+          so the link's text, and a screen reader's reading of it, never depend on hover. */}
+      <span className="connection-chip__reveal">
+        <span className="connection-chip__name">
+          {sandbox
+            ? interpolate(copy.sandboxLabel, { platform: shortPlatform ?? '' })
+            : shortPlatform}
+        </span>
+        {chevron}
+      </span>
+    </>
+  ) : faceLabel ? (
     <>
       <span className="connection-chip__face">
         <span className="connection-chip__dot" aria-hidden="true" />
@@ -150,8 +186,8 @@ export function ConnectionChip({
       data-channel={channel.platformType ?? undefined}
       title={title}
       // Face and slide-out are adjacent inline boxes, so the computed name would
-      // run them together ("AllegroAllegro (sandbox)"). Name first: it is what
-      // tells two rows apart.
+      // run them together ("e-boxShoper"). Name first: it is what tells two rows
+      // apart.
       aria-label={label ? interpolate(copy.ariaLabel, { name: nameText, platform: label }) : undefined}
     >
       {body}

@@ -390,8 +390,8 @@
       "title": "No stock recorded for this product yet"
     },
     "gone": {
-      "one": "{master} stopped reporting {variants}, so its offers were paused. If it was deleted on purpose, there is nothing else to do.",
-      "other": "{master} stopped reporting {variants}, so their offers were paused. If it was deleted on purpose, there is nothing else to do."
+      "one": "{master} stopped reporting {variants}, so OpenLinker takes it off sale on every channel it can. Sales channels, above, shows where it is still on sale and what to do there.",
+      "other": "{master} stopped reporting {variants}, so OpenLinker takes them off sale on every channel it can. Sales channels, above, shows where they are still on sale and what to do there."
     },
     "loading": {
       "one": "Working out what you can sell for {n} variant…",
@@ -998,8 +998,8 @@
     "sourceTerm": "{n} in {source}",
     "stockHistory": "Stock history",
     "stockSource": "Stock source",
-    "stoppedReporting": "{master} stopped reporting <b>{key}</b>. It is no longer counted, so you can sell <b>0</b> and its listings are paused. If the variant was deleted on purpose, nothing else is needed.",
-    "stoppedReportingOn": "{master} stopped reporting <b>{key}</b> on <time></time>. It is no longer counted, so you can sell <b>0</b> and its listings are paused. If the variant was deleted on purpose, nothing else is needed.",
+    "stoppedReporting": "{master} stopped reporting <b>{key}</b>. It is no longer counted, so you can sell <b>0</b>. OpenLinker takes its listings off sale where it can; Sales channels shows any channel where it is still on sale.",
+    "stoppedReportingOn": "{master} stopped reporting <b>{key}</b> on <time></time>. It is no longer counted, so you can sell <b>0</b>. OpenLinker takes its listings off sale where it can; Sales channels shows any channel where it is still on sale.",
     "toSell": "to sell",
     "unknownNote": "<b>{n}</b> in {master}. OpenLinker can't work out the reserved count right now, so it isn't sending stock to your channels."
   },
