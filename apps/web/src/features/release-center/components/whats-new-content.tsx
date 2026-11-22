@@ -92,7 +92,9 @@ export function WhatsNewContent(): ReactElement {
 
   return (
     <div className="whats-new">
-      <p className="whats-new__intro">{copy.intro}</p>
+      <p className="whats-new__intro" ref={langRef} tabIndex={-1}>
+        {copy.intro}
+      </p>
 
       <aside className="whats-new__rail">
       {!view ? null : cards.length > 0 ? (
@@ -117,9 +119,8 @@ export function WhatsNewContent(): ReactElement {
         </section>
       )}
       {releases.length > 1 ? (
-        <nav className="whats-new__card whats-new__index" aria-label="Releases" lang="en">
-          {/* eslint-disable-next-line i18next/no-literal-string -- this index belongs to the English changelog (lang="en"), like the release entries it lists */}
-          <h3>Releases</h3>
+        <nav className="whats-new__card whats-new__index" aria-label={copy.releasesNav}>
+          <h3>{copy.releasesNav}</h3>
           <ul>
             {releases.map((release, i) => (
               <li key={release.version}>
@@ -156,9 +157,6 @@ export function WhatsNewContent(): ReactElement {
       </aside>
 
       <div className="whats-new__main">
-      <p className="whats-new__lang" ref={langRef} tabIndex={-1}>
-        {copy.changelogLanguage}
-      </p>
       {releases.length === 0 && !changelog.baseline ? <p>{copy.changelogUnavailable}</p> : null}
       <div lang="en" className="whats-new__changelog" ref={changelogRef}>
         {pageReleases.map((release, i) => {
