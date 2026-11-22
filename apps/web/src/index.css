@@ -41688,7 +41688,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   letter-spacing: var(--tracking-tight);
 }
 .settings-page__card[data-plain] .settings-page__section-head p { max-width: 62ch; }
-@container (min-width: 64rem) {
+/* Two columns only when each column keeps at least ~40rem: below that the value chip squeezes the
+   title into a few characters per line (worse in Polish, whose labels run longer). */
+@container (min-width: 84rem) {
   .settings-page__card[data-plain] .settings-page__fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: auto auto 1fr;
