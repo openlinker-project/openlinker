@@ -40561,7 +40561,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .whats-new__main { display: grid; gap: 18px; min-width: 0; }
 .whats-new__rail { display: grid; gap: 16px; min-width: 0; }
 @media (min-width: 1024px) {
-  .whats-new { grid-template-columns: minmax(0, 1fr) 25rem; }
+  /* The rail grows with the screen (a third of it, between 25 and 40rem) instead of staying a narrow strip. */
+  .whats-new { grid-template-columns: minmax(0, 1fr) clamp(25rem, 32%, 40rem); }
   .whats-new__rail { grid-column: 2; grid-row: 2; position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; padding: 2px; margin: -2px; }
   .whats-new__main { grid-column: 1; grid-row: 2; }
 }
