@@ -40556,7 +40556,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .dialog__content.release-dialog { animation: none; }
 }
 
-.whats-new { display: grid; gap: 20px 32px; max-width: 96rem; align-items: start; }
+.whats-new { display: grid; gap: 20px 32px; max-width: none; align-items: start; }
 .whats-new__intro { grid-column: 1 / -1; max-width: 64ch; font-size: 0.9375rem; line-height: 1.55; }
 .whats-new__main { display: grid; gap: 18px; min-width: 0; }
 .whats-new__rail { display: grid; gap: 16px; min-width: 0; }
@@ -41549,7 +41549,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 /* `wide` fills the main column up to 90rem: tables, two-column editors and
    rails need room, and a reading-width card clipped them (#4154). */
-.settings-page__card[data-wide] { max-width: 90rem; }
+.settings-page__card[data-wide] { max-width: none; }
 /* Prose keeps a reading measure whatever the card width, so wide pages do not
    turn explanations into full-width walls. */
 .settings-page__section > p,
@@ -41665,7 +41665,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
    Boldness is spent once: the status chips. On wide screens the groups sit in
    two columns (a container query, so the sidebar and rail are already counted). */
 .settings-page__card[data-plain] {
-  max-width: 88rem;
+  max-width: none;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -42727,7 +42727,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* Release cards in the panel are rows too, so a message and a release read as one list: same hairline,
    same unread wash and gutter dot, no outline. Solid fills (not transparent) because the pinned actions
    bar inherits the card's background. */
-.release-panel .release-card {
+:is(.release-panel, .whats-new__setup) .release-card {
   margin-inline: -12px;
   padding: 14px 14px 14px 20px;
   border: 0;
@@ -42737,13 +42737,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: var(--bg-surface);
   transition: background-color 120ms var(--ease-out);
 }
-.release-panel .release-card:hover { background: var(--bg-surface-hover); }
-.release-panel .release-card[data-unread='true'] {
+:is(.release-panel, .whats-new__setup) .release-card:hover { background: var(--bg-surface-hover); }
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] {
   border-color: var(--border-subtle);
   box-shadow: none;
   background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-surface));
 }
-.release-panel .release-card[data-unread='true']::before {
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true']::before {
   content: '';
   position: absolute;
   left: 8px;
@@ -42753,16 +42753,16 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: 50%;
   background: var(--accent-primary);
 }
-.release-panel .release-card[data-unread='true']:hover {
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true']:hover {
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
 }
-.release-panel .release-card + .release-card,
-.release-panel .release-card + .msg,
-.release-panel .msg + .release-card { margin-top: -10px; }
+:is(.release-panel, .whats-new__setup) .release-card + .release-card,
+:is(.release-panel, .whats-new__setup) .release-card + .msg,
+:is(.release-panel, .whats-new__setup) .msg + .release-card { margin-top: -10px; }
 .release-panel .msg:has(+ .release-card),
-.release-panel .release-card:last-child { border-bottom: 1px solid var(--border-subtle); }
-.release-panel .release-card__actions,
-.release-panel .release-card[data-unread='true'] .release-card__actions {
+:is(.release-panel, .whats-new__setup) .release-card:last-child { border-bottom: 1px solid var(--border-subtle); }
+:is(.release-panel, .whats-new__setup) .release-card__actions,
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] .release-card__actions {
   margin: 0 -14px -14px -20px;
   padding: 10px 14px 14px 20px;
   border-top: 0;
@@ -42770,13 +42770,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 /* Spacing: the card's content hangs from the title column (icon 28 + gap 12), like a message's text,
    with more air between its parts. */
-.release-panel .release-card { padding: 16px 16px 16px 20px; gap: 12px; }
-.release-panel .release-card > :not(.release-card__top):not(.release-card__actions) { margin-left: 40px; }
+:is(.release-panel, .whats-new__setup) .release-card { padding: 16px 16px 16px 20px; gap: 12px; }
+:is(.release-panel, .whats-new__setup) .release-card > :not(.release-card__top):not(.release-card__actions) { margin-left: 40px; }
 /* The step list scrolls on its own, so the card is never taller than the panel and its buttons no longer
    need to float over the content; pinned, they stacked up at the bottom of the panel and left a blank band
    above them. They sit at the end of the card, in the content column. */
-.release-panel .release-card__actions,
-.release-panel .release-card[data-unread='true'] .release-card__actions {
+:is(.release-panel, .whats-new__setup) .release-card__actions,
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] .release-card__actions {
   position: static;
   margin: 0 0 0 40px;
   padding: 0;
@@ -42787,17 +42787,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* No scroll box inside the scrolling panel. The step list used to scroll on its own (max-height plus
    overflow), which left a nested scroller whose own end could show as a blank band above the card's
    buttons. The list now simply takes the height it needs and the panel scrolls once. */
-.release-panel .release-card__collapse > .release-card__steps {
+:is(.release-panel, .whats-new__setup) .release-card__collapse > .release-card__steps {
   max-height: none;
   overflow-y: hidden;
   mask-image: none;
 }
 /* A closed step list is zero tall but still sits between two grid gaps; take one back. */
-.release-panel .release-card__collapse[data-open='false'] { margin-top: -12px; }
+:is(.release-panel, .whats-new__setup) .release-card__collapse[data-open='false'] { margin-top: -12px; }
 /* Same icon chip as a message, so the two read as one family; info blue because a release is information. */
-.release-panel .release-card__top { gap: 12px; }
-.release-panel .release-card__top > div:not(.release-card__top-actions) { flex: 1; }
-.release-panel .release-card__top-actions { margin-left: auto; flex: none; }
+:is(.release-panel, .whats-new__setup) .release-card__top { gap: 12px; }
+:is(.release-panel, .whats-new__setup) .release-card__top > div:not(.release-card__top-actions) { flex: 1; }
+:is(.release-panel, .whats-new__setup) .release-card__top-actions { margin-left: auto; flex: none; }
 .release-card__icon {
   display: grid;
   place-items: center;
@@ -42820,8 +42820,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: var(--bg-surface-hover);
 }
 .release-panel .msg[data-unread='true'] .msg__tools { background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover)); }
-@media (prefers-reduced-motion: reduce) { .release-panel .release-card { transition: none; } }
-@media (forced-colors: active) { .release-panel .release-card { border-bottom-color: CanvasText; } }
+@media (prefers-reduced-motion: reduce) { :is(.release-panel, .whats-new__setup) .release-card { transition: none; } }
+@media (forced-colors: active) { :is(.release-panel, .whats-new__setup) .release-card { border-bottom-color: CanvasText; } }
 /* A page can ask for one column: the sections alone, with no rail beside them. */
 .settings-page[data-single] .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
 .settings-page[data-single] .settings-page__toc { display: none; }
@@ -42996,3 +42996,18 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .bell-nudge :focus-visible { outline: 2px solid Highlight; }
   .tour-ring { outline: 2px solid Highlight; box-shadow: none; }
 }
+
+/* What's new: the setup rail is the same ReleaseCard as the bell, so it reads as the same kind of object.
+   One surface holds the rows; hairlines (not outlines) separate them. */
+.whats-new__setup {
+  gap: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.whats-new__setup-title { padding: 14px 20px 6px; }
+.whats-new__setup .release-card,
+.whats-new__setup .release-card:last-child { margin: 0; box-shadow: none; }
+.whats-new__setup .release-card + .release-card { margin-top: 0; }
+.whats-new__setup .release-card:last-child { border-bottom: 0; }
