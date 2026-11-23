@@ -10,7 +10,7 @@
  */
 import type { InvoiceLine } from '@openlinker/core/invoicing';
 import { FractionalTaxRateNotationError, MissingTaxRateException } from '@openlinker/core/invoicing';
-import { toBridgeLines } from './subiekt-line.mapper';
+import { expandStockComponents, toBridgeLines } from './subiekt-line.mapper';
 
 function line(taxRate: string): InvoiceLine {
   return { name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate };
@@ -91,5 +91,45 @@ describe('toBridgeLines', () => {
       cenaBrutto: 123,
       stawkaVAT: '23',
     });
+  });
+});
+
+describe('expandStockComponents (#3607)', () => {
+  const line = {
+    name: 'Zestaw',
+    quantity: 1,
+    unitPriceGross: 59.9,
+    taxRate: '23',
+    productId: 'p-set',
+    variantId: 'v-set',
+    stockComponents: [
+      { productId: 'p-mug', variantId: 'v-mug', quantity: 1, name: 'Kubek' },
+      { productId: 'p-pad', variantId: 'v-pad', quantity: 1, name: 'Podkladka' },
+    ],
+  };
+
+  it('replaces a bundle line with its components, summing to the paid total', () => {
+    const out = expandStockComponents([line]);
+    expect(out.map((l) => l.productId)).toEqual(['p-mug', 'p-pad']);
+    expect(out.reduce((s, l) => s + l.unitPriceGross * l.quantity, 0)).toBeCloseTo(59.9, 2);
+    expect(out.every((l) => l.stockComponents === undefined)).toBe(true);
+  });
+
+  it('sells a gift slot at zero', () => {
+    const out = expandStockComponents([
+      {
+        ...line,
+        stockComponents: [
+          { productId: 'p-mug', variantId: 'v-mug', quantity: 1, name: 'Kubek' },
+          { productId: 'p-g', variantId: 'v-g', quantity: 1, name: 'Gratis', giftSlot: true },
+        ],
+      },
+    ]);
+    expect(out.map((l) => l.unitPriceGross)).toEqual([59.9, 0]);
+  });
+
+  it('leaves a line without components untouched', () => {
+    const plain = { name: 'Kubek', quantity: 2, unitPriceGross: 10, taxRate: '23', productId: 'p-mug' };
+    expect(expandStockComponents([plain])).toEqual([plain]);
   });
 });

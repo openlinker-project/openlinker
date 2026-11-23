@@ -140,3 +140,48 @@ export function toBridgeKorektaLine(line: CorrectionLine): BridgeKorektaLine {
     ...(line.newUnitPriceGross != null ? { nowaCena: line.newUnitPriceGross } : {}),
   };
 }
+
+/**
+ * Sell the physical components of a bundle line instead of the bundle (#3607).
+ *
+ * Subiekt's document moves stock, and a set's own towar has none, so a line
+ * that carries `stockComponents` is replaced by one line per component. The
+ * line's gross total is divided over the paid components by unit share (a gift
+ * slot is sold at 0) so the document still adds up to what the buyer paid.
+ */
+export function expandStockComponents(lines: readonly InvoiceLine[]): InvoiceLine[] {
+  const out: InvoiceLine[] = [];
+  for (const line of lines) {
+    const components = line.stockComponents;
+    if (components === undefined || components.length === 0) {
+      out.push(line);
+      continue;
+    }
+    const total = Math.round(line.unitPriceGross * line.quantity * 100) / 100;
+    const paid = components.filter((c) => c.giftSlot !== true);
+    const paidUnits = paid.reduce((sum, c) => sum + c.quantity, 0);
+    let allocated = 0;
+    const lastPaid = paid[paid.length - 1];
+    for (const component of components) {
+      const isGift = component.giftSlot === true;
+      let share = 0;
+      if (!isGift && paidUnits > 0) {
+        share =
+          component === lastPaid
+            ? Math.round((total - allocated) * 100) / 100
+            : Math.round(((total * component.quantity) / paidUnits) * 100) / 100;
+        allocated += share;
+      }
+      const { stockComponents: _omit, ...rest } = line;
+      out.push({
+        ...rest,
+        name: component.name?.trim() || line.name,
+        quantity: component.quantity,
+        unitPriceGross: component.quantity > 0 ? Math.round((share / component.quantity) * 10000) / 10000 : 0,
+        productId: component.productId,
+        variantId: component.variantId,
+      });
+    }
+  }
+  return out;
+}

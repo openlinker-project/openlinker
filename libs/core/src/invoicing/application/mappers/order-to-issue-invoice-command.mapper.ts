@@ -199,8 +199,27 @@ export function toIssueInvoiceCommand(
     }),
     { currency: order.totals.currency },
   );
+  // A bundle that stayed ONE document line (same tax rate on every component)
+  // still has physical goods behind it; carry them so a provider that moves
+  // stock off the document can sell the components (see InvoiceLine.stockComponents).
+  const itemLinesWithStock = itemLines.lines.map((line) => {
+    const components =
+      line.orderLineId === undefined ? undefined : input.bundleDocument?.byLineId[line.orderLineId];
+    return components === undefined || components.length === 0
+      ? line
+      : {
+          ...line,
+          stockComponents: components.map((component) => ({
+            productId: component.productId,
+            variantId: component.variantId,
+            quantity: component.quantity,
+            name: component.name ?? component.sku ?? null,
+            ...(component.giftSlot === true ? { giftSlot: true } : {}),
+          })),
+        };
+  });
   const presentedGifts = presentGiftLines(
-    itemLines.lines,
+    itemLinesWithStock,
     resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm, {
       connection: input.giftConnectionUnitPrice,
       global: input.giftGlobalUnitPrice,

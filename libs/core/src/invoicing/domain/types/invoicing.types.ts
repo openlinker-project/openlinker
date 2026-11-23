@@ -508,6 +508,21 @@ export interface InvoiceLine {
    */
   bundleSetQuantity?: number;
   /**
+   * Set only on a line that stays ONE line although it is a bundle (the
+   * document shows "set", #3934): the physical goods that leave the warehouse
+   * for it, with the units for the WHOLE line. A provider whose document moves
+   * stock (Subiekt) sells these instead, because the set's own catalogue item
+   * has no stock; a provider whose document is only a statement of the sale
+   * ignores it. Additive and provider-ignorable.
+   */
+  stockComponents?: ReadonlyArray<{
+    productId: string;
+    variantId: string;
+    quantity: number;
+    name?: string | null;
+    giftSlot?: boolean;
+  }>;
+  /**
    * Opaque per-line goods/services classification code (#1586 Phase 2). Neutral
    * seam carrying an operator-asserted classification the provider maps onto its
    * regime's line-level marker (a PL adapter maps it onto the FA(3) `GTU_xx`
