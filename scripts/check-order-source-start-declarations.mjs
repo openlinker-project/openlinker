@@ -23,7 +23,8 @@
  *   3. `'from'` implies `cursorForDate()`, and `cursorForDate()` implies `'from'`.
  *   4. `orderWindowImport: true` if and only if the adapter has `listOrdersInWindow()`.
  *   5. Some spec in the package calls `runOrderSourceStartContract`.
- *   6. WIZARDS: the setup form file(s) for the plugin render `<OrderSyncStartField`.
+ *   6. WIZARDS: the setup form file(s) for the plugin render `<OrderSyncStartField`
+ *      or `<OrderSyncStartSection` (the same field, gated on the adapter list loading).
  *      `{ none: reason }` is allowed only when the modes are empty.
  *
  * ## What it does NOT catch
@@ -139,8 +140,8 @@ export function checkPlugin({ name, pluginText, adapterText, specTexts, wizard, 
       const text = wizardTexts[index];
       if (text === null || text === undefined) {
         problems.push(`${name}: wizard file ${file} could not be read - did it move?`);
-      } else if (!/<OrderSyncStartField\b/.test(stripComments(text))) {
-        problems.push(`${name}: wizard ${file} does not render <OrderSyncStartField`);
+      } else if (!/<OrderSyncStartField\b|<OrderSyncStartSection\b/.test(stripComments(text))) {
+        problems.push(`${name}: wizard ${file} does not render <OrderSyncStartField (or <OrderSyncStartSection, which wraps it)`);
       }
     });
   }
@@ -209,6 +210,7 @@ function selfCheck() {
   expect('no contract spec', run({ specTexts: ['it("x", () => {})'] }), 'no spec calls runOrderSourceStartContract');
   expect('commented-out contract call', run({ specTexts: ['// runOrderSourceStartContract(b)'] }), 'no spec calls');
   expect('wizard missing field', run({ wizardTexts: ['export const X = () => null;'] }), 'does not render <OrderSyncStartField');
+  expect('wizard rendering the section wrapper', run({ wizardTexts: ['<OrderSyncStartSection adapterKey="x" />'] }), null);
   expect('wizard unreadable', run({ wizardTexts: [null] }), 'could not be read');
   expect('no wizard entry', run({ wizard: undefined }), 'no WIZARDS entry');
   expect('none allowed for empty modes', run({ pluginText: plugin('[]'), adapterText: adapter(false, false, false), wizard: { none: 'no choice' } }), null);
@@ -223,7 +225,7 @@ function selfCheck() {
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
-  console.log('check-order-source-start-declarations self-check OK (18 assertions)');
+  console.log('check-order-source-start-declarations self-check OK (19 assertions)');
 }
 
 async function main() {
