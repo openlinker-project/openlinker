@@ -8,7 +8,7 @@
  *
  * @module features/release-center/components
  */
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
+import { useId, type ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -53,46 +53,8 @@ export function ReleaseCard({
   const copy = useMessages('release-center').panel;
   const actions = useReleaseActions();
   const { canWriteSteps } = useReleaseCenterAccess();
-  const [open, setOpen] = useState(false);
-  // The list stays mounted while it folds away, so the exit animates real content instead of an empty box.
-  const [mounted, setMounted] = useState(false);
+  // The step list is always open and takes the height it needs: the panel scrolls once, a card never has a scroller of its own.
   const regionId = useId();
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  // The step list unmounts when collapsed, so its scroll offset is kept here.
-  const savedScroll = useRef(0);
-  const [edges, setEdges] = useState({ top: false, bottom: false });
-
-  const syncEdges = useCallback((): void => {
-    const node = scrollRef.current;
-    if (!node) return;
-    const top = node.scrollTop > 1;
-    const bottom = node.scrollTop + node.clientHeight < node.scrollHeight - 1;
-    setEdges((previous) => (previous.top === top && previous.bottom === bottom ? previous : { top, bottom }));
-  }, []);
-
-  useLayoutEffect(() => {
-    const node = scrollRef.current;
-    if (!open || !node) return undefined;
-    node.scrollTop = savedScroll.current;
-    syncEdges();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncEdges);
-    observer?.observe(node);
-    if (node.firstElementChild) observer?.observe(node.firstElementChild);
-    return () => observer?.disconnect();
-  }, [open, syncEdges]);
-
-  useEffect(() => {
-    if (!open) setEdges({ top: false, bottom: false });
-  }, [open]);
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      return undefined;
-    }
-    const timer = setTimeout(() => setMounted(false), 420);
-    return () => clearTimeout(timer);
-  }, [open]);
 
   if (!view) return null;
 
@@ -248,46 +210,15 @@ export function ReleaseCard({
               )}
             </div>
           </div>
-          <button
-            type="button"
-            className="release-card__toggle"
-            aria-expanded={open}
-            aria-controls={regionId}
-            onClick={() => {
-              if (open && scrollRef.current) savedScroll.current = scrollRef.current.scrollTop;
-              setOpen((value) => !value);
-            }}
-          >
+          <h3 className="release-card__toggle release-card__toggle--static" id={`${regionId}-label`}>
             <span className="release-card__toggle-label">
               {showcaseOnly ? copy.stopsLabel : copy.stepsLabel}
               <span className="release-card__count">{showcaseOnly ? tally.total : mine.length + myShowcases.length}</span>
             </span>
-            <span className="release-card__chevron" aria-hidden="true" data-open={open}>
-              <ReleaseIcon name="chevron" />
-            </span>
-          </button>
-          <div id={regionId} className="release-card__collapse" data-open={open}>
-            <div
-              ref={scrollRef}
-              className="release-card__steps"
-              data-edge-top={edges.top}
-              data-edge-bottom={edges.bottom}
-              onScroll={syncEdges}
-              {...(open
-                ? {
-                    role: 'region',
-                    'aria-label': interpolate(copy.stepsRegion, { version: notification.version }),
-                    tabIndex: 0,
-                  }
-                : {})}
-            >
-              {open || mounted ? (
-                <>
-                  {mine.length > 0 ? <ReleaseStepList instances={mine} onNavigate={onNavigate} /> : null}
-                  <ReleaseShowcaseList instances={myShowcases} onNavigate={onNavigate} />
-                </>
-              ) : null}
-            </div>
+          </h3>
+          <div id={regionId} className="release-card__list" aria-labelledby={`${regionId}-label`} role="group">
+            {mine.length > 0 ? <ReleaseStepList instances={mine} onNavigate={onNavigate} /> : null}
+            <ReleaseShowcaseList instances={myShowcases} onNavigate={onNavigate} />
           </div>
           <div className="release-card__actions">
             <Button

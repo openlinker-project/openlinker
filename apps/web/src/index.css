@@ -3141,7 +3141,6 @@ textarea,
   margin-top: var(--space-3);
 }
 
-
 /* ── Source connection pricing rollup (#3150, ADR-072) ──────────────
  * The read-only "how your prices get adjusted" list on a SOURCE
  * connection's page, pointing at each destination that adjusts its prices.
@@ -3209,7 +3208,6 @@ textarea,
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
-
 
 .alert {
   display: flex;
@@ -5252,7 +5250,6 @@ a.delivery-rider-banner__button:focus-visible {
   gap: var(--space-2);
   flex-wrap: wrap;
 }
-
 
 .duplicate-positions-remediation-steps__sql-hint {
   font-size: 0.6875rem;
@@ -17560,7 +17557,6 @@ input.bulk-dispatch__num--wide {
   display: none;
 }
 
-
 /* KeyValueList owns its own responsive dt/dd grid - only the width is ours. */
 .bulk-destbar__panel .key-value-list {
   width: 100%;
@@ -25786,7 +25782,6 @@ a.sales-channels__offer:hover { color: var(--text-link); text-decoration: underl
   font-variant-numeric: tabular-nums;
 }
 
-
 /* ── inFakt webhook config modal (#1770) ── */
 .infakt-webhook {
   display: flex;
@@ -30262,7 +30257,6 @@ legend.analytics-settings-dialog__label {
   color: var(--status-warning-fg);
   font-weight: 600;}
 
-
 /* --------------------------------------------------------------------------
    Fulfilment tasks panel (#2411)
 
@@ -31840,7 +31834,6 @@ legend.analytics-settings-dialog__label {
   font-size: 0.75rem;
 }
 
-
 .bench-rail__search input:focus-visible {
   outline: none;
   border-color: var(--accent-primary);
@@ -32349,7 +32342,6 @@ legend.analytics-settings-dialog__label {
   margin-top: 6px;
 }
 
-
 /* Small enough for a 340 px column, and still over the 44 px touch floor the
    section header insists on — height comes from `min-height`, not from type.
    Light, because the row itself is now the primary target. */
@@ -32430,7 +32422,6 @@ legend.analytics-settings-dialog__label {
   font-size: 0.875rem;
   color: var(--text-muted);
 }
-
 
 /* One column below the tablet breakpoint: the row's four columns cannot hold
    their meaning at a narrow width, and reflowing keeps every part visible
@@ -32972,7 +32963,6 @@ legend.analytics-settings-dialog__label {
    on a phone the two pieces that are merely orientation give way: the
    breadcrumb (the bench is the only screen a packer has) and the name beside
    the avatar (the identity bar under it already says who is signed in). */
-
 
 /* ══ THE COMPACT BENCH (mobile-first rebuild, epic #3401) ═══════════════════
  *
@@ -36491,7 +36481,6 @@ legend.analytics-settings-dialog__label {
   display: block;
 }
 
-
 .peek-button__chevron {
   width: 10px;
   height: 10px;
@@ -36565,8 +36554,6 @@ legend.analytics-settings-dialog__label {
   background: var(--bg-surface-muted);
 }
 
-
-
 /* Positioned behind the row's content and outside the grid flow, so the
    flag and name sit in the same place on every row. */
 .option-list__selected {
@@ -36597,7 +36584,6 @@ legend.analytics-settings-dialog__label {
   font-size: 10.5px;
   color: var(--text-muted);
 }
-
 
 /* SegmentedSwitch: icons in a track, a raised thumb springing to the chosen
  * one (motion layoutId). The names sit in a row under the icons, one under
@@ -36780,7 +36766,6 @@ legend.analytics-settings-dialog__label {
   transform-origin: 50% 100%;
   pointer-events: none;
 }
-
 
 /* Long labels truncate with the full text on hover instead of breaking the
    240 px sidebar once Polish copy is longer than English. */
@@ -41023,41 +41008,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @media (hover: none) and (pointer: coarse) {
   .release-card__toggle { min-height: 44px; }
 }
-.release-card__chevron {
-  display: inline-flex;
-  color: var(--text-secondary);
-  transition: transform 280ms var(--ease-spring);
-}
-.release-card__chevron[data-open='true'] { transform: rotate(180deg); }
-.release-card__collapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  transition: grid-template-rows 320ms var(--ease-out), opacity 240ms var(--ease-out);
-}
-.release-card__collapse[data-open='true'] { grid-template-rows: 1fr; opacity: 1; }
-/* overflow hides the collapsing steps, but the step markers scale with a spring
-   and sit on the left edge: widen the clip box sideways so their ring is not cut. */
-.release-card__collapse > div { overflow: hidden; min-height: 0; padding-inline: 6px; margin-inline: -6px; }
-/* Only the step list scrolls (#4154): the card header and the actions stay put. The side padding
-   above stays so the step markers are not clipped; the edge fades show only where more content waits. */
-.release-card__collapse > .release-card__steps {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  max-height: min(42dvh, 26rem);
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
-.release-card__steps:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-md); }
-.release-card__steps[data-edge-top='true'][data-edge-bottom='false'] {
-  mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
-}
-.release-card__steps[data-edge-top='false'][data-edge-bottom='true'] {
-  mask-image: linear-gradient(to top, transparent 0, #000 20px);
-}
-.release-card__steps[data-edge-top='true'][data-edge-bottom='true'] {
-  mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
-}
+
+
 /* Pinned to the bottom of the panel list while the card is on screen. It inherits the card's own
    background so nothing shows through, and stretches over the card padding to its edges. */
 .release-card__actions {
@@ -41233,8 +41185,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @media (prefers-reduced-motion: reduce) {
   .release-bell[data-ringing='true'] svg,
   .release-bell__badge { animation: none; }
-  .release-card__chevron,
-  .release-card__collapse,
   .release-step::after { transition: none; }
 }
 
@@ -42115,7 +42065,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   from { opacity: 0; transform: translateY(4px); }
 }
 
-
 /* ── Release center settings section (#4143) ── */
 .release-settings { gap: 16px; padding: 22px 24px; font-size: 0.875rem; line-height: 1.5; }
 .release-settings__head { display: grid; gap: 2px; }
@@ -42217,11 +42166,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @media (min-width: 1024px) {
   .whats-new__rail { position: static; max-height: none; overflow: visible; padding: 0; margin: 0; }
 }
-.whats-new__setup .release-card__collapse > .release-card__steps {
-  max-height: none;
-  overflow-y: visible;
-  mask-image: none;
-}
+
 .whats-new__setup .release-card__actions { position: static; }
 
 /* Only the release index stays in view: the rail stretches to the full height of the changelog so
@@ -42255,7 +42200,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-top: 1px solid var(--border-subtle);
 }
 .release-showcase--page { border-top: 0; padding-top: 0; margin-top: 0; }
-.release-card__collapse > div > .release-showcase:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+
 .release-showcase__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
 .release-showcase__title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
 .release-showcase__tally { font-size: 0.75rem; color: var(--text-muted); }
@@ -42701,36 +42646,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-card__toggle:hover,
 .release-card__toggle:active { background: color-mix(in srgb, var(--accent-primary) 8%, transparent); border-color: transparent; }
 .release-card__toggle-label { font-variant-numeric: tabular-nums; }
-.release-card__chevron { transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1); }
-.release-card__chevron[data-open='true'] { transform: rotate(180deg); }
-.release-card__collapse { opacity: 1; transition: grid-template-rows 260ms cubic-bezier(0.32, 0.72, 0, 1); }
-.release-card__collapse[data-open='true'] { transition: grid-template-rows 400ms cubic-bezier(0.16, 1, 0.3, 1); }
-.release-card__collapse > .release-card__steps {
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: opacity 110ms ease-in, transform 160ms ease-in;
-}
-.release-card__collapse[data-open='true'] > .release-card__steps {
-  opacity: 1;
-  transform: none;
-  transition: opacity 280ms var(--ease-out) 90ms, transform 400ms cubic-bezier(0.16, 1, 0.3, 1) 60ms;
-}
+
 @keyframes release-row-in { from { opacity: 0; transform: translateY(6px); } }
-@media (prefers-reduced-motion: no-preference) {
-  .release-card__collapse[data-open='true'] .release-step,
-  .release-card__collapse[data-open='true'] .release-showcase { animation: release-row-in 360ms var(--ease-out) both; }
-  .release-card__collapse[data-open='true'] .release-step:nth-child(1) { animation-delay: 90ms; }
-  .release-card__collapse[data-open='true'] .release-step:nth-child(2) { animation-delay: 140ms; }
-  .release-card__collapse[data-open='true'] .release-step:nth-child(3) { animation-delay: 190ms; }
-  .release-card__collapse[data-open='true'] .release-step:nth-child(n+4) { animation-delay: 230ms; }
-  .release-card__collapse[data-open='true'] .release-showcase { animation-delay: 250ms; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .release-card__collapse,
-  .release-card__collapse > .release-card__steps,
-  .release-card__chevron { transition: none; }
-  .release-card__collapse > .release-card__steps { transform: none; }
-}
+
 /* Steps disclosure as an accordion row: label and count on the left, a round chevron on the right, no rule
    above. It spans the card, so the target is large and the row reads as a section, not a stray button. */
 .release-card__toggle {
@@ -42764,16 +42682,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.release-card__chevron {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  color: var(--text-secondary);
-  transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms var(--ease-out), color 160ms var(--ease-out);
-}
-.release-card__toggle:hover .release-card__chevron { background: color-mix(in srgb, var(--accent-primary) 12%, transparent); color: var(--accent-primary); }
+
 .release-card__toggle:hover .release-card__count { background: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-strong)); }
 @media (hover: none) and (pointer: coarse) { .release-card__toggle { min-height: 44px; } }
 /* The steps row keeps its full-width target, but label and count sit right, next to the chevron. */
@@ -42908,16 +42817,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-top: 0;
   border-radius: 0;
 }
-/* No scroll box inside the scrolling panel. The step list used to scroll on its own (max-height plus
-   overflow), which left a nested scroller whose own end could show as a blank band above the card's
-   buttons. The list now simply takes the height it needs and the panel scrolls once. */
-:is(.release-panel, .whats-new__setup) .release-card__collapse > .release-card__steps {
-  max-height: none;
-  overflow-y: hidden;
-  mask-image: none;
+/* The step list takes the height it needs: the panel is the only scroller, so the wheel never gets caught
+   inside a card. A static heading replaces the old disclosure button. */
+.release-card__list { display: grid; gap: 0; min-width: 0; }
+:is(.release-panel, .whats-new__setup) .release-card__toggle--static {
+  margin: 0;
+  cursor: default;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 4px 0 0;
 }
-/* A closed step list is zero tall but still sits between two grid gaps; take one back. */
-:is(.release-panel, .whats-new__setup) .release-card__collapse[data-open='false'] { margin-top: -12px; }
 /* Same icon chip as a message, so the two read as one family; info blue because a release is information. */
 :is(.release-panel, .whats-new__setup) .release-card__top { gap: 12px; }
 :is(.release-panel, .whats-new__setup) .release-card__top > div:not(.release-card__top-actions) { flex: 1; }
@@ -42949,7 +42859,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* A page can ask for one column: the sections alone, with no rail beside them. */
 .settings-page[data-single] .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
 .settings-page[data-single] .settings-page__toc { display: none; }
-
 
 /* ── Icon popover tooltips (#4228) ──────────────────────────────────────── */
 /* An icon button that explains itself: `IconWithOnHoverPopoverTooltip` and its
@@ -43164,8 +43073,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @keyframes tour-pointer-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .tour-pointer { animation: none; } }
 @media (forced-colors: active) { .tour-pointer { border: 1px solid ButtonText; } }
-
-
 
 /* While a tour target is being looked for: a quiet loader line, and the controls wait. */
 .tour-card__searching { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.8125rem; color: var(--text-muted); }

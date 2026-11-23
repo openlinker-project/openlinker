@@ -19,9 +19,8 @@ describe('release card layout', () => {
     );
   });
 
-  it('should let the steps take their natural height instead of scrolling in a nested box', () => {
-    expect(css).toMatch(
-      /:is\(\.release-panel, \.whats-new__setup\) \.release-card__collapse > \.release-card__steps \{[^}]*max-height: none/
-    );
+  it('should let the steps take their natural height and keep no scroll box of their own', () => {
+    expect(css).toMatch(/\.release-card__list \{[^}]*display: grid/);
+    expect(css).not.toMatch(/\.release-card__steps/);
   });
 });

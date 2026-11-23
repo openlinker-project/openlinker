@@ -140,6 +140,23 @@ export function ReleaseStepList({
           </Button>
         ) : null}
         {closed ? (
+          <Button
+            className="button--xs"
+            tone="secondary"
+            onClick={() => {
+              // A finished step is not in the open list, so it is replayed by name.
+              requestReleaseTour({
+                replaySteps: [
+                  { stepId: instance.step.id, connectionId: instance.connectionId, importance: instance.importance },
+                ],
+              });
+              onNavigate?.();
+            }}
+          >
+            {panel.goBack} <ReleaseIcon name="arrow-right" size={12} />
+          </Button>
+        ) : null}
+        {closed ? (
           <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
             <Button
               className="button--xs"

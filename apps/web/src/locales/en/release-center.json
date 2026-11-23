@@ -52,6 +52,7 @@
     "emptyDoneBody": "Nothing is waiting for your decision. New changes show up after the next update.",
     "emptyDoneTitle": "All done",
     "generalTitle": "Recommended steps",
+    "goBack": "Go back to this setting",
     "itemActions": "Notification actions",
     "markRead": "Mark as read",
     "menuArchive": "Archive",
@@ -100,6 +101,11 @@
     "tabActive": "Active",
     "tabArchive": "Archive",
     "tabsLabel": "Filter notifications",
+    "tally": {
+      "required": "Required {done}/{total}",
+      "optional": "Optional {done}/{total}",
+      "showcase": "To view {done}/{total}"
+    },
     "title": "Notifications",
     "toastAllDone": "All steps marked as done.",
     "toastArchived": "Notification archived.",
