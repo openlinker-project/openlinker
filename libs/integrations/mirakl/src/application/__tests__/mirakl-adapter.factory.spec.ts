@@ -11,6 +11,8 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { MiraklConfigException } from '../../domain/exceptions/mirakl-config.exception';
 import type { MiraklOfferWriteRepositoryPort } from '../../domain/ports/mirakl-offer-write-repository.port';
 import { empikOperatorProfile } from '../../operators/empik.profile';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { MiraklMasterServices } from '../interfaces/mirakl-adapter.factory.interface';
 import { MiraklAdapterFactory } from '../mirakl-adapter.factory';
 
 function connection(config: Record<string, unknown>, credentialsRef = 'ref-1'): Connection {
@@ -42,6 +44,11 @@ function okFetch(): jest.Mock {
   });
 }
 
+/** Host services for the catalogue and stock masters; unused by these tests. */
+const MASTER: MiraklMasterServices = {
+  identifierMapping: {} as unknown as IdentifierMappingPort,
+};
+
 describe('MiraklAdapterFactory', () => {
   const factory = new MiraklAdapterFactory(empikOperatorProfile);
 
@@ -50,7 +57,7 @@ describe('MiraklAdapterFactory', () => {
     const { httpClient } = await factory.createClients(
       connection({ environment: 'staging', shopId: 6881 }),
       resolver({ apiKey: ' key-1 ' }),
-      fetchMock as unknown as typeof fetch,
+      fetchMock as unknown as typeof fetch
     );
 
     await httpClient.get('/api/account');
@@ -65,19 +72,21 @@ describe('MiraklAdapterFactory', () => {
     const { httpClient } = await factory.createClients(
       connection({}),
       resolver({ apiKey: 'key-1' }),
-      fetchMock as unknown as typeof fetch,
+      fetchMock as unknown as typeof fetch
     );
 
     await httpClient.get('/api/account');
 
-    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('https://marketplace.empik.com/api/account');
+    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe(
+      'https://marketplace.empik.com/api/account'
+    );
   });
 
   it('should build an import tracker on the same client', async () => {
     const { importTracker } = await factory.createClients(
       connection({}),
       resolver({ apiKey: 'key-1' }),
-      okFetch() as unknown as typeof fetch,
+      okFetch() as unknown as typeof fetch
     );
 
     expect(importTracker).toBeDefined();
@@ -85,13 +94,21 @@ describe('MiraklAdapterFactory', () => {
 
   it('should refuse a connection without a credentials reference', async () => {
     await expect(
-      factory.createClients(connection({}, ''), resolver({ apiKey: 'k' }), okFetch() as unknown as typeof fetch),
+      factory.createClients(
+        connection({}, ''),
+        resolver({ apiKey: 'k' }),
+        okFetch() as unknown as typeof fetch
+      )
     ).rejects.toBeInstanceOf(MiraklConfigException);
   });
 
   it('should refuse credentials without an API key', async () => {
     await expect(
-      factory.createClients(connection({}), resolver({ apiKey: '  ' }), okFetch() as unknown as typeof fetch),
+      factory.createClients(
+        connection({}),
+        resolver({ apiKey: '  ' }),
+        okFetch() as unknown as typeof fetch
+      )
     ).rejects.toBeInstanceOf(MiraklConfigException);
   });
 
@@ -100,8 +117,8 @@ describe('MiraklAdapterFactory', () => {
       factory.createClients(
         connection({ shopId: '6881&shop_id=1' }),
         resolver({ apiKey: 'k' }),
-        okFetch() as unknown as typeof fetch,
-      ),
+        okFetch() as unknown as typeof fetch
+      )
     ).rejects.toBeInstanceOf(MiraklConfigException);
   });
 
@@ -126,6 +143,7 @@ describe('MiraklAdapterFactory', () => {
         connection({}),
         resolver({ apiKey: 'k' }),
         fetchMock as unknown as typeof fetch,
+        MASTER
       );
 
       await orderSource.listOrderFeed({ fromCursor: null, limit: 100 });
@@ -139,11 +157,14 @@ describe('MiraklAdapterFactory', () => {
         connection({ orderAcceptance: 'off' }),
         resolver({ apiKey: 'k' }),
         fetchMock as unknown as typeof fetch,
+        MASTER
       );
 
       await orderSource.listOrderFeed({ fromCursor: null, limit: 100 });
 
-      expect(requestedUrls(fetchMock).some((url) => url.includes('=WAITING_ACCEPTANCE&'))).toBe(false);
+      expect(requestedUrls(fetchMock).some((url) => url.includes('=WAITING_ACCEPTANCE&'))).toBe(
+        false
+      );
       expect(requestedUrls(fetchMock)).toHaveLength(1);
     });
   });
@@ -155,11 +176,18 @@ describe('MiraklAdapterFactory offer manager (#4277)', () => {
     const store = { recordPending } as unknown as MiraklOfferWriteRepositoryPort;
     const { offerManager } = await new MiraklAdapterFactory(empikOperatorProfile, {
       offerWrites: (): MiraklOfferWriteRepositoryPort => store,
-    }).createAdapters(connection({}), resolver({ apiKey: 'k' }), okFetch() as unknown as typeof fetch);
+    }).createAdapters(
+      connection({}),
+      resolver({ apiKey: 'k' }),
+      okFetch() as unknown as typeof fetch,
+      MASTER
+    );
 
     await offerManager.updateOfferQuantity({ offerId: 'SKU-1', quantity: 4 });
 
-    expect(recordPending).toHaveBeenCalledWith('conn-1', 'stock', [{ offerSku: 'SKU-1', value: '4' }]);
+    expect(recordPending).toHaveBeenCalledWith('conn-1', 'stock', [
+      { offerSku: 'SKU-1', value: '4' },
+    ]);
   });
 
   it('should refuse a stock write when the host provides no store', async () => {
@@ -167,10 +195,11 @@ describe('MiraklAdapterFactory offer manager (#4277)', () => {
       connection({}),
       resolver({ apiKey: 'k' }),
       okFetch() as unknown as typeof fetch,
+      MASTER
     );
 
-    await expect(offerManager.updateOfferQuantity({ offerId: 'SKU-1', quantity: 4 })).rejects.toBeInstanceOf(
-      MiraklConfigException,
-    );
+    await expect(
+      offerManager.updateOfferQuantity({ offerId: 'SKU-1', quantity: 4 })
+    ).rejects.toBeInstanceOf(MiraklConfigException);
   });
 });

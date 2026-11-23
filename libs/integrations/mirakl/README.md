@@ -142,6 +142,30 @@ The order source is also a `ReturnSourceReader` over RT11 (`GET /api/returns`):
 Follows Mirakl's RT11 documentation; Empik staging has no return yet, so the
 fixture is to be checked against the first real one.
 
+## Catalogue and stock master (#4284)
+
+A connection can treat the seller's Mirakl offers as the catalogue and the
+stock source of truth: enable `ProductMaster` and `InventoryMaster` on it and
+turn `OfferManager` off (a stock master is never also a stock write-back
+target, #1498). Both are off on a new connection, which stays a marketplace.
+
+- **Products**: each offer (OF21) is a product with one variant, keyed by
+  `shop_sku`: title, description, brand, EAN, gross price and category. No
+  images (Mirakl gives the seller none for a catalogue card) and no VAT rate
+  (not on the offer). Writing the catalogue from OpenLinker is refused. An
+  offer that disappears from OF21 is a product deleted at the master, so its
+  listings elsewhere pause.
+- **Stock**: the offer quantity, pooled. A change from OpenLinker (a routed
+  sale, a manual correction) reads the quantity and writes `current + delta`
+  as a one-line STO01, under a per-offer lock, with a seven-day idempotency
+  key. Because STO01 is applied asynchronously, the submitted number stands in
+  for OF21 for two minutes. Known window: a sale made on the marketplace
+  between that read and Mirakl applying the import is written over.
+- **Orders**: on such a connection order lines name the product
+  (`shop_sku`) instead of the offer.
+- The core master sweeps (every 20 / 15 minutes) drive both; OF21 has no
+  multi-sku filter, so a sweep costs one OF21 call per product.
+
 ## Connecting
 
 1. In the operator's seller panel, open the user menu and generate an API key

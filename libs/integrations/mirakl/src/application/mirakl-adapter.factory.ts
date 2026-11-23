@@ -18,6 +18,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { SyncLockPort } from '@openlinker/core/sync';
 import type { FetchLike } from '@openlinker/shared/http';
 import { MiraklConfigException } from '../domain/exceptions/mirakl-config.exception';
 import {
@@ -35,6 +36,10 @@ import type {
 import type { MiraklOperatorProfile } from '../domain/types/mirakl-operator-profile.types';
 import { MiraklHttpClient } from '../infrastructure/http/mirakl-http-client';
 import type { RetryConfig } from '../infrastructure/http/mirakl-http-client.types';
+import { MiraklInventoryMasterAdapter } from '../infrastructure/adapters/catalog-master/mirakl-inventory-master.adapter';
+import { MiraklMasterIdentity } from '../infrastructure/adapters/catalog-master/mirakl-master-identity';
+import { MiraklOfferReader } from '../infrastructure/adapters/catalog-master/mirakl-offer-reader';
+import { MiraklProductMasterAdapter } from '../infrastructure/adapters/catalog-master/mirakl-product-master.adapter';
 import { MiraklOfferManagerAdapter } from '../infrastructure/adapters/mirakl-offer-manager.adapter';
 import { MiraklOrderSourceAdapter } from '../infrastructure/adapters/mirakl-order-source.adapter';
 import type { MiraklOfferWriteRepositoryPort } from '../domain/ports/mirakl-offer-write-repository.port';
@@ -43,6 +48,7 @@ import type {
   IMiraklAdapterFactory,
   MiraklAdapters,
   MiraklConnectionClients,
+  MiraklMasterServices,
 } from './interfaces/mirakl-adapter.factory.interface';
 
 /** What the host provides beyond the connection: the offer write store. */
@@ -52,19 +58,21 @@ export interface MiraklAdapterFactoryDeps {
    * during DI is seen even though the plugin was described before it.
    */
   readonly offerWrites?: () => MiraklOfferWriteRepositoryPort | undefined;
+  /** Serialises stock writes per offer when Mirakl is the stock master (#4284). */
+  readonly lock?: () => SyncLockPort | undefined;
 }
 
 export class MiraklAdapterFactory implements IMiraklAdapterFactory {
   constructor(
     private readonly profile: MiraklOperatorProfile,
-    private readonly deps: MiraklAdapterFactoryDeps = {},
+    private readonly deps: MiraklAdapterFactoryDeps = {}
   ) {}
 
   async createClients(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
     fetchImpl: FetchLike,
-    retryConfig?: Partial<RetryConfig>,
+    retryConfig?: Partial<RetryConfig>
   ): Promise<MiraklConnectionClients> {
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
     const config = (connection.config ?? {}) as MiraklConnectionConfig;
@@ -75,7 +83,7 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
       credentials.apiKey.trim(),
       fetchImpl,
       shopId,
-      retryConfig,
+      retryConfig
     );
     return { httpClient, importTracker: new MiraklImportTracker(httpClient, connection.id) };
   }
@@ -84,15 +92,20 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
     fetchImpl: FetchLike,
+    master: MiraklMasterServices
   ): Promise<MiraklAdapters> {
     const { httpClient, importTracker } = await this.createClients(
       connection,
       credentialsResolver,
-      fetchImpl,
+      fetchImpl
     );
     const config = (connection.config ?? {}) as MiraklConnectionConfig;
     const carrierCodes = readMiraklCarrierCodes(config.carrierCodes);
     const offerDefaults = readMiraklOfferDefaults(config.offerDefaults);
+    // One reader for both masters, so a product read and its stock read in the
+    // same job cost one OF21 call.
+    const offerReader = new MiraklOfferReader(httpClient);
+    const identity = new MiraklMasterIdentity(connection.id, master.identifierMapping);
     return {
       orderSource: new MiraklOrderSourceAdapter(
         connection.id,
@@ -104,7 +117,8 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
           // than failing every dispatch.
           carrierCodes: carrierCodes.kind === 'valid' ? carrierCodes.codes : {},
           invoiceTypeCode: this.profile.invoiceDocumentTypeCode,
-        },
+          catalogMaster: (connection.enabledCapabilities ?? []).includes('ProductMaster'),
+        }
       ),
       offerManager: new MiraklOfferManagerAdapter({
         connectionId: connection.id,
@@ -119,30 +133,48 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
           ],
         offerDefaults: offerDefaults.kind === 'valid' ? offerDefaults : {},
       }),
+      productMaster: new MiraklProductMasterAdapter(
+        connection.id,
+        this.profile.brand,
+        offerReader,
+        identity
+      ),
+      inventoryMaster: new MiraklInventoryMasterAdapter({
+        connectionId: connection.id,
+        brand: this.profile.brand,
+        httpClient,
+        reader: offerReader,
+        identity,
+        cache: master.cache,
+        lock: this.deps.lock?.(),
+      }),
     };
   }
 
   private async resolveCredentials(
     connection: Connection,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<MiraklCredentials> {
     if (!connection.credentialsRef) {
       throw new MiraklConfigException(
         `${this.profile.brand} connection ${connection.id} is missing credentialsRef`,
-        connection.id,
+        connection.id
       );
     }
     const credentials = await credentialsResolver.get<MiraklCredentials>(connection.credentialsRef);
     if (typeof credentials?.apiKey !== 'string' || credentials.apiKey.trim().length === 0) {
       throw new MiraklConfigException(
         `${this.profile.brand} connection ${connection.id} credentials are missing a non-empty apiKey`,
-        connection.id,
+        connection.id
       );
     }
     return credentials;
   }
 
-  private resolveShopId(connection: Connection, config: MiraklConnectionConfig): string | undefined {
+  private resolveShopId(
+    connection: Connection,
+    config: MiraklConnectionConfig
+  ): string | undefined {
     const reading = readMiraklShopId(config.shopId);
     switch (reading.kind) {
       case 'absent':
@@ -152,7 +184,7 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
       case 'invalid':
         throw new MiraklConfigException(
           `${this.profile.brand} connection ${connection.id} has an invalid shopId (must be a positive integer)`,
-          connection.id,
+          connection.id
         );
     }
   }
