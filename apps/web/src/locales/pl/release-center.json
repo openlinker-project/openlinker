@@ -222,6 +222,7 @@
     "requiredReason": "Wybierz opcję, aby iść dalej. Ten krok jest wymagany.",
     "saveFailed": "Nie zapisano ustawienia. Spróbuj ponownie.",
     "saved": "Zapisano: {choice}",
+    "searching": "Szukam elementu na ekranie…",
     "showcaseChip": "Przewodnik",
     "skip": "Pomiń krok",
     "skipConfirm": {

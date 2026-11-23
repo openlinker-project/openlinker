@@ -113,7 +113,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
         console.warn(`[release-center] tour target "${stop?.target}" not found for showcase "${step?.stepId}" stop ${showcase.stopIndex}`);
       }
     }
-  }, [target.state, dispatch]);
+  // The step index is a dependency: a next step on the same page keeps `found`, while the reducer resets to `waiting`.
+  }, [target.state, state.index, dispatch]);
 
   useEffect(() => {
     setSavedChoice(null);
@@ -346,6 +347,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const blocked = !showcase && isAdmin && step.importance === 'required' && !done;
   const choiceLabels = tour.choices as Record<string, string>;
   const shownChoice = savedChoice ?? pressed;
+  // While the target is still being looked for, every control waits: acting now would run against a step nobody has seen.
+  const searching = state.target === 'waiting';
 
   let status = '';
   // A showcase stop with no target is a developer problem, so the operator reads nothing about it.
@@ -562,7 +565,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
           <p className="tour-card__body">{stepCopy.tourBody}</p>
         </div>
         {!showcase && isAdmin && spec ? (
-          <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle}>
+          <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle} inert={searching}>
             {spec.choices.map((choice) => (
               <button
                 key={choice.id}
@@ -579,7 +582,12 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
           </div>
         ) : null}
         <div className="tour-card__live" role="status" aria-live="polite">
-          {status && shownChoice && state.target !== 'missing' && !saveFailed ? (
+          {searching ? (
+            <p className="tour-card__searching">
+              <span className="tour-card__spinner" aria-hidden="true" />
+              {tour.searching}
+            </p>
+          ) : status && shownChoice && state.target !== 'missing' && !saveFailed ? (
             <div className="tour-done">
               <ReleaseIcon name="check" size={14} />
               <span>{status}</span>
@@ -603,7 +611,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
             {tour.requiredReason}
           </p>
         ) : null}
-        <div className="tour-card__footer">
+        <div className="tour-card__footer" inert={searching}>
           {showcase ? (
             <Button tone="ghost" className="button--sm" onClick={() => setConfirmSkip(true)}>
               {tour.skipShowcase}

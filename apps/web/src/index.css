@@ -43166,3 +43166,18 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 @media (forced-colors: active) { .tour-pointer { border: 1px solid ButtonText; } }
 
 
+
+/* While a tour target is being looked for: a quiet loader line, and the controls wait. */
+.tour-card__searching { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.8125rem; color: var(--text-muted); }
+.tour-card__spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tour-card__spinner { animation: tour-spin 700ms linear infinite; }
+}
+@keyframes tour-spin { to { transform: rotate(360deg); } }
+.tour-card__footer[inert], .tour-card__choices[inert] { opacity: 0.5; }

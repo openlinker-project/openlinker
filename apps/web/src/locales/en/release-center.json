@@ -218,6 +218,7 @@
     "requiredReason": "Pick an option to continue. This step is required.",
     "saveFailed": "The setting was not saved. Try again.",
     "saved": "Saved: {choice}",
+    "searching": "Looking for the element on the screen…",
     "showcaseChip": "Guide",
     "skip": "Skip step",
     "skipConfirm": {
