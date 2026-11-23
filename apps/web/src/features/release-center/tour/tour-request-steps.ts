@@ -76,7 +76,7 @@ export function tourStepsForRequest(
     importance: i.importance,
   }));
   // Only a walk that was not aimed at one step carries the unseen showcases along.
-  const tail = request.stepId ? [] : showcases.filter((s) => s.showcase.introducedIn !== undefined && !seen(s)).flatMap(expandShowcase);
+  const tail = request.stepId ? [] : showcases.filter((s) => !seen(s)).flatMap(expandShowcase);
   // One release after another, newest first like the bell; inside a release, setup before showcase.
   const steps = [...setupSteps, ...tail]
     .map((step, order) => ({ step, order, minor: tourItemMinor(step) ?? '0.0' }))
