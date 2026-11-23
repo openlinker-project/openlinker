@@ -1720,3 +1720,34 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 @media (prefers-reduced-motion: reduce) {
   .bundle-picker .bpick:not([hidden]) { animation: none; }
 }
+
+/* Round 6, integrator: the stock cell of a bundle row in the listing review mixed three rules from three
+   eras of index.css (right-aligned mono sets count, brown warning-coloured limit line, centred wrap).
+   One rule set now: left aligned like the other cells, body font with tabular numbers, muted limit line. */
+.bulk-review__c-stock .bundle-stock {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  text-align: left;
+}
+.bulk-review__c-stock .bundle-stock > span:first-child,
+.bulk-review__c-stock .bundle-stock b {
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.bulk-review__c-stock .bundle-stock small {
+  max-width: 16rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+.bulk-review__c-stock .bundle-stock--zero > span:first-child { color: var(--status-error-fg, var(--status-error-strong)); }
