@@ -174,6 +174,7 @@
     "s2CreateCannot": "{name} cannot create products from OpenLinker. Pick a product that is already in the shop, or another shop.",
     "s2CreateErrorTitle": "The shop did not create the product",
     "s2CreateFailed": "The shop refused to create the product. Check the name, SKU and price.",
+    "s2CreateFailedWithReason": "{name} refused to create the product: {reason}",
     "s2CreateFailedGeneric": "Could not create the product in the shop. Try again.",
     "s2CreateNotSynced": "The product was created but has not reached us yet. Try again in a moment.",
     "s2CreateUnavailable": "{name} is not reachable right now. Try again in a moment.",

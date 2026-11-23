@@ -134,6 +134,14 @@ function readErrorCode(error: ApiError | null): { code: string | null; reason: s
   return { code: null, reason: null };
 }
 
+/** The master's own words for a refusal, carried in the 422 body's `message`. */
+function readMasterMessage(error: ApiError | null): string | null {
+  const details = error?.details;
+  if (typeof details !== 'object' || details === null) return null;
+  const message = (details as Record<string, unknown>).message;
+  return typeof message === 'string' && message.trim() !== '' ? message.trim() : null;
+}
+
 export function BundleForm({
   bundleVariantId,
   seedComponent,
@@ -617,7 +625,12 @@ export function BundleForm({
                   : reason === 'not-synced'
                     ? copy.form.s2CreateNotSynced
                     : error.status === 422
-                      ? copy.form.s2CreateFailed
+                      ? readMasterMessage(error) !== null
+                        ? interpolate(copy.form.s2CreateFailedWithReason, {
+                            name: masterName,
+                            reason: readMasterMessage(error) ?? '',
+                          })
+                        : copy.form.s2CreateFailed
                       : copy.form.s2CreateFailedGeneric
             );
             setStep(BUNDLE_STEP_KEYS.indexOf('product'));

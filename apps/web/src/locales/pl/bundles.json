@@ -182,6 +182,7 @@
     "s2CreateCannot": "Sklep {name} nie umie zakładać produktów z OpenLinkera. Wybierz produkt, który już jest w sklepie, albo inny sklep.",
     "s2CreateErrorTitle": "Sklep nie założył produktu",
     "s2CreateFailed": "Sklep odmówił założenia produktu. Sprawdź nazwę, SKU i cenę.",
+    "s2CreateFailedWithReason": "Sklep {name} odmówił założenia produktu: {reason}",
     "s2CreateFailedGeneric": "Nie udało się założyć produktu w sklepie. Spróbuj ponownie.",
     "s2CreateNotSynced": "Produkt został założony, ale jeszcze do nas nie dotarł. Spróbuj ponownie za chwilę.",
     "s2CreateUnavailable": "Sklep {name} jest teraz niedostępny. Spróbuj ponownie za chwilę.",
