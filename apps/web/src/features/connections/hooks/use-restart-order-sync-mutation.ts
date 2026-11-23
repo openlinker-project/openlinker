@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { connectionsQueryKeys } from '../api/connections.query-keys';
-import type { OrderSyncStart } from '../api/connections.types';
+import type { OrderSyncStart, RestartOrderSyncResult } from '../api/connections.types';
 
 interface RestartOrderSyncInput {
   connectionId: string;
@@ -13,7 +13,7 @@ interface RestartOrderSyncInput {
  * read is invalidated so the Order sync panel drops the old start date.
  */
 export function useRestartOrderSyncMutation(): UseMutationResult<
-  void,
+  RestartOrderSyncResult,
   Error,
   RestartOrderSyncInput
 > {

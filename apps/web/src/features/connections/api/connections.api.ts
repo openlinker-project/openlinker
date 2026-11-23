@@ -8,7 +8,10 @@ import type {
   ConnectionTestResult,
   CreateConnectionInput,
   InstallWebhooksResult,
+  OrderImportRequest,
+  OrderImportStarted,
   OrderSyncStart,
+  RestartOrderSyncResult,
   RateLimitStatus,
   RotateWebhookSecretResult,
   SubiektBankAccount,
@@ -28,7 +31,11 @@ export interface ConnectionsApi {
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   installWebhooks: (connectionId: string) => Promise<InstallWebhooksResult>;
-  restartOrderSync: (connectionId: string, start: OrderSyncStart) => Promise<void>;
+  restartOrderSync: (
+    connectionId: string,
+    start: OrderSyncStart,
+  ) => Promise<RestartOrderSyncResult>;
+  importOrders: (connectionId: string, input: OrderImportRequest) => Promise<OrderImportStarted>;
   rotateWebhookSecret: (connectionId: string) => Promise<RotateWebhookSecretResult>;
   setWebhookSecret: (connectionId: string, secret: string) => Promise<void>;
   getWebhookStatus: (connectionId: string) => Promise<WebhookStatus>;
@@ -111,10 +118,16 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     getById(connectionId): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}`);
     },
-    restartOrderSync(connectionId, start): Promise<void> {
-      return request<void>(`/connections/${connectionId}/order-sync/restart`, {
+    restartOrderSync(connectionId, start): Promise<RestartOrderSyncResult> {
+      return request<RestartOrderSyncResult>(`/connections/${connectionId}/order-sync/restart`, {
         method: 'POST',
         body: JSON.stringify(start),
+      });
+    },
+    importOrders(connectionId, input): Promise<OrderImportStarted> {
+      return request<OrderImportStarted>(`/connections/${connectionId}/order-import`, {
+        method: 'POST',
+        body: JSON.stringify(input),
       });
     },
     installWebhooks(connectionId): Promise<InstallWebhooksResult> {

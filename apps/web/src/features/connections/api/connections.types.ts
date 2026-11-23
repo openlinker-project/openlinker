@@ -203,6 +203,25 @@ export interface UpdateConnectionInput {
   config?: Record<string, unknown>;
   adapterKey?: string;
   enabledCapabilities?: CoreCapability[];
+  /** Stored when order reading is being switched on for the connection (#4228). */
+  orderSyncStart?: OrderSyncStart;
+}
+
+/** Answer of the start restart (#4228): `applied: false` means the feed already had a position. */
+export interface RestartOrderSyncResult {
+  applied: boolean;
+  reason?: 'already-following-feed';
+}
+
+/** A period import of past orders (#4228). Days are `YYYY-MM-DD`. */
+export interface OrderImportRequest {
+  from?: string;
+  to?: string;
+  direction: OrderImportOrder;
+}
+
+export interface OrderImportStarted {
+  runId: string;
 }
 
 export interface RecentJobSummary {
