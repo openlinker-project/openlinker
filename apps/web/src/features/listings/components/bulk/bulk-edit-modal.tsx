@@ -2369,11 +2369,15 @@ function BaseScopeForm({
           </div>
         </div>
 
-        {canBrowseCategories && !bundle ? (
+        {canBrowseCategories ? (
           <BaseParameterSection
             watchedCategoryId={watchedCategoryId}
             parametersQuery={categoryParametersQuery}
-            categoryParameters={categoryParameters}
+            // A set's product-level values come from its components' catalogue
+            // cards, so only the offer's own parameters are the operator's to fill.
+            categoryParameters={
+              bundle ? categoryParameters.filter((p) => p.section !== 'product') : categoryParameters
+            }
             ruleHints={ruleHints}
           />
         ) : null}
