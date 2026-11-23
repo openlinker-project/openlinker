@@ -36,7 +36,7 @@ export function ReleaseWalkAll({ onNavigate }: { onNavigate: () => void }): Reac
             })),
             replayShowcaseIds: view.showcases.map((s) => s.showcase.id),
           }
-        : {}
+        : { allShowcases: true }
     );
     onNavigate();
   };

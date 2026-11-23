@@ -19,6 +19,8 @@ export interface TourRequest {
   replaySteps?: { stepId: string; connectionId: string | null; importance: 'required' | 'optional' }[];
   /** Showcases walked after `replaySteps`. */
   replayShowcaseIds?: string[];
+  /** Walk every showcase, seen or not, after the open setup steps (the bell's "go through everything"). */
+  allShowcases?: boolean;
   /** Walk the showcases of this `major.minor`, from the first one not seen yet. */
   showcaseMinor?: string;
 }
