@@ -55,6 +55,8 @@ interface BulkConfirmModalProps {
    * listing goes live with a partial variant selector until completed (#1741).
    */
   mixedPublishWarning: boolean;
+  /** How many of the offers are sets and how many multipacks (#3520); omitted when none. */
+  bundleSummary?: { sets: number; packs: number };
   connectionName: string;
   /** Resolved marketplace display name (#1096) - e.g. "Allegro", "Erli". */
   marketplaceName: string;
@@ -78,6 +80,7 @@ export function BulkConfirmModal({
   blockedCount,
   alreadyListedCount,
   mixedPublishWarning,
+  bundleSummary,
   connectionName,
   marketplaceName,
   initialPublishImmediately,
@@ -193,6 +196,19 @@ export function BulkConfirmModal({
             </span>
           </label>
           )}
+
+          {bundleSummary && bundleSummary.sets + bundleSummary.packs > 0 && !nothingToCreate ? (
+            <Alert tone="info" data-testid="bundle-confirm-summary">
+              {interpolate(copy.bundles.line, {
+                parts: format.list(
+                  [
+                    bundleSummary.sets > 0 ? plural(bundleSummary.sets, copy.bundles.sets) : '',
+                    bundleSummary.packs > 0 ? plural(bundleSummary.packs, copy.bundles.packs) : '',
+                  ].filter((part) => part !== ''),
+                ),
+              })}
+            </Alert>
+          ) : null}
 
           {mixedPublishWarning ? (
             <Alert tone="warning">

@@ -66,6 +66,7 @@ import {
 } from './bulk-shop-review-step';
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
+import { bundleKindOf } from './bundle-kind';
 import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
 import { gatingBlockers, resolveBlockerChips, type ChipDescriptor } from './bulk-blockers';
 import { describeBulkSubmitOutcome } from './bulk-submit-summary';
@@ -346,6 +347,17 @@ export function BulkWizard({
   const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
   const bundleGuideCopy = useMessages('bundles');
   const hasBundles = bundlePreview.bundles.size > 0;
+  const bundleSummary = useMemo(() => {
+    let sets = 0;
+    let packs = 0;
+    for (const item of bundleItems) {
+      const bundle = bundlePreview.bundles.get(item.variantId);
+      if (!bundle) continue;
+      if (bundleKindOf(bundle) === 'pack') packs += 1;
+      else sets += 1;
+    }
+    return { sets, packs };
+  }, [bundleItems, bundlePreview.bundles]);
 
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
@@ -1118,6 +1130,7 @@ export function BulkWizard({
             blockedCount={counts.includedNeedsAttention}
             alreadyListedCount={readyButAlreadyListedCount}
             mixedPublishWarning={counts.mixedPublish}
+            bundleSummary={bundleSummary}
             connectionName={resolveConnectionName(config.connectionId)}
             marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}

@@ -38016,6 +38016,10 @@ legend.analytics-settings-dialog__label {
 .bundle-comp__meta { color: var(--text-muted); font-size: 12px; }
 .bundle-comp__problem { color: var(--status-error-text, var(--text-primary)); font-size: 12px; line-height: 1.4; }
 .bundle-comp__chips { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.bundle-comp__pack { margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--status-info-soft, var(--bg-subtle)); font-size: 12px; line-height: 1.4; }
+.bundle-comp__stock { color: var(--text-muted); font-size: 12px; }
+.bundle-comp__stock.is-limit { color: var(--status-warning-text, var(--text-primary)); font-weight: 600; }
+.bundle-comp-panel { overflow: hidden; }
 .bundle-comp__link {
   background: none;
   border: none;

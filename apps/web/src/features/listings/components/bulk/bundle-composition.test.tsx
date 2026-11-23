@@ -83,3 +83,45 @@ describe('BundleComposition', () => {
     expect(screen.queryByTestId('bundle-category-mismatch')).not.toBeInTheDocument();
   });
 });
+
+describe('BundleComposition - multipack and stock', () => {
+  const pack: BundleOfferPreviewOk = {
+    variantId: 'pack-v',
+    status: 'ok',
+    suggestedCategoryId: null,
+    availableSets: 4,
+    limitingComponentVariantId: 'm',
+    components: [
+      {
+        variantId: 'm',
+        productId: 'p-m',
+        name: 'Mug',
+        sku: 'MUG',
+        quantity: 3,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'own-offer',
+        availableUnits: 12,
+        problems: [],
+      },
+    ],
+  };
+
+  it('should explain a multipack and show how many packs the stock makes', () => {
+    renderWithProviders(
+      <BundleComposition
+        preview={pack}
+        connectionId="conn-1"
+        chosenCategoryId={null}
+        destinationName="Allegro"
+      />
+    );
+    expect(screen.getByTestId('bundle-pack-hint')).toHaveTextContent('pack of 3');
+    expect(screen.getByTestId('bundle-component-stock')).toHaveTextContent('12 in stock → 4');
+  });
+
+  it('should not show a pack hint for a set of different products', () => {
+    renderIt('74035');
+    expect(screen.queryByTestId('bundle-pack-hint')).not.toBeInTheDocument();
+  });
+});

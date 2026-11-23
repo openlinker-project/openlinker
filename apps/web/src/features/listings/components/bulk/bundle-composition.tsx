@@ -15,10 +15,13 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import type { ReactElement } from 'react';
+import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 
 import { interpolate, useMessages } from '../../../../shared/i18n';
 import { StatusBadge, type StatusBadgeTone } from '../../../../shared/ui';
+import { ENTRANCE_GROUP, ENTRANCE_ITEM } from '../../../../shared/ui/motion-presets';
+import { packSizeOf } from './bundle-kind';
 import { VariantThumbnail } from '../../../products';
 import type { BundleComponentMode } from '../../api/listings.types';
 import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
@@ -44,6 +47,8 @@ interface BundleCompositionProps {
   onUseSuggestedCategory?: () => void;
   /** Heading above the list; omitted where the surrounding section already has one. */
   heading?: string;
+  /** Marketplace display name, for the multipack explanation. */
+  destinationName?: string;
   /** The "no EAN of its own" note; omitted where the surrounding section says it already. */
   showEanNote?: boolean;
 }
@@ -54,9 +59,11 @@ export function BundleComposition({
   chosenCategoryId,
   onUseSuggestedCategory,
   heading,
+  destinationName = '',
   showEanNote = false,
 }: BundleCompositionProps): ReactElement {
   const copy = useMessages('listings').bundleOffer;
+  const packSize = packSizeOf(preview);
   const mismatch =
     preview.suggestedCategoryId !== null &&
     chosenCategoryId !== null &&
@@ -72,7 +79,17 @@ export function BundleComposition({
           </span>
         </div>
       ) : null}
-      <ul className="cx-comp cx-wcomp bundle-comp__list">
+      {packSize !== null ? (
+        <p className="cx-sub bundle-comp__pack" data-testid="bundle-pack-hint">
+          {interpolate(copy.packHint, { n: packSize, destination: destinationName })}
+        </p>
+      ) : null}
+      <motion.ul
+        className="cx-comp cx-wcomp bundle-comp__list"
+        variants={ENTRANCE_GROUP}
+        initial="hidden"
+        animate="show"
+      >
         {preview.components.map((component) => {
           const modeLabel =
             component.mode === 'own-offer' && component.externalOfferId
@@ -87,7 +104,8 @@ export function BundleComposition({
                         : 'missing'
                 ];
           return (
-            <li
+            <motion.li
+              variants={ENTRANCE_ITEM}
               key={component.variantId}
               className={`bundle-comp__item${component.mode === 'missing' ? ' is-bad' : ''}`}
               data-component={component.variantId}
@@ -104,6 +122,19 @@ export function BundleComposition({
                   ) : null}
                 </span>
                 <span className="cx-sub mono bundle-comp__meta">{component.sku ?? ''}</span>
+                {component.availableUnits !== undefined && component.availableUnits !== null ? (
+                  <span
+                    className={`cx-sub tabular bundle-comp__stock${
+                      preview.limitingComponentVariantId === component.variantId ? ' is-limit' : ''
+                    }`}
+                    data-testid="bundle-component-stock"
+                  >
+                    {interpolate(copy.stockLine, {
+                      units: component.availableUnits,
+                      sets: Math.floor(component.availableUnits / Math.max(1, component.quantity)),
+                    })}
+                  </span>
+                ) : null}
                 {component.problems.map((problem) => (
                   <span key={problem.code} className="bundle-comp__problem">
                     {problem.message}
@@ -128,10 +159,10 @@ export function BundleComposition({
                   </Link>
                 ) : null}
               </span>
-            </li>
+            </motion.li>
           );
         })}
-      </ul>
+      </motion.ul>
       {showEanNote ? <p className="cx-sub bundle-comp__ean">{copy.eanNotNeeded}</p> : null}
       {mismatch && onUseSuggestedCategory ? (
         <div className="bundle-comp__category" data-testid="bundle-category-mismatch">

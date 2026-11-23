@@ -17,6 +17,8 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { StickyActionBar } from '../../../../shared/ui/sticky-action-bar';
 import { Link } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { SNAPPY_SPRING } from '../../../../shared/ui/motion-presets';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
@@ -59,6 +61,7 @@ import {
 import type { AttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
 import type { BundleOfferPreview, BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import { BundleComposition } from './bundle-composition';
+import { packSizeOf } from './bundle-kind';
 import {
   listParameterNames,
   summarizeProjection,
@@ -965,7 +968,9 @@ function ProductRow({
                 <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
                 </svg>
-                {plural(bundle.components.length, bundleCopy.marker)}
+                {packSizeOf(bundle) !== null
+                  ? interpolate(bundleCopy.packMarker, { n: packSizeOf(bundle) ?? 0 })
+                  : plural(bundle.components.length, bundleCopy.marker)}
               </span>
             ) : null}
             <small>
@@ -1072,12 +1077,21 @@ function ProductRow({
         </div>
       </div>
 
+      <AnimatePresence initial={false}>
       {bundle && open ? (
-        <div className="bundle-comp-panel" data-testid="bundle-panel">
+        <motion.div
+          className="bundle-comp-panel"
+          data-testid="bundle-panel"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0, transition: { duration: 0.12 } }}
+          transition={SNAPPY_SPRING}
+        >
           <BundleComposition
             preview={bundle}
             connectionId={config.connectionId}
             heading={interpolate(bundleCopy.compositionHeading, { destination: destinationName })}
+            destinationName={destinationName}
             showEanNote
             chosenCategoryId={submitCategoryIdOf(row, row.variants[0])}
             onUseSuggestedCategory={
@@ -1088,8 +1102,9 @@ function ProductRow({
                 : undefined
             }
           />
-        </div>
+        </motion.div>
       ) : null}
+      </AnimatePresence>
 
       {isMulti && open ? (
         <div className="bulk-review__vrows">

@@ -530,6 +530,17 @@
     }
   },
   "bulkConfirmModal": {
+    "bundles": {
+      "sets": {
+        "one": "{n} set",
+        "other": "{n} sets"
+      },
+      "packs": {
+        "one": "{n} multipack",
+        "other": "{n} multipacks"
+      },
+      "line": "Includes {parts}. Their stock is the whole sets or packs your components can make."
+    },
     "cancel": "Cancel",
     "idempotency": "<strong>Idempotency protected.</strong> If you accidentally double-submit, OpenLinker returns the existing batch rather than creating a duplicate.",
     "jobsNote": "Each offer is a separate job; you can follow per-product progress on the next page.",
@@ -1283,8 +1294,12 @@
       "ownOfferWithId": "own offer {id}"
     },
     "noOwnEan": "no own EAN",
+    "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
+    "packMarker": "Pack · ×{n}",
     "publishComponent": "List component",
     "quantity": "×{n}",
+    "stockLine": "{units} in stock → {sets}",
+    "unitsInStock": "{n} in stock",
     "useFirstComponentCategory": "Use first component's category"
   },
   "categoryLookup": {

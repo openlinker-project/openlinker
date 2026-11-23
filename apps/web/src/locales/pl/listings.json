@@ -562,6 +562,21 @@
     }
   },
   "bulkConfirmModal": {
+    "bundles": {
+      "sets": {
+        "one": "{n} zestaw",
+        "few": "{n} zestawy",
+        "many": "{n} zestawów",
+        "other": "{n} zestawu"
+      },
+      "packs": {
+        "one": "{n} wielopak",
+        "few": "{n} wielopaki",
+        "many": "{n} wielopaków",
+        "other": "{n} wielopaku"
+      },
+      "line": "W tym {parts}. Ich stan to pełne zestawy lub wielopaki, które da się złożyć ze składników."
+    },
     "cancel": "Anuluj",
     "idempotency": "<strong>Ochrona przed duplikatami.</strong> Jeśli przypadkiem wyślesz formularz dwa razy, OpenLinker zwróci istniejącą partię zamiast tworzyć duplikat.",
     "jobsNote": "Każda oferta to osobne zadanie w tle; postęp dla każdego produktu zobaczysz na następnej stronie.",
@@ -1411,8 +1426,12 @@
       "ownOfferWithId": "własna oferta {id}"
     },
     "noOwnEan": "bez własnego EAN",
+    "packHint": "Jeden produkt sprzedawany w paczce po {n} szt. {destination} wystawia go jako jeden produkt z ilością {n}.",
+    "packMarker": "Wielopak · ×{n}",
     "publishComponent": "Wystaw składnik",
     "quantity": "×{n}",
+    "stockLine": "{units} szt. → {sets}",
+    "unitsInStock": "{n} szt. w magazynie",
     "useFirstComponentCategory": "Użyj kategorii pierwszego składnika"
   },
   "categoryLookup": {

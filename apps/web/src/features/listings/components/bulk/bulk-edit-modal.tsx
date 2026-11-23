@@ -2062,6 +2062,7 @@ function BaseScopeForm({
               heading={interpolate(bundleCopy.compositionHeading, { destination: platformName })}
               preview={bundle}
               connectionId={connectionId}
+              destinationName={platformName}
               chosenCategoryId={watchedCategoryId || null}
               onUseSuggestedCategory={onUseBundleCategory}
             />
