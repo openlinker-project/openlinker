@@ -2502,12 +2502,18 @@ describe('OrderIngestionService', () => {
 
       it('still holds a source-deleted line: a variant removed at its master is not a catalogue gap', async () => {
         sourceWith({ catalogueMode: 'none' });
-        orderItemRefResolver.tryResolve.mockResolvedValueOnce({
-          resolved: false,
-          productRef: { type: 'offer', externalId: 'offer-a' },
-          reason: 'variant deleted at the master',
-          kind: 'source_deleted' as const,
-        });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce({
+            resolved: false,
+            productRef: { type: 'offer', externalId: 'offer-a' },
+            reason: 'variant deleted at the master',
+            kind: 'source_deleted' as const,
+          })
+          .mockResolvedValueOnce({
+            resolved: true,
+            internalProductId: 'p-2',
+            internalVariantId: 'v-2',
+          });
 
         await expect(
           service.syncOrderFromSource(connectionId, externalOrderId)
