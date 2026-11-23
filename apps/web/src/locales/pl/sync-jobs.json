@@ -278,7 +278,7 @@
       "positionSaved": "Zapisane miejsce {key}, przesunięte {when}"
     },
     "orderRange": {
-      "directionLabel": "Zacznij od",
+      "directionLabel": "Kolejność importu",
       "errors": {
         "fromInvalid": "Wpisz poprawną datę",
         "fromRequired": "Wybierz pierwszy dzień",
@@ -288,8 +288,8 @@
         "toInvalid": "Wpisz poprawną datę"
       },
       "fromLabel": "Pierwszy dzień",
-      "newestFirst": "Zacznij od najnowszych",
-      "oldestFirst": "Zacznij od najstarszych",
+      "newestFirst": "Od najnowszych",
+      "oldestFirst": "Od najstarszych",
       "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
       "toLabel": "Ostatni dzień"
     },

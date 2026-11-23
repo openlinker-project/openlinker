@@ -276,7 +276,7 @@
       "positionSaved": "Saved position {key}, moved {when}"
     },
     "orderRange": {
-      "directionLabel": "Start with",
+      "directionLabel": "Order of import",
       "errors": {
         "fromInvalid": "Enter a valid date",
         "fromRequired": "Choose the first day",
@@ -286,8 +286,8 @@
         "toInvalid": "Enter a valid date"
       },
       "fromLabel": "First day",
-      "newestFirst": "Start with the newest orders",
-      "oldestFirst": "Start with the oldest orders",
+      "newestFirst": "Newest first",
+      "oldestFirst": "Oldest first",
       "toHelp": "Leave empty to read up to the newest order.",
       "toLabel": "Last day"
     },

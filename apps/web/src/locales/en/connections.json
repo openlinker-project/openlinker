@@ -1143,17 +1143,17 @@
       "cancel": "Cancel",
       "confirm": "Apply change",
       "confirming": "Saving…",
-      "description": "Orders OpenLinker already has stay. Choose how far back to read from the shop.",
+      "description": "Reads orders OpenLinker does not have yet. Orders it already has are updated, never created twice.",
       "failedTitle": "Could not change the start",
       "kind": {
         "label": "What do you want to do?",
         "range": {
           "text": "Reads the orders placed between two days, once. New orders keep syncing as before.",
-          "title": "Import a period"
+          "title": "Import a date range"
         },
         "start": {
-          "text": "Changes which orders OpenLinker reads from the shop from now on.",
-          "title": "Move where syncing starts"
+          "text": "Choose again whether OpenLinker reads only new orders, orders since a date, or everything.",
+          "title": "Change where reading starts"
         }
       },
       "nothingToResetMessage": "OpenLinker is already reading orders from the shop, so there is no start to reset. To read older orders, import a period.",
@@ -1161,10 +1161,8 @@
       "nowNote": "OpenLinker keeps importing new orders from the last check.",
       "rangeConfirm": "Import orders",
       "rangeFailedTitle": "Could not start the import",
-      "rangeNote": "Orders OpenLinker already has are updated, not created twice.",
       "rangeSuccessMessage": "The orders from this period are being imported. Progress shows on this tab.",
       "rangeSuccessTitle": "Import started",
-      "repeatNote": "Orders OpenLinker already has are updated, not created twice.",
       "successMessage": "The next order check uses the new start.",
       "successNowMessage": "Nothing changed. New orders keep coming in.",
       "successTitle": "Start changed",

@@ -62,7 +62,7 @@ function renderDialog(
 }
 
 async function pickStartKind(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(await screen.findByRole('radio', { name: /Move where syncing starts/ }));
+  await user.click(await screen.findByRole('radio', { name: /Change where reading starts/ }));
 }
 
 afterEach(cleanup);
@@ -177,6 +177,6 @@ describe('OrderSyncRestartDialog', () => {
     renderDialog({}, { adapters: adapterList({ orderWindowImport: false }) });
 
     expect(await screen.findByRole('button', { name: 'Apply change' })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: /Import a period/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Import a date range/ })).not.toBeInTheDocument();
   });
 });
