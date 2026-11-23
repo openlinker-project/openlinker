@@ -183,6 +183,11 @@
       "failed": {
         "one": "{n} failed",
         "other": "{n} failed"
+      },
+      "openBundles": "View sets",
+      "skipped": {
+        "one": "skipped: {n} (already listed)",
+        "other": "skipped: {n} (already listed)"
       }
     },
     "title": "Bulk batch <id>{batchId}</id>",
@@ -531,15 +536,17 @@
   },
   "bulkConfirmModal": {
     "bundles": {
-      "sets": {
-        "one": "{n} set",
-        "other": "{n} sets"
-      },
+      "consequence": "Selling a set reduces the stock of its components.",
+      "line": "That includes {parts}.",
       "packs": {
         "one": "{n} multipack",
         "other": "{n} multipacks"
       },
-      "line": "Includes {parts}. Their stock is the whole sets or packs your components can make."
+      "sets": {
+        "one": "{n} set",
+        "other": "{n} sets"
+      },
+      "stockRule": "The quantity on the offer is how many whole sets can be assembled from the components right now. It changes when the components' stock changes."
     },
     "cancel": "Cancel",
     "idempotency": "<strong>Idempotency protected.</strong> If you accidentally double-submit, OpenLinker returns the existing batch rather than creating a duplicate.",
@@ -570,10 +577,15 @@
     },
     "reasons": {
       "alreadyListed": "{n} already on {connection}",
+      "bundleCount": {
+        "one": "{n} set",
+        "other": "{n} sets"
+      },
       "needsAttention": {
         "one": "{n} still needs attention",
         "other": "{n} still need attention"
       },
+      "ofWhichBundles": "(including {bundles})",
       "switchedOff": "{n} switched off"
     },
     "submit": "Create offers",
@@ -1272,36 +1284,60 @@
     "title": "Leave this batch?"
   },
   "bundleOffer": {
+    "batchLine": "{contents} · {stock}",
     "categoryMismatch": "The category differs from the first component's product card, and the marketplace requires the two to match.",
     "collapse": "Hide set contents of {name}",
     "compositionHeading": "Set contents on {destination}",
-    "compositionHint": "{n} products · the mode shows how a component enters the offer",
+    "compositionHint": "{n} products · the badge shows where the set takes each component's data from",
     "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
     "eanNotNeededPack": "A multipack does not need its own barcode. Its product carries one.",
     "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
     "expand": "Show set contents of {name}",
+    "failedNoStock": "The set cannot be listed: component \"{name}\" is out of stock.",
     "gift": "gift",
     "insertComponentList": "Insert component list",
     "limitedBy": "limited by {name}",
+    "limitedByUnits": "limited by: {name} ({units} pcs)",
+    "limitsSet": "limits the set",
     "marker": {
       "one": "Set · {n} product",
       "other": "Set · {n} products"
     },
-    "modes": {
-      "catalogCard": "catalogue card",
-      "missing": "cannot be listed",
-      "newProduct": "new product",
-      "ownOffer": "own offer",
-      "ownOfferWithId": "own offer {id}"
+    "markerHintPack": "Multipack: the same product in a pack of several. Click for details.",
+    "markerHintSet": "Set: different products sold together as one offer. Click to see what is inside.",
+    "missingHint": "List the component in a new tab. Then come back here and refresh the preview.",
+    "modeHints": {
+      "catalogCard": "The set attaches to the catalogue product card.",
+      "missing": "The component has no offer or product card. List it first.",
+      "newProduct": "The component is created together with the offer.",
+      "ownOffer": "This component already has your offer, the set reuses its data."
     },
-    "noOwnEan": "no own EAN",
-    "packCompositionHint": "One product, pack of {n} · the mode shows how it enters the offer",
+    "modes": {
+      "catalogCard": "from catalogue",
+      "missing": "component has no offer",
+      "newProduct": "new product",
+      "ownOffer": "your offer",
+      "ownOfferWithId": "your offer {id}"
+    },
+    "packCompositionHint": "One product, pack of {n} · the badge shows where the offer takes the product's data from",
     "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
     "packMarker": "Pack · ×{n}",
     "publishComponent": "List component",
     "quantity": "×{n}",
-    "stockLine": "{units} in stock → {sets}",
-    "unitsInStock": "{n} in stock",
+    "sets": {
+      "one": "{n} set",
+      "other": "{n} sets"
+    },
+    "setsExplain": "That many whole sets can be assembled from the components right now.",
+    "setsSummary": "Sets available: {n}",
+    "setsSummaryLimit": "limited by: {name}",
+    "setsSummaryUnknown": "Sets available: no data",
+    "setsUnknown": "no data",
+    "setsUnknownHint": "The stock of one of the components is unknown, so the number of sets cannot be counted.",
+    "stockAsSets": "stock: {sets}",
+    "stockLine": "{units} in stock · enough for {sets} sets",
+    "sublinePack": "{n} pcs per pack",
+    "sublineSet": "Set of: {names}",
     "useFirstComponentCategory": "Use first component's category"
   },
   "categoryLookup": {
@@ -1524,6 +1560,7 @@
     },
     "badgeTitles": {
       "draft": "On the channel but not live.",
+      "ended": "The offer ended on the channel. You can list it again.",
       "invalid": "Not live on the channel, with validator errors outstanding.",
       "notSynced": "No channel status has ever been read for this offer."
     },
@@ -1531,7 +1568,7 @@
       "activating": "Activating",
       "deactivating": "Deactivating",
       "draft": "Draft",
-      "ended": "Ended",
+      "ended": "Sale ended",
       "invalid": "Invalid",
       "notSynced": "Not synced",
       "productDeleted": "Product deleted",
@@ -1600,6 +1637,8 @@
       "variantId": "Variant ID"
     },
     "cells": {
+      "endedNoQuantity": "Offer ended, no quantity",
+      "limitedBy": "limited by: {name}",
       "noReadingYet": "No channel reading yet",
       "outOfStock": "Out of stock",
       "priceNotReported": "Price not reported by the channel",
@@ -1616,6 +1655,7 @@
       "onChannel": "on channel",
       "price": "Price",
       "quantity": "Quantity",
+      "relist": "List again",
       "statusRead": "status read",
       "updated": "Updated"
     },
@@ -1664,6 +1704,12 @@
       }
     },
     "listingCell": {
+      "bundlePack": "Multipack",
+      "bundleSet": {
+        "one": "Set · {n} component",
+        "other": "Set · {n} components"
+      },
+      "bundleTitle": "A set or multipack: several products sold as one offer.",
       "eanLabel": "EAN:",
       "eanTitle": "EAN: {ean}",
       "noLinkedVariant": "No linked variant",
@@ -1701,6 +1747,7 @@
       "shopBlocked": "Blocked by shop"
     },
     "publishProducts": "Publish products",
+    "relist": "List again",
     "retry": "Retry",
     "status": {
       "countsLoaded": "Listing counts loaded.",
@@ -1778,6 +1825,12 @@
     "ariaLabel": "Offer description"
   },
   "offerProductPickerModal": {
+    "bundleFilter": {
+      "all": "All",
+      "ariaLabel": "Kind of products",
+      "exclude": "Without sets",
+      "only": "Sets"
+    },
     "capReached": "Maximum {max} products per batch reached - clear a product to add another.",
     "closeAria": "Close",
     "description": "Pick whole products or individual variants, mix across products, then choose a marketplace or shop to publish to - it all becomes one batch.",
@@ -1788,6 +1841,8 @@
       "title": "Discard changes?"
     },
     "empty": {
+      "createBundle": "Create your first set",
+      "noBundles": "No sets yet.",
       "noMatch": "No products match \"{query}\".",
       "noProducts": "No products yet."
     },
@@ -1836,6 +1891,8 @@
     "backAria": "Back to products",
     "cancel": "Cancel",
     "chips": {
+      "bundle": "set",
+      "bundleTitle": "A set does not need its own EAN.",
       "needEan": {
         "one": "{n} needs EAN",
         "other": "{n} need EAN"
@@ -1854,6 +1911,7 @@
       "noSelection": "Select at least one product, then choose a destination."
     },
     "counts": {
+      "bundles": "sets",
       "listings": "listings",
       "needEan": "need EAN",
       "offers": "offers",
@@ -1875,6 +1933,13 @@
     }
   },
   "offerProductPickerRow": {
+    "bundlePack": "Multipack",
+    "bundleSet": {
+      "one": "Set · {n} component",
+      "other": "Set · {n} components"
+    },
+    "bundleTitle": "You sell the components together as one offer.",
+    "bundleVariantNote": "EANs belong to the set's components",
     "capReached": "Maximum {max} products per batch reached",
     "collapseAria": "Collapse {name}",
     "expandAria": "Expand {name}",

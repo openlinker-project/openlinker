@@ -474,11 +474,15 @@ export function ProductDetailPage(): ReactElement {
                 className="button button--primary button--sm"
                 role="button"
                 aria-disabled="true"
+                aria-describedby="product-detail-make-bundle-reason"
                 tabIndex={0}
                 title={bundleCopy.form.viewOnlyReason}
                 data-testid="product-detail-make-bundle"
               >
                 {bundleCopy.list.makeBundle}
+                <span id="product-detail-make-bundle-reason" className="sr-only">
+                  {bundleCopy.form.viewOnlyReason}
+                </span>
               </span>
             )}
           </span>

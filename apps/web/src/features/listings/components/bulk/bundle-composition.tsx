@@ -26,6 +26,13 @@ import { VariantThumbnail } from '../../../products';
 import type { BundleComponentMode } from '../../api/listings.types';
 import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 
+const MODE_COPY_KEY = {
+  'own-offer': 'ownOffer',
+  'catalog-card': 'catalogCard',
+  'new-product': 'newProduct',
+  missing: 'missing',
+} as const satisfies Record<BundleComponentMode, string>;
+
 const MODE_TONE: Record<BundleComponentMode, StatusBadgeTone> = {
   'own-offer': 'success',
   'catalog-card': 'info',
@@ -64,6 +71,10 @@ export function BundleComposition({
 }: BundleCompositionProps): ReactElement {
   const copy = useMessages('listings').bundleOffer;
   const packSize = packSizeOf(preview);
+  const limiting = preview.components.find(
+    (component) => component.variantId === preview.limitingComponentVariantId,
+  );
+  const hasMissing = preview.components.some((component) => component.mode === 'missing');
   const mismatch =
     preview.suggestedCategoryId !== null &&
     chosenCategoryId !== null &&
@@ -81,6 +92,19 @@ export function BundleComposition({
           </span>
         </div>
       ) : null}
+      <p
+        className={`bundle-comp__summary${preview.availableSets === 0 ? ' is-warn' : ''}`}
+        data-testid="bundle-sets-summary"
+      >
+        <b>
+          {preview.availableSets === null
+            ? copy.setsSummaryUnknown
+            : interpolate(copy.setsSummary, { n: preview.availableSets })}
+        </b>
+        {limiting ? (
+          <span>{interpolate(copy.setsSummaryLimit, { name: limiting.name })}</span>
+        ) : null}
+      </p>
       {packSize !== null ? (
         <p className="cx-sub bundle-comp__pack" data-testid="bundle-pack-hint">
           {interpolate(copy.packHint, { n: packSize, destination: destinationName })}
@@ -96,15 +120,9 @@ export function BundleComposition({
           const modeLabel =
             component.mode === 'own-offer' && component.externalOfferId
               ? interpolate(copy.modes.ownOfferWithId, { id: component.externalOfferId })
-              : copy.modes[
-                  component.mode === 'own-offer'
-                    ? 'ownOffer'
-                    : component.mode === 'catalog-card'
-                      ? 'catalogCard'
-                      : component.mode === 'new-product'
-                        ? 'newProduct'
-                        : 'missing'
-                ];
+              : copy.modes[MODE_COPY_KEY[component.mode]];
+          const modeHint = copy.modeHints[MODE_COPY_KEY[component.mode]];
+          const isLimit = preview.limitingComponentVariantId === component.variantId;
           return (
             <motion.li
               variants={ENTRANCE_ITEM}
@@ -115,7 +133,9 @@ export function BundleComposition({
               <VariantThumbnail src={component.imageUrl} name={component.name} size="sm" />
               <span className="cx-comp__n">
                 <span className="cx-comp__t">
-                  <b className="bundle-comp__name">{component.name}</b>
+                  <b className="bundle-comp__name" title={component.name}>
+                    {component.name}
+                  </b>
                   <span className="mono tabular cx-comp__x">
                     {interpolate(copy.quantity, { n: component.quantity })}
                   </span>
@@ -126,15 +146,14 @@ export function BundleComposition({
                 <span className="cx-sub mono bundle-comp__meta">{component.sku ?? ''}</span>
                 {component.availableUnits !== undefined && component.availableUnits !== null ? (
                   <span
-                    className={`cx-sub tabular bundle-comp__stock${
-                      preview.limitingComponentVariantId === component.variantId ? ' is-limit' : ''
-                    }`}
+                    className={`cx-sub tabular bundle-comp__stock${isLimit ? ' is-limit' : ''}`}
                     data-testid="bundle-component-stock"
                   >
                     {interpolate(copy.stockLine, {
                       units: component.availableUnits,
                       sets: Math.floor(component.availableUnits / Math.max(1, component.quantity)),
                     })}
+                    {isLimit ? ` · ${copy.limitsSet}` : ''}
                   </span>
                 ) : null}
                 {component.problems.map((problem) => (
@@ -144,18 +163,23 @@ export function BundleComposition({
                 ))}
               </span>
               <span className="cx-wm">
-                <StatusBadge
-                  tone={MODE_TONE[component.mode]}
-                  compact
-                  withDot
-                  data-testid="bundle-mode"
-                >
-                  {modeLabel}
-                </StatusBadge>
+                <span className="bundle-comp__mode" title={modeHint} tabIndex={0}>
+                  <StatusBadge
+                    tone={MODE_TONE[component.mode]}
+                    compact
+                    withDot
+                    data-testid="bundle-mode"
+                  >
+                    {modeLabel}
+                  </StatusBadge>
+                  <span className="sr-only">{modeHint}</span>
+                </span>
                 {component.mode === 'missing' ? (
                   <Link
                     className="button button--secondary button--sm"
                     to={publishComponentUrl(component.productId, connectionId)}
+                    target="_blank"
+                    rel="noreferrer"
                   >
                     {copy.publishComponent}
                   </Link>
@@ -165,6 +189,11 @@ export function BundleComposition({
           );
         })}
       </motion.ul>
+      {hasMissing ? (
+        <p className="cx-sub bundle-comp__refresh" data-testid="bundle-missing-hint">
+          {copy.missingHint}
+        </p>
+      ) : null}
       {showEanNote ? (
         <p className="cx-sub bundle-comp__ean">
           {packSize !== null ? copy.eanNotNeededPack : copy.eanNotNeeded}

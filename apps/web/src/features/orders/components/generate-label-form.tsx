@@ -145,6 +145,8 @@ export function GenerateLabelForm({
   const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
   const recipient = buildRecipientPreview(snapshot, copy.recipient);
+  const bundleCopy = useMessages('bundles');
+  const packComponents = (order.bundleLines ?? []).flatMap((bundle) => bundle.components);
   const hasPickupPoint = snapshot.pickupPoint !== undefined;
   // Locker-vs-courier is driven by the actual delivery method (#954), not by
   // `pickupPoint` presence alone (which was circular). A resolved pickup point
@@ -588,6 +590,23 @@ export function GenerateLabelForm({
           <p className="generate-label-form__section-label">{copy.recipient.sectionLabel}</p>
           <KeyValueList items={recipient} />
         </div>
+
+        {/* What goes in the box. A bundle order ships its components, not the
+            bundle line, so the operator sizing the parcel sees them here. */}
+        {packComponents.length > 0 ? (
+          <div className="ux-pack-list" data-testid="label-pack-list">
+            <p className="generate-label-form__section-label">{bundleCopy.order.packTitle}</p>
+            <ul>
+              {packComponents.map((component) => (
+                <li key={component.lineId}>
+                  <span>{component.name ?? component.sku ?? component.variantId}</span>
+                  <strong>{interpolate(bundleCopy.list.pieces, { n: component.quantity })}</strong>
+                </li>
+              ))}
+            </ul>
+            <p className="ux-pack-list__hint">{bundleCopy.order.packHint}</p>
+          </div>
+        ) : null}
 
         {/* Dimensions composite (3 inputs in one labeled row). FormField only
             accepts a single control child, so render the composite directly

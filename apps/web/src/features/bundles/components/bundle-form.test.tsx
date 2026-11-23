@@ -6,6 +6,7 @@
  */
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import {
@@ -108,6 +109,10 @@ function LocationProbe() {
   return <span data-testid="location-probe">{useLocation().pathname}</span>;
 }
 
+function LocationSearchProbe(): ReactElement {
+  return <span data-testid="location-search-probe">{useLocation().search}</span>;
+}
+
 async function ready(): Promise<void> {
   // The session resolves after the first paint; until then the form is read-only.
   await waitFor(() => {
@@ -192,7 +197,7 @@ describe('BundleForm (#3624)', () => {
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await pick(user, 'bundle-form-component-search', 'Lyz', 'LYZ-KAW');
     expect(screen.getByTestId('bundle-form-availability')).toHaveTextContent(
-      'Lyzeczka runs out first'
+      'Limited by: Lyzeczka'
     );
   });
 
@@ -226,7 +231,13 @@ describe('BundleForm (#3624)', () => {
     });
     await ready();
     await pick(user, 'bundle-form-component-search', 'Zestaw do', 'ZES-PARZENIE');
-    expect(await screen.findByTestId('bundle-form-nested-error')).toHaveTextContent('is a bundle');
+    // The row says why it cannot be added up front; clicking it explains under the search.
+    expect(
+      await screen.findByTestId('bundle-form-component-search-why-ZES-PARZENIE')
+    ).toHaveTextContent('bundle cannot be a component');
+    expect(await screen.findByTestId('bundle-form-component-search-rejection')).toHaveTextContent(
+      'Zestaw do parzenia'
+    );
     expect(screen.queryByTestId('bundle-form-component-row-ZES-PARZENIE')).not.toBeInTheDocument();
   });
 
@@ -430,10 +441,15 @@ describe('BundleForm (#3624)', () => {
     expect(screen.getByTestId('bundle-form-open-orders-note')).toHaveTextContent(
       '3 open orders keep the old composition'
     );
+    // Nothing changed yet, so there is nothing to save.
+    expect(screen.getByTestId('bundle-form-save')).toBeDisabled();
+    const qty = screen.getByTestId('bundle-form-component-qty-KUB-350-BI');
+    await user.clear(qty);
+    await user.type(qty, '2');
     await user.click(screen.getByTestId('bundle-form-save'));
     await waitFor(() => {
       expect(apiClient.bundles.update).toHaveBeenCalledWith('set', [
-        { variantId: 'mug', quantity: 1 },
+        { variantId: 'mug', quantity: 2 },
       ]);
     });
     expect(apiClient.bundles.create).not.toHaveBeenCalled();
@@ -555,7 +571,7 @@ describe('BundleForm (#3624)', () => {
     expect(screen.getByTestId('bundle-form-history-entry-2')).toBeInTheDocument();
   });
 
-  it('should let a viewer see the form with every write disabled and the reason on screen', async () => {
+  it('should replace the create wizard with a notice and a way back for a viewer', async () => {
     renderWithProviders(<BundleForm />, {
       apiClient: api(),
       sessionAdapter: createAuthenticatedSessionAdapter({
@@ -563,12 +579,107 @@ describe('BundleForm (#3624)', () => {
         permissions: [...VIEWER.permissions],
       }),
     });
-    expect(await screen.findByTestId('bundle-form-readonly-notice')).toHaveTextContent(
-      'admin or operator role'
+    await waitFor(() => {
+      expect(screen.getByTestId('bundle-form-readonly-notice')).toHaveTextContent('Ask an administrator');
+    });
+    expect(screen.queryByTestId('bundle-form-save')).toBeNull();
+    expect(screen.queryByTestId('bundle-form-component-search')).toBeNull();
+    expect(screen.getByRole('link', { name: /products/i })).toHaveAttribute(
+      'href',
+      '/products?bundles=only'
     );
-    expect(screen.getByTestId('bundle-form-save')).toBeDisabled();
-    expect(screen.getByTestId('bundle-form-save')).toHaveAttribute('title', expect.stringContaining('admin or operator'));
-    expect(screen.getByTestId('bundle-form-component-search')).toBeDisabled();
+  });
+
+  it('should name what is missing and focus the field when Next is refused', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient: api(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    const next = screen.getByTestId('bundle-form-next');
+    expect(next).toHaveAttribute('aria-disabled', 'true');
+    expect(next).toHaveAttribute('title', expect.stringContaining('at least one component'));
+    await user.click(next);
+    expect(screen.getByTestId('bundle-form-component-search')).toHaveFocus();
+  });
+
+  it('should put the step in the URL, move focus to its heading and announce it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <BundleForm />
+        <LocationSearchProbe />
+      </>,
+      { apiClient: api(), sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    expect(screen.getByTestId('location-search-probe')).toHaveTextContent('krok=product');
+    await waitFor(() => {
+      expect(screen.getByTestId('bundle-form-step-announce')).toHaveTextContent(/Step 2 of 4/);
+    });
+    expect(document.getElementById('bf-step-heading')).toHaveFocus();
+    await user.click(screen.getByTestId('bundle-form-back'));
+    await screen.findByTestId('bundle-form-step-components');
+    expect(screen.getByTestId('location-search-probe')).toHaveTextContent('krok=components');
+  });
+
+  it('should explain a refused jump to a later step', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient: api(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await user.click(screen.getByTestId('bundle-form-back'));
+    await user.clear(screen.getByTestId('bundle-form-component-qty-KUB-350-BI'));
+    await user.click(screen.getByTestId('bundle-form-stepper-button-2'));
+    expect(await screen.findByTestId('bundle-form-blocked-note')).toHaveTextContent('step 1');
+  });
+
+  it('should not create the product twice when the composition write fails and is retried', async () => {
+    const createProduct = vi.fn().mockResolvedValue({
+      productId: 'p-new',
+      variantId: 'new-variant',
+      name: 'Zestaw nowy',
+      sku: 'KUB-350-BI-SET',
+      adopted: false,
+    });
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError('nope', 500, {}))
+      .mockResolvedValue({ variantId: 'new-variant', version: 1, components: [], releasedOrders: 0 });
+    const apiClient = api({
+      bundles: {
+        creationTargets: vi.fn().mockResolvedValue([
+          { connectionId: 'master-1', connectionName: 'PrestaShop', platformType: 'prestashop', creationMode: 'simple-product' },
+        ]),
+        createProduct,
+        create,
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await user.click(await screen.findByTestId('bundle-form-mode-create'));
+    await user.type(await screen.findByTestId('bundle-form-new-name'), 'Zestaw nowy');
+    await toReview(user);
+    await user.click(screen.getByTestId('bundle-form-save'));
+    expect(await screen.findByTestId('bundle-form-partial-warning')).toHaveTextContent('Zestaw nowy');
+    await user.click(screen.getByTestId('bundle-form-save'));
+    await waitFor(() => {
+      expect(create).toHaveBeenCalledTimes(2);
+    });
+    expect(createProduct).toHaveBeenCalledTimes(1);
   });
 
   it('should not leave the components step until there is a component with a valid quantity', async () => {

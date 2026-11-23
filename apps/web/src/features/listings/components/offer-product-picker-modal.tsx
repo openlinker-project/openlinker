@@ -56,7 +56,7 @@ import {
   useState,
   type ReactElement,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
@@ -69,6 +69,7 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { Input } from '../../../shared/ui/input';
+import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../connections';
 import { useProductsQuery } from '../../products';
@@ -87,6 +88,8 @@ import {
   type SelectionEntry,
 } from './offer-product-picker.types';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+
+type BundleFilter = 'all' | 'only' | 'exclude';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -117,6 +120,7 @@ export function OfferProductPickerModal({
   const format = useFormat();
 
   const [searchInput, setSearchInput] = useState('');
+  const [bundleFilter, setBundleFilter] = useState<BundleFilter>('all');
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selection, setSelection] = useState<Map<string, SelectionEntry>>(new Map());
@@ -190,7 +194,10 @@ export function OfferProductPickerModal({
   );
 
   const productsQuery = useProductsQuery(
-    { search: debouncedSearch || undefined },
+    {
+      search: debouncedSearch || undefined,
+      bundles: bundleFilter === 'all' ? undefined : bundleFilter,
+    },
     { limit: PAGE_SIZE, offset },
   );
   const productItems = productsQuery.data?.items;
@@ -450,6 +457,20 @@ export function OfferProductPickerModal({
                 <p className="offer-product-picker__hint">
                   {copy.search.hint}
                 </p>
+                <SegmentedControl<BundleFilter>
+                  className="offer-product-picker__bundle-filter"
+                  aria-label={copy.bundleFilter.ariaLabel}
+                  value={bundleFilter}
+                  options={[
+                    { value: 'all', label: copy.bundleFilter.all },
+                    { value: 'only', label: copy.bundleFilter.only },
+                    { value: 'exclude', label: copy.bundleFilter.exclude },
+                  ]}
+                  onChange={(next) => {
+                    setBundleFilter(next);
+                    setOffset(0);
+                  }}
+                />
               </div>
 
               <div className="offer-product-picker__list">
@@ -475,7 +496,15 @@ export function OfferProductPickerModal({
                   <p className="muted-text">
                     {debouncedSearch.trim()
                       ? interpolate(copy.empty.noMatch, { query: debouncedSearch.trim() })
-                      : copy.empty.noProducts}
+                      : bundleFilter === 'only'
+                        ? copy.empty.noBundles
+                        : copy.empty.noProducts}
+                    {bundleFilter === 'only' && !debouncedSearch.trim() ? (
+                      <>
+                        {' '}
+                        <Link to="/products/bundles/new">{copy.empty.createBundle}</Link>
+                      </>
+                    ) : null}
                   </p>
                 ) : (
                   <ul className="offer-product-picker__prows">

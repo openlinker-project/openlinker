@@ -816,6 +816,7 @@ export function OrderDetailPage(): ReactElement {
             channelName={cancelSourceName}
             bundleLines={order.bundleLines}
             documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
+            documentNumber={order.salesDocument?.document?.identity.documentNumber ?? null}
           />
         </section>
       ) : null}

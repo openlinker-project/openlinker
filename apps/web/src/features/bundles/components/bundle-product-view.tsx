@@ -22,6 +22,7 @@ import { useListingsQuery, type OfferLifecycle } from '../../listings';
 import { computeBundleAvailability } from '../lib/bundle-availability';
 import { splitBundlePrice } from '../lib/bundle-price-split';
 import { BundleComponentList } from './bundle-component-list';
+import { BundleJourney } from './bundle-journey';
 import { useBundleHistoryQuery, useBundleQuery } from '../hooks/use-bundle-queries';
 
 const LIFECYCLE_TONE: Record<OfferLifecycle, StatusBadgeTone> = {
@@ -31,6 +32,10 @@ const LIFECYCLE_TONE: Record<OfferLifecycle, StatusBadgeTone> = {
   Ended: 'neutral',
   Unsynced: 'neutral',
 };
+
+/** Connection names can carry the time they were created, which only crowds the row. */
+const TRAILING_TIMESTAMP = /\s*\(\d{4}-\d{2}-\d{2}T[^)]*\)\s*$/;
+const displayConnectionName = (name: string): string => name.replace(TRAILING_TIMESTAMP, '');
 
 export interface BundleProductViewProps {
   bundleVariantId: string;
@@ -96,6 +101,10 @@ export function BundleProductView({
     return `/listings/bulk-create/wizard?${params.toString()}`;
   };
 
+  const nextAction =
+    availability.kind === 'known' && availability.limitedBy !== null && availability.bundles <= 3
+      ? interpolate(copy.nextRestock, { name: availability.limitedBy, n: availability.bundles })
+      : null;
   const availabilityTone =
     availability.kind === 'known' ? (availability.bundles === 0 ? 'is-zero' : 'is-warn') : 'is-unk';
   const availabilityLine =
@@ -108,6 +117,24 @@ export function BundleProductView({
   return (
     <div className="pm-grid" data-testid="bundle-product-view">
       <div className="pm-col">
+        <BundleJourney
+          componentCount={rows.length}
+          listedCount={listedCount}
+          channelCount={offerRows.length}
+          sold={
+            sold.data
+              ? sold.data.variants
+                  .filter((v) => v.variantId === bundleVariantId)
+                  .reduce((sum, v) => sum + v.units, 0)
+              : null
+          }
+          listHref={wizardTo()}
+        />
+        {nextAction !== null ? (
+          <div className="ux-next-strip" data-testid="bundle-next-action">
+            <span>{nextAction}</span>
+          </div>
+        ) : null}
         <ComposerSection
           title={copy.compositionTitle}
           aside={`${interpolate(copy.compositionAside, { n: rows.length })}${
@@ -115,12 +142,16 @@ export function BundleProductView({
           }`}
           riseIndex={2}
         >
-          <div
-            className={`cx-avail ${availabilityTone}`}
-            data-testid="bundle-view-availability-line"
-          >
-            {availabilityLine}
-          </div>
+          {/* The rail card already states "N bundles, limited by X"; repeat it
+              here only when it is an alert (zero or unknown). */}
+          {availability.kind !== 'known' || availability.bundles === 0 ? (
+            <div
+              className={`cx-avail ${availabilityTone}`}
+              data-testid="bundle-view-availability-line"
+            >
+              {availabilityLine}
+            </div>
+          ) : null}
           <BundleComponentList
             components={rows}
             bundlesAvailable={availability.kind === 'known' ? availability.bundles : null}
@@ -168,10 +199,21 @@ export function BundleProductView({
           aside={interpolate(copy.offersAside, { listed: listedCount, total: offerRows.length })}
           riseIndex={3}
         >
+          {listedCount === 0 && offerRows.length > 0 ? (
+            <div className="ux-empty-offers" data-testid="bundle-view-offers-empty">
+              <strong>{copy.offersEmptyTitle}</strong>
+              <p>{copy.offersEmptyBody}</p>
+              <Link className="button button--primary button--sm" to={wizardTo()}>
+                {copy.offersEmptyAction}
+              </Link>
+            </div>
+          ) : null}
           <ul className="cx-offers" data-testid="bundle-view-offers">
             {offerRows.map(({ connection, listing }) => (
               <li key={connection.id}>
-                <span>{connection.name}</span>
+                <span className="ux-offer-name" title={connection.name}>
+                  {displayConnectionName(connection.name)}
+                </span>
                 {listing ? (
                   <>
                     <span>
@@ -190,9 +232,19 @@ export function BundleProductView({
                       {listing.commercial?.price
                         ? ` · ${format.money(Number(listing.commercial.price), listing.commercial.currency ?? currency)}`
                         : ''}
+                      {listing.commercial?.availableQuantity != null &&
+                      availability.kind === 'known' &&
+                      listing.commercial.availableQuantity !== availability.bundles ? (
+                        <span className="ux-offer-mismatch" data-testid="bundle-offer-mismatch">
+                          {interpolate(copy.offerMismatch, {
+                            channel: listing.commercial.availableQuantity,
+                            sets: availability.bundles,
+                          })}
+                        </span>
+                      ) : null}
                     </span>
                     <Link
-                      className="button button--ghost button--sm"
+                      className="button button--secondary button--sm"
                       to={`/listings?search=${encodeURIComponent(listing.externalId)}`}
                     >
                       {copy.open}

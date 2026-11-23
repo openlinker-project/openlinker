@@ -51,6 +51,7 @@ export function BundleComponentList({
         ) : (
           <span>{name}</span>
         );
+        const removed = component.summary.name === null && component.summary.sku === null;
         const gift =
           component.giftSlot === true ? (
             <span className="cx-tag cx-tag--gift">{copy.gift}</span>
@@ -58,7 +59,7 @@ export function BundleComponentList({
         return (
           <li
             key={component.variantId}
-            className={limiting ? 'is-lim' : undefined}
+            className={[limiting ? 'is-lim' : '', removed ? 'is-removed' : ''].filter(Boolean).join(' ') || undefined}
             data-testid={testIdPrefix ? `${testIdPrefix}-line-${component.variantId}` : undefined}
           >
             <VariantThumbnail src={component.summary.imageUrl} name={name} size="sm" />
@@ -66,6 +67,7 @@ export function BundleComponentList({
               <>
                 <span className="cx-comp__n">
                   {nameNode}
+                  {removed ? <span className="cx-tag cx-tag--removed">{copy.productRemoved}</span> : null}
                   <span className="cx-sub mono">{component.summary.sku ?? ''}</span>
                 </span>
                 <span className="cx-comp__q">
@@ -81,6 +83,7 @@ export function BundleComponentList({
                 <span className="cx-comp__n">
                   <span className="cx-comp__t">
                     {nameNode}
+                    {removed ? <span className="cx-tag cx-tag--removed">{copy.productRemoved}</span> : null}
                     <span className="mono tabular cx-comp__x">×{component.quantity}</span>
                     {gift}
                   </span>

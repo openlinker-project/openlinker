@@ -15,23 +15,26 @@
  *
  * @module apps/web/src/features/bundles/components
  */
-import { useState, type ReactElement } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useQuery } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { useSession } from '../../../shared/auth/use-session';
 import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { SNAPPY_SPRING } from '../../../shared/ui/motion-presets';
 import { SaveButton, useSaveButtonState } from '../../../shared/ui/save-button';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { SidePanel } from '../../../shared/ui/side-panel';
 import { StickyActionBar } from '../../../shared/ui/sticky-action-bar';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDemoMode } from '../../system';
+import { useConnectionsQuery } from '../../connections';
 import type { ApiError } from '../../../shared/api/api-error';
 import { isBundleNestingReason } from '../api/bundles.types';
 import {
@@ -67,6 +70,8 @@ import {
 } from '../../gift-documents';
 import { BundleGuide, BundleGuideButton } from './bundle-guide';
 import { BundleHistory } from './bundle-history';
+import { BundleLeaveGuard } from './bundle-leave-guard';
+import { BundleLoadError } from './bundle-load-error';
 import { BundleStepComponents } from './bundle-step-components';
 import { BundleStepGifts } from './bundle-step-gifts';
 import { BundleStepProduct } from './bundle-step-product';
@@ -149,10 +154,49 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const saveButtonState = useSaveButtonState(save.isPending || createProduct.isPending, savedCount);
   const syncFromMaster = useSyncBundleFromMasterMutation();
 
-  const [step, setStep] = useState<number>(handedOver !== null ? BUNDLE_STEP_KEYS.length - 1 : 0);
+  const { isReady: sessionReady } = useSession();
+  const connections = useConnectionsQuery();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [maxStep, setMaxStep] = useState<number>(
     handedOver !== null || editing ? BUNDLE_STEP_KEYS.length - 1 : 0
   );
+  // The step lives in the URL (`?krok=`) so the browser's Back button walks the
+  // steps instead of leaving the wizard, and a reload lands on the same step. A
+  // step past the furthest one the operator has reached falls back to it.
+  const requestedKey = searchParams.get('krok');
+  const requestedStep = BUNDLE_STEP_KEYS.findIndex((key) => key === requestedKey);
+  const step = Math.min(
+    requestedStep >= 0 ? requestedStep : handedOver !== null ? BUNDLE_STEP_KEYS.length - 1 : 0,
+    maxStep
+  );
+  const setStep = (index: number): void => {
+    const key = BUNDLE_STEP_KEYS[index];
+    if (key === undefined) return;
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('krok', key);
+        return next;
+      },
+      { replace: false }
+    );
+  };
+  const previousStep = useRef(step);
+  const direction = step >= previousStep.current ? 1 : -1;
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const savedRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const released = useRef(false);
+  const stepMounted = useRef(false);
+  const pendingFocus = useRef(false);
+  const [announcement, setAnnouncement] = useState('');
+  const [blockedNote, setBlockedNote] = useState<string | null>(null);
+  const [createdProduct, setCreatedProduct] = useState<{
+    variantId: string;
+    productId: string;
+    name: string;
+  } | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [mode, setMode] = useState<BundleProductMode>('existing');
   const [draft, setDraft] = useState<NewProductDraft>(EMPTY_PRODUCT_DRAFT);
@@ -306,15 +350,18 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
       return;
     }
     setNestedError(null);
-    components.append({
-      ...choice,
-      imageUrl: choice.imageUrl ?? null,
-      ean: choice.ean ?? null,
-      attributes: choice.attributes ?? null,
-      quantity: '1',
-      gift: false,
-      documentForm: '',
-    });
+    components.append(
+      {
+        ...choice,
+        imageUrl: choice.imageUrl ?? null,
+        ean: choice.ean ?? null,
+        attributes: choice.attributes ?? null,
+        quantity: '1',
+        gift: false,
+        documentForm: '',
+      },
+      { shouldFocus: false }
+    );
   };
 
   const pickBundleProduct = (choice: BundleProductChoice): void => {
@@ -381,15 +428,19 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
           setNestedError(null);
           setSaveError(null);
           setSavedCount((n) => n + 1);
+          setCreatedProduct(null);
           const available = availability.kind === 'known' ? availability.bundles : null;
-          showToast({ tone: 'success', description: copy.form.saved });
           setSavedAs({
             available,
             released: result.releasedOrders,
             productId: target.productId,
             variantId: target.variantId,
           });
-          if (!editing) {
+          if (editing) {
+            // What was just saved is the new baseline, so Save waits for the next change.
+            form.reset(form.getValues());
+          } else {
+            released.current = true;
             // Now an existing bundle: the next Save must be an update, not a
             // second create that answers 409.
             void navigate(`/products/bundles/${encodeURIComponent(target.variantId)}`, {
@@ -427,6 +478,12 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const submit = form.handleSubmit((values) => {
     setCreateError(null);
     if (creating) {
+      if (createdProduct !== null) {
+        // The product was created by an earlier attempt whose composition write
+        // failed; creating again would make a second product.
+        writeDefinition(createdProduct, values);
+        return;
+      }
       const rateSource = values.components.find((row) => !row.gift) ?? values.components[0];
       createProduct.mutate(
         {
@@ -444,20 +501,26 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
             if (created.adopted) {
               showToast({ tone: 'info', description: copy.form.s2Adopted });
             }
-            writeDefinition(
-              { variantId: created.variantId, productId: created.productId, name: created.name },
-              values
-            );
+            const target = {
+              variantId: created.variantId,
+              productId: created.productId,
+              name: created.name,
+            };
+            setCreatedProduct(target);
+            writeDefinition(target, values);
           },
           onError: (error) => {
-            const details =
-              typeof error.details === 'object' && error.details !== null
-                ? (error.details as Record<string, unknown>)
-                : {};
+            const { reason } = readErrorCode(error);
             setCreateError(
-              typeof details.message === 'string' && error.status === 422
-                ? interpolate(copy.form.s2CreateFailed, { reason: details.message })
-                : copy.form.s2CreateFailedGeneric
+              reason === 'master-cannot-create-products'
+                ? interpolate(copy.form.s2CreateCannot, { name: masterName })
+                : reason === 'master-unavailable'
+                  ? interpolate(copy.form.s2CreateUnavailable, { name: masterName })
+                  : reason === 'not-synced'
+                    ? copy.form.s2CreateNotSynced
+                    : error.status === 422
+                      ? copy.form.s2CreateFailed
+                      : copy.form.s2CreateFailedGeneric
             );
             setStep(BUNDLE_STEP_KEYS.indexOf('product'));
           },
@@ -469,17 +532,6 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     writeDefinition(bundleProduct, values);
   });
 
-  if (editing && detail.isLoading) {
-    return <p className="text-muted">{copy.form.loading}</p>;
-  }
-  if (editing && detail.isError) {
-    return (
-      <Alert tone="error" title={copy.form.loadFailed}>
-        {copy.form.loadFailed}
-      </Alert>
-    );
-  }
-
   const quantitiesOk = rows.length > 0 && !parsedRows.some((row) => row.qty === 0);
   const productOk = editing || (creating ? newProductValid : bundleProduct !== null);
   const stepValid: Record<BundleStepKey, boolean> = {
@@ -488,55 +540,121 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     gifts: true,
     review: quantitiesOk && productOk,
   };
-  const missing: string[] = [];
-  if (rows.length === 0) missing.push(copy.form.missingComponent);
-  else if (!quantitiesOk) missing.push(copy.form.missingQuantities);
-  if (!productOk) missing.push(creating ? copy.form.s2Invalid : copy.form.missingProduct);
+  // Built from the real predicates, so the bar names the field that is wrong
+  // instead of one sentence covering four of them.
+  const missingFor = (key: BundleStepKey): string[] => {
+    const list: string[] = [];
+    if (key === 'components' || key === 'review') {
+      if (rows.length === 0) list.push(copy.form.missingComponent);
+      else if (!quantitiesOk) list.push(copy.form.missingQuantities);
+    }
+    if ((key === 'product' || key === 'review') && !productOk) {
+      if (creating) {
+        if (draft.name.trim() === '') list.push(copy.form.missingName);
+        if (effectiveSku.trim() === '') list.push(copy.form.missingSku);
+        if (newPrice === null) list.push(copy.form.missingPrice);
+        if (masterId === '') list.push(copy.form.missingShop);
+      } else {
+        list.push(copy.form.missingProduct);
+      }
+    }
+    return list;
+  };
+  const missing = missingFor('review');
   const ready = missing.length === 0;
   const stepKey = BUNDLE_STEP_KEYS[step] ?? 'components';
-  const stepMissing =
-    stepKey === 'components'
-      ? rows.length === 0
-        ? copy.form.missingComponent
-        : copy.form.missingQuantities
-      : creating
-        ? copy.form.s2Invalid
-        : copy.form.missingProduct;
+  const stepMissing = missingFor(stepKey).join(' · ');
   const saveBlocked = readOnly || save.isPending || createProduct.isPending;
   const openOrders = detail.data?.openOrdersOnOlderComposition ?? 0;
   const lastStep = step === BUNDLE_STEP_KEYS.length - 1;
 
+  const failStep = (): void => {
+    setShowErrors(true);
+    setShakeKey((n) => n + 1);
+    pendingFocus.current = true;
+  };
   const goTo = (index: number): void => {
     // Never past what the earlier steps have answered.
     for (let i = 0; i < index; i += 1) {
       const key = BUNDLE_STEP_KEYS[i];
       if (key !== undefined && !stepValid[key]) {
-        setShowErrors(true);
-        setShakeKey((n) => n + 1);
+        failStep();
+        setBlockedNote(
+          interpolate(copy.form.stepLockedFirst, { n: i + 1, missing: missingFor(key).join(' · ') })
+        );
         setStep(i);
         return;
       }
     }
+    setBlockedNote(null);
     setStep(index);
     setMaxStep((current) => Math.max(current, index));
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
   };
   const goNext = (): void => {
     if (!stepValid[stepKey]) {
-      setShowErrors(true);
-      setShakeKey((n) => n + 1);
+      failStep();
       return;
     }
     goTo(step + 1);
   };
   const pressSave = (): void => {
     if (!ready) {
-      setShowErrors(true);
-      setShakeKey((n) => n + 1);
+      failStep();
       return;
     }
     void submit();
   };
+
+  // A step change moves focus to the new step's heading and says so, because a
+  // scroll alone leaves a keyboard user on a button that is no longer there.
+  useEffect(() => {
+    previousStep.current = step;
+    if (!stepMounted.current) {
+      stepMounted.current = true;
+      return;
+    }
+    headingRef.current?.focus({ preventScroll: true });
+    setAnnouncement(
+      interpolate(copy.form.stepAnnounce, {
+        n: step + 1,
+        total: BUNDLE_STEP_KEYS.length,
+        name: copy.form.stepNames[BUNDLE_STEP_KEYS[step] ?? 'components'],
+      })
+    );
+  }, [step]);
+
+  // A refused Next/Save lands on the first control that is wrong, so the
+  // refusal is not a shake the operator has to interpret.
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    const panel = panelRef.current;
+    if (panel === null) return;
+    const target =
+      panel.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+      panel.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled])');
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+  }, [shakeKey, step, reduceMotion]);
+
+  // A save result is at the top of the page while the Save button is at the
+  // bottom, so bring it to the operator.
+  useEffect(() => {
+    if (savedAs === null) return;
+    savedRef.current?.focus({ preventScroll: true });
+    savedRef.current?.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+  }, [savedAs, reduceMotion]);
+  useEffect(() => {
+    if (saveError === null) return;
+    errorRef.current?.focus({ preventScroll: true });
+    errorRef.current?.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+  }, [saveError, reduceMotion]);
+
+  const dirty = form.formState.isDirty;
+  const guardActive = editing
+    ? dirty
+    : rows.length > 0 || draft !== EMPTY_PRODUCT_DRAFT || bundleProduct !== null;
 
   const giftRows = parsedRows.filter((row) => row.gift && row.qty > 0);
   const inheritedForm = giftSettings.data?.giftDocumentForm ?? null;
@@ -589,6 +707,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         limitedName={availability.kind === 'known' ? availability.limitedBy : null}
         showErrors={showErrors}
         onAdd={addComponent}
+        blockedVariantIds={bundleProduct ? [bundleProduct.variantId] : []}
       />
     ),
     product: (
@@ -620,6 +739,8 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         rows={rows}
         readOnly={readOnly}
         currency={currency}
+        bundleName={bundleName}
+        bundlePrice={bundlePrice}
         onFormChange={(variantId, documentForm) => {
           const index = rows.findIndex((row) => row.variantId === variantId);
           if (index >= 0) {
@@ -640,6 +761,8 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         availability={availability}
         productLine={productLine}
         giftLine={giftLine}
+        creating={creating}
+        masterName={masterName}
         onGoTo={(key) => {
           setStep(BUNDLE_STEP_KEYS.indexOf(key));
         }}
@@ -655,9 +778,92 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     ),
   }[stepKey];
 
+  if (editing && detail.isLoading) {
+    return (
+      <div
+        className="bf-skeleton bf-skeleton--page"
+        role="status"
+        aria-live="polite"
+        data-testid="bundle-form-loading"
+      >
+        <span className="sr-only">{copy.form.loading}</span>
+        <span className="bf-skeleton__row bf-skeleton__row--bar" aria-hidden="true" />
+        <span className="bf-skeleton__row bf-skeleton__row--card" aria-hidden="true" />
+        <span className="bf-skeleton__row bf-skeleton__row--card" aria-hidden="true" />
+      </div>
+    );
+  }
+  if (editing && detail.isError) {
+    return (
+      <BundleLoadError
+        testId="bundle-form-load-error"
+        onRetry={() => {
+          void detail.refetch();
+        }}
+      />
+    );
+  }
+  if (!editing && sessionReady && !write.visible) {
+    // Nothing on this form can be done by this role, so say so instead of
+    // showing four steps of disabled controls.
+    return (
+      <div className="bundle-form screen">
+        <Alert
+          tone="info"
+          title={copy.form.viewOnlyCreateTitle}
+          data-testid="bundle-form-readonly-notice"
+        >
+          <p>{copy.form.viewOnlyCreateBody}</p>
+          <p>
+            <Link className="button button--secondary button--sm" to="/products?bundles=only">
+              {copy.form.backToProducts}
+            </Link>
+          </p>
+        </Alert>
+      </div>
+    );
+  }
+
+  const savedProductId = savedAs !== null ? savedAs.productId || (detail.data?.productId ?? '') : '';
+  const offerMarketplaces = (connections.data ?? []).filter(
+    (c) => c.status === 'active' && c.enabledCapabilities.includes('OfferManager')
+  );
+  const offerParams = new URLSearchParams({
+    productIds: savedProductId,
+    variantIds: savedAs?.variantId ?? '',
+    // One marketplace left no choice to make, so the wizard opens on it.
+    ...(offerMarketplaces.length === 1 && offerMarketplaces[0] !== undefined
+      ? { connectionId: offerMarketplaces[0].id }
+      : {}),
+  });
+  const partialPending = createdProduct !== null && savedAs === null && !save.isPending;
+  const needsFix = shakeKey > 0 && missingFor(lastStep ? 'review' : stepKey).length > 0;
+  const nextBlocked = !stepValid[stepKey];
+
   return (
-    <BundleGuide defaultOpen={stepKey === 'product' ? 'new' : stepKey === 'gifts' ? 'gift' : 'what'}>
+    <BundleGuide defaultOpen={stepKey === 'product' ? 'new' : stepKey === 'gifts' ? 'gift' : stepKey === 'components' ? 'kind' : 'what'}>
       <div className="bundle-form screen" data-testid="bundle-form">
+        <BundleLeaveGuard active={guardActive} released={released} />
+        <a
+          className="bf-skip"
+          href="#bf-step-heading"
+          onClick={(event) => {
+            event.preventDefault();
+            headingRef.current?.focus();
+          }}
+        >
+          {copy.form.skipToStep}
+        </a>
+        <p className="sr-only" role="status" aria-live="polite" data-testid="bundle-form-step-announce">
+          {announcement}
+        </p>
+        {needsFix ? (
+          <p className="sr-only" role="alert" key={shakeKey}>
+            {interpolate(copy.form.fixPrompt, {
+              missing: missingFor(lastStep ? 'review' : stepKey).join(', '),
+            })}
+          </p>
+        ) : null}
         <div className="page-section pm-reveal">
           <header className="page-header page-header--split">
             <div className="page-header__content">
@@ -665,11 +871,11 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                 <span aria-hidden="true">‹</span>
                 {copy.form.backToProducts}
               </Link>
-              <p className="eyebrow">{copy.form.eyebrow}</p>
+              <p className="eyebrow">{editing ? copy.form.editEyebrow : copy.form.eyebrow}</p>
               <h1 className="page-title" data-testid="bundle-form-title">
                 {title}
               </h1>
-              <p className="page-description">{copy.form.intro}</p>
+              <p className="page-description">{editing ? copy.form.editIntro : copy.form.intro}</p>
             </div>
             <div className="page-header__actions">
               <BundleGuideButton />
@@ -695,21 +901,39 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
             </Alert>
           ) : null}
 
-          {saveError !== null ? (
-            <Alert tone="error" title={copy.form.saveFailed} data-testid="bundle-form-save-error">
-              {saveError}
-            </Alert>
+          {saveError !== null || partialPending ? (
+            <div ref={errorRef} tabIndex={-1} className="bf-focusbox">
+              {saveError !== null ? (
+                <Alert tone="error" title={copy.form.saveFailed} data-testid="bundle-form-save-error">
+                  {saveError}
+                </Alert>
+              ) : null}
+              {partialPending ? (
+                <Alert tone="warning" data-testid="bundle-form-partial-warning">
+                  {interpolate(copy.form.partialWarning, { name: createdProduct.name })}
+                </Alert>
+              ) : null}
+            </div>
           ) : null}
 
           {savedAs !== null ? (
-            <div className="cx-note cx-note--ok" role="status" data-testid="bundle-form-saved-alert">
+            <motion.div
+              ref={savedRef}
+              tabIndex={-1}
+              className="cx-note cx-note--ok bf-saved"
+              role="status"
+              data-testid="bundle-form-saved-alert"
+              initial={reduceMotion ? false : { opacity: 0, y: -10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={SNAPPY_SPRING}
+            >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" />
                 <path d="M8 12.5l3 3 5-6" />
               </svg>
               <div>
                 <p>
-                  <b>{copy.form.saved}</b>{' '}
+                  <b>{copy.form.saved}</b> {copy.form.savedLead}{' '}
                   {savedAs.available === null
                     ? copy.form.savedBodyUnknown
                     : interpolate(copy.form.savedBody, { n: savedAs.available })}
@@ -720,27 +944,24 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                   </p>
                 ) : null}
               </div>
-              {savedAs.productId || detail.data?.productId ? (
+              {savedProductId !== '' ? (
                 <span className="cx-note__a">
                   <Link
                     className="button button--secondary button--sm"
-                    to={`/products/${encodeURIComponent(savedAs.productId || (detail.data?.productId ?? ''))}`}
+                    to={`/products/${encodeURIComponent(savedProductId)}`}
                   >
                     {copy.form.seeBundle}
                   </Link>
                   <Link
                     className="button button--sm"
                     data-testid="bundle-form-list-offer"
-                    to={`/listings/bulk-create/wizard?${new URLSearchParams({
-                      productIds: savedAs.productId || (detail.data?.productId ?? ''),
-                      variantIds: savedAs.variantId,
-                    }).toString()}`}
+                    to={`/listings/bulk-create/wizard?${offerParams.toString()}`}
                   >
                     {copy.form.listOffer}
                   </Link>
                 </span>
               ) : null}
-            </div>
+            </motion.div>
           ) : null}
 
           {nestedError !== null ? (
@@ -756,35 +977,56 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
             maxReachedStep={maxStep}
             completedSteps={new Set(BUNDLE_STEP_KEYS.flatMap((key, index) => (index < step && stepValid[key] ? [index] : [])))}
             onSelectStep={goTo}
+            metaInline
+            lockedHint={copy.form.stepLockedHint}
+            attentionLabel={copy.form.stepNeedsAttention}
+            attentionSteps={
+              new Set(
+                BUNDLE_STEP_KEYS.flatMap((key, index) =>
+                  index < maxStep && index !== step && !stepValid[key] ? [index] : []
+                )
+              )
+            }
             testId="bundle-form-stepper"
             className="bf-stepper"
           />
+          {blockedNote !== null ? (
+            <p className="bf-blockednote" role="status" data-testid="bundle-form-blocked-note">
+              {blockedNote}
+            </p>
+          ) : null}
+          {editing ? null : <p className="bf-draftnote">{copy.form.draftNote}</p>}
 
           <div className="bf-grid">
             <div className="bf-main">
               <div className="bf-card">
                 <div className="bf-card__head">
-                  <h2 className="bf-card__t">
+                  <h2 className="bf-card__t" id="bf-step-heading" ref={headingRef} tabIndex={-1}>
                     <span className="pm-card__step">{String(step + 1).padStart(2, '0')}</span>
                     {stepNames[step]}
                   </h2>
-                  <span className="pm-card__aside pm-card__aside--plain">
-                    {interpolate(copy.form.stepOf, { n: step + 1, total: BUNDLE_STEP_KEYS.length })}
-                  </span>
                 </div>
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={stepKey}
-                    className="bf-panel"
-                    data-testid={`bundle-form-step-${stepKey}`}
-                    initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
-                    transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  >
-                    {panel}
-                  </motion.div>
-                </AnimatePresence>
+                <div className="bf-stage" ref={panelRef}>
+                  <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+                    <motion.div
+                      key={stepKey}
+                      className="bf-panel"
+                      data-testid={`bundle-form-step-${stepKey}`}
+                      custom={direction}
+                      variants={{
+                        enter: (dir: number) => ({ opacity: 0, x: dir * 28 }),
+                        center: { opacity: 1, x: 0 },
+                        exit: (dir: number) => ({ opacity: 0, x: dir * -28 }),
+                      }}
+                      initial={reduceMotion ? false : 'enter'}
+                      animate="center"
+                      exit={reduceMotion ? 'center' : 'exit'}
+                      transition={SNAPPY_SPRING}
+                    >
+                      {panel}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
               </div>
               {editing ? (
                 <div className="bf-card">
@@ -800,6 +1042,9 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                     entries={history.data}
                     isLoading={history.isLoading}
                     isError={history.isError}
+                    onRetry={() => {
+                      void history.refetch();
+                    }}
                     currency={currency}
                   />
                 </div>
@@ -816,23 +1061,18 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
             </aside>
           </div>
 
-          <button
-            type="button"
-            className="bf-summarybar"
-            data-testid="bundle-form-summary-open"
-            onClick={() => {
-              setSummaryOpen(true);
-            }}
-          >
-            <span className="bf-summarybar__l">{copy.form.summaryOpen}</span>
-            <span className="bf-summarybar__r mono tabular">
-              {summaryHeadline}
-              {bundlePrice !== null ? ` · ${format.money(bundlePrice, currency)}` : ''}
-            </span>
-            <svg viewBox="0 0 12 12" aria-hidden="true">
-              <path d="M2.5 7.5 6 4l3.5 3.5" />
-            </svg>
-          </button>
+          {editing && openOrders > 0 ? (
+            <div className="cx-note cx-note--warn bf-impact" data-testid="bundle-form-open-orders-note">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16v.5" />
+              </svg>
+              <p>
+                <b>{copy.form.impactTitle}.</b> {copy.form.impactBody}{' '}
+                {formatPlural(openOrders, copy.form.openOrdersNote, locale)}
+              </p>
+            </div>
+          ) : null}
           <SidePanel
             open={summaryOpen}
             onOpenChange={setSummaryOpen}
@@ -844,6 +1084,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
           </SidePanel>
 
           <StickyActionBar
+            aria-label={copy.form.actionsLabel}
             missingLabel={copy.form.missingLabel}
             missing={lastStep ? missing.join(' · ') : stepValid[stepKey] ? '' : stepMissing}
             readyText={
@@ -853,24 +1094,37 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                       ? interpolate(copy.form.readyAvailable, { n: availability.bundles })
                       : copy.form.readyUnknown
                   }`
-                : interpolate(copy.form.stepOf, { n: step + 1, total: BUNDLE_STEP_KEYS.length })
+                : copy.form.ready
             }
             shaking={shakeKey > 0}
           >
-            {editing && openOrders > 0 ? (
-              <span className="cx-opennote" data-testid="bundle-form-open-orders-note">
-                {formatPlural(openOrders, copy.form.openOrdersNote, locale)}
+            <button
+              type="button"
+              className="bf-summarychip"
+              data-testid="bundle-form-summary-open"
+              aria-haspopup="dialog"
+              aria-expanded={summaryOpen}
+              onClick={() => {
+                setSummaryOpen(true);
+              }}
+            >
+              <span className="bf-summarychip__l">{copy.form.summaryOpen}</span>
+              <span className="bf-summarychip__r mono tabular">
+                {summaryHeadline}
+                {bundlePrice !== null ? ` · ${format.money(bundlePrice, currency)}` : ''}
               </span>
-            ) : null}
+            </button>
             {step > 0 ? (
               <Button
                 tone="secondary"
                 className="button--sm"
                 data-testid="bundle-form-back"
                 onClick={() => {
+                  setBlockedNote(null);
                   setStep(step - 1);
                 }}
               >
+                <span aria-hidden="true">← </span>
                 {copy.form.back}
               </Button>
             ) : (
@@ -879,16 +1133,34 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
               </Link>
             )}
             {!lastStep ? (
-              <Button className="button--sm" data-testid="bundle-form-next" onClick={goNext}>
+              <Button
+                className={['button--sm', nextBlocked ? 'is-blocked' : ''].filter(Boolean).join(' ')}
+                data-testid="bundle-form-next"
+                aria-disabled={nextBlocked ? true : undefined}
+                title={
+                  nextBlocked
+                    ? interpolate(copy.form.nextBlockedTitle, { missing: stepMissing })
+                    : undefined
+                }
+                onClick={goNext}
+              >
                 {copy.form.next}
+                <span aria-hidden="true"> →</span>
               </Button>
             ) : null}
-            {lastStep || editing || readOnly ? (
+            {readOnly ? (
+              <span className="bf-viewonly" data-testid="bundle-form-view-only">
+                {copy.form.viewOnlyNoSave}
+              </span>
+            ) : lastStep || editing ? (
               <SaveButton
                 state={saveButtonState}
-                labels={{ idle: copy.form.save, saving: copy.form.saving, saved: copy.form.savedShort }}
-                disabled={saveBlocked}
-                title={readOnly ? copy.form.viewOnlyReason : undefined}
+                labels={{
+                  idle: editing ? copy.form.saveChanges : copy.form.save,
+                  saving: copy.form.saving,
+                  saved: copy.form.savedShort,
+                }}
+                disabled={saveBlocked || (editing && !dirty)}
                 onClick={pressSave}
                 data-testid="bundle-form-save"
               />

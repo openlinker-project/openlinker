@@ -8,9 +8,9 @@
  *
  * @module apps/web/src/features/bundles/components
  */
-import { useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
+import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ReadbackSentence } from '../../../shared/ui/readback-sentence';
@@ -28,6 +28,10 @@ export interface BundleStepReviewProps {
   productLine: string;
   giftLine: string;
   onGoTo: (step: BundleStepKey) => void;
+  /** True while the product will be created in a shop on save (the "create" mode). */
+  creating?: boolean;
+  /** The shop that will create the product, when it is known. */
+  masterName?: string;
   /** Set once the bundle is saved: the product and variant to list. */
   saved: { productId: string; variantId: string } | null;
 }
@@ -41,19 +45,40 @@ export function BundleStepReview({
   productLine,
   giftLine,
   onGoTo,
+  creating,
+  masterName,
   saved,
 }: BundleStepReviewProps): ReactElement {
   const copy = useMessages('bundles').form;
   const format = useFormat();
+  const { locale } = useLocale();
   const valid = rows.filter((row) => row.qty > 0);
-  const tail =
+  const stockText =
     availability.kind === 'known'
-      ? availability.limitedBy === null
-        ? interpolate(copy.readbackTail, { n: availability.bundles })
-        : interpolate(copy.readbackTailLimited, { n: availability.bundles, name: availability.limitedBy })
+      ? formatPlural(availability.bundles, copy.s4StockSentence, locale) +
+        (availability.limitedBy === null
+          ? ''
+          : ` (${interpolate(copy.s4LimitedBy, { name: availability.limitedBy })})`)
       : availability.kind === 'unknown'
         ? copy.readbackUnknown
         : '';
+  const tail = stockText === '' ? '' : `${stockText}.`;
+  const productName = name ?? copy.readbackNoProduct;
+  const compositionText = valid
+    .map((row) => `${row.name} ×${String(row.qty)}${row.gift ? ` (${copy.giftLower})` : ''}`)
+    .join(', ');
+  const edit = (what: string, step: BundleStepKey): ReactElement => (
+    <Button
+      tone="ghost"
+      className="button--sm"
+      aria-label={interpolate(copy.s4EditAria, { what })}
+      onClick={() => {
+        onGoTo(step);
+      }}
+    >
+      {copy.s4Edit}
+    </Button>
+  );
 
   return (
     <div className="bf-step">
@@ -79,27 +104,50 @@ export function BundleStepReview({
         )}
       </ReadbackSentence>
 
+      {saved === null && creating !== undefined ? (
+        <section className="s4-happens" data-testid="bundle-form-happens" aria-labelledby="s4-happens-h">
+          <h3 id="s4-happens-h" className="bf-h3">
+            {copy.s4Happens}
+          </h3>
+          <ol className="s4-happens__list">
+            <li>
+              {creating
+                ? masterName !== undefined && masterName !== ''
+                  ? interpolate(copy.s4HappensCreate, { master: masterName, name: productName })
+                  : interpolate(copy.s4HappensCreateNoMaster, { name: productName })
+                : interpolate(copy.s4HappensExisting, { name: productName })}
+            </li>
+            <li>{copy.s4HappensSave}</li>
+            <li>{copy.s4HappensNotListed}</li>
+          </ol>
+        </section>
+      ) : null}
+
       <dl className="bf-review">
+        <div>
+          <dt>{copy.s4Composition}</dt>
+          <dd data-testid="bundle-form-review-composition">{compositionText || copy.readbackEmpty}</dd>
+          {edit(copy.s4Composition, 'components')}
+        </div>
+        <div>
+          <dt>{copy.s4Stock}</dt>
+          <dd data-testid="bundle-form-review-stock">{stockText || copy.availabilityEmpty}</dd>
+          {edit(copy.s4Stock, 'components')}
+        </div>
         <div>
           <dt>{copy.s4Product}</dt>
           <dd>{productLine}</dd>
-          <Button tone="ghost" className="button--sm" onClick={() => { onGoTo('product'); }}>
-            {copy.s4Edit}
-          </Button>
+          {edit(copy.s4Product, 'product')}
         </div>
         <div>
           <dt>{copy.s4Price}</dt>
           <dd className="mono tabular">{price !== null ? format.money(price, currency) : copy.summaryNoPrice}</dd>
-          <Button tone="ghost" className="button--sm" onClick={() => { onGoTo('product'); }}>
-            {copy.s4Edit}
-          </Button>
+          {edit(copy.s4Price, 'product')}
         </div>
         <div>
-          <dt>{copy.s4Gifts}</dt>
-          <dd>{giftLine}</dd>
-          <Button tone="ghost" className="button--sm" onClick={() => { onGoTo('gifts'); }}>
-            {copy.s4Edit}
-          </Button>
+          <dt>{copy.s4Documents}</dt>
+          <dd>{giftLine === copy.s4NoGifts ? copy.s4DocumentsNoGift : giftLine}</dd>
+          {edit(copy.s4Documents, 'gifts')}
         </div>
       </dl>
 
@@ -113,6 +161,13 @@ export function BundleStepReview({
 function SendOn({ saved }: { saved: { productId: string; variantId: string } }): ReactElement {
   const copy = useMessages('bundles').form;
   const connections = useConnectionsQuery();
+  const sectionRef = useRef<HTMLElement | null>(null);
+  // The next step appears below the fold after Save; bring it into view so the
+  // operator does not have to discover that saving was not the end.
+  useEffect(() => {
+    sectionRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    sectionRef.current?.focus({ preventScroll: true });
+  }, []);
   const active = (connections.data ?? []).filter((c) => c.status === 'active');
   const marketplaces = active.filter((c) => c.enabledCapabilities.includes('OfferManager'));
   const shops = active.filter(
@@ -128,7 +183,13 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
     }).toString()}`;
 
   return (
-    <section className="bf-sendon" data-testid="bundle-form-send-on" aria-labelledby="bf-sendon-h">
+    <section
+      ref={sectionRef}
+      tabIndex={-1}
+      className="bf-sendon"
+      data-testid="bundle-form-send-on"
+      aria-labelledby="bf-sendon-h"
+    >
       <h3 id="bf-sendon-h" className="bf-h3">
         {copy.goTitle}
       </h3>

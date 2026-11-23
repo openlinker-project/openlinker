@@ -964,14 +964,29 @@ function ProductRow({
           <div className="t">
             <b>{row.product?.name ?? copy.row.loading}</b>
             {bundle ? (
-              <span className="cx-tag" data-testid="bundle-row-tag">
-                <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
-                </svg>
+              <button
+                type="button"
+                className={`cx-tag bundle-row-tag${
+                  packSizeOf(bundle) !== null ? ' bundle-row-tag--pack' : ''
+                }`}
+                data-testid="bundle-row-tag"
+                title={packSizeOf(bundle) !== null ? bundleCopy.markerHintPack : bundleCopy.markerHintSet}
+                aria-expanded={open}
+                onClick={onToggleExpand}
+              >
+                {packSizeOf(bundle) !== null ? (
+                  <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 7h12v12H7zM4 4h12v3M4 4v12h3" />
+                  </svg>
+                ) : (
+                  <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                  </svg>
+                )}
                 {packSizeOf(bundle) !== null
                   ? interpolate(bundleCopy.packMarker, { n: packSizeOf(bundle) ?? 0 })
                   : plural(bundle.components.length, bundleCopy.marker)}
-              </span>
+              </button>
             ) : null}
             <small>
               {row.primaryVariant?.sku ?? ''}
@@ -979,7 +994,7 @@ function ProductRow({
               {noVariants
                 ? copy.row.noVariants
                 : bundle
-                  ? bundleCopy.noOwnEan
+                  ? bundleSubline(bundle, bundleCopy)
                   : plural(row.variants.length, copy.row.variantCount)}
             </small>
           </div>
@@ -1155,15 +1170,49 @@ function IncludeToggle({
 /** What a bundle lists at: the whole sets it can make, and what limits that (#3520). */
 function BundleStock({ preview }: { preview: BundleOfferPreviewOk }): ReactElement {
   const copy = useMessages('listings').bundleOffer;
+  const plural = usePlural();
   const limiting = preview.components.find(
     (component) => component.variantId === preview.limitingComponentVariantId,
   );
+  if (preview.availableSets === null) {
+    return (
+      <span className="bundle-stock bundle-stock--unknown" title={copy.setsUnknownHint}>
+        <span>{copy.setsUnknown}</span>
+      </span>
+    );
+  }
+  const setsLabel = plural(preview.availableSets, copy.sets);
+  const limitLabel = limiting
+    ? interpolate(copy.limitedByUnits, {
+        name: limiting.name,
+        units: limiting.availableUnits ?? 0,
+      })
+    : null;
   return (
-    <span className="bundle-stock">
-      <span>{preview.availableSets ?? '-'}</span>
-      {limiting ? <small title={limiting.name}>{interpolate(copy.limitedBy, { name: limiting.name })}</small> : null}
+    <span
+      className={`bundle-stock${preview.availableSets === 0 ? ' bundle-stock--zero' : ''}`}
+      title={limitLabel ? `${setsLabel}. ${copy.setsExplain} ${limitLabel}` : copy.setsExplain}
+      aria-label={limitLabel ? `${setsLabel}, ${limitLabel}` : setsLabel}
+    >
+      <span>{setsLabel}</span>
+      {limitLabel ? <small>{limitLabel}</small> : null}
     </span>
   );
+}
+
+/** What a collapsed bundle row says about its contents, without opening it. */
+function bundleSubline(
+  bundle: BundleOfferPreviewOk,
+  copy: ReturnType<typeof useMessages<'listings'>>['bundleOffer'],
+): string {
+  const packSize = packSizeOf(bundle);
+  if (packSize !== null) return interpolate(copy.sublinePack, { n: packSize });
+  const names = bundle.components.map((component) => component.name);
+  const shown = names.slice(0, 2).join(', ');
+  const rest = names.length - 2;
+  return interpolate(copy.sublineSet, {
+    names: rest > 0 ? `${shown}, +${rest}` : shown,
+  });
 }
 
 interface VariantRowProps {

@@ -805,7 +805,10 @@ export function BulkWizard({
           description: describeBulkSubmitOutcome(selectedCount, result),
         });
         leaveGuardReleasedRef.current = true;
-        void navigate(`/listings/bulk-batches/${result.batchId}`);
+        // The skip counts live only in the toast otherwise; the progress page repeats them.
+        void navigate(`/listings/bulk-batches/${result.batchId}`, {
+          state: { skippedAlreadyListedCount: result.skippedAlreadyListedCount },
+        });
       } catch {
         // Surfaced via mutation.error in the modal.
       } finally {
@@ -903,6 +906,25 @@ export function BulkWizard({
     }
     return n;
   }, [rows, alreadyListedSet, isShop, blockerChips]);
+
+  // The sets among them, so the confirmation can name what it skips rather than
+  // saying only "N already on the marketplace" (#3520).
+  const alreadyListedBundleCount = useMemo(() => {
+    if (alreadyListedSet.size === 0 || isShop) return 0;
+    let n = 0;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (
+          variant.included &&
+          alreadyListedSet.has(variant.variantId) &&
+          bundlePreview.bundles.has(variant.variantId)
+        ) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+  }, [rows, alreadyListedSet, isShop, bundlePreview.bundles]);
 
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
   const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
@@ -1129,6 +1151,7 @@ export function BulkWizard({
             excludedCount={counts.excluded}
             blockedCount={counts.includedNeedsAttention}
             alreadyListedCount={readyButAlreadyListedCount}
+            alreadyListedBundleCount={alreadyListedBundleCount}
             mixedPublishWarning={counts.mixedPublish}
             bundleSummary={bundleSummary}
             connectionName={resolveConnectionName(config.connectionId)}

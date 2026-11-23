@@ -57,10 +57,28 @@ describe('BundleComposition', () => {
   it('should list each component with its mode, quantity and gift marker', () => {
     renderIt('74035');
     expect(screen.getByText('Kawa 250 g')).toBeInTheDocument();
-    expect(screen.getByText('own offer 778123')).toBeInTheDocument();
+    expect(screen.getByText('your offer 778123')).toBeInTheDocument();
     expect(screen.getByText('gift')).toBeInTheDocument();
-    expect(screen.getByText('cannot be listed')).toBeInTheDocument();
+    expect(screen.getByText('component has no offer')).toBeInTheDocument();
     expect(screen.getByText('No catalogue match.')).toBeInTheDocument();
+  });
+
+  it('should summarise how many sets can be sold and which component limits them', () => {
+    renderIt('74035');
+    expect(screen.getByTestId('bundle-sets-summary')).toHaveTextContent('Sets available');
+  });
+
+  it('should explain each mode in words, not only in a badge', () => {
+    renderIt('74035');
+    expect(
+      screen.getAllByText('The component has no offer or product card. List it first.').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('should open the publish link in a new tab so the batch is not lost', () => {
+    renderIt('74035');
+    expect(screen.getByRole('link', { name: 'List component' })).toHaveAttribute('target', '_blank');
+    expect(screen.getByTestId('bundle-missing-hint')).toBeInTheDocument();
   });
 
   it('should link a component that cannot be listed to publishing it on its own', () => {
@@ -117,7 +135,7 @@ describe('BundleComposition - multipack and stock', () => {
       />
     );
     expect(screen.getByTestId('bundle-pack-hint')).toHaveTextContent('pack of 3');
-    expect(screen.getByTestId('bundle-component-stock')).toHaveTextContent('12 in stock → 4');
+    expect(screen.getByTestId('bundle-component-stock')).toHaveTextContent('12 in stock · enough for 4 sets');
   });
 
   it('should not show a pack hint for a set of different products', () => {

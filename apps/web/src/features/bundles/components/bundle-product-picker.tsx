@@ -12,8 +12,7 @@ import { useState, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
-import { useMessages } from '../../../shared/i18n';
-import { interpolate } from '../../../shared/i18n';
+import { formatPlural, interpolate, useLocale, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
 import { toBundleChoice, variantLabel, type BundleProductChoice } from '../lib/bundle-choice';
@@ -38,6 +37,7 @@ export function BundleProductPicker({
   testIdPrefix,
 }: BundleProductPickerProps): ReactElement {
   const copy = useMessages('bundles');
+  const { locale } = useLocale();
   const apiClient = useApiClient();
   const [text, setText] = useState('');
   const [expanded, setExpanded] = useState<Product | null>(null);
@@ -92,11 +92,20 @@ export function BundleProductPicker({
           setExpanded(null);
         }}
       />
-      {search.length >= 2 && results.data !== undefined && results.data.items.length === 0 ? (
-        <p className="text-muted">{copy.form.noResults}</p>
+      {search.length < 2 && text.trim().length > 0 ? (
+        <p className="pm-help">{copy.form.s2SearchHint}</p>
       ) : null}
+      <p className="pm-help bundle-picker__status" role="status" aria-live="polite">
+        {search.length >= 2 && results.isFetching
+          ? copy.form.s2SearchLoading
+          : search.length >= 2 && results.data !== undefined
+            ? results.data.items.length === 0
+              ? interpolate(copy.form.s2SearchEmpty, { query: search })
+              : formatPlural(results.data.items.length, copy.form.s2ResultsCount, locale)
+            : ''}
+      </p>
       {search.length >= 2 && results.data !== undefined && results.data.items.length > 0 ? (
-        <ul className="bundle-picker__results" role="list">
+        <ul className="bundle-picker__results" role="list" aria-busy={results.isFetching}>
           {results.data.items.map((product) => (
             <li key={product.id}>
               <button

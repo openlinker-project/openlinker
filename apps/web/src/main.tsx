@@ -9,6 +9,7 @@ import { env } from './shared/config/env';
 import { loadMessages } from './shared/i18n';
 import { resolveInitialLocale } from './shared/i18n/resolve-locale';
 import './index.css';
+import './styles/bundle-ux.css';
 
 // A tab opened before a deploy asks for chunks the new build no longer has.
 installStaleBuildReload(() => {

@@ -193,7 +193,7 @@ export function useProductCells() {
               <StatusBadge tone="neutral" withDot compact>
                 {copy.stock.notKnown}
               </StatusBadge>
-            ) : (
+            ) : product.bundle && atpStatus !== 'out-of-stock' && atpStatus !== 'oversold' ? null : (
               <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
                 {STOCK_STATUS_LABEL[atpStatus]}
               </StatusBadge>
@@ -214,7 +214,23 @@ export function useProductCells() {
                   : interpolate(bundleCopy.list.unknownReasonGeneric, { name: product.name })}
               </span>
             ) : null}
-            {product.totalAvailable !== undefined ? (
+            {product.bundle && product.availableToPromise !== null ? (
+              <span className="sr-only">
+                {interpolate(bundleCopy.list.stockAria, {
+                  n: product.availableToPromise,
+                  limit: product.bundle.limitedBy?.name ?? product.bundle.limitedBy?.sku ?? '-',
+                })}
+              </span>
+            ) : null}
+            {product.bundle ? (
+              <span
+                className="text-muted products-cell-sub"
+                title={bundleCopy.list.fromComponentsTitle}
+                data-testid={`bundle-list-from-components-${product.sku ?? product.id}`}
+              >
+                {bundleCopy.list.fromComponents}
+              </span>
+            ) : product.totalAvailable !== undefined ? (
               <span className="text-muted products-cell-sub tabular">
                 {interpolate(copy.stock.master, { n: format.number(product.totalAvailable) })}
               </span>

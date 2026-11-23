@@ -209,6 +209,13 @@
         "many": "błędy: {n}",
         "one": "błędy: {n}",
         "other": "błędy: {n}"
+      },
+      "openBundles": "Zobacz zestawy",
+      "skipped": {
+        "few": "pominięto: {n} (już w ofercie)",
+        "many": "pominięto: {n} (już w ofercie)",
+        "one": "pominięto: {n} (już w ofercie)",
+        "other": "pominięto: {n} (już w ofercie)"
       }
     },
     "title": "Partia zbiorcza <id>{batchId}</id>",
@@ -563,19 +570,21 @@
   },
   "bulkConfirmModal": {
     "bundles": {
-      "sets": {
-        "one": "{n} zestaw",
-        "few": "{n} zestawy",
-        "many": "{n} zestawów",
-        "other": "{n} zestawu"
-      },
+      "consequence": "Sprzedaż zestawu zmniejsza stan jego składników.",
+      "line": "W tym {parts}.",
       "packs": {
-        "one": "{n} wielopak",
         "few": "{n} wielopaki",
         "many": "{n} wielopaków",
+        "one": "{n} wielopak",
         "other": "{n} wielopaku"
       },
-      "line": "W tym {parts}. Ich stan to pełne zestawy lub wielopaki, które da się złożyć ze składników."
+      "sets": {
+        "few": "{n} zestawy",
+        "many": "{n} zestawów",
+        "one": "{n} zestaw",
+        "other": "{n} zestawu"
+      },
+      "stockRule": "Liczba sztuk na ofercie to tyle pełnych kompletów, ile da się teraz złożyć ze składników. Zmieni się, gdy zmieni się stan składników."
     },
     "cancel": "Anuluj",
     "idempotency": "<strong>Ochrona przed duplikatami.</strong> Jeśli przypadkiem wyślesz formularz dwa razy, OpenLinker zwróci istniejącą partię zamiast tworzyć duplikat.",
@@ -612,12 +621,19 @@
     },
     "reasons": {
       "alreadyListed": "{n} już w {connection}",
+      "bundleCount": {
+        "few": "{n} zestawy",
+        "many": "{n} zestawów",
+        "one": "{n} zestaw",
+        "other": "{n} zestawu"
+      },
       "needsAttention": {
         "few": "{n} wciąż wymagają uwagi",
         "many": "{n} wciąż wymaga uwagi",
         "one": "{n} wciąż wymaga uwagi",
         "other": "{n} wciąż wymaga uwagi"
       },
+      "ofWhichBundles": "(w tym {bundles})",
       "switchedOff": "{n} wyłączono"
     },
     "submit": "Utwórz oferty",
@@ -1402,38 +1418,64 @@
     "title": "Opuścić tę partię?"
   },
   "bundleOffer": {
+    "batchLine": "{contents} · {stock}",
     "categoryMismatch": "Kategoria różni się od karty produktu pierwszego składnika, a sklep wymaga, żeby były takie same.",
     "collapse": "Ukryj skład zestawu {name}",
     "compositionHeading": "Skład na {destination}",
-    "compositionHint": "{n} produktów · tryb pokazuje, jak składnik trafia do oferty",
+    "compositionHint": "{n} produktów · plakietka pokazuje, skąd zestaw weźmie dane składnika",
     "eanNotNeeded": "Zestaw nie potrzebuje własnego EAN. Kody mają jego produkty.",
     "eanNotNeededPack": "Wielopak nie potrzebuje własnego EAN. Kod ma jego produkt.",
     "editingFooter": "Edycja oferty zestawu. Zmiany dotyczą tylko tej partii.",
     "expand": "Pokaż skład zestawu {name}",
+    "failedNoStock": "Zestaw nie może być wystawiony: składnik „{name}” ma stan 0.",
     "gift": "gratis",
     "insertComponentList": "Wstaw listę składników",
     "limitedBy": "ogranicza: {name}",
+    "limitedByUnits": "ogranicza: {name} ({units} szt.)",
+    "limitsSet": "ogranicza zestaw",
     "marker": {
       "few": "Zestaw · {n} produkty",
       "many": "Zestaw · {n} produktów",
       "one": "Zestaw · {n} produkt",
       "other": "Zestaw · {n} produktu"
     },
-    "modes": {
-      "catalogCard": "karta z katalogu",
-      "missing": "nie da się wystawić",
-      "newProduct": "nowy produkt",
-      "ownOffer": "własna oferta",
-      "ownOfferWithId": "własna oferta {id}"
+    "markerHintPack": "Wielopak: ten sam produkt w paczce po kilka sztuk. Kliknij, aby zobaczyć szczegóły.",
+    "markerHintSet": "Zestaw: różne produkty sprzedawane razem jako jedna oferta. Kliknij, aby zobaczyć skład.",
+    "missingHint": "Składnik wystawisz w nowej karcie. Po wystawieniu wróć tutaj i odśwież podgląd.",
+    "modeHints": {
+      "catalogCard": "Zestaw podepnie się pod kartę produktu z katalogu.",
+      "missing": "Składnik nie ma oferty ani karty produktu. Wystaw go najpierw.",
+      "newProduct": "Składnik zostanie utworzony razem z ofertą.",
+      "ownOffer": "Ten składnik ma już Twoją ofertę, zestaw użyje jej danych."
     },
-    "noOwnEan": "bez własnego EAN",
-    "packCompositionHint": "Jeden produkt, paczka po {n} szt. · tryb pokazuje, jak trafia do oferty",
+    "modes": {
+      "catalogCard": "z katalogu",
+      "missing": "brak oferty składnika",
+      "newProduct": "nowy produkt",
+      "ownOffer": "Twoja oferta",
+      "ownOfferWithId": "Twoja oferta {id}"
+    },
+    "packCompositionHint": "Jeden produkt, paczka po {n} szt. · plakietka pokazuje, skąd oferta weźmie dane produktu",
     "packHint": "Jeden produkt sprzedawany w paczce po {n} szt. {destination} wystawia go jako jeden produkt z ilością {n}.",
     "packMarker": "Wielopak · ×{n}",
     "publishComponent": "Wystaw składnik",
     "quantity": "×{n}",
-    "stockLine": "{units} szt. → {sets}",
-    "unitsInStock": "{n} szt. w magazynie",
+    "sets": {
+      "few": "{n} komplety",
+      "many": "{n} kompletów",
+      "one": "{n} komplet",
+      "other": "{n} kompletu"
+    },
+    "setsExplain": "Tyle pełnych kompletów da się teraz złożyć ze składników.",
+    "setsSummary": "Dostępne zestawy: {n}",
+    "setsSummaryLimit": "ogranicza: {name}",
+    "setsSummaryUnknown": "Dostępne zestawy: brak danych",
+    "setsUnknown": "brak danych",
+    "setsUnknownHint": "Nie znamy stanu któregoś ze składników, więc nie da się policzyć kompletów.",
+    "stockAsSets": "stan: {sets}",
+    "stockLine": "{units} szt. na stanie · starczy na {sets} zest.",
+    "sublinePack": "{n} szt. w paczce",
+    "sublineSet": "Zestaw z: {names}",
     "useFirstComponentCategory": "Użyj kategorii pierwszego składnika"
   },
   "categoryLookup": {
@@ -1676,6 +1718,7 @@
     },
     "badgeTitles": {
       "draft": "W kanale, ale nieaktywna.",
+      "ended": "Oferta zakończona w kanale. Możesz wystawić ją ponownie.",
       "invalid": "Nieaktywna w kanale, z nierozwiązanymi błędami walidacji.",
       "notSynced": "Nigdy nie odczytano statusu tej oferty w kanale."
     },
@@ -1683,7 +1726,7 @@
       "activating": "Aktywowanie",
       "deactivating": "Dezaktywowanie",
       "draft": "Szkic",
-      "ended": "Zakończona",
+      "ended": "Sprzedaż zakończona",
       "invalid": "Błędna",
       "notSynced": "Niezsynchronizowana",
       "productDeleted": "Produkt usunięty",
@@ -1756,6 +1799,8 @@
       "variantId": "ID wariantu"
     },
     "cells": {
+      "endedNoQuantity": "Oferta zakończona, brak ilości",
+      "limitedBy": "ogranicza: {name}",
       "noReadingYet": "Brak odczytu z kanału",
       "outOfStock": "Brak w magazynie",
       "priceNotReported": "Kanał nie zgłosił ceny",
@@ -1772,6 +1817,7 @@
       "onChannel": "w kanale",
       "price": "Cena",
       "quantity": "Ilość",
+      "relist": "Wystaw ponownie",
       "statusRead": "odczyt statusu",
       "updated": "Zmieniono"
     },
@@ -1822,6 +1868,14 @@
       }
     },
     "listingCell": {
+      "bundlePack": "Wielopak",
+      "bundleSet": {
+        "few": "Zestaw · {n} składniki",
+        "many": "Zestaw · {n} składników",
+        "one": "Zestaw · {n} składnik",
+        "other": "Zestaw · {n} składnika"
+      },
+      "bundleTitle": "Zestaw lub wielopak: kilka produktów sprzedawanych jako jedna oferta.",
       "eanLabel": "EAN:",
       "eanTitle": "EAN: {ean}",
       "noLinkedVariant": "Brak powiązanego wariantu",
@@ -1859,6 +1913,7 @@
       "shopBlocked": "Zablokowane przez sklep"
     },
     "publishProducts": "Opublikuj produkty",
+    "relist": "Wystaw ponownie",
     "retry": "Ponów",
     "status": {
       "countsLoaded": "Wczytano liczby ofert.",
@@ -1938,6 +1993,12 @@
     "ariaLabel": "Opis oferty"
   },
   "offerProductPickerModal": {
+    "bundleFilter": {
+      "all": "Wszystko",
+      "ariaLabel": "Rodzaj produktów",
+      "exclude": "Bez zestawów",
+      "only": "Zestawy"
+    },
     "capReached": "Osiągnięto maksimum {max} produktów na partię - usuń produkt, aby dodać inny.",
     "closeAria": "Zamknij",
     "description": "Wybierz całe produkty lub pojedyncze warianty, łącz różne produkty, a następnie wybierz marketplace lub sklep do publikacji - wszystko stanie się jedną partią.",
@@ -1948,6 +2009,8 @@
       "title": "Odrzucić zmiany?"
     },
     "empty": {
+      "createBundle": "Utwórz pierwszy zestaw",
+      "noBundles": "Brak zestawów.",
       "noMatch": "Żaden produkt nie pasuje do \"{query}\".",
       "noProducts": "Brak produktów."
     },
@@ -2002,6 +2065,8 @@
     "backAria": "Wróć do produktów",
     "cancel": "Anuluj",
     "chips": {
+      "bundle": "zestaw",
+      "bundleTitle": "Zestaw nie potrzebuje własnego EAN.",
       "needEan": {
         "few": "{n} wymagają EAN",
         "many": "{n} wymaga EAN",
@@ -2022,6 +2087,7 @@
       "noSelection": "Zaznacz co najmniej jeden produkt, a następnie wybierz kanał docelowy."
     },
     "counts": {
+      "bundles": "zestawy",
       "listings": "oferty",
       "needEan": "wymaga EAN",
       "offers": "oferty",
@@ -2045,6 +2111,15 @@
     }
   },
   "offerProductPickerRow": {
+    "bundlePack": "Wielopak",
+    "bundleSet": {
+      "few": "Zestaw · {n} składniki",
+      "many": "Zestaw · {n} składników",
+      "one": "Zestaw · {n} składnik",
+      "other": "Zestaw · {n} składnika"
+    },
+    "bundleTitle": "Sprzedajesz składniki razem jako jedną ofertę.",
+    "bundleVariantNote": "EAN mają składniki zestawu",
     "capReached": "Osiągnięto maksimum {max} produktów na partię",
     "collapseAria": "Zwiń {name}",
     "expandAria": "Rozwiń {name}",

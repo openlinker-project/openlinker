@@ -450,6 +450,9 @@ function ProductsListPageBody(): ReactElement {
     [sortField, sortDir, setSort],
   );
 
+  const otherFilterActive = Boolean(
+    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || taxRateState,
+  );
   const anyFilterActive = Boolean(
     debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || taxRateState || bundleView !== undefined,
   );
@@ -747,11 +750,15 @@ function ProductsListPageBody(): ReactElement {
                     className="products-cell-sub"
                     data-testid={`bundle-list-row-${product.sku ?? product.id}`}
                   >
-                    <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
+                    <StatusBadge
+                      tone="warning"
+                      compact
+                      data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}
+                    >
                       {interpolate(bundleCopy.list.limitedBy, {
                         name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
                       })}
-                    </span>
+                    </StatusBadge>
                   </span>
                 ) : null}
                 {/* The Source column is `hideBelow: 1024`, so below that width the
@@ -1106,6 +1113,22 @@ function ProductsListPageBody(): ReactElement {
           title={copy.error.title}
           message={describeApiError(query.error, 'products')}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>}
+        />
+      ) : items.length === 0 && bundleView === 'only' && !otherFilterActive ? (
+        <EmptyState
+          liveRegion="off"
+          title={bundleCopy.list.emptyTitle}
+          message={bundleCopy.list.emptyMessage}
+          action={
+            <span className="button-group" data-testid="bundle-list-empty">
+              {bundleWrite.canWrite ? (
+                <Link className="button button--primary" to="/products/bundles/new" data-testid="bundle-list-empty-create">
+                  {bundleCopy.list.emptyCreate}
+                </Link>
+              ) : null}
+              <GuideButton label={bundleCopy.list.emptyGuide} />
+            </span>
+          }
         />
       ) : items.length === 0 ? (
         <EmptyState

@@ -76,6 +76,8 @@ interface OrderLineItemsPanelProps {
   bundleLines?: readonly OrderBundleLine[];
   /** The connection issuing the order's sales document, once there is one (#3940): the gift tag names where a gift's form came from. */
   documentConnectionId?: string | null;
+  /** The issued document's number, once there is one, for the "on the document" line. */
+  documentNumber?: string | null;
 }
 
 type DisplayRow =
@@ -92,6 +94,7 @@ export function OrderLineItemsPanel({
   channelQuantities,
   bundleLines,
   documentConnectionId = null,
+  documentNumber = null,
 }: OrderLineItemsPanelProps): ReactElement {
   const bundleCopy = useMessages('bundles');
   const currency = totals?.currency;
@@ -146,7 +149,10 @@ export function OrderLineItemsPanel({
           extra={
             <>
               {bundleByLine.has(item.id) ? (
-                <BundleLineNotes bundle={bundleByLine.get(item.id) as OrderBundleLine} />
+                <BundleLineNotes
+                  bundle={bundleByLine.get(item.id) as OrderBundleLine}
+                  name={item.name ?? item.sku ?? item.id}
+                />
               ) : null}
               {item.gift ? (
                 <GiftLineTag
@@ -252,7 +258,18 @@ export function OrderLineItemsPanel({
           </div>
         );
       }
-      if (column.id === 'qty') return row.component.quantity;
+      if (column.id === 'qty') {
+        return (
+          <span>
+            {row.component.quantity}
+            {row.component.perUnit > 0 && row.component.perUnit !== row.component.quantity ? (
+              <span className="text-muted" data-testid={`order-bundle-per-unit-${row.component.sku ?? row.component.variantId}`}>
+                {` ${interpolate(bundleCopy.order.perBundleUnit, { n: row.component.perUnit })}`}
+              </span>
+            ) : null}
+          </span>
+        );
+      }
       if (column.id === 'unitPrice') {
         // The gift slot is shown at what the buyer pays for it, not as part of the set price.
         return row.component.giftSlot === true ? (
@@ -314,6 +331,9 @@ export function OrderLineItemsPanel({
           }}
         />
       </div>
+      {bundleByLine.size > 0 ? (
+        <BundleShipStrip items={items} bundleByLine={bundleByLine} documentNumber={documentNumber} />
+      ) : null}
       {costs.enabled && costs.status === 'loaded' ? <CostFootnote lines={costs.lines} /> : null}
     </div>
   );
@@ -356,19 +376,76 @@ function GiftSlotNote({
  * order keeps the composition it was frozen with. No version numbers: the
  * operator decides nothing by them.
  */
-function BundleLineNotes({ bundle }: { bundle: OrderBundleLine }): ReactElement {
+function BundleLineNotes({ bundle, name }: { bundle: OrderBundleLine; name: string }): ReactElement {
   const copy = useMessages('bundles');
+  const components = bundle.components
+    .map((component) => `${component.name ?? component.sku ?? component.variantId} x${component.quantity}`)
+    .join(' + ');
   return (
     <>
-      <StatusBadge tone="info" compact>
-        {copy.order.bundleMark}
-      </StatusBadge>
+      <Link
+        to={`/products/bundles/${encodeURIComponent(bundle.bundleVariantId)}`}
+        className="ux-bundle-chip"
+        title={`${copy.order.bundleTooltip}\n${components}`}
+        aria-label={interpolate(copy.order.openBundle, { name })}
+        data-testid="order-bundle-link"
+      >
+        <StatusBadge tone="info" compact>
+          {copy.order.bundleMark}
+        </StatusBadge>
+      </Link>
+      <span className="ux-bundle-note" data-testid="order-bundle-note">
+        {copy.order.bundleNote}
+      </span>
       {bundle.olderComposition ? (
         <span className="text-muted" data-testid="order-bundle-old-composition-note">
           {copy.order.oldComposition}
         </span>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Reconciles pick list, parcel and document in two lines: what the packer puts
+ * in the box (the physical components) and what the sales document carries
+ * (the bundle as one line). Without it the operator has to infer both from the
+ * indented rows above.
+ */
+function BundleShipStrip({
+  items,
+  bundleByLine,
+  documentNumber,
+}: {
+  items: ParsedOrderItem[];
+  bundleByLine: ReadonlyMap<string, OrderBundleLine>;
+  documentNumber: string | null;
+}): ReactElement {
+  const copy = useMessages('bundles');
+  const shipLine = [...bundleByLine.values()]
+    .flatMap((bundle) => bundle.components)
+    .map((component) => `${component.quantity} x ${component.name ?? component.sku ?? component.variantId}`)
+    .join(', ');
+  const documentLine = items
+    .filter((item) => bundleByLine.has(item.id))
+    .map((item) => `${item.quantity} x ${item.name ?? item.sku ?? item.id}`)
+    .join(', ');
+  return (
+    <div className="ux-pack-strip" data-testid="order-bundle-ship-strip">
+      <p className="ux-pack-strip__row">
+        <span className="ux-pack-strip__label">{copy.order.shipLabel}</span>
+        <strong>{shipLine}</strong>
+      </p>
+      {documentNumber !== null ? (
+        <p className="ux-pack-strip__row" data-testid="order-bundle-document-line">
+          <span className="ux-pack-strip__label">
+            {interpolate(copy.order.documentLabel, { number: documentNumber })}
+          </span>
+          <strong>{documentLine}</strong>
+        </p>
+      ) : null}
+      <p className="ux-pack-strip__hint">{copy.order.shipHint}</p>
+    </div>
   );
 }
 

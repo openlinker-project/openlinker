@@ -11,7 +11,13 @@ import { z } from 'zod';
 export const BUNDLE_STEP_KEYS = ['components', 'product', 'gifts', 'review'] as const;
 export type BundleStepKey = (typeof BUNDLE_STEP_KEYS)[number];
 
-export const quantitySchema = z.string().regex(/^[1-9]\d*$/);
+/** The most of one component a single bundle may hold; the step shows it as the limit. */
+export const MAX_COMPONENT_QUANTITY = 9999;
+
+export const quantitySchema = z
+  .string()
+  .regex(/^[1-9]\d*$/)
+  .refine((text) => Number(text) <= MAX_COMPONENT_QUANTITY);
 
 export const bundleFormSchema = z.object({
   components: z

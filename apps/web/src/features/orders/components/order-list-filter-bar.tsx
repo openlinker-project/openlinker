@@ -703,6 +703,25 @@ export function OrderListFilterBar({
             <span className="gift-quick-filter__count">{summary.withGift}</span>
           ) : null}
         </button>
+        <button
+          type="button"
+          className={['gift-quick-filter', state.withBundle ? 'gift-quick-filter--on' : '']
+            .filter(Boolean)
+            .join(' ')}
+          aria-pressed={state.withBundle}
+          data-testid="orders-bundle-quick-filter"
+          onClick={() => {
+            filtersApi.toggle('withBundle');
+          }}
+        >
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M8 1.5 14 4.5v7L8 14.5 2 11.5v-7zM2 4.5l6 3 6-3M8 7.5v7" />
+          </svg>
+          {giftCopy.filter.quickBundle}
+          {summary?.withBundle !== undefined ? (
+            <span className="gift-quick-filter__count">{summary.withBundle}</span>
+          ) : null}
+        </button>
         <span className="list-toolbar__spacer" />
         <span className="text-muted mono tabular list-results" aria-live="polite">
           {resultCount === null

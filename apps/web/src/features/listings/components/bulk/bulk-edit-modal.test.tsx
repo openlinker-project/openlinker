@@ -2477,7 +2477,7 @@ describe('BulkEditModal for a bundle (#3520)', () => {
     renderBundle();
     expect(screen.getByText('Set contents on Allegro')).toBeInTheDocument();
     expect(screen.getByText('Kubek 350 ml')).toBeInTheDocument();
-    expect(screen.getByText('own offer 778')).toBeInTheDocument();
+    expect(screen.getByText('your offer 778')).toBeInTheDocument();
     expect(screen.getByText('new product')).toBeInTheDocument();
   });
 
