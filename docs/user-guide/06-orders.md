@@ -26,11 +26,11 @@ When you connect a shop or marketplace, you choose which orders OpenLinker bring
 You can change this later on the connection's **Orders** tab (**Order import** panel):
 
 - **Check for new orders** runs a check right now.
-- **Import older orders...** lets you restart from a different start, or import a chosen date range. Orders already imported stay; a restart only decides what is read next. If a check is running at that moment, wait a moment and try again.
+- **Get past orders...** lets you restart from a different start, or import a chosen date range. Orders already imported stay; a restart only decides what is read next. If a check is running at that moment, wait a moment and try again.
 
 What each platform offers:
 
-| Platform | Only new orders | From a date | Import older orders |
+| Platform | Only new orders | From a date | Get past orders |
 |---|---|---|---|
 | PrestaShop | yes | yes (not on a shop that cannot filter by date; you will be told) | yes |
 | WooCommerce | yes | yes (the day is read in UTC) | no |
