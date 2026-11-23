@@ -16,11 +16,12 @@ import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '..
 import { Button } from '../../../shared/ui/button';
 import { HelpHint } from '../../../shared/ui/help-hint';
 import { Input } from '../../../shared/ui/input';
-import { SNAPPY_SPRING } from '../../../shared/ui/motion-presets';
+import { EASE_OUT, SNAPPY_SPRING } from '../../../shared/ui/motion-presets';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { VariantThumbnail } from '../../products';
 import {
   MAX_COMPONENT_QUANTITY,
+  SOFT_COMPONENT_LIMIT,
   type BundleFormRow,
   type BundleFormValues,
   type CompositionProblem,
@@ -92,6 +93,8 @@ export function BundleStepComponents({
   const seenIds = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);
   const [moved, setMoved] = useState<string>('');
+  // The multipack example promises "x3 after the first pick": remembered until a row arrives.
+  const [wantedPack, setWantedPack] = useState<number | null>(null);
   const [pendingFocus, setPendingFocus] = useState<{ id: string; dir: 'up' | 'down' } | null>(null);
 
   // Rows that were already there on mount (editing) must not flash; only one
@@ -114,6 +117,12 @@ export function BundleStepComponents({
       window.clearTimeout(timer);
     };
   }, [components.fields]);
+
+  useEffect(() => {
+    if (wantedPack === null || rows.length !== 1) return;
+    form.setValue('components.0.quantity', String(wantedPack), { shouldDirty: true, shouldValidate: true });
+    setWantedPack(null);
+  }, [wantedPack, rows.length, form]);
 
   // After a move the button that was pressed sits on a different index (or is
   // now disabled); give the focus back so the keyboard can keep going.
@@ -190,6 +199,42 @@ export function BundleStepComponents({
           </span>
         ) : null}
       </div>
+      {rows.length === 0 ? (
+        <div className="bf-examples" data-testid="bundle-form-examples">
+          <p className="bf-examples__t">{copy.examplesTitle}</p>
+          <button
+            type="button"
+            className="bf-example-card"
+            disabled={readOnly}
+            data-testid="bundle-form-example-mix"
+            onClick={() => {
+              setWantedPack(null);
+              searchRef.current?.focus();
+            }}
+          >
+            <b>{copy.exampleMixTitle}</b>
+            <span>{copy.exampleMixText}</span>
+          </button>
+          <button
+            type="button"
+            className="bf-example-card"
+            disabled={readOnly}
+            data-testid="bundle-form-example-multipack"
+            onClick={() => {
+              setWantedPack(3);
+              searchRef.current?.focus();
+            }}
+          >
+            <b>{copy.exampleMultiTitle}</b>
+            <span>{copy.exampleMultiText}</span>
+          </button>
+        </div>
+      ) : null}
+      {rows.length > SOFT_COMPONENT_LIMIT ? (
+        <p className="bf-compnote" data-testid="bundle-form-too-many">
+          {copy.tooManyComponents}
+        </p>
+      ) : null}
       {rows.length > 0 ? (
         <p className="bf-qtyhelp">
           {copy.qtyHelp} {copy.s1Fixed}
@@ -269,7 +314,7 @@ export function BundleStepComponents({
                   paddingBottom: 0,
                   borderWidth: 0,
                   overflow: 'hidden',
-                  transition: { duration: 0.16, ease: [0.22, 1, 0.36, 1] },
+                  transition: { duration: 0.16, ease: EASE_OUT },
                 }}
                 transition={SNAPPY_SPRING}
                 className={`cx-row bf-comp${row.gift ? ' is-gift' : ''}${isLimiting ? ' is-lim' : ''}${

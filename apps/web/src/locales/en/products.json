@@ -349,6 +349,8 @@
   "productsListPage": {
     "availabilityUnknownLink": "Who decides what",
     "bulk": {
+      "bundleDisabledMixed": "A set can only be made from single-variant products that are not sets themselves.",
+      "bundleDisabledTooMany": "A set can have at most {max} components ({n} selected).",
       "clear": "Clear",
       "hint": "Max {max} per batch · {remaining} more available",
       "hintAtCap": "Max {max} per batch",
@@ -531,6 +533,11 @@
       "updatedAt": "Updated"
     },
     "stock": {
+      "bundleNone": "none",
+      "bundleSets": {
+        "one": "{n} set",
+        "other": "{n} sets"
+      },
       "master": "master {n}",
       "notKnown": "Not known",
       "notKnownTitle": "OpenLinker doesn't know. Not zero.",

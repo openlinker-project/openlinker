@@ -102,6 +102,8 @@ import {
 import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
+/** The bundle wizard refuses more components than this, so the selection action says so. */
+const BUNDLE_COMPONENT_LIMIT = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 /** Opens the product peek on arrival: `/products?peek=<productId>`. */
 const PEEK_PARAM = 'peek';
@@ -499,16 +501,35 @@ function ProductsListPageBody(): ReactElement {
   // product to its variant itself. Bundles cannot be components, and a
   // multi-variant product has no single component to seed, so both are
   // excluded rather than silently dropped by the wizard.
-  const selectionBundleLink = useMemo((): string | null => {
+  const selectionBundle = useMemo((): {
+    link: string | null;
+    disabledReason: 'mixed' | 'tooMany' | null;
+  } => {
     const picked = items.filter((p) => selectedIds.has(p.id));
-    if (picked.length !== selectedIds.size) return null;
-    if (picked.some((p) => p.bundle || (p.variantCount ?? 1) !== 1)) return null;
-    if (picked.length === 1) {
-      return `/products/bundles/new?componentProduct=${encodeURIComponent(picked[0]!.id)}&quantity=1`;
+    // Selection carries ids this page does not show: nothing to seed from.
+    if (picked.length !== selectedIds.size) return { link: null, disabledReason: null };
+    if (picked.some((p) => p.bundle || (p.variantCount ?? 1) !== 1)) {
+      return { link: null, disabledReason: 'mixed' };
     }
-    if (picked.length < 2 || picked.length > 20) return null;
-    return `/products/bundles/new?components=${picked.map((p) => `${encodeURIComponent(p.id)}:1`).join(',')}`;
+    if (picked.length === 1) {
+      return {
+        link: `/products/bundles/new?componentProduct=${encodeURIComponent(picked[0]!.id)}&quantity=1`,
+        disabledReason: null,
+      };
+    }
+    if (picked.length > BUNDLE_COMPONENT_LIMIT) return { link: null, disabledReason: 'tooMany' };
+    if (picked.length < 2) return { link: null, disabledReason: null };
+    return {
+      link: `/products/bundles/new?components=${picked.map((p) => `${encodeURIComponent(p.id)}:1`).join(',')}`,
+      disabledReason: null,
+    };
   }, [items, selectedIds]);
+  const selectionBundleLink = selectionBundle.link;
+  const limitedByText = useCallback(
+    (ref: { name: string | null; sku: string | null }): string =>
+      interpolate(bundleCopy.list.limitedBy, { name: ref.name ?? ref.sku ?? '' }),
+    [bundleCopy],
+  );
 
   const visibleIds = useMemo(() => items.map((p) => p.id), [items]);
   const visibleSelectedCount = useMemo(
@@ -759,20 +780,12 @@ function ProductsListPageBody(): ReactElement {
                     )}
                   </span>
                 ) : null}
-                {product.bundle ? (
-                  <span
-                    className="cx-tag cx-tag--quiet products-derived-tag"
-                    title={bundleCopy.list.derivedStockHint}
-                    data-testid={`bundle-list-derived-${product.sku ?? product.id}`}
-                  >
-                    {bundleCopy.list.derivedStock}
-                  </span>
-                ) : null}
                 {/* #3624 - a bundle row says what limits it; its composition opens
                     with the row (ProductRowDetail). */}
                 {product.bundle?.limitedBy ? (
                   <span
                     className="products-cell-sub products-limit-line"
+                    title={limitedByText(product.bundle.limitedBy)}
                     data-testid={`bundle-list-row-${product.sku ?? product.id}`}
                   >
                     <StatusBadge
@@ -780,9 +793,7 @@ function ProductsListPageBody(): ReactElement {
                       compact
                       data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}
                     >
-                      {interpolate(bundleCopy.list.limitedBy, {
-                        name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
-                      })}
+                      {limitedByText(product.bundle.limitedBy)}
                     </StatusBadge>
                   </span>
                 ) : null}
@@ -898,6 +909,7 @@ function ProductsListPageBody(): ReactElement {
     ],
     [
       bundleCopy,
+      limitedByText,
       headerCheckboxState,
       handleToggleHeader,
       renderSelectCheckbox,
@@ -1223,6 +1235,23 @@ function ProductsListPageBody(): ReactElement {
                           ? bundleCopy.list.multipackFromSelected
                           : bundleCopy.list.bundleFromSelected}
                       </Link>
+                    ) : bundleWrite.canWrite && selectionBundle.disabledReason !== null ? (
+                      <Button
+                        tone="ghost"
+                        className="button--sm"
+                        disabled
+                        title={
+                          selectionBundle.disabledReason === 'tooMany'
+                            ? interpolate(copy.bulk.bundleDisabledTooMany, {
+                                max: format.number(BUNDLE_COMPONENT_LIMIT),
+                                n: format.number(selectedIds.size),
+                              })
+                            : copy.bulk.bundleDisabledMixed
+                        }
+                        data-testid="selection-make-bundle-disabled"
+                      >
+                        {bundleCopy.list.bundleFromSelected}
+                      </Button>
                     ) : null}
                     {/* Capability-gated (#1096/#1828): hidden with 0 publish destinations. */}
                     {publishDestinations.length > 0 && write.visible ? (

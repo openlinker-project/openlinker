@@ -50,6 +50,7 @@ import {
   type ResolvedCopy,
 } from '../../../../shared/i18n';
 import type {
+  CategoryParameterLike,
   OfferBlockerCopy,
   OfferBlockerDescribeContext,
   OfferRowBundleInput,
@@ -68,6 +69,7 @@ export const ALLEGRO_NO_PHOTO_BLOCKER = 'allegro:no-photo';
 export const ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER = 'allegro:siblings-without-card';
 export const ALLEGRO_EAN_UNVERIFIED_BLOCKER = 'allegro:ean-unverified';
 export const ALLEGRO_IN_STORE_BARCODE_BLOCKER = 'allegro:in-store-barcode';
+export const ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER = 'allegro:needs-offer-parameters';
 export const ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER = 'allegro:bundle-component-missing';
 export const ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER =
   'allegro:bundle-component-gpsr-missing';
@@ -199,6 +201,39 @@ function blockerLabels(): ResolvedCopy<Messages['listings']>['allegroOfferValida
  * reported falsely. What can stop it is each component, and the category: Allegro
  * requires the offer's category to equal that of the FIRST component's card.
  */
+/** Allegro's "Stan" parameter: the adapter sends "new" when it is empty, so it never blocks. */
+const ALLEGRO_CONDITION_PARAMETER_ID = '11323';
+
+type SectionedParameter = CategoryParameterLike & { section?: string; dependsOn?: unknown };
+
+/**
+ * A set publishes only its OWN (offer-section) parameters - the product-section
+ * ones come from the components' cards - so those are the only ones a set row
+ * can be missing. The schema reaches here with `section`/`dependsOn` even though
+ * the neutral `CategoryParameterLike` does not declare them.
+ */
+function hasMissingRequiredOfferParameter(input: OfferRowValidationInput): boolean {
+  const schema = input.categoryParameters as readonly SectionedParameter[] | undefined;
+  if (!schema) return false;
+  const supplied = input.suppliedParameters ?? [];
+  const hasValue = (id: string): boolean =>
+    supplied.some(
+      (p) =>
+        p.id === id &&
+        ((p.values ?? []).some((v) => v.trim() !== '') ||
+          (p.valuesIds ?? []).length > 0 ||
+          p.rangeValue !== undefined),
+    );
+  return schema.some(
+    (p) =>
+      p.required &&
+      p.section === 'offer' &&
+      !p.dependsOn &&
+      p.id !== ALLEGRO_CONDITION_PARAMETER_ID &&
+      !hasValue(p.id),
+  );
+}
+
 function validateBundleRow(
   input: OfferRowValidationInput,
   bundle: OfferRowBundleInput,
@@ -227,6 +262,9 @@ function validateBundleRow(
     bundle.suggestedCategoryId !== bundle.chosenCategoryId
   ) {
     blockers.push(ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER);
+  }
+  if (hasMissingRequiredOfferParameter(input)) {
+    blockers.push(ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER);
   }
   return blockers;
 }
@@ -317,6 +355,15 @@ export const allegroOfferValidation: OfferValidationContribution = {
         return blockerLabels().siblingsShareOneCard;
       },
       describe: () => plainCopy(allegroCopy().siblingsWithoutCard),
+    },
+    {
+      id: ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+      field: 'parameters',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().needsOfferParameters;
+      },
+      describe: () => plainCopy(allegroCopy().needsOfferParameters),
     },
     {
       id: ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,

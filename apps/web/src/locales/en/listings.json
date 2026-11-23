@@ -14,6 +14,7 @@
       "bundleComponentMissing": "component cannot be listed",
       "eanNotInCatalogue": "EAN not in catalogue",
       "inStoreBarcode": "in-store barcode",
+      "needsOfferParameters": "fill in offer parameters",
       "noPhoto": "no photo",
       "paramValueRejected": "parameter value rejected",
       "siblingsShareOneCard": "siblings share one card",
@@ -253,6 +254,10 @@
       "inStoreBarcode": {
         "detail": "Codes like this are meant for use inside one shop. You can publish anyway.",
         "title": "This barcode looks like an in-store code, not a product barcode."
+      },
+      "needsOfferParameters": {
+        "detail": "Open the offer editor and fill in the parameters marked as required. Without them Allegro rejects the offer.",
+        "title": "Required offer parameters are missing for this Allegro category."
       },
       "needsProductParameters": {
         "allFilledDetail": "Save to clear this blocker.",
@@ -726,6 +731,7 @@
     },
     "loading": "Loading…",
     "parameters": {
+      "bundleNote": "Component product parameters come from their Allegro cards. An empty \"Condition\" means \"New\".",
       "eyebrow": "Category parameters",
       "inheritHint": "Everything inherits from base. Override only the parameters that differ for this variant.",
       "loadFailed": "Could not load category parameters. You can still save - it may be rejected in the background if required parameters are missing.",
@@ -1296,7 +1302,10 @@
     "checkingBanner": "Checking the composition of your sets. The buttons unlock when this is done.",
     "collapse": "Hide set contents of {name}",
     "compositionHeading": "Set contents on {destination}",
-    "compositionHint": "{n} products · the badge shows where the set takes each component's data from",
+    "compositionHint": {
+      "one": "{n} product · the badge shows where the set takes each component's data from",
+      "other": "{n} products · the badge shows where the set takes each component's data from"
+    },
     "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
     "eanNotNeededPack": "A multipack does not need its own barcode. Its product carries one.",
     "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
@@ -1337,7 +1346,10 @@
     "previewFailedBanner": "Could not check the composition of your sets, so they cannot be listed yet. Please try again.",
     "previewRetry": "Try again",
     "priceWholePack": "The price is for the whole pack ({n} items), not for one item.",
-    "priceWholeSet": "The price is for the whole set ({n} products), not for one item.",
+    "priceWholeSet": {
+      "one": "The price is for the whole set ({n} product), not for one item.",
+      "other": "The price is for the whole set ({n} products), not for one item."
+    },
     "publishComponent": "List component",
     "quantity": "×{n}",
     "sets": {

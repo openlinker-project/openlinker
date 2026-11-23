@@ -748,6 +748,12 @@
       "hint": "Otwórz to zamówienie na platformie źródłowej, popraw dane kupującego, a potem pobierz zamówienie ponownie.",
       "title": "Brakuje danych odbiorcy - nie można wygenerować etykiety:"
     },
+    "packPieces": {
+      "few": "{n} szt.",
+      "many": "{n} szt.",
+      "one": "{n} szt.",
+      "other": "{n} szt."
+    },
     "pickup": {
       "buyerSelected": "Wybrane przez kupującego - tylko do odczytu.",
       "buyerSelectedVia": "Wybrane przez kupującego w {provider} - tylko do odczytu.",
@@ -792,7 +798,8 @@
       "weight": "Waga musi być dodatnią liczbą całkowitą",
       "width": "Szerokość musi być dodatnią liczbą całkowitą"
     },
-    "weight": "Waga (g)"
+    "weight": "Waga (g)",
+    "weightFromRule": "Waga z reguły dostawy - sprawdź przed zakupem etykiety."
   },
   "handledInOpenLinker": {
     "assignedUnknown": "Przypisane",
@@ -2316,6 +2323,7 @@
         "one": "Dodaj koszt dla {n} wariantu",
         "other": "Dodaj koszt dla {n} wariantu"
       },
+      "addCostFor": "Dodaj koszt dla: {names}",
       "currencyMismatchTitle": "Koszt jest w innej walucie niż zamówienie, więc nie jest uwzględniany w marży.",
       "enteredAfterSaleTitle": "Zamówione przed wpisaniem kosztu",
       "footnoteFrozen": "Koszt jest pobierany z produktu w chwili otrzymania zamówienia i później się nie zmienia.",

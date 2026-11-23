@@ -31,6 +31,7 @@ import {
   isValidEan,
   parsePrice,
   priceProblem,
+  shortComponentName,
   suggestedDescription,
   suggestedSku,
   type BundleProductMode,
@@ -42,12 +43,24 @@ import { useBundleCreationTargetsQuery } from '../hooks/use-bundle-queries';
 import type { SkuConflict } from '../hooks/use-sku-conflict';
 import { BundleVariantPicker } from './bundle-variant-picker';
 
-/** "Zestaw: A + B": the name a seller would type anyway; empty until there are two components. */
-export function suggestedBundleName(rows: readonly ParsedRow[], prefix: string): string {
-  const names = rows.filter((row) => row.qty > 0).map((row) => row.name);
-  if (names.length < 2) return '';
-  const shown = names.slice(0, 3).join(' + ');
-  return `${prefix}: ${shown}${names.length > 3 ? ' + ...' : ''}`;
+/**
+ * A short working name: "Kubek + podkladka" for two products, "Kubek x3" for one product in a
+ * quantity above one. Empty until the composition says something. It is the name in the stock
+ * system, not the marketplace title, so it stays well under the shortest master limit.
+ */
+export function suggestedBundleName(rows: readonly ParsedRow[]): string {
+  const counted = rows.filter((row) => row.qty > 0);
+  const only = counted[0];
+  if (counted.length === 1 && only !== undefined) {
+    return only.qty >= 2 ? `${shortComponentName(only.name, 30)} x${String(only.qty)}` : '';
+  }
+  if (counted.length < 2) return '';
+  const budget = Math.max(8, Math.floor(40 / Math.min(counted.length, 3)) - 3);
+  const shown = counted
+    .slice(0, 3)
+    .map((row) => shortComponentName(row.name, budget))
+    .join(' + ');
+  return `${shown}${counted.length > 3 ? ' + ...' : ''}`;
 }
 
 export interface BundleStepProductProps {
@@ -73,6 +86,10 @@ export interface BundleStepProductProps {
   nameSuggestion: string;
   /** A product that already has the typed SKU; the form blocks Next while this is set. */
   skuConflict?: SkuConflict;
+  /** Set once the shop has made the product: the fields are then fixed, a retry reuses it as it is. */
+  lockedProduct?: { name: string; sku: string } | null;
+  /** The name claims a pack size the composition does not hold. */
+  packMismatch?: { named: number; actual: number } | null;
 }
 
 const EXPLAINER_STORAGE_KEY = 'ol.bundles.s2.explainer';
@@ -140,7 +157,6 @@ function Suggestion({
 
 export function BundleStepProduct({
   editing,
-  readOnly,
   mode,
   onModeChange,
   targets,
@@ -158,8 +174,14 @@ export function BundleStepProduct({
   effectiveName,
   nameSuggestion,
   skuConflict,
+  lockedProduct = null,
+  packMismatch = null,
+  readOnly: readOnlyProp,
 }: BundleStepProductProps): ReactElement {
   const copy = useMessages('bundles').form;
+  // A product the shop already made cannot be edited here: a retry writes the composition
+  // against it and ignores anything typed, so an open field would promise what it cannot do.
+  const readOnly = readOnlyProp || lockedProduct !== null;
   const format = useFormat();
   const apiClient = useApiClient();
   const [explainerOpen, setExplainerOpen] = useExplainerOpen();
@@ -404,9 +426,15 @@ export function BundleStepProduct({
         )
       ) : (
         <div className="bf-block bf-newproduct s2-panel" data-testid="bundle-form-new-product">
-          <Alert tone="info" data-testid="bundle-form-nothing-yet">
-            {copy.s2NothingYet}
-          </Alert>
+          {lockedProduct !== null ? (
+            <Alert tone="success" data-testid="bundle-form-product-created">
+              {interpolate(copy.s2CreatedBadge, { name: lockedProduct.name, sku: lockedProduct.sku })}
+            </Alert>
+          ) : (
+            <p className="alert alert--info" data-testid="bundle-form-nothing-yet">
+              {copy.s2NothingYet}
+            </p>
+          )}
 
           <div className="form-field s2-master">
             <span className="form-field__label bf-labelrow">
@@ -459,6 +487,11 @@ export function BundleStepProduct({
                   {nameErrorText}
                 </span>
               ) : null}
+              {packMismatch !== null ? (
+                <span className="s2-packwarn" data-testid="bundle-form-pack-mismatch">
+                  {interpolate(copy.packMismatch, packMismatch)}
+                </span>
+              ) : null}
               <span className="pm-help s2-namehelp">
                 <span>{copy.s2NameHelp}</span>
                 <span className="mono tabular s2-counter" data-testid="bundle-form-name-counter">
@@ -505,6 +538,7 @@ export function BundleStepProduct({
               <span className="pm-money">
                 <Input
                   className="mono tabular"
+                  aria-label={copy.s2Price}
                   inputMode="decimal"
                   value={effectivePrice}
                   disabled={readOnly}
@@ -524,9 +558,9 @@ export function BundleStepProduct({
                   {priceErrorText}
                 </span>
               ) : null}
-              <span className="pm-help">{copy.s2PriceSuggestHelp}</span>
+              <b className="pm-help s2-discount">{copy.s2PriceSuggestHelp}</b>
             </label>
-            <div className="form-field s2-pricenote" aria-live="polite">
+            <div className="form-field s2-pricenote">
               {sum === null ? (
                 <span className="pm-help">{copy.s2PriceNoSum}</span>
               ) : (

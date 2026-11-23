@@ -70,7 +70,15 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
   const healthLevel = deriveHealthLevel(rollup);
   const methodLabel = paymentMethodChipLabel(snapshot.paymentMethod, snapshot.paymentStatus);
 
-  const title = interpolate(copy.title, { number: snapshot.orderNumber ?? order.internalOrderId });
+  // Without a channel order number the title would be the raw internal id, which
+  // pushes the title block down; the full id stays on the element's title.
+  const rawNumber = snapshot.orderNumber ?? order.internalOrderId;
+  const displayNumber =
+    snapshot.orderNumber || rawNumber.length <= 18
+      ? rawNumber
+      : `${rawNumber.slice(0, 8)}…${rawNumber.slice(-6)}`;
+  const title = interpolate(copy.title, { number: displayNumber });
+  const fullTitle = interpolate(copy.title, { number: rawNumber });
 
   const firstItem = snapshot.items[0];
   const itemCount = snapshot.items.length;
@@ -80,7 +88,9 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
   return (
     <header className="order-header">
       <div className="order-header__top">
-        <h1 className="order-header__title">{title}</h1>
+        <h1 className="order-header__title" title={fullTitle}>
+          {title}
+        </h1>
         <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
           {healthLabel(healthLevel, order.handledInOpenLinker)}
         </StatusBadge>

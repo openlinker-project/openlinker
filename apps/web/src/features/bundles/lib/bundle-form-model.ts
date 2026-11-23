@@ -158,3 +158,65 @@ export function formatPriceInput(value: number | null): string {
 
 /** The forms a bundle's gift slot can take; a custom price is not one of them. */
 export const BUNDLE_GIFT_FORMS = ['priced-in', 'technical-cent', 'show-zero', 'omit'] as const;
+
+/** Above this many rows a bundle is more likely two bundles pasted together than one. */
+export const SOFT_COMPONENT_LIMIT = 20;
+
+export interface SeedQuantity {
+  quantity: number;
+  /** True when the typed value was not usable as it stood (0, negative, fractional, too large). */
+  altered: boolean;
+}
+
+/**
+ * Reads a quantity from a hand-edited URL: a whole number from 1 to the form's maximum. Anything
+ * else is brought into that range and flagged, so the form can say it did so instead of silently
+ * changing what the person pasted.
+ */
+export function clampSeedQuantity(raw: string | undefined): SeedQuantity {
+  if (raw === undefined || raw.trim() === '') return { quantity: 1, altered: false };
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return { quantity: 1, altered: true };
+  const whole = Math.floor(parsed);
+  const quantity = Math.min(MAX_COMPONENT_QUANTITY, Math.max(1, whole));
+  return { quantity, altered: quantity !== parsed };
+}
+
+/** The first words of a name, without a trailing bracket note, kept within `budget` characters. */
+export function shortComponentName(name: string, budget = 18): string {
+  const cleaned = name.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = cleaned.split(' ').filter((word) => word !== '');
+  if (words.length === 0) return '';
+  let shown = words[0] ?? '';
+  for (const word of words.slice(1)) {
+    if (`${shown} ${word}`.length > budget) break;
+    shown = `${shown} ${word}`;
+  }
+  return shown;
+}
+
+/**
+ * A pack size a name announces ("Kubek x3", "Kubek ×3", "3 szt.", "3-pak"), or `null`. Only 2 and
+ * more count: "x1" is not a pack.
+ */
+export function namedPackSize(name: string): number | null {
+  const match = /(?:^|[\s(])[x×]\s?(\d{1,4})\b/i.exec(name) ?? /\b(\d{1,4})\s?-?\s?(?:szt|pak)/i.exec(name);
+  const size = match?.[1] === undefined ? null : Number(match[1]);
+  return size !== null && size >= 2 ? size : null;
+}
+
+/**
+ * The pack size the name claims and the quantity the composition really holds, when the bundle is
+ * one product and the two differ; `null` otherwise.
+ */
+export function packSizeMismatch(
+  name: string | null,
+  rows: readonly ParsedRow[]
+): { named: number; actual: number } | null {
+  if (name === null) return null;
+  const counted = rows.filter((row) => row.qty > 0);
+  const only = counted[0];
+  if (counted.length !== 1 || only === undefined) return null;
+  const named = namedPackSize(name);
+  return named !== null && named !== only.qty ? { named, actual: only.qty } : null;
+}

@@ -20,14 +20,14 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
 import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { SNAPPY_SPRING } from '../../../shared/ui/motion-presets';
+import { DURATION_PANEL, EASE_OUT, SNAPPY_SPRING } from '../../../shared/ui/motion-presets';
 import { SaveButton, useSaveButtonState } from '../../../shared/ui/save-button';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { SidePanel } from '../../../shared/ui/side-panel';
@@ -56,6 +56,7 @@ import {
   compositionProblem,
   formatPriceInput,
   isValidEan,
+  packSizeMismatch,
   parsePrice,
   quantitySchema,
   suggestedDescription,
@@ -81,7 +82,6 @@ import { BundleStepProduct, suggestedBundleName } from './bundle-step-product';
 import { BundleStepReview } from './bundle-step-review';
 import { BundleSummary } from './bundle-summary';
 
-const STEP_EASE = [0.22, 1, 0.36, 1] as const;
 
 function isGiftDocumentFormChoice(value: string): value is GiftDocumentFormChoice {
   return (GiftFormPickerValues as readonly string[]).includes(value);
@@ -95,6 +95,19 @@ export interface BundleFormSeedComponent {
   quantity: number;
 }
 
+/** What the page changed in a hand-edited `?components=` list, so the form can say so. */
+export interface BundleSeedAdjustment {
+  kind: 'clamped' | 'merged';
+  id: string;
+  to: number;
+}
+
+interface MultiSeedResult {
+  rows: { choice: BundleProductChoice; quantity: number }[];
+  /** Ids that could not become a row: unknown, several variants, or a bundle. */
+  failed: string[];
+}
+
 export interface BundleFormProps {
   /** Present when editing an existing bundle. */
   bundleVariantId?: string;
@@ -102,6 +115,8 @@ export interface BundleFormProps {
   seedComponent?: BundleFormSeedComponent;
   /** Several single-variant products to start from (product list "Create a bundle from selected"). */
   seedComponents?: BundleFormSeedComponent[];
+  /** Changes the page made to the seeded quantities; reported as an info note. */
+  seedAdjustments?: BundleSeedAdjustment[];
   /** An existing bundle to copy the components of ("Duplicate"); the form starts on step 1. */
   duplicateFrom?: string;
 }
@@ -146,6 +161,7 @@ export function BundleForm({
   bundleVariantId,
   seedComponent,
   seedComponents,
+  seedAdjustments,
   duplicateFrom,
 }: BundleFormProps): ReactElement {
   const copy = useMessages('bundles');
@@ -154,6 +170,7 @@ export function BundleForm({
   const { locale } = useLocale();
   const format = useFormat();
   const apiClient = useApiClient();
+  const queryClient = useQueryClient();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
   const write = useWriteAccess('bundles:write', demoMode);
@@ -298,18 +315,27 @@ export function BundleForm({
   const multiSeedKey = (seedComponents ?? []).map((c) => `${c.productId ?? ''}:${String(c.quantity)}`).join(',');
   const multiSeed = useQuery({
     queryKey: ['bundles', 'seed-components', multiSeedKey],
-    queryFn: async (): Promise<BundleProductChoice[]> =>
-      Promise.all(
+    queryFn: async (): Promise<MultiSeedResult> => {
+      // allSettled: one unknown id must not empty the whole selection. A bundle is dropped here
+      // with the same rule the picker applies, because a nested bundle must not arrive by URL.
+      const settled = await Promise.allSettled(
         (seedComponents ?? []).map(async (item) => {
           const product = await apiClient.products.getById(item.productId ?? '');
           const variants = product.variants ?? [];
           const picked = variants.length === 1 ? variants[0] : undefined;
-          if (picked === undefined) {
-            throw new Error('seed variant not found');
-          }
-          return toBundleChoice(product, picked, variants.length);
+          if (picked === undefined) throw new Error('seed variant not found');
+          const choice = toBundleChoice(product, picked, variants.length);
+          if (choice.isBundle) throw new Error('seed is a bundle');
+          return { choice, quantity: item.quantity };
         })
-      ),
+      );
+      const result: MultiSeedResult = { rows: [], failed: [] };
+      settled.forEach((outcome, index) => {
+        if (outcome.status === 'fulfilled') result.rows.push(outcome.value);
+        else result.failed.push(seedComponents?.[index]?.productId ?? '');
+      });
+      return result;
+    },
     retry: false,
     enabled: (seedComponents?.length ?? 0) > 0 && !editing,
   });
@@ -327,7 +353,7 @@ export function BundleForm({
   const editSeedKey =
     editing && detail.data ? `edit:${detail.data.variantId}:${String(detail.data.version)}` : null;
   const newSeedKey = !editing && seed.data && seedComponent ? `new:${seed.data.variantId}` : null;
-  const multiSeedReady = !editing && multiSeed.data !== undefined && multiSeed.data.length > 0;
+  const multiSeedReady = !editing && multiSeed.data !== undefined && multiSeed.data.rows.length > 0;
   const duplicateSeedKey =
     !editing && duplicateSource.data ? `dup:${duplicateSource.data.variantId}` : null;
   const seedKey =
@@ -377,13 +403,15 @@ export function BundleForm({
       }
     } else if (multiSeedReady && multiSeed.data && seedComponents) {
       form.reset({
-        components: multiSeed.data.map((choice, index) => ({
+        components: multiSeed.data.rows.map(({ choice, quantity }) => ({
           ...choice,
-          quantity: String(seedComponents[index]?.quantity ?? 1),
+          quantity: String(quantity),
           gift: false,
           documentForm: '',
         })),
       });
+    } else if (seed.data && seedComponent && seed.data.isBundle) {
+      setNestedError(interpolate(copy.form.nestedBundle, { name: seed.data.name }));
     } else if (seed.data && seedComponent) {
       form.reset({
         components: [
@@ -418,7 +446,7 @@ export function BundleForm({
   const creating = !editing && mode === 'create';
   const masterId = draft.connectionId !== '' ? draft.connectionId : (creators[0]?.connectionId ?? '');
   const masterName = creators.find((target) => target.connectionId === masterId)?.connectionName ?? '';
-  const nameSuggestion = suggestedBundleName(parsedRows, copy.form.s2NamePrefix);
+  const nameSuggestion = suggestedBundleName(parsedRows);
   const effectiveName = draft.touched.name ? draft.name : nameSuggestion;
   const effectiveSku = draft.touched.sku ? draft.sku : suggestedSku(parsedRows);
   const skuConflict = useSkuConflict(effectiveSku, creating);
@@ -439,6 +467,7 @@ export function BundleForm({
 
   const bundleName = creating ? (effectiveName.trim() !== '' ? effectiveName : null) : (bundleProduct?.name ?? null);
   const bundlePrice = creating ? newPrice : (bundleProduct?.price ?? null);
+  const packMismatch = packSizeMismatch(bundleName, parsedRows);
 
   const title = editing
     ? bundleProduct?.name ?? copy.form.editTitleFallback
@@ -571,7 +600,11 @@ export function BundleForm({
             error.status === 409
               ? copy.form.saveConflict
               : error.status === 400
-                ? copy.form.saveInvalid
+                ? (readMasterMessage(error) ?? readErrorCode(error).reason) !== null
+                  ? interpolate(copy.form.saveInvalidWithReason, {
+                      reason: readMasterMessage(error) ?? readErrorCode(error).reason ?? '',
+                    })
+                  : copy.form.saveInvalid
                 : error.status === 404
                   ? copy.form.saveNotFound
                   : copy.form.saveFailed
@@ -633,6 +666,14 @@ export function BundleForm({
                         : copy.form.s2CreateFailed
                       : copy.form.s2CreateFailedGeneric
             );
+            const known =
+              reason === 'master-cannot-create-products' ||
+              reason === 'master-unavailable' ||
+              reason === 'not-synced' ||
+              error.status === 422;
+            // The shop may have made the product before the answer was lost: ask again whether the
+            // SKU exists, so a retry offers "use the existing one" instead of making a duplicate.
+            if (!known) void queryClient.invalidateQueries({ queryKey: ['bundles', 'sku-conflict'] });
             setStep(BUNDLE_STEP_KEYS.indexOf('product'));
           },
         }
@@ -889,6 +930,8 @@ export function BundleForm({
         effectiveName={effectiveName}
         nameSuggestion={nameSuggestion}
         skuConflict={skuConflict}
+        lockedProduct={createdProduct !== null ? { name: createdProduct.name, sku: effectiveSku.trim() } : null}
+        packMismatch={packMismatch}
         targets={targets.data}
         targetsFailed={targets.isError}
         draft={draft}
@@ -935,6 +978,7 @@ export function BundleForm({
         productLine={productLine}
         giftLine={giftLine}
         cannotAssemble={cannotAssemble}
+        packMismatch={packMismatch}
         creating={creating}
         masterName={masterName}
         onGoTo={(key) => {
@@ -1147,6 +1191,24 @@ export function BundleForm({
             </motion.div>
           ) : null}
 
+          {multiSeed.data !== undefined && multiSeed.data.failed.length > 0 ? (
+            <Alert tone="warning" data-testid="bundle-form-seed-failed">
+              {interpolate(copy.form.seedFailed, { ids: multiSeed.data.failed.join(', ') })}
+            </Alert>
+          ) : null}
+          {(seedAdjustments ?? []).length > 0 && !editing ? (
+            <Alert tone="info" data-testid="bundle-form-seed-adjusted">
+              {(seedAdjustments ?? []).map((item) => (
+                <span key={`${item.kind}:${item.id}`} className="bf-seednote">
+                  {interpolate(item.kind === 'merged' ? copy.form.seedMerged : copy.form.seedClamped, {
+                    id: item.id,
+                    to: item.to,
+                  })}{' '}
+                </span>
+              ))}
+            </Alert>
+          ) : null}
+
           {nestedError !== null ? (
             <Alert tone="error" data-testid="bundle-form-nested-error">
               {nestedError}
@@ -1174,7 +1236,7 @@ export function BundleForm({
             className="bf-stepper"
           />
           {blockedNote !== null ? (
-            <p className="bf-blockednote" role="status" data-testid="bundle-form-blocked-note">
+            <p className="bf-blockednote" data-testid="bundle-form-blocked-note">
               {blockedNote}
             </p>
           ) : null}
@@ -1198,7 +1260,7 @@ export function BundleForm({
                   className="bf-stage"
                   ref={panelRef}
                   animate={stageHeight === null ? undefined : { height: stageHeight }}
-                  transition={reduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  transition={reduceMotion ? { duration: 0 } : { duration: DURATION_PANEL, ease: EASE_OUT }}
                 >
                  <div className="bf-stage__inner" ref={stageInnerRef}>
                   {/* "wait": the leaving panel is gone before the entering one is drawn, so the two
@@ -1211,7 +1273,7 @@ export function BundleForm({
                       custom={direction}
                       variants={{
                         enter: (dir: number) => ({ opacity: 0, y: dir * 6 }),
-                        center: { opacity: 1, y: 0, transition: { duration: 0.16, ease: STEP_EASE } },
+                        center: { opacity: 1, y: 0, transition: { duration: 0.16, ease: EASE_OUT } },
                         exit: { opacity: 0, transition: { duration: 0.08, ease: 'easeIn' } },
                       }}
                       initial={reduceMotion ? false : 'enter'}
@@ -1356,7 +1418,11 @@ export function BundleForm({
               <SaveButton
                 state={saveButtonState}
                 labels={{
-                  idle: editing ? copy.form.saveChanges : copy.form.save,
+                  idle: editing
+                    ? copy.form.saveChanges
+                    : partialPending
+                      ? copy.form.saveRetry
+                      : copy.form.save,
                   saving: copy.form.saving,
                   saved: copy.form.savedShort,
                 }}

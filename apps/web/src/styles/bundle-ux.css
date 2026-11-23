@@ -1404,7 +1404,8 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 :root {
   --press-scale: 0.985;
   --hover-lift: -1px;
-  --ux-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* Same curve as EASE_OUT in shared/ui/motion-presets.ts; keep the two in step. */
+  --ux-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --ux-dur-fast: 120ms;
   --ux-dur: 200ms;
 }
@@ -1507,4 +1508,95 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 /* Rows entering a list fade and settle; panels already slide (bf-stage). Motion only when allowed. */
 @media (prefers-reduced-motion: no-preference) {
   .bf-comp, .bf-summary__list > li { animation: bx-rise var(--ux-dur) var(--ux-ease) both; }
+}
+
+/* === SECTION R5-C: mobile, motion and a11y polish (round 5, lane C) === */
+
+/* Sticky bar: the form leaves room for the bar plus the home-indicator inset, so the last field and
+   the quantity stepper of a fresh row are never underneath it. */
+.bundle-form .bf-grid { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+:root:has(.bundle-form) { scroll-padding-bottom: calc(8.5rem + env(safe-area-inset-bottom)); }
+@media (max-width: 768px) {
+  .bundle-form .bf-stage { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+  .bundle-form .bpick { padding-bottom: 5.5rem; }
+}
+/* While a field has the keyboard open the bar steps out of the way (it would eat a third of the
+   remaining viewport) and returns to its place in the flow below the form. */
+@media (max-width: 640px) {
+  .bundle-form:has(input:focus-visible, textarea:focus-visible, select:focus-visible) .pm-actionbar {
+    position: static; box-shadow: none;
+  }
+  .bundle-form:has(input:focus-visible, textarea:focus-visible, select:focus-visible) .pm-actionbar::before { display: none; }
+}
+
+/* Touch targets (44px) on the controls the audit measured under it. */
+@media (pointer: coarse), (max-width: 768px) {
+  .bundle-form .bf-summarychip { min-height: 44px; }
+  .bundle-form .bf-skip { min-height: 44px; display: inline-flex; align-items: center; }
+  .bundle-form .pm-qmark { min-width: 44px; justify-content: center; }
+  .sortbtn { min-width: 44px; min-height: 44px; }
+}
+
+/* Tablet: the four step labels wrap rather than truncate, the guide pill spans its row. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .bf-stepper .setup-stepper__label,
+  .bf-stepper .setup-stepper__meta { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .bf-stepper .setup-stepper__button { align-items: flex-start; }
+  .bundle-form .pm-helpbtn { width: 100%; justify-content: center; }
+}
+
+/* Stepper: the current step keeps the ring but does not grow, and every step has a press state
+   at every width (the hover above only exists from 768px up). */
+.bf-stepper .setup-stepper__step--current .setup-stepper__button:hover:not(:disabled):not([aria-disabled='true']) .setup-stepper__indicator { transform: none; }
+.bf-stepper .setup-stepper__button:active:not(:disabled):not([aria-disabled='true']) .setup-stepper__indicator { transform: scale(var(--press-scale)); }
+
+/* Repeated or full-width controls change colour on hover and stay put: a lift would move the
+   target under a pointer that is clicking +/- again and again. */
+.bf-qty__btn:hover:not(:disabled), .bf-mv:hover:not(:disabled) { transform: none; }
+.bpick__row:not(.is-disabled):hover:not(:active), .bpick__row:hover:not(.is-disabled):not(.is-active) { transform: none; }
+
+/* A fresh row flashes briefly and not at all while focus is inside it (the ring takes over). */
+.bf-comp.is-fresh { animation: bx-flash 0.9s var(--ux-ease); }
+.bf-comp.is-fresh:focus-within { animation: none; }
+
+/* Orders and products lists on a phone: nothing wider than the card, targets at 44px. */
+@media (max-width: 640px) {
+  .connection-chip { max-width: 100%; min-width: 0; flex-wrap: wrap; }
+  .connection-chip .entity-label__name, .connection-chip > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .orders-row-cta { min-height: 44px; }
+  .entity-label__name--link { display: inline-flex; align-items: center; min-height: 44px; }
+  .list-statusbar { flex-wrap: wrap; gap: var(--space-2); }
+  .page-header__actions--row { width: 100%; justify-content: stretch; }
+  .page-header__actions--row > .button { flex: 1 1 auto; }
+  .page-header__actions--row > .button--primary { flex-basis: 100%; order: -1; }
+}
+
+/* Bundle view: a reserve below the component count is a note, only a channel above it is a warning. */
+.ux-offer-mismatch--note { color: var(--text-secondary); }
+
+/* ===== Round 5, lane A: wizard form (step 1 examples, step 2 notes) ===== */
+.bf-examples { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 4px 0 12px; }
+.bf-examples__t { grid-column: 1 / -1; margin: 0; font-weight: 600; color: var(--text-strong, inherit); }
+.bf-example-card {
+  display: grid; gap: 2px; text-align: left; padding: 10px 12px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface, transparent); color: inherit;
+  transition: transform var(--ux-dur) var(--ux-ease), border-color var(--ux-dur) var(--ux-ease), background-color var(--ux-dur) var(--ux-ease);
+}
+.bf-example-card span { font-size: 0.875rem; color: var(--text-muted, inherit); }
+.bf-example-card:hover:not(:disabled) { transform: translateY(var(--hover-lift)); border-color: var(--accent, currentColor); }
+.bf-example-card:active:not(:disabled) { transform: scale(var(--press-scale)); }
+.bf-example-card:focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; }
+.bf-example-card:disabled { opacity: 0.6; cursor: not-allowed; }
+@media (max-width: 640px) { .bf-examples { grid-template-columns: 1fr; } }
+.s2-packwarn { display: block; margin-top: 4px; color: var(--warning-text, var(--warning, inherit)); font-size: 0.875rem; }
+.s2-discount { font-weight: 600; }
+.bf-nextnote { margin: 8px 0; font-weight: 500; }
+.bf-review dd { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Round 5, integrator: the orange eyebrow and the step-3 help link failed AA contrast (axe serious) on light surfaces.
+   Mixing toward the primary text colour keeps the accent hue and follows the theme in both modes. */
+.page-header__content > .eyebrow,
+.bundle-form .eyebrow,
+.bundle-form .pm-help a {
+  color: color-mix(in oklch, var(--accent-primary-hover) 62%, var(--text-primary));
 }

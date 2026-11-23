@@ -45,7 +45,7 @@ describe('BundleSummary', () => {
     expect(screen.getByTestId('bundle-form-availability')).toHaveTextContent('3');
     const limiting = screen.getByTestId('bundle-form-summary-limiting');
     expect(limiting).toHaveTextContent('Lyzeczka');
-    expect(limiting).toHaveTextContent(/Limits|Ogranicza/);
+    expect(limiting).toHaveTextContent(/Lowest|Najmniej/);
   });
 
   it('should show zero muted with a prompt before any component is added', () => {
@@ -62,7 +62,7 @@ describe('BundleSummary', () => {
 
     const hero = screen.getByTestId('bundle-form-availability');
     expect(hero).toHaveClass('is-empty');
-    expect(hero).toHaveTextContent('0');
+    expect(hero).toHaveTextContent(/Add a component|Dodaj składnik/);
   });
 
   it('should name the component with unknown stock and never show a count', () => {

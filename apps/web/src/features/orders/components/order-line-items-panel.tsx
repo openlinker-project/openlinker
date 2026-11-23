@@ -626,11 +626,15 @@ function MarginCell({
 function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
   const copy = useMessages('orders').orderLineItems.cost;
   const plural = usePlural();
-  const missing = new Set(
-    lines
-      .filter((line) => line.gapReason === 'no-cost' && line.variantId !== null)
-      .map((line) => line.variantId),
-  ).size;
+  const missingLines = lines.filter((line) => line.gapReason === 'no-cost' && line.variantId !== null);
+  const missing = new Set(missingLines.map((line) => line.variantId)).size;
+  // Naming the product is what makes the link actionable: "for 1 variant" does
+  // not say which of the order's lines (or bundle components) lacks a cost.
+  const missingSkus = [...new Set(missingLines.map((line) => line.sku).filter((sku): sku is string => !!sku))];
+  const addCostLabel =
+    missingSkus.length > 0 && missingSkus.length === missing
+      ? interpolate(copy.addCostFor, { names: missingSkus.slice(0, 3).join(', ') + (missingSkus.length > 3 ? '...' : '') })
+      : plural(missing, copy.addCost);
   return (
     <p className="data-table__footnote" data-testid="order-line-cost-note">
       {copy.footnoteFrozen} {copy.footnoteNextOrder}
@@ -638,7 +642,7 @@ function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
         <>
           {' '}
           <Link to="/products/cost-prices" data-testid="order-line-add-cost">
-            {plural(missing, copy.addCost)}
+            {addCostLabel}
           </Link>
         </>
       ) : null}

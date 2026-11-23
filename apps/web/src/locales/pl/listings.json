@@ -14,6 +14,7 @@
       "bundleComponentMissing": "składnika nie da się wystawić",
       "eanNotInCatalogue": "EAN spoza katalogu",
       "inStoreBarcode": "kod wewnętrzny sklepu",
+      "needsOfferParameters": "uzupełnij parametry oferty",
       "noPhoto": "brak zdjęcia",
       "paramValueRejected": "odrzucona wartość parametru",
       "siblingsShareOneCard": "warianty dzielą jedną kartę",
@@ -283,6 +284,10 @@
       "inStoreBarcode": {
         "detail": "Takie kody służą do użytku wewnątrz jednego sklepu. Możesz opublikować mimo to.",
         "title": "Ten kod wygląda na kod wewnętrzny sklepu, a nie kod produktu."
+      },
+      "needsOfferParameters": {
+        "detail": "Otwórz edycję oferty i uzupełnij parametry oznaczone jako wymagane. Bez nich Allegro odrzuci ofertę.",
+        "title": "Brakuje wymaganych parametrów oferty w tej kategorii Allegro."
       },
       "needsProductParameters": {
         "allFilledDetail": "Zapisz, żeby zdjąć tę blokadę.",
@@ -782,6 +787,7 @@
     },
     "loading": "Wczytywanie…",
     "parameters": {
+      "bundleNote": "Parametry produktów składowych bierze z ich kart Allegro. Puste pole „Stan” oznacza „Nowy”.",
       "eyebrow": "Parametry kategorii",
       "inheritHint": "Wszystko dziedziczy z bazy. Nadpisuj tylko parametry, które różnią się dla tego wariantu.",
       "loadFailed": "Nie udało się wczytać parametrów kategorii. Nadal możesz zapisać - oferta może zostać odrzucona w tle, jeśli brakuje wymaganych parametrów.",
@@ -1430,7 +1436,12 @@
     "checkingBanner": "Sprawdzamy skład zestawów. Przyciski ruszą, gdy skończymy.",
     "collapse": "Ukryj skład zestawu {name}",
     "compositionHeading": "Skład na {destination}",
-    "compositionHint": "{n} produktów · plakietka pokazuje, skąd zestaw weźmie dane składnika",
+    "compositionHint": {
+      "few": "{n} produkty · plakietka pokazuje, skąd zestaw weźmie dane składnika",
+      "many": "{n} produktów · plakietka pokazuje, skąd zestaw weźmie dane składnika",
+      "one": "{n} produkt · plakietka pokazuje, skąd zestaw weźmie dane składnika",
+      "other": "{n} produktu · plakietka pokazuje, skąd zestaw weźmie dane składnika"
+    },
     "eanNotNeeded": "Zestaw nie potrzebuje własnego EAN. Kody mają jego produkty.",
     "eanNotNeededPack": "Wielopak nie potrzebuje własnego EAN. Kod ma jego produkt.",
     "editingFooter": "Edycja oferty zestawu. Zmiany dotyczą tylko tej partii.",
@@ -1473,7 +1484,12 @@
     "previewFailedBanner": "Nie udało się sprawdzić składu zestawów, więc nie możemy ich wystawić. Spróbuj ponownie.",
     "previewRetry": "Spróbuj ponownie",
     "priceWholePack": "Cena dotyczy całej paczki ({n} szt.), nie jednej sztuki.",
-    "priceWholeSet": "Cena dotyczy całego zestawu ({n} produktów), nie jednej sztuki.",
+    "priceWholeSet": {
+      "few": "Cena dotyczy całego zestawu ({n} produkty), nie jednej sztuki.",
+      "many": "Cena dotyczy całego zestawu ({n} produktów), nie jednej sztuki.",
+      "one": "Cena dotyczy całego zestawu ({n} produkt), nie jednej sztuki.",
+      "other": "Cena dotyczy całego zestawu ({n} produktu), nie jednej sztuki."
+    },
     "publishComponent": "Wystaw składnik",
     "quantity": "×{n}",
     "sets": {

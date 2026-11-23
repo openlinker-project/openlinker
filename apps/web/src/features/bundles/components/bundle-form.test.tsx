@@ -202,7 +202,7 @@ describe('BundleForm (#3624)', () => {
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await pick(user, 'bundle-form-component-search', 'Lyz', 'LYZ-KAW');
     expect(screen.getByTestId('bundle-form-availability')).toHaveTextContent(
-      'Limited by: Lyzeczka'
+      'Lowest stock: Lyzeczka'
     );
   });
 
@@ -444,7 +444,7 @@ describe('BundleForm (#3624)', () => {
 
     expect(await screen.findByTestId('bundle-form-component-row-KUB-350-BI')).toBeInTheDocument();
     expect(screen.getByTestId('bundle-form-open-orders-note')).toHaveTextContent(
-      '3 open orders keep the old composition'
+      /3 open orders/
     );
     // Nothing changed yet, so there is nothing to save.
     expect(screen.getByTestId('bundle-form-save')).toBeDisabled();
@@ -676,7 +676,12 @@ describe('BundleForm (#3624)', () => {
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await toProductStep(user);
     await user.click(await screen.findByTestId('bundle-form-mode-create'));
-    await user.type(await screen.findByTestId('bundle-form-new-name'), 'Zestaw nowy');
+    const nameInput = await screen.findByTestId('bundle-form-new-name');
+    await user.clear(nameInput);
+    await waitFor(() => {
+      expect(screen.getByTestId('bundle-form-new-name')).toHaveValue('');
+    });
+    await user.type(screen.getByTestId('bundle-form-new-name'), 'Zestaw nowy');
     await toReview(user);
     await user.click(screen.getByTestId('bundle-form-save'));
     expect(await screen.findByTestId('bundle-form-partial-warning')).toHaveTextContent('Zestaw nowy');
@@ -729,7 +734,13 @@ describe('BundleForm (#3624)', () => {
     await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
     await toProductStep(user);
     await user.click(await screen.findByTestId('bundle-form-mode-create'));
-    await user.type(await screen.findByTestId('bundle-form-new-name'), 'Zestaw nowy');
+    const nameInput = await screen.findByTestId('bundle-form-new-name');
+    await user.clear(nameInput);
+    await waitFor(() => {
+      expect(screen.getByTestId('bundle-form-new-name')).toHaveValue('');
+    });
+    // The restore-suggestion button shares the label, so a click on the field would press it.
+    await user.type(screen.getByTestId('bundle-form-new-name'), 'Zestaw nowy', { skipClick: true });
     // The price starts as the sum of the paid components and says what the customer saves.
     expect(screen.getByTestId('bundle-form-new-price')).toHaveValue('80.00');
     await toReview(user);
@@ -786,7 +797,7 @@ describe('BundleForm (#3624)', () => {
       await toProductStep(user);
       await waitFor(() => {
         expect(screen.getByTestId<HTMLInputElement>('bundle-form-new-name').value).toMatch(
-          /: Kubek ceramiczny \+ Kawa ziarnista$/
+          /Kubek ceramiczny \+ Kawa ziarnista$/
         );
       });
 
@@ -796,7 +807,7 @@ describe('BundleForm (#3624)', () => {
       await toProductStep(user);
       await waitFor(() => {
         expect(screen.getByTestId<HTMLInputElement>('bundle-form-new-name').value).toMatch(
-          /: Kubek ceramiczny \+ Kawa ziarnista \+ Lyzeczka$/
+          /Kubek \+ Kawa \+ Lyzeczka$/
         );
       });
 
@@ -920,5 +931,73 @@ describe('BundleForm (#3624)', () => {
       expect(await screen.findByTestId('bundle-form-duplicate-note')).toHaveTextContent('Zestaw poranny');
       expect(await screen.findByTestId('bundle-form-component-qty-KUB-350-BI')).toHaveValue(2);
     });
+  });
+});
+
+describe('BundleForm round 5 (seed, examples, pack size)', () => {
+  it('should seed what resolved and warn about the rest, instead of opening empty', async () => {
+    renderWithProviders(
+      <BundleForm
+        seedComponents={[
+          { productId: 'p-mug', quantity: 2 },
+          { productId: 'p-unknown', quantity: 1 },
+          { productId: 'p-bundle2', quantity: 1 },
+        ]}
+      />,
+      { apiClient: api(), sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+    expect(await screen.findByTestId('bundle-form-component-row-KUB-350-BI')).toBeInTheDocument();
+    const warning = screen.getByTestId('bundle-form-seed-failed');
+    expect(warning).toHaveTextContent('p-unknown');
+    expect(warning).toHaveTextContent('p-bundle2');
+    expect(screen.queryByTestId('bundle-form-component-row-ZES-PARZENIE')).not.toBeInTheDocument();
+  });
+
+  it('should say when the page changed a seeded quantity', async () => {
+    renderWithProviders(
+      <BundleForm
+        seedComponents={[{ productId: 'p-mug', quantity: 9999 }]}
+        seedAdjustments={[{ kind: 'clamped', id: 'p-mug', to: 9999 }]}
+      />,
+      { apiClient: api(), sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+    expect(await screen.findByTestId('bundle-form-seed-adjusted')).toHaveTextContent('9999');
+  });
+
+  it('should show two example cards on an empty step 1, and the multipack one pre-selects x3', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, {
+      apiClient: api(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await ready();
+    expect(screen.getByTestId('bundle-form-example-mix')).toBeInTheDocument();
+    await user.click(screen.getByTestId('bundle-form-example-multipack'));
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await waitFor(() => {
+      expect(screen.getByTestId('bundle-form-component-qty-KUB-350-BI')).toHaveValue(3);
+    });
+    expect(screen.queryByTestId('bundle-form-examples')).not.toBeInTheDocument();
+  });
+
+  it('should warn when the name says x3 but the only component is held once', async () => {
+    const user = userEvent.setup();
+    const apiClient = api({
+      bundles: {
+        creationTargets: vi.fn().mockResolvedValue([
+          { connectionId: 'master-1', connectionName: 'PrestaShop', platformType: 'prestashop', creationMode: 'simple-product' },
+        ]),
+      },
+    });
+    renderWithProviders(<BundleForm />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
+    await ready();
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await toProductStep(user);
+    await user.click(await screen.findByTestId('bundle-form-mode-create'));
+    expect(screen.queryByTestId('bundle-form-pack-mismatch')).not.toBeInTheDocument();
+    const name = await screen.findByTestId('bundle-form-new-name');
+    await user.clear(name);
+    await user.type(name, 'Kubek x5', { skipClick: true });
+    expect(await screen.findByTestId('bundle-form-pack-mismatch')).toHaveTextContent('x5');
   });
 });

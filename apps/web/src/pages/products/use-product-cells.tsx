@@ -181,12 +181,26 @@ export function useProductCells() {
                   data-testid={
                     product.bundle ? `bundle-list-available-${product.sku ?? product.id}` : undefined
                   }
+                  style={
+                    product.bundle && product.availableToPromise <= 0
+                      ? { color: 'var(--status-error-strong)' }
+                      : undefined
+                  }
                 >
-                  {product.availableToPromise}
-                </span>{' '}
-                <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                  {copy.stock.toSell}
+                  {product.bundle
+                    ? product.availableToPromise <= 0
+                      ? copy.stock.bundleNone
+                      : plural(product.availableToPromise, copy.stock.bundleSets)
+                    : product.availableToPromise}
                 </span>
+                {product.bundle ? null : (
+                  <>
+                    {' '}
+                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                      {copy.stock.toSell}
+                    </span>
+                  </>
+                )}
               </span>
             )}
             {atpStatus === 'unknown' ? (
@@ -256,7 +270,7 @@ export function useProductCells() {
         </span>
       );
     },
-    [bundleCopy, copy, format]
+    [bundleCopy, copy, format, plural]
   );
 
   /** The product's stock state as one badge (the peek header). */

@@ -29,6 +29,8 @@ export interface BundleStepReviewProps {
   giftLine: string;
   /** Saveable but not assemblable right now (0 sets): said in amber, never as a plain "ready". */
   cannotAssemble?: boolean;
+  /** The name claims a pack size the composition does not hold. */
+  packMismatch?: { named: number; actual: number } | null;
   onGoTo: (step: BundleStepKey) => void;
   /** True while the product will be created in a shop on save (the "create" mode). */
   creating?: boolean;
@@ -47,6 +49,7 @@ export function BundleStepReview({
   productLine,
   giftLine,
   cannotAssemble = false,
+  packMismatch = null,
   onGoTo,
   creating,
   masterName,
@@ -113,8 +116,18 @@ export function BundleStepReview({
         </Alert>
       ) : null}
 
+      {packMismatch !== null ? (
+        <Alert tone="warning" data-testid="bundle-form-pack-mismatch-review">
+          {interpolate(copy.packMismatch, packMismatch)}
+        </Alert>
+      ) : null}
+
       {saved === null && creating !== undefined ? (
-        <section className="s4-happens" data-testid="bundle-form-happens" aria-labelledby="s4-happens-h">
+        <section
+          className="s4-happens"
+          data-testid="bundle-form-happens"
+          aria-labelledby="s4-happens-h"
+        >
           <h3 id="s4-happens-h" className="bf-h3">
             {copy.s4Happens}
           </h3>
@@ -133,31 +146,43 @@ export function BundleStepReview({
         </section>
       ) : null}
 
+      {saved === null ? <NextHint /> : null}
+
       <dl className="bf-review">
         <div>
           <dt>{copy.s4Composition}</dt>
-          <dd data-testid="bundle-form-review-composition">{compositionText || copy.readbackEmpty}</dd>
-          {edit(copy.s4Composition, 'components')}
+          <dd data-testid="bundle-form-review-composition">
+            {compositionText || copy.readbackEmpty}
+            {edit(copy.s4Composition, 'components')}
+          </dd>
         </div>
         <div>
           <dt>{copy.s4Stock}</dt>
-          <dd data-testid="bundle-form-review-stock">{stockText || copy.availabilityEmpty}</dd>
-          {edit(copy.s4Stock, 'components')}
+          <dd data-testid="bundle-form-review-stock">
+            {stockText || copy.availabilityEmpty}
+            {edit(copy.s4Stock, 'components')}
+          </dd>
         </div>
         <div>
           <dt>{copy.s4Product}</dt>
-          <dd>{productLine}</dd>
-          {edit(copy.s4Product, 'product')}
+          <dd>
+            {productLine}
+            {edit(copy.s4Product, 'product')}
+          </dd>
         </div>
         <div>
           <dt>{copy.s4Price}</dt>
-          <dd className="mono tabular">{price !== null ? format.money(price, currency) : copy.summaryNoPrice}</dd>
-          {edit(copy.s4Price, 'product')}
+          <dd className="mono tabular">
+            {price !== null ? format.money(price, currency) : copy.summaryNoPrice}
+            {edit(copy.s4Price, 'product')}
+          </dd>
         </div>
         <div>
           <dt>{copy.s4Documents}</dt>
-          <dd>{giftLine === copy.s4NoGifts ? copy.s4DocumentsNoGift : giftLine}</dd>
-          {edit(copy.s4Documents, 'gifts')}
+          <dd>
+            {giftLine === copy.s4NoGifts ? copy.s4DocumentsNoGift : giftLine}
+            {edit(copy.s4Documents, 'gifts')}
+          </dd>
         </div>
       </dl>
 
@@ -165,6 +190,21 @@ export function BundleStepReview({
 
       {saved !== null ? <SendOn saved={saved} /> : null}
     </div>
+  );
+}
+
+/** Says before the Save button that saving is not the end: the offer is a separate, last step. */
+function NextHint(): ReactElement {
+  const copy = useMessages('bundles').form;
+  const connections = useConnectionsQuery();
+  const marketplaces = (connections.data ?? []).filter(
+    (c) => c.status === 'active' && c.enabledCapabilities.includes('OfferManager')
+  );
+  const sole = marketplaces.length === 1 ? marketplaces[0] : undefined;
+  return (
+    <p className="bf-nextnote" data-testid="bundle-form-next-hint">
+      {sole !== undefined ? interpolate(copy.s4Next, { name: sole.name }) : copy.s4NextMany}
+    </p>
   );
 }
 
@@ -182,8 +222,7 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
   const marketplaces = active.filter((c) => c.enabledCapabilities.includes('OfferManager'));
   const shops = active.filter(
     (c) =>
-      c.enabledCapabilities.includes('ProductPublisher') &&
-      !marketplaces.some((m) => m.id === c.id)
+      c.enabledCapabilities.includes('ProductPublisher') && !marketplaces.some((m) => m.id === c.id)
   );
   const soleMarketplace = marketplaces.length === 1 ? marketplaces[0] : undefined;
   const target = (connectionId: string): string =>
@@ -209,22 +248,25 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
         <p className="pm-help">{copy.goNone}</p>
       ) : (
         <ul className="bf-targets">
-          {[...marketplaces.map((c) => ({ c, kind: 'marketplace' as const })), ...shops.map((c) => ({ c, kind: 'shop' as const }))].map(
-            ({ c, kind }) => (
-              <li key={c.id} data-testid={`bundle-form-target-${c.id}`}>
-                <b className="bf-targets__name">{c.name}</b>
-                <span className="bf-targets__text">
-                  {interpolate(kind === 'shop' ? copy.goShop : copy.goMarketplace, { name: c.name })}
-                </span>
-                <Link
-                  className={`button${soleMarketplace?.id === c.id ? '' : ' button--secondary'} button--sm`}
-                  to={target(c.id)}
-                >
-                  {kind === 'marketplace' ? interpolate(copy.listOnChannel, { name: c.name }) : copy.goButton}
-                </Link>
-              </li>
-            )
-          )}
+          {[
+            ...marketplaces.map((c) => ({ c, kind: 'marketplace' as const })),
+            ...shops.map((c) => ({ c, kind: 'shop' as const })),
+          ].map(({ c, kind }) => (
+            <li key={c.id} data-testid={`bundle-form-target-${c.id}`}>
+              <b className="bf-targets__name">{c.name}</b>
+              <span className="bf-targets__text">
+                {interpolate(kind === 'shop' ? copy.goShop : copy.goMarketplace, { name: c.name })}
+              </span>
+              <Link
+                className={`button${soleMarketplace?.id === c.id ? '' : ' button--secondary'} button--sm`}
+                to={target(c.id)}
+              >
+                {kind === 'marketplace'
+                  ? interpolate(copy.listOnChannel, { name: c.name })
+                  : copy.goButton}
+              </Link>
+            </li>
+          ))}
         </ul>
       )}
     </section>
@@ -268,7 +310,10 @@ function PriceSplit({
       </button>
       <div className={`pm-disc__body${open ? ' is-open' : ''}`}>
         <div>
-          <div className="pm-disc__inner" data-testid={open ? 'bundle-form-price-split' : undefined}>
+          <div
+            className="pm-disc__inner"
+            data-testid={open ? 'bundle-form-price-split' : undefined}
+          >
             {open ? (
               <>
                 <p className="pm-help">{copy.priceSplitIntro}</p>
@@ -293,7 +338,9 @@ function PriceSplit({
                 ) : split.kind === 'unknown-component-price' ? (
                   <Alert tone="warning" data-testid="bundle-form-price-share-alert">
                     {interpolate(copy.priceSplitMissingPrice, {
-                      name: rows.find((r) => r.variantId === split.variantIds[0])?.name ?? split.variantIds[0],
+                      name:
+                        rows.find((r) => r.variantId === split.variantIds[0])?.name ??
+                        split.variantIds[0],
                     })}
                   </Alert>
                 ) : split.kind === 'no-paid-component' ? (

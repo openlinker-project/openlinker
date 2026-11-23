@@ -28,7 +28,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useConnectionsQuery } from '../../connections';
 import { captureDemoEvent } from '../../demo';
-import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { interpolate, useMessages, usePlural, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -146,6 +146,7 @@ export function GenerateLabelForm({
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
   const recipient = buildRecipientPreview(snapshot, copy.recipient);
   const bundleCopy = useMessages('bundles');
+  const plural = usePlural();
   const packComponents = (order.bundleLines ?? []).flatMap((bundle) => bundle.components);
   const hasPickupPoint = snapshot.pickupPoint !== undefined;
   // Locker-vs-courier is driven by the actual delivery method (#954), not by
@@ -612,7 +613,7 @@ export function GenerateLabelForm({
                     {bundle.components.map((component) => (
                       <li key={component.lineId}>
                         <span>{component.name ?? component.sku ?? component.variantId}</span>
-                        <strong>{interpolate(bundleCopy.list.pieces, { n: component.quantity })}</strong>
+                        <strong>{plural(component.quantity, ordersCopy.generateLabelForm.packPieces)}</strong>
                       </li>
                     ))}
                   </ul>
@@ -691,6 +692,11 @@ export function GenerateLabelForm({
             invalid={Boolean(form.formState.errors.weightGrams)}
           />
         </FormField>
+        {routedParcel?.weightGrams !== undefined && !form.formState.dirtyFields.weightGrams ? (
+          <p className="form-field__description" data-testid="label-weight-from-rule">
+            {copy.weightFromRule}
+          </p>
+        ) : null}
 
         {shippingMethod === 'paczkomat' ? (
           <FormField

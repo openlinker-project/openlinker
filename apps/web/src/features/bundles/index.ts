@@ -4,7 +4,12 @@
  * The bundle form and the small pieces other features render: the "used in"
  * list, the order's bundle line rows and the multipack hold banner.
  */
-export { BundleForm, type BundleFormProps } from './components/bundle-form';
+export {
+  BundleForm,
+  type BundleFormProps,
+  type BundleSeedAdjustment,
+} from './components/bundle-form';
+export { MAX_COMPONENT_QUANTITY, clampSeedQuantity } from './lib/bundle-form-model';
 export { MultipackHoldBanner } from './components/multipack-hold-banner';
 export { ProductUsedInBundles } from './components/product-used-in-bundles';
 export { BundleComposition } from './components/bundle-composition';

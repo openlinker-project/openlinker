@@ -3,7 +3,17 @@
  * composition cannot be, and which EAN is worth sending.
  */
 import { describe, expect, it } from 'vitest';
-import { compositionProblem, isValidEan, parsePrice, priceProblem, type ParsedRow } from './bundle-form-model';
+import {
+  clampSeedQuantity,
+  compositionProblem,
+  isValidEan,
+  namedPackSize,
+  packSizeMismatch,
+  parsePrice,
+  priceProblem,
+  shortComponentName,
+  type ParsedRow,
+} from './bundle-form-model';
 
 function row(over: Partial<ParsedRow>): ParsedRow {
   return {
@@ -64,5 +74,39 @@ describe('isValidEan', () => {
     expect(isValidEan('5901234123457')).toBe(true);
     expect(isValidEan('1234567')).toBe(false);
     expect(isValidEan('59012341234ab')).toBe(false);
+  });
+});
+
+describe('seed helpers (round 5)', () => {
+  it('should clamp seeded quantities into 1..9999 and flag what it changed', () => {
+    expect(clampSeedQuantity(undefined)).toEqual({ quantity: 1, altered: false });
+    expect(clampSeedQuantity('3')).toEqual({ quantity: 3, altered: false });
+    expect(clampSeedQuantity('99999')).toEqual({ quantity: 9999, altered: true });
+    expect(clampSeedQuantity('0')).toEqual({ quantity: 1, altered: true });
+    expect(clampSeedQuantity('-3')).toEqual({ quantity: 1, altered: true });
+    expect(clampSeedQuantity('1.5')).toEqual({ quantity: 1, altered: true });
+    expect(clampSeedQuantity('abc')).toEqual({ quantity: 1, altered: true });
+  });
+
+  it('should shorten a component name to its first words', () => {
+    expect(shortComponentName('OL Test Kubek ceramiczny muzyczny (karta Allegro)')).toBe('OL Test Kubek');
+    expect(shortComponentName('Kubek')).toBe('Kubek');
+    expect(shortComponentName('')).toBe('');
+  });
+
+  it('should read a pack size from a name', () => {
+    expect(namedPackSize('Kubek x3')).toBe(3);
+    expect(namedPackSize('Kubek ×6 (wielopak)')).toBe(6);
+    expect(namedPackSize('Kubek 4 szt.')).toBe(4);
+    expect(namedPackSize('Kubek x1')).toBeNull();
+    expect(namedPackSize('Maxi kubek')).toBeNull();
+  });
+
+  it('should report a name that disagrees with the single component quantity', () => {
+    const one = [row({ qty: 1, quantity: '1' })];
+    expect(packSizeMismatch('Kubek x3', one)).toEqual({ named: 3, actual: 1 });
+    expect(packSizeMismatch('Kubek x3', [row({ qty: 3, quantity: '3' })])).toBeNull();
+    expect(packSizeMismatch('Kubek x3', [row({}), row({ variantId: 'w' })])).toBeNull();
+    expect(packSizeMismatch(null, one)).toBeNull();
   });
 });

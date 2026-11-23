@@ -21,7 +21,7 @@ export interface BundleHistoryProps {
   currency?: string;
 }
 
-function describeComponents(entry: BundleHistoryEntry): string {
+export function describeComponents(entry: BundleHistoryEntry): string {
   return entry.components
     .map((component, index) => {
       const name = entry.componentSummaries[index]?.name ?? component.variantId;
@@ -30,13 +30,13 @@ function describeComponents(entry: BundleHistoryEntry): string {
     .join(', ');
 }
 
-interface DiffChip {
+export interface DiffChip {
   kind: 'added' | 'removed' | 'quantity';
   text: string;
 }
 
 /** What changed from the older version to this one, by component variant. */
-function diffAgainst(
+export function diffAgainst(
   entry: BundleHistoryEntry,
   older: BundleHistoryEntry | undefined,
   texts: { added: string; removed: string; quantity: string }

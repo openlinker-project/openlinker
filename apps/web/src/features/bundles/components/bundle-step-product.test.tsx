@@ -61,7 +61,7 @@ function props(over: Partial<BundleStepProductProps> = {}): BundleStepProductPro
     showErrors: false,
     createError: null,
     effectiveName: '',
-    nameSuggestion: 'Zestaw: Kubek + Kawa',
+    nameSuggestion: 'Kubek + Kawa',
     ...over,
   };
 }
@@ -77,8 +77,9 @@ function client(): ReturnType<typeof createMockApiClient> {
 
 describe('suggestedBundleName', () => {
   it('should join the first components, and stay empty for fewer than two', () => {
-    expect(suggestedBundleName([row('Kubek', 'a'), row('Kawa', 'b')], 'Zestaw')).toBe('Zestaw: Kubek + Kawa');
-    expect(suggestedBundleName([row('Kubek', 'a')], 'Zestaw')).toBe('');
+    expect(suggestedBundleName([row('Kubek', 'a'), row('Kawa', 'b')])).toBe('Kubek + Kawa');
+    expect(suggestedBundleName([row('Kubek', 'a')])).toBe('');
+    expect(suggestedBundleName([{ ...row('Kubek', 'a'), qty: 3 }])).toBe('Kubek x3');
   });
 });
 
@@ -93,11 +94,11 @@ describe('BundleStepProduct', () => {
 
   it('should show the name suggestion as the name while the operator has not typed one', () => {
     renderWithProviders(
-      <BundleStepProduct {...props({ mode: 'create', effectiveName: 'Zestaw: Kubek + Kawa' })} />,
+      <BundleStepProduct {...props({ mode: 'create', effectiveName: 'Kubek + Kawa' })} />,
       { apiClient: client() }
     );
 
-    expect(screen.getByTestId('bundle-form-new-name')).toHaveValue('Zestaw: Kubek + Kawa');
+    expect(screen.getByTestId('bundle-form-new-name')).toHaveValue('Kubek + Kawa');
     expect(screen.getAllByTestId('bundle-form-hint-chip').length).toBeGreaterThan(0);
   });
 

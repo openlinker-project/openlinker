@@ -18,7 +18,7 @@ import type { ReactElement } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 
-import { interpolate, useMessages } from '../../../../shared/i18n';
+import { interpolate, usePlural, useMessages } from '../../../../shared/i18n';
 import { StatusBadge, type StatusBadgeTone } from '../../../../shared/ui';
 import { ENTRANCE_GROUP, ENTRANCE_ITEM } from '../../../../shared/ui/motion-presets';
 import { packSizeOf } from './bundle-kind';
@@ -70,6 +70,7 @@ export function BundleComposition({
   showEanNote = false,
 }: BundleCompositionProps): ReactElement {
   const copy = useMessages('listings').bundleOffer;
+  const plural = usePlural();
   const packSize = packSizeOf(preview);
   // The multipack rules below are Allegro's; another marketplace gets only the neutral line.
   const isAllegro = /allegro/i.test(destinationName);
@@ -99,7 +100,7 @@ export function BundleComposition({
           <span className="pm-hint">
             {packSize !== null
               ? interpolate(copy.packCompositionHint, { n: packSize })
-              : interpolate(copy.compositionHint, { n: preview.components.length })}
+              : plural(preview.components.length, copy.compositionHint)}
           </span>
         </div>
       ) : null}
@@ -147,7 +148,7 @@ export function BundleComposition({
       {packSize === null ? (
         <div className="bundle-comp__pack">
           <p className="cx-sub" data-testid="bundle-price-scope">
-            {interpolate(copy.priceWholeSet, { n: preview.components.length })}
+            {plural(preview.components.length, copy.priceWholeSet)}
           </p>
           {isAllegro && preview.components.length > 1 && preview.components[0] ? (
             <p className="cx-sub" data-testid="bundle-first-product-note">

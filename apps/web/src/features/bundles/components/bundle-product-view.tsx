@@ -21,6 +21,7 @@ import { useConnectionsQuery } from '../../connections';
 import { useListingsQuery, type OfferLifecycle } from '../../listings';
 import { computeBundleAvailability } from '../lib/bundle-availability';
 import { splitBundlePrice } from '../lib/bundle-price-split';
+import { describeComponents, diffAgainst } from './bundle-history';
 import { BundleComponentList } from './bundle-component-list';
 import { BundleJourney } from './bundle-journey';
 import { useBundleHistoryQuery, useBundleQuery } from '../hooks/use-bundle-queries';
@@ -246,11 +247,26 @@ export function BundleProductView({
                       {listing.commercial?.availableQuantity != null &&
                       availability.kind === 'known' &&
                       listing.commercial.availableQuantity !== availability.bundles ? (
-                        <span className="ux-offer-mismatch" data-testid="bundle-offer-mismatch">
-                          {interpolate(copy.offerMismatch, {
-                            channel: listing.commercial.availableQuantity,
-                            sets: availability.bundles,
-                          })}
+                        // Below the component count is the normal shape of a channel reserve or
+                        // a pending order, so it is a note; only a channel ABOVE what the
+                        // components allow is a fault a sync could fix.
+                        <span
+                          className={
+                            listing.commercial.availableQuantity > availability.bundles
+                              ? 'ux-offer-mismatch'
+                              : 'ux-offer-mismatch ux-offer-mismatch--note'
+                          }
+                          data-testid="bundle-offer-mismatch"
+                        >
+                          {interpolate(
+                            listing.commercial.availableQuantity > availability.bundles
+                              ? copy.offerMismatch
+                              : copy.offerReserveNote,
+                            {
+                              channel: listing.commercial.availableQuantity,
+                              sets: availability.bundles,
+                            }
+                          )}
                         </span>
                       ) : null}
                     </span>
@@ -287,7 +303,13 @@ export function BundleProductView({
           riseIndex={4}
         >
           <ul className="pm-log" data-testid="bundle-view-history">
-            {(history.data ?? []).map((entry) => (
+            {(history.data ?? []).map((entry, index, all) => {
+              const chips = diffAgainst(entry, all[index + 1], {
+                added: allCopy.form.historyDiffAdded,
+                removed: allCopy.form.historyDiffRemoved,
+                quantity: allCopy.form.historyDiffQuantity,
+              });
+              return (
               <li key={entry.version}>
                 <span>
                   <b>
@@ -297,13 +319,17 @@ export function BundleProductView({
                   </b>
                   <span className="text-muted">
                     {interpolate(copy.since, { date: format.date(entry.createdAt) })} ·{' '}
-                    {entry.components
-                      .map((component, index) => {
-                        const n = entry.componentSummaries[index]?.name ?? component.variantId;
-                        return component.giftSlot ? `${n} (${copy.gift.toLowerCase()})` : n;
-                      })
-                      .join(', ')}
+                    {describeComponents(entry)}
                   </span>
+                  {chips.length > 0 ? (
+                    <span className="bf-history__chips">
+                      {chips.map((chip) => (
+                        <span key={chip.text} className={`bf-history__chip bf-history__chip--${chip.kind}`}>
+                          {chip.text}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
                 </span>
                 {entry.current ? (
                   <StatusBadge compact withDot tone="success">
@@ -315,7 +341,8 @@ export function BundleProductView({
                   </span>
                 ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
           {bundle.openOrdersOnOlderComposition > 0 ? (
             <div className="cx-note">
@@ -323,7 +350,7 @@ export function BundleProductView({
                 <circle cx="12" cy="12" r="9" />
                 <path d="M12 8v5M12 16v.5" />
               </svg>
-              <p>{formatPlural(bundle.openOrdersOnOlderComposition, copy.openOrders, locale)}</p>
+              <p>{formatPlural(bundle.openOrdersOnOlderComposition, allCopy.form.openOrdersNote, locale)}</p>
             </div>
           ) : null}
         </ComposerSection>
@@ -358,6 +385,7 @@ export function BundleProductView({
             )}
           </div>
           <p className="pm-help" data-testid="bundle-view-stock-rule">{copy.stockRule}</p>
+          <p className="pm-help" data-testid="bundle-view-stock-reserve">{copy.stockRuleReserve}</p>
           <p className="pm-help">{copy.channelsGetNumber}</p>
         </ComposerSection>
         <ComposerSection title={copy.glanceTitle} riseIndex={4}>

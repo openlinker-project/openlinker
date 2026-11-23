@@ -96,6 +96,8 @@ export function BundleSummary({
       : availability.kind === 'unknown'
         ? 'is-unk'
         : 'is-empty';
+  const limitingStock =
+    limiting === null ? null : valid.find((row) => row.name === limiting)?.availableToPromise;
   const target = availability.kind === 'known' ? availability.bundles : 0;
   const shown = useCountUp(target, reduceMotion);
 
@@ -142,7 +144,11 @@ export function BundleSummary({
               </span>
             </p>
             {limiting !== null ? (
-              <p className="s-hero__note">{interpolate(copy.summaryLimitedBy, { name: limiting })}</p>
+              <p className="s-hero__note">
+                {limitingStock === null || limitingStock === undefined
+                  ? interpolate(copy.summaryLimitedBy, { name: limiting })
+                  : interpolate(copy.summaryLimitedByQty, { name: limiting, n: limitingStock })}
+              </p>
             ) : null}
             {target === 0 ? (
               <p className="s-hero__note">
@@ -154,13 +160,6 @@ export function BundleSummary({
           </>
         ) : (
           <>
-            <p className="s-hero__figure">
-              <span aria-hidden="true">
-                <b className="s-hero__num mono tabular">0</b>
-                <span className="s-hero__unit">{`${unitBefore}${unitAfter}`.trim()}</span>
-              </span>
-              <span className="sr-only">{formatPlural(0, copy.summarySetsPlural, locale)}</span>
-            </p>
             <p className="s-hero__note">{copy.summaryAddComponent}</p>
           </>
         )}

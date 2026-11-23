@@ -1173,12 +1173,15 @@ function BulkEditModalForm({
         // (#4036): an empty `ean` is stored as that explicit choice, and the card
         // is bound to the barcode so it goes too.
         ...(values.productCardId && !baseEanCleared ? { productCardId: values.productCardId } : {}),
-        ...(baseEanCleared
-          ? { ean: '' }
-          : baseEan !== '' && baseEan !== primaryMasterBarcode
-            ? { ean: baseEan }
-            : {}),
-        ...(simpleEanAck ? { eanOverrideAcknowledged: true } : {}),
+        // A set takes each component's own barcode, so an offer EAN would be a no-op.
+        ...(bundle
+          ? {}
+          : baseEanCleared
+            ? { ean: '' }
+            : baseEan !== '' && baseEan !== primaryMasterBarcode
+              ? { ean: baseEan }
+              : {}),
+        ...(simpleEanAck && !bundle ? { eanOverrideAcknowledged: true } : {}),
         ...(baseImageUrls !== undefined ? { imageUrls: baseImageUrls } : {}),
         ...(baseParameters.length > 0 ? { parameters: baseParameters } : {}),
         ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
@@ -2111,6 +2114,7 @@ function BaseScopeForm({
               placeholder={copy.ean.placeholder}
               aria-label={copy.ean.label}
               aria-invalid={eanInvalid}
+              readOnly={Boolean(bundle)}
             />
             {eanInvalid ? (
               <div className="bulk-editor__ean-err">
@@ -2379,6 +2383,7 @@ function BaseScopeForm({
               bundle ? categoryParameters.filter((p) => p.section !== 'product') : categoryParameters
             }
             ruleHints={ruleHints}
+            isBundle={Boolean(bundle)}
           />
         ) : null}
 
@@ -2518,6 +2523,8 @@ interface BaseParameterSectionProps {
   parametersQuery: ReturnType<typeof useCategoryParametersQuery>;
   categoryParameters: CategoryParameter[];
   ruleHints?: BaseRuleHints;
+  /** A set row: its product-level parameters come from the component cards. */
+  isBundle?: boolean;
 }
 
 function BaseParameterSection({
@@ -2525,6 +2532,7 @@ function BaseParameterSection({
   parametersQuery,
   categoryParameters,
   ruleHints,
+  isBundle = false,
 }: BaseParameterSectionProps): ReactElement | null {
   const copy = useMessages('listings').bulkEditModal.parameters;
   if (!watchedCategoryId) return null;
@@ -2554,6 +2562,7 @@ function BaseParameterSection({
           {ruleHints.note}
         </p>
       ) : null}
+      {isBundle ? <p className="cx-sub">{copy.bundleNote}</p> : null}
       <CategoryParametersStep
         parameters={categoryParameters}
         formNamespace="parameters"
