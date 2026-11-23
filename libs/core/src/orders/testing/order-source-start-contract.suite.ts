@@ -131,11 +131,11 @@ function createRecorder(into: MutableCaseResult): ContractCaseRecorder {
 
 type ContractCase = (
   subject: OrderSourceStartSubject,
-  record: ContractCaseRecorder,
+  record: ContractCaseRecorder
 ) => Promise<void>;
 
 async function settle<T>(
-  fn: () => Promise<T>,
+  fn: () => Promise<T>
 ): Promise<{ ok: true; value: T } | { ok: false; error: unknown }> {
   try {
     return { ok: true, value: await fn() };
@@ -167,14 +167,14 @@ function declaresMode(manifest: OrderSourceStartDeclaration, mode: 'now' | 'from
 
 /** The case ids that apply to a subject, derived from what it declares. */
 export function expectedOrderSourceStartContractCaseIds(
-  subject: OrderSourceStartSubject,
+  subject: OrderSourceStartSubject
 ): OrderSourceStartContractCaseId[] {
   const ids: OrderSourceStartContractCaseId[] = ['declaration-matches-implementation'];
   if (isOrderFeedBootstrap(subject.adapter)) {
     ids.push(
       'head-null-on-empty-shop',
       'head-failure-throws-never-null',
-      'head-then-feed-reads-only-newer',
+      'head-then-feed-reads-only-newer'
     );
   }
   if (isOrderFeedDateBootstrap(subject.adapter)) {
@@ -194,18 +194,16 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
   // the job. They are two hand-written statements of one fact.
   'declaration-matches-implementation': ({ adapter, manifest }, record) => {
     record.check(
-      !declaresMode(manifest, 'now') ||
-        isOrderFeedBootstrap(adapter),
-      "manifest declares 'now' but the adapter has no headCursor()",
+      !declaresMode(manifest, 'now') || isOrderFeedBootstrap(adapter),
+      "manifest declares 'now' but the adapter has no headCursor()"
     );
     record.check(
-      declaresMode(manifest, 'from') ===
-        isOrderFeedDateBootstrap(adapter),
-      "manifest 'from' must be declared exactly when the adapter has cursorForDate()",
+      declaresMode(manifest, 'from') === isOrderFeedDateBootstrap(adapter),
+      "manifest 'from' must be declared exactly when the adapter has cursorForDate()"
     );
     record.check(
       (manifest.orderWindowImport === true) === isOrderWindowReader(adapter),
-      'manifest orderWindowImport must be true exactly when the adapter has listOrdersInWindow()',
+      'manifest orderWindowImport must be true exactly when the adapter has listOrdersInWindow()'
     );
     return Promise.resolve();
   },
@@ -239,7 +237,7 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
       !outcome.ok,
       `headCursor() must throw when the shop is unreachable, but answered ${
         outcome.ok ? JSON.stringify(outcome.value) : ''
-      }`,
+      }`
     );
   },
 
@@ -256,7 +254,7 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
     const olderBefore = before.filter((id) => existingIds.includes(id));
     record.check(
       olderBefore.length === 0,
-      `feed from the head returned orders that existed at head time: ${olderBefore.join(', ')}`,
+      `feed from the head returned orders that existed at head time: ${olderBefore.join(', ')}`
     );
 
     const newerId = await scenario.placeNewerOrder();
@@ -264,13 +262,13 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
     const olderAfter = after.filter((id) => existingIds.includes(id));
     record.check(
       olderAfter.length === 0,
-      `feed from the head returned older orders after a new one arrived: ${olderAfter.join(', ')}`,
+      `feed from the head returned older orders after a new one arrived: ${olderAfter.join(', ')}`
     );
     record.check(
       after.filter((id) => id === newerId).length === 1,
       `the order placed after the head must appear exactly once, saw ${
         after.filter((id) => id === newerId).length
-      }`,
+      }`
     );
   },
 
@@ -280,14 +278,16 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
   'date-invalid-is-typed-refusal': async ({ adapter, scenario }, record) => {
     if (!isOrderFeedDateBootstrap(adapter)) return;
     await scenario.shopWithOrders();
-    const outcome = await settle(() => adapter.cursorForDate(scenario.unusableDate ?? 'not-a-date'));
+    const outcome = await settle(() =>
+      adapter.cursorForDate(scenario.unusableDate ?? 'not-a-date')
+    );
     record.check(!outcome.ok, 'cursorForDate() accepted a value that is not a date');
     if (!outcome.ok) {
       record.check(
         outcome.error instanceof OrderSyncStartUnavailableError,
         `cursorForDate() must refuse with OrderSyncStartUnavailableError, got ${
           (outcome.error as Error)?.name ?? typeof outcome.error
-        }`,
+        }`
       );
     }
   },
@@ -298,16 +298,25 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
     const cursor = await adapter.cursorForDate(date);
     const ids = await readFeedIds(adapter, cursor);
     const older = ids.filter((id) => olderIds.includes(id));
-    record.check(older.length === 0, `feed from the date cursor returned older orders: ${older.join(', ')}`);
+    record.check(
+      older.length === 0,
+      `feed from the date cursor returned older orders: ${older.join(', ')}`
+    );
     const missing = newerIds.filter((id) => !ids.includes(id));
-    record.check(missing.length === 0, `feed from the date cursor lost newer orders: ${missing.join(', ')}`);
+    record.check(
+      missing.length === 0,
+      `feed from the date cursor lost newer orders: ${missing.join(', ')}`
+    );
   },
 
   // Walk both directions to the end. Complete (every order seen), disjoint (none
   // twice), terminating, and `done` agrees with a null cursor.
   'window-walk-is-complete-and-disjoint': async ({ adapter, scenario }, record) => {
     if (!isOrderWindowReader(adapter) || scenario.windowOrders === undefined) {
-      record.check(false, 'the scenario must provide windowOrders() for an adapter with a window reader');
+      record.check(
+        false,
+        'the scenario must provide windowOrders() for an adapter with a window reader'
+      );
       return;
     }
     const window = await scenario.windowOrders();
@@ -325,11 +334,11 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
         });
         record.check(
           out.items.length <= WALK_LIMIT,
-          `${direction}: a page of ${out.items.length} exceeds the limit of ${WALK_LIMIT}`,
+          `${direction}: a page of ${out.items.length} exceeds the limit of ${WALK_LIMIT}`
         );
         record.check(
           out.done === (out.nextCursor === null),
-          `${direction}: done (${out.done}) must be true exactly when nextCursor is null`,
+          `${direction}: done (${out.done}) must be true exactly when nextCursor is null`
         );
         for (const item of out.items) seen.push(item.externalOrderId);
         if (out.done || out.nextCursor === null) {
@@ -340,15 +349,21 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
         if (out.nextCursor === cursor) break;
         cursor = out.nextCursor;
       }
-      record.check(terminated, `${direction}: the walk did not terminate within ${MAX_PAGES} pages`);
+      record.check(
+        terminated,
+        `${direction}: the walk did not terminate within ${MAX_PAGES} pages`
+      );
       record.check(
         new Set(seen).size === seen.length,
-        `${direction}: an order was returned more than once (${seen.join(', ')})`,
+        `${direction}: an order was returned more than once (${seen.join(', ')})`
       );
       const missing = window.ids.filter((id) => !seen.includes(id));
       const extra = seen.filter((id) => !window.ids.includes(id));
       record.check(missing.length === 0, `${direction}: walk missed ${missing.join(', ')}`);
-      record.check(extra.length === 0, `${direction}: walk returned orders outside the window: ${extra.join(', ')}`);
+      record.check(
+        extra.length === 0,
+        `${direction}: walk returned orders outside the window: ${extra.join(', ')}`
+      );
     }
   },
 
@@ -358,7 +373,11 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
     if (!isOrderWindowReader(adapter)) return;
     await scenario.shopWithOrders();
     const badCursor = await settle(() =>
-      adapter.listOrdersInWindow({ direction: 'oldest-first', cursor: '%%not-a-cursor%%', limit: WALK_LIMIT }),
+      adapter.listOrdersInWindow({
+        direction: 'oldest-first',
+        cursor: '%%not-a-cursor%%',
+        limit: WALK_LIMIT,
+      })
     );
     record.check(!badCursor.ok, 'a malformed cursor must throw, not restart the walk');
     const badFrom = await settle(() =>
@@ -367,7 +386,7 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
         direction: 'oldest-first',
         cursor: null,
         limit: WALK_LIMIT,
-      }),
+      })
     );
     record.check(!badFrom.ok, 'a malformed from bound must throw, not be ignored');
   },
@@ -381,7 +400,7 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
  */
 export async function checkOrderSourceStartContract(
   subject: OrderSourceStartSubject,
-  options: { readonly subject?: string } = {},
+  options: { readonly subject?: string } = {}
 ): Promise<ContractRunResult> {
   if (subject === null || subject === undefined) {
     throw new ContractSubjectMissingError(CONTRACT_NAME, 'the factory produced no subject');
@@ -391,10 +410,16 @@ export async function checkOrderSourceStartContract(
     subject.adapter === undefined ||
     typeof subject.adapter.listOrderFeed !== 'function'
   ) {
-    throw new ContractSubjectMissingError(CONTRACT_NAME, 'the subject adapter has no listOrderFeed()');
+    throw new ContractSubjectMissingError(
+      CONTRACT_NAME,
+      'the subject adapter has no listOrderFeed()'
+    );
   }
   if (subject.scenario === null || subject.scenario === undefined || !subject.manifest) {
-    throw new ContractSubjectMissingError(CONTRACT_NAME, 'the subject needs a manifest and a scenario');
+    throw new ContractSubjectMissingError(
+      CONTRACT_NAME,
+      'the subject needs a manifest and a scenario'
+    );
   }
 
   const caseIds = expectedOrderSourceStartContractCaseIds(subject);
@@ -424,7 +449,16 @@ export async function checkOrderSourceStartContract(
  */
 export function runOrderSourceStartContract(
   makeSubject: () => OrderSourceStartSubject,
-  options: { readonly subject?: string } = {},
+  options: {
+    readonly subject?: string;
+    /**
+     * A case the adapter is KNOWN to fail, with the reason. The case is then
+     * asserted to FAIL, so an adapter fixing the behaviour (or the entry rotting)
+     * turns the run red instead of leaving a stale excuse. This records a finding
+     * in the open; it is not a way to skip a case.
+     */
+    readonly knownDeviations?: Partial<Record<OrderSourceStartContractCaseId, string>>;
+  } = {}
 ): void {
   describe(`${CONTRACT_NAME}${options.subject ? ` - ${options.subject}` : ''}`, () => {
     let result: ContractRunResult;
@@ -433,7 +467,7 @@ export function runOrderSourceStartContract(
     beforeAll(async () => {
       const subject = makeSubject();
       expected = expectedOrderSourceStartContractCaseIds(subject);
-      result = await checkOrderSourceStartContract(subject, options);
+      result = await checkOrderSourceStartContract(subject, { subject: options.subject });
     });
 
     it('runs every case its capabilities call for', () => {
@@ -449,6 +483,14 @@ export function runOrderSourceStartContract(
         }
         const found = result.cases.find((c) => c.id === id);
         expect(found).toBeDefined();
+        if (options.knownDeviations?.[id] !== undefined) {
+          expect({
+            id,
+            deviation: options.knownDeviations[id],
+            failed: (found?.failures.length ?? 0) > 0,
+          }).toEqual({ id, deviation: options.knownDeviations[id], failed: true });
+          return;
+        }
         expect(found?.failures ?? ['case did not run']).toEqual([]);
         expect(found?.checks ?? 0).toBeGreaterThan(0);
       });
