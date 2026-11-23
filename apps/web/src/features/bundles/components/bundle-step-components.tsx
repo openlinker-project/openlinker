@@ -23,6 +23,7 @@ import {
   MAX_COMPONENT_QUANTITY,
   type BundleFormRow,
   type BundleFormValues,
+  type CompositionProblem,
   type ParsedRow,
 } from '../lib/bundle-form-model';
 
@@ -43,6 +44,8 @@ export interface BundleStepComponentsProps {
   readOnly: boolean;
   limitedName: string | null;
   showErrors: boolean;
+  /** Why this composition cannot be a bundle yet, when it cannot. */
+  problem?: CompositionProblem | null;
   onAdd: (choice: BundleProductChoice) => void;
   /** The bundle's own product variant: it can never be its own component. */
   blockedVariantIds?: readonly string[];
@@ -54,6 +57,8 @@ type QuantityProblem = 'min' | 'whole' | 'max';
 export function quantityProblem(raw: string): QuantityProblem | null {
   const text = raw.trim();
   if (text === '' || /^0+$/.test(text)) return 'min';
+  // Below one, whether negative or a fraction, is "at least 1"; "whole" is for what is not a plain integer.
+  if (/^[+-]?\d+(\.\d+)?$/.test(text) && Number(text) < 1) return 'min';
   if (!/^\d+$/.test(text)) return 'whole';
   return Number(text) > MAX_COMPONENT_QUANTITY ? 'max' : null;
 }
@@ -74,6 +79,7 @@ export function BundleStepComponents({
   readOnly,
   limitedName,
   showErrors,
+  problem = null,
   onAdd,
   blockedVariantIds,
 }: BundleStepComponentsProps): ReactElement {
@@ -169,6 +175,7 @@ export function BundleStepComponents({
           excludeVariantIds={rows.map((row) => row.variantId)}
           blockedVariantIds={blockedVariantIds}
           disallowBundles
+          multiPaste
           inputRef={searchRef}
           onPick={onAdd}
           testIdPrefix="bundle-form-component-search"
@@ -186,6 +193,15 @@ export function BundleStepComponents({
       {rows.length > 0 ? (
         <p className="bf-qtyhelp">
           {copy.qtyHelp} {copy.s1Fixed}
+        </p>
+      ) : null}
+      {problem !== null ? (
+        <p
+          className={`bf-compnote${showErrors ? ' is-error' : ''}`}
+          role={showErrors ? 'alert' : undefined}
+          data-testid="bundle-form-composition-note"
+        >
+          {problem === 'no-paid' ? copy.compositionNoPaid : copy.compositionSinglePiece}
         </p>
       ) : null}
       {rows.length === 1 && rows[0] !== undefined ? (
@@ -246,7 +262,15 @@ export function BundleStepComponents({
                 layout="position"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0, borderWidth: 0 }}
+                exit={{
+                  opacity: 0,
+                  height: 0,
+                  paddingTop: 0,
+                  paddingBottom: 0,
+                  borderWidth: 0,
+                  overflow: 'hidden',
+                  transition: { duration: 0.16, ease: [0.22, 1, 0.36, 1] },
+                }}
                 transition={SNAPPY_SPRING}
                 className={`cx-row bf-comp${row.gift ? ' is-gift' : ''}${isLimiting ? ' is-lim' : ''}${
                   invalidQuantity ? ' is-invalid' : ''

@@ -27,6 +27,8 @@ export interface BundleStepReviewProps {
   availability: BundleAvailability;
   productLine: string;
   giftLine: string;
+  /** Saveable but not assemblable right now (0 sets): said in amber, never as a plain "ready". */
+  cannotAssemble?: boolean;
   onGoTo: (step: BundleStepKey) => void;
   /** True while the product will be created in a shop on save (the "create" mode). */
   creating?: boolean;
@@ -44,6 +46,7 @@ export function BundleStepReview({
   availability,
   productLine,
   giftLine,
+  cannotAssemble = false,
   onGoTo,
   creating,
   masterName,
@@ -103,6 +106,12 @@ export function BundleStepReview({
           </>
         )}
       </ReadbackSentence>
+
+      {cannotAssemble && saved === null ? (
+        <Alert tone="warning" data-testid="bundle-form-cannot-assemble">
+          {copy.s4CannotAssemble}
+        </Alert>
+      ) : null}
 
       {saved === null && creating !== undefined ? (
         <section className="s4-happens" data-testid="bundle-form-happens" aria-labelledby="s4-happens-h">
@@ -175,6 +184,7 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
       c.enabledCapabilities.includes('ProductPublisher') &&
       !marketplaces.some((m) => m.id === c.id)
   );
+  const soleMarketplace = marketplaces.length === 1 ? marketplaces[0] : undefined;
   const target = (connectionId: string): string =>
     `/listings/bulk-create/wizard?${new URLSearchParams({
       productIds: saved.productId,
@@ -205,8 +215,11 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
                 <span className="bf-targets__text">
                   {interpolate(kind === 'shop' ? copy.goShop : copy.goMarketplace, { name: c.name })}
                 </span>
-                <Link className="button button--secondary button--sm" to={target(c.id)}>
-                  {copy.goButton}
+                <Link
+                  className={`button${soleMarketplace?.id === c.id ? '' : ' button--secondary'} button--sm`}
+                  to={target(c.id)}
+                >
+                  {kind === 'marketplace' ? interpolate(copy.listOnChannel, { name: c.name }) : copy.goButton}
                 </Link>
               </li>
             )

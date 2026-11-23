@@ -14,9 +14,7 @@
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -27,9 +25,12 @@ import { RadioCardGroup } from '../../../shared/ui/radio-card-group';
 import { VariantThumbnail } from '../../products';
 import type { BundleCreationTarget } from '../api/bundles.types';
 import {
+  MAX_BUNDLE_NAME_LENGTH,
   componentsSum,
   formatPriceInput,
+  isValidEan,
   parsePrice,
+  priceProblem,
   suggestedDescription,
   suggestedSku,
   type BundleProductMode,
@@ -38,6 +39,7 @@ import {
 } from '../lib/bundle-form-model';
 import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
 import { useBundleCreationTargetsQuery } from '../hooks/use-bundle-queries';
+import type { SkuConflict } from '../hooks/use-sku-conflict';
 import { BundleVariantPicker } from './bundle-variant-picker';
 
 /** "Zestaw: A + B": the name a seller would type anyway; empty until there are two components. */
@@ -65,6 +67,34 @@ export interface BundleStepProductProps {
   excludeVariantIds: readonly string[];
   showErrors: boolean;
   createError: string | null;
+  /** The name as the form uses it: what was typed, or the suggestion while it is untouched. */
+  effectiveName: string;
+  /** What the name would be if the operator never typed it. */
+  nameSuggestion: string;
+  /** A product that already has the typed SKU; the form blocks Next while this is set. */
+  skuConflict?: SkuConflict;
+}
+
+const EXPLAINER_STORAGE_KEY = 'ol.bundles.s2.explainer';
+
+/** The explainer starts folded (the form is the point of the step); the choice is remembered. */
+function useExplainerOpen(): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(EXPLAINER_STORAGE_KEY) === 'open';
+    } catch {
+      return false;
+    }
+  });
+  const update = (next: boolean): void => {
+    setOpen(next);
+    try {
+      window.localStorage.setItem(EXPLAINER_STORAGE_KEY, next ? 'open' : 'hidden');
+    } catch {
+      // Storage can be blocked; the choice then lasts until the page is left.
+    }
+  };
+  return [open, update];
 }
 
 function ModelDiagram({ highlight }: { highlight: BundleProductMode }): ReactElement {
@@ -125,10 +155,14 @@ export function BundleStepProduct({
   excludeVariantIds,
   showErrors,
   createError,
+  effectiveName,
+  nameSuggestion,
+  skuConflict,
 }: BundleStepProductProps): ReactElement {
   const copy = useMessages('bundles').form;
   const format = useFormat();
   const apiClient = useApiClient();
+  const [explainerOpen, setExplainerOpen] = useExplainerOpen();
   const targetsQuery = useBundleCreationTargetsQuery();
   const creators = (targets ?? []).filter((target) => target.creationMode !== null);
   const canCreate = creators.length > 0;
@@ -144,55 +178,17 @@ export function BundleStepProduct({
   const effectiveSku = draft.touched.sku ? draft.sku : skuSuggestion;
   const descriptionSuggestion = suggestedDescription(parsedRows);
   const effectiveDescription = draft.touched.description ? draft.description : descriptionSuggestion;
-  const nameSuggestion = suggestedBundleName(parsedRows, copy.s2NamePrefix);
-
-  // The first load decides the default: a shop that can create products makes
-  // "create" the answer, because the person is building their first bundle.
-  const defaulted = useRef(false);
-  useEffect(() => {
-    if (editing || defaulted.current || !targetsLoaded) return;
-    defaulted.current = true;
-    if (canCreate && bundleProduct === null && mode === 'existing' && !readOnly) {
-      onModeChange('create');
-    }
-  }, [editing, targetsLoaded, canCreate, bundleProduct, mode, readOnly, onModeChange]);
-
-  // The name follows the components until the operator types over it. "Untouched"
-  // is "equal to the last suggestion", so clearing the field is a decision that
-  // stays, not a prompt for the suggestion to come back.
-  const lastNameSuggestion = useRef('');
-  useEffect(() => {
-    if (editing || mode !== 'create' || readOnly) return;
-    if (nameSuggestion === lastNameSuggestion.current) return;
-    if (draft.name === lastNameSuggestion.current) {
-      onDraftChange({ name: nameSuggestion });
-    }
-    lastNameSuggestion.current = nameSuggestion;
-  }, [editing, mode, readOnly, nameSuggestion, draft.name, onDraftChange]);
 
   const [moreOpen, setMoreOpen] = useState(draft.ean !== '' || draft.touched.description);
 
-  // Whether the SKU is already a product in the catalogue: said while typing,
-  // because the shop would adopt that product on save and quietly drop what was typed here.
-  const skuProbe = useDebouncedValue(effectiveSku.trim(), 300);
-  const skuQuery = useQuery({
-    queryKey: ['bundles', 'sku-probe', skuProbe],
-    queryFn: () => apiClient.products.listRows({ search: skuProbe }, { limit: 5, offset: 0 }),
-    enabled: !editing && mode === 'create' && skuProbe.length >= 2,
-    staleTime: 15_000,
-  });
-  const skuTaken =
-    skuProbe === effectiveSku.trim()
-      ? (skuQuery.data?.items ?? []).find(
-          (product) => (product.sku ?? '').toLowerCase() === skuProbe.toLowerCase()
-        )
-      : undefined;
+  const skuTaken = skuConflict;
+  const skuProbe = skuConflict?.sku ?? effectiveSku.trim();
   const [adopting, setAdopting] = useState(false);
   const adoptExisting = async (): Promise<void> => {
     if (skuTaken === undefined) return;
     setAdopting(true);
     try {
-      const detail = await apiClient.products.getById(skuTaken.id);
+      const detail = await apiClient.products.getById(skuTaken.productId);
       const variants = detail.variants ?? [];
       const picked =
         variants.find((v) => (v.sku ?? '').toLowerCase() === skuProbe.toLowerCase()) ?? variants[0];
@@ -206,7 +202,7 @@ export function BundleStepProduct({
   // A failed create is the one thing on this step the operator did not cause by
   // typing, so it is brought into view, and it goes away once they change something.
   const errorRef = useRef<HTMLDivElement | null>(null);
-  const draftKey = `${draft.connectionId}|${draft.name}|${effectiveSku}|${effectivePrice}|${draft.ean}`;
+  const draftKey = `${draft.connectionId}|${effectiveName}|${effectiveSku}|${effectivePrice}|${draft.ean}`;
   const [errorFor, setErrorFor] = useState<string | null>(null);
   // Read at the moment an error arrives: later draft edits must not re-arm it.
   const draftKeyRef = useRef(draftKey);
@@ -262,14 +258,56 @@ export function BundleStepProduct({
     draft.connectionId !== '' ? draft.connectionId : (creators[0]?.connectionId ?? '');
   const onlyCreator = creators.length === 1 ? creators[0] : undefined;
 
-  const nameIsSuggestion = nameSuggestion !== '' && draft.name === nameSuggestion;
+  const nameIsSuggestion = nameSuggestion !== '' && effectiveName === nameSuggestion;
   const ean = draft.ean;
+  const priceIssue = priceProblem(effectivePrice);
+  const priceErrorText =
+    priceIssue === null
+      ? null
+      : priceIssue === 'high'
+        ? copy.priceTooHigh
+        : priceIssue === 'empty'
+          ? showErrors
+            ? copy.missingPriceText
+            : null
+          : copy.missingPriceText;
+  const nameErrorText = showErrors && effectiveName.trim() === '' ? copy.missingNameText : null;
+  const skuErrorText = showErrors && effectiveSku.trim() === '' ? copy.missingSkuText : null;
+  const eanErrorText = isValidEan(ean) ? null : copy.eanInvalid;
+  const symbol = currency === undefined ? 'PLN' : currency;
 
   return (
     <div className="bf-step s2">
       <p className="bf-lead">{copy.s2Lead}</p>
-      <ModelDiagram highlight={mode} />
-      <p className="pm-help s2-why">{copy.s2Why}</p>
+      <div className="s2-explainer" data-open={explainerOpen} data-testid="bundle-form-explainer">
+        {explainerOpen ? (
+          <>
+            <ModelDiagram highlight={mode} />
+            <p className="pm-help s2-why">{copy.s2Why}</p>
+            <button
+              type="button"
+              className="link s2-explainer__toggle"
+              data-testid="bundle-form-explainer-hide"
+              onClick={() => {
+                setExplainerOpen(false);
+              }}
+            >
+              {copy.s2ExplainerHide}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="link s2-explainer__toggle"
+            data-testid="bundle-form-explainer-show"
+            onClick={() => {
+              setExplainerOpen(true);
+            }}
+          >
+            {copy.s2ExplainerShow}
+          </button>
+        )}
+      </div>
 
       <RadioCardGroup<BundleProductMode>
         name="bundle-product-mode"
@@ -287,7 +325,7 @@ export function BundleStepProduct({
               </>
             ),
             description: copy.s2ModeNewText,
-            disabled: targetsLoaded && !canCreate,
+            disabled: (targetsLoaded && !canCreate) || targetsFailed,
             disabledReason: copy.s2ModeNewDisabled,
             'data-testid': 'bundle-form-mode-create',
           },
@@ -400,22 +438,33 @@ export function BundleStepProduct({
                 {copy.s2Name}
                 <Suggestion
                   active={nameIsSuggestion}
-                  restorable={nameSuggestion !== '' && draft.name !== nameSuggestion}
+                  restorable={nameSuggestion !== '' && effectiveName !== nameSuggestion}
                   onRestore={() => {
-                    onDraftChange({ name: nameSuggestion });
+                    onDraftChange({ name: '', touched: { ...draft.touched, name: false } });
                   }}
                 />
               </span>
               <Input
-                value={draft.name}
+                value={effectiveName}
+                maxLength={MAX_BUNDLE_NAME_LENGTH}
                 disabled={readOnly}
-                invalid={showErrors && draft.name.trim() === ''}
+                invalid={nameErrorText !== null}
                 data-testid="bundle-form-new-name"
                 onChange={(event) => {
-                  onDraftChange({ name: event.target.value });
+                  onDraftChange({ name: event.target.value, touched: { ...draft.touched, name: true } });
                 }}
               />
-              <span className="pm-help">{copy.s2NameHelp}</span>
+              {nameErrorText !== null ? (
+                <span className="pm-err pm-err--on" data-testid="bundle-form-name-error">
+                  {nameErrorText}
+                </span>
+              ) : null}
+              <span className="pm-help s2-namehelp">
+                <span>{copy.s2NameHelp}</span>
+                <span className="mono tabular s2-counter" data-testid="bundle-form-name-counter">
+                  {effectiveName.length}/{MAX_BUNDLE_NAME_LENGTH}
+                </span>
+              </span>
             </label>
             <label className="form-field">
               <span className="form-field__label bf-labelrow">
@@ -432,12 +481,13 @@ export function BundleStepProduct({
                 className="mono"
                 value={effectiveSku}
                 disabled={readOnly}
-                invalid={(showErrors && effectiveSku.trim() === '') || skuTaken !== undefined}
+                invalid={skuErrorText !== null || skuTaken !== undefined}
                 data-testid="bundle-form-new-sku"
                 onChange={(event) => {
                   onDraftChange({ sku: event.target.value, touched: { ...draft.touched, sku: true } });
                 }}
               />
+              {skuErrorText !== null ? <span className="pm-err pm-err--on">{skuErrorText}</span> : null}
               <span className="pm-help">{copy.s2SkuHelp}</span>
             </label>
             <label className="form-field">
@@ -458,7 +508,7 @@ export function BundleStepProduct({
                   inputMode="decimal"
                   value={effectivePrice}
                   disabled={readOnly}
-                  invalid={showErrors && typedPrice === null}
+                  invalid={priceErrorText !== null}
                   data-testid="bundle-form-new-price"
                   onChange={(event) => {
                     onDraftChange({
@@ -467,8 +517,13 @@ export function BundleStepProduct({
                     });
                   }}
                 />
-                <span>{currency === undefined || currency === 'PLN' ? 'zł' : currency}</span>
+                <span>{symbol}</span>
               </span>
+              {priceErrorText !== null ? (
+                <span className="pm-err pm-err--on" data-testid="bundle-form-price-error">
+                  {priceErrorText}
+                </span>
+              ) : null}
               <span className="pm-help">{copy.s2PriceSuggestHelp}</span>
             </label>
             <div className="form-field s2-pricenote" aria-live="polite">
@@ -522,11 +577,13 @@ export function BundleStepProduct({
                   inputMode="numeric"
                   value={ean}
                   disabled={readOnly}
+                  invalid={eanErrorText !== null}
                   data-testid="bundle-form-new-ean"
                   onChange={(event) => {
                     onDraftChange({ ean: event.target.value });
                   }}
                 />
+                {eanErrorText !== null ? <span className="pm-err pm-err--on">{eanErrorText}</span> : null}
                 <span className="pm-help">{copy.s2EanHelp}</span>
               </label>
               <label className="form-field">

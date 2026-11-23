@@ -14,6 +14,11 @@ export type BundleStepKey = (typeof BUNDLE_STEP_KEYS)[number];
 /** The most of one component a single bundle may hold; the step shows it as the limit. */
 export const MAX_COMPONENT_QUANTITY = 9999;
 
+/** The longest bundle name the form accepts; a longer one would also overflow every card that echoes it. */
+export const MAX_BUNDLE_NAME_LENGTH = 120;
+/** A price above this is far more likely a typo than a price. */
+export const MAX_BUNDLE_PRICE = 1_000_000;
+
 export const quantitySchema = z
   .string()
   .regex(/^[1-9]\d*$/)
@@ -59,7 +64,7 @@ export interface NewProductDraft {
   ean: string;
   description: string;
   /** Which fields the operator has typed in, so a suggestion never overwrites them. */
-  touched: { sku: boolean; price: boolean; description: boolean };
+  touched: { name: boolean; sku: boolean; price: boolean; description: boolean };
 }
 
 export const EMPTY_PRODUCT_DRAFT: NewProductDraft = {
@@ -69,15 +74,55 @@ export const EMPTY_PRODUCT_DRAFT: NewProductDraft = {
   price: '',
   ean: '',
   description: '',
-  touched: { sku: false, price: false, description: false },
+  touched: { name: false, sku: false, price: false, description: false },
 };
 
-/** Parses "99,90" or "99.90"; `null` unless it is a positive amount with at most two decimals. */
-export function parsePrice(text: string): number | null {
-  const normalised = text.trim().replace(',', '.');
-  if (!/^\d+(\.\d{1,2})?$/.test(normalised)) return null;
+/**
+ * Turns what was typed into a plain "1299.00" string: spaces are dropped, and when both a dot and
+ * a comma appear the dot is a thousands mark ("1.299,00"). Otherwise a comma is the decimal mark.
+ */
+function normalisePriceText(text: string): string {
+  const compact = text.replace(/[\s\u00a0]/g, '');
+  if (compact.includes(',') && compact.includes('.')) return compact.replace(/\./g, '').replace(',', '.');
+  return compact.replace(',', '.');
+}
+
+export type PriceProblem = 'empty' | 'invalid' | 'high';
+
+/** Why a typed price is unusable, or `null` when it is a positive amount with at most two decimals. */
+export function priceProblem(text: string): PriceProblem | null {
+  const normalised = normalisePriceText(text);
+  if (normalised === '') return 'empty';
+  if (!/^\d+(\.\d{1,2})?$/.test(normalised)) return 'invalid';
   const value = Number(normalised);
-  return value > 0 ? value : null;
+  if (value <= 0) return 'invalid';
+  return value > MAX_BUNDLE_PRICE ? 'high' : null;
+}
+
+/** Parses "99,90", "99.90" or "1 299,00"; `null` unless it is a usable price (see `priceProblem`). */
+export function parsePrice(text: string): number | null {
+  return priceProblem(text) === null ? Number(normalisePriceText(text)) : null;
+}
+
+/** An EAN is empty (optional) or 8, 12, 13 or 14 digits. */
+export function isValidEan(text: string): boolean {
+  const value = text.trim();
+  return value === '' || /^(\d{8}|\d{12,14})$/.test(value);
+}
+
+export type CompositionProblem = 'no-paid' | 'single-piece';
+
+/**
+ * A composition that cannot be a sellable bundle: every component is a gift (the bundle has no
+ * price to stand on), or one product in a quantity of one (that is just the product).
+ */
+export function compositionProblem(rows: readonly ParsedRow[]): CompositionProblem | null {
+  const counted = rows.filter((row) => row.qty > 0);
+  if (counted.length === 0) return null;
+  if (counted.every((row) => row.gift)) return 'no-paid';
+  const only = counted[0];
+  if (counted.length === 1 && only !== undefined && only.qty < 2) return 'single-piece';
+  return null;
 }
 
 /**

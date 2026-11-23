@@ -204,6 +204,35 @@ export function BundleStepGifts({
         ? labels.short(firstGiftForm.documentForm)
         : inheritLabel;
 
+  if (gifts.length === 0) {
+    // No gift means nothing to decide here: say so in one plain sentence, and keep the document
+    // preview one click away for the seller who wants to see what a customer gets.
+    const bundleLabel = bundleName !== null && bundleName !== '' ? bundleName : copy.readbackNoProduct;
+    return (
+      <div className="bf-step s3 s3--none">
+        <div className="s3-nogift" data-testid="bundle-form-no-gifts">
+          <p className="bf-lead">{interpolate(copy.s3NoneLead, { name: bundleLabel })}</p>
+          <Button tone="secondary" className="button--sm" onClick={onBackToComponents}>
+            {copy.s3GoBack}
+          </Button>
+        </div>
+        <details className="s3-nogift__more" data-testid="bundle-form-doc-disclosure">
+          <summary>{copy.s3NoneDetails}</summary>
+          <DocumentCard
+            rows={rows}
+            currency={currency}
+            bundleName={bundleName}
+            bundlePrice={bundlePrice}
+            giftFormLabel={null}
+          />
+        </details>
+        <p className="pm-help">
+          {copy.giftDecision} <Link to="/settings/sales-documents">{copy.giftSettingsLink}</Link>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="bf-step s3">
       <div className="s3-rules">
@@ -226,14 +255,6 @@ export function BundleStepGifts({
         giftFormLabel={docGiftLabel}
       />
 
-      {gifts.length === 0 ? (
-        <div className="cx-empty" data-testid="bundle-form-no-gifts">
-          <p className="pm-empty__d">{copy.s3None}</p>
-          <Button tone="secondary" className="button--sm" onClick={onBackToComponents}>
-            {copy.s3GoBack}
-          </Button>
-        </div>
-      ) : (
         <ul className="bf-gifts" data-testid="bundle-form-gift-list">
           {gifts.map((row) => {
             const value = isForm(row.documentForm) ? row.documentForm : 'inherit';
@@ -315,7 +336,6 @@ export function BundleStepGifts({
             );
           })}
         </ul>
-      )}
       <p className="pm-help">
         {copy.giftDecision} <Link to="/settings/sales-documents">{copy.giftSettingsLink}</Link>
       </p>

@@ -322,6 +322,7 @@
     },
     "chips": {
       "alreadyListed": "Już wystawiony",
+      "bundleCardNoCategory": "Karta bez kategorii",
       "cardCategoryDiffers": "katalog ≠ mapowanie",
       "cardCategoryMismatch": "Karta w innej kategorii",
       "categoryNotSet": "Brak kategorii",
@@ -341,6 +342,10 @@
       "unknownCategoryResult": "Nieznany wynik"
     },
     "describe": {
+      "bundleCardNoCategory": {
+        "detail": "Wybierz kategorię ręcznie. Zestaw podepnie się pod kartę z katalogu, ale ta karta nie podaje kategorii.",
+        "title": "Karta katalogowa składnika nie podaje kategorii."
+      },
       "bundleCategoryMismatch": {
         "detail": "Użyj kategorii pierwszego składnika albo zmień kolejność składników.",
         "title": "Kategoria oferty musi się zgadzać z kartą produktu pierwszego składnika na {destination}."
@@ -1419,7 +1424,10 @@
   },
   "bundleOffer": {
     "batchLine": "{contents} · {stock}",
+    "cardNoCategory": "Karta katalogowa składnika nie podaje kategorii - wybierz kategorię ręcznie.",
     "categoryMismatch": "Kategoria różni się od karty produktu pierwszego składnika, a sklep wymaga, żeby były takie same.",
+    "checking": "Sprawdzamy skład zestawu...",
+    "checkingBanner": "Sprawdzamy skład zestawów. Przyciski ruszą, gdy skończymy.",
     "collapse": "Ukryj skład zestawu {name}",
     "compositionHeading": "Skład na {destination}",
     "compositionHint": "{n} produktów · plakietka pokazuje, skąd zestaw weźmie dane składnika",
@@ -1455,11 +1463,13 @@
       "ownOffer": "Twoja oferta",
       "ownOfferWithId": "Twoja oferta {id}"
     },
-    "packCompositionHint": "Jeden produkt, paczka po {n} szt. · plakietka pokazuje, skąd oferta weźmie dane produktu",
     "packBuyerPreview": "Kupujący zobaczy: {name} ×{n}",
+    "packCompositionHint": "Jeden produkt, paczka po {n} szt. · plakietka pokazuje, skąd oferta weźmie dane produktu",
     "packHint": "Jeden produkt sprzedawany w paczce po {n} szt. {destination} wystawia go jako jeden produkt z ilością {n}.",
     "packHintAllegro": "W panelu Allegro to „Wiele sztuk jako zestaw”, a kupujący widzi etykietę „Zestaw {n} sztuk” przy nazwie. Allegro może pokazywać wielopak tylko gdy cena za sztukę nie jest wyższa niż w pojedynczej ofercie (sprawdź w panelu Allegro).",
     "packMarker": "Wielopak · ×{n}",
+    "previewFailedBanner": "Nie udało się sprawdzić składu zestawów, więc nie możemy ich wystawić. Spróbuj ponownie.",
+    "previewRetry": "Spróbuj ponownie",
     "publishComponent": "Wystaw składnik",
     "quantity": "×{n}",
     "sets": {

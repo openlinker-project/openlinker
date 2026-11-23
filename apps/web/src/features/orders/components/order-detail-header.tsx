@@ -20,6 +20,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import type { OrderRecord } from '../api/orders.types';
+import { orderStatusLabel } from '../lib/order-status-label';
 import { paymentMethodChipLabel } from '../lib/payment-method';
 import { OrderRefundStateBadge } from './order-refund-state-badge';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
@@ -61,6 +62,7 @@ export function isChannelStatusStale(phase: string | null | undefined, channelSt
 
 export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderProps): ReactElement {
   const copy = useMessages('orders').orderDetailHeader;
+  const summaryCopy = useMessages('orders').orderDetailPage.summary;
   const paymentLabels: Record<PaymentStatus, string> = copy.payment;
   const format = useFormat();
   const plural = usePlural();
@@ -94,7 +96,7 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
             status. The summary row carries it, labelled as the channel's own. */}
         {snapshot.status && !isChannelStatusStale(order.lifecyclePhase, snapshot.status) ? (
           <StatusBadge tone="neutral" withDot>
-            {snapshot.status}
+            {orderStatusLabel(snapshot.status, summaryCopy.statusValues)}
           </StatusBadge>
         ) : null}
         {snapshot.paymentStatus ? (

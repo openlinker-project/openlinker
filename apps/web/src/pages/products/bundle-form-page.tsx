@@ -3,7 +3,8 @@
  *
  * `/products/bundles/new` (optionally `?component=<variantId>&quantity=<n>`
  * to start from a product, as the multipack hold does) and
- * `/products/bundles/:variantId` to change one.
+ * `/products/bundles/:variantId` to change one, and `?from=<bundleVariantId>` to start a new
+ * one with the components of an existing bundle.
  *
  * @module apps/web/src/pages/products
  */
@@ -16,12 +17,14 @@ export function BundleFormPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const component = searchParams.get('component');
   const componentProduct = searchParams.get('componentProduct');
+  const duplicateFrom = searchParams.get('from');
   const quantity = Number(searchParams.get('quantity') ?? '1');
 
   return (
     <section className="page-section">
       <BundleForm
-        key={variantId ?? component ?? componentProduct ?? 'new'}
+        key={variantId ?? duplicateFrom ?? component ?? componentProduct ?? 'new'}
+        duplicateFrom={variantId === undefined && duplicateFrom !== null ? duplicateFrom : undefined}
         bundleVariantId={variantId}
         seedComponent={
           (component !== null || componentProduct !== null) && variantId === undefined

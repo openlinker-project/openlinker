@@ -82,6 +82,15 @@ export function BundleComposition({
     chosenCategoryId !== null &&
     chosenCategoryId !== preview.suggestedCategoryId;
 
+  // The card names no category and none was chosen: the row blocks on the same
+  // sentence, so the panel and the row cannot disagree about what to fix.
+  const cardWithoutCategory =
+    preview.suggestedCategoryId === null &&
+    !chosenCategoryId &&
+    preview.components.some(
+      (component) => component.mode === 'catalog-card' && !component.cardCategoryId,
+    );
+
   return (
     <div className="bundle-comp" data-testid="bundle-composition">
       {heading ? (
@@ -214,6 +223,11 @@ export function BundleComposition({
       {showEanNote ? (
         <p className="cx-sub bundle-comp__ean">
           {packSize !== null ? copy.eanNotNeededPack : copy.eanNotNeeded}
+        </p>
+      ) : null}
+      {cardWithoutCategory ? (
+        <p className="cx-sub bundle-comp__category" data-testid="bundle-card-no-category">
+          {copy.cardNoCategory}
         </p>
       ) : null}
       {mismatch && onUseSuggestedCategory ? (

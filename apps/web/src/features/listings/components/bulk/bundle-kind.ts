@@ -27,3 +27,39 @@ export function packSizeOf(bundle: KindInput): number | null {
 export function bundleKindOf(bundle: KindInput): BundleKind {
   return packSizeOf(bundle) === null ? 'set' : 'pack';
 }
+
+interface UnsettledRow {
+  variants: ReadonlyArray<{ variantId: string; included: boolean }>;
+}
+
+export interface UnsettledBundles {
+  /** Included variants the composition check has not answered for yet. */
+  pending: ReadonlySet<string>;
+  /** Included variants whose check finished without an answer. */
+  failed: ReadonlySet<string>;
+}
+
+/**
+ * Rows whose bundle status is not known yet. Until the composition check
+ * answers, a bundle would be judged as an ordinary product - with the wrong
+ * blockers - so the review step shows a neutral state instead. Every included
+ * variant is held while the check runs: the product list only knows which rows
+ * are bundles for the ones it marked, and the batch read does not carry that mark.
+ */
+export function unsettledBundleVariants(
+  rows: readonly UnsettledRow[],
+  answered: ReadonlySet<string>,
+  failed: ReadonlySet<string>,
+  isLoading: boolean,
+): UnsettledBundles {
+  const pending = new Set<string>();
+  const failedOut = new Set<string>();
+  for (const row of rows) {
+    for (const variant of row.variants) {
+      if (!variant.included || answered.has(variant.variantId)) continue;
+      if (isLoading) pending.add(variant.variantId);
+      else if (failed.has(variant.variantId)) failedOut.add(variant.variantId);
+    }
+  }
+  return { pending, failed: failedOut };
+}

@@ -10,7 +10,7 @@ import { useFieldArray, useForm, type UseFormReturn } from 'react-hook-form';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { Product, ProductVariant } from '../../products';
 import type { BundleFormValues, ParsedRow } from '../lib/bundle-form-model';
-import { BundleStepComponents } from './bundle-step-components';
+import { BundleStepComponents, quantityProblem } from './bundle-step-components';
 
 function variant(id: string, sku: string, attrs: Record<string, string> | null = null): ProductVariant {
   return {
@@ -139,7 +139,7 @@ describe('BundleStepComponents (step 1)', () => {
     await user.type(screen.getByTestId(SEARCH), 'axa');
     const empty = await screen.findByTestId(`${SEARCH}-empty`);
     expect(empty).toHaveTextContent('“axa”');
-    expect(empty).toHaveTextContent(/name and SKU/i);
+    expect(empty).toHaveTextContent(/name, SKU and EAN/i);
   });
 
   it('should ask for the stock once, after every product detail has settled', async () => {
@@ -203,5 +203,17 @@ describe('BundleStepComponents (step 1)', () => {
     expect(screen.getByTestId('bundle-form-component-qty-KUB')).toHaveValue(3);
     expect(screen.getByTestId('bundle-form-component-value-KUB')).toHaveTextContent(/3/);
     expect(screen.getByTestId('bundle-form-example')).toBeInTheDocument();
+  });
+});
+
+describe('quantityProblem', () => {
+  it('should call a negative or fractional-below-one quantity "at least 1" and keep "whole" for the rest', () => {
+    expect(quantityProblem('-3')).toBe('min');
+    expect(quantityProblem('0.5')).toBe('min');
+    expect(quantityProblem('2.5')).toBe('whole');
+    expect(quantityProblem('1e2')).toBe('whole');
+    expect(quantityProblem('abc')).toBe('whole');
+    expect(quantityProblem('10000')).toBe('max');
+    expect(quantityProblem('3')).toBeNull();
   });
 });

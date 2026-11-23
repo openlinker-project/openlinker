@@ -161,6 +161,43 @@ describe('BulkReviewStep', () => {
       .forEach((btn) => expect(btn).toBeDisabled());
   });
 
+  it('shows a checking state and holds Create offers while the bundle composition is unknown', () => {
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1', ['no-match'])])]}
+        {...baseProps()}
+        bundles={{
+          bundles: new Map(),
+          failedVariantIds: new Set(),
+          isLoading: true,
+          retry: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByTestId('bundle-checking-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('bundle-checking-chip')).toBeInTheDocument();
+    expect(screen.queryByText('No catalog match')).not.toBeInTheDocument();
+    screen.getAllByRole('button', { name: /Create offers/ }).forEach((btn) => expect(btn).toBeDisabled());
+  });
+
+  it('offers a retry when the bundle check failed', () => {
+    const retry = vi.fn();
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1')])]}
+        {...baseProps()}
+        bundles={{
+          bundles: new Map(),
+          failedVariantIds: new Set(['v1']),
+          isLoading: false,
+          retry,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalled();
+  });
+
   it('tri-state parent toggle includes/excludes all variants', () => {
     const onSetProductIncluded = vi.fn();
     renderWithProviders(

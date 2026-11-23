@@ -772,6 +772,7 @@ export function createMockApiClient(
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
       // #3962 - a live product with nothing held: the product page's sales
       // channels section renders nothing and the products banner stays away.
+      previewBundleOffers: vi.fn().mockResolvedValue({ entries: [] }),
       getProductSaleStatus: vi.fn().mockResolvedValue({
         productId: '',
         deletedAtSource: false,

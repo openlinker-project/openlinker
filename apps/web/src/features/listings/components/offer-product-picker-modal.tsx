@@ -51,6 +51,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -380,6 +381,30 @@ export function OfferProductPickerModal({
     if (step === 'review') railBackRef.current?.focus();
     else searchInputRef.current?.focus();
   }, [step, isOpen]);
+
+  // Return focus to the control that opened the dialog. This component renders
+  // nothing while closed, so Radix unmounts with the trigger-less Root and has
+  // nowhere to send focus: it fell to <body> and a keyboard user restarted at
+  // the top of the page. Captured in a layout effect, which runs before the
+  // dialog's own passive focus effects move focus inside.
+  const openerRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (isOpen) {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      return undefined;
+    }
+    const opener = openerRef.current;
+    openerRef.current = null;
+    if (!opener) return undefined;
+    // After Radix's own unmount-time focus move, which would otherwise win.
+    const timer = window.setTimeout(() => {
+      if (opener.isConnected) opener.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

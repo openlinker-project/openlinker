@@ -596,14 +596,29 @@ export function GenerateLabelForm({
         {packComponents.length > 0 ? (
           <div className="ux-pack-list" data-testid="label-pack-list">
             <p className="generate-label-form__section-label">{bundleCopy.order.packTitle}</p>
-            <ul>
-              {packComponents.map((component) => (
-                <li key={component.lineId}>
-                  <span>{component.name ?? component.sku ?? component.variantId}</span>
-                  <strong>{interpolate(bundleCopy.list.pieces, { n: component.quantity })}</strong>
-                </li>
-              ))}
-            </ul>
+            {(order.bundleLines ?? []).map((bundle) => {
+              const soldLine = snapshot.items.find((item) => item.id === bundle.lineId);
+              return (
+                <div key={bundle.lineId} className="ux-pack-list__group">
+                  {soldLine ? (
+                    <p className="ux-pack-list__bundle">
+                      {interpolate(bundleCopy.order.packBundle, {
+                        name: soldLine.name ?? bundle.bundleVariantId,
+                        qty: soldLine.quantity,
+                      })}
+                    </p>
+                  ) : null}
+                  <ul>
+                    {bundle.components.map((component) => (
+                      <li key={component.lineId}>
+                        <span>{component.name ?? component.sku ?? component.variantId}</span>
+                        <strong>{interpolate(bundleCopy.list.pieces, { n: component.quantity })}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
             <p className="ux-pack-list__hint">{bundleCopy.order.packHint}</p>
           </div>
         ) : null}

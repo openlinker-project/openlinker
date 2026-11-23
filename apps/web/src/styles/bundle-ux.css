@@ -147,6 +147,70 @@
 .bf-history__chip--added { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-strong); }
 .bf-history__chip--removed { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
 
+/* --- R3 A1: shell, motion, compact phone bar, history --- */
+.bundle-form .button {
+  transition: transform var(--ux-dur-fast) var(--ux-ease), box-shadow var(--ux-dur-fast) var(--ux-ease),
+    background-color var(--ux-dur-fast) var(--ux-ease), opacity var(--ux-dur-fast) var(--ux-ease);
+}
+.bundle-form .button:hover:not(:disabled):not([aria-disabled='true']):not(.is-blocked) { transform: translateY(var(--hover-lift)); }
+.bundle-form .button:active:not(:disabled):not([aria-disabled='true']):not(.is-blocked) { transform: scale(var(--press-scale)); }
+.bundle-form .pm-missing.is-warning { color: var(--status-warning-fg); }
+.bundle-form .pm-missing.is-warning::before {
+  content: ''; width: 0.875rem; height: 0.875rem; flex: none; border-radius: 50%;
+  background: var(--status-warning-soft); border: 1px solid var(--status-warning-border);
+}
+.bf-draftnote--from { color: var(--text-secondary); font-weight: 600; }
+
+/* A long unbroken token (a 400-character name) wraps inside its card instead of widening the page. */
+.bundle-form .bf-main, .bundle-form .bf-rail, .bundle-form .bf-card, .bundle-form .bf-step { min-width: 0; }
+.bundle-form .bf-card { overflow-wrap: anywhere; }
+
+/* Under reduced motion every animation and transition in the wizard stands still, including the
+   ones with a literal duration (bx-flash, bf-pop, s2-rise, bx-pulse, the shimmer). */
+@media (prefers-reduced-motion: reduce) {
+  .bundle-form *, .bundle-form *::before, .bundle-form *::after,
+  .bpick, .bpick *, .bundle-picker, .bundle-picker * {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
+  }
+  .bf-comp.is-fresh { animation: none !important; }
+}
+
+/* Focused fields scroll clear of the sticky bar. */
+:root:has(.bundle-form) { scroll-padding-bottom: 7.5rem; }
+
+@media (max-width: 640px) {
+  /* One row of status text above one row of buttons: at most ~96px, so the bar never covers a field. */
+  .bundle-form .pm-actionbar {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-items: stretch;
+    padding: 6px var(--space-3) calc(6px + env(safe-area-inset-bottom)); min-height: 0;
+    border-radius: var(--radius-lg);
+  }
+  .bundle-form .pm-missing { font-size: 0.75rem; line-height: 1.25; }
+  .bundle-form .pm-actionbar__btns {
+    display: flex; flex-wrap: nowrap; justify-content: stretch; width: 100%; gap: var(--space-2);
+  }
+  .bundle-form .pm-actionbar__btns .button { flex: 1 1 auto; min-height: 44px; white-space: nowrap; padding-inline: var(--space-3); }
+  .bundle-form .pm-actionbar__btns .pm-save { min-width: 0; }
+  .bundle-form .bf-summarychip {
+    flex: 0 1 auto; min-width: 0; min-height: 44px; max-width: 38%; padding: 0 var(--space-2);
+  }
+  .bundle-form .bf-summarychip__r { display: none; }
+  .bundle-form .bf-grid { padding-bottom: 6rem; }
+}
+
+/* History entries never collapse to a one-word column: a block per entry, chips below the text. */
+@media (max-width: 640px) {
+  .bundle-form .pm-log > li { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .bundle-form .pm-log > li > span:first-child { display: block; width: 100%; min-width: 0; overflow-wrap: anywhere; }
+  .bundle-form .pm-log > li > span:first-child > b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .bundle-form .pm-log .cx-tag { white-space: normal; height: auto; max-width: 100%; text-align: left; }
+  .bundle-form .bf-history__chips { margin-top: 6px; }
+}
+
 /* === SECTION A2: step 1 components (picker, component list, quantity) === */
 /* --- picker --- */
 .bundle-picker { display: grid; gap: var(--space-1); }
@@ -287,6 +351,37 @@
   .bf-mv { width: 2.5rem; height: 2.5rem; }
   .bf-qty { grid-column: 1 / -1; }
   .bf-comp__tools { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; justify-items: unset; }
+}
+
+/* --- R3 A2: step 1 --- */
+.bf-compnote { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--status-warning-border); background: var(--status-warning-soft); color: var(--text-primary); font-size: 0.8125rem; }
+.bf-compnote.is-error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error); }
+.bpick__bulk { margin: var(--space-1) 0 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+/* The list never drops below a floor while it loads, so the page below it does not hop. */
+.bpick.bpick--loading { min-height: 9rem; }
+.bundle-form .s-hero { min-height: 5.5rem; }
+.bundle-form .bf-summary__list { min-height: 3rem; }
+.bpick__row:not(.is-disabled):hover { background: var(--bg-surface-hover); }
+.bpick__row:not(.is-disabled):hover:not(:active) { transform: translateY(var(--hover-lift)); }
+.bf-comp { overflow-anchor: none; }
+@media (max-width: 640px) {
+  /* A component row on a phone: name and codes first, then quantity with the gift switch and bin on one line. */
+  .bf-comp__grid { grid-template-columns: auto minmax(0, 1fr); }
+  .bf-comp__ord { grid-column: 1 / -1; grid-row: auto; order: 5; }
+}
+@media (pointer: coarse), (max-width: 640px) {
+  /* 44px targets: the help mark, the card checkbox, the gift switch (with a real track) and the steppers. */
+  .bundle-form .pm-qmark { position: relative; }
+  .bundle-form .pm-qmark::after { content: ''; position: absolute; inset: -15px; }
+  .bf-giftswitch { min-height: 44px; min-width: 44px; padding-block: 8px; }
+  .bf-giftswitch input { width: 46px; height: 26px; background: var(--border-strong); box-shadow: inset 0 0 0 1px var(--border-default); }
+  .bf-giftswitch input::after { width: 20px; height: 20px; top: 3px; left: 3px; }
+  .bf-giftswitch input:checked { box-shadow: none; }
+  .bf-giftswitch input:checked::after { transform: translateX(20px); }
+  .bf-qty__btn { width: 2.75rem; height: 2.75rem; }
+  .bf-trash { width: 2.75rem; height: 2.75rem; }
+  .bf-multipack__btn { min-height: 44px; min-width: 44px; }
+  .bundle-form .link, .bundle-form .pm-back { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
 /* === SECTION A3: steps 2-4 (cards, product form, gifts, review, summary) === */
@@ -530,7 +625,44 @@
 .is-lim .s-bar > span { background: var(--status-warning); }
 .s-unk { color: var(--status-warning-fg); }
 
+/* --- R3 A3: steps 2-4 --- */
+/* The explainer is folded by default; the form is the point of the step. */
+.s2-explainer { display: grid; gap: var(--space-2); }
+.s2-explainer__toggle { justify-self: start; font-size: 0.8125rem; }
+.s2-explainer[data-open='true'] { padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface-muted); }
+/* "Restore the suggestion" is a quiet text link, not a pill competing with the primary action. */
+button.s2-restore, .s2-restore {
+  display: inline; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none;
+  color: var(--text-link); font-size: 0.75rem; font-weight: 400; text-decoration: none; cursor: pointer;
+}
+button.s2-restore:hover, .s2-restore:hover { background: none; text-decoration: underline; text-underline-offset: 2px; transform: none; }
+button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+.s2-grid .bf-labelrow { min-height: 1.5rem; }
+.s2-namehelp { display: flex; justify-content: space-between; gap: var(--space-2); }
+.s2-counter { flex: none; color: var(--text-muted); }
+.s2-grid .pm-err--on { display: block; margin: 0; font-size: 0.75rem; color: var(--status-error); }
+.s2-more__body .pm-err--on { display: block; margin: 0; font-size: 0.75rem; color: var(--status-error); }
+@media (max-width: 640px) {
+  /* The three-chip diagram looks tappable and is not; the radio cards below already explain the choice. */
+  .s2-model { display: none; }
+}
+.s3-nogift { display: grid; gap: var(--space-3); justify-items: start; }
+.s3-nogift__more > summary { cursor: pointer; font-size: 0.8125rem; color: var(--text-link); padding: var(--space-1) 0; border-radius: var(--radius-sm); min-height: 44px; display: flex; align-items: center; }
+.s3-nogift__more > summary:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+.s3-nogift__more[open] > summary { margin-bottom: var(--space-2); }
+.bf-targets .button { white-space: normal; }
+
 /* === SECTION C1: listing wizard + listings (picker marker, review rows, panel, confirm, progress) === */
+/* Bundle composition not checked yet: a calm pulse instead of a verdict. */
+.bundle-checking {
+  animation: bundle-checking-pulse 1.4s var(--ux-ease) infinite;
+}
+@keyframes bundle-checking-pulse {
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bundle-checking { animation: none; }
+}
 
 /* Picker: set / multipack marker, filter, row feedback */
 .offer-product-picker__bundle {
@@ -608,6 +740,48 @@
 /* === SECTION C2: orders, products list/detail, guide, hold banner, promotions, label form === */
 /* C2-BEGIN */
 /* --- C2: order detail right column must never push past the page gutter --- */
+/* Root cause: .detail-section is a grid with an implicit `auto` column, so a
+   child's min-content (a nowrap lifecycle row, an email address) sized the
+   track at ~1130px inside a 445px card and the card clipped it. One explicit
+   shrinkable track fixes every panel built on this primitive. */
+.detail-section,
+.doc-slot,
+.sales-document-panel__body,
+.order-detail__stack > * {
+  grid-template-columns: minmax(0, 1fr);
+}
+.order-detail__primary-grid--split > *,
+.doc-slot > *,
+.sales-document-panel__body > * {
+  min-width: 0;
+}
+.order-pricing {
+  overflow-x: auto;
+}
+.order-pricing .data-table__container {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.key-value-list__value {
+  overflow-wrap: anywhere;
+}
+.key-value-list__value .status-badge {
+  white-space: nowrap;
+}
+.key-value-list__value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.order-header__top,
+.order-header__title,
+.order-header__sub,
+.order-header__tags {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .order-detail__stack > *,
 .sales-document-panel,
 .sales-document-panel > * {
@@ -629,6 +803,100 @@
 .sales-document-panel .key-value-list__label {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* The 272px sidebar leaves ~750px of content at a 1024 viewport; two columns
+   there give a 320px card that cannot hold a document panel. Stack below 1180. */
+@media (max-width: 1179.98px) {
+  .order-detail__primary-grid--split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- C2: label form pack list names the bundle and the sold quantity --- */
+.ux-pack-list__group {
+  display: grid;
+  gap: var(--space-1);
+}
+.ux-pack-list__bundle {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* --- C2: gift switch keeps a visible track (the blob had no edge) --- */
+.ol-toggle input {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  background: var(--bg-surface-muted);
+}
+.ol-toggle input:checked {
+  background: var(--status-success-strong);
+  box-shadow: none;
+}
+
+/* --- C2: phones and touch - 44px hit areas, scrollable chip rows --- */
+@media (pointer: coarse) {
+  .products-table input[type='checkbox'],
+  .product-card input[type='checkbox'],
+  .data-table input[type='checkbox'] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .ol-toggle {
+    min-height: 44px;
+  }
+  .button--sm,
+  .products-row-cta {
+    min-height: 44px;
+  }
+  .help-hint,
+  .help-button,
+  button[aria-label*='?'],
+  .field-hint__button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+@media (max-width: 600px) {
+  .list-statusbar,
+  .list-toolbar,
+  .attention-summary {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .list-statusbar::-webkit-scrollbar,
+  .list-toolbar::-webkit-scrollbar,
+  .attention-summary::-webkit-scrollbar {
+    display: none;
+  }
+  .list-statusbar > *,
+  .list-toolbar > *,
+  .attention-summary > * {
+    flex: none;
+    scroll-snap-align: start;
+  }
+  .list-toolbar .list-search {
+    flex-basis: 100%;
+  }
+}
+
+/* The peek header's close/expand controls must not overflow the sheet; the
+   clipped focus ring on the far edge read as a stray orange outline. */
+.peek-panel .side-panel__head {
+  overflow-x: clip;
+  min-width: 0;
+}
+.peek-panel .side-panel__top > * {
+  min-width: 0;
+}
+.peek-panel .side-panel__top button {
+  flex: none;
+  max-width: 100%;
 }
 
 /* --- C2: shared interactive polish for rows/links added by this section --- */
@@ -1152,3 +1420,31 @@
 .bpick__row.is-disabled:hover { background: var(--bg-surface-muted); }
 .bundle-comp__pack p { margin: 0; }
 .bundle-comp__pack p + p { margin-top: var(--space-1); }
+
+/* Round 3 integration: keep the journey link on one line and the limits chip in sentence case. */
+.ux-journey__step .button { white-space: nowrap; }
+.products-limit-line, .products-limit-line * { text-transform: none; letter-spacing: normal; }
+
+/* The explainer toggle is a text link, but a bare <button> inherits the global filled-button look. */
+.s2-explainer__toggle {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-link);
+  cursor: pointer;
+  text-decoration: none;
+}
+.s2-explainer__toggle:hover { background: none; text-decoration: underline; }
+.s2-explainer__toggle:focus-visible { outline: 2px solid var(--focus-ring, var(--text-link)); outline-offset: 2px; border-radius: var(--radius-sm, 4px); }
+
+/* The order pricing table has seven columns; in the ~720px content width of a 1024px window it
+   scrolled sideways and hid Total. Tighter cells and a bounded product column keep it in view. */
+@media (max-width: 1180px) {
+  .order-pricing .data-table th,
+  .order-pricing .data-table td { padding-inline: var(--space-2); }
+  .order-pricing .data-table th:first-child,
+  .order-pricing .data-table td:first-child { width: 30%; max-width: 240px; }
+  .order-pricing .data-table td { overflow-wrap: anywhere; }
+}

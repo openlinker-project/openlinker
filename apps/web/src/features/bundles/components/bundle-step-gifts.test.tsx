@@ -34,12 +34,20 @@ function render(rows: BundleFormRow[]): void {
 }
 
 describe('BundleStepGifts', () => {
-  it('should show the three rules and the document card even when no component is a gift', () => {
+  it('should collapse to one plain sentence when no component is a gift, with the document in a disclosure', () => {
     render([row({})]);
+
+    expect(screen.getByTestId('bundle-form-no-gifts')).toHaveTextContent(/Bez gratisu|No gift/);
+    expect(screen.queryByTestId('bundle-form-gift-rules')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bundle-form-doc-disclosure').tagName).toBe('DETAILS');
+    expect(screen.getByTestId('bundle-form-doc-card')).toBeInTheDocument();
+  });
+
+  it('should show the three rules and the document card when a component is a gift', () => {
+    render([row({ gift: true })]);
 
     expect(screen.getByTestId('bundle-form-gift-rules').querySelectorAll('li')).toHaveLength(3);
     expect(screen.getByTestId('bundle-form-doc-card')).toBeInTheDocument();
-    expect(screen.getByTestId('bundle-form-no-gifts')).toBeInTheDocument();
   });
 
   it('should show who sees what from the bundle components and keep the VAT detail in a disclosure', () => {

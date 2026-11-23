@@ -1608,6 +1608,14 @@
       "status": "Status",
       "statusAtChannel": "Status at {channel}",
       "statusAtUnknownChannel": "Status at channel",
+      "statusValues": {
+        "cancelled": "Cancelled",
+        "delivered": "Delivered",
+        "pending": "Pending",
+        "processing": "Processing",
+        "refunded": "Refunded",
+        "shipped": "Shipped"
+      },
       "title": "Summary",
       "updatedOl": "Updated (OL)"
     },

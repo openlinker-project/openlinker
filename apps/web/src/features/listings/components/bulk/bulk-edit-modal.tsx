@@ -368,6 +368,11 @@ export function BulkEditModal({
   const copy = useMessages('listings').bulkEditModal;
   const [dirty, setDirty] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  // The modal is mounted only while a row is being edited, so Radix cannot always find the
+  // trigger again once the table re-renders; remember it at mount and hand focus back by hand.
+  const [opener] = useState<Element | null>(() =>
+    typeof document === 'undefined' ? null : document.activeElement
+  );
   // ADR-046: one read for the whole modal - both the marketplace and the shop
   // branch render description fields, and each derives its toolbar and schema
   // from this, so a control the destination would discard is never offered.
@@ -403,6 +408,12 @@ export function BulkEditModal({
       >
         <DialogContent
           className="bulk-editor__content"
+          onCloseAutoFocus={(event) => {
+            if (opener instanceof HTMLElement && opener.isConnected && opener !== document.body) {
+              event.preventDefault();
+              opener.focus();
+            }
+          }}
           onEscapeKeyDown={(event) => {
             if (dirty) {
               event.preventDefault();

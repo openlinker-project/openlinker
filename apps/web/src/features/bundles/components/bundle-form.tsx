@@ -15,7 +15,7 @@
  *
  * @module apps/web/src/features/bundles/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactElement } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -45,6 +45,7 @@ import {
 import { useCreateBundleProductMutation } from '../hooks/use-create-bundle-product-mutation';
 import { useSyncBundleFromMasterMutation } from '../hooks/use-sync-bundle-from-master-mutation';
 import { useSaveBundleMutation } from '../hooks/use-save-bundle-mutation';
+import { useSkuConflict } from '../hooks/use-sku-conflict';
 import { computeBundleAvailability } from '../lib/bundle-availability';
 import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
 import {
@@ -52,7 +53,9 @@ import {
   EMPTY_PRODUCT_DRAFT,
   bundleFormSchema,
   componentsSum,
+  compositionProblem,
   formatPriceInput,
+  isValidEan,
   parsePrice,
   quantitySchema,
   suggestedDescription,
@@ -74,9 +77,11 @@ import { BundleLeaveGuard } from './bundle-leave-guard';
 import { BundleLoadError } from './bundle-load-error';
 import { BundleStepComponents } from './bundle-step-components';
 import { BundleStepGifts } from './bundle-step-gifts';
-import { BundleStepProduct } from './bundle-step-product';
+import { BundleStepProduct, suggestedBundleName } from './bundle-step-product';
 import { BundleStepReview } from './bundle-step-review';
 import { BundleSummary } from './bundle-summary';
+
+const STEP_EASE = [0.22, 1, 0.36, 1] as const;
 
 function isGiftDocumentFormChoice(value: string): value is GiftDocumentFormChoice {
   return (GiftFormPickerValues as readonly string[]).includes(value);
@@ -95,6 +100,8 @@ export interface BundleFormProps {
   bundleVariantId?: string;
   /** A component to start from: "Make a bundle from this" and the multipack hold. */
   seedComponent?: BundleFormSeedComponent;
+  /** An existing bundle to copy the components of ("Duplicate"); the form starts on step 1. */
+  duplicateFrom?: string;
 }
 
 interface HandedOverSave {
@@ -125,7 +132,7 @@ function readErrorCode(error: ApiError | null): { code: string | null; reason: s
   return { code: null, reason: null };
 }
 
-export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps): ReactElement {
+export function BundleForm({ bundleVariantId, seedComponent, duplicateFrom }: BundleFormProps): ReactElement {
   const copy = useMessages('bundles');
   const giftSettings = useGiftDocumentSettingsQuery();
   const giftLabels = useGiftFormLabels();
@@ -145,6 +152,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
 
   const detail = useBundleQuery(bundleVariantId);
   const history = useBundleHistoryQuery(bundleVariantId, editing);
+  const duplicateSource = useBundleQuery(editing ? undefined : duplicateFrom);
   const targets = useBundleCreationTargetsQuery();
   const [showErrors, setShowErrors] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
@@ -200,7 +208,34 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     name: string;
   } | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // A reload, a copied link or a duplicated tab opens `?krok=product` on an empty form: say so and
+  // make the URL tell the truth. Only on mount - afterwards the stepper itself moves the URL.
+  const clampedOnMount = useRef(false);
+  useEffect(() => {
+    if (clampedOnMount.current) return;
+    clampedOnMount.current = true;
+    if (requestedKey === null || requestedStep <= maxStep) return;
+    const actual = BUNDLE_STEP_KEYS[maxStep] ?? BUNDLE_STEP_KEYS[0];
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('krok', actual);
+        return next;
+      },
+      { replace: true }
+    );
+    setBlockedNote(interpolate(copy.form.stepClamped, { n: maxStep + 1 }));
+  }, []);
+
   const [mode, setMode] = useState<BundleProductMode>('existing');
+  // The operator's own choice of mode is never overruled by the default below, and it lives here
+  // (not in step 2) because step 2 remounts every time it is revisited.
+  const [modeTouched, setModeTouched] = useState(false);
+  const modeDefaulted = useRef(false);
+  const chooseMode = (next: BundleProductMode): void => {
+    setModeTouched(true);
+    setMode(next);
+  };
   const [draft, setDraft] = useState<NewProductDraft>(EMPTY_PRODUCT_DRAFT);
   const [createError, setCreateError] = useState<string | null>(null);
   const [bundleProduct, setBundleProduct] = useState<BundleProductChoice | null>(null);
@@ -258,7 +293,24 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const editSeedKey =
     editing && detail.data ? `edit:${detail.data.variantId}:${String(detail.data.version)}` : null;
   const newSeedKey = !editing && seed.data && seedComponent ? `new:${seed.data.variantId}` : null;
-  const seedKey = editSeedKey ?? newSeedKey;
+  const duplicateSeedKey =
+    !editing && duplicateSource.data ? `dup:${duplicateSource.data.variantId}` : null;
+  const seedKey = editSeedKey ?? duplicateSeedKey ?? newSeedKey;
+  const toFormRows = (source: NonNullable<typeof detail.data>): BundleFormValues['components'] =>
+    source.componentAvailability.map((component) => ({
+      variantId: component.variantId,
+      productId: component.productId,
+      name: component.summary.name ?? component.summary.sku ?? component.variantId,
+      sku: component.summary.sku,
+      price: component.summary.price,
+      currency: component.summary.currency,
+      availableToPromise: component.availableToPromise,
+      isBundle: false,
+      imageUrl: component.summary.imageUrl ?? null,
+      quantity: String(component.quantity),
+      gift: component.giftSlot === true,
+      documentForm: component.documentForm ?? '',
+    }));
   if (seedKey !== null && seedKey !== seededFrom) {
     setSeededFrom(seedKey);
     if (editing && detail.data) {
@@ -273,22 +325,17 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         isBundle: true,
         imageUrl: detail.data.bundle.imageUrl ?? null,
       });
-      form.reset({
-        components: detail.data.componentAvailability.map((component) => ({
-          variantId: component.variantId,
-          productId: component.productId,
-          name: component.summary.name ?? component.summary.sku ?? component.variantId,
-          sku: component.summary.sku,
-          price: component.summary.price,
-          currency: component.summary.currency,
-          availableToPromise: component.availableToPromise,
-          isBundle: false,
-          imageUrl: component.summary.imageUrl ?? null,
-          quantity: String(component.quantity),
-          gift: component.giftSlot === true,
-          documentForm: component.documentForm ?? '',
-        })),
-      });
+      form.reset({ components: toFormRows(detail.data) });
+    } else if (duplicateSource.data) {
+      form.reset({ components: toFormRows(duplicateSource.data) });
+      const copiedName = duplicateSource.data.bundle.name;
+      if (copiedName) {
+        setDraft((current) => ({
+          ...current,
+          name: interpolate(copy.form.duplicateName, { name: copiedName }),
+          touched: { ...current.touched, name: true },
+        }));
+      }
     } else if (seed.data && seedComponent) {
       form.reset({
         components: [
@@ -323,7 +370,10 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const creating = !editing && mode === 'create';
   const masterId = draft.connectionId !== '' ? draft.connectionId : (creators[0]?.connectionId ?? '');
   const masterName = creators.find((target) => target.connectionId === masterId)?.connectionName ?? '';
+  const nameSuggestion = suggestedBundleName(parsedRows, copy.form.s2NamePrefix);
+  const effectiveName = draft.touched.name ? draft.name : nameSuggestion;
   const effectiveSku = draft.touched.sku ? draft.sku : suggestedSku(parsedRows);
+  const skuConflict = useSkuConflict(effectiveSku, creating);
   const effectivePriceText = draft.touched.price
     ? draft.price
     : formatPriceInput(componentsSum(parsedRows));
@@ -331,9 +381,15 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const effectiveDescription = draft.touched.description
     ? draft.description
     : suggestedDescription(parsedRows);
-  const newProductValid = draft.name.trim() !== '' && effectiveSku.trim() !== '' && newPrice !== null && masterId !== '';
+  const newProductValid =
+    effectiveName.trim() !== '' &&
+    effectiveSku.trim() !== '' &&
+    newPrice !== null &&
+    masterId !== '' &&
+    isValidEan(draft.ean) &&
+    skuConflict === undefined;
 
-  const bundleName = creating ? (draft.name.trim() !== '' ? draft.name : null) : (bundleProduct?.name ?? null);
+  const bundleName = creating ? (effectiveName.trim() !== '' ? effectiveName : null) : (bundleProduct?.name ?? null);
   const bundlePrice = creating ? newPrice : (bundleProduct?.price ?? null);
 
   const title = editing
@@ -490,7 +546,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
       createProduct.mutate(
         {
           connectionId: masterId,
-          name: draft.name.trim(),
+          name: effectiveName.trim(),
           sku: effectiveSku.trim(),
           price: newPrice ?? 0,
           ...(currency !== undefined ? { currency } : {}),
@@ -535,12 +591,14 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   });
 
   const quantitiesOk = rows.length > 0 && !parsedRows.some((row) => row.qty === 0);
+  const compositionIssue = quantitiesOk ? compositionProblem(parsedRows) : null;
+  const componentsOk = quantitiesOk && compositionIssue === null;
   const productOk = editing || (creating ? newProductValid : bundleProduct !== null);
   const stepValid: Record<BundleStepKey, boolean> = {
-    components: quantitiesOk,
+    components: componentsOk,
     product: productOk,
     gifts: true,
-    review: quantitiesOk && productOk,
+    review: componentsOk && productOk,
   };
   // Built from the real predicates, so the bar names the field that is wrong
   // instead of one sentence covering four of them.
@@ -549,12 +607,16 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     if (key === 'components' || key === 'review') {
       if (rows.length === 0) list.push(copy.form.missingComponent);
       else if (!quantitiesOk) list.push(copy.form.missingQuantities);
+      else if (compositionIssue === 'no-paid') list.push(copy.form.missingPaid);
+      else if (compositionIssue === 'single-piece') list.push(copy.form.missingSecond);
     }
     if ((key === 'product' || key === 'review') && !productOk) {
       if (creating) {
-        if (draft.name.trim() === '') list.push(copy.form.missingName);
+        if (effectiveName.trim() === '') list.push(copy.form.missingName);
         if (effectiveSku.trim() === '') list.push(copy.form.missingSku);
+        else if (skuConflict !== undefined) list.push(copy.form.missingSkuFree);
         if (newPrice === null) list.push(copy.form.missingPrice);
+        if (!isValidEan(draft.ean)) list.push(copy.form.missingEan);
         if (masterId === '') list.push(copy.form.missingShop);
       } else {
         list.push(copy.form.missingProduct);
@@ -568,7 +630,29 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const stepMissing = missingFor(stepKey).join(' · ');
   const saveBlocked = readOnly || save.isPending || createProduct.isPending;
   const openOrders = detail.data?.openOrdersOnOlderComposition ?? 0;
+  // A bundle that can be saved but not assembled is not "ready": say so in amber rather than green.
+  const cannotAssemble = availability.kind === 'known' && availability.bundles === 0 && componentsOk;
   const lastStep = step === BUNDLE_STEP_KEYS.length - 1;
+
+  const goNextRef = useRef<() => void>(() => undefined);
+  const pressSaveRef = useRef<() => void>(() => undefined);
+  const onShortcut = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey) || event.defaultPrevented) return;
+    if (readOnly) return;
+    event.preventDefault();
+    if (lastStep) pressSaveRef.current();
+    else goNextRef.current();
+  };
+  // On a phone the bar and the keyboard share the screen: a field that takes focus is scrolled to
+  // the middle, above the bar, after the keyboard has had time to open.
+  const keepFocusedFieldVisible = (event: ReactFocusEvent<HTMLElement>): void => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+    if (typeof window === 'undefined' || !window.matchMedia?.('(max-width: 640px)').matches) return;
+    window.setTimeout(() => {
+      target.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+    }, 250);
+  };
 
   const failStep = (): void => {
     setShowErrors(true);
@@ -591,7 +675,11 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     setBlockedNote(null);
     setStep(index);
     setMaxStep((current) => Math.max(current, index));
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    // The page keeps its scroll position; it moves only when the step heading is above the screen.
+    const heading = headingRef.current;
+    if (heading !== null && heading.getBoundingClientRect().top < 0) {
+      heading.scrollIntoView?.({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
   };
   const goNext = (): void => {
     if (!stepValid[stepKey]) {
@@ -607,6 +695,8 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     }
     void submit();
   };
+  goNextRef.current = goNext;
+  pressSaveRef.current = pressSave;
 
   // The stage follows the height of the panel that is entering, so a short step after a tall one
   // does not snap the page: popLayout takes the leaving panel out of flow at once.
@@ -669,6 +759,14 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     errorRef.current?.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
   }, [saveError, reduceMotion]);
 
+  // The first load decides the default: a shop that can create products makes "create" the answer,
+  // because the person is building their first bundle. Runs once, and never overrules a choice.
+  useEffect(() => {
+    if (editing || modeDefaulted.current || targets.data === undefined) return;
+    modeDefaulted.current = true;
+    if (!modeTouched && creators.length > 0 && bundleProduct === null && !readOnly) setMode('create');
+  }, [editing, targets.data, modeTouched, creators.length, bundleProduct, readOnly]);
+
   const dirty = form.formState.isDirty;
   const guardActive = editing
     ? dirty
@@ -693,7 +791,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
       ? copy.form.s4NoGifts
       : giftRows.map((row) => `${row.name}: ${giftFormLabel(row.documentForm)}`).join('; ');
   const productLine = creating
-    ? `${draft.name.trim() || copy.form.readbackNoProduct} (${interpolate(copy.form.s4ProductNew, { master: masterName })})`
+    ? `${effectiveName.trim() || copy.form.readbackNoProduct} (${interpolate(copy.form.s4ProductNew, { master: masterName })})`
     : `${bundleProduct?.name ?? copy.form.readbackNoProduct} (${copy.form.s4ProductExisting})`;
 
   const stepNames = BUNDLE_STEP_KEYS.map((key) => copy.form.stepNames[key]);
@@ -724,6 +822,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         readOnly={readOnly}
         limitedName={availability.kind === 'known' ? availability.limitedBy : null}
         showErrors={showErrors}
+        problem={compositionIssue}
         onAdd={addComponent}
         blockedVariantIds={bundleProduct ? [bundleProduct.variantId] : []}
       />
@@ -733,7 +832,10 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         editing={editing}
         readOnly={readOnly}
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={chooseMode}
+        effectiveName={effectiveName}
+        nameSuggestion={nameSuggestion}
+        skuConflict={skuConflict}
         targets={targets.data}
         targetsFailed={targets.isError}
         draft={draft}
@@ -779,6 +881,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         availability={availability}
         productLine={productLine}
         giftLine={giftLine}
+        cannotAssemble={cannotAssemble}
         creating={creating}
         masterName={masterName}
         onGoTo={(key) => {
@@ -854,13 +957,22 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
       ? { connectionId: offerMarketplaces[0].id }
       : {}),
   });
+  const listLabel =
+    offerMarketplaces.length === 1 && offerMarketplaces[0] !== undefined
+      ? interpolate(copy.form.listOnChannel, { name: offerMarketplaces[0].name })
+      : copy.form.listOffer;
   const partialPending = createdProduct !== null && savedAs === null && !save.isPending;
   const needsFix = shakeKey > 0 && missingFor(lastStep ? 'review' : stepKey).length > 0;
   const nextBlocked = !stepValid[stepKey];
 
   return (
     <BundleGuide defaultOpen={stepKey === 'product' ? 'new' : stepKey === 'gifts' ? 'gift' : stepKey === 'components' ? 'kind' : 'what'}>
-      <div className="bundle-form screen" data-testid="bundle-form">
+      <div
+        className="bundle-form screen"
+        data-testid="bundle-form"
+        onKeyDown={onShortcut}
+        onFocusCapture={keepFocusedFieldVisible}
+      >
         <BundleLeaveGuard active={guardActive} released={released} />
         <a
           className="bf-skip"
@@ -975,7 +1087,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                     data-testid="bundle-form-list-offer"
                     to={`/listings/bulk-create/wizard?${offerParams.toString()}`}
                   >
-                    {copy.form.listOffer}
+                    {listLabel}
                   </Link>
                 </span>
               ) : null}
@@ -1013,6 +1125,11 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
               {blockedNote}
             </p>
           ) : null}
+          {!editing && duplicateSource.data?.bundle.name ? (
+            <p className="bf-draftnote bf-draftnote--from" data-testid="bundle-form-duplicate-note">
+              {interpolate(copy.form.duplicateFrom, { name: duplicateSource.data.bundle.name })}
+            </p>
+          ) : null}
           {editing ? null : <p className="bf-draftnote">{copy.form.draftNote}</p>}
 
           <div className="bf-grid">
@@ -1031,25 +1148,22 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                   transition={reduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                 >
                  <div className="bf-stage__inner" ref={stageInnerRef}>
-                  <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+                  {/* "wait": the leaving panel is gone before the entering one is drawn, so the two
+                      never overlap (popLayout stacked them in one box for the length of the slide). */}
+                  <AnimatePresence mode="wait" initial={false} custom={direction}>
                     <motion.div
                       key={stepKey}
                       className="bf-panel"
                       data-testid={`bundle-form-step-${stepKey}`}
                       custom={direction}
                       variants={{
-                        enter: (dir: number) => ({ opacity: 0, x: dir * 16 }),
-                        center: { opacity: 1, x: 0 },
-                        exit: (dir: number) => ({
-                          opacity: 0,
-                          x: dir * -16,
-                          transition: { duration: 0.16, ease: 'easeIn' },
-                        }),
+                        enter: (dir: number) => ({ opacity: 0, y: dir * 6 }),
+                        center: { opacity: 1, y: 0, transition: { duration: 0.16, ease: STEP_EASE } },
+                        exit: { opacity: 0, transition: { duration: 0.08, ease: 'easeIn' } },
                       }}
                       initial={reduceMotion ? false : 'enter'}
                       animate="center"
                       exit={reduceMotion ? 'center' : 'exit'}
-                      transition={SNAPPY_SPRING}
                     >
                       {panel}
                     </motion.div>
@@ -1116,14 +1230,17 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
             aria-label={copy.form.actionsLabel}
             missingLabel={copy.form.missingLabel}
             missing={lastStep ? missing.join(' · ') : stepValid[stepKey] ? '' : stepMissing}
+            tone={cannotAssemble ? 'warning' : undefined}
             readyText={
-              lastStep
-                ? `${copy.form.ready} ${formatPlural(rows.length, copy.form.componentsCount, locale)}, ${
-                    availability.kind === 'known'
-                      ? interpolate(copy.form.readyAvailable, { n: availability.bundles })
-                      : copy.form.readyUnknown
-                  }`
-                : copy.form.ready
+              cannotAssemble
+                ? copy.form.readyZero
+                : lastStep
+                  ? `${copy.form.ready} ${formatPlural(rows.length, copy.form.componentsCount, locale)}, ${
+                      availability.kind === 'known'
+                        ? interpolate(copy.form.readyAvailable, { n: availability.bundles })
+                        : copy.form.readyUnknown
+                    }`
+                  : copy.form.ready
             }
             shaking={shakeKey > 0}
           >
@@ -1166,6 +1283,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                 className={['button--sm', nextBlocked ? 'is-blocked' : ''].filter(Boolean).join(' ')}
                 data-testid="bundle-form-next"
                 aria-disabled={nextBlocked ? true : undefined}
+                aria-keyshortcuts="Control+Enter"
                 title={
                   nextBlocked
                     ? interpolate(copy.form.nextBlockedTitle, { missing: stepMissing })
@@ -1192,6 +1310,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                 disabled={saveBlocked || (editing && !dirty)}
                 onClick={pressSave}
                 data-testid="bundle-form-save"
+                aria-keyshortcuts="Control+Enter"
               />
             ) : null}
           </StickyActionBar>

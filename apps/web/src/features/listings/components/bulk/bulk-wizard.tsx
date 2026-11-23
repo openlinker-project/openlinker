@@ -347,17 +347,7 @@ export function BulkWizard({
   const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
   const bundleGuideCopy = useMessages('bundles');
   const hasBundles = bundlePreview.bundles.size > 0;
-  const bundleSummary = useMemo(() => {
-    let sets = 0;
-    let packs = 0;
-    for (const item of bundleItems) {
-      const bundle = bundlePreview.bundles.get(item.variantId);
-      if (!bundle) continue;
-      if (bundleKindOf(bundle) === 'pack') packs += 1;
-      else sets += 1;
-    }
-    return { sets, packs };
-  }, [bundleItems, bundlePreview.bundles]);
+
 
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
@@ -926,6 +916,15 @@ export function BulkWizard({
     return n;
   }, [rows, alreadyListedSet, isShop, bundlePreview.bundles]);
 
+  // What the confirmation describes: only rows that will really be created.
+  // Excluded, blocked and already-listed rows are skipped at submit, so counting
+  // them made a one-offer batch read as "3 products, including 2 sets".
+  const willCreate = useMemo(
+    () =>
+      countWillCreate(rows, blockerChips, alreadyListedSet, bundlePreview.bundles, isShop),
+    [rows, blockerChips, alreadyListedSet, bundlePreview.bundles, isShop],
+  );
+
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
   const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
 
@@ -1147,13 +1146,13 @@ export function BulkWizard({
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
             offerCount={counts.includedReady - readyButAlreadyListedCount}
-            productCount={counts.productsWithIncluded}
+            productCount={willCreate.products}
             excludedCount={counts.excluded}
             blockedCount={counts.includedNeedsAttention}
             alreadyListedCount={readyButAlreadyListedCount}
             alreadyListedBundleCount={alreadyListedBundleCount}
             mixedPublishWarning={counts.mixedPublish}
-            bundleSummary={bundleSummary}
+            bundleSummary={{ sets: willCreate.sets, packs: willCreate.packs }}
             connectionName={resolveConnectionName(config.connectionId)}
             marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
@@ -1390,6 +1389,37 @@ interface BatchCounts {
   noVariants: number;
   productsWithIncluded: number;
   mixedPublish: boolean;
+}
+
+/**
+ * The products, sets and multipacks that a submit would actually create offers
+ * for: included, free of gating blockers and not already listed on the target.
+ */
+export function countWillCreate(
+  rows: readonly BulkWizardRow[],
+  chips: Record<string, ChipDescriptor>,
+  alreadyListed: ReadonlySet<string>,
+  bundles: ReadonlyMap<string, BundleOfferPreviewOk>,
+  isShop = false,
+): { products: number; sets: number; packs: number } {
+  let products = 0;
+  let sets = 0;
+  let packs = 0;
+  for (const row of rows) {
+    let any = false;
+    for (const v of row.variants) {
+      if (!v.included || gatingBlockers(v.blockers, chips).length > 0) continue;
+      if (!isShop && alreadyListed.has(v.variantId)) continue;
+      any = true;
+      const bundle = bundles.get(v.variantId);
+      if (bundle) {
+        if (bundleKindOf(bundle) === 'pack') packs += 1;
+        else sets += 1;
+      }
+    }
+    if (any) products += 1;
+  }
+  return { products, sets, packs };
 }
 
 function countBatch(rows: BulkWizardRow[], chips: Record<string, ChipDescriptor>): BatchCounts {

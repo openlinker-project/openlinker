@@ -290,6 +290,7 @@
     },
     "chips": {
       "alreadyListed": "Already listed",
+      "bundleCardNoCategory": "Card has no category",
       "cardCategoryDiffers": "catalog ≠ mapping",
       "cardCategoryMismatch": "Card in other category",
       "categoryNotSet": "Category not set",
@@ -309,6 +310,10 @@
       "unknownCategoryResult": "Unknown result"
     },
     "describe": {
+      "bundleCardNoCategory": {
+        "detail": "Pick a category manually. The set will attach to the catalogue card, but that card does not state a category.",
+        "title": "The component's catalogue card does not state a category."
+      },
       "bundleCategoryMismatch": {
         "detail": "Use the category of the first component, or reorder the components.",
         "title": "The offer category must match the first component's product card on {destination}."
@@ -1285,7 +1290,10 @@
   },
   "bundleOffer": {
     "batchLine": "{contents} · {stock}",
+    "cardNoCategory": "The component's catalogue card does not state a category - pick one manually.",
     "categoryMismatch": "The category differs from the first component's product card, and the marketplace requires the two to match.",
+    "checking": "Checking the set composition...",
+    "checkingBanner": "Checking the composition of your sets. The buttons unlock when this is done.",
     "collapse": "Hide set contents of {name}",
     "compositionHeading": "Set contents on {destination}",
     "compositionHint": "{n} products · the badge shows where the set takes each component's data from",
@@ -1319,11 +1327,13 @@
       "ownOffer": "your offer",
       "ownOfferWithId": "your offer {id}"
     },
-    "packCompositionHint": "One product, pack of {n} · the badge shows where the offer takes the product's data from",
     "packBuyerPreview": "The buyer will see: {name} ×{n}",
+    "packCompositionHint": "One product, pack of {n} · the badge shows where the offer takes the product's data from",
     "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
     "packHintAllegro": "In the Allegro panel this is \"Multiple items as a set\", and the buyer sees a \"Set of {n} items\" label next to the name. Allegro may show a multipack only when the price per item is not higher than in the single offer (check in the Allegro panel).",
     "packMarker": "Pack · ×{n}",
+    "previewFailedBanner": "Could not check the composition of your sets, so they cannot be listed yet. Please try again.",
+    "previewRetry": "Try again",
     "publishComponent": "List component",
     "quantity": "×{n}",
     "sets": {

@@ -46,7 +46,8 @@ export function BundleProductView({
   bundleVariantId,
   productId,
 }: BundleProductViewProps): ReactElement {
-  const copy = useMessages('bundles').view;
+  const allCopy = useMessages('bundles');
+  const copy = allCopy.view;
   const { locale } = useLocale();
   const format = useFormat();
   const detail = useBundleQuery(bundleVariantId);
@@ -137,7 +138,7 @@ export function BundleProductView({
         ) : null}
         <ComposerSection
           title={copy.compositionTitle}
-          aside={`${interpolate(copy.compositionAside, { n: rows.length })}${
+          aside={`${formatPlural(rows.length, allCopy.form.componentsCount, locale)}${
             giftCount > 0 ? ` · ${interpolate(copy.giftCount, { n: giftCount })}` : ''
           }`}
           riseIndex={2}
@@ -156,6 +157,16 @@ export function BundleProductView({
             components={rows}
             bundlesAvailable={availability.kind === 'known' ? availability.bundles : null}
           />
+          <p className="bundle-dup">
+            <Link
+              className="button button--secondary button--sm"
+              data-testid="bundle-view-duplicate"
+              to={`/products/bundles/new?from=${encodeURIComponent(bundleVariantId)}`}
+            >
+              {copy.duplicate}
+            </Link>
+            <span className="pm-help">{copy.duplicateHint}</span>
+          </p>
           <div className="pm-disc">
             <button
               type="button"

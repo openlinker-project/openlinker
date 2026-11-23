@@ -40,6 +40,22 @@ import { useComboboxNavigation } from '../lib/use-combobox-navigation';
 const PAGE_SIZE = 6;
 const LOW_STOCK = 5;
 const SKELETON_ROWS = 3;
+const BULK_LIMIT = 50;
+const BULK_SEPARATOR = /[\n\r,;\t]+/;
+
+/** The SKUs in a pasted block, in order, without blanks or repeats. */
+export function splitSkuTokens(value: string): string[] {
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const raw of value.split(BULK_SEPARATOR)) {
+    const token = raw.trim();
+    if (token !== '' && !seen.has(token.toLowerCase())) {
+      seen.add(token.toLowerCase());
+      tokens.push(token);
+    }
+  }
+  return tokens.slice(0, BULK_LIMIT);
+}
 
 export interface BundleVariantPickerProps {
   label: string;
@@ -52,6 +68,11 @@ export interface BundleVariantPickerProps {
   /** A product that is itself a bundle cannot be a component: show it disabled. */
   disallowBundles?: boolean;
   onPick: (choice: BundleProductChoice) => void;
+  /**
+   * Pasting (or entering) several SKUs separated by commas, semicolons or new lines adds every
+   * exact match at once and reports what was not found. Off for a picker that takes one product.
+   */
+  multiPaste?: boolean;
   testIdPrefix: string;
   /** Lets the owner move focus here (the empty-list "search" button). */
   inputRef?: RefObject<HTMLInputElement | null>;
@@ -82,6 +103,7 @@ export function BundleVariantPicker({
   blockedVariantIds = [],
   disallowBundles = false,
   onPick,
+  multiPaste = false,
   testIdPrefix,
   inputRef,
 }: BundleVariantPickerProps): ReactElement {
@@ -97,6 +119,7 @@ export function BundleVariantPicker({
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [rejection, setRejection] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+  const [bulk, setBulk] = useState<{ busy: boolean; text: string }>({ busy: false, text: '' });
   const search = useDebouncedValue(text.trim(), 250);
   const active = search.length >= 2;
 
@@ -204,7 +227,73 @@ export function BundleVariantPicker({
     window.setTimeout(focusInput, 0);
   };
 
+  // Every token is resolved on its own, in order: an exact SKU (or EAN) of one variant, nothing fuzzy,
+  // because a wrong guess here would put the wrong product into a bundle without anyone looking.
+  const runBulk = async (tokens: string[]): Promise<void> => {
+    setBulk({ busy: true, text: '' });
+    setRejection(null);
+    const found: { product: Product; variant: ProductVariant; count: number }[] = [];
+    const taken = new Set<string>([...excludeVariantIds, ...blockedVariantIds]);
+    const missing: string[] = [];
+    let skipped = 0;
+    for (const token of tokens) {
+      const wanted = token.toLowerCase();
+      let match: { product: Product; variant: ProductVariant; count: number } | null = null;
+      try {
+        const page = await apiClient.products.listRows({ search: token }, { limit: 5, offset: 0 });
+        for (const item of page.items) {
+          const detail = await apiClient.products.getById(item.id);
+          const variants = detail.variants ?? [];
+          const variant =
+            variants.find((v) => (v.sku ?? '').toLowerCase() === wanted || (v.ean ?? '') === token) ??
+            (variants.length === 1 && (detail.sku ?? '').toLowerCase() === wanted ? variants[0] : undefined);
+          if (variant !== undefined) {
+            match = { product: detail, variant, count: variants.length };
+            break;
+          }
+        }
+      } catch {
+        match = null;
+      }
+      if (match === null || (disallowBundles && match.product.bundle?.variantId === match.variant.id)) {
+        missing.push(token);
+      } else if (taken.has(match.variant.id)) {
+        skipped += 1;
+      } else {
+        taken.add(match.variant.id);
+        found.push(match);
+      }
+    }
+    let stockById = new Map<string, number | null>();
+    if (found.length > 0) {
+      try {
+        const stockResult = await apiClient.inventory.availability(found.map((f) => f.variant.id));
+        stockById = new Map(stockResult.items.map((item) => [item.productVariantId, item.availableToPromise ?? null]));
+      } catch {
+        // The rows still go in; their stock shows as unknown until the next read.
+      }
+    }
+    for (const entry of found) {
+      onPick(toBundleChoice(entry.product, entry.variant, entry.count, stockById.get(entry.variant.id) ?? undefined));
+    }
+    const parts = [interpolate(copy.bulkAdded, { n: found.length })];
+    if (missing.length > 0) parts.push(interpolate(copy.bulkMissing, { n: missing.length, list: missing.join(', ') }));
+    if (skipped > 0) parts.push(interpolate(copy.bulkSkipped, { n: skipped }));
+    setBulk({ busy: false, text: parts.join(', ') });
+    setText('');
+    nav.reset();
+    focusInput();
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (multiPaste && event.key === 'Enter' && !event.ctrlKey && !event.metaKey) {
+      const tokens = splitSkuTokens(text);
+      if (tokens.length > 1) {
+        event.preventDefault();
+        void runBulk(tokens);
+        return;
+      }
+    }
     if (active && nav.onNavigationKey(event)) return;
     if (event.key === 'Enter') {
       // Only the row that is visibly highlighted: never an unseen first option.
@@ -255,7 +344,16 @@ export function BundleVariantPicker({
         disabled={disabled}
         placeholder={placeholder}
         onKeyDown={onKeyDown}
+        onPaste={(event) => {
+          if (!multiPaste) return;
+          const tokens = splitSkuTokens(event.clipboardData.getData('text'));
+          if (tokens.length < 2) return;
+          // A type="search" input would swallow the line breaks of a pasted column.
+          event.preventDefault();
+          void runBulk(tokens);
+        }}
         onChange={(event) => {
+          setBulk({ busy: false, text: '' });
           setText(event.target.value);
           setLimit(PAGE_SIZE);
           nav.reset();
@@ -271,7 +369,20 @@ export function BundleVariantPicker({
           {rejection}
         </p>
       ) : null}
-      {!active ? <p className="pm-help">{copy.hint}</p> : null}
+      {bulk.busy ? (
+        <p className="pm-help bpick__bulk" role="status">
+          {copy.bulkBusy}
+        </p>
+      ) : bulk.text !== '' ? (
+        <p className="bpick__bulk" role="status" data-testid={`${testIdPrefix}-bulk-result`}>
+          {bulk.text}
+        </p>
+      ) : null}
+      {!active ? (
+        <p className="pm-help" data-testid={`${testIdPrefix}-hint`}>
+          {text.trim().length === 1 ? copy.moreChars : multiPaste ? copy.hintMulti : copy.hint}
+        </p>
+      ) : null}
       {results.isError ? (
         <p className="form-field__error" role="alert">
           {copy.failed}

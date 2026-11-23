@@ -96,7 +96,7 @@ export function ProductDetailPage(): ReactElement {
     [searchParams, setSearchParams]
   );
 
-  const [, setListingsCounts] = useState<Record<string, number>>({});
+  const [listingsCounts, setListingsCounts] = useState<Record<string, number>>({});
   const handleListingsCount = useCallback((variantId: string, count: number) => {
     setListingsCounts((prev) =>
       prev[variantId] === count ? prev : { ...prev, [variantId]: count }
@@ -107,6 +107,7 @@ export function ProductDetailPage(): ReactElement {
   // by the OfferCreator capability — never a literal platformType. The CTA is
   // gated on `listings:write` (demo viewers see it and hit the gated confirm).
   const navigate = useNavigate();
+  const bundleHasOffer = Object.values(listingsCounts).some((count) => count > 0);
   const connectionsQuery = useConnectionsQuery();
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
@@ -432,7 +433,7 @@ export function ProductDetailPage(): ReactElement {
           <span className="page-header__actions--row">
             <BundleGuideButton />
             <Link
-              className="button button--secondary button--sm"
+              className={`button button--sm${bundleHasOffer ? ' button--secondary' : ' button--primary'}`}
               to={`/listings/bulk-create/wizard?${new URLSearchParams({ productIds: product.id, variantIds: variants[0]?.id ?? '' }).toString()}`}
               data-testid="bundle-view-list-offer"
             >
@@ -440,7 +441,7 @@ export function ProductDetailPage(): ReactElement {
             </Link>
             {bundleWrite.canWrite ? (
               <Link
-                className="button button--sm"
+                className={`button button--sm${bundleHasOffer ? '' : ' button--secondary'}`}
                 to={`/products/bundles/${encodeURIComponent(variants[0]?.id ?? '')}`}
                 data-testid="bundle-view-edit"
               >

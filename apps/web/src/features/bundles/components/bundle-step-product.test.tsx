@@ -2,7 +2,7 @@
  * Bundle form step 2 (#3935): create comes first and is the default, the name
  * follows the components until typed over, and every failure names a way out.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
@@ -60,6 +60,8 @@ function props(over: Partial<BundleStepProductProps> = {}): BundleStepProductPro
     excludeVariantIds: [],
     showErrors: false,
     createError: null,
+    effectiveName: '',
+    nameSuggestion: 'Zestaw: Kubek + Kawa',
     ...over,
   };
 }
@@ -81,33 +83,64 @@ describe('suggestedBundleName', () => {
 });
 
 describe('BundleStepProduct', () => {
-  it('should draw the model and list "create" before "I already have it"', () => {
+  it('should list "create" before "I already have it"', () => {
     renderWithProviders(<BundleStepProduct {...props()} />, { apiClient: client() });
 
-    expect(screen.getByTestId('bundle-form-model')).toBeInTheDocument();
     const radios = screen.getAllByRole('radio');
     expect(radios[0]).toHaveAttribute('data-testid', 'bundle-form-mode-create');
     expect(radios[1]).toHaveAttribute('data-testid', 'bundle-form-mode-existing');
   });
 
-  it('should default to create once a shop that can create products is known', async () => {
-    const onModeChange = vi.fn();
-    renderWithProviders(<BundleStepProduct {...props({ onModeChange })} />, { apiClient: client() });
+  it('should show the name suggestion as the name while the operator has not typed one', () => {
+    renderWithProviders(
+      <BundleStepProduct {...props({ mode: 'create', effectiveName: 'Zestaw: Kubek + Kawa' })} />,
+      { apiClient: client() }
+    );
 
-    await waitFor(() => {
-      expect(onModeChange).toHaveBeenCalledWith('create');
-    });
+    expect(screen.getByTestId('bundle-form-new-name')).toHaveValue('Zestaw: Kubek + Kawa');
+    expect(screen.getAllByTestId('bundle-form-hint-chip').length).toBeGreaterThan(0);
   });
 
-  it('should suggest a name from the components while the name is untouched', async () => {
+  it('should mark the name as typed when the operator edits it, and cap its length', async () => {
     const onDraftChange = vi.fn();
+    const user = userEvent.setup();
     renderWithProviders(<BundleStepProduct {...props({ mode: 'create', onDraftChange })} />, {
       apiClient: client(),
     });
 
-    await waitFor(() => {
-      expect(onDraftChange).toHaveBeenCalledWith({ name: expect.stringMatching(/: Kubek \+ Kawa$/) });
+    const input = screen.getByTestId('bundle-form-new-name');
+    expect(input).toHaveAttribute('maxlength', '120');
+    await user.type(input, 'A');
+    expect(onDraftChange).toHaveBeenCalledWith({
+      name: 'A',
+      touched: expect.objectContaining({ name: true }),
     });
+  });
+
+  it('should say why a price is refused, and what to do', () => {
+    renderWithProviders(
+      <BundleStepProduct
+        {...props({
+          mode: 'create',
+          draft: { ...EMPTY_PRODUCT_DRAFT, price: '-5', touched: { ...EMPTY_PRODUCT_DRAFT.touched, price: true } },
+        })}
+      />,
+      { apiClient: client() }
+    );
+
+    expect(screen.getByTestId('bundle-form-price-error')).toBeInTheDocument();
+  });
+
+  it('should keep the explainer folded until asked, and remember the choice', async () => {
+    window.localStorage.removeItem('ol.bundles.s2.explainer');
+    const user = userEvent.setup();
+    renderWithProviders(<BundleStepProduct {...props()} />, { apiClient: client() });
+
+    expect(screen.queryByTestId('bundle-form-model')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('bundle-form-explainer-show'));
+    expect(screen.getByTestId('bundle-form-model')).toBeInTheDocument();
+    await user.click(screen.getByTestId('bundle-form-explainer-hide'));
+    expect(window.localStorage.getItem('ol.bundles.s2.explainer')).toBe('hidden');
   });
 
   it('should say nothing is created in the shop until step 4, and show one shop as a static row', () => {
@@ -146,19 +179,15 @@ describe('BundleStepProduct', () => {
   });
 
   it('should warn inline when the SKU already belongs to a product and offer to use it', async () => {
-    const listRows = vi.fn().mockResolvedValue({
-      items: [{ id: 'p1', name: 'Istniejacy', sku: 'A-SET', price: 1, currency: 'PLN' }],
-      limit: 5,
-      offset: 0,
-    });
     renderWithProviders(
       <BundleStepProduct
         {...props({
           mode: 'create',
-          draft: { ...EMPTY_PRODUCT_DRAFT, sku: 'A-SET', touched: { sku: true, price: false, description: false } },
+          skuConflict: { productId: 'p1', name: 'Istniejacy', sku: 'A-SET' },
+          draft: { ...EMPTY_PRODUCT_DRAFT, sku: 'A-SET', touched: { ...EMPTY_PRODUCT_DRAFT.touched, sku: true } },
         })}
       />,
-      { apiClient: createMockApiClient({ products: { listRows }, bundles: { creationTargets: vi.fn().mockResolvedValue([creator]) } }) }
+      { apiClient: client() }
     );
 
     expect(await screen.findByTestId('bundle-form-sku-taken')).toHaveTextContent('A-SET');
