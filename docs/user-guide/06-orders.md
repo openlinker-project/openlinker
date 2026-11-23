@@ -26,11 +26,12 @@ When you connect a shop or marketplace, you choose which orders OpenLinker bring
 You can change this later on the connection's **Orders** tab (**Order import** panel):
 
 - **Check for new orders** runs a check right now.
-- **Get past orders...** lets you restart from a different start, or import a chosen date range. Orders already imported stay; a restart only decides what is read next. If a check is running at that moment, wait a moment and try again.
+- **Get orders from a period...** reads the orders placed between two days, once. New orders keep syncing as before, and orders OpenLinker already has are updated, never created twice. Only shops that can read a period offer it.
+- **Change start...** (next to "Import start") is a setting: it changes where OpenLinker starts reading orders from now on. Orders already imported stay. If a check is running at that moment, wait a moment and try again.
 
 What each platform offers:
 
-| Platform | Only new orders | From a date | Get past orders |
+| Platform | Only new orders | From a date | Get orders from a period |
 |---|---|---|---|
 | PrestaShop | yes | yes (not on a shop that cannot filter by date; you will be told) | yes |
 | WooCommerce | yes | yes (the day is read in UTC) | no |
