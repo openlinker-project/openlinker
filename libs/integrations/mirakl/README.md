@@ -69,6 +69,34 @@ in its own class behind `MiraklOrderSourceAdapter`:
 
 Every write reads the order first, so a replayed event does not write again.
 
+## Offers: stock, price, linking, status (#4277)
+
+`MiraklOfferManagerAdapter` keys every offer by its `shop_sku`, the same key
+STO01, PRI01 and order lines use.
+
+- **Stock and price are recorded, then sent in batches.** A stock change
+  (`updateOfferQuantity`, `OfferQuantityBatchUpdater`) or a price change
+  (`OfferFieldUpdater`, price only) goes into `mirakl_offer_writes`. Every
+  5 minutes `marketplace.offerQuantity.reconcile` sends all pending stock as
+  ONE STO01 file and all pending prices as ONE PRI01 file, then follows each
+  import (`PendingQuantityAckReconciler`). Mirakl asks sellers not to import
+  more often than every few minutes, so stock is not sent per change.
+- **`COMPLETE` is not success.** When an import reports failed lines, the
+  error report is read and those offers fail with Mirakl's reason; a line
+  that names no SKU fails the whole import.
+- **Never OF24.** OF24 resets every field it does not receive (on staging a
+  partial write zeroed the quantity). A spec fails the build if any production
+  file POSTs to `/api/offers`.
+- **Linking** (`OfferLister`): OF21 pages with shop SKU and EAN, for
+  `marketplace.offers.sync` (hourly).
+- **Status** (`OfferStatusReader`): `active` and `inactivity_reasons` from OF21
+  filtered by SKU, with the price and quantity the channel shows (hourly).
+  `NO_MIN_SHIPPING_RATE` and `SHOP_NOT_OPEN` are reported once per connection,
+  `ZERO_QUANTITY` per offer, and an unknown reason verbatim.
+
+A value written twice is harmless (stock and price are absolute), so a file
+whose answer was lost is simply sent again on the next pass.
+
 ## Connecting
 
 1. In the operator's seller panel, open the user menu and generate an API key

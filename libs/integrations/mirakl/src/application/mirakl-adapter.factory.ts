@@ -33,7 +33,9 @@ import type {
 import type { MiraklOperatorProfile } from '../domain/types/mirakl-operator-profile.types';
 import { MiraklHttpClient } from '../infrastructure/http/mirakl-http-client';
 import type { RetryConfig } from '../infrastructure/http/mirakl-http-client.types';
+import { MiraklOfferManagerAdapter } from '../infrastructure/adapters/mirakl-offer-manager.adapter';
 import { MiraklOrderSourceAdapter } from '../infrastructure/adapters/mirakl-order-source.adapter';
+import type { MiraklOfferWriteRepositoryPort } from '../domain/ports/mirakl-offer-write-repository.port';
 import { MiraklImportTracker } from '../infrastructure/imports/mirakl-import-tracker';
 import type {
   IMiraklAdapterFactory,
@@ -41,8 +43,20 @@ import type {
   MiraklConnectionClients,
 } from './interfaces/mirakl-adapter.factory.interface';
 
+/** What the host provides beyond the connection: the offer write store. */
+export interface MiraklAdapterFactoryDeps {
+  /**
+   * Read at adapter build time, so the store the integration module creates
+   * during DI is seen even though the plugin was described before it.
+   */
+  readonly offerWrites?: () => MiraklOfferWriteRepositoryPort | undefined;
+}
+
 export class MiraklAdapterFactory implements IMiraklAdapterFactory {
-  constructor(private readonly profile: MiraklOperatorProfile) {}
+  constructor(
+    private readonly profile: MiraklOperatorProfile,
+    private readonly deps: MiraklAdapterFactoryDeps = {},
+  ) {}
 
   async createClients(
     connection: Connection,
@@ -69,7 +83,11 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
     credentialsResolver: CredentialsResolverPort,
     fetchImpl: FetchLike,
   ): Promise<MiraklAdapters> {
-    const { httpClient } = await this.createClients(connection, credentialsResolver, fetchImpl);
+    const { httpClient, importTracker } = await this.createClients(
+      connection,
+      credentialsResolver,
+      fetchImpl,
+    );
     const config = (connection.config ?? {}) as MiraklConnectionConfig;
     const carrierCodes = readMiraklCarrierCodes(config.carrierCodes);
     return {
@@ -84,6 +102,13 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
           carrierCodes: carrierCodes.kind === 'valid' ? carrierCodes.codes : {},
           invoiceTypeCode: this.profile.invoiceDocumentTypeCode,
         },
+      ),
+      offerManager: new MiraklOfferManagerAdapter(
+        connection.id,
+        httpClient,
+        importTracker,
+        this.profile.brand,
+        this.deps.offerWrites?.(),
       ),
     };
   }

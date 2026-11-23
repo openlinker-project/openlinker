@@ -28,4 +28,37 @@ describe('buildMiraklSchedulerTasks', () => {
       'marketplace:conn-1:orders:poll:2026-11-23T12:00',
     );
   });
+
+  it('should register the offer writes, offers sync and offer status tasks, each env-gated', () => {
+    const tasks = buildMiraklSchedulerTasks(empikOperatorProfile);
+    const byId = new Map(tasks.map((task) => [task.taskId, task]));
+
+    expect([...byId.keys()]).toEqual([
+      'empik-orders-poll',
+      'empik-offer-writes',
+      'empik-offers-sync',
+      'empik-offer-status-sync',
+    ]);
+    expect(byId.get('empik-offer-writes')).toMatchObject({
+      requiredCapability: 'OfferManager',
+      jobType: 'marketplace.offerQuantity.reconcile',
+      enabledEnvVar: 'OL_EMPIK_OFFER_WRITES_SCHEDULER_ENABLED',
+    });
+    expect(
+      byId
+        .get('empik-offers-sync')
+        ?.generatePayload({ config: { masterCatalogConnectionId: 'master-1' } } as unknown as Connection),
+    ).toEqual({
+      schemaVersion: 1,
+      limit: 100,
+      cursor: null,
+      feedType: 'offers',
+      masterConnectionId: 'master-1',
+    });
+    expect(byId.get('empik-offer-status-sync')?.generatePayload({} as Connection)).toEqual({
+      schemaVersion: 1,
+      limit: 100,
+      cursorKey: 'empik.offerStatus.scanOffset',
+    });
+  });
 });

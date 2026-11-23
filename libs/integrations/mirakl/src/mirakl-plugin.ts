@@ -10,9 +10,10 @@
  * It registers what every capability depends on (config and credentials
  * validators, the connection tester, the retry and auth-failure classifiers)
  * and advertises `OrderSource` (#4275): the orders poll, which also accepts
- * new orders. Each capability is added to `supportedCapabilities` together
- * with the adapter that delivers it, in lockstep with the dispatch table
- * below (#4277 adds offers).
+ * new orders, and `OfferManager` (#4277): stock and price for offers listed
+ * on the operator, offer linking and offer status. Each capability is added to
+ * `supportedCapabilities` together with the adapter that delivers it, in
+ * lockstep with the dispatch table below.
  *
  * Mirakl offers sellers no webhooks (they are operator-only), so the plugin
  * registers no webhook decoder or provisioner; capabilities poll.
@@ -22,7 +23,10 @@
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { MiraklAdapterFactory } from './application/mirakl-adapter.factory';
+import {
+  MiraklAdapterFactory,
+  type MiraklAdapterFactoryDeps,
+} from './application/mirakl-adapter.factory';
 import type { MiraklOperatorProfile } from './domain/types/mirakl-operator-profile.types';
 import { MiraklAuthFailureClassifierAdapter } from './infrastructure/adapters/mirakl-auth-failure-classifier.adapter';
 import { MiraklConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/mirakl-connection-config-shape-validator.adapter';
@@ -42,16 +46,29 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
   return {
     adapterKey: profile.adapterKey,
     platformType: profile.platformType,
-    supportedCapabilities: ['OrderSource'],
+    // Sub-capabilities are listed for host-side discovery only; they are
+    // resolved by narrowing the dispatched adapter with core's guards.
+    supportedCapabilities: [
+      'OrderSource',
+      'OfferManager',
+      'OfferLister',
+      'OfferStatusReader',
+      'OfferQuantityBatchUpdater',
+      'PendingQuantityAckReconciler',
+      'OfferFieldUpdater',
+    ],
     displayName: profile.displayName,
     version: profile.version,
     isDefault: true,
   };
 }
 
-export function createMiraklPlugin(profile: MiraklOperatorProfile): AdapterPlugin {
+export function createMiraklPlugin(
+  profile: MiraklOperatorProfile,
+  deps: MiraklAdapterFactoryDeps = {},
+): AdapterPlugin {
   const manifest = buildMiraklAdapterManifest(profile);
-  const factory = new MiraklAdapterFactory(profile);
+  const factory = new MiraklAdapterFactory(profile, deps);
 
   return {
     manifest,
@@ -98,7 +115,7 @@ export function createMiraklPlugin(profile: MiraklOperatorProfile): AdapterPlugi
       );
       return dispatchCapability<T>(
         capability,
-        { OrderSource: () => adapters.orderSource },
+        { OrderSource: () => adapters.orderSource, OfferManager: () => adapters.offerManager },
         profile.brand,
       );
     },

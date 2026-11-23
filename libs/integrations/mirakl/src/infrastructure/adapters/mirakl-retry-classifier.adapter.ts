@@ -19,13 +19,15 @@ import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
 import { MiraklAuthenticationException } from '../../domain/exceptions/mirakl-authentication.exception';
 import { MiraklConfigException } from '../../domain/exceptions/mirakl-config.exception';
+import { MiraklUnsupportedFieldException } from '../../domain/exceptions/mirakl-unsupported-field.exception';
 
 export class MiraklRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
     return (
       cause instanceof MiraklApiException ||
       cause instanceof MiraklAuthenticationException ||
-      cause instanceof MiraklConfigException
+      cause instanceof MiraklConfigException ||
+      cause instanceof MiraklUnsupportedFieldException
     );
   }
 }

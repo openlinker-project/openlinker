@@ -22,6 +22,7 @@ import { MiraklConnectionConfigShapeValidatorAdapter } from '../infrastructure/a
 import { MiraklConnectionCredentialsShapeValidatorAdapter } from '../infrastructure/adapters/mirakl-connection-credentials-shape-validator.adapter';
 import { MiraklConnectionTesterAdapter } from '../infrastructure/adapters/mirakl-connection-tester.adapter';
 import { MiraklEmailNormalizerAdapter } from '../infrastructure/adapters/mirakl-email-normalizer.adapter';
+import { MiraklOfferManagerAdapter } from '../infrastructure/adapters/mirakl-offer-manager.adapter';
 import { MiraklOrderSourceAdapter } from '../infrastructure/adapters/mirakl-order-source.adapter';
 import { MiraklRetryClassifierAdapter } from '../infrastructure/adapters/mirakl-retry-classifier.adapter';
 
@@ -36,7 +37,15 @@ describe('createMiraklPlugin (Empik)', () => {
     expect(plugin.manifest).toEqual({
       adapterKey: EMPIK_ADAPTER_KEY,
       platformType: 'empik',
-      supportedCapabilities: ['OrderSource'],
+      supportedCapabilities: [
+        'OrderSource',
+        'OfferManager',
+        'OfferLister',
+        'OfferStatusReader',
+        'OfferQuantityBatchUpdater',
+        'PendingQuantityAckReconciler',
+        'OfferFieldUpdater',
+      ],
       displayName: 'Empik Marketplace',
       version: '0.1.0',
       isDefault: true,
@@ -118,11 +127,21 @@ describe('createMiraklPlugin (Empik)', () => {
     expect(adapter).toBeInstanceOf(MiraklOrderSourceAdapter);
   });
 
-  it('should refuse the OfferManager capability until an adapter delivers it', async () => {
+  it('should build the offer manager', async () => {
+    const adapter = await createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
+      empikConnection,
+      'OfferManager',
+      capabilityHost(),
+    );
+
+    expect(adapter).toBeInstanceOf(MiraklOfferManagerAdapter);
+  });
+
+  it('should refuse a capability no adapter delivers', async () => {
     await expect(
       createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
         empikConnection,
-        'OfferManager',
+        'ProductPublisher',
         capabilityHost(),
       ),
     ).rejects.toThrow(/Empik/);

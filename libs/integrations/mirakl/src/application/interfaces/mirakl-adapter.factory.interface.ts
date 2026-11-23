@@ -11,6 +11,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { OfferManagerPort } from '@openlinker/core/listings';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { IMiraklHttpClient } from '../../infrastructure/http/mirakl-http-client.interface';
@@ -26,6 +27,7 @@ export interface MiraklConnectionClients {
 /** The capability adapters for one connection. */
 export interface MiraklAdapters {
   readonly orderSource: OrderSourcePort;
+  readonly offerManager: OfferManagerPort;
 }
 
 export interface IMiraklAdapterFactory {

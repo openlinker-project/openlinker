@@ -9,6 +9,7 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { MiraklConfigException } from '../../domain/exceptions/mirakl-config.exception';
+import type { MiraklOfferWriteRepositoryPort } from '../../domain/ports/mirakl-offer-write-repository.port';
 import { empikOperatorProfile } from '../../operators/empik.profile';
 import { MiraklAdapterFactory } from '../mirakl-adapter.factory';
 
@@ -145,5 +146,31 @@ describe('MiraklAdapterFactory', () => {
       expect(requestedUrls(fetchMock).some((url) => url.includes('=WAITING_ACCEPTANCE&'))).toBe(false);
       expect(requestedUrls(fetchMock)).toHaveLength(1);
     });
+  });
+});
+
+describe('MiraklAdapterFactory offer manager (#4277)', () => {
+  it('should record stock through the store the host provides', async () => {
+    const recordPending = jest.fn().mockResolvedValue(undefined);
+    const store = { recordPending } as unknown as MiraklOfferWriteRepositoryPort;
+    const { offerManager } = await new MiraklAdapterFactory(empikOperatorProfile, {
+      offerWrites: (): MiraklOfferWriteRepositoryPort => store,
+    }).createAdapters(connection({}), resolver({ apiKey: 'k' }), okFetch() as unknown as typeof fetch);
+
+    await offerManager.updateOfferQuantity({ offerId: 'SKU-1', quantity: 4 });
+
+    expect(recordPending).toHaveBeenCalledWith('conn-1', 'stock', [{ offerSku: 'SKU-1', value: '4' }]);
+  });
+
+  it('should refuse a stock write when the host provides no store', async () => {
+    const { offerManager } = await new MiraklAdapterFactory(empikOperatorProfile).createAdapters(
+      connection({}),
+      resolver({ apiKey: 'k' }),
+      okFetch() as unknown as typeof fetch,
+    );
+
+    await expect(offerManager.updateOfferQuantity({ offerId: 'SKU-1', quantity: 4 })).rejects.toBeInstanceOf(
+      MiraklConfigException,
+    );
   });
 });
