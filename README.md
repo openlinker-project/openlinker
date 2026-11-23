@@ -48,6 +48,7 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[Shoper](./libs/integrations/shoper/)** | Shop *(source + destination + inventory, product publish)* | ✅ Live |
 | **[Allegro](./libs/integrations/allegro/)** *([guide](./libs/integrations/allegro/docs/setup-guide.md))* | Marketplace *(source + offers + shipping)* | ✅ Live |
 | **[Erli](./libs/integrations/erli/)** *([guide](./libs/integrations/erli/docs/setup-guide.md))* | Marketplace *(offers + source)* | ✅ Live |
+| **[Empik Marketplace](./libs/integrations/mirakl/)** *(Mirakl)* | Marketplace *(connection; orders and offers in progress, epic #4273)* | 🚧 In progress |
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
 | **[InPost](./libs/integrations/inpost/)** *([guide](./libs/integrations/inpost/docs/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
 | **[DPD](./libs/integrations/dpd-polska/)** *([guide](./libs/integrations/dpd-polska/docs/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
@@ -57,7 +58,7 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[Infakt](./libs/integrations/infakt/)** *([guide](./libs/integrations/infakt/docs/setup-guide.md))* | Invoicing *(accounting SaaS — issues invoices and relays them to KSeF on the seller's behalf)* | ✅ Live |
 | **[eparagony.pl](./libs/integrations/eparagony/)** *([guide](./libs/integrations/eparagony/docs/setup-guide.md))* | Fiscal receipts · Invoicing *(the vendor drives the seller's fiscal printer and relays invoices to KSeF)* | ✅ Live |
 | Shopify · BigCommerce · Magento | Shop | 📋 Planned |
-| eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
+| eBay · Amazon · OLX · Bol | Marketplace | 📋 Planned |
 | DHL · FedEx · ORLEN Paczka · GLS | Shipping *(siblings under `ShippingProviderManagerPort`)* | 📋 Planned |
 | Fakturownia · iFirma · wFirma | Invoicing *(siblings under `InvoicingPort`)* | 📋 Planned |
 

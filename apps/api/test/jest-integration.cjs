@@ -173,6 +173,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/erli/src/$1',
     ),
+    '^@openlinker/integrations-mirakl$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/mirakl/src/index.ts',
+    ),
+    '^@openlinker/integrations-mirakl/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/mirakl/src/$1',
+    ),
     '^@openlinker/integrations-ksef$': path.resolve(
       __dirname,
       '../../../libs/integrations/ksef/src/index.ts',

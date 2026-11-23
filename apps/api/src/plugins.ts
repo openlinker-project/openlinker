@@ -34,6 +34,7 @@ import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
+import { EmpikIntegrationModule } from '@openlinker/integrations-mirakl';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openlinker/integrations-subiekt-nexo';
@@ -52,6 +53,7 @@ export const apiPlugins: PluginEntry[] = [
   DpdIntegrationModule,
   WooCommerceIntegrationModule,
   ErliIntegrationModule,
+  EmpikIntegrationModule,
   KsefIntegrationModule,
   // #753: Subiekt GT adapter (Sfera GT bridge) — registered so the host can
   // resolve the capabilities of `subiekt-gt` connections. Subiekt GT and

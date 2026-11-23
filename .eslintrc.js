@@ -822,6 +822,7 @@ module.exports = {
         'libs/integrations/allegro/**/*.ts',
         'libs/integrations/dpd-polska/**/*.ts',
         'libs/integrations/erli/**/*.ts',
+        'libs/integrations/mirakl/**/*.ts',
         'libs/integrations/fx/**/*.ts',
         'libs/integrations/infakt/**/*.ts',
         'libs/integrations/inpost/**/*.ts',

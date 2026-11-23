@@ -39,6 +39,8 @@
       "@openlinker/integrations-dpd-polska/*": ["../../libs/integrations/dpd-polska/src/*"],
       "@openlinker/integrations-erli": ["../../libs/integrations/erli/src/index.ts"],
       "@openlinker/integrations-erli/*": ["../../libs/integrations/erli/src/*"],
+      "@openlinker/integrations-mirakl": ["../../libs/integrations/mirakl/src/index.ts"],
+      "@openlinker/integrations-mirakl/*": ["../../libs/integrations/mirakl/src/*"],
       "@openlinker/integrations-ksef": ["../../libs/integrations/ksef/src/index.ts"],
       "@openlinker/integrations-ksef/*": ["../../libs/integrations/ksef/src/*"],
       "@openlinker/integrations-subiekt": ["../../libs/integrations/subiekt/src/index.ts"],

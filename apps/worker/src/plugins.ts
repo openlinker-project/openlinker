@@ -35,6 +35,7 @@ import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
+import { EmpikIntegrationModule } from '@openlinker/integrations-mirakl';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openlinker/integrations-subiekt-nexo';
@@ -56,6 +57,7 @@ export const workerPlugins: PluginEntry[] = [
   // SOAP DPDInfoServices, ADR-022). Scheduler runs api-side; worker only drains.
   DpdIntegrationModule,
   ErliIntegrationModule,
+  EmpikIntegrationModule,
   KsefIntegrationModule,
   // #753: resolve the Subiekt GT 'Invoicing' capability when issuance is
   // driven from the worker (mirrors WooCommerce/InPost dual registration).
