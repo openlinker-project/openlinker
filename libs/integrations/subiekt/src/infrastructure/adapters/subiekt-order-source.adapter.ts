@@ -22,14 +22,16 @@
  * bridge applies no lookback of its own to a null `since`; `null` output means
  * the page was empty.
  *
- * ## NOT LIVE-VERIFIED (built with no Windows access)
+ * ## Where order sync starts (#4228, #4265)
  *
- * This file was built in a sandboxed worktree with no access to the Windows
- * bridge machine — the wire contract (`subiekt-bridge-orders.types.ts`) is a
- * first draft, unit-tested against itself but never wire-tested against a real
- * `GET /api/orders/feed` / `GET /api/orders/{id}` response. Reconcile against
- * the actual bridge DTOs before shipping, the same way #753's invoicing
- * contract needed one round of reconciliation after its first live test.
+ * Implements `OrderFeedBootstrap` and `OrderFeedDateBootstrap` (no
+ * `OrderWindowReader`). `headCursor` reads the bridge's `GET /api/orders/feed/head`;
+ * a bridge without that route answers 404 and the adapter walks the feed to its
+ * end instead (bounded, then a typed refusal asking for a bridge upgrade). A date
+ * is read as the ZK issue date.
+ *
+ * Live-verified against a real bridge on 2026-11-23 for the head, the date cursor
+ * and the feed. Orders are ZK documents only.
  *
  * @module libs/integrations/subiekt/src/infrastructure/adapters
  */

@@ -20,6 +20,8 @@ Allegro Public API v1 adapter for OpenLinker — marketplace offer management an
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
+**Where order sync starts (#4228).** `OrderFeedBootstrap.headCursor` seeds at the newest event (`/order/event-stats`), so a new connection imports only new orders by default. There is **no "from a date" start**: the event journal has no date position (`cursorForDate` is not implemented, and the manifest does not declare `from`). `OrderWindowReader.listOrdersInWindow` is implemented (`orderWindowImport: true`), so history can be imported newest-first and a date range can be imported on demand.
+
 ## Credentials & config
 
 Authentication uses the **OAuth 2.0 authorization-code flow** (browser redirect through

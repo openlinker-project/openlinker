@@ -43,6 +43,9 @@
  * @implements {ReturnSourceReader}
  * @implements {SourceOptionsReader}
  * @implements {OrderFulfillmentReadback}
+ * @implements {OrderFeedBootstrap}
+ * @implements {OrderFeedDateBootstrap}
+ * @implements {OrderWindowReader}
  */
 import type {
   ExecuteRefundCommand,

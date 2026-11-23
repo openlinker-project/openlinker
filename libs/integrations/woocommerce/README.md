@@ -82,7 +82,7 @@ Generate at **WooCommerce → Settings → Advanced → REST API**.
 |---|---|---|
 | `siteUrl` | HTTPS URL (**required**) | The store's base URL. Must include the `https://` protocol (Basic Auth would leak credentials over plain http); the adapter appends the `wc/v3` REST paths itself |
 | `inventory` | Object (optional) | Inventory tuning: `unmanagedStockQuantity` (integer >= 0, default 1000) - the quantity reported for in-stock products with stock management disabled |
-| `orders` | Object (optional) | Order-ingestion tuning: `initialSyncFrom` (parseable date string, e.g. `"2024-01-01"`) - the earliest order date picked up by the first sync |
+| `orders` | Object (optional) | Order-ingestion tuning: `initialSyncFrom` (parseable date string, e.g. `"2024-01-01"`) - the earliest order date picked up by an `all` history read. It no longer decides where a new connection starts: the operator's explicit choice (`now` by default, `from` a date, or `all`) does, and `now` seeds at the real newest order. `from` dates are read in UTC because the REST API exposes no site time zone, so a site east of UTC can miss the first hours of the chosen day. There is no window import (`OrderWindowReader`) on WooCommerce. |
 
 ## Product publish field mapping
 
