@@ -171,4 +171,51 @@ describe('resolveAllegroProductCardByEan', () => {
 
     expect(result).toEqual({ kind: 'unique', productId: 'allegro-prod-1' });
   });
+  it('should return unique when the EAN is only in the GTIN-flagged parameter and there is no top-level ean', async () => {
+    cache.get.mockResolvedValue(null);
+    httpClient.get.mockResolvedValue({
+      data: {
+        products: [
+          {
+            id: 'card-from-parameters',
+            name: 'Card without a top-level ean',
+            parameters: [
+              { id: '225693', name: 'EAN (GTIN)', values: ['8000070020566'], options: { isGTIN: true } },
+              { id: '248811', name: 'Marka', values: ['Lavazza'] },
+            ],
+          },
+        ],
+      },
+    } as never);
+
+    const result = await resolveAllegroProductCardByEan(httpClient, cache, {
+      ean: '8000070020566',
+      categoryId: '74035',
+    });
+
+    expect(result).toEqual({ kind: 'unique', productId: 'card-from-parameters' });
+  });
+
+  it('should not match a card whose GTIN parameter holds a different EAN', async () => {
+    cache.get.mockResolvedValue(null);
+    httpClient.get.mockResolvedValue({
+      data: {
+        products: [
+          {
+            id: 'other-card',
+            parameters: [
+              { id: '225693', name: 'EAN (GTIN)', values: ['1111111111111'], options: { isGTIN: true } },
+            ],
+          },
+        ],
+      },
+    } as never);
+
+    const result = await resolveAllegroProductCardByEan(httpClient, cache, {
+      ean: '8000070020566',
+      categoryId: '74035',
+    });
+
+    expect(result).toEqual({ kind: 'no_match' });
+  });
 });

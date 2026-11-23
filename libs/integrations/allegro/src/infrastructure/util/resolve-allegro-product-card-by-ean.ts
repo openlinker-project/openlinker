@@ -37,6 +37,7 @@ import type {
   AllegroProductsSearchResponse,
 } from '../../domain/types/allegro-api.types';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import { hasExactGtin } from './allegro-card-gtin';
 import type {
   ResolveAllegroProductCardOptions,
   ResolveProductCardResult,
@@ -100,8 +101,13 @@ export async function resolveAllegroProductCardByEan(
     return { kind: 'no_match' };
   }
 
-  // Allegro's matcher is fuzzy on `phrase` — filter to exact-EAN matches.
-  const exact = products.filter((p) => typeof p.ean === 'string' && p.ean === input.ean);
+  // Allegro's matcher is fuzzy on `phrase` — filter to exact-EAN matches. The EAN
+  // lives in the GTIN-flagged parameter; the top-level `ean` is kept as a
+  // fallback only, because the live API does not send it (a filter on it alone
+  // never matched, so every smart-link fell through to the inline-product path).
+  const exact = products.filter(
+    (p) => hasExactGtin(p, input.ean) || (typeof p.ean === 'string' && p.ean === input.ean),
+  );
 
   if (exact.length === 1) {
     const productId = exact[0].id;
