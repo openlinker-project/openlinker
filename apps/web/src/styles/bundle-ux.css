@@ -1,5 +1,5 @@
 /*
- * Bundle UX layer. Loaded after index.css so it wins over the legacy pm-*/bf-*/bpick-* rules.
+ * Bundle UX layer. Loaded after index.css so it wins over the legacy pm, bf and bpick rules.
  * One marked section per area; add rules inside your own section only.
  * Tokens only (var(--...)), motion respects prefers-reduced-motion.
  */
