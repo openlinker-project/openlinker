@@ -15,6 +15,10 @@ export interface TourRequest {
   connectionId?: string | null;
   /** Walk only this showcase, from its first stop (replay). */
   showcaseId?: string;
+  /** Walk these setup steps again even though they are finished (the card's "go through it again"). */
+  replaySteps?: { stepId: string; connectionId: string | null; importance: 'required' | 'optional' }[];
+  /** Showcases walked after `replaySteps`. */
+  replayShowcaseIds?: string[];
   /** Walk the showcases of this `major.minor`, from the first one not seen yet. */
   showcaseMinor?: string;
 }

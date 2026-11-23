@@ -293,7 +293,20 @@ export function ReleaseCard({
             <Button
               className="button--sm"
               onClick={() => {
-                requestReleaseTour(showcaseOnly ? { showcaseMinor: notification.minor } : {});
+                requestReleaseTour(
+                  showcaseOnly
+                    ? { showcaseMinor: notification.minor }
+                    : left === 0 && mine.length > 0
+                      ? {
+                          replaySteps: mine.map((i) => ({
+                            stepId: i.step.id,
+                            connectionId: i.connectionId,
+                            importance: i.importance,
+                          })),
+                          replayShowcaseIds: myShowcases.map((s) => s.showcase.id),
+                        }
+                      : {}
+                );
                 onNavigate();
               }}
             >

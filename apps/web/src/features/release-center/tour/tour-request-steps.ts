@@ -44,6 +44,15 @@ export function tourStepsForRequest(
   const seen = (instance: ShowcaseInstance): boolean =>
     state ? showcaseSeenOf(state, instance.itemKey) : false;
 
+  // A replay walks exactly what the card lists, finished or not: the open list is empty by then.
+  if (request.replaySteps) {
+    const ids = new Set(request.replayShowcaseIds ?? []);
+    const steps: TourStepInput[] = [
+      ...request.replaySteps.map((r) => ({ stepId: r.stepId, connectionId: r.connectionId, importance: r.importance })),
+      ...showcases.filter((s) => ids.has(s.showcase.id)).flatMap(expandShowcase),
+    ];
+    return { steps, startIndex: 0 };
+  }
   // A showcase request never mixes in setup work: it is a replay or a "show me what is new".
   if (request.showcaseId) {
     const one = showcases.filter((s) => s.showcase.id === request.showcaseId);
