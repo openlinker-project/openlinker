@@ -49,11 +49,15 @@ export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
 // #4228 - the order-history choice, shared with the Allegro wizard (its flow leaves for OAuth).
 export { OrderSyncStartField } from './components/order-sync-start-field';
+export { OrderSyncStartSection } from './components/order-sync-start-section';
+export { collectFormErrorMessages } from './lib/collect-form-error-messages';
 export {
   ORDER_SYNC_START_DEFAULT_MODES,
   ORDER_SYNC_START_DEFAULT_VALUE,
   describeOrderSyncStart,
+  addOrderSyncStartIssues,
   orderSyncStartSchema,
+  orderSyncStartShape,
   readsOrders,
   toOrderSyncStart,
   type OrderSyncStartValue,

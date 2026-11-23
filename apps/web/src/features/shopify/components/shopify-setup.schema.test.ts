@@ -91,7 +91,7 @@ describe('Shopify role presets', () => {
     expect(toCreateConnectionInput(parsed).orderSyncStart).toBeUndefined();
   });
 
-  it('should send the chosen start for the master role and never for a publisher or OAuth', () => {
+  it('should send the chosen start for the master role in every connect mode and never for a publisher', () => {
     const chosen = { ...VALID, orderSyncStart: { mode: 'from' as const, from: '2024-03-01' } };
     expect(toCreateConnectionInput(shopifySetupSchema.parse(chosen)).orderSyncStart).toEqual({
       mode: 'from',
@@ -100,9 +100,18 @@ describe('Shopify role presets', () => {
     expect(
       toCreateConnectionInput(shopifySetupSchema.parse({ ...chosen, role: 'publisher' })).orderSyncStart,
     ).toBeUndefined();
-    expect(
-      toCreateConnectionInput(shopifySetupSchema.parse({ ...chosen, mode: 'oauth' })).orderSyncStart,
-    ).toBeUndefined();
+  });
+
+  it('should not validate a start date for a role that never asks for one', () => {
+    const stale = { ...VALID, role: 'publisher' as const, orderSyncStart: { mode: 'from' as const } };
+    expect(shopifySetupSchema.safeParse(stale).success).toBe(true);
+    expect(shopifySetupSchema.safeParse({ ...stale, role: 'master' }).success).toBe(false);
+  });
+
+  it('should report the start-date problem at the nested path the form reads', () => {
+    const result = shopifySetupSchema.safeParse({ ...VALID, orderSyncStart: { mode: 'from' } });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.path.join('.'))).toContain('orderSyncStart.from');
   });
 
   it('should refuse a start date with no day or in the future', () => {

@@ -63,23 +63,49 @@ function isRealDate(value: string): boolean {
   return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
 }
 
-export const orderSyncStartSchema = z
-  .object({
-    mode: z.enum(ORDER_SYNC_START_MODE_VALUES),
-    from: z.string().optional(),
-    order: z.enum(ORDER_IMPORT_ORDER_VALUES).optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.mode !== 'from') return;
-    const from = value.from ?? '';
-    const fail = (key: Parameters<typeof msg>[0]): void => {
-      ctx.addIssue({ code: 'custom', path: ['from'], message: msg(key).error() });
-    };
-    if (from === '') return fail('dateRequired');
-    if (!isRealDate(from)) return fail('dateInvalid');
-    if (from > latestOrderSyncStartDate()) return fail('dateFuture');
-    if (from < earliestOrderSyncStartDate()) return fail('dateTooOld');
-  });
+/** The shape alone. A wizard that does not always ask the question validates the date itself. */
+export const orderSyncStartShape = z.object({
+  mode: z.enum(ORDER_SYNC_START_MODE_VALUES),
+  from: z.string().optional(),
+  order: z.enum(ORDER_IMPORT_ORDER_VALUES).optional(),
+});
+
+type StartDateIssue = 'dateRequired' | 'dateInvalid' | 'dateFuture' | 'dateTooOld';
+
+/** The first thing wrong with a chosen start date, or null when the choice is fine. */
+function startDateIssue(value: z.input<typeof orderSyncStartShape>): StartDateIssue | null {
+  if (value.mode !== 'from') return null;
+  const from = value.from ?? '';
+  if (from === '') return 'dateRequired';
+  if (!isRealDate(from)) return 'dateInvalid';
+  if (from > latestOrderSyncStartDate()) return 'dateFuture';
+  if (from < earliestOrderSyncStartDate()) return 'dateTooOld';
+  return null;
+}
+
+/**
+ * Adds the start-date issue, if any, to a surrounding schema. A wizard whose step
+ * is hidden (OrderSource not ticked, a role that reads no orders) must NOT call
+ * this: an answer to a question nobody asked cannot block the submit.
+ */
+export function addOrderSyncStartIssues(
+  value: z.input<typeof orderSyncStartShape> | undefined,
+  ctx: z.RefinementCtx,
+  path: ReadonlyArray<string | number> = ['orderSyncStart'],
+): void {
+  if (value === undefined) return;
+  const issue = startDateIssue(value);
+  if (issue !== null) {
+    ctx.addIssue({ code: 'custom', path: [...path, 'from'], message: msg(issue).error() });
+  }
+}
+
+export const orderSyncStartSchema = orderSyncStartShape.superRefine((value, ctx) => {
+  const issue = startDateIssue(value);
+  if (issue !== null) {
+    ctx.addIssue({ code: 'custom', path: ['from'], message: msg(issue).error() });
+  }
+});
 
 export type OrderSyncStartValue = z.input<typeof orderSyncStartSchema>;
 

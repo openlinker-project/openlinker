@@ -12,7 +12,8 @@
 import { z } from 'zod';
 import {
   ORDER_SYNC_START_DEFAULT_VALUE,
-  orderSyncStartSchema,
+  addOrderSyncStartIssues,
+  orderSyncStartShape,
   readsOrders,
   toOrderSyncStart,
   type CoreCapability,
@@ -64,7 +65,7 @@ export const shopifySetupSchema = z
     clientSecret: z.string().trim(),
     accessToken: z.string().trim(),
     locationId: z.string().trim(),
-    orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
+    orderSyncStart: orderSyncStartShape.default(ORDER_SYNC_START_DEFAULT_VALUE),
   })
   .superRefine((values, ctx) => {
     const need = (field: 'clientId' | 'clientSecret' | 'accessToken'): void => {
@@ -77,6 +78,12 @@ export const shopifySetupSchema = z
     } else {
       need('clientId');
       need('clientSecret');
+    }
+    // Only a question the form asks can be answered wrongly: a role that reads no
+    // orders hides the field, and a stale date typed before switching role must
+    // not block the submit.
+    if (asksOrderSyncStart(values.role)) {
+      addOrderSyncStartIssues(values.orderSyncStart, ctx);
     }
   });
 
@@ -104,12 +111,12 @@ export function toShopifyConfig(values: ShopifySetupFormSubmission): Record<stri
 }
 
 /**
- * Whether the order-history choice applies: the role must read orders, and the
- * OAuth install carries no start (its connect call has no such field), so the
- * choice is only asked in the two direct-create modes.
+ * Whether the order-history choice applies: the role must read orders. It is
+ * asked in every connect mode, because the OAuth install carries the choice
+ * through the redirect and stores it when the callback creates the connection.
  */
-export function asksOrderSyncStart(role: ShopifySetupRole, mode: ShopifySetupMode): boolean {
-  return mode !== 'oauth' && readsOrders(SHOPIFY_ROLE_CAPABILITIES[role]);
+export function asksOrderSyncStart(role: ShopifySetupRole): boolean {
+  return readsOrders(SHOPIFY_ROLE_CAPABILITIES[role]);
 }
 
 /** Create payload for the two modes that need no redirect. */
@@ -120,7 +127,7 @@ export function toCreateConnectionInput(values: ShopifySetupFormSubmission): Cre
     adapterKey: SHOPIFY_ADAPTER_KEY,
     config: toShopifyConfig(values),
     enabledCapabilities: SHOPIFY_ROLE_CAPABILITIES[values.role],
-    orderSyncStart: asksOrderSyncStart(values.role, values.mode)
+    orderSyncStart: asksOrderSyncStart(values.role)
       ? toOrderSyncStart(values.orderSyncStart)
       : undefined,
     credentials:

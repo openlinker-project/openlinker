@@ -43,6 +43,30 @@ async function reachReview(): Promise<void> {
   await screen.findByRole('button', { name: 'Create connection' });
 }
 
+const SHOPER_WITH_ORDER_START = [
+  {
+    adapterKey: 'shoper.restapi.v1',
+    platformType: 'shoper',
+    supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource'],
+    orderSyncStartModes: ['now', 'from', 'all'],
+    orderWindowImport: true,
+  },
+];
+
+async function reachOrdersStep(adapters: unknown = SHOPER_WITH_ORDER_START, create = vi.fn()) {
+  renderWithProviders(<ShoperSetupForm />, {
+    apiClient: createMockApiClient({
+      connections: { create },
+      adapters: { list: vi.fn().mockResolvedValue(adapters) },
+    }),
+  });
+  await fillShopStep();
+  await fillTokenStep();
+  fireEvent.click(screen.getByLabelText('OrderSource'));
+  next();
+  return create;
+}
+
 describe('ShoperSetupForm', () => {
   afterEach(cleanup);
 
@@ -243,6 +267,95 @@ describe('ShoperSetupForm', () => {
 
     expect(await screen.findByText('Which orders should OpenLinker import?')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create connection' })).toBeNull();
+  });
+
+  it('sends a start date and newest-first when the shop declares the date start and window import', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Shoper' });
+    await reachOrdersStep(SHOPER_WITH_ORDER_START, create);
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+    fireEvent.change(screen.getByLabelText('First day to import'), { target: { value: '2024-03-01' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Newest first/ }));
+    next();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderSyncStart: { mode: 'from', from: '2024-03-01', order: 'newest-first' },
+        }),
+      ),
+    );
+  });
+
+  it('does not offer modes the shop does not declare', async () => {
+    await reachOrdersStep([{ ...SHOPER_WITH_ORDER_START[0], orderSyncStartModes: ['now'], orderWindowImport: false }]);
+
+    const fromCard = await screen.findByRole('radio', { name: /Orders since a date/ });
+    expect(fromCard).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('radio', { name: /Every order the shop has/ })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('shows a loading line, not a disabled date card, while the adapter list loads', async () => {
+    await reachOrdersStep(new Promise(() => undefined));
+
+    expect(await screen.findByText(getMessages('connections').orderSyncStart.loading)).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+  });
+
+  it('says the start will be new orders only when the adapter list cannot be read', async () => {
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({ adapters: { list: vi.fn().mockRejectedValue(new Error('down')) } }),
+    });
+    await fillShopStep();
+    await fillTokenStep();
+    fireEvent.click(screen.getByLabelText('OrderSource'));
+    next();
+
+    expect(await screen.findByText(getMessages('connections').orderSyncStart.loadFailed)).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+  });
+
+  it('does not let a start date nobody can see block the submit', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Shoper' });
+    await reachOrdersStep(SHOPER_WITH_ORDER_START, create);
+
+    // Pick "from" with no day, leave the step, then untick OrderSource: the step is gone.
+    fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(await screen.findByLabelText('OrderSource'));
+    next();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect((create.mock.calls[0][0] as { orderSyncStart?: unknown }).orderSyncStart).toBeUndefined();
+  });
+
+  it('explains a refused start date in the error summary instead of failing silently', async () => {
+    await reachOrdersStep(SHOPER_WITH_ORDER_START);
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+    next();
+
+    expect(await screen.findByText(getMessages('connections').orderSyncStartSchema.dateRequired)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create connection' })).toBeNull();
+  });
+
+  it('marks steps done by what they are, not by their position, when OrderSource is removed', async () => {
+    await reachOrdersStep(SHOPER_WITH_ORDER_START);
+    // Visit and complete the order step, so it is recorded as done.
+    await screen.findByRole('radio', { name: /New orders only/ });
+    next();
+    await screen.findByRole('button', { name: 'Create connection' });
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(await screen.findByLabelText('OrderSource'));
+
+    // Without the order step the review step takes its index; it must not inherit its done mark.
+    const steps = Array.from(document.querySelectorAll('.setup-stepper__list .setup-stepper__step'));
+    const review = steps.find((step) => step.textContent?.includes('Review & create'));
+    expect(steps.some((step) => step.textContent?.includes('Order history'))).toBe(false);
+    expect(review?.className).toContain('setup-stepper__step--upcoming');
   });
 
   it('shows the server error when create is rejected', async () => {

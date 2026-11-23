@@ -1250,6 +1250,8 @@
       "now": "Zamówienia, które już są w sklepie, tam zostają i nie są importowane. Importujemy tylko te złożone od teraz."
     },
     "intro": "Każde pobrane zamówienie OpenLinker kopiuje do Twoich pozostałych sklepów i systemów. Wybierz, od kiedy zacząć, żeby nie kopiować zamówień, które są już obsłużone.",
+    "loadFailed": "Nie udało się wczytać opcji startu dla tego połączenia, więc zacznie od samych nowych zamówień. Możesz to zmienić później na stronie połączenia.",
+    "loading": "Wczytujemy opcje startu, które obsługuje to połączenie...",
     "modes": {
       "all": {
         "description": "Cała historia, nawet najstarsza. Wybierz tylko wtedy, gdy chcesz mieć każde zamówienie w OpenLinker.",

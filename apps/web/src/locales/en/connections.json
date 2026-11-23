@@ -1222,6 +1222,8 @@
       "now": "Orders already in the shop stay there and are not imported. Only orders placed from now on are."
     },
     "intro": "Every order OpenLinker brings in is copied to your other connected shops and systems. Pick where to start, so you do not copy orders you already handled.",
+    "loadFailed": "We could not load which start options this connection supports, so it will start with new orders only. You can change this later on the connection page.",
+    "loading": "Loading which start options this connection supports...",
     "modes": {
       "all": {
         "description": "All past orders, however old. Choose this only if you want every one of them in OpenLinker.",

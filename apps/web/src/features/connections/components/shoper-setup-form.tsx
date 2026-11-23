@@ -54,13 +54,13 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
 import {
-  ORDER_SYNC_START_DEFAULT_MODES,
   ORDER_SYNC_START_DEFAULT_VALUE,
   describeOrderSyncStart,
   readsOrders,
 } from '../lib/order-sync-start';
-import { OrderSyncStartField } from './order-sync-start-field';
+import { OrderSyncStartSection } from './order-sync-start-section';
 
 
 
@@ -102,7 +102,8 @@ export function ShoperSetupForm(): ReactElement {
   const navigate = useNavigate();
   const adaptersQuery = useAdaptersQuery();
   const [stepIndex, setStepIndex] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
+  // Keyed by step id, not index: the step list is dynamic (OrderSource shifts it).
+  const [completedStepIds, setCompletedStepIds] = useState<ReadonlySet<StepId>>(new Set());
   const [createdConnectionId, setCreatedConnectionId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
@@ -119,6 +120,9 @@ export function ShoperSetupForm(): ReactElement {
     ? ['shop', 'token', 'capabilities', 'orders', 'review']
     : ['shop', 'token', 'capabilities', 'review'];
   const STEP_LABELS = stepIds.map((id) => copy.steps[id]);
+  const completedSteps: ReadonlySet<number> = new Set(
+    stepIds.flatMap((id, index) => (completedStepIds.has(id) ? [index] : [])),
+  );
   const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
 
   // Abandon-prevention.
@@ -133,8 +137,6 @@ export function ShoperSetupForm(): ReactElement {
   }, [form.formState.isDirty, createdConnectionId]);
 
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === SHOPER_ADAPTER_KEY);
-  const orderSyncStartModes = adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
-  const orderWindowImport = adapterMetadata?.orderWindowImport ?? false;
   const platformName =
     usePlatform(adapterMetadata?.platformType ?? '')?.displayName ?? copy.platformFallback;
   // The checkbox list is gated on the well-known core capabilities: the
@@ -145,9 +147,9 @@ export function ShoperSetupForm(): ReactElement {
     (CORE_CAPABILITY_VALUES as readonly string[]).includes(capability),
   );
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
-    fieldError?.message ? [String(fieldError.message)] : [],
-  );
+  // Nested errors (the start date) sit below the top level; reading only the top
+  // left the summary empty while the submit was refused.
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   async function goNext(): Promise<void> {
     const fields = STEP_FIELDS[stepId];
@@ -155,7 +157,7 @@ export function ShoperSetupForm(): ReactElement {
       const valid = await form.trigger([...fields]);
       if (!valid) return;
     }
-    setCompletedSteps((prev) => new Set(prev).add(stepIndex));
+    setCompletedStepIds((prev) => new Set(prev).add(stepId));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'shoper',
       step: STEP_EVENT_IDS[stepId],
@@ -377,13 +379,12 @@ export function ShoperSetupForm(): ReactElement {
         ) : null}
 
         {stepId === 'orders' ? (
-          <OrderSyncStartField
+          <OrderSyncStartSection
+            adapterKey={SHOPER_ADAPTER_KEY}
             value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
             onChange={(next) =>
               form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
             }
-            supportedModes={orderSyncStartModes}
-            windowImport={orderWindowImport}
             error={form.formState.errors.orderSyncStart?.from?.message}
           />
         ) : null}

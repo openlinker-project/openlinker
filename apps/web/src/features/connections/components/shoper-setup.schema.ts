@@ -17,7 +17,8 @@ import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput
 import { schemaMessage } from '../lib/schema-message';
 import {
   ORDER_SYNC_START_DEFAULT_VALUE,
-  orderSyncStartSchema,
+  addOrderSyncStartIssues,
+  orderSyncStartShape,
   readsOrders,
   toOrderSyncStart,
 } from '../lib/order-sync-start';
@@ -41,13 +42,22 @@ export const SHOPER_FALLBACK_CAPABILITIES: CoreCapability[] = [
 
 export const SHOPER_DEFAULT_CAPABILITIES: CoreCapability[] = ['ProductMaster', 'InventoryMaster'];
 
-export const shoperSetupSchema = z.object({
-  name: z.string().trim().min(1, msg('nameRequired')),
-  baseUrl: z.string().trim().min(1, msg('baseUrlRequired')),
-  token: z.string().trim().min(1, msg('tokenRequired')),
-  enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
-  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
-});
+export const shoperSetupSchema = z
+  .object({
+    name: z.string().trim().min(1, msg('nameRequired')),
+    baseUrl: z.string().trim().min(1, msg('baseUrlRequired')),
+    token: z.string().trim().min(1, msg('tokenRequired')),
+    enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
+    orderSyncStart: orderSyncStartShape.default(ORDER_SYNC_START_DEFAULT_VALUE),
+  })
+  .superRefine((values, ctx) => {
+    // The start date is only validated when the step that asks for it exists.
+    // An answer to a hidden question (OrderSource unticked after a date was
+    // typed) must not block the submit, and the payload drops it anyway.
+    if (readsOrders(values.enabledCapabilities)) {
+      addOrderSyncStartIssues(values.orderSyncStart, ctx);
+    }
+  });
 
 export type ShoperSetupFormValues = z.input<typeof shoperSetupSchema>;
 export type ShoperSetupFormSubmission = z.output<typeof shoperSetupSchema>;

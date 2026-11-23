@@ -55,12 +55,9 @@ import { interpolate, renderRich, useFormat, useMessages } from '../../../shared
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 import { useAdaptersQuery } from '../../adapters';
-import { OrderSyncStartField } from './order-sync-start-field';
-import {
-  ORDER_SYNC_START_DEFAULT_MODES,
-  ORDER_SYNC_START_DEFAULT_VALUE,
-  readsOrders,
-} from '../lib/order-sync-start';
+import { OrderSyncStartSection } from './order-sync-start-section';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
+import { ORDER_SYNC_START_DEFAULT_VALUE, readsOrders } from '../lib/order-sync-start';
 
 // The product family name, the same in every language.
 const SUBIEKT_FAMILY_NAME = 'Subiekt';
@@ -85,7 +82,8 @@ export function SubiektSetupForm({
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const adapterMetadata = useAdaptersQuery().data?.find((a) => a.adapterKey === identity.adapterKey);
+  const adaptersQuery = useAdaptersQuery();
+  const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === identity.adapterKey);
   // Capabilities are not chosen here, so the adapter's own set decides: Subiekt GT
   // reads orders, nexo is invoicing only. Unknown until the registry answers.
   const willReadOrders = readsOrders(adapterMetadata?.supportedCapabilities);
@@ -113,9 +111,7 @@ export function SubiektSetupForm({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty, createdConnectionId]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
-    fieldError?.message ? [String(fieldError.message)] : [],
-  );
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -250,14 +246,15 @@ export function SubiektSetupForm({
         </Select>
       </FormField>
 
-      {willReadOrders && !createdConnectionId ? (
-        <OrderSyncStartField
+      {/* Whether this product reads orders is only known once the adapter list answers,
+          so the section also covers the loading and failed states itself. */}
+      {(willReadOrders || adaptersQuery.isPending || adaptersQuery.isError) && !createdConnectionId ? (
+        <OrderSyncStartSection
+          adapterKey={identity.adapterKey}
           value={form.watch('orderSyncStart') ?? ORDER_SYNC_START_DEFAULT_VALUE}
           onChange={(next) =>
             form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
           }
-          supportedModes={adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES}
-          windowImport={adapterMetadata?.orderWindowImport ?? false}
           error={form.formState.errors.orderSyncStart?.from?.message}
         />
       ) : null}

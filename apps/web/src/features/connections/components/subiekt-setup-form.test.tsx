@@ -418,6 +418,62 @@ describe('SubiektSetupForm', () => {
       expect(create).not.toHaveBeenCalled();
     });
 
+    it('shows a loading line, not a disabled date card, while the adapter list loads', async () => {
+      const apiClient = createMockApiClient({
+        adapters: { list: vi.fn().mockReturnValue(new Promise(() => undefined)) },
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      expect(await screen.findByText(getMessages('connections').orderSyncStart.loading)).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+    });
+
+    it('says the start will be new orders only when the adapter list cannot be read', async () => {
+      const apiClient = createMockApiClient({
+        adapters: { list: vi.fn().mockRejectedValue(new Error('down')) },
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      expect(await screen.findByText(getMessages('connections').orderSyncStart.loadFailed)).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+    });
+
+    it('disables the modes the bridge does not declare', async () => {
+      const apiClient = createMockApiClient({
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'subiekt.gt.v1',
+              platformType: 'subiekt',
+              supportedCapabilities: ['Invoicing', 'OrderSource'],
+              orderSyncStartModes: ['now'],
+            },
+          ]),
+        },
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      expect(await screen.findByRole('radio', { name: /Orders since a date/ })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('radio', { name: /Every order the shop has/ })).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('explains a refused start date in the error summary', async () => {
+      const apiClient = createMockApiClient({
+        connections: { create: vi.fn() },
+        adapters: adapters('subiekt.gt.v1', ['Invoicing', 'OrderSource']),
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+      fillRequired();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+      expect(await screen.findByText(/Please correct the highlighted fields/)).toBeInTheDocument();
+      expect(
+        screen.getAllByText(getMessages('connections').orderSyncStartSchema.dateRequired).length,
+      ).toBeGreaterThan(1);
+    });
+
     it('does not ask for a start when the adapter does not read orders', async () => {
       const list = adapters('subiekt.nexo.v1', ['Invoicing']).list;
       const apiClient = createMockApiClient({ adapters: { list } });

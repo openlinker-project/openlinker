@@ -8,6 +8,7 @@
  * @module features/shopify/api
  */
 import type { ApiRequest } from '../../../app/api/api-client';
+import type { OrderSyncStart } from '../../connections';
 
 export interface StartShopifyOAuthInput {
   storeDomain: string;
@@ -18,6 +19,8 @@ export interface StartShopifyOAuthInput {
   locationId?: string;
   /** Capabilities the connection created on the callback enables. */
   enabledCapabilities?: string[];
+  /** Where order sync starts for the new connection; absent means only new orders (#4265). */
+  orderSyncStart?: OrderSyncStart;
 }
 
 export interface StartShopifyOAuthResponse {
