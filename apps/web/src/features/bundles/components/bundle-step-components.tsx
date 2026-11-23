@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { FieldArrayWithId, UseFieldArrayReturn, UseFormReturn } from 'react-hook-form';
-import { formatPlural, interpolate, useLocale, useMessages } from '../../../shared/i18n';
+import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { HelpHint } from '../../../shared/ui/help-hint';
 import { Input } from '../../../shared/ui/input';
@@ -33,6 +33,7 @@ import { BundleVariantPicker } from './bundle-variant-picker';
 const HIGHLIGHT_MS = 1400;
 const MINUS_GLYPH = '\u2212';
 const PLUS_GLYPH = '+';
+const MULTIPACK_SIZES = [2, 3, 4, 6, 12] as const;
 
 export interface BundleStepComponentsProps {
   form: UseFormReturn<BundleFormValues>;
@@ -78,6 +79,7 @@ export function BundleStepComponents({
 }: BundleStepComponentsProps): ReactElement {
   const copy = useMessages('bundles').form;
   const { locale } = useLocale();
+  const format = useFormat();
   const { showToast } = useToast();
   const searchRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
@@ -156,6 +158,9 @@ export function BundleStepComponents({
   return (
     <div className="bf-step">
       <p className="bf-lead">{copy.s1Lead}</p>
+      <p className="bf-example" data-testid="bundle-form-example">
+        {copy.s1Example}
+      </p>
       <div className="form-field pm-combo">
         <BundleVariantPicker
           label={copy.addComponent}
@@ -178,7 +183,32 @@ export function BundleStepComponents({
           </span>
         ) : null}
       </div>
-      {rows.length > 0 ? <p className="bf-qtyhelp">{copy.qtyHelp}</p> : null}
+      {rows.length > 0 ? (
+        <p className="bf-qtyhelp">
+          {copy.qtyHelp} {copy.s1Fixed}
+        </p>
+      ) : null}
+      {rows.length === 1 && rows[0] !== undefined ? (
+        <div className="bf-multipack" role="group" aria-label={copy.multipackLabel} data-testid="bundle-form-multipack">
+          <span className="bf-multipack__l">{copy.multipackLabel}</span>
+          {MULTIPACK_SIZES.map((n) => (
+            <button
+              key={n}
+              type="button"
+              className="bf-multipack__btn"
+              disabled={readOnly}
+              aria-pressed={parsedRows[0]?.qty === n}
+              aria-label={interpolate(copy.multipackSet, { n, name: rows[0]?.name ?? '' })}
+              data-testid={`bundle-form-multipack-${n}`}
+              onClick={() => {
+                setQuantity(0, n);
+              }}
+            >
+              {`\u00d7${n}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <p className="sr-only" role="status" aria-live="polite">
         {moved}
       </p>
@@ -267,6 +297,15 @@ export function BundleStepComponents({
                       {row.sku ?? ''}
                       {row.ean ? ` · EAN ${row.ean}` : ''}
                     </span>
+                    {row.price !== null && parsed.qty > 0 ? (
+                      <span className="bf-comp__value" data-testid={`bundle-form-component-value-${key}`}>
+                        {interpolate(copy.lineValue, {
+                          unit: format.money(row.price, row.currency ?? undefined),
+                          qty: parsed.qty,
+                          total: format.money(row.price * parsed.qty, row.currency ?? undefined),
+                        })}
+                      </span>
+                    ) : null}
                     <span className={`bf-comp__stock${out ? ' is-out' : ''}`}>
                       {stock === null ? (
                         copy.stockUnknown

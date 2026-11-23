@@ -192,5 +192,16 @@ describe('BundleStepComponents (step 1)', () => {
     const rows = await screen.findAllByTestId(/^bundle-form-component-row-/);
     expect(rows[0]).toHaveAttribute('data-testid', 'bundle-form-component-row-KUB');
   });
-});
 
+  it('should offer the multipack shortcut for a lone component and show its value on its own', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Host />, { apiClient: api() });
+    expect(screen.queryByTestId('bundle-form-multipack')).not.toBeInTheDocument();
+    await user.type(screen.getByTestId(SEARCH), 'Kubek');
+    await user.click(await screen.findByTestId(`${SEARCH}-result-KUB`));
+    await user.click(await screen.findByTestId('bundle-form-multipack-3'));
+    expect(screen.getByTestId('bundle-form-component-qty-KUB')).toHaveValue(3);
+    expect(screen.getByTestId('bundle-form-component-value-KUB')).toHaveTextContent(/3/);
+    expect(screen.getByTestId('bundle-form-example')).toBeInTheDocument();
+  });
+});

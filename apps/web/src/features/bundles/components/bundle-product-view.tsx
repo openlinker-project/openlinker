@@ -320,6 +320,20 @@ export function BundleProductView({
 
       <aside className="pm-col pm-rail">
         <ComposerSection title={copy.availabilityTitle} aside={copy.liveAside} riseIndex={3}>
+          <span
+            className="cx-tag cx-tag--quiet bundle-derived-tag"
+            title={copy.derivedStockHint}
+            data-testid="bundle-view-derived-stock"
+          >
+            {copy.derivedStock}
+          </span>
+          {availability.kind === 'known' ? (
+            <p className="bundle-set-stock" data-testid="bundle-view-set-stock">
+              {availability.limitedBy === null
+                ? interpolate(copy.setStockOk, { n: availability.bundles })
+                : interpolate(copy.setStock, { n: availability.bundles, name: availability.limitedBy })}
+            </p>
+          ) : null}
           <div className={`cx-avail ${availabilityTone}`} style={{ alignItems: 'flex-end' }}>
             {availability.kind === 'known' ? (
               <>
@@ -339,6 +353,7 @@ export function BundleProductView({
               <span>{copy.availableLineUnknown}</span>
             )}
           </div>
+          <p className="pm-help" data-testid="bundle-view-stock-rule">{copy.stockRule}</p>
           <p className="pm-help">{copy.channelsGetNumber}</p>
         </ComposerSection>
         <ComposerSection title={copy.glanceTitle} riseIndex={4}>

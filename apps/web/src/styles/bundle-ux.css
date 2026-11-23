@@ -63,10 +63,18 @@
 /* Step stage: both panels are in flow during the slide, no blank frame. */
 .bf-stage { position: relative; overflow-x: clip; }
 .bf-panel { min-height: 16rem; }
+/* The stage height is animated (it follows the entering panel); clip keeps focus rings at the edge visible. */
+.bf-stage { overflow-y: clip; overflow-clip-margin: 8px; }
+.bf-stage__inner { position: relative; }
 
 /* The page is at least a screen tall, so the action bar is pinned to the bottom even on a short step. */
 .bundle-form .page-section { min-height: calc(100dvh - 6rem); display: flex; flex-direction: column; }
-.bundle-form .pm-actionbar { margin-top: auto; bottom: 0; padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)); }
+/* Why the bar used to sit below the fold: .shell-content has overflow-x:hidden, which makes its
+   overflow-y compute to auto, so it becomes the sticky containing scroller even though the page
+   (not it) scrolls. Sticky then pinned to a box that never scrolls. clip hides the same overflow
+   without creating a scroll container, so the bar pins to the viewport. */
+.shell-content:has(.bundle-form) { overflow-x: clip; }
+.bundle-form .pm-actionbar { margin-top: auto; bottom: max(var(--space-3), env(safe-area-inset-bottom)); padding-bottom: var(--space-3); }
 .bundle-form .bf-grid { padding-bottom: var(--space-5); }
 .bundle-form .pm-actionbar .button {
   transition: transform var(--ux-dur-fast) var(--ux-ease), box-shadow var(--ux-dur-fast) var(--ux-ease), background-color var(--ux-dur-fast) var(--ux-ease), opacity var(--ux-dur-fast) var(--ux-ease);
@@ -100,7 +108,7 @@
   .bf-summarychip { display: inline-flex; }
 }
 @media (max-width: 640px) {
-  .bundle-form .pm-actionbar { padding-bottom: max(var(--space-2), env(safe-area-inset-bottom)); }
+  .bundle-form .pm-actionbar { padding-bottom: var(--space-2); bottom: max(var(--space-2), env(safe-area-inset-bottom)); }
   .bundle-form .pm-missing { flex-wrap: nowrap; overflow: hidden; }
   .bundle-form .pm-missing > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bf-summarychip { flex: 1 1 100%; justify-content: space-between; }
@@ -210,6 +218,20 @@
 
 /* --- component rows --- */
 .bf-qtyhelp { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+.bf-example { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--bg-surface-muted); font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.45; }
+.bf-multipack { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.bf-multipack__l { font-size: 0.8125rem; color: var(--text-secondary); }
+.bf-multipack__btn {
+  min-width: 2.75rem; height: 2.25rem; padding: 0 var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-pill);
+  background: var(--bg-surface); color: var(--text-primary); font-family: var(--font-mono); font-size: 0.8125rem; cursor: pointer;
+  transition: background var(--ux-dur-fast) var(--ux-ease), border-color var(--ux-dur-fast) var(--ux-ease), transform var(--ux-dur-fast) var(--ux-ease);
+}
+.bf-multipack__btn:hover:not(:disabled) { background: var(--bg-surface-hover); border-color: var(--border-strong); transform: translateY(var(--hover-lift)); }
+.bf-multipack__btn:active:not(:disabled) { transform: scale(var(--press-scale)); }
+.bf-multipack__btn:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+.bf-multipack__btn[aria-pressed='true'] { background: var(--accent-primary-soft); border-color: var(--accent-primary-border); }
+.bf-multipack__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.bf-comp__value { font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .bf-comp {
   transition: border-color var(--ux-dur-fast) var(--ux-ease), box-shadow var(--ux-dur-fast) var(--ux-ease),
     background var(--ux-dur) var(--ux-ease);
@@ -443,6 +465,14 @@
 .s3-doc__mini { display: grid; gap: 4px; align-content: start; }
 .s3-doc__cap { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
 .s3-doc__held { font-style: normal; }
+.s3-who { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.s3-who__col { display: grid; gap: 4px; align-content: start; }
+.s3-who__plain { margin: 0; font-size: 0.875rem; color: var(--text-primary); line-height: 1.5; }
+.s3-vat > summary { cursor: pointer; font-size: 0.8125rem; color: var(--text-secondary); padding: var(--space-1) 0; border-radius: var(--radius-sm); }
+.s3-vat > summary:hover { color: var(--text-primary); }
+.s3-vat > summary:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+.s3-vat[open] { display: grid; gap: var(--space-2); }
+@media (width <= 640px) { .s3-who { grid-template-columns: minmax(0, 1fr); } }
 .s3-default { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; margin: 0; font-size: 0.875rem; }
 .s3-reset { justify-self: start; font-size: 0.75rem; }
 .bf-gift { transition: border-color var(--ux-dur) var(--ux-ease), box-shadow var(--ux-dur) var(--ux-ease); }
@@ -843,7 +873,60 @@
   transform: translateY(var(--hover-lift));
 }
 
+/* Bundle rows: the name cell must stay inside its column, so the Bundle badge,
+   the 'limited by' chip and the Source chip can never cut each other off. */
+.products-table .product-row {
+  display: flex;
+  max-width: 100%;
+}
+.products-table .products-cell-stack {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.products-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.products-name-row > .product-row__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.products-name-row > * {
+  min-width: 0;
+}
+.products-limit-line {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+}
+.products-limit-line .status-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+.products-derived-tag {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* --- C2: bundle journey, offers, bundle view --- */
+.bundle-derived-tag {
+  margin-bottom: var(--space-2);
+}
+.bundle-set-stock {
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+  color: var(--text-primary);
+}
 .ux-journey {
   list-style: none;
   margin: 0;
@@ -1063,3 +1146,9 @@
     --ux-dur: 0ms;
   }
 }
+
+/* --- R2-2: picker match highlight --- */
+.bpick__hit { background: none; color: inherit; font-weight: 700; }
+.bpick__row.is-disabled:hover { background: var(--bg-surface-muted); }
+.bundle-comp__pack p { margin: 0; }
+.bundle-comp__pack p + p { margin-top: var(--space-1); }

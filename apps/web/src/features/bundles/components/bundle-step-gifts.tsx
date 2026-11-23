@@ -83,30 +83,58 @@ function DocumentCard({
       <h3 id="s3-doc-h" className="bf-h3">
         {copy.s3DocTitle}
       </h3>
-      <p className="pm-help">{copy.s3DocText}</p>
-      <div className="s3-doc__minis">
-        <div className="s3-doc__mini">
-          <span className="s3-doc__cap">{copy.s3DocSame}</span>
-          <div className="pm-doc" data-testid="bundle-form-doc-same">
+      <div className="s3-who" data-testid="bundle-form-who-sees">
+        <div className="s3-who__col">
+          <span className="s3-doc__cap">{copy.s3WhoCustomer}</span>
+          <div className="pm-doc" data-testid="bundle-form-who-customer">
             <span className="pm-doc__l">
               <span>{name}</span>
               <b className="mono tabular">{bundlePrice !== null ? money(bundlePrice) : ''}</b>
             </span>
           </div>
+          <span className="pm-help">{copy.s3WhoCustomerNote}</span>
         </div>
-        <div className="s3-doc__mini">
-          <span className="s3-doc__cap">{copy.s3DocDiffer}</span>
-          <div className="pm-doc" data-testid="bundle-form-doc-differ">
+        <div className="s3-who__col">
+          <span className="s3-doc__cap">{copy.s3WhoWarehouse}</span>
+          <div className="pm-doc" data-testid="bundle-form-who-warehouse">
             {rows.map((row) => (
               <span key={row.variantId} className={`pm-doc__l${row.gift ? ' is-gift' : ''}`}>
                 <span>{row.name}</span>
-                <b className="mono tabular">{amountFor(row.variantId) ?? ''}</b>
+                <b className="mono tabular">{`\u00d7${Math.max(Number(row.quantity) || 1, 1)}`}</b>
               </span>
             ))}
           </div>
+          <span className="pm-help">{copy.s3WhoWarehouseNote}</span>
         </div>
       </div>
-      <p className="pm-help s3-doc__held">{copy.s3DocHeld}</p>
+      <p className="s3-who__plain">{copy.s3WhoPlain}</p>
+      <details className="s3-vat" data-testid="bundle-form-doc-vat">
+        <summary>{copy.s3VatSummary}</summary>
+        <p className="pm-help">{copy.s3DocText}</p>
+        <div className="s3-doc__minis">
+          <div className="s3-doc__mini">
+            <span className="s3-doc__cap">{copy.s3DocSame}</span>
+            <div className="pm-doc" data-testid="bundle-form-doc-same">
+              <span className="pm-doc__l">
+                <span>{name}</span>
+                <b className="mono tabular">{bundlePrice !== null ? money(bundlePrice) : ''}</b>
+              </span>
+            </div>
+          </div>
+          <div className="s3-doc__mini">
+            <span className="s3-doc__cap">{copy.s3DocDiffer}</span>
+            <div className="pm-doc" data-testid="bundle-form-doc-differ">
+              {rows.map((row) => (
+                <span key={row.variantId} className={`pm-doc__l${row.gift ? ' is-gift' : ''}`}>
+                  <span>{row.name}</span>
+                  <b className="mono tabular">{amountFor(row.variantId) ?? ''}</b>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+        <p className="pm-help s3-doc__held">{copy.s3DocHeld}</p>
+      </details>
       {giftFormLabel !== null ? (
         <p className="pm-help">{interpolate(copy.s3DocGiftNote, { form: giftFormLabel })}</p>
       ) : null}

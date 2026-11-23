@@ -185,6 +185,8 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const direction = step >= previousStep.current ? 1 : -1;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const stageInnerRef = useRef<HTMLDivElement>(null);
+  const [stageHeight, setStageHeight] = useState<number | null>(null);
   const savedRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const released = useRef(false);
@@ -606,6 +608,21 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     void submit();
   };
 
+  // The stage follows the height of the panel that is entering, so a short step after a tall one
+  // does not snap the page: popLayout takes the leaving panel out of flow at once.
+  useEffect(() => {
+    const inner = stageInnerRef.current;
+    if (inner === null || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[0]?.contentRect.height;
+      if (next !== undefined) setStageHeight(next);
+    });
+    observer.observe(inner);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
   // A step change moves focus to the new step's heading and says so, because a
   // scroll alone leaves a keyboard user on a button that is no longer there.
   useEffect(() => {
@@ -632,7 +649,8 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     const panel = panelRef.current;
     if (panel === null) return;
     const target =
-      panel.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+      // Input marks an invalid control with a class only, so aria-invalid alone would skip it.
+      panel.querySelector<HTMLElement>('[aria-invalid="true"], .control--invalid, .is-invalid input') ??
       panel.querySelector<HTMLElement>('input:not([disabled]), select:not([disabled])');
     target?.focus({ preventScroll: true });
     target?.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
@@ -1006,7 +1024,13 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                     {stepNames[step]}
                   </h2>
                 </div>
-                <div className="bf-stage" ref={panelRef}>
+                <motion.div
+                  className="bf-stage"
+                  ref={panelRef}
+                  animate={stageHeight === null ? undefined : { height: stageHeight }}
+                  transition={reduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                >
+                 <div className="bf-stage__inner" ref={stageInnerRef}>
                   <AnimatePresence mode="popLayout" initial={false} custom={direction}>
                     <motion.div
                       key={stepKey}
@@ -1014,9 +1038,13 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                       data-testid={`bundle-form-step-${stepKey}`}
                       custom={direction}
                       variants={{
-                        enter: (dir: number) => ({ opacity: 0, x: dir * 28 }),
+                        enter: (dir: number) => ({ opacity: 0, x: dir * 16 }),
                         center: { opacity: 1, x: 0 },
-                        exit: (dir: number) => ({ opacity: 0, x: dir * -28 }),
+                        exit: (dir: number) => ({
+                          opacity: 0,
+                          x: dir * -16,
+                          transition: { duration: 0.16, ease: 'easeIn' },
+                        }),
                       }}
                       initial={reduceMotion ? false : 'enter'}
                       animate="center"
@@ -1026,7 +1054,8 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                       {panel}
                     </motion.div>
                   </AnimatePresence>
-                </div>
+                 </div>
+                </motion.div>
               </div>
               {editing ? (
                 <div className="bf-card">

@@ -34,6 +34,8 @@ import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
 import { VariantThumbnail, type Product, type ProductVariant } from '../../products';
 import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
+import { highlightMatch } from '../lib/highlight-match';
+import { useComboboxNavigation } from '../lib/use-combobox-navigation';
 
 const PAGE_SIZE = 6;
 const LOW_STOCK = 5;
@@ -59,6 +61,7 @@ type RowReason = 'taken' | 'bundle' | 'blocked';
 
 interface Option {
   id: string;
+  disabled: boolean;
   product: Product;
   variant: ProductVariant;
   variantCount: number;
@@ -92,7 +95,6 @@ export function BundleVariantPicker({
   const ownInputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
   const search = useDebouncedValue(text.trim(), 250);
@@ -157,6 +159,7 @@ export function BundleVariantPicker({
             : null;
       options.push({
         id: `${baseId}-opt-${variant.id}`,
+        disabled: reason !== null,
         product,
         variant,
         variantCount: variants.length,
@@ -167,6 +170,10 @@ export function BundleVariantPicker({
     }
   });
 
+  const nav = useComboboxNavigation(options);
+  const activeId = nav.activeId;
+
+  const [eanBefore = '', eanAfter = ''] = copy.ean.split('{ean}');
   const reasonText = (reason: RowReason): string =>
     reason === 'taken' ? copy.reasonTaken : reason === 'bundle' ? copy.reasonBundle : copy.reasonSelf;
 
@@ -188,7 +195,7 @@ export function BundleVariantPicker({
     setAdded(interpolate(copy.added, { name: option.product.name }));
     setText('');
     setLimit(PAGE_SIZE);
-    setActiveId(null);
+    nav.reset();
     setRejection(null);
     // The owner's field array may focus the new row's first control in an effect
     // after this handler; taking the focus back one tick later is what keeps the
@@ -197,43 +204,19 @@ export function BundleVariantPicker({
     window.setTimeout(focusInput, 0);
   };
 
-  const move = (step: 1 | -1 | 'first' | 'last'): void => {
-    if (options.length === 0) return;
-    const current = options.findIndex((o) => o.id === activeId);
-    const next =
-      step === 'first'
-        ? 0
-        : step === 'last'
-          ? options.length - 1
-          : current === -1
-            ? step === 1
-              ? 0
-              : options.length - 1
-            : (current + step + options.length) % options.length;
-    const option = options[next];
-    if (option === undefined) return;
-    setActiveId(option.id);
-    document.getElementById(option.id)?.scrollIntoView?.({ block: 'nearest' });
-  };
-
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      move(1);
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      move(-1);
-    } else if (event.key === 'Enter') {
-      const option = options.find((o) => o.id === activeId) ?? options[0];
-      if (option !== undefined && active) {
+    if (active && nav.onNavigationKey(event)) return;
+    if (event.key === 'Enter') {
+      // Only the row that is visibly highlighted: never an unseen first option.
+      if (nav.activeOption !== null && active) {
         event.preventDefault();
-        choose(option);
+        choose(nav.activeOption);
       }
     } else if (event.key === 'Escape') {
       if (text !== '' || rejection !== null) event.preventDefault();
       setText('');
       setLimit(PAGE_SIZE);
-      setActiveId(null);
+      nav.reset();
       setRejection(null);
     }
   };
@@ -263,7 +246,7 @@ export function BundleVariantPicker({
         data-testid={testIdPrefix}
         type="search"
         role="combobox"
-        aria-expanded={active && products.length > 0}
+        aria-expanded={active && !results.isError}
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={activeId ?? undefined}
@@ -275,7 +258,7 @@ export function BundleVariantPicker({
         onChange={(event) => {
           setText(event.target.value);
           setLimit(PAGE_SIZE);
-          setActiveId(null);
+          nav.reset();
           setRejection(null);
           setAdded(null);
         }}
@@ -387,9 +370,8 @@ export function BundleVariantPicker({
                         aria-disabled={disabled || reason !== null}
                         className={`bpick__row${isActive ? ' is-active' : ''}${reason !== null ? ' is-disabled' : ''}`}
                         data-testid={`${testIdPrefix}-result-${sku ?? variant.id}`}
-                        title={reason !== null ? reasonText(reason) : undefined}
                         onMouseMove={() => {
-                          if (!isActive) setActiveId(option.id);
+                          if (!isActive) nav.hover(option);
                         }}
                         onMouseDown={(event) => {
                           // Keep the focus in the input so the next key still works.
@@ -402,9 +384,9 @@ export function BundleVariantPicker({
                         <VariantThumbnail src={variant.imageUrls?.[0]} name={product.name} size="md" />
                         <span className="bpick__main">
                           {multi && attrs !== '' ? (
-                            <span className="bpick__parent">{product.name}</span>
+                            <span className="bpick__parent">{highlightMatch(product.name, search)}</span>
                           ) : null}
-                          <span className="bpick__name">{title}</span>
+                          <span className="bpick__name">{highlightMatch(title, search)}</span>
                           {multi && attrs !== '' ? (
                             <span className="bpick__variant">
                               {interpolate(copy.variant, { attrs })}
@@ -412,8 +394,14 @@ export function BundleVariantPicker({
                           ) : null}
                           {multi && attrs === '' ? <span className="bpick__attrs">{product.name}</span> : null}
                           <span className="bpick__codes mono">
-                            {sku !== null ? <span>{sku}</span> : null}
-                            {variant.ean !== null ? <span>{interpolate(copy.ean, { ean: variant.ean })}</span> : null}
+                            {sku !== null ? <span>{highlightMatch(sku, search)}</span> : null}
+                            {variant.ean !== null ? (
+                              <span>
+                                {eanBefore}
+                                {highlightMatch(variant.ean, search)}
+                                {eanAfter}
+                              </span>
+                            ) : null}
                           </span>
                           {reason !== null ? (
                             <span className="bpick__why" data-testid={`${testIdPrefix}-why-${sku ?? variant.id}`}>

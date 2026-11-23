@@ -689,7 +689,7 @@ function ProductsListPageBody(): ReactElement {
                 <ProductThumbnail src={product.images?.[0]} name={product.name} />
               )}
               <span className="products-cell-stack">
-                <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+                <span className="ds-row products-name-row">
                   <Link
                     to={product.id}
                     className="product-row__name product-row__name--link"
@@ -743,11 +743,20 @@ function ProductsListPageBody(): ReactElement {
                     )}
                   </span>
                 ) : null}
+                {product.bundle ? (
+                  <span
+                    className="cx-tag cx-tag--quiet products-derived-tag"
+                    title={bundleCopy.list.derivedStockHint}
+                    data-testid={`bundle-list-derived-${product.sku ?? product.id}`}
+                  >
+                    {bundleCopy.list.derivedStock}
+                  </span>
+                ) : null}
                 {/* #3624 - a bundle row says what limits it; its composition opens
                     with the row (ProductRowDetail). */}
                 {product.bundle?.limitedBy ? (
                   <span
-                    className="products-cell-sub"
+                    className="products-cell-sub products-limit-line"
                     data-testid={`bundle-list-row-${product.sku ?? product.id}`}
                   >
                     <StatusBadge

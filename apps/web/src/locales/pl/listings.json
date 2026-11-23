@@ -1456,7 +1456,9 @@
       "ownOfferWithId": "Twoja oferta {id}"
     },
     "packCompositionHint": "Jeden produkt, paczka po {n} szt. · plakietka pokazuje, skąd oferta weźmie dane produktu",
+    "packBuyerPreview": "Kupujący zobaczy: {name} ×{n}",
     "packHint": "Jeden produkt sprzedawany w paczce po {n} szt. {destination} wystawia go jako jeden produkt z ilością {n}.",
+    "packHintAllegro": "W panelu Allegro to „Wiele sztuk jako zestaw”, a kupujący widzi etykietę „Zestaw {n} sztuk” przy nazwie. Allegro może pokazywać wielopak tylko gdy cena za sztukę nie jest wyższa niż w pojedynczej ofercie (sprawdź w panelu Allegro).",
     "packMarker": "Wielopak · ×{n}",
     "publishComponent": "Wystaw składnik",
     "quantity": "×{n}",

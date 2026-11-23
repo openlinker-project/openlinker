@@ -6,9 +6,13 @@
  * click; one with several asks which variant, because a bundle and its
  * components are variants and guessing one would put the wrong stock in a set.
  *
+ * Same combobox as the component picker (#3935): arrows skip rows that cannot
+ * be chosen, the first enabled row is highlighted so Enter's target is visible,
+ * the matched text is marked and the result count is announced.
+ *
  * @module apps/web/src/features/bundles/components
  */
-import { useState, type ReactElement } from 'react';
+import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
@@ -16,6 +20,8 @@ import { formatPlural, interpolate, useLocale, useMessages } from '../../../shar
 import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
 import { toBundleChoice, variantLabel, type BundleProductChoice } from '../lib/bundle-choice';
+import { highlightMatch } from '../lib/highlight-match';
+import { useComboboxNavigation } from '../lib/use-combobox-navigation';
 import type { Product } from '../../products';
 
 export interface BundleProductPickerProps {
@@ -24,8 +30,16 @@ export interface BundleProductPickerProps {
   disabled?: boolean;
   /** Variants that are already chosen; they are listed but cannot be picked again. */
   excludeVariantIds?: readonly string[];
+  /** A product that is itself a bundle is shown disabled with the reason. */
+  disallowBundles?: boolean;
   onPick: (choice: BundleProductChoice) => void;
   testIdPrefix: string;
+}
+
+interface ProductOption {
+  id: string;
+  disabled: boolean;
+  product: Product;
 }
 
 export function BundleProductPicker({
@@ -33,20 +47,28 @@ export function BundleProductPicker({
   placeholder,
   disabled = false,
   excludeVariantIds = [],
+  disallowBundles = false,
   onPick,
   testIdPrefix,
 }: BundleProductPickerProps): ReactElement {
-  const copy = useMessages('bundles');
+  const bundlesCopy = useMessages('bundles');
+  const copy = bundlesCopy.picker;
+  const formCopy = bundlesCopy.form;
   const { locale } = useLocale();
   const apiClient = useApiClient();
+  const baseId = useId();
+  const listId = `${baseId}-list`;
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
   const [expanded, setExpanded] = useState<Product | null>(null);
+  const [rejection, setRejection] = useState<string | null>(null);
   const search = useDebouncedValue(text.trim(), 250);
+  const active = search.length >= 2;
 
   const results = useQuery({
     queryKey: ['bundles', 'product-search', search],
     queryFn: () => apiClient.products.listRows({ search }, { limit: 8, offset: 0 }),
-    enabled: search.length >= 2,
+    enabled: active,
   });
 
   const variants = useQuery({
@@ -55,8 +77,22 @@ export function BundleProductPicker({
     enabled: expanded !== null,
   });
 
+  const items = useMemo<Product[]>(() => (active ? (results.data?.items ?? []) : []), [active, results.data]);
+  const options: ProductOption[] = items.map((product) => ({
+    id: `${baseId}-opt-${product.id}`,
+    disabled: disallowBundles && product.bundle != null,
+    product,
+  }));
+  const nav = useComboboxNavigation(options);
+
   const [chooseFailed, setChooseFailed] = useState(false);
-  const choose = async (product: Product): Promise<void> => {
+  const choose = async (option: ProductOption): Promise<void> => {
+    const { product } = option;
+    if (option.disabled) {
+      setRejection(interpolate(copy.rejected, { name: product.name, reason: copy.reasonBundle }));
+      return;
+    }
+    setRejection(null);
     setChooseFailed(false);
     let detail: Awaited<ReturnType<typeof apiClient.products.getById>>;
     try {
@@ -70,10 +106,40 @@ export function BundleProductPicker({
       onPick(toBundleChoice(product, list[0], 1));
       setText('');
       setExpanded(null);
+      nav.reset();
+      inputRef.current?.focus();
       return;
     }
     setExpanded(product);
   };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (active && nav.onNavigationKey(event)) return;
+    if (event.key === 'Enter') {
+      // Only the row that is visibly highlighted: never an unseen first option.
+      if (nav.activeOption !== null && active) {
+        event.preventDefault();
+        void choose(nav.activeOption);
+      }
+    } else if (event.key === 'Escape') {
+      if (text !== '' || rejection !== null) event.preventDefault();
+      setText('');
+      setExpanded(null);
+      setRejection(null);
+      nav.reset();
+    }
+  };
+
+  const settled = active && results.data !== undefined && !results.isFetching;
+  const status = !active
+    ? ''
+    : results.isFetching
+      ? formCopy.s2SearchLoading
+      : results.data !== undefined
+        ? items.length === 0
+          ? interpolate(copy.noResultsTitle, { q: search })
+          : formatPlural(items.length, copy.resultsCount, locale)
+        : '';
 
   return (
     <div className="bundle-picker">
@@ -82,56 +148,102 @@ export function BundleProductPicker({
       </label>
       <Input
         id={`${testIdPrefix}-input`}
+        ref={inputRef}
         data-testid={testIdPrefix}
         type="search"
+        role="combobox"
+        aria-expanded={active && !results.isError}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={nav.activeId ?? undefined}
+        autoComplete="off"
         value={text}
         disabled={disabled}
         placeholder={placeholder}
+        onKeyDown={onKeyDown}
         onChange={(event) => {
           setText(event.target.value);
           setExpanded(null);
+          setRejection(null);
+          nav.reset();
         }}
       />
-      {search.length < 2 && text.trim().length > 0 ? (
-        <p className="pm-help">{copy.form.s2SearchHint}</p>
-      ) : null}
+      {!active ? <p className="pm-help">{copy.hint}</p> : null}
       <p className="pm-help bundle-picker__status" role="status" aria-live="polite">
-        {search.length >= 2 && results.isFetching
-          ? copy.form.s2SearchLoading
-          : search.length >= 2 && results.data !== undefined
-            ? results.data.items.length === 0
-              ? interpolate(copy.form.s2SearchEmpty, { query: search })
-              : formatPlural(results.data.items.length, copy.form.s2ResultsCount, locale)
-            : ''}
+        {status}
       </p>
-      {search.length >= 2 && results.data !== undefined && results.data.items.length > 0 ? (
-        <ul className="bundle-picker__results" role="list" aria-busy={results.isFetching}>
-          {results.data.items.map((product) => (
-            <li key={product.id}>
-              <button
-                type="button"
-                className="bundle-picker__result"
-                disabled={disabled}
-                data-testid={`${testIdPrefix}-result-${product.sku ?? product.id}`}
-                onClick={() => {
-                  void choose(product);
-                }}
-              >
-                <span>{product.name}</span>
-                <span className="mono-text text-muted">{product.sku ?? ''}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+      {rejection !== null ? (
+        <p className="bpick__reject form-field__error" role="alert">
+          {rejection}
+        </p>
       ) : null}
+      {results.isError ? (
+        <p className="form-field__error" role="alert">
+          {copy.failed}
+        </p>
+      ) : null}
+      {settled && items.length === 0 ? (
+        <div className="bpick__empty">
+          <p className="bpick__empty-t">{interpolate(copy.noResultsTitle, { q: search })}</p>
+          <p className="bpick__empty-d">{copy.noResultsBody}</p>
+        </div>
+      ) : null}
+      <ul
+        id={listId}
+        className="bpick"
+        role="listbox"
+        aria-label={copy.listLabel}
+        aria-busy={results.isFetching}
+        hidden={items.length === 0}
+      >
+        {options.map((option) => {
+          const { product } = option;
+          const isActive = option.id === nav.activeId;
+          return (
+            <li
+              key={product.id}
+              id={option.id}
+              role="option"
+              aria-selected={isActive}
+              aria-disabled={disabled || option.disabled}
+              className={`bpick__row${isActive ? ' is-active' : ''}${option.disabled ? ' is-disabled' : ''}`}
+              data-testid={`${testIdPrefix}-result-${product.sku ?? product.id}`}
+              onMouseMove={() => {
+                if (!isActive) nav.hover(option);
+              }}
+              onMouseDown={(event) => {
+                // Keep the focus in the input so the next key still works.
+                event.preventDefault();
+              }}
+              onClick={() => {
+                if (!disabled) void choose(option);
+              }}
+            >
+              <span className="bpick__main">
+                <span className="bpick__name">{highlightMatch(product.name, search)}</span>
+                {product.sku !== null ? (
+                  <span className="bpick__codes mono">
+                    <span>{highlightMatch(product.sku, search)}</span>
+                  </span>
+                ) : null}
+                {option.disabled ? <span className="bpick__why">{copy.reasonBundle}</span> : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
       {chooseFailed || (expanded !== null && variants.isError) ? (
         <p className="form-field__error" role="alert" data-testid={`${testIdPrefix}-error`}>
-          {copy.form.variantsFailed}
+          {formCopy.variantsFailed}
         </p>
       ) : null}
       {expanded !== null && variants.data?.variants ? (
-        <div className="bundle-picker__variants" role="group" aria-label={interpolate(copy.form.chooseVariant, { name: expanded.name })}>
-          <p className="text-muted">{interpolate(copy.form.chooseVariant, { name: expanded.name })}</p>
+        <div
+          className="bundle-picker__variants"
+          role="group"
+          aria-label={interpolate(formCopy.chooseVariant, { name: expanded.name })}
+        >
+          <p className="text-muted">{interpolate(formCopy.chooseVariant, { name: expanded.name })}</p>
           {variants.data.variants.map((variant) => {
             const taken = excludeVariantIds.includes(variant.id);
             return (
@@ -139,11 +251,13 @@ export function BundleProductPicker({
                 key={variant.id}
                 tone="secondary"
                 disabled={taken || disabled}
-                title={taken ? copy.form.alreadyAComponent : undefined}
+                title={taken ? copy.reasonTaken : undefined}
                 onClick={() => {
                   onPick(toBundleChoice(expanded, variant, variants.data?.variants?.length ?? 2));
                   setText('');
                   setExpanded(null);
+                  nav.reset();
+                  inputRef.current?.focus();
                 }}
               >
                 {variantLabel(variant)}

@@ -42,6 +42,17 @@ describe('BundleStepGifts', () => {
     expect(screen.getByTestId('bundle-form-no-gifts')).toBeInTheDocument();
   });
 
+  it('should show who sees what from the bundle components and keep the VAT detail in a disclosure', () => {
+    render([row({ quantity: '2' }), row({ variantId: 'v2', name: 'Kubek', sku: 'KUB' })]);
+
+    expect(screen.getByTestId('bundle-form-who-customer')).toBeInTheDocument();
+    const warehouse = screen.getByTestId('bundle-form-who-warehouse');
+    expect(warehouse).toHaveTextContent('Lyzeczka');
+    expect(warehouse).toHaveTextContent('\u00d72');
+    expect(warehouse).toHaveTextContent('Kubek');
+    expect(screen.getByTestId('bundle-form-doc-vat').tagName).toBe('DETAILS');
+  });
+
   it('should show the default form as text and reveal the choice on "other form"', async () => {
     const user = userEvent.setup();
     render([row({ gift: true })]);

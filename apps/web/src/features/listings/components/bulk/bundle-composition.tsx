@@ -71,6 +71,8 @@ export function BundleComposition({
 }: BundleCompositionProps): ReactElement {
   const copy = useMessages('listings').bundleOffer;
   const packSize = packSizeOf(preview);
+  // The multipack rules below are Allegro's; another marketplace gets only the neutral line.
+  const isAllegro = /allegro/i.test(destinationName);
   const limiting = preview.components.find(
     (component) => component.variantId === preview.limitingComponentVariantId,
   );
@@ -106,9 +108,24 @@ export function BundleComposition({
         ) : null}
       </p>
       {packSize !== null ? (
-        <p className="cx-sub bundle-comp__pack" data-testid="bundle-pack-hint">
-          {interpolate(copy.packHint, { n: packSize, destination: destinationName })}
-        </p>
+        <div className="bundle-comp__pack" data-testid="bundle-pack-hint">
+          <p className="cx-sub">
+            {interpolate(copy.packHint, { n: packSize, destination: destinationName })}
+          </p>
+          {isAllegro ? (
+            <p className="cx-sub">{interpolate(copy.packHintAllegro, { n: packSize })}</p>
+          ) : null}
+          {preview.components[0] ? (
+            <p className="cx-sub bundle-comp__buyer" data-testid="bundle-pack-buyer">
+              <b>
+                {interpolate(copy.packBuyerPreview, {
+                  name: preview.components[0].name,
+                  n: packSize,
+                })}
+              </b>
+            </p>
+          ) : null}
+        </div>
       ) : null}
       <motion.ul
         className="cx-comp cx-wcomp bundle-comp__list"

@@ -1320,7 +1320,9 @@
       "ownOfferWithId": "your offer {id}"
     },
     "packCompositionHint": "One product, pack of {n} · the badge shows where the offer takes the product's data from",
+    "packBuyerPreview": "The buyer will see: {name} ×{n}",
     "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
+    "packHintAllegro": "In the Allegro panel this is \"Multiple items as a set\", and the buyer sees a \"Set of {n} items\" label next to the name. Allegro may show a multipack only when the price per item is not higher than in the single offer (check in the Allegro panel).",
     "packMarker": "Pack · ×{n}",
     "publishComponent": "List component",
     "quantity": "×{n}",

@@ -1645,6 +1645,9 @@ describe('ProductsListPage', () => {
       expect(screen.getByTestId('bundle-list-limiting-ZES-PORANNY')).toHaveTextContent(
         'limited by: Lyzeczka do kawy',
       );
+      expect(screen.getByTestId('bundle-list-derived-ZES-PORANNY')).toHaveTextContent(
+        'Stock calculated from components',
+      );
       // The make-a-bundle action lives on the product page, not on the row.
       expect(screen.queryByTestId('bundle-list-make-bundle-KAW-250-ETI')).toBeNull();
       expect(screen.queryByTestId('bundle-list-show-composition-ZES-PORANNY')).toBeNull();
