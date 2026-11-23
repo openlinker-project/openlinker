@@ -26,6 +26,7 @@ import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
+import { ProgressSegment } from '../components/progress-segment';
 import { ReleaseIcon } from '../components/release-icon';
 import { connectionsQueryKeys, useConnectionQuery } from '../../connections';
 import { RELEASE_STEPS } from '../catalog/release-steps';
@@ -504,14 +505,14 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                       const reached = index <= state.furthest;
                       const stopState = index === state.index ? 'current' : reached ? 'done' : 'todo';
                       return (
-                        <button
+                        <ProgressSegment
                           key={stopIndex}
-                          type="button"
-                          className={`tour-card__dot tour-card__dot--${stopState} tour-card__dot--showcase`}
+                          kind="showcase"
+                          state={stopState}
                           aria-current={index === state.index ? 'step' : undefined}
                           aria-disabled={!reached || undefined}
                           aria-label={interpolate(tour.stopOf, { current: stopIndex + 1, total: stopCount })}
-                          onClick={() => {
+                          onSelect={() => {
                             if (reached) dispatch({ type: 'go', index });
                           }}
                         />
@@ -519,11 +520,9 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                     })}
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    className={`tour-card__dot tour-card__dot--${dotState}${
-                      other.importance === 'optional' && !isShowcaseGroup ? ' tour-card__dot--optional' : ''
-                    }${isShowcaseGroup ? ' tour-card__dot--showcase' : ''}`}
+                  <ProgressSegment
+                    kind={isShowcaseGroup ? 'showcase' : other.importance}
+                    state={dotState}
                     aria-current={active ? 'step' : undefined}
                     aria-label={interpolate(tour.railStep, {
                       current: position + 1,
@@ -531,7 +530,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                       status: tour.railState[dotState],
                     })}
                     title={stopTitle}
-                    onClick={() => dispatch({ type: 'go', index: group.first })}
+                    onSelect={() => dispatch({ type: 'go', index: group.first })}
                   />
                 )}
               </li>

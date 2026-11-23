@@ -34,6 +34,9 @@ import {
 import { useReleaseCenterView } from './release-center-provider';
 import { ReleaseShowcaseList } from './release-showcase-list';
 import { ReleaseIcon } from './release-icon';
+import { ProgressSegment } from './progress-segment';
+import { ProgressTally } from './progress-tally';
+import { addToProgressCounts, emptyProgressCounts } from '../lib/progress-counts';
 import { ReleaseStepList } from './release-step-list';
 
 export function ReleaseCard({
@@ -64,7 +67,6 @@ export function ReleaseCard({
     (entry) => entry.status === 'done' || entry.status === 'not_applicable'
   ).length;
   const open_ = mine.filter((_, index) => statuses[index].status === 'open');
-  const requiredLeft = open_.filter((instance) => instance.importance === 'required').length;
   const { status, unread } = notificationStatusOf(view.state, notification.itemKey);
   const archived = status === 'archived';
   const myShowcases = view.showcases.filter((s) => notification.showcaseKeys.includes(s.itemKey));
@@ -73,6 +75,18 @@ export function ReleaseCard({
   const allSeen = myShowcases.every((s) => showcaseSeenOf(view.state, s.itemKey));
   const hasSteps = mine.length > 0 || myShowcases.length > 0;
   const left = mine.length - done;
+  const counts = emptyProgressCounts();
+  mine.forEach((instance, index) =>
+    addToProgressCounts(
+      counts,
+      instance.importance,
+      statuses[index].status === 'done' || statuses[index].status === 'not_applicable'
+    )
+  );
+  myShowcases.forEach((instance) => {
+    const stops = instance.showcase.stops.length;
+    for (let i = 0; i < stops; i += 1) addToProgressCounts(counts, 'showcase', showcaseSeenOf(view.state, instance.itemKey));
+  });
 
   const cta = showcaseOnly
     ? allSeen
@@ -164,51 +178,34 @@ export function ReleaseCard({
         <>
           <div className="release-progress">
             <div
-              className="release-progress__bar"
+              className="pseg-strip"
               role="img"
               aria-label={showcaseOnly ? copy.progressShowcase : copy.progressLabel}
-              data-mixed={mine.length > 0 && myShowcases.length > 0}
             >
               {mine.map((instance, index) => (
-                <span
+                <ProgressSegment
                   key={instance.itemKey}
-                  className="release-progress__seg"
-                  data-done={
+                  kind={instance.importance}
+                  state={
                     statuses[index].status === 'done' || statuses[index].status === 'not_applicable'
+                      ? 'done'
+                      : 'todo'
                   }
-                  data-optional={instance.importance === 'optional'}
                 />
               ))}
-              {mine.length > 0 && myShowcases.length > 0 ? (
-                <i className="release-progress__gap" aria-hidden="true" />
-              ) : null}
+              {mine.length > 0 && myShowcases.length > 0 ? <i className="pseg-strip__gap" aria-hidden="true" /> : null}
               {myShowcases.flatMap((instance) =>
                 instance.showcase.stops.map((_, stop) => (
-                  <span
+                  <ProgressSegment
                     key={`${instance.itemKey}:${stop}`}
-                    className="release-progress__seg"
-                    data-kind="showcase"
-                    data-done={showcaseSeenOf(view.state, instance.itemKey)}
+                    kind="showcase"
+                    state={showcaseSeenOf(view.state, instance.itemKey) ? 'done' : 'todo'}
                   />
                 ))
               )}
             </div>
-            <div className="release-progress__text">
-              {mine.length > 0 ? (
-                <>
-                  <span>{interpolate(copy.doneOf, { done, total: mine.length })}</span>
-                  <span>
-                    {!canWriteSteps
-                      ? copy.adminCompletes
-                      : requiredLeft > 0
-                        ? interpolate(copy.requiredLeft, { n: requiredLeft })
-                        : copy.requiredDone}
-                  </span>
-                </>
-              ) : (
-                <span>{interpolate(copy.showcaseTally, { viewed: tally.viewed, total: tally.total })}</span>
-              )}
-            </div>
+            <ProgressTally counts={counts} />
+            {mine.length > 0 && !canWriteSteps ? <p className="release-progress__note">{copy.adminCompletes}</p> : null}
           </div>
           <h3 className="release-card__toggle release-card__toggle--static" id={`${regionId}-label`}>
             <span className="release-card__toggle-label">

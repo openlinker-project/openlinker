@@ -41009,7 +41009,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .release-card__toggle { min-height: 44px; }
 }
 
-
 /* Pinned to the bottom of the panel list while the card is on screen. It inherits the card's own
    background so nothing shows through, and stretches over the card padding to its edges. */
 .release-card__actions {
@@ -41061,28 +41060,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   from { opacity: 0; transform: scale(0.96); }
 }
 .release-progress { display: grid; gap: 6px; }
-.release-progress__bar { display: flex; gap: 4px; }
-.release-progress__seg {
-  flex: 1;
-  height: 6px;
-  border-radius: 99px;
-  background: var(--bg-strong);
-  overflow: hidden;
-  position: relative;
-}
-.release-progress__seg[data-optional='true'] {
-  background: repeating-linear-gradient(90deg, var(--bg-strong) 0 4px, transparent 4px 7px);
-}
-.release-progress__seg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--accent-primary);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 520ms var(--ease-out);
-}
-.release-progress__seg[data-done='true']::after { transform: scaleX(1); }
+
 .release-progress__text {
   display: flex;
   justify-content: space-between;
@@ -41293,46 +41271,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .tour-card__rail { display: flex; gap: 5px; margin: 0; padding: 0; list-style: none; }
 .tour-card__seg { flex: 1; display: flex; min-width: 0; }
 /* The bar stays thin; the button around it is a tall, easy target. */
-.tour-card__dot {
-  appearance: none;
-  border: 0;
-  padding: 0;
-  flex: 1;
-  height: 5px;
-  margin-block: 7px;
-  border-radius: 99px;
-  background: var(--bg-strong);
-  position: relative;
-  overflow: visible;
-  cursor: pointer;
-  transition: transform 160ms var(--ease-out);
-}
-.tour-card__dot::before { content: ''; position: absolute; inset: -8px -2px; }
-.tour-card__dot:hover { transform: scaleY(1.7); }
-.tour-card__dot:active { transform: scaleY(1.2); }
-.tour-card__dot:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
-.tour-card__dot--optional {
-  background: repeating-linear-gradient(90deg, var(--bg-strong) 0 4px, transparent 4px 7px);
-}
-.tour-card__dot::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--accent-primary);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 480ms var(--ease-out);
-}
-.tour-card__dot--done::after { transform: scaleX(1); }
+
 /* Skipped: a solid grey bar with a diagonal hatch, so it differs from the dashed unvisited segments without relying on colour alone. */
-.tour-card__dot--skipped,
-.tour-card__dot--skipped.tour-card__dot--optional {
-  background:
-    repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in oklab, var(--bg-surface) 45%, transparent) 3px 5px),
-    var(--border-strong);
-}
-.tour-card__dot--current::after { transform: scaleX(0.35); }
 
 .tour-card__top {
   display: flex;
@@ -42189,9 +42129,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-muted);
   white-space: nowrap;
 }
-.release-progress__gap { flex: 0 0 8px; }
-.release-progress__seg[data-kind='showcase'] { background: color-mix(in srgb, var(--status-info) 22%, var(--bg-strong)); }
-.release-progress__seg[data-kind='showcase']::after { background: var(--status-info); }
+
 .release-showcase {
   display: grid;
   gap: 8px;
@@ -42254,14 +42192,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 /* In the tour: a showcase segment is info-toned and shows its stops as pips over the bar. */
 .tour-card__seg { position: relative; }
-.tour-card__dot--showcase::after { background: var(--status-info); }
-.tour-card__stops { flex: 1; display: flex; gap: 3px; min-width: 0; }
-.tour-card__stops .tour-card__dot::after { opacity: 0.45; transition: transform 480ms var(--ease-out), opacity 200ms var(--ease-out); }
+
 /* Every stop is a whole segment: reached ones are tinted, the one on screen is solid. Never a half fill. */
-.tour-card__stops .tour-card__dot--done::after { transform: scaleX(1); }
-.tour-card__stops .tour-card__dot--current::after { transform: scaleX(1); opacity: 1; }
-.tour-card__dot[aria-disabled='true'] { cursor: default; }
-.tour-card__dot[aria-disabled='true']:hover { transform: none; }
+
 .tour-card__stop { margin: 0; font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: no-preference) {
   .tour-card__stop { animation: release-fade-up 180ms var(--ease-out) both; }
@@ -42286,7 +42219,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .tour-card__rail { display: flex; gap: 6px; margin: 0; padding: 0; align-items: flex-end; }
 .tour-card__release { display: grid; gap: 3px; min-width: 26px; }
 .tour-card__release + .tour-card__release { margin-left: 0; padding-left: 0; border-left: 0; }
-.tour-card__segs { display: flex; gap: 1px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+
 .tour-card__release-label {
   max-width: 100%;
   overflow: hidden;
@@ -42302,46 +42235,16 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .tour-card__release-label::after { content: none; }
 .tour-card__release[data-active='true'] .tour-card__release-label { color: var(--text-primary); font-weight: 700; }
 .tour-card__seg { flex: 1; min-width: 0; }
-.tour-card__rail .tour-card__dot,
-.tour-card__rail .tour-card__stops .tour-card__dot {
-  height: 6px;
-  margin-block: 6px;
-  border-radius: 0;
-  background: var(--bg-strong);
-  box-shadow: none;
-  transform: none;
-  transition: background-color 220ms var(--ease-out), transform 220ms var(--ease-out);
-}
-.tour-card__rail .tour-card__dot::after { display: none; }
-.tour-card__rail .tour-card__dot--optional { background: color-mix(in srgb, var(--bg-strong) 50%, var(--bg-surface)); }
-.tour-card__rail .tour-card__dot--skipped { background: color-mix(in srgb, var(--border-strong) 70%, var(--bg-surface)); }
-.tour-card__rail .tour-card__dot--done { background: color-mix(in srgb, var(--accent-primary) 50%, var(--bg-strong)); }
-.tour-card__rail .tour-card__dot--current { background: var(--accent-primary); }
-.tour-card__rail .tour-card__dot--showcase.tour-card__dot--done { background: color-mix(in srgb, var(--status-info) 50%, var(--bg-strong)); }
-.tour-card__rail .tour-card__dot--showcase.tour-card__dot--current { background: var(--status-info); }
-.tour-card__rail .tour-card__dot:hover { transform: scaleY(1.7); }
-.tour-card__rail .tour-card__dot[aria-disabled='true']:hover { transform: none; }
+
 /* The ends of a release capsule are round, the joins between its steps are flush. */
-.tour-card__segs > .tour-card__seg:first-child .tour-card__dot,
-.tour-card__segs > .tour-card__seg:first-child .tour-card__stops .tour-card__dot:first-child { border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
-.tour-card__segs > .tour-card__seg:last-child .tour-card__dot,
-.tour-card__segs > .tour-card__seg:last-child .tour-card__stops .tour-card__dot:last-child { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
-.tour-card__stops { gap: 1px; }
+
 @media (prefers-reduced-motion: reduce) {
-  .tour-card__rail .tour-card__dot,
   .tour-card__release-label { transition: none; }
 }
 /* One shared bar: the whole run is a single capsule. Steps are 1px apart, a release boundary is a slightly
    wider 3px notch, and only the two outer ends of the whole bar are round. */
 .tour-card__rail { gap: 3px; }
-.tour-card__segs > .tour-card__seg:first-child .tour-card__dot,
-.tour-card__segs > .tour-card__seg:first-child .tour-card__stops .tour-card__dot:first-child,
-.tour-card__segs > .tour-card__seg:last-child .tour-card__dot,
-.tour-card__segs > .tour-card__seg:last-child .tour-card__stops .tour-card__dot:last-child { border-radius: 0; }
-.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__dot,
-.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__stops .tour-card__dot:first-child { border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
-.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__dot,
-.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__stops .tour-card__dot:last-child { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
+
 .tour-card__release-label { cursor: default; border-radius: 3px; }
 .tour-card__release-label:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 /* The release tooltip sits above the tour card and never leaves the screen (collision padding in the component). */
@@ -42349,19 +42252,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .tour-card__tip strong { font-weight: 600; }
 .tour-card__tip span { opacity: 0.8; font-size: 0.75rem; }
 /* Contrast pass: the unreached part of the bar must read as a track, not disappear into the card. */
-.tour-card__rail .tour-card__dot,
-.tour-card__rail .tour-card__stops .tour-card__dot { height: 8px; margin-block: 5px; background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface)); }
-.tour-card__rail .tour-card__dot--optional { background: color-mix(in srgb, var(--text-muted) 15%, var(--bg-surface)); }
-.tour-card__rail .tour-card__dot--skipped { background: color-mix(in srgb, var(--text-muted) 45%, var(--bg-surface)); }
-.tour-card__rail .tour-card__dot--done { background: color-mix(in srgb, var(--accent-primary) 45%, var(--bg-surface)); }
-.tour-card__rail .tour-card__dot--current { background: var(--accent-primary); }
-.tour-card__rail .tour-card__dot--showcase.tour-card__dot--done { background: color-mix(in srgb, var(--status-info) 45%, var(--bg-surface)); }
-.tour-card__rail .tour-card__dot--showcase.tour-card__dot--current { background: var(--status-info); }
-.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__dot { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
-.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__dot { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+
 /* Polish pass: one grey for everything not reached (the card header already says required or optional),
    and a small tick above each release boundary that ties its label to its part of the bar. */
-.tour-card__rail .tour-card__dot--optional.tour-card__dot--todo { background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface)); }
+
 .tour-card__release { position: relative; min-width: 34px; }
 .tour-card__release + .tour-card__release::before {
   content: '';
@@ -42579,24 +42473,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .msg { grid-template-columns: 20px minmax(0, 1fr) auto; }
 @media (hover: none) and (pointer: coarse) { .msg { grid-template-columns: 20px minmax(0, 1fr) auto; } }
 /* The card in the bell: one row of equal segments. Optional is the lighter grey, done is the accent. */
-.release-progress__bar { gap: 3px; align-items: center; }
-.release-progress__seg { height: 6px; border-radius: 3px; background: var(--bg-strong); box-shadow: none; }
-.release-progress__seg[data-optional='true'] { background: color-mix(in srgb, var(--bg-strong) 50%, var(--bg-surface)); box-shadow: none; }
-.release-progress__gap { flex: 0 0 6px; }
+
 /* The card in the bell uses the same bar as the tour: flush segments in one capsule, one grey for what is
    not done, the accent for what is, info blue for tour-only items, a small notch between the groups. */
-.release-progress__bar { gap: 1px; align-items: center; }
-.release-progress__seg,
-.release-progress__seg[data-optional='true'] {
-  height: 8px;
-  border-radius: 0;
-  background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface));
-  box-shadow: none;
-}
-.release-progress__seg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
-.release-progress__seg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
-.release-progress__seg[data-kind='showcase'] { background: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface)); }
-.release-progress__gap { flex: 0 0 3px; }
+
 /* One list for the whole release: steps and tour-only items share the marker column, title, chips and actions. */
 .release-step[data-status='done'] .release-step__title,
 .release-step[data-status='not_applicable'] .release-step__title { text-decoration: none; color: var(--text-secondary); }
@@ -43088,3 +42968,60 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 @keyframes tour-spin { to { transform: rotate(360deg); } }
 .tour-card__footer[inert], .tour-card__choices[inert] { opacity: 0.5; }
+
+/* Progress capsules (shared): the tour rail, the bell card and the What's new rail draw the same segment.
+   Kind is the shape (solid = required, striped = optional, blue = a guide to look at); state is the fill. */
+.pseg-strip, .tour-card__segs, .tour-card__stops { display: flex; gap: 1px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.tour-card__stops { flex: 1; }
+.pseg-strip__gap { flex: 0 0 8px; }
+.pseg {
+  --pseg-base: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface));
+  --pseg-fill: var(--accent-primary);
+  position: relative;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--pseg-base);
+  transition: background-color 240ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.pseg[data-kind='showcase'] {
+  --pseg-base: color-mix(in srgb, var(--status-info) 22%, var(--bg-strong));
+  --pseg-fill: var(--status-info);
+}
+.pseg[data-kind='optional'] {
+  --pseg-base: color-mix(in srgb, var(--text-muted) 18%, var(--bg-surface));
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--bg-surface) 70%, transparent) 3px 5px);
+}
+.pseg[data-state='done'] { background-color: color-mix(in srgb, var(--pseg-fill) 62%, var(--bg-strong)); }
+.pseg[data-state='current'] { background-color: var(--pseg-fill); }
+.pseg[data-state='skipped'] { background-color: color-mix(in srgb, var(--text-muted) 42%, var(--bg-surface)); background-image: none; }
+.pseg--button { cursor: pointer; }
+.pseg--button::before { content: ''; position: absolute; inset: -8px -2px; }
+.pseg--button:hover { transform: scaleY(1.7); }
+.pseg--button:active { transform: scaleY(1.2); }
+.pseg--button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.pseg--button[aria-disabled='true'] { cursor: default; }
+.pseg--button[aria-disabled='true']:hover { transform: none; }
+/* Round only the two outer ends of a strip; joins stay flush. */
+.pseg-strip > .pseg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.pseg-strip > .pseg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.pseg-strip > .pseg-strip__gap + .pseg { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.pseg-strip > .pseg:has(+ .pseg-strip__gap) { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .pseg,
+.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__stops .pseg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .pseg,
+.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__stops .pseg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.tour-card__rail .pseg { margin-block: 5px; }
+.pseg-tally { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; padding: 0; list-style: none; font-size: 0.75rem; color: var(--text-muted); }
+.pseg-tally__item { display: inline-flex; align-items: center; gap: 6px; }
+.pseg-tally__mark .pseg { display: block; width: 16px; flex: none; border-radius: 4px; }
+.release-progress__note { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) { .pseg { transition: none; } }
+@media (forced-colors: active) {
+  .pseg { forced-color-adjust: none; border: 1px solid ButtonText; }
+  .pseg[data-state='done'], .pseg[data-state='current'] { background-color: Highlight; }
+}
