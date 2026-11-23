@@ -1108,7 +1108,7 @@
     "wizardsChip": "Kreatory dla każdej platformy"
   },
   "orderSyncPanel": {
-    "change": "Importuj starsze zamówienia…",
+    "change": "Pobierz starsze zamówienia…",
     "checkNowStartedMessage": "OpenLinker sprawdza teraz w sklepie nowe zamówienia.",
     "checkNowStartedTitle": "Sprawdzanie rozpoczęte",
     "errorTitle": "Nie udało się wczytać importu zamówień",
@@ -1184,7 +1184,7 @@
           "title": "Zmień punkt startu"
         }
       },
-      "nothingToResetMessage": "OpenLinker już czyta zamówienia ze sklepu, więc nie ma startu do zresetowania. Aby pobrać starsze zamówienia, zaimportuj okres.",
+      "nothingToResetMessage": "OpenLinker już czyta zamówienia ze sklepu, więc nie ma startu do zresetowania. Aby pobrać starsze zamówienia, wybierz zakres dat.",
       "nothingToResetTitle": "Nie ma czego zresetować",
       "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia.",
       "rangeConfirm": "Importuj zamówienia",
@@ -1194,7 +1194,7 @@
       "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
       "successNowMessage": "Nic się nie zmieniło. Nowe zamówienia nadal wpływają.",
       "successTitle": "Start zmieniony",
-      "title": "Importuj starsze zamówienia"
+      "title": "Pobierz starsze zamówienia ze sklepu"
     },
     "retry": "Ponów",
     "startLabel": "Początek importu",
