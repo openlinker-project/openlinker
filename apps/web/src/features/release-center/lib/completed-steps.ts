@@ -51,7 +51,7 @@ export function completedStepItemKeys(
     if (step.scope === 'connection' && !connectionId) continue;
     const ctx: ReleaseStepContext = {
       connection: step.scope === 'connection' ? (observed.before ?? null) : null,
-      unassignedCarrierMethods: 0,
+      unassignedCarrierMethods: null,
     };
     if (step.scope === 'connection' && ctx.connection === null) continue;
     if (!step.appliesWhen(ctx)) continue;

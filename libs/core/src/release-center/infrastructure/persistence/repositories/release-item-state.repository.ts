@@ -178,17 +178,22 @@ export class ReleaseItemStateRepository implements ReleaseItemStateRepositoryPor
 
     let evicted = 0;
     if (evictDeleted) {
-      const rows = await manager.query<unknown[]>(
-        `DELETE FROM "release_item_states" WHERE "id" IN (
-           SELECT "id" FROM "release_item_states"
-           WHERE "scope" = 'user' AND "userId" = $1 AND "status" = 'deleted'
-             AND NOT ("itemKey" = ANY($2::text[]))
-           ORDER BY "updatedAt" ASC
-           LIMIT $3)
-         RETURNING "id"`,
+      // Wrapped in a CTE so the driver answers with ordinary rows: a bare DELETE ... RETURNING comes back
+      // from TypeORM's postgres driver as a [rows, affectedCount] tuple, whose length is always 2 and
+      // would make the eviction look successful even when nothing was evictable.
+      const [{ n }] = await manager.query<{ n: number }[]>(
+        `WITH evicted AS (
+           DELETE FROM "release_item_states" WHERE "id" IN (
+             SELECT "id" FROM "release_item_states"
+             WHERE "scope" = 'user' AND "userId" = $1 AND "status" = 'deleted'
+               AND NOT ("itemKey" = ANY($2::text[]))
+             ORDER BY "updatedAt" ASC
+             LIMIT $3)
+           RETURNING "id")
+         SELECT count(*)::int AS n FROM evicted`,
         [userId, keys, over]
       );
-      evicted = rows.length;
+      evicted = n;
     }
     if (evicted < over) {
       throw new ReleaseStateLimitExceededError(scope, limit);

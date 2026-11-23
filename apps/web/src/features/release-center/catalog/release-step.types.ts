@@ -23,8 +23,8 @@ export interface ReleaseStepConnection {
 export interface ReleaseStepContext {
   /** Set when the step is evaluated for one connection (scope `connection`). */
   connection: ReleaseStepConnection | null;
-  /** Delivery methods of this channel that carry a carrier name and still go through the shop. */
-  unassignedCarrierMethods: number;
+  /** Delivery methods of this channel that carry a carrier name and still go through the shop; null when not known (no cheap read exists, so every caller passes null today). */
+  unassignedCarrierMethods: number | null;
 }
 
 export interface ReleaseStepCompletion {

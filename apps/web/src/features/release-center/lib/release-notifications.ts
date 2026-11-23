@@ -136,12 +136,12 @@ export function buildStepInstances(
     capabilities: readonly string[];
     config: Readonly<Record<string, unknown>>;
   }[],
-  unassignedCarrierMethods: (connectionId: string) => number
+  unassignedCarrierMethods: (connectionId: string) => number | null
 ): StepInstance[] {
   const out: StepInstance[] = [];
   for (const step of visibleSteps(steps, appVersion)) {
     if (step.scope === 'installation') {
-      const ctx = { connection: null, unassignedCarrierMethods: 0 };
+      const ctx = { connection: null, unassignedCarrierMethods: null };
       if (!step.appliesWhen(ctx)) continue;
       out.push({
         step,

@@ -29,7 +29,7 @@ export function resolveTourStop(step: TourStepInput): TourStop | null {
     connection: step.connectionId
       ? { id: step.connectionId, platformType: '', capabilities: [], config: {} }
       : null,
-    unassignedCarrierMethods: 0,
+    unassignedCarrierMethods: null,
   });
   return { path: generatePath(`/${entry.routePattern}`, params), target: entry.target };
 }

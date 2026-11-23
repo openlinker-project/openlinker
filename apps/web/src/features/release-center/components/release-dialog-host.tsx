@@ -33,7 +33,7 @@ export function stepPath(row: ReleaseStepRow): string {
     connection: row.connection
       ? { id: row.connection.id, platformType: '', capabilities: [], config: {} }
       : null,
-    unassignedCarrierMethods: 0,
+    unassignedCarrierMethods: null,
   }));
 }
 

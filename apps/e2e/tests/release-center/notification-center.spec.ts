@@ -17,7 +17,8 @@
  *
  * Run: pnpm --filter @openlinker/e2e exec playwright test --project=setup --project=release-center
  */
-import { test, expect, type Page } from '../../src/fixtures/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from '../../src/fixtures/test';
 
 const NOW = Date.now();
 const iso = (agoMs: number): string => new Date(NOW - agoMs).toISOString();
@@ -30,7 +31,7 @@ const SEED = [
 ];
 
 async function seedMessages(page: Page): Promise<void> {
-  await page.addInitScript((seed) => {
+  await page.addInitScript((seed: typeof SEED) => {
     const original = Storage.prototype.getItem;
     Storage.prototype.getItem = function (key: string): string | null {
       return key.startsWith('ol:notifications:v1:') ? JSON.stringify(seed) : original.call(this, key);

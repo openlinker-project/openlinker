@@ -14,6 +14,15 @@
  * Hand-authored so names match the ORM entities exactly (the parity spec
  * compares them).
  *
+ * Renamed from 1939800000000 to 1939900000000 during review (timestamp
+ * collision). A dev database that already ran the old name holds a stale row
+ * in `migrations` and would re-run this one against existing tables. Repair it
+ * once with:
+ *   UPDATE migrations SET "timestamp" = 1939900000000,
+ *     name = 'AddReleaseCenterState1939900000000'
+ *   WHERE "timestamp" = 1939800000000;
+ * Fresh databases and CI need nothing.
+ *
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';

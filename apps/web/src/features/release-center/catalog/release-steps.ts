@@ -40,11 +40,11 @@ export const RELEASE_STEPS: readonly ReleaseStepEntry[] = [
     // Required only while a channel still has carrier-named delivery methods
     // going through the shop: without a decision the behaviour after the update
     // may differ from what the operator expects.
-    // Follow-up: every caller passes `unassignedCarrierMethods: 0` today, so this
+    // Follow-up: every caller passes `unassignedCarrierMethods: null` (unknown) today, so this
     // reads optional. The count needs the source's delivery methods (a live
     // platform read) plus the routing rules and a definition of "carrier-named";
     // there is no cheap read for it, so it is not issued from the bell.
-    importance: (ctx) => (ctx.unassignedCarrierMethods > 0 ? 'required' : 'optional'),
+    importance: (ctx) => ((ctx.unassignedCarrierMethods ?? 0) > 0 ? 'required' : 'optional'),
     requires: 'connections:write',
     routePattern: 'connections/:connectionId/mappings',
     routeParams: (ctx) => ({ connectionId: ctx.connection?.id ?? '' }),

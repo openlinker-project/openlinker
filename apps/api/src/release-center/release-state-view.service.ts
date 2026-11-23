@@ -8,7 +8,7 @@
  *
  * @module apps/api/src/release-center
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import {
   OPERATIONAL_SETTINGS_SERVICE_TOKEN,
@@ -99,7 +99,12 @@ export class ReleaseStateViewService implements IReleaseStateViewService {
       try {
         await this.connections.get(connectionId);
       } catch (error) {
-        if (error instanceof ConnectionNotFoundException) {
+        // ConnectionService.get rethrows the domain not-found as a coded 404 HttpException, so both shapes
+        // mean "this connection does not exist" and both become the 422 the contract documents.
+        if (
+          error instanceof ConnectionNotFoundException ||
+          (error instanceof HttpException && error.getStatus() === HttpStatus.NOT_FOUND)
+        ) {
           throw new UnknownReleaseConnectionError(change.itemKey, connectionId);
         }
         throw error;

@@ -82,19 +82,18 @@ describe('Release state integration', () => {
       .expect(403);
   });
 
-  it('should ignore a body userId on user writes', async () => {
+  it('should refuse a body userId on user writes with 400', async () => {
     const http = harness.getHttp();
     const viewer = await loginAs(harness, 'viewer');
     await http
       .put('/v1/release-state/items')
       .set('Authorization', `Bearer ${viewer}`)
       .send({ userId: 'someone-else', changes: [{ itemKey: 'a', status: 'archived' }] })
-      .expect(200);
+      .expect(400);
     const rows = await harness
       .getDataSource()
       .query(`SELECT "userId" FROM release_item_states WHERE "itemKey" = 'a'`);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].userId).not.toBe('someone-else');
+    expect(rows).toHaveLength(0);
   });
 
   it('should refuse an unknown connection id with 422', async () => {

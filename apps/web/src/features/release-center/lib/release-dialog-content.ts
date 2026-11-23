@@ -107,7 +107,7 @@ export function buildStepRows(
     const targets: (NamedStepConnection | null)[] =
       step.scope === 'connection' ? [...connections] : [null];
     for (const connection of targets) {
-      const ctx = { connection, unassignedCarrierMethods: 0 };
+      const ctx = { connection, unassignedCarrierMethods: null };
       if (!step.appliesWhen(ctx)) continue;
       const itemKey = releaseStepItemKey(step.id, connection?.id ?? null);
       rows.push({
