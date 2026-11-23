@@ -1,14 +1,16 @@
 /**
- * Import Older Orders Dialog
+ * Order Sync Dialog
  *
- * The one place an admin reaches for orders from before the sync (#4228): read
- * a period once (a range, oldest or newest first), or move where syncing
- * starts. Reuses the create-time start choice so the two cannot describe the
- * same option differently. Orders already imported are never removed.
+ * Two separate jobs for an admin, each opened from its own button (#4228): get
+ * the orders of a period once (an ACTION, a range read oldest or newest first),
+ * or change where syncing starts (a SETTING). They are kept apart because one
+ * runs once and the other changes what every later check reads. Reuses the
+ * create-time start choice so the two cannot describe the same option
+ * differently. Orders already imported are never removed.
  *
  * @module features/connections/components
  */
-import { useRef, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
@@ -40,9 +42,11 @@ import {
 } from '../lib/order-sync-start';
 import { OrderSyncStartField } from './order-sync-start-field';
 
-type ImportKind = 'range' | 'start';
+export type OrderSyncDialogKind = 'range' | 'start';
 
 interface OrderSyncRestartDialogProps {
+  /** Which job this dialog does: a one-off period read, or a change of the start. */
+  kind: OrderSyncDialogKind;
   connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,6 +58,7 @@ interface OrderSyncRestartDialogProps {
 }
 
 export function OrderSyncRestartDialog({
+  kind,
   connection,
   open,
   onOpenChange,
@@ -65,8 +70,6 @@ export function OrderSyncRestartDialog({
   const adapters = useAdaptersQuery();
   const restart = useRestartOrderSyncMutation();
   const enqueue = useImportOrdersMutation();
-  const [kind, setKind] = useState<ImportKind>('range');
-  const kindRefs = useRef<Partial<Record<ImportKind, HTMLDivElement | null>>>({});
   const [range, setRange] = useState<OrderRangeValue>(ORDER_RANGE_DEFAULT_VALUE);
   const [rangeTouched, setRangeTouched] = useState(false);
   const [value, setValue] = useState<OrderSyncStartValue>(ORDER_SYNC_START_DEFAULT_VALUE);
@@ -77,8 +80,7 @@ export function OrderSyncRestartDialog({
   const supportedModes = adapter?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
   const windowImport = adapter?.orderWindowImport ?? false;
 
-  // Without a window read the adapter cannot import a period, so only the start can move.
-  const activeKind: ImportKind = windowImport ? kind : 'start';
+  const activeKind = kind;
   const pending = restart.isPending || enqueue.isPending;
   const rangeProblems = validateOrderRange(range);
   const rangeValid = !rangeProblems.from && !rangeProblems.to;
@@ -98,7 +100,6 @@ export function OrderSyncRestartDialog({
       setValue(ORDER_SYNC_START_DEFAULT_VALUE);
       setRange(ORDER_RANGE_DEFAULT_VALUE);
       setRangeTouched(false);
-      setKind('range');
       restart.reset();
       enqueue.reset();
     }
@@ -159,8 +160,10 @@ export function OrderSyncRestartDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="order-sync-restart-dialog">
-        <DialogTitle>{copy.title}</DialogTitle>
-        <DialogDescription>{copy.description}</DialogDescription>
+        <DialogTitle>{activeKind === 'range' ? copy.rangeTitle : copy.startTitle}</DialogTitle>
+        <DialogDescription>
+          {activeKind === 'range' ? copy.rangeDescription : copy.startDescription}
+        </DialogDescription>
 
         <div className="order-sync-restart-dialog__body">
           {restart.error || enqueue.error ? (
@@ -171,71 +174,13 @@ export function OrderSyncRestartDialog({
               )}
             </Alert>
           ) : null}
-          {windowImport ? (
-            <div className="order-sync-start__order">
-              <p className="order-sync-start__order-title" id="order-import-kind">
-                {copy.kind.label}
-              </p>
-              <div
-                className="order-sync-start__order-options"
-                role="radiogroup"
-                aria-labelledby="order-import-kind"
-              >
-                {(['range', 'start'] as const).map((option) => {
-                  const checked = activeKind === option;
-                  return (
-                    <div
-                      key={option}
-                      ref={(node) => {
-                        kindRefs.current[option] = node;
-                      }}
-                      role="radio"
-                      aria-describedby={`order-import-kind-${option}`}
-                      aria-checked={checked}
-                      tabIndex={checked ? 0 : -1}
-                      className={[
-                        'order-sync-start__order-option',
-                        checked ? 'order-sync-start__order-option--checked' : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      onClick={() => setKind(option)}
-                      onKeyDown={(event) => {
-                        if (event.key === ' ' || event.key === 'Enter') {
-                          event.preventDefault();
-                          setKind(option);
-                        } else if (
-                          event.key === 'ArrowRight' ||
-                          event.key === 'ArrowLeft' ||
-                          event.key === 'ArrowDown' ||
-                          event.key === 'ArrowUp'
-                        ) {
-                          event.preventDefault();
-                          const next = option === 'range' ? 'start' : 'range';
-                          setKind(next);
-                          kindRefs.current[next]?.focus();
-                        }
-                      }}
-                    >
-                      <span className="order-sync-start__order-label">{copy.kind[option].title}</span>
-                      <span className="order-sync-start__order-text" id={`order-import-kind-${option}`}>
-                        {copy.kind[option].text}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
           {activeKind === 'range' ? (
-            <>
-              <OrderRangeFields
-                value={range}
-                onChange={setRange}
-                errors={rangeErrors}
-                disabled={pending}
-              />
-            </>
+            <OrderRangeFields
+              value={range}
+              onChange={setRange}
+              errors={rangeErrors}
+              disabled={pending}
+            />
           ) : (
             <>
               <OrderSyncStartField

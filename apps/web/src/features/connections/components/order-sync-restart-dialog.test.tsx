@@ -42,7 +42,7 @@ function adapterList(extra: Partial<AdapterSummary> = {}): Mock<AdapterList> {
 
 function renderDialog(
   connections: Record<string, unknown>,
-  options: { hasFeedPosition?: boolean; adapters?: Mock<AdapterList> } = {}
+  options: { kind?: 'range' | 'start'; hasFeedPosition?: boolean; adapters?: Mock<AdapterList> } = {}
 ): { onOpenChange: ReturnType<typeof vi.fn> } {
   const onOpenChange = vi.fn();
   const apiClient = createMockApiClient({
@@ -51,6 +51,7 @@ function renderDialog(
   });
   renderWithProviders(
     <OrderSyncRestartDialog
+      kind={options.kind ?? 'range'}
       connection={CONNECTION}
       open
       onOpenChange={onOpenChange}
@@ -59,10 +60,6 @@ function renderDialog(
     { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
   );
   return { onOpenChange };
-}
-
-async function pickStartKind(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(await screen.findByRole('radio', { name: /Change where reading starts/ }));
 }
 
 afterEach(cleanup);
@@ -76,7 +73,7 @@ describe('OrderSyncRestartDialog', () => {
     fireEvent.change(await screen.findByLabelText('First day'), {
       target: { value: '2026-10-01' },
     });
-    await user.click(screen.getByRole('button', { name: 'Import orders' }));
+    await user.click(screen.getByRole('button', { name: 'Get orders' }));
 
     await waitFor(() =>
       expect(importOrders).toHaveBeenCalledWith('conn_1', {
@@ -98,7 +95,7 @@ describe('OrderSyncRestartDialog', () => {
     fireEvent.change(await screen.findByLabelText('First day'), {
       target: { value: '2026-10-01' },
     });
-    await user.click(screen.getByRole('button', { name: 'Import orders' }));
+    await user.click(screen.getByRole('button', { name: 'Get orders' }));
 
     expect(await screen.findByText('Could not start the import')).toBeInTheDocument();
     expect(screen.getByText(/order poll of this connection is running/)).toBeInTheDocument();
@@ -110,7 +107,7 @@ describe('OrderSyncRestartDialog', () => {
     const importOrders = vi.fn();
     renderDialog({ importOrders });
 
-    await user.click(await screen.findByRole('button', { name: 'Import orders' }));
+    await user.click(await screen.findByRole('button', { name: 'Get orders' }));
 
     expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
     expect(importOrders).not.toHaveBeenCalled();
@@ -119,9 +116,8 @@ describe('OrderSyncRestartDialog', () => {
   it('confirms a changed start when the restart was applied', async () => {
     const user = userEvent.setup();
     const restartOrderSync = vi.fn().mockResolvedValue({ applied: true });
-    renderDialog({ restartOrderSync });
+    renderDialog({ restartOrderSync }, { kind: 'start' });
 
-    await pickStartKind(user);
     await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
     await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
@@ -136,9 +132,8 @@ describe('OrderSyncRestartDialog', () => {
     const restartOrderSync = vi
       .fn()
       .mockResolvedValue({ applied: false, reason: 'already-following-feed' });
-    renderDialog({ restartOrderSync });
+    renderDialog({ restartOrderSync }, { kind: 'start' });
 
-    await pickStartKind(user);
     await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
     await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
@@ -147,13 +142,10 @@ describe('OrderSyncRestartDialog', () => {
   });
 
   it('disables Apply for "only new orders" when the connection already follows the feed', async () => {
-    const user = userEvent.setup();
     const restartOrderSync = vi.fn();
-    renderDialog({ restartOrderSync }, { hasFeedPosition: true });
+    renderDialog({ restartOrderSync }, { kind: 'start', hasFeedPosition: true });
 
-    await pickStartKind(user);
-
-    expect(screen.getByRole('button', { name: 'Apply change' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Apply change' })).toBeDisabled();
     expect(screen.getByText(/already reading orders from the shop/)).toBeInTheDocument();
     expect(restartOrderSync).not.toHaveBeenCalled();
   });
@@ -163,9 +155,8 @@ describe('OrderSyncRestartDialog', () => {
     const restartOrderSync = vi
       .fn()
       .mockRejectedValue(new ApiError('busy', 409, { code: 'ORDER_SYNC_BUSY' }));
-    renderDialog({ restartOrderSync });
+    renderDialog({ restartOrderSync }, { kind: 'start' });
 
-    await pickStartKind(user);
     await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
     await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
@@ -173,10 +164,21 @@ describe('OrderSyncRestartDialog', () => {
     expect(screen.getByText(/order poll of this connection is running/)).toBeInTheDocument();
   });
 
-  it('offers only the start change when the shop cannot read a period', async () => {
-    renderDialog({}, { adapters: adapterList({ orderWindowImport: false }) });
+  it('titles each dialog for the one job it does', async () => {
+    const { unmount } = renderWithProviders(
+      <OrderSyncRestartDialog kind="range" connection={CONNECTION} open onOpenChange={vi.fn()} />,
+      {
+        apiClient: createMockApiClient({ adapters: { list: adapterList() } }),
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      }
+    );
+    expect(await screen.findByText('Get orders from a period')).toBeInTheDocument();
+    expect(screen.queryByText('Change where syncing starts')).not.toBeInTheDocument();
+    unmount();
+    cleanup();
 
-    expect(await screen.findByRole('button', { name: 'Apply change' })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: /Import a date range/ })).not.toBeInTheDocument();
+    renderDialog({}, { kind: 'start' });
+    expect(await screen.findByText('Change where syncing starts')).toBeInTheDocument();
+    expect(screen.queryByText('Get orders from a period')).not.toBeInTheDocument();
   });
 });

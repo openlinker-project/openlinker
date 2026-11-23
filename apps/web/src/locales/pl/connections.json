@@ -1108,10 +1108,11 @@
     "wizardsChip": "Kreatory dla każdej platformy"
   },
   "orderSyncPanel": {
-    "change": "Pobierz starsze zamówienia…",
+    "change": "Zmień start…",
     "checkNowStartedMessage": "OpenLinker sprawdza teraz w sklepie nowe zamówienia.",
     "checkNowStartedTitle": "Sprawdzanie rozpoczęte",
     "errorTitle": "Nie udało się wczytać importu zamówień",
+    "getPeriod": "Pobierz zamówienia z okresu…",
     "health": {
       "failures": {
         "banner": "{count} nie udało się zaimportować",
@@ -1171,30 +1172,21 @@
       "cancel": "Anuluj",
       "confirm": "Zastosuj zmianę",
       "confirming": "Zapisywanie…",
-      "description": "Pobiera zamówienia, których OpenLinker jeszcze nie ma. Te, które już ma, są aktualizowane, a nie tworzone drugi raz.",
       "failedTitle": "Nie udało się zmienić startu",
-      "kind": {
-        "label": "Co chcesz zrobić?",
-        "range": {
-          "text": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Nowe zamówienia synchronizują się jak dotąd.",
-          "title": "Zaimportuj zakres dat"
-        },
-        "start": {
-          "text": "Wybierz jeszcze raz, czy OpenLinker czyta tylko nowe zamówienia, zamówienia od daty, czy wszystkie.",
-          "title": "Zmień punkt startu"
-        }
-      },
       "nothingToResetMessage": "OpenLinker już czyta zamówienia ze sklepu, więc nie ma startu do zresetowania. Aby pobrać starsze zamówienia, wybierz zakres dat.",
       "nothingToResetTitle": "Nie ma czego zresetować",
       "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia.",
-      "rangeConfirm": "Importuj zamówienia",
+      "rangeConfirm": "Pobierz zamówienia",
+      "rangeDescription": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Nowe zamówienia synchronizują się jak dotąd. Te, które OpenLinker już ma, są aktualizowane, a nie tworzone drugi raz.",
       "rangeFailedTitle": "Nie udało się rozpocząć importu",
       "rangeSuccessMessage": "Zamówienia z tego okresu są właśnie importowane. Postęp widać na tej karcie.",
       "rangeSuccessTitle": "Import rozpoczęty",
+      "rangeTitle": "Pobierz zamówienia z okresu",
+      "startDescription": "Wybierz, które zamówienia OpenLinker czyta ze sklepu od teraz. Te, które już ma, zostają.",
+      "startTitle": "Zmień początek synchronizacji",
       "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
       "successNowMessage": "Nic się nie zmieniło. Nowe zamówienia nadal wpływają.",
-      "successTitle": "Start zmieniony",
-      "title": "Pobierz starsze zamówienia ze sklepu"
+      "successTitle": "Start zmieniony"
     },
     "retry": "Ponów",
     "startLabel": "Początek importu",

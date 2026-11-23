@@ -3,8 +3,8 @@
  *
  * Orders-tab panel for the order import (#4228): where it started, when the
  * shop was last checked and how the import is doing. "Check for new orders" runs
- * the check from here; "Get past orders…" opens the one dialog for a period
- * or a new start. Presentation only - the read is the existing
+ * the check from here; "Get orders from a period…" and "Change start…" each open
+ * their own dialog (an action and a setting, kept apart). Presentation only - the read is the existing
  * `use-connection-sync-status-query` (same query key as the queue panel, so no
  * extra request).
  *
@@ -32,7 +32,7 @@ import type { Connection, OrderStartStatus } from '../api/connections.types';
 import { ORDER_SYNC_START_DEFAULT_MODES } from '../lib/order-sync-start';
 import { deriveOrderImportVerdict, type OrderImportVerdict } from '../lib/order-import-verdict';
 import { OrderImportHealth } from './order-import-health';
-import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
+import { OrderSyncRestartDialog, type OrderSyncDialogKind } from './order-sync-restart-dialog';
 
 const VERDICT_TONE: Record<OrderImportVerdict, StatusBadgeTone> = {
   ok: 'success',
@@ -48,7 +48,13 @@ interface OrderSyncPanelProps {
 
 export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElement {
   const connectionId = connection.id;
-  const [restartOpen, setRestartOpen] = useState(false);
+  // The kind outlives the closing animation, so the dialog never flips its content as it fades.
+  const [dialogKind, setDialogKind] = useState<OrderSyncDialogKind>('start');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  function openDialog(next: OrderSyncDialogKind): void {
+    setDialogKind(next);
+    setDialogOpen(true);
+  }
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const sync = useWriteAccess('sync:write', demoMode);
@@ -63,6 +69,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   // its whole history), so a start row and "Get past orders" would promise nothing.
   const hasStartChoice =
     (adapter?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES).length > 0;
+  // A period read needs a window read on the adapter: without it only the start can move.
+  const canGetPeriod = adapter?.orderWindowImport === true;
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
   const retryJobs = useRetryGroupedSyncJobsMutation();
   const { showToast } = useToast();
@@ -144,6 +152,15 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               {copy.syncNow}
             </Button>
           ) : null}
+          {canGetPeriod && write.visible ? (
+            <Button
+              tone="secondary"
+              onClick={() => openDialog('range')}
+              disabled={write.demoReadOnly}
+            >
+              {copy.getPeriod}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -202,7 +219,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               {write.visible ? (
                 <Button
                   tone="secondary"
-                  onClick={() => setRestartOpen(true)}
+                  onClick={() => openDialog('start')}
                   disabled={write.demoReadOnly}
                 >
                   {copy.change}
@@ -223,9 +240,10 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         </>
       ) : null}
       <OrderSyncRestartDialog
+        kind={dialogKind}
         connection={connection}
-        open={restartOpen}
-        onOpenChange={setRestartOpen}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
         hasFeedPosition={data?.orderStart != null && !data.orderStart.pending}
       />
     </div>
