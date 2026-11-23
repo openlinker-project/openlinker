@@ -104,6 +104,9 @@ describe('browser storage ban', () => {
         const full = join(dir, name);
         if (statSync(full).isDirectory()) walk(full);
         else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
+          // The message store is the one place allowed to touch browser storage (ADR-086 amendment, #4244);
+          // an ESLint override scopes the same exception to that single file.
+          if (name === 'notification-store.ts') continue;
           if (/(localStorage|sessionStorage)/.test(readFileSync(full, 'utf8'))) offenders.push(full);
         }
       }

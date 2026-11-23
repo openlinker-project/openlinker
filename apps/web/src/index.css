@@ -42875,13 +42875,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 :is(.release-panel, .whats-new__setup) .msg + .release-card { margin-top: -10px; }
 .release-panel .msg:has(+ .release-card),
 :is(.release-panel, .whats-new__setup) .release-card:last-child { border-bottom: 1px solid var(--border-subtle); }
-:is(.release-panel, .whats-new__setup) .release-card__actions,
-:is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] .release-card__actions {
-  margin: 0 -14px -14px -20px;
-  padding: 10px 14px 14px 20px;
-  border-top: 0;
-  border-radius: 0;
-}
 /* Spacing: the card's content hangs from the title column (icon 28 + gap 12), like a message's text,
    with more air between its parts. */
 :is(.release-panel, .whats-new__setup) .release-card { padding: 16px 16px 16px 20px; gap: 12px; }

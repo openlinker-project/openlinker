@@ -134,15 +134,19 @@ export class ReleaseItemStateRepository implements ReleaseItemStateRepositoryPor
 
   async pruneInstallationConnectionStates(liveConnectionIds: readonly string[]): Promise<number> {
     // Keys are `stepId` or `stepId:connectionId`; only the latter can go stale.
-    const result = (await this.ormRepository.query(
-      `DELETE FROM "release_item_states"
-       WHERE "scope" = 'installation'
-         AND "itemKey" ~ ':[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-         AND right("itemKey", 36) <> ALL($1::text[])
-       RETURNING "id"`,
+    // Counted inside a CTE: a bare DELETE ... RETURNING comes back from the postgres driver as a
+    // [rows, affectedCount] tuple whose length is always 2 (the same trap the eviction count hit).
+    const [{ n }] = await this.ormRepository.manager.query<{ n: number }[]>(
+      `WITH pruned AS (
+         DELETE FROM "release_item_states"
+         WHERE "scope" = 'installation'
+           AND "itemKey" ~ ':[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+           AND right("itemKey", 36) <> ALL($1::text[])
+         RETURNING "id")
+       SELECT count(*)::int AS n FROM pruned`,
       [[...liveConnectionIds]]
-    )) as unknown[];
-    return result.length;
+    );
+    return n;
   }
 
   /**

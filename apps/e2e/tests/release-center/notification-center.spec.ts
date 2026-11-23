@@ -32,6 +32,8 @@ const SEED = [
 
 async function seedMessages(page: Page): Promise<void> {
   await page.addInitScript((seed: typeof SEED) => {
+    // Re-applied below with `.call(this)`, so it is never invoked unbound.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const original = Storage.prototype.getItem;
     Storage.prototype.getItem = function (key: string): string | null {
       return key.startsWith('ol:notifications:v1:') ? JSON.stringify(seed) : original.call(this, key);

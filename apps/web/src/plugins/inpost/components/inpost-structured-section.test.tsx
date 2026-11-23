@@ -86,7 +86,7 @@ describe('InpostStructuredSection', () => {
 
     expect(syncStructuredToJson).toHaveBeenCalledWith('inpostNotifyOnLabelPurchase', 'true');
     expect(screen.getByText(/InPost ShipX/, { selector: 'p' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /notifying the marketplace/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /how marketplace notification works/i })).toBeTruthy();
   });
 
   it('writes an explicit false when the checkbox is turned off', () => {

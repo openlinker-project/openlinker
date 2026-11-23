@@ -16,12 +16,19 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useContext,
   useRef,
   useState,
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
-import { useBlocker, useLocation, useNavigate, type BlockerFunction } from 'react-router-dom';
+import {
+  UNSAFE_DataRouterContext,
+  useBlocker,
+  useLocation,
+  useNavigate,
+  type BlockerFunction,
+} from 'react-router-dom';
 import { ConfirmDialog } from '../../../shared/ui';
 import { useMessages } from '../../../shared/i18n';
 import { useReleaseCenterView } from '../components/release-center-provider';
@@ -84,6 +91,8 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   const location = useLocation();
   const triggerRef = useRef<HTMLElement | null>(null);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  // `useBlocker` only works under a data router (the app's); a plain router, as in component tests, has none.
+  const dataRouter = useContext(UNSAFE_DataRouterContext) !== null;
   // The card's own confirmation (skip the guide): Esc must answer that dialog, not open a second one.
   const [cardModalOpen, setCardModalOpen] = useState(false);
   const leaveCopy = useMessages('release-center').tour.leave;
@@ -147,7 +156,7 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   return (
     <TourContext.Provider value={controller}>
       {children}
-      {state.active ? (
+      {state.active && dataRouter ? (
         <TourLeaveGuard
           stepPaths={new Set(state.steps.map((step) => tourPathFor(step)).filter((path): path is string => path !== null))}
           onLeave={close}
