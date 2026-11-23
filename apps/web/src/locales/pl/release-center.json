@@ -177,6 +177,7 @@
   "tour": {
     "adminOnly": "Wymaga administratora",
     "back": "Wstecz",
+    "backToTarget": "Wróć do zaznaczonego elementu",
     "choices": {
       "externalPacking": "Pakuje inny system",
       "notifyLater": "Dopiero po kliknięciu „Oznacz jako nadane”",

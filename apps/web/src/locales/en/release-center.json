@@ -173,6 +173,7 @@
   "tour": {
     "adminOnly": "Needs an administrator",
     "back": "Back",
+    "backToTarget": "Back to the highlighted item",
     "choices": {
       "externalPacking": "Another system packs",
       "notifyLater": "After I mark it dispatched",

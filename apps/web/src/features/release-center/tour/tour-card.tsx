@@ -97,6 +97,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
 
   const cardRef = useRef<HTMLElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
+  // Which side of the screen the highlighted element has scrolled off, so the operator can be pointed back.
+  const [offscreen, setOffscreen] = useState<'above' | 'below' | null>(null);
   const reasonId = useId();
   const target = useTourTarget(stop?.target ?? null, state.active, state.index);
 
@@ -242,6 +244,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     let lastBox = '';
     const follow = (): void => {
       const rect = element.getBoundingClientRect();
+      const side = rect.bottom < 56 ? 'above' : rect.top > window.innerHeight - 8 ? 'below' : null;
+      setOffscreen((previous) => (previous === side ? previous : side));
       const box = `${rect.top}|${rect.left}|${rect.width}|${rect.height}`;
       if (box !== lastBox) {
         if (lastBox !== '') onScroll();
@@ -271,6 +275,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
       cancelAnimationFrame(frame);
       cancelAnimationFrame(dockFrame);
       cancelAnimationFrame(followFrame);
+      setOffscreen(null);
       window.clearTimeout(settle);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', schedule);
@@ -372,6 +377,22 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
         <div ref={ringRef} className="tour-ring" aria-hidden="true" hidden={!element} />,
         document.body
       )}
+      {element && offscreen
+        ? createPortal(
+            <button
+              type="button"
+              className="tour-pointer"
+              data-side={offscreen}
+              onClick={() =>
+                element.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+              }
+            >
+              <ReleaseIcon name="chevron" size={14} />
+              {tour.backToTarget}
+            </button>,
+            document.body
+          )
+        : null}
       <section
         ref={cardRef}
         className="tour-card"

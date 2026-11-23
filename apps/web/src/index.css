@@ -43014,3 +43014,33 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .whats-new__setup .release-card:last-child { margin: 0; box-shadow: none; }
 .whats-new__setup .release-card + .release-card { margin-top: 0; }
 .whats-new__setup .release-card:last-child { border-bottom: 0; }
+
+/* Pointer back to the tour target when the operator has scrolled it off screen: a pill on the edge it
+   left through, with a chevron toward it. Clicking scrolls the target to the middle of the screen. */
+.tour-pointer {
+  position: fixed;
+  left: 50%;
+  z-index: 62;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: auto;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(-50%);
+  animation: tour-pointer-in 180ms var(--ease-out) both;
+}
+.tour-pointer[data-side='above'] { top: calc(var(--shell-topbar-height, 52px) + 12px); }
+.tour-pointer[data-side='below'] { bottom: calc(var(--tour-card-space, 0px) + 16px); }
+.tour-pointer[data-side='above'] svg { transform: rotate(180deg); }
+.tour-pointer:hover { background: var(--accent-primary-hover); }
+@keyframes tour-pointer-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .tour-pointer { animation: none; } }
+@media (forced-colors: active) { .tour-pointer { border: 1px solid ButtonText; } }
+
