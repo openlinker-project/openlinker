@@ -31,12 +31,12 @@
   .bf-stepper .setup-stepper__connector { flex: 1; min-width: 0.5rem; align-self: center; margin-top: 0; transform-origin: left; transition: background-color var(--ux-dur) var(--ux-ease); }
   .bf-stepper .setup-stepper__indicator,
   .bf-stepper .setup-stepper__label {
-    transition: background-color var(--ux-dur) var(--ux-ease), border-color var(--ux-dur) var(--ux-ease), color var(--ux-dur) var(--ux-ease), box-shadow var(--ux-dur) var(--ux-ease);
+    transition: background-color var(--ux-dur) var(--ux-ease), border-color var(--ux-dur) var(--ux-ease), color var(--ux-dur) var(--ux-ease), box-shadow var(--ux-dur) var(--ux-ease), transform var(--ux-dur) var(--ux-ease);
   }
   .bf-stepper .setup-stepper__step--upcoming .setup-stepper__label { color: var(--text-secondary); }
-  .bf-stepper .setup-stepper__button:hover:not(:disabled):not([aria-disabled='true']) { background: var(--bg-surface-hover); }
-  .bf-stepper .setup-stepper__button:hover:not(:disabled):not([aria-disabled='true']) .setup-stepper__label { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
-  .bf-stepper .setup-stepper__button:hover:not(:disabled):not([aria-disabled='true']) .setup-stepper__indicator { border-color: var(--accent-primary); }
+  .bf-stepper .setup-stepper__button:hover:not(:disabled):not([aria-disabled='true']) { background: transparent; }
+  .bf-stepper .setup-stepper__button:hover:not(:disabled):not([aria-disabled='true']) .setup-stepper__label { color: var(--accent-primary); text-decoration: none; }
+  .bf-stepper .setup-stepper__button:hover:not(:disabled):not([aria-disabled='true']) .setup-stepper__indicator { border-color: var(--accent-primary); box-shadow: 0 0 0 4px var(--accent-primary-soft); transform: scale(1.06); }
   .bf-stepper .setup-stepper__button[aria-disabled='true'] { cursor: not-allowed; opacity: 0.7; }
   .bf-stepper .setup-stepper__button:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; box-shadow: none; }
   .bf-stepper .setup-stepper__step--attention .setup-stepper__indicator { border-color: var(--status-warning); color: var(--status-warning-fg); background: var(--status-warning-soft); }
