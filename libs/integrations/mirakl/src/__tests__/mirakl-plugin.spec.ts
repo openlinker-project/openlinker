@@ -39,6 +39,7 @@ describe('createMiraklPlugin (Empik)', () => {
       platformType: 'empik',
       supportedCapabilities: [
         'OrderSource',
+        'ReturnSourceReader',
         'OfferManager',
         'OfferLister',
         'OfferStatusReader',

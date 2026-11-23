@@ -123,6 +123,25 @@ operator indefinitely, so this waits on Empik's answer about card review. A
 bundle or multipack whose own EAN already has a card is listed like any
 product; core already sends the bundle availability as its stock.
 
+## Returns (#4279)
+
+The order source is also a `ReturnSourceReader` over RT11 (`GET /api/returns`):
+
+- **Feed** (`marketplace.returns.poll`, every 15 minutes; Mirakl allows RT11
+  at most every 5): closed `return_last_updated_from` / `_to` windows, the
+  orders feed's window rules. A changed return comes back with a new
+  `last_updated`, so the feed also carries transitions.
+- **One return**: RT11 by `return_id`, plus the order (OR11), because RT11
+  lines carry only the order line id, quantity and reason; the order adds the
+  line's `offer_sku`, title and unit price that core matches lines on.
+- **Status** (`marketplace.returns.statusSync`, hourly): re-reads open returns.
+  Terminal states declared: `CLOSED`, `REFUSED`, `CANCELED`; `RECEIVED` and
+  `NO_RECEPTION` keep being re-read.
+- The reason stays Mirakl's code (`RETURN_BROKEN_ITEM`, ...).
+
+Follows Mirakl's RT11 documentation; Empik staging has no return yet, so the
+fixture is to be checked against the first real one.
+
 ## Connecting
 
 1. In the operator's seller panel, open the user menu and generate an API key

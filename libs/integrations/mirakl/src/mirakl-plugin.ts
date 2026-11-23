@@ -50,6 +50,8 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
     // resolved by narrowing the dispatched adapter with core's guards.
     supportedCapabilities: [
       'OrderSource',
+      // Returns feed over RT11 (#4279), resolved by narrowing the order source.
+      'ReturnSourceReader',
       'OfferManager',
       'OfferLister',
       'OfferStatusReader',

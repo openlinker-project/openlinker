@@ -38,7 +38,19 @@ describe('buildMiraklSchedulerTasks', () => {
       'empik-offer-writes',
       'empik-offers-sync',
       'empik-offer-status-sync',
+      'empik-returns-poll',
+      'empik-returns-status-sync',
     ]);
+    expect(byId.get('empik-returns-poll')?.generatePayload({} as Connection)).toEqual({
+      schemaVersion: 1,
+      cursorKey: 'empik.returns.lastUpdateDate',
+      limit: 100,
+    });
+    expect(byId.get('empik-returns-status-sync')).toMatchObject({
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.statusSync',
+      enabledEnvVar: 'OL_EMPIK_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED',
+    });
     expect(byId.get('empik-offer-writes')).toMatchObject({
       requiredCapability: 'OfferManager',
       jobType: 'marketplace.offerQuantity.reconcile',

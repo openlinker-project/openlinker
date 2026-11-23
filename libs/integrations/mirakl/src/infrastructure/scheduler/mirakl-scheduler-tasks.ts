@@ -15,6 +15,11 @@
  *   links offers created in the operator panel to OL variants by EAN and SKU.
  * - **offer status** (hourly, #4277): `marketplace.offer.statusSync`; `active`
  *   and `inactivity_reasons`, plus the price and quantity the channel shows.
+ * - **returns poll** (every 15 min, #4279): `marketplace.returns.poll` over
+ *   RT11 by last-updated window. Mirakl allows RT11 at most every 5 minutes.
+ * - **returns status** (hourly, #4279): `marketplace.returns.statusSync`
+ *   re-reads open returns until a terminal state, the backstop for a change
+ *   the window missed.
  *
  * Registered unconditionally and gated at each tick by its own
  * `OL_{PLATFORM}_..._SCHEDULER_ENABLED`, which turns a task off only on the
@@ -42,6 +47,12 @@ const OFFERS_SYNC_LIMIT = 100;
 const OFFER_STATUS_CRON = '40 * * * *';
 /** Offers re-read per status pass (one OF21 read each). */
 const OFFER_STATUS_LIMIT = 100;
+const RETURNS_POLL_CRON = '*/15 * * * *';
+const RETURNS_POLL_LIMIT = 100;
+const RETURNS_STATUS_CRON = '50 * * * *';
+const RETURNS_STATUS_LIMIT = 50;
+/** Returns older than this are no longer re-read by the status sync. */
+const RETURNS_STATUS_LOOKBACK_DAYS = 90;
 
 function envPrefix(profile: MiraklOperatorProfile): string {
   return `OL_${profile.platformType.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
@@ -117,6 +128,37 @@ export function buildMiraklSchedulerTasks(profile: MiraklOperatorProfile): Sched
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
+    },
+    {
+      taskId: `${platform}-returns-poll`,
+      platformType: platform,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.poll',
+      cronExpression: RETURNS_POLL_CRON,
+      enabledEnvVar: `${env}_RETURNS_POLL_SCHEDULER_ENABLED`,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        cursorKey: `${platform}.returns.lastUpdateDate`,
+        limit: RETURNS_POLL_LIMIT,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:returns:poll:${timestamp}`,
+    },
+    {
+      taskId: `${platform}-returns-status-sync`,
+      platformType: platform,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.statusSync',
+      cronExpression: RETURNS_STATUS_CRON,
+      enabledEnvVar: `${env}_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED`,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: RETURNS_STATUS_LIMIT,
+        cursorKey: `${platform}.returns.scanOffset`,
+        lookbackDays: RETURNS_STATUS_LOOKBACK_DAYS,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:returns:status:sync:${timestamp}`,
     },
   ];
 }

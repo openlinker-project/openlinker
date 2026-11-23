@@ -24,7 +24,8 @@
  *
  * The same adapter carries the order's way back (#4276), each part in its own
  * class: the status writeback (OR23/OR24 ship, OR29 cancel), the fulfilment
- * readback (OR11), the source options (SH12) and the invoice upload (OR74).
+ * readback (OR11), the source options (SH12) and the invoice upload (OR74),
+ * and the returns feed (RT11, #4279).
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  * @implements {OrderSourcePort}
@@ -32,6 +33,7 @@
  * @implements {OrderFulfillmentReadback}
  * @implements {SourceOptionsReader}
  * @implements {OrderBillingDocumentUploader}
+ * @implements {ReturnSourceReader}
  */
 import type {
   IncomingOrder,
@@ -48,8 +50,14 @@ import type {
   SourceFulfillmentReadback,
   SourceOptionsReader,
   UploadBillingDocumentInput,
+  ReturnSourceReader,
   UploadBillingDocumentResult,
 } from '@openlinker/core/orders';
+import type {
+  IncomingReturn,
+  ReturnFeedInput,
+  ReturnFeedOutput,
+} from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
 import {
@@ -70,6 +78,7 @@ import { MiraklOrderDocumentUploader } from './mirakl-order-document-uploader';
 import { MIRAKL_ORDERS_PATH, readMiraklOrder } from './mirakl-order-reader';
 import { MiraklOrderStatusWriter } from './mirakl-order-status-writer';
 import { mapMiraklOrderToIncomingOrder } from './mirakl-order.mapper';
+import { MiraklReturnSource } from './mirakl-return-source';
 import { MiraklSourceOptions } from './mirakl-source-options';
 
 const ORDERS_PATH = MIRAKL_ORDERS_PATH;
@@ -101,7 +110,8 @@ export class MiraklOrderSourceAdapter
     OrderStatusWriteback,
     OrderFulfillmentReadback,
     SourceOptionsReader,
-    OrderBillingDocumentUploader
+    OrderBillingDocumentUploader,
+    ReturnSourceReader
 {
   private readonly logger = new Logger(MiraklOrderSourceAdapter.name);
   private readonly now: () => Date;
@@ -109,6 +119,8 @@ export class MiraklOrderSourceAdapter
   private readonly readback: MiraklFulfillmentReadback;
   private readonly options: MiraklSourceOptions;
   private readonly documentUploader: MiraklOrderDocumentUploader;
+  private readonly returns: MiraklReturnSource;
+  readonly terminalRawStatuses: readonly string[];
 
   constructor(
     private readonly connectionId: string,
@@ -132,6 +144,8 @@ export class MiraklOrderSourceAdapter
       brand,
       settings.invoiceTypeCode ?? DEFAULT_INVOICE_TYPE_CODE,
     );
+    this.returns = new MiraklReturnSource(connectionId, httpClient, this.now);
+    this.terminalRawStatuses = this.returns.terminalRawStatuses;
   }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
@@ -194,6 +208,14 @@ export class MiraklOrderSourceAdapter
 
   uploadBillingDocument(input: UploadBillingDocumentInput): Promise<UploadBillingDocumentResult> {
     return this.documentUploader.uploadBillingDocument(input);
+  }
+
+  listReturnFeed(input: ReturnFeedInput): Promise<ReturnFeedOutput> {
+    return this.returns.listReturnFeed(input);
+  }
+
+  getReturn(input: { externalReturnId: string }): Promise<IncomingReturn> {
+    return this.returns.getReturn(input);
   }
 
   private readWindow(

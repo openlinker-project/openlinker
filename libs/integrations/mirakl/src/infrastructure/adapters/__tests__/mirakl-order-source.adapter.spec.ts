@@ -7,6 +7,7 @@ import {
   isOrderBillingDocumentUploader,
   isOrderFulfillmentReadback,
   isOrderStatusWriteback,
+  isReturnSourceReader,
   isSourceOptionsReader,
 } from '@openlinker/core/orders';
 import { MiraklApiException } from '../../../domain/exceptions/mirakl-api.exception';
@@ -203,5 +204,7 @@ describe('MiraklOrderSourceAdapter way back (#4276)', () => {
     expect(isOrderFulfillmentReadback(adapter)).toBe(true);
     expect(isSourceOptionsReader(adapter)).toBe(true);
     expect(isOrderBillingDocumentUploader(adapter)).toBe(true);
+    expect(isReturnSourceReader(adapter)).toBe(true);
+    expect(adapter.terminalRawStatuses).toEqual(['CLOSED', 'REFUSED', 'CANCELED']);
   });
 });
