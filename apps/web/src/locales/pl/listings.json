@@ -1407,6 +1407,7 @@
     "compositionHeading": "Skład na {destination}",
     "compositionHint": "{n} produktów · tryb pokazuje, jak składnik trafia do oferty",
     "eanNotNeeded": "Zestaw nie potrzebuje własnego EAN. Kody mają jego produkty.",
+    "eanNotNeededPack": "Wielopak nie potrzebuje własnego EAN. Kod ma jego produkt.",
     "editingFooter": "Edycja oferty zestawu. Zmiany dotyczą tylko tej partii.",
     "expand": "Pokaż skład zestawu {name}",
     "gift": "gratis",
@@ -1426,6 +1427,7 @@
       "ownOfferWithId": "własna oferta {id}"
     },
     "noOwnEan": "bez własnego EAN",
+    "packCompositionHint": "Jeden produkt, paczka po {n} szt. · tryb pokazuje, jak trafia do oferty",
     "packHint": "Jeden produkt sprzedawany w paczce po {n} szt. {destination} wystawia go jako jeden produkt z ilością {n}.",
     "packMarker": "Wielopak · ×{n}",
     "publishComponent": "Wystaw składnik",

@@ -1277,6 +1277,7 @@
     "compositionHeading": "Set contents on {destination}",
     "compositionHint": "{n} products · the mode shows how a component enters the offer",
     "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
+    "eanNotNeededPack": "A multipack does not need its own barcode. Its product carries one.",
     "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
     "expand": "Show set contents of {name}",
     "gift": "gift",
@@ -1294,6 +1295,7 @@
       "ownOfferWithId": "own offer {id}"
     },
     "noOwnEan": "no own EAN",
+    "packCompositionHint": "One product, pack of {n} · the mode shows how it enters the offer",
     "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
     "packMarker": "Pack · ×{n}",
     "publishComponent": "List component",

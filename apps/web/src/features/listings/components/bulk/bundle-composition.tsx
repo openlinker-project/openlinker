@@ -75,7 +75,9 @@ export function BundleComposition({
         <div className="cx-h">
           <h3>{heading}</h3>
           <span className="pm-hint">
-            {interpolate(copy.compositionHint, { n: preview.components.length })}
+            {packSize !== null
+              ? interpolate(copy.packCompositionHint, { n: packSize })
+              : interpolate(copy.compositionHint, { n: preview.components.length })}
           </span>
         </div>
       ) : null}
@@ -163,7 +165,11 @@ export function BundleComposition({
           );
         })}
       </motion.ul>
-      {showEanNote ? <p className="cx-sub bundle-comp__ean">{copy.eanNotNeeded}</p> : null}
+      {showEanNote ? (
+        <p className="cx-sub bundle-comp__ean">
+          {packSize !== null ? copy.eanNotNeededPack : copy.eanNotNeeded}
+        </p>
+      ) : null}
       {mismatch && onUseSuggestedCategory ? (
         <div className="bundle-comp__category" data-testid="bundle-category-mismatch">
           <span>{copy.categoryMismatch}</span>

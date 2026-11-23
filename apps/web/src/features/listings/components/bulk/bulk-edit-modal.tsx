@@ -172,6 +172,7 @@ import {
 import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import { BundleComposition } from './bundle-composition';
+import { packSizeOf } from './bundle-kind';
 
 
 // Grouping-determining category parameters - shared across siblings, edited on
@@ -1321,7 +1322,9 @@ function BulkEditModalForm({
   const bundle =
     !isMultiVariant && row.variants[0] ? bundles?.get(row.variants[0].variantId) : undefined;
   const productTypeLabel = bundle
-    ? plural(bundle.components.length, bundleCopy.marker)
+    ? packSizeOf(bundle) !== null
+      ? interpolate(bundleCopy.packMarker, { n: packSizeOf(bundle) ?? 0 })
+      : plural(bundle.components.length, bundleCopy.marker)
     : isMultiVariant
       ? plural(row.variants.length, copy.header.variantCount)
       : copy.header.simpleProduct;
@@ -2120,7 +2123,11 @@ function BaseScopeForm({
               </div>
             ) : null}
             <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              {bundle ? bundleCopy.eanNotNeeded : copy.ean.simpleHint}
+              {bundle
+                ? packSizeOf(bundle) !== null
+                  ? bundleCopy.eanNotNeededPack
+                  : bundleCopy.eanNotNeeded
+                : copy.ean.simpleHint}
             </div>
           </div>
         ) : null}
