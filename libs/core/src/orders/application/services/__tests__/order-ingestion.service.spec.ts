@@ -2441,6 +2441,25 @@ describe('OrderIngestionService', () => {
         expect('variantId' in persisted.items[0]).toBe(false);
       });
 
+      it('falls back to the line id when the adapter reports a blank external id', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderSource.getOrder.mockResolvedValue({
+          ...incomingWithItems,
+          items: [
+            { ...incomingWithItems.items[0], productRef: { type: 'offer' as const, externalId: '  ' } },
+            incomingWithItems.items[1],
+          ],
+        });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce(missing('  '))
+          .mockResolvedValueOnce(missing('offer-b'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const items = orderRecordService.persistOrder.mock.calls[0][0].items;
+        expect(items[0].productId).toBe(`unmatched:${connectionId}:item-1`);
+      });
+
       it('keeps the channel tax rate and never reads or journals the catalogue rate', async () => {
         sourceWith({ catalogueMode: 'none' });
         orderSource.getOrder.mockResolvedValue({

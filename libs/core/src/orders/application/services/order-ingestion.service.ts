@@ -2623,7 +2623,13 @@ export class OrderIngestionService implements IOrderIngestionService {
     const channelCode = item.taxRate?.trim();
     return {
       id: item.id,
-      productId: buildUnmatchedProductId(connectionId, item.productRef.externalId),
+      // An adapter may report a blank external id (Erli's wire type only demands a
+      // string); the line id keeps the synthetic id from collapsing to
+      // `unmatched:<connection>:` and every blank line into one product.
+      productId: buildUnmatchedProductId(
+        connectionId,
+        item.productRef.externalId.trim() || item.id
+      ),
       quantity: item.quantity,
       price: item.price,
       sku: item.sku,
