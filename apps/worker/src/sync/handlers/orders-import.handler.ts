@@ -16,7 +16,7 @@ import type {
   SyncJob,
   MarketplaceOrdersImportPayloadV1,
 } from '@openlinker/core/sync';
-import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { ContendedWriteError, SyncJobExecutionError } from '@openlinker/core/sync';
 import {
   IOrderIngestionService,
   ORDER_INGESTION_SERVICE_TOKEN,
@@ -39,12 +39,12 @@ export class OrdersImportHandler implements SyncJobHandler {
       const result = await this.orderIngestion.importOrderWindow(job.connectionId, payload);
       if (result.skippedDueToLock) {
         // Another page of an import holds the connection's lock for a moment. Ending
-        // this job as ok would drop the rest of the chain, so it retries instead.
-        throw new SyncJobExecutionError(
-          'Another order import page is running on this connection; retrying',
-          job.id,
-          job.jobType,
-          job.connectionId
+        // this job as ok would drop the rest of the chain, and a failure would spend
+        // a retry attempt on contention that is not the job's fault, so the runner
+        // defers it penalty-free (#2613 / #2617) under its bounded deferral budget.
+        throw new ContendedWriteError(
+          `Another order import page is running on connection ${job.connectionId}; deferring`,
+          `marketplace.orders.import:${job.connectionId}`
         );
       }
       this.logger.log(
@@ -52,7 +52,7 @@ export class OrdersImportHandler implements SyncJobHandler {
       );
       return { outcome: 'ok' };
     } catch (error) {
-      if (error instanceof SyncJobExecutionError) {
+      if (error instanceof SyncJobExecutionError || error instanceof ContendedWriteError) {
         throw error;
       }
       if (error instanceof OrderSyncStartUnavailableError) {
