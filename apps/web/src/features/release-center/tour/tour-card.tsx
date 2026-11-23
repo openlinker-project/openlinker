@@ -9,7 +9,7 @@
  * @module features/release-center/tour
  */
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useEffect,
@@ -102,7 +102,10 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   // Which side of the screen the highlighted element has scrolled off, so the operator can be pointed back.
   const [offscreen, setOffscreen] = useState<'above' | 'below' | null>(null);
   const reasonId = useId();
-  const target = useTourTarget(stop?.target ?? null, state.active, state.index);
+  const location = useLocation();
+  // On the page a step's link leads to, the tour points there instead of at the step's own element.
+  const onFollowPage = Boolean(stop?.follow && location.pathname === stop.follow.path);
+  const target = useTourTarget(onFollowPage ? (stop?.follow?.target ?? null) : (stop?.target ?? null), state.active, state.index);
 
   useEffect(() => {
     if (target.state === 'found') dispatch({ type: 'target', state: 'found' });
@@ -354,7 +357,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   // A showcase stop with no target is a developer problem, so the operator reads nothing about it.
   if (state.target === 'missing' && !showcase) {
     // Away from the step's own page is a place to be, not a failure: say where the step lives.
-    status = stepPath && stepPath !== window.location.pathname ? tour.away : tour.missing;
+    status = stepPath && stepPath !== location.pathname ? tour.away : tour.missing;
   }
   else if (saveFailed) status = tour.saveFailed;
   else if (shownChoice) status = interpolate(tour.saved, { choice: choiceLabels[shownChoice] ?? shownChoice });
@@ -565,7 +568,9 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
               </span>
             ) : null}
           </div>
-          <p className="tour-card__body">{stepCopy.tourBody}</p>
+          <p className="tour-card__body">
+            {onFollowPage && 'followBody' in stepCopy && typeof stepCopy.followBody === 'string' ? stepCopy.followBody : stepCopy.tourBody}
+          </p>
         </div>
         {!showcase && isAdmin && spec ? (
           <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle} inert={searching}>
@@ -639,7 +644,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
             {state.target === 'missing' && !showcase ? (
               <>
                 {/* The element lives on the step's own page; the operator may simply have left it. */}
-                {stepPath && stepPath !== window.location.pathname ? (
+                {stepPath && stepPath !== location.pathname ? (
                   <Button tone="secondary" className="button--sm" onClick={() => void navigate(stepPath)}>
                     {tour.goToStep}
                   </Button>

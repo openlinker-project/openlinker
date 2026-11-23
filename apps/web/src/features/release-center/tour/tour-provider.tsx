@@ -172,7 +172,7 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
       {children}
       {state.active && dataRouter ? (
         <TourLeaveGuard
-          stepPaths={new Set(state.steps.map((step) => tourPathFor(step)).filter((path): path is string => path !== null))}
+          stepPaths={new Set(state.steps.flatMap((step) => { const stop = resolveTourStop(step); return stop ? [stop.path, ...(stop.follow ? [stop.follow.path] : [])] : []; }))}
           onLeave={close}
         />
       ) : null}

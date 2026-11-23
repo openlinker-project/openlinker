@@ -53,6 +53,11 @@ export interface ReleaseStepEntry {
   routeParams: (ctx: ReleaseStepContext) => Readonly<Record<string, string>>;
   /** Value of the `data-tour` attribute the guided tour highlights. */
   target: string;
+  /**
+   * Where the step sends the operator next (a link inside `target`). The tour stays open on that page,
+   * highlights `target` there and reads `steps.<id>.followBody` instead of `tourBody`.
+   */
+  follow?: { routePattern: string; target: string };
   appliesWhen: (ctx: ReleaseStepContext) => boolean;
   completeOn: ReleaseStepCompletion;
 }

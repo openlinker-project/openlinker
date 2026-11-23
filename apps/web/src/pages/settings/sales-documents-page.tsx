@@ -60,6 +60,7 @@ export function SalesDocumentsPage(): ReactElement {
     >
     <SettingsPageFrame
       wide
+      data-tour="sales-document-routing"
       eyebrow={copy.eyebrow}
       title={copy.title}
       short={tpl.salesMarkets.short}
