@@ -125,6 +125,7 @@ describe('OrderIngestionService', () => {
     jobQueue = {
       enqueue: jest.fn(),
       enqueueBulk: jest.fn(),
+      enqueueDetailed: jest.fn(),
     } as unknown as jest.Mocked<SyncJobQueuePort>;
 
     lock = {
@@ -939,24 +940,27 @@ describe('OrderIngestionService', () => {
     describe('newest-first history import (#4228)', () => {
       const seededKey = `${cursorKey}.seededAt`;
       let headCursor: jest.Mock;
+      let listOrdersInWindow: jest.Mock;
 
       beforeEach(() => {
         lock.acquire.mockResolvedValue('token-1');
         lock.release.mockResolvedValue(true);
         headCursor = jest.fn().mockResolvedValue('event-900');
+        listOrdersInWindow = jest.fn().mockResolvedValue({ items: [], nextCursor: null, done: true });
         (orderSource as unknown as { headCursor: jest.Mock }).headCursor = headCursor;
+        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow =
+          listOrdersInWindow;
         syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
           Promise.resolve(key === 'orders.syncStart' ? '{"mode":"all","order":"newest-first"}' : null)
         );
-        jobQueue.enqueueBulk.mockResolvedValue([]);
+        jobQueue.enqueueDetailed.mockResolvedValue({ jobId: 'j1', isExisting: false });
       });
 
       it('should seed the live feed at the head and enqueue the first import page before the marker', async () => {
-        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow = jest.fn();
         const calls: string[] = [];
-        jobQueue.enqueueBulk.mockImplementation(() => {
+        jobQueue.enqueueDetailed.mockImplementation(() => {
           calls.push('enqueue');
-          return Promise.resolve([]);
+          return Promise.resolve({ jobId: 'j1', isExisting: false });
         });
         syncCursors.advanceCursor.mockImplementation((_c: string, key: string) => {
           calls.push(`advance:${key}`);
@@ -971,18 +975,17 @@ describe('OrderIngestionService', () => {
           `advance:${seededKey}`,
           'advance:orders.syncStarted',
         ]);
-        expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
+        expect(jobQueue.enqueueDetailed).toHaveBeenCalledWith(
           expect.objectContaining({
             type: 'marketplace.orders.import',
             payload: expect.objectContaining({ direction: 'newest-first', cursor: null, page: 1 }),
-          }),
-        ]);
+          })
+        );
         expect(result.nextCursor).toBe('event-900');
         expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
       });
 
       it('should carry the chosen start date into the import window', async () => {
-        (orderSource as unknown as { listOrdersInWindow: jest.Mock }).listOrdersInWindow = jest.fn();
         syncCursors.getCursor.mockImplementation((_c: string, key: string) =>
           Promise.resolve(
             key === 'orders.syncStart'
@@ -993,16 +996,54 @@ describe('OrderIngestionService', () => {
 
         await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
-        expect(jobQueue.enqueueBulk).toHaveBeenCalledWith([
-          expect.objectContaining({ payload: expect.objectContaining({ from: '2026-10-01' }) }),
-        ]);
+        expect(jobQueue.enqueueDetailed).toHaveBeenCalledWith(
+          expect.objectContaining({ payload: expect.objectContaining({ from: '2026-10-01' }) })
+        );
       });
 
-      it('should refuse with a typed error when the adapter cannot read a window', async () => {
+      it('should mint a different run id for every seed when the head is unchanged', async () => {
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        const runIds = jobQueue.enqueueDetailed.mock.calls.map(
+          ([request]) => (request.payload as { runId: string }).runId
+        );
+        expect(runIds).toHaveLength(2);
+        expect(runIds[0]).not.toBe(runIds[1]);
+        expect(runIds[0]).toMatch(/^start:.+:event-900:[a-z0-9]+$/);
+      });
+
+      it('should throw when the first import page was swallowed by an existing key', async () => {
+        jobQueue.enqueueDetailed.mockResolvedValue({ jobId: 'j1', isExisting: true });
+
+        await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toThrow(
+          /first page of the order import was not queued/
+        );
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+        expect(syncCursors.deleteCursor).not.toHaveBeenCalled();
+      });
+
+      it('should leave the intent untouched when the pre-flight window read refuses', async () => {
+        listOrdersInWindow.mockRejectedValue(new OrderSyncStartUnavailableError('no read_all_orders'));
+
         await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toBeInstanceOf(
           OrderSyncStartUnavailableError
         );
-        expect(jobQueue.enqueueBulk).not.toHaveBeenCalled();
+        expect(listOrdersInWindow).toHaveBeenCalledWith(
+          expect.objectContaining({ direction: 'newest-first', cursor: null, limit: 1 })
+        );
+        expect(jobQueue.enqueueDetailed).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+        expect(syncCursors.deleteCursor).not.toHaveBeenCalled();
+      });
+
+      it('should refuse with a typed error when the adapter cannot read a window', async () => {
+        delete (orderSource as unknown as { listOrdersInWindow?: jest.Mock }).listOrdersInWindow;
+
+        await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toBeInstanceOf(
+          OrderSyncStartUnavailableError
+        );
+        expect(jobQueue.enqueueDetailed).not.toHaveBeenCalled();
         expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
       });
     });
@@ -1271,16 +1312,14 @@ describe('OrderIngestionService', () => {
         expect(orderSource.listOrderFeed).toHaveBeenCalled();
       });
 
-      it('should keep today behaviour when the adapter has no bootstrap capability', async () => {
+      it('should refuse with a typed error when the adapter cannot find the head', async () => {
         delete (orderSource as unknown as { headCursor?: jest.Mock }).headCursor;
-        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
-        jobQueue.enqueueBulk.mockResolvedValue([]);
 
-        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
-
-        expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
-          expect.objectContaining({ fromCursor: null })
+        await expect(service.ingestOrders(connectionId, { cursorKey, limit: 10 })).rejects.toBeInstanceOf(
+          OrderSyncStartUnavailableError
         );
+        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
       });
 
       describe('the operator start choice', () => {

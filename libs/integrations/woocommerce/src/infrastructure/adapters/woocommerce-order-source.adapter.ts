@@ -86,19 +86,14 @@ export class WooCommerceOrderSourceAdapter
   /**
    * Where a fresh connection's feed should start (#4228).
    *
-   * The operator's explicit `orders.initialSyncFrom` window wins: it is returned
-   * as the exact instant `listOrderFeed` would have started from, so seeding
-   * never narrows or contradicts a backfill the operator asked for. Otherwise
-   * it is the newest order's modification time (minus a small margin), or null
-   * for a shop with no orders. Errors propagate so core retries the poll.
+   * The newest order's modification time (minus a small margin), or null for a
+   * shop with no orders. `orders.initialSyncFrom` is deliberately NOT consulted:
+   * the operator choosing "from now" asked for the head, and returning that
+   * older instant would import the very history they declined. The setting still
+   * applies to the cursor-less "all orders" read in `listOrderFeed`. Errors
+   * propagate so core retries the poll.
    */
   async headCursor(): Promise<string | null> {
-    const config = (this.connection.config ?? {}) as unknown as WooCommerceConnectionConfig;
-    const initial = config.orders?.initialSyncFrom;
-    if (initial) {
-      return new Date(initial).toISOString();
-    }
-
     const orders = await this.httpClient.get<WooCommerceOrder[]>('/wp-json/wc/v3/orders', {
       per_page: 1,
       orderby: 'modified',
@@ -127,7 +122,7 @@ export class WooCommerceOrderSourceAdapter
    * is the same `modified_after` GMT instant `listOrderFeed` resumes from.
    *
    * The operator's explicit choice wins over `orders.initialSyncFrom`, which
-   * only supplies the start when no choice was made (see `headCursor`).
+   * only applies to the cursor-less "all orders" read.
    *
    * @throws when `date` is not a readable ISO date.
    */

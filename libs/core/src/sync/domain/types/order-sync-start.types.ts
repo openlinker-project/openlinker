@@ -82,6 +82,21 @@ export function describeInvalidOrderSyncStartDate(from: unknown, now: Date): str
   return null;
 }
 
+/**
+ * The calendar day of a `from` value as stored: a bare date stays, an ISO
+ * instant is cut to its UTC date, so the stored intent, the adapter that reads
+ * it and the "applied start" shown back to the operator all say the same day.
+ * An unparseable value is returned as is; validation runs before this.
+ */
+export function canonicalOrderSyncStartDate(from: string): string {
+  const value = from.trim();
+  if (DATE_ONLY.test(value)) {
+    return value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
+}
+
 /** The persisted wire value of an intent. */
 export function serializeOrderSyncStart(start: OrderSyncStart): string {
   // `oldest-first` is the default and is never written, so an intent stored by an
@@ -89,7 +104,7 @@ export function serializeOrderSyncStart(start: OrderSyncStart): string {
   const order = start.mode !== 'now' && start.order === 'newest-first' ? { order: start.order } : {};
   return JSON.stringify(
     start.mode === 'from'
-      ? { mode: 'from', from: start.from, ...order }
+      ? { mode: 'from', from: canonicalOrderSyncStartDate(start.from), ...order }
       : { mode: start.mode, ...order }
   );
 }

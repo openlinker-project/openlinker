@@ -20,6 +20,15 @@ describe('order sync start intent', () => {
       expect(parseOrderSyncStart(serializeOrderSyncStart(start))).toEqual(start);
     });
 
+    it('should store an instant as its UTC calendar day when serializing a from start', () => {
+      expect(
+        serializeOrderSyncStart({ mode: 'from', from: '2026-10-01T23:30:00.000Z', order: 'oldest-first' })
+      ).toBe('{"mode":"from","from":"2026-10-01"}');
+      expect(serializeOrderSyncStart({ mode: 'from', from: '2026-10-01' })).toBe(
+        '{"mode":"from","from":"2026-10-01"}'
+      );
+    });
+
     it.each([
       [null],
       [undefined],

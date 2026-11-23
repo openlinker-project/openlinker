@@ -35,6 +35,8 @@ import {
   ORDER_SYNC_STARTED_CURSOR_KEY,
   parseOrderSyncStart,
   serializeOrderSyncStarted,
+  buildOrdersImportRequest,
+  generateOrdersImportNonce,
   type MarketplaceOrdersImportPayloadV1,
   type OrderSyncStart,
 } from '@openlinker/core/sync';
@@ -409,7 +411,11 @@ export class OrderIngestionService implements IOrderIngestionService {
     } else if (isOrderFeedBootstrap(orderSource)) {
       startCursor = await orderSource.headCursor();
     } else {
-      return null;
+      // Reading history instead would import everything the operator did not
+      // ask for, silently. Fail with the remedy, like the "from" case above.
+      throw new OrderSyncStartUnavailableError(
+        `Order sync was set to start from now, but this adapter cannot find where "now" is. Choose "all orders" instead (connection: ${connectionId})`
+      );
     }
 
     if (startCursor === null || startCursor.trim() === '') {
@@ -477,7 +483,21 @@ export class OrderIngestionService implements IOrderIngestionService {
       return { fetched: 0, enqueued: 0, nextCursor: null, committed: false, skippedDueToLock: false };
     }
 
-    const runId = `start:${cursorKey}:${head}`;
+    // Pre-flight: one window read BEFORE anything is written, so a typed refusal
+    // (a start date the shop cannot filter on, a missing scope) leaves the intent
+    // in place for the operator to fix, instead of consuming it and failing on
+    // page 1 of a chain that already took the seed.
+    await orderSource.listOrdersInWindow({
+      ...(intent.mode === 'from' ? { from: intent.from } : {}),
+      direction: 'newest-first',
+      cursor: null,
+      limit: 1,
+    });
+
+    // The nonce is per seed: two restarts at an unchanged head must be two runs,
+    // or page 1's dedupe key swallows the second. A crash-and-retry before the
+    // marker mints a new run, which is harmless (the per-order key is idempotent).
+    const runId = `start:${cursorKey}:${head}:${generateOrdersImportNonce()}`;
     const first: MarketplaceOrdersImportPayloadV1 = {
       schemaVersion: 1,
       runId,
@@ -486,7 +506,15 @@ export class OrderIngestionService implements IOrderIngestionService {
       cursor: null,
       page: 1,
     };
-    await this.jobQueue.enqueueBulk([this.buildImportRequest(connectionId, first)]);
+    const enqueued = await this.jobQueue.enqueueDetailed(
+      buildOrdersImportRequest(connectionId, first)
+    );
+    if (enqueued.isExisting) {
+      // A swallowed first page would read as success and lose the whole history.
+      throw new Error(
+        `The first page of the order import was not queued because its key already exists (run: ${runId}, connection: ${connectionId})`
+      );
+    }
 
     await this.syncCursors.advanceCursor(connectionId, cursorKey, head);
     await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
@@ -518,26 +546,6 @@ export class OrderIngestionService implements IOrderIngestionService {
         }`
       );
     }
-  }
-
-  private buildImportRequest(
-    connectionId: string,
-    payload: MarketplaceOrdersImportPayloadV1
-  ): {
-    type: 'marketplace.orders.import';
-    connectionId: string;
-    payload: Record<string, unknown>;
-    options: { dedupeKey: string };
-  } {
-    return {
-      type: 'marketplace.orders.import',
-      connectionId,
-      // Spread: an interface is not assignable to an index-signature type, its copy is.
-      payload: { ...payload },
-      options: {
-        dedupeKey: `marketplace:${connectionId}:orders-import:${payload.runId}:${payload.page}`,
-      },
-    };
   }
 
   private assertImportWindowIsSane(payload: MarketplaceOrdersImportPayloadV1): void {
@@ -615,7 +623,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // Enqueued after the children: a failure here fails this page, and the retry
         // re-reads the same cursor, so no page is skipped.
         await this.jobQueue.enqueueBulk([
-          this.buildImportRequest(connectionId, {
+          buildOrdersImportRequest(connectionId, {
             ...payload,
             cursor: page.nextCursor,
             page: payload.page + 1,

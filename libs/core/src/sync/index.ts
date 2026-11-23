@@ -18,6 +18,7 @@ export {
   SyncJobQueuePort,
   EnqueueJobRequest,
   EnqueueJobOptions,
+  EnqueueJobOutcome,
 } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
 export { shipmentDispatchLockKey } from './application/services/order-scoped-lock-keys';
@@ -306,3 +307,8 @@ export * from './sync.tokens';
 // sub-path (#594). Plugins must not import them from here.
 // `ConnectionCursorOrmEntity` has no external consumer and is intentionally not
 // promoted to the sub-barrel — add it if/when a test fixture needs it.
+
+export {
+  generateOrdersImportNonce,
+  buildOrdersImportRequest,
+} from './domain/types/orders-import-run.types';
