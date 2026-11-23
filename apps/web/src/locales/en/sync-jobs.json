@@ -291,6 +291,13 @@
       "toHelp": "Leave empty to read up to the newest order.",
       "toLabel": "Last day"
     },
+    "orderScope": {
+      "label": "What to sync",
+      "new": "From the saved position (cursor)",
+      "newHint": "Reads orders newer than the saved position, so only orders OpenLinker has not imported yet. The import start does not move.",
+      "range": "Between two dates",
+      "rangeHint": "Reads the orders placed between two days, once. Orders OpenLinker already has are updated, not copied twice."
+    },
     "requiredField": "{field} *",
     "title": "Trigger sync",
     "toast": {

@@ -1110,6 +1110,7 @@
     "errorTitle": "Nie udało się wczytać importu zamówień",
     "health": {
       "failures": {
+        "banner": "{count} nie udało się zaimportować",
         "count": {
           "few": "{n} zamówienia",
           "many": "{n} zamówień",
@@ -1119,14 +1120,16 @@
         "fixLabel": "Co zrobić:",
         "latest": "Ostatnie: zamówienie {order}, {when}",
         "original": "Oryginalny komunikat (nieprzetłumaczony):",
+        "panelDescription": "Przyczyny zamówień, których nie udało się zaimportować, wraz z tym, co z nimi zrobić.",
+        "panelMeta": "Usuń przyczynę, a potem ponów wszystkie naraz.",
         "reasons": {
           "missing-mapping": {
-            "fix": "Zsynchronizuj produkty ze sklepu, a potem użyj poniżej Ponów nieudane zamówienia.",
+            "fix": "Zsynchronizuj produkty ze sklepu, a potem użyj Ponów nieudane zamówienia.",
             "text": "W tych zamówieniach jest produkt, którego OpenLinker nie zna, więc nie da się ich utworzyć.",
             "title": "nieznany produkt"
           },
           "other": {
-            "fix": "Przeczytaj błąd, usuń przyczynę, a potem użyj poniżej Ponów nieudane zamówienia.",
+            "fix": "Przeczytaj błąd, usuń przyczynę, a potem użyj Ponów nieudane zamówienia.",
             "text": "OpenLinker nie mógł zaimportować tych zamówień. Oryginalny komunikat jest poniżej.",
             "title": "inny błąd"
           }
@@ -1135,7 +1138,8 @@
         "retryDone": "Nieudane zamówienia wróciły do kolejki.",
         "retrying": "Ponawianie…",
         "syncProducts": "Synchronizuj produkty…",
-        "title": "Zamówienia, które się nie udały"
+        "title": "Zamówienia, które się nie udały",
+        "view": "Zobacz"
       },
       "fromDay": "od {date}",
       "fromStart": "od początku",
@@ -1188,6 +1192,7 @@
       "title": "Importuj starsze zamówienia"
     },
     "retry": "Ponów",
+    "startLabel": "Początek importu",
     "startText": {
       "all": "Wszystkie zamówienia ze sklepu, {order}.",
       "from": "Zamówienia od {date}, {order}. Wcześniejsze zostają w sklepie.",
@@ -1215,7 +1220,7 @@
     },
     "verdictText": {
       "behind": "Sklepu nie sprawdzano od {when}.",
-      "failing": "Nie wszystkie zamówienia udało się zaimportować. Szczegóły poniżej.",
+      "failing": "Nie wszystkie zamówienia udało się zaimportować.",
       "notChecked": "Sklep nie miał jeszcze udanego sprawdzenia.",
       "ok": "Sklep był niedawno sprawdzany i wszystkie zamówienia wchodzą bez błędów.",
       "unknown": "Dane o imporcie zamówień są teraz niedostępne."

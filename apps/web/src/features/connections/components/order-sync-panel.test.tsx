@@ -4,7 +4,7 @@
  * @module features/connections/components
  */
 import type { ReactElement } from 'react';
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
@@ -207,19 +207,25 @@ describe('OrderSyncPanel', () => {
       });
     }
 
-    it('should show the figures, each failing cause with its fix, and a running history import', async () => {
+    it('should show the figures, a failure banner and, in the panel, each cause with its fix', async () => {
+      const user = userEvent.setup();
       renderHealth(makeStatus({ orderImport: importFigures }));
 
       expect(await screen.findByText('Imported in the last 24 hours')).toBeInTheDocument();
-      expect(screen.getByText('42')).toBeInTheDocument();
+      expect(await screen.findByText('42')).toBeInTheDocument();
       expect(screen.getByText('Needs attention')).toBeInTheDocument();
-      expect(screen.getByText(/2 orders · unknown product/)).toBeInTheDocument();
-      expect(screen.getByText(/Latest: order 37/)).toBeInTheDocument();
-      expect(screen.getByText(/Sync products from the shop, then use Retry failed orders below/)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Sync products…' })).toBeInTheDocument();
-      expect(screen.getByText('History import in progress')).toBeInTheDocument();
-      expect(screen.getByText(/Newest first · from .* · Started /)).toBeInTheDocument();
+      expect(screen.getByText('2 orders could not be imported')).toBeInTheDocument();
+      expect(screen.queryByText(/unknown product/)).not.toBeInTheDocument();
+
       expect(screen.getByRole('button', { name: 'Import older orders…' })).toBeInTheDocument();
+      expect(screen.getByText('History import in progress')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'View' }));
+
+      expect(await screen.findByText(/2 orders · unknown product/)).toBeInTheDocument();
+      expect(screen.getByText(/Latest: order 37/)).toBeInTheDocument();
+      expect(screen.getByText(/Sync products from the shop, then use Retry failed orders/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Sync products…' })).toBeInTheDocument();
     });
 
     it('should send the operator to Actions on the product sync from the failure card', async () => {
@@ -237,6 +243,7 @@ describe('OrderSyncPanel', () => {
         { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
       );
 
+      await user.click(await screen.findByRole('button', { name: 'View' }));
       await user.click(await screen.findByRole('button', { name: 'Sync products…' }));
 
       expect(screen.getByTestId('location')).toHaveTextContent(
@@ -261,6 +268,8 @@ describe('OrderSyncPanel', () => {
           },
         }),
       );
+
+      await userEvent.setup().click(await screen.findByRole('button', { name: 'View' }));
 
       expect(await screen.findByText(/1 order · other error/)).toBeInTheDocument();
       expect(screen.getByText(/boom/)).toBeInTheDocument();
@@ -336,6 +345,27 @@ describe('OrderSyncPanel', () => {
 
     expect(await screen.findByText('Up to date')).toBeInTheDocument();
     expect(screen.queryByText('Waiting to import')).not.toBeInTheDocument();
+  });
+
+  it('hides the start row and the import button for an adapter that cannot start from a chosen point', async () => {
+    const apiClient = createMockApiClient({
+      connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          { adapterKey: 'prestashop.webservice.v1', platformType: 'prestashop', isDefault: true },
+        ]),
+      },
+    });
+    renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('button', { name: 'Check for new orders' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Import older orders…' })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('Import start')).not.toBeInTheDocument();
   });
 
   describe('import older orders', () => {

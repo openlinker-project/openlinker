@@ -1084,6 +1084,7 @@
     "errorTitle": "Could not load order import",
     "health": {
       "failures": {
+        "banner": "{count} could not be imported",
         "count": {
           "one": "{n} order",
           "other": "{n} orders"
@@ -1091,14 +1092,16 @@
         "fixLabel": "What to do:",
         "latest": "Latest: order {order}, {when}",
         "original": "Original message (not translated):",
+        "panelDescription": "The causes of the orders that could not be imported, with what to do about each.",
+        "panelMeta": "Fix the cause, then retry them all at once.",
         "reasons": {
           "missing-mapping": {
-            "fix": "Sync products from the shop, then use Retry failed orders below.",
+            "fix": "Sync products from the shop, then use Retry failed orders.",
             "text": "These orders contain a product OpenLinker does not know, so they cannot be created.",
             "title": "unknown product"
           },
           "other": {
-            "fix": "Read the error, fix the cause, then use Retry failed orders below.",
+            "fix": "Read the error, fix the cause, then use Retry failed orders.",
             "text": "OpenLinker could not import these orders. The original message is below.",
             "title": "other error"
           }
@@ -1107,7 +1110,8 @@
         "retryDone": "Failed orders are back in the queue.",
         "retrying": "Retrying…",
         "syncProducts": "Sync products…",
-        "title": "Orders that failed"
+        "title": "Orders that failed",
+        "view": "View"
       },
       "fromDay": "from {date}",
       "fromStart": "from the beginning",
@@ -1160,6 +1164,7 @@
       "title": "Import older orders"
     },
     "retry": "Retry",
+    "startLabel": "Import start",
     "startText": {
       "all": "Every order the shop has, {order}.",
       "from": "Orders since {date}, {order}. Earlier orders stay in the shop.",
@@ -1187,7 +1192,7 @@
     },
     "verdictText": {
       "behind": "The shop has not been checked for {when}.",
-      "failing": "Some orders could not be imported. Details below.",
+      "failing": "Some orders could not be imported.",
       "notChecked": "There is no successful check of the shop yet.",
       "ok": "The shop was checked recently and every order came in without errors.",
       "unknown": "Order import figures are not available right now."

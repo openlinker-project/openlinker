@@ -40641,29 +40641,25 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* ── Order import health detail (#4228) ── */
 .order-import-health {
   display: grid;
-  gap: var(--space-4);
-  margin-top: var(--space-4);
+  gap: var(--space-6, 2rem);
+  margin-top: var(--space-5, 1.5rem);
 }
 .order-import-health__stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3) 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-4) var(--space-6, 2rem);
   margin: 0;
 }
 .order-import-health__stat {
   display: grid;
+  align-content: start;
   gap: var(--space-1);
-  padding-right: var(--space-6, 2rem);
-  min-width: 8rem;
+  min-width: 0;
 }
-.order-import-health__stat + .order-import-health__stat {
-  padding-left: var(--space-6, 2rem);
-  border-left: 1px solid var(--border-subtle);
-}
-@media (max-width: 520px) {
+@media (min-width: 640px) {
   .order-import-health__stat + .order-import-health__stat {
-    padding-left: 0;
-    border-left: 0;
+    padding-left: var(--space-6, 2rem);
+    border-left: 1px solid var(--border-subtle);
   }
 }
 .order-import-health__stat dt {
@@ -40672,10 +40668,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .order-import-health__stat dd {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.5rem;
+  line-height: 1.2;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+}
+.order-import-health__stat--attention dd {
+  color: var(--status-warning-fg);
 }
 .order-import-health__run {
   display: flex;
@@ -40718,29 +40718,67 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   }
 }
 
+.order-import-health__alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.order-import-health__alert-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+.order-import-health__alert-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-import-health__panel-meta {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
 .order-import-health__failure-list {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: var(--space-3);
 }
 .order-import-health__failure {
-  display: grid;
-  gap: var(--space-1);
   margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-left: 3px solid var(--status-warning);
-  border-radius: var(--radius-md);
-  background: var(--status-warning-soft);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border-subtle);
   overflow-wrap: anywhere;
+}
+.order-import-health__failure:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 .order-import-health__failure p {
   margin: 0;
 }
 .order-import-health__failure-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   font-weight: 600;
   color: var(--text-primary);
+}
+.order-import-health__failure-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+.order-import-health__failure-inner {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-left: calc(8px + var(--space-3));
 }
 .order-import-health__failure-text {
   font-size: 0.875rem;
@@ -40749,20 +40787,24 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-import-health__failure-meta,
 .order-import-health__failure-original {
   font-size: 0.8125rem;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 .order-import-health__failure-fix {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.order-import-health__failure-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1) var(--space-2);
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
   font-size: 0.875rem;
-  color: var(--text-primary);
 }
 .order-import-health__failure-original span {
   font-weight: 600;
 }
-
 
 .order-sync-panel__actions {
   display: flex;
@@ -40803,8 +40845,26 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
+.order-sync-panel__start-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.order-sync-panel__start-main {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.order-sync-panel__start-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
 .order-sync-panel__start {
-  margin-top: var(--space-3);
   color: var(--text-primary);
 }
 
@@ -40814,22 +40874,40 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-primary);
 }
 
-/* "Change" next to the start sentence reads as a link, not as a second page action. */
-.order-sync-panel__start .button.button--ghost {
-  min-height: 0;
-  padding: 0 var(--space-1);
-  color: var(--accent-primary);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  vertical-align: baseline;
+/* ── Order import motion (#4228): one orchestrated entrance, nothing looping ── */
+@keyframes order-import-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-
-.order-import-health__retry {
-  margin: var(--space-3) 0 0;
-}
-
-@media (pointer: coarse) {
-  .order-sync-panel__start .button.button--ghost {
-    min-height: 44px;
+@media (prefers-reduced-motion: no-preference) {
+  .order-sync-panel > * {
+    animation: order-import-rise 420ms var(--ease-out) both;
+  }
+  .order-sync-panel > :nth-child(2) {
+    animation-delay: 40ms;
+  }
+  .order-sync-panel > :nth-child(3) {
+    animation-delay: 80ms;
+  }
+  .order-sync-panel > :nth-child(4) {
+    animation-delay: 120ms;
+  }
+  .order-sync-panel > :nth-child(5) {
+    animation-delay: 160ms;
+  }
+  .order-sync-panel > :nth-child(n + 6) {
+    animation-delay: 200ms;
+  }
+  .order-import-health__failure {
+    animation: order-import-rise 480ms var(--ease-out) 240ms both;
+  }
+  .order-import-health__stat dd {
+    transition: color 200ms var(--ease-out);
   }
 }

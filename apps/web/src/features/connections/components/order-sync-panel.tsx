@@ -24,6 +24,7 @@ import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-statu
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useDemoMode } from '../../system';
+import { useAdaptersQuery } from '../../adapters';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
@@ -53,6 +54,13 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const navigate = useNavigate();
   const copy = useMessages('connections').orderSyncPanel;
   const format = useFormat();
+  const adapters = useAdaptersQuery();
+  const adapter =
+    adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
+    adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault);
+  // An adapter that declares no start modes cannot start from a chosen point (it reads
+  // its whole history), so a start row and "Import older orders" would promise nothing.
+  const hasStartChoice = adapter === undefined || (adapter.orderSyncStartModes?.length ?? 0) > 0;
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
   const retryJobs = useRetryGroupedSyncJobsMutation();
   const { showToast } = useToast();
@@ -91,8 +99,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const startedAt = data?.orderSyncStartedAt ?? null;
   const verdict = deriveOrderImportVerdict(data?.orderImport ?? null, new Date(), data?.status);
   // What to do about the verdict. Failures carry their own fix inside each cause's card.
-  const nextStep =
-    verdict === 'ok' || verdict === 'failing' ? null : copy.verdictNext[verdict];
+  const nextStep = verdict === 'ok' || verdict === 'failing' ? null : copy.verdictNext[verdict];
 
   // The start is stated as the SETTING it is (what was chosen and what that means for
   // older orders), never as activity, and never with a date that is only the time a
@@ -103,7 +110,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         ? copy.startText.unknown
         : interpolate(copy.startText.started, { date: format.dateTime(fallbackAt) });
     }
-    const order = start.order === 'newest-first' ? copy.orderPhrase.newest : copy.orderPhrase.oldest;
+    const order =
+      start.order === 'newest-first' ? copy.orderPhrase.newest : copy.orderPhrase.oldest;
     const date = start.from !== null ? format.date(`${start.from}T12:00:00`) : '';
     if (start.pending) {
       const what =
@@ -121,7 +129,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   }
 
   return (
-    <div className="panel panel--dense">
+    <div className="panel panel--dense order-sync-panel">
       <div className="panel__header">
         <h3 className="section-title">{copy.title}</h3>
         <div className="order-sync-panel__actions">
@@ -181,21 +189,25 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               <strong>{copy.nextLabel}</strong> {nextStep}
             </p>
           ) : null}
-          <p className="order-sync-panel__start">
-            {describeStart(data.orderStart, startedAt)}
-            {write.visible ? (
-              <>
-                {' '}
+          {hasStartChoice ? (
+            <div className="order-sync-panel__start-row">
+              <div className="order-sync-panel__start-main">
+                <span className="order-sync-panel__start-label">{copy.startLabel}</span>
+                <p className="order-sync-panel__start">
+                  {describeStart(data.orderStart, startedAt)}
+                </p>
+              </div>
+              {write.visible ? (
                 <Button
-                  tone="ghost"
+                  tone="secondary"
                   onClick={() => setRestartOpen(true)}
                   disabled={write.demoReadOnly}
                 >
                   {copy.change}
                 </Button>
-              </>
-            ) : null}
-          </p>
+              ) : null}
+            </div>
+          ) : null}
           <OrderImportHealth
             orderImport={data.orderImport}
             onRetry={sync.visible && !sync.demoReadOnly ? () => void retryFailed() : undefined}
