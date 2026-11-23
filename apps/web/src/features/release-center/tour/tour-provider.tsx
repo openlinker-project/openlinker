@@ -57,9 +57,23 @@ function TourLeaveGuard({
 }): ReactElement {
   const pathsRef = useRef(stepPaths);
   pathsRef.current = stepPaths;
+  // A link inside the highlighted area is the step telling the operator where to go, so following it is not leaving.
+  const followedAt = useRef(0);
+  useEffect(() => {
+    const onClick = (event: MouseEvent): void => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-tour] a[href], a[href][data-tour]')) {
+        followedAt.current = Date.now();
+      }
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
   const shouldBlock = useCallback<BlockerFunction>(
     ({ currentLocation, nextLocation }) =>
-      currentLocation.pathname !== nextLocation.pathname && !pathsRef.current.has(nextLocation.pathname),
+      currentLocation.pathname !== nextLocation.pathname &&
+      !pathsRef.current.has(nextLocation.pathname) &&
+      Date.now() - followedAt.current > 1500,
     []
   );
   const blocker = useBlocker(shouldBlock);

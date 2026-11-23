@@ -352,7 +352,10 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
 
   let status = '';
   // A showcase stop with no target is a developer problem, so the operator reads nothing about it.
-  if (state.target === 'missing' && !showcase) status = tour.missing;
+  if (state.target === 'missing' && !showcase) {
+    // Away from the step's own page is a place to be, not a failure: say where the step lives.
+    status = stepPath && stepPath !== window.location.pathname ? tour.away : tour.missing;
+  }
   else if (saveFailed) status = tour.saveFailed;
   else if (shownChoice) status = interpolate(tour.saved, { choice: choiceLabels[shownChoice] ?? shownChoice });
 

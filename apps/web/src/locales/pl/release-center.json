@@ -185,6 +185,7 @@
   },
   "tour": {
     "adminOnly": "Wymaga administratora",
+    "away": "Jesteś na innej stronie niż ten krok. Zrób tutaj, co trzeba, a potem wróć do kroku przyciskiem poniżej.",
     "back": "Wstecz",
     "backToTarget": "Wróć do zaznaczonego elementu",
     "choices": {

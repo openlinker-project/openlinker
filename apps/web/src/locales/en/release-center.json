@@ -181,6 +181,7 @@
   },
   "tour": {
     "adminOnly": "Needs an administrator",
+    "away": "You are on a different page than this step. Do what is needed here, then come back with the button below.",
     "back": "Back",
     "backToTarget": "Back to the highlighted item",
     "choices": {
