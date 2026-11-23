@@ -9,6 +9,7 @@
  * @module features/release-center/tour
  */
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useEffect,
@@ -97,6 +98,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
 
   const cardRef = useRef<HTMLElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
   // Which side of the screen the highlighted element has scrolled off, so the operator can be pointed back.
   const [offscreen, setOffscreen] = useState<'above' | 'below' | null>(null);
   const reasonId = useId();
@@ -340,6 +342,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const positionInRelease = inRelease.findIndex((group) => group.key === tourItemKey(step));
   const groupIndex = groups.findIndex((group) => group.key === tourItemKey(step));
   const isLast = state.index === state.steps.length - 1;
+  const stepPath = resolveTourStop(step)?.path ?? null;
   const blocked = !showcase && isAdmin && step.importance === 'required' && !done;
   const choiceLabels = tour.choices as Record<string, string>;
   const shownChoice = savedChoice ?? pressed;
@@ -610,10 +613,18 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
               </Button>
             ) : null}
             {state.target === 'missing' && !showcase ? (
-              // A step that cannot be shown must never trap the walk: skipping always moves on.
-              <Button tone="primary" className="button--sm" onClick={() => (isLast ? onClose() : dispatch({ type: 'skip' }))}>
-                {tour.skip} <ReleaseIcon name="arrow-right" size={14} />
-              </Button>
+              <>
+                {/* The element lives on the step's own page; the operator may simply have left it. */}
+                {stepPath && stepPath !== window.location.pathname ? (
+                  <Button tone="secondary" className="button--sm" onClick={() => void navigate(stepPath)}>
+                    {tour.goToStep}
+                  </Button>
+                ) : null}
+                {/* A step that cannot be shown must never trap the walk: skipping always moves on. */}
+                <Button tone="primary" className="button--sm" onClick={() => (isLast ? onClose() : dispatch({ type: 'skip' }))}>
+                  {tour.skip} <ReleaseIcon name="arrow-right" size={14} />
+                </Button>
+              </>
             ) : (
               <Button
                 tone="primary"

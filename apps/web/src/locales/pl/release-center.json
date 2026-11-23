@@ -186,13 +186,14 @@
     },
     "close": "Zamknij przewodnik",
     "finish": "Gotowe",
+    "goToStep": "Wróć na stronę kroku",
     "leave": {
       "confirm": "Zamknij przewodnik",
       "description": "Przewodnik się zamknie, a postęp nie zostanie zapamiętany. Możesz uruchomić go ponownie z dzwonka.",
       "stay": "Zostań w przewodniku",
       "title": "Zamknąć przewodnik?"
     },
-    "missing": "Tego elementu nie ma na ekranie. Przejdź do następnego kroku.",
+    "missing": "Nie widzę tego elementu na ekranie. Może być na innej stronie albo ukryty dla Twojej roli. Wróć na stronę kroku albo pomiń ten krok.",
     "next": "Dalej",
     "noRelease": "Inne",
     "noReleaseFull": "Ogólne, poza wydaniami",

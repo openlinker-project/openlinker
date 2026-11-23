@@ -182,13 +182,14 @@
     },
     "close": "Close the tour",
     "finish": "Done",
+    "goToStep": "Back to this step's page",
     "leave": {
       "confirm": "Close the guide",
       "description": "The guide will close and your place will not be remembered. You can start it again from the bell.",
       "stay": "Keep going",
       "title": "Close the guide?"
     },
-    "missing": "This element is not on the screen. Skip to the next step.",
+    "missing": "I can't find this on the screen. You may have left the page it lives on, or the element is hidden for your role. Go back to the page, or skip this step.",
     "next": "Next",
     "noRelease": "Other",
     "noReleaseFull": "General, outside any release",

@@ -21,7 +21,7 @@ import {
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useBlocker, useLocation, useNavigate, type BlockerFunction } from 'react-router-dom';
 import { ConfirmDialog } from '../../../shared/ui';
 import { useMessages } from '../../../shared/i18n';
 import { useReleaseCenterView } from '../components/release-center-provider';
@@ -34,6 +34,48 @@ import { INITIAL_TOUR_STATE, tourReducer } from './tour-reducer';
 
 export function tourPathFor(step: TourStepInput): string | null {
   return resolveTourStop(step)?.path ?? null;
+}
+
+/**
+ * Holds in-app navigation the operator starts while a guide is running, and asks before closing the guide.
+ * The tour's own page changes (one step to the next) are never held: they land on the path of one of its
+ * steps. Needs a data router (`useBlocker`); the app mounts `createBrowserRouter`.
+ */
+function TourLeaveGuard({
+  stepPaths,
+  onLeave,
+}: {
+  stepPaths: ReadonlySet<string>;
+  onLeave: () => void;
+}): ReactElement {
+  const pathsRef = useRef(stepPaths);
+  pathsRef.current = stepPaths;
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation }) =>
+      currentLocation.pathname !== nextLocation.pathname && !pathsRef.current.has(nextLocation.pathname),
+    []
+  );
+  const blocker = useBlocker(shouldBlock);
+  const copy = useMessages('release-center').tour.leave;
+  return (
+    <ConfirmDialog
+      open={blocker.state === 'blocked'}
+      onOpenChange={(open) => {
+        if (!open && blocker.state === 'blocked') blocker.reset();
+      }}
+      title={copy.title}
+      description={copy.description}
+      cancelLabel={copy.stay}
+      confirmLabel={copy.confirm}
+      initialFocus="cancel"
+      className="dialog__content--elevated"
+      overlayClassName="dialog__overlay--elevated"
+      onConfirm={() => {
+        onLeave();
+        if (blocker.state === 'blocked') blocker.proceed();
+      }}
+    />
+  );
 }
 
 export function TourProvider({ children }: PropsWithChildren): ReactElement {
@@ -105,6 +147,12 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   return (
     <TourContext.Provider value={controller}>
       {children}
+      {state.active ? (
+        <TourLeaveGuard
+          stepPaths={new Set(state.steps.map((step) => tourPathFor(step)).filter((path): path is string => path !== null))}
+          onLeave={close}
+        />
+      ) : null}
       {state.active ? (
         <TourCard
           state={state}
