@@ -217,7 +217,7 @@ describe('OrderSyncPanel', () => {
       expect(screen.getByText('2 orders could not be imported')).toBeInTheDocument();
       expect(screen.queryByText(/unknown product/)).not.toBeInTheDocument();
 
-      expect(screen.getByRole('button', { name: 'Get past orders…' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Change start…' })).toBeInTheDocument();
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'View' }));
@@ -368,7 +368,7 @@ describe('OrderSyncPanel', () => {
 
     expect(await screen.findByRole('button', { name: 'Check for new orders' })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Get past orders…' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Change start…' })).not.toBeInTheDocument();
     });
     expect(screen.queryByText('Import start')).not.toBeInTheDocument();
   });
@@ -398,13 +398,13 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: 'Get past orders…' }));
-      await user.click(await screen.findByRole('button', { name: 'Import orders' }));
+      await user.click(await screen.findByRole('button', { name: 'Get orders from a period…' }));
+      await user.click(await screen.findByRole('button', { name: 'Get orders' }));
       expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
       expect(importOrders).not.toHaveBeenCalled();
 
       fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
-      await user.click(screen.getByRole('button', { name: 'Import orders' }));
+      await user.click(screen.getByRole('button', { name: 'Get orders' }));
 
       expect(importOrders).toHaveBeenCalledWith('conn_1', {
         from: '2026-10-01',
@@ -418,7 +418,7 @@ describe('OrderSyncPanel', () => {
       const user = userEvent.setup();
       renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
 
-      await user.click(await screen.findByRole('button', { name: 'Get past orders…' }));
+      await user.click(await screen.findByRole('button', { name: 'Change start…' }));
 
       expect(
         await screen.findByText(
@@ -451,7 +451,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: 'Get past orders…' }));
+      await user.click(await screen.findByRole('button', { name: 'Change start…' }));
       await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
       await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
@@ -481,7 +481,7 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: 'Get past orders…' }));
+      await user.click(await screen.findByRole('button', { name: 'Change start…' }));
       await user.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
 
       expect(screen.getByRole('button', { name: 'Apply change' })).toBeDisabled();
