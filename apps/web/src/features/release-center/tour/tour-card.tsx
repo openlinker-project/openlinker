@@ -372,6 +372,15 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     dispatch({ type: 'skipItem' });
   };
 
+  // A missing optional step is handled too: the operator was told and moved on, and it must not stay open for ever.
+  const handleSkipMissing = (): void => {
+    if (isAdmin && step.importance === 'optional' && !done) {
+      steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
+    }
+    if (isLast) onClose();
+    else dispatch({ type: 'skip' });
+  };
+
   const handleStaysAsIs = (): void => {
     steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
     if (isLast) onClose();
@@ -625,7 +634,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                   </Button>
                 ) : null}
                 {/* A step that cannot be shown must never trap the walk: skipping always moves on. */}
-                <Button tone="primary" className="button--sm" onClick={() => (isLast ? onClose() : dispatch({ type: 'skip' }))}>
+                <Button tone="primary" className="button--sm" onClick={handleSkipMissing}>
                   {tour.skip} <ReleaseIcon name="arrow-right" size={14} />
                 </Button>
               </>
