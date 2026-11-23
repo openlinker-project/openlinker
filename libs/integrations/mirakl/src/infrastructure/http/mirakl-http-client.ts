@@ -260,6 +260,9 @@ export class MiraklHttpClient implements IMiraklHttpClient {
           new Blob([body.file.content], { type: body.file.contentType }),
           body.file.fileName,
         );
+        for (const [name, value] of Object.entries(body.file.fields ?? {})) {
+          form.append(name, value);
+        }
         return form;
       }
     }

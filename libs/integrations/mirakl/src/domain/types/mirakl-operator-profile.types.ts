@@ -31,4 +31,9 @@ export interface MiraklOperatorProfile {
    * `/api/...` prefix themselves. These are the only hosts the client will call.
    */
   readonly baseUrls: Readonly<Record<MiraklEnvironment, string>>;
+  /**
+   * OR74 document type an issued invoice is uploaded as. Operators configure
+   * their own order document types (DO01); Empik lists `CUSTOMER_INVOICE`.
+   */
+  readonly invoiceDocumentTypeCode: string;
 }

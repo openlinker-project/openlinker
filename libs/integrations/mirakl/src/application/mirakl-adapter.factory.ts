@@ -21,6 +21,7 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { FetchLike } from '@openlinker/shared/http';
 import { MiraklConfigException } from '../domain/exceptions/mirakl-config.exception';
 import {
+  readMiraklCarrierCodes,
   readMiraklShopId,
   resolveMiraklBaseUrl,
   resolveMiraklOrderAcceptance,
@@ -70,11 +71,19 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
   ): Promise<MiraklAdapters> {
     const { httpClient } = await this.createClients(connection, credentialsResolver, fetchImpl);
     const config = (connection.config ?? {}) as MiraklConnectionConfig;
+    const carrierCodes = readMiraklCarrierCodes(config.carrierCodes);
     return {
       orderSource: new MiraklOrderSourceAdapter(
         connection.id,
         httpClient,
         resolveMiraklOrderAcceptance(config.orderAcceptance),
+        {
+          brand: this.profile.brand,
+          // A row written around the validator keeps the built-in table rather
+          // than failing every dispatch.
+          carrierCodes: carrierCodes.kind === 'valid' ? carrierCodes.codes : {},
+          invoiceTypeCode: this.profile.invoiceDocumentTypeCode,
+        },
       ),
     };
   }

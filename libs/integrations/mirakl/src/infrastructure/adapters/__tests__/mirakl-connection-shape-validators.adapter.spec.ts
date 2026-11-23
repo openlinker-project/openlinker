@@ -40,6 +40,7 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
         environment: 'staging',
         shopId: '6881',
         orderAcceptance: 'off',
+        carrierCodes: { dpd: 'dpd' },
         masterCatalogConnectionId: '1f0e9a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b',
         rateLimit: { requestsPerMinute: 60 },
       }),
@@ -54,12 +55,14 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
         baseUrl: 'https://evil.example',
         masterCatalogConnectionId: 'nope',
         orderAcceptance: 'manual',
+        carrierCodes: { dpd: '' },
       })
       .catch((e: unknown) => e)) as InvalidConnectionConfigException;
 
     expect(error).toBeInstanceOf(InvalidConnectionConfigException);
     expect(error.errors.map((issue) => issue.path).sort()).toEqual([
       'baseUrl',
+      'carrierCodes',
       'environment',
       'masterCatalogConnectionId',
       'orderAcceptance',

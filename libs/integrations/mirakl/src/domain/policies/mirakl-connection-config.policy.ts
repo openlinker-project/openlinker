@@ -71,3 +71,30 @@ export function isMiraklOrderAcceptance(value: unknown): value is MiraklOrderAcc
 export function resolveMiraklOrderAcceptance(value: unknown): MiraklOrderAcceptance {
   return value === 'off' ? 'off' : 'auto';
 }
+
+/** Result of reading `config.carrierCodes`. */
+export type MiraklCarrierCodesReading =
+  | { readonly kind: 'valid'; readonly codes: Readonly<Record<string, string>> }
+  | { readonly kind: 'invalid' };
+
+/**
+ * `carrierCodes` maps a shipping connection's `platformType` to a carrier
+ * code from the operator's SH21 list. Keys are matched lower-cased; an absent
+ * map is an empty one.
+ */
+export function readMiraklCarrierCodes(value: unknown): MiraklCarrierCodesReading {
+  if (value === undefined || value === null) {
+    return { kind: 'valid', codes: {} };
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return { kind: 'invalid' };
+  }
+  const codes: Record<string, string> = {};
+  for (const [key, code] of Object.entries(value as Record<string, unknown>)) {
+    if (key.trim() === '' || typeof code !== 'string' || code.trim() === '') {
+      return { kind: 'invalid' };
+    }
+    codes[key.trim().toLowerCase()] = code.trim();
+  }
+  return { kind: 'valid', codes };
+}

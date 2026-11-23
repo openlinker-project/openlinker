@@ -45,4 +45,10 @@ export interface MiraklConnectionConfig {
   shopId?: number | string;
   /** Absent means `auto`. */
   orderAcceptance?: MiraklOrderAcceptance;
+  /**
+   * Carrier codes for OR23, keyed by the shipping connection's `platformType`
+   * (e.g. `{ "dpd": "dpd" }`). Overrides the built-in table; a carrier with no
+   * code is sent by name.
+   */
+  carrierCodes?: Record<string, string>;
 }

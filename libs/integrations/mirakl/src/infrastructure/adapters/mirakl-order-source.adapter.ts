@@ -22,15 +22,33 @@
  *
  * Orders still in `STAGING` or `WAITING_ACCEPTANCE` are never part of the feed.
  *
+ * The same adapter carries the order's way back (#4276), each part in its own
+ * class: the status writeback (OR23/OR24 ship, OR29 cancel), the fulfilment
+ * readback (OR11), the source options (SH12) and the invoice upload (OR74).
+ *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  * @implements {OrderSourcePort}
+ * @implements {OrderStatusWriteback}
+ * @implements {OrderFulfillmentReadback}
+ * @implements {SourceOptionsReader}
+ * @implements {OrderBillingDocumentUploader}
  */
 import type {
   IncomingOrder,
+  MappingOption,
+  OrderBillingDocumentUploader,
   OrderFeedInput,
   OrderFeedItem,
   OrderFeedOutput,
+  OrderFulfillmentReadback,
+  OrderLifecycleEvent,
   OrderSourcePort,
+  OrderStatusWriteback,
+  OrderWritebackResult,
+  SourceFulfillmentReadback,
+  SourceOptionsReader,
+  UploadBillingDocumentInput,
+  UploadBillingDocumentResult,
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
@@ -46,10 +64,30 @@ import type { MiraklOrderAcceptance } from '../../domain/types/mirakl-connection
 import type { MiraklOrder } from '../../domain/types/mirakl-order.types';
 import type { IMiraklHttpClient } from '../http/mirakl-http-client.interface';
 import { listAllOffset, MIRAKL_MAX_PAGE_SIZE } from '../http/mirakl-pagination';
+import { MiraklFulfillmentReadback } from './mirakl-fulfillment-readback';
 import { MiraklOrderAcceptor } from './mirakl-order-acceptor';
+import { MiraklOrderDocumentUploader } from './mirakl-order-document-uploader';
+import { MIRAKL_ORDERS_PATH, readMiraklOrder } from './mirakl-order-reader';
+import { MiraklOrderStatusWriter } from './mirakl-order-status-writer';
 import { mapMiraklOrderToIncomingOrder } from './mirakl-order.mapper';
+import { MiraklSourceOptions } from './mirakl-source-options';
 
-const ORDERS_PATH = '/api/orders';
+const ORDERS_PATH = MIRAKL_ORDERS_PATH;
+/** Generic name used in operator-facing sentences when no profile is given. */
+const DEFAULT_BRAND = 'Mirakl';
+/** Mirakl's own default invoice document type. */
+const DEFAULT_INVOICE_TYPE_CODE = 'CUSTOMER_INVOICE';
+
+/** Per-connection settings for the order source and its way back. */
+export interface MiraklOrderSourceOptions {
+  /** Operator name for operator-facing sentences, e.g. `Empik`. */
+  readonly brand?: string;
+  /** `config.carrierCodes`, already validated. */
+  readonly carrierCodes?: Readonly<Record<string, string>>;
+  /** The operator profile's OR74 invoice document type. */
+  readonly invoiceTypeCode?: string;
+  readonly now?: () => Date;
+}
 /**
  * How often a window that does not fit the page budget is halved. Sixteen
  * halvings take the 7-day bootstrap window under a minute; past that the read
@@ -57,15 +95,44 @@ const ORDERS_PATH = '/api/orders';
  */
 const MAX_WINDOW_HALVINGS = 16;
 
-export class MiraklOrderSourceAdapter implements OrderSourcePort {
+export class MiraklOrderSourceAdapter
+  implements
+    OrderSourcePort,
+    OrderStatusWriteback,
+    OrderFulfillmentReadback,
+    SourceOptionsReader,
+    OrderBillingDocumentUploader
+{
   private readonly logger = new Logger(MiraklOrderSourceAdapter.name);
+  private readonly now: () => Date;
+  private readonly statusWriter: MiraklOrderStatusWriter;
+  private readonly readback: MiraklFulfillmentReadback;
+  private readonly options: MiraklSourceOptions;
+  private readonly documentUploader: MiraklOrderDocumentUploader;
 
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IMiraklHttpClient,
     private readonly acceptance: MiraklOrderAcceptance,
-    private readonly now: () => Date = (): Date => new Date(),
-  ) {}
+    settings: MiraklOrderSourceOptions = {},
+  ) {
+    const brand = settings.brand ?? DEFAULT_BRAND;
+    this.now = settings.now ?? ((): Date => new Date());
+    this.statusWriter = new MiraklOrderStatusWriter(
+      connectionId,
+      httpClient,
+      brand,
+      settings.carrierCodes ?? {},
+    );
+    this.readback = new MiraklFulfillmentReadback(connectionId, httpClient, brand);
+    this.options = new MiraklSourceOptions(httpClient);
+    this.documentUploader = new MiraklOrderDocumentUploader(
+      connectionId,
+      httpClient,
+      brand,
+      settings.invoiceTypeCode ?? DEFAULT_INVOICE_TYPE_CODE,
+    );
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     if (this.acceptance === 'auto') {
@@ -94,10 +161,7 @@ export class MiraklOrderSourceAdapter implements OrderSourcePort {
   }
 
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
-    const { data } = await this.httpClient.get<{ orders?: MiraklOrder[] }>(ORDERS_PATH, {
-      queryParams: { order_ids: input.externalOrderId },
-    });
-    const order = (data?.orders ?? []).find((candidate) => candidate.order_id === input.externalOrderId);
+    const order = await readMiraklOrder(this.httpClient, input.externalOrderId);
     if (!order) {
       throw new MiraklApiException(
         `Mirakl order ${input.externalOrderId} not found`,
@@ -106,6 +170,30 @@ export class MiraklOrderSourceAdapter implements OrderSourcePort {
       );
     }
     return mapMiraklOrderToIncomingOrder(order);
+  }
+
+  write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    return this.statusWriter.write(event);
+  }
+
+  readFulfillment(input: { externalOrderId: string }): Promise<SourceFulfillmentReadback> {
+    return this.readback.readFulfillment(input);
+  }
+
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return this.options.listOrderStatuses();
+  }
+
+  listDeliveryMethods(): Promise<MappingOption[]> {
+    return this.options.listDeliveryMethods();
+  }
+
+  listPaymentMethods(): Promise<MappingOption[]> {
+    return this.options.listPaymentMethods();
+  }
+
+  uploadBillingDocument(input: UploadBillingDocumentInput): Promise<UploadBillingDocumentResult> {
+    return this.documentUploader.uploadBillingDocument(input);
   }
 
   private readWindow(

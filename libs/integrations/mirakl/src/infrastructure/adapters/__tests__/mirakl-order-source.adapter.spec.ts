@@ -3,6 +3,12 @@
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  */
+import {
+  isOrderBillingDocumentUploader,
+  isOrderFulfillmentReadback,
+  isOrderStatusWriteback,
+  isSourceOptionsReader,
+} from '@openlinker/core/orders';
 import { MiraklApiException } from '../../../domain/exceptions/mirakl-api.exception';
 import {
   FEED_OVERLAP_MS,
@@ -56,7 +62,7 @@ describe('MiraklOrderSourceAdapter.listOrderFeed', () => {
     });
     const { client, get, put } = setup(() => page([]), [waiting]);
 
-    await new MiraklOrderSourceAdapter('conn-1', client, 'auto', now).listOrderFeed({
+    await new MiraklOrderSourceAdapter('conn-1', client, 'auto', { now }).listOrderFeed({
       fromCursor: null,
       limit: 200,
     });
@@ -70,7 +76,7 @@ describe('MiraklOrderSourceAdapter.listOrderFeed', () => {
   it('should not accept anything when acceptance is off', async () => {
     const { client, get, put } = setup(() => page([]));
 
-    await new MiraklOrderSourceAdapter('conn-1', client, 'off', now).listOrderFeed({
+    await new MiraklOrderSourceAdapter('conn-1', client, 'off', { now }).listOrderFeed({
       fromCursor: null,
       limit: 200,
     });
@@ -90,7 +96,7 @@ describe('MiraklOrderSourceAdapter.listOrderFeed', () => {
       page([buildMiraklOrder(), buildMiraklOrder({ order_id: '1002-A', order_state: 'CANCELED' })]),
     );
 
-    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', now).listOrderFeed({
+    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', { now }).listOrderFeed({
       fromCursor: '2026-11-23T11:50:00.000Z',
       limit: 200,
     });
@@ -125,7 +131,7 @@ describe('MiraklOrderSourceAdapter.listOrderFeed', () => {
       return call === 1 ? { orders: full, total_count: 150 } : page([buildMiraklOrder()]);
     });
 
-    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', now).listOrderFeed({
+    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', { now }).listOrderFeed({
       fromCursor: '2026-11-23T10:00:00.000Z',
       limit: 100,
     });
@@ -141,7 +147,7 @@ describe('MiraklOrderSourceAdapter.listOrderFeed', () => {
   it('should emit one item when the same change is read twice', async () => {
     const { client } = setup(() => page([buildMiraklOrder(), buildMiraklOrder()]));
 
-    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', now).listOrderFeed({
+    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', { now }).listOrderFeed({
       fromCursor: null,
       limit: 200,
     });
@@ -154,7 +160,7 @@ describe('MiraklOrderSourceAdapter.listOrderFeed', () => {
       page([buildMiraklOrder(), buildMiraklOrder({ order_id: '1002-A', order_state: 'REFUSED' })]),
     );
 
-    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', now).listOrderFeed({
+    const result = await new MiraklOrderSourceAdapter('conn-1', client, 'off', { now }).listOrderFeed({
       fromCursor: null,
       limit: 200,
       eventTypes: ['cancelled'],
@@ -168,7 +174,7 @@ describe('MiraklOrderSourceAdapter.getOrder', () => {
   it('should read the order by id and map it', async () => {
     const { client, get } = setup(() => page([buildMiraklOrder()]));
 
-    const order = await new MiraklOrderSourceAdapter('conn-1', client, 'off', now).getOrder({
+    const order = await new MiraklOrderSourceAdapter('conn-1', client, 'off', { now }).getOrder({
       externalOrderId: '1001-A',
     });
 
@@ -179,11 +185,23 @@ describe('MiraklOrderSourceAdapter.getOrder', () => {
   it('should throw a non-retryable not-found when the order is absent', async () => {
     const { client } = setup(() => page([]));
 
-    const error = await new MiraklOrderSourceAdapter('conn-1', client, 'off', now)
+    const error = await new MiraklOrderSourceAdapter('conn-1', client, 'off', { now })
       .getOrder({ externalOrderId: 'missing' })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(MiraklApiException);
     expect((error as MiraklApiException).miraklCode).toBe('ORDER_NOT_FOUND');
+  });
+});
+
+describe('MiraklOrderSourceAdapter way back (#4276)', () => {
+  it('should be narrowed by every guard core uses on an order source', () => {
+    const { client } = setup(() => page([]));
+    const adapter = new MiraklOrderSourceAdapter('conn-1', client, 'off', { now });
+
+    expect(isOrderStatusWriteback(adapter)).toBe(true);
+    expect(isOrderFulfillmentReadback(adapter)).toBe(true);
+    expect(isSourceOptionsReader(adapter)).toBe(true);
+    expect(isOrderBillingDocumentUploader(adapter)).toBe(true);
   });
 });

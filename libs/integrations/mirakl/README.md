@@ -44,6 +44,31 @@ the shop SKU (`offer_sku`).
 The order shape follows the Mirakl spec; it is confirmed on the first real
 Empik order. Offers arrive with #4277 (epic #4273).
 
+## Order fulfilment writeback (#4276)
+
+The order source also tells the operator what happened to an order, each part
+in its own class behind `MiraklOrderSourceAdapter`:
+
+- **Shipped** (`OrderStatusWriteback`, `dispatched`): OR23 with the tracking
+  number, then OR24. Mirakl keeps one tracking number per order, so a second
+  parcel's number is logged and not sent. The carrier code comes from the
+  connection's `carrierCodes` (`platformType` -> SH21 code), else a built-in
+  table (an InPost order to a parcel locker goes as `paczkomatyinpost`, any
+  other as `inpostpaczkakurierska`); a carrier with no code is sent by name.
+- **Cancelled**: OR29, the whole order. A shipped order is refused; it can only
+  be refunded on the marketplace.
+- **Delivered, in progress, paid**: `unsupported`. The operator moves an order
+  to received itself and collects the payment.
+- **Readback** (`OrderFulfillmentReadback`): the order's state and its tracking
+  number from OR11, including a shipment the seller entered in the panel.
+- **Delivery methods** (`SourceOptionsReader`): SH12 shipping types, keyed by
+  the same code the order carries (Empik: `STORE`, `DIGITAL` among them).
+- **Invoice** (`OrderBillingDocumentUploader`): OR74 as the profile's invoice
+  type (Empik: `CUSTOMER_INVOICE`, read from DO01). OR72 is checked first, so a
+  retry after a lost answer reads `already-present` instead of a second copy.
+
+Every write reads the order first, so a replayed event does not write again.
+
 ## Connecting
 
 1. In the operator's seller panel, open the user menu and generate an API key

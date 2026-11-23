@@ -1,11 +1,16 @@
 /**
- * Empik Orders Vertical-Slice Integration Test (#4275)
+ * Empik Orders Vertical-Slice Integration Test (#4275, #4276)
  *
  * Runs Empik order ingestion end to end through the REAL
  * `MiraklOrderSourceAdapter` (acceptance, feed windows, mapper) over an
  * in-memory Mirakl order API, the production adapter-resolution seam, the REAL
  * `OrderIngestionService` and `OrderRecord` persistence, and real Postgres and
  * Redis.
+ *
+ * E7-E10 (#4276) cover the way back: the adapter is resolved through
+ * `IntegrationsService.getCapabilityAdapter` and narrowed with core's own
+ * guards, exactly as the lifecycle relay, the fulfilment readback and the
+ * invoice upload do it.
  *
  * The order shape follows the Mirakl Seller API spec and the Empik staging
  * configuration (additional fields `nip`, `customer-email`,
@@ -25,8 +30,16 @@ import {
   type IIdentifierMappingService,
 } from '@openlinker/core/identifier-mapping';
 import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
+import {
+  isOrderBillingDocumentUploader,
+  isOrderFulfillmentReadback,
+  isOrderStatusWriteback,
   ORDER_INGESTION_SERVICE_TOKEN,
   type IOrderIngestionService,
+  type OrderSourcePort,
 } from '@openlinker/core/orders';
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import { SYNC_JOB_QUEUE_TOKEN, type SyncJobQueuePort } from '@openlinker/core/sync';
@@ -254,6 +267,99 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
     expect(payloads).toEqual([
       expect.objectContaining({ externalOrderId: 'E6-A', eventType: 'cancelled' }),
     ]);
+  });
+
+  describe('Empik order way back (#4276)', () => {
+    async function orderSource(config: Record<string, unknown> = {}): Promise<OrderSourcePort> {
+      const connectionId = await seedEmpikConnection(dataSource, config);
+      return harness
+        .getApp()
+        .get<IIntegrationsService>(INTEGRATIONS_SERVICE_TOKEN)
+        .getCapabilityAdapter<OrderSourcePort>(connectionId, 'OrderSource');
+    }
+
+    it('E7: a dispatch sends the tracking number with the Empik carrier code and ships the order', async () => {
+      empik.fake.putOrder(buildMiraklOrder({ order_id: 'E7-A', order_state: 'SHIPPING' }));
+      const adapter = await orderSource();
+      if (!isOrderStatusWriteback(adapter)) throw new Error('not a writeback');
+
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: 'E7-A',
+        trackingNumber: '620000000000123',
+        carrier: { platformType: 'inpost' },
+      });
+
+      expect(result).toEqual({ outcome: 'applied' });
+      expect(empik.fake.order('E7-A')).toMatchObject({
+        order_state: 'SHIPPED',
+        shipping_tracking: '620000000000123',
+        shipping_carrier_code: 'paczkomatyinpost',
+      });
+      const replay = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: 'E7-A',
+        trackingNumber: '620000000000123',
+      });
+      expect(replay.outcome).toBe('applied');
+      expect(empik.fake.callsOf('PUT')).toHaveLength(2);
+    });
+
+    it('E8: a cancellation cancels the order, and a shipped order is refused', async () => {
+      empik.fake.putOrder(buildMiraklOrder({ order_id: 'E8-A', order_state: 'SHIPPING' }));
+      empik.fake.putOrder(buildMiraklOrder({ order_id: 'E8-B', order_state: 'SHIPPED' }));
+      const adapter = await orderSource();
+      if (!isOrderStatusWriteback(adapter)) throw new Error('not a writeback');
+
+      expect((await adapter.write({ type: 'cancelled', externalOrderId: 'E8-A' })).outcome).toBe(
+        'applied',
+      );
+      expect(empik.fake.orderState('E8-A')).toBe('CANCELED');
+      expect((await adapter.write({ type: 'cancelled', externalOrderId: 'E8-B' })).outcome).toBe(
+        'rejected',
+      );
+      expect(empik.fake.orderState('E8-B')).toBe('SHIPPED');
+    });
+
+    it('E9: a shipment entered in the Empik panel is read back with its tracking number', async () => {
+      empik.fake.putOrder(
+        buildMiraklOrder({
+          order_id: 'E9-A',
+          order_state: 'SHIPPED',
+          shipping_tracking: 'DPD-1',
+          shipping_carrier_code: 'dpd',
+          shipping_company: 'DPD',
+        }),
+      );
+      const adapter = await orderSource();
+      if (!isOrderFulfillmentReadback(adapter)) throw new Error('not a readback');
+
+      expect(await adapter.readFulfillment({ externalOrderId: 'E9-A' })).toEqual({
+        outcome: 'read',
+        rawStatus: 'SHIPPED',
+        dispatched: true,
+        waybills: [{ waybill: 'DPD-1', carrierId: 'dpd', carrierName: 'DPD' }],
+      });
+    });
+
+    it('E10: an invoice is attached once as CUSTOMER_INVOICE', async () => {
+      empik.fake.putOrder(buildMiraklOrder({ order_id: 'E10-A', order_state: 'SHIPPED' }));
+      const adapter = await orderSource();
+      if (!isOrderBillingDocumentUploader(adapter)) throw new Error('not an uploader');
+      const input = {
+        externalOrderId: 'E10-A',
+        documentNumber: 'FV/10/2026',
+        fileName: 'FV-10-2026.pdf',
+        contentType: 'application/pdf',
+        content: new Uint8Array([37, 80, 68, 70]),
+      };
+
+      expect((await adapter.uploadBillingDocument(input)).outcome).toBe('uploaded');
+      expect((await adapter.uploadBillingDocument(input)).outcome).toBe('already-present');
+      expect(empik.fake.documents).toEqual([
+        { order_id: 'E10-A', file_name: 'FV-10-2026.pdf', type: 'CUSTOMER_INVOICE' },
+      ]);
+    });
   });
 });
 

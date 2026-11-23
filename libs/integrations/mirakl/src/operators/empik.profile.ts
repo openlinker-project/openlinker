@@ -21,4 +21,6 @@ export const empikOperatorProfile: MiraklOperatorProfile = {
     production: 'https://marketplace.empik.com',
     staging: 'https://stg1.marketplace.empik.com',
   },
+  // DO01 on staging (2026-11-23): `CUSTOMER_INVOICE` ("Faktura"), entity ORDER.
+  invoiceDocumentTypeCode: 'CUSTOMER_INVOICE',
 };

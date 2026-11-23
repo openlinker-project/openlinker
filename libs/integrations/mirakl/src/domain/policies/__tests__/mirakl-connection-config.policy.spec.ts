@@ -7,6 +7,7 @@ import { empikOperatorProfile } from '../../../operators/empik.profile';
 import {
   isMiraklEnvironment,
   readMiraklShopId,
+  readMiraklCarrierCodes,
   resolveMiraklOrderAcceptance,
   resolveMiraklBaseUrl,
 } from '../mirakl-connection-config.policy';
@@ -70,6 +71,26 @@ describe('resolveMiraklOrderAcceptance', () => {
     'should return auto when the value is %p',
     (value) => {
       expect(resolveMiraklOrderAcceptance(value)).toBe('auto');
+    },
+  );
+});
+
+describe('readMiraklCarrierCodes', () => {
+  it('should read an absent map as empty', () => {
+    expect(readMiraklCarrierCodes(undefined)).toEqual({ kind: 'valid', codes: {} });
+  });
+
+  it('should lower-case keys and trim codes', () => {
+    expect(readMiraklCarrierCodes({ ' DPD ': ' dpd ' })).toEqual({
+      kind: 'valid',
+      codes: { dpd: 'dpd' },
+    });
+  });
+
+  it.each([[[]], ['dpd'], [{ dpd: '' }], [{ dpd: 3 }], [{ '': 'dpd' }]])(
+    'should refuse %p',
+    (value) => {
+      expect(readMiraklCarrierCodes(value).kind).toBe('invalid');
     },
   );
 });
