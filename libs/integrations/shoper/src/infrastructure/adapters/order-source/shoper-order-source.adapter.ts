@@ -87,7 +87,6 @@ import {
   shopLocalToIso,
 } from '../../mappers/shoper-incoming-order.mapper';
 import {
-  EMPTY_SHOPER_FEED_CURSOR,
   formatShoperFeedCursor,
   isWallClock,
   laterWallClock,
@@ -260,13 +259,22 @@ export class ShoperOrderSourceAdapter
    * Cursor positioned just before the first order placed at or after `date`.
    * Shoper dates are naive shop-local, so the bound is compared as the shop's own
    * wall clock with no zone conversion. With no such order the date is in the
-   * future of the shop's history, so the feed starts at the head.
+   * future of the shop's history, so the feed starts at the head - and on a shop
+   * with no orders at all, at "nothing older than now" rather than at the
+   * beginning, so an order placed later is the first one read, not a replay of
+   * history.
+   *
+   * Only a refusal the shop will repeat (400/422) becomes the typed "cannot start
+   * here"; an auth rejection, a throttle, a 5xx or a network failure is rethrown
+   * as it is, so the connection is flagged for re-authentication or the job
+   * retries instead of the operator being told the date was refused.
    */
   async cursorForDate(date: string): Promise<string> {
     const day = parseDay(date);
     if (day === null) {
       throw new OrderSyncStartUnavailableError(`"${date}" is not a date Shoper can start order sync from`);
     }
+    const bound = `${day} 00:00:00`;
     let first: readonly ShoperOrderRow[];
     try {
       first = (
@@ -275,21 +283,33 @@ export class ShoperOrderSourceAdapter
           limit: 1,
           query: {
             order: 'order_id ASC',
-            filters: JSON.stringify({ date: { '>=': `${day} 00:00:00` } }),
+            filters: JSON.stringify({ date: { '>=': bound } }),
           },
         })
       ).items;
     } catch (error) {
-      if (error instanceof ShoperApiError) {
-        throw new OrderSyncStartUnavailableError(
-          `Shoper refused to filter orders by date (${error.message}); start from "only new orders" or "all" instead`,
-        );
-      }
-      throw error;
+      throw this.asStartRefusal(error, 'filter orders by date');
     }
     const row = first[0];
     if (row === undefined) {
-      return (await this.headCursor()) ?? formatShoperFeedCursor({ ...EMPTY_SHOPER_FEED_CURSOR });
+      const head = await this.headCursor();
+      if (head !== null) {
+        return head;
+      }
+      return formatShoperFeedCursor({
+        lastOrderId: '0',
+        statusWatermark: await this.readLatestStatusDate(),
+        statusPassStart: null,
+        statusNextPage: null,
+      });
+    }
+    // Safety net over a filter that has been seen to work: a shop that ignored it
+    // would hand back its oldest order, and starting there silently imports history.
+    if (isWallClock(row.date) && row.date < bound) {
+      throw new OrderSyncStartUnavailableError(
+        `Shoper ignored the date filter (it returned an order from ${row.date} for "from ${day}"); ` +
+          'start from "only new orders" or "all" instead',
+      );
     }
     const latestStatusDate = await this.readLatestStatusDate();
     return formatShoperFeedCursor({
@@ -299,6 +319,22 @@ export class ShoperOrderSourceAdapter
       statusPassStart: null,
       statusNextPage: null,
     });
+  }
+
+  /**
+   * What a failed start read means to the operator. Only HTTP 400/422 - the shop
+   * understood and refused the request, and would again - is "this start cannot
+   * be honoured". Everything else, 401/403 included, is rethrown untouched:
+   * the auth classifier recognises a `ShoperApiError` that `isAuthRejection()`
+   * qualifies, and wrapping it would hide the connection's need to re-authenticate.
+   */
+  private asStartRefusal(error: unknown, what: string): unknown {
+    if (error instanceof ShoperApiError && (error.statusCode === 400 || error.statusCode === 422)) {
+      return new OrderSyncStartUnavailableError(
+        `Shoper refused to ${what} (${error.message}); start from "only new orders" or "all" instead`,
+      );
+    }
+    return error;
   }
 
   /**
@@ -320,14 +356,14 @@ export class ShoperOrderSourceAdapter
     if (input.from !== undefined) {
       const from = parseDay(input.from);
       if (from === null) {
-        throw new RangeError(`Shoper order window: "${input.from}" is not a date`);
+        throw new OrderSyncStartUnavailableError(`Shoper order window: "${input.from}" is not a date`);
       }
       date['>='] = `${from} 00:00:00`;
     }
     if (input.to !== undefined) {
       const to = parseDay(input.to);
       if (to === null) {
-        throw new RangeError(`Shoper order window: "${input.to}" is not a date`);
+        throw new OrderSyncStartUnavailableError(`Shoper order window: "${input.to}" is not a date`);
       }
       date['<='] = `${to} 23:59:59`;
     }
@@ -335,14 +371,19 @@ export class ShoperOrderSourceAdapter
       filters.date = date;
     }
 
-    const page = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
-      page: 1,
-      limit,
-      query: {
-        order: ascending ? 'order_id ASC' : 'order_id DESC',
-        ...(Object.keys(filters).length === 0 ? {} : { filters: JSON.stringify(filters) }),
-      },
-    });
+    let page: Awaited<ReturnType<typeof fetchShoperPage<ShoperOrderRow>>>;
+    try {
+      page = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
+        page: 1,
+        limit,
+        query: {
+          order: ascending ? 'order_id ASC' : 'order_id DESC',
+          ...(Object.keys(filters).length === 0 ? {} : { filters: JSON.stringify(filters) }),
+        },
+      });
+    } catch (error) {
+      throw this.asStartRefusal(error, 'read orders in that date range');
+    }
 
     const { timezone } = await this.shopContext.get();
     const zone = timezone ?? null;
@@ -352,9 +393,19 @@ export class ShoperOrderSourceAdapter
       const id = String(row.order_id);
       edge =
         edge === null || (ascending ? Number(id) > Number(edge) : Number(id) < Number(edge)) ? id : edge;
-      if (!isOwnOrder(row)) {
-        items.push(await this.toFeedItem(row, zone));
+      if (isOwnOrder(row)) {
+        continue;
       }
+      if (isOutsideWindow(row.date, date)) {
+        // The filter has been seen to work; a row it let through is dropped rather
+        // than imported, but it still advanced the edge above so the walk ends.
+        this.logger.warn(
+          `Shoper returned order ${id} dated ${row.date} for a window ${date['>='] ?? '...'} to ` +
+            `${date['<='] ?? '...'}; it was skipped (connection: ${this.connection.id})`,
+        );
+        continue;
+      }
+      items.push(await this.toFeedItem(row, zone));
     }
 
     // A short page is the end: Shoper returns fewer rows than asked only when none are left.
@@ -734,12 +785,33 @@ export class ShoperOrderSourceAdapter
   }
 }
 
-const DAY = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/;
+const DAY = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/;
 
-/** The calendar day of a bare date or an ISO instant, as written (no zone conversion), or null. */
+/**
+ * The calendar day of a bare date or an ISO instant, as written (no zone
+ * conversion), or null. The day must exist: `2026-13-45` and `2026-02-30` are
+ * refused here rather than sent to the shop as a filter it may read oddly.
+ */
 function parseDay(value: string): string | null {
   const match = DAY.exec(value.trim());
-  return match === null ? null : (match[1]);
+  if (match === null) {
+    return null;
+  }
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  const real =
+    probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+  return real ? `${match[1]}-${match[2]}-${match[3]}` : null;
+}
+
+/** True when a wall-clock `date` lies outside the filter bounds; an unreadable date is not judged. */
+function isOutsideWindow(rowDate: string | null | undefined, bounds: Record<string, string>): boolean {
+  if (!isWallClock(rowDate)) {
+    return false;
+  }
+  const lower = bounds['>='];
+  const upper = bounds['<='];
+  return (lower !== undefined && rowDate < lower) || (upper !== undefined && rowDate > upper);
 }
 
 function parseWindowCursor(raw: string | null, connectionId: string): string | null {
