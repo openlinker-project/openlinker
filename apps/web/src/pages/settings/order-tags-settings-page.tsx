@@ -115,7 +115,7 @@ function NewTagCard({
   }
 
   return (
-    <form className="panel tag-new" data-tour="order-tags-new" onSubmit={handleSubmit} aria-label={manager.newTag}>
+    <form className="panel tag-new" onSubmit={handleSubmit} aria-label={manager.newTag}>
       <div className="panel__header">
         <h3>{manager.newTag}</h3>
         <span className="panel__meta">{manager.newTagMeta}</span>
@@ -316,6 +316,7 @@ export function OrderTagsSettingsPage(): ReactElement {
         <div className="toolbar__group">
           <Button
             ref={newTagButtonRef}
+            data-tour="order-tags-new"
             aria-expanded={creating}
             onClick={() => {
               setCreating(true);

@@ -189,7 +189,7 @@
       "stay": "Keep going",
       "title": "Close the guide?"
     },
-    "missing": "I can't find this on the screen. You may have left the page it lives on, or the element is hidden for your role. Go back to the page, or skip this step.",
+    "missing": "I can't find this on the screen. You may have left the page it lives on, or the element is hidden for your role. Go back to the page, or skip this step. If it keeps happening, report it to your administrator.",
     "next": "Next",
     "noRelease": "Other",
     "noReleaseFull": "General, outside any release",

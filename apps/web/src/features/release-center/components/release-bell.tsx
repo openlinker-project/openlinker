@@ -52,9 +52,14 @@ function measurePlacement(trigger: HTMLElement | null): PanelPlacement {
     parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--shell-topbar-height')) ||
     FALLBACK_TOPBAR;
   const edge = window.innerWidth <= COMPACT_MAX_WIDTH ? PANEL_EDGE_COMPACT : PANEL_EDGE;
+  // The panel lines up with the page content's right edge (the shell caps it
+  // on wide screens), so it follows the shell's own rule instead of a copy.
+  const content = document.querySelector('main')?.firstElementChild;
+  let targetRight = window.innerWidth - edge;
+  if (content) targetRight = Math.min(targetRight, content.getBoundingClientRect().right);
   return {
     side: topbar + PANEL_GAP_BELOW_TOPBAR - rect.bottom,
-    align: -(window.innerWidth - edge - rect.right),
+    align: rect.right - targetRight,
   };
 }
 

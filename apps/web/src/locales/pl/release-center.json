@@ -193,7 +193,7 @@
       "stay": "Zostań w przewodniku",
       "title": "Zamknąć przewodnik?"
     },
-    "missing": "Nie widzę tego elementu na ekranie. Może być na innej stronie albo ukryty dla Twojej roli. Wróć na stronę kroku albo pomiń ten krok.",
+    "missing": "Nie widzę tego elementu na ekranie. Może być na innej stronie albo ukryty dla Twojej roli. Wróć na stronę kroku albo pomiń ten krok. Jeśli to się powtarza, zgłoś to administratorowi.",
     "next": "Dalej",
     "noRelease": "Inne",
     "noReleaseFull": "Ogólne, poza wydaniami",

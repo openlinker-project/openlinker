@@ -1301,7 +1301,8 @@ textarea,
     grid-template-columns: var(--shell-side) minmax(0, 1fr);
   }
 
-  .shell .page-layout {
+  .shell .page-layout,
+  .shell .shell-content:not(.shell-content--flush):not(.login-backdrop__scenes) > * {
     margin-inline: 0 auto;
   }
 
@@ -3519,9 +3520,13 @@ textarea,
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* A page's own content on a very wide screen (#4026 follow-up): capped so an
-   ultrawide monitor does not stretch a list edge to edge. The cap is the
-   layout block minus the sidebar box (240px) and the content padding (32px). */
+/* Content width, once for every screen (#4026 follow-up): whatever a route
+   renders into the shell is capped, so an ultrawide monitor does not stretch it
+   edge to edge and a new page cannot forget to opt in. The cap is the layout
+   block minus the sidebar box (240px) and the content padding (32px). The
+   flush layout (pack bench) and the login scenes are full-bleed on purpose.
+   `.page-layout` stays as the same rule for markup rendered outside a shell. */
+.shell-content:not(.shell-content--flush):not(.login-backdrop__scenes) > *,
 .page-layout {
   width: 100%;
   max-width: calc(var(--layout-max-width) - 272px);
@@ -41278,6 +41283,16 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   inset: 0 0 -1px 0;
   background: var(--overlay-scrim);
   pointer-events: none;
+}
+/* Ultrawide: the brand sits in a strip the bar extends over the sidebar column
+   (see `.shell-topbar::before`), outside the bar's own box, so the dim reaches
+   across it too and the logo does not stay lit while the rest is dimmed. */
+@media (min-width: 2560px) {
+  .tour-active .shell .shell-topbar::after {
+    left: calc(-1 * var(--shell-side));
+    /* Above the brand copy, which is lifted with z-index: 1. */
+    z-index: 2;
+  }
 }
 .tour-card {
   position: fixed;
