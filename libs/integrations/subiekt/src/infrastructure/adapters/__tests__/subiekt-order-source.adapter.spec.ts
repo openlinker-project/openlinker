@@ -1,6 +1,11 @@
 import { SubiektOrderSourceAdapter } from '../subiekt-order-source.adapter';
 import { SubiektOrdersBridgeClient } from '../../../bridge/subiekt-orders-bridge.client';
-import { OrderSyncStartUnavailableError } from '@openlinker/core/orders';
+import {
+  OrderSyncStartUnavailableError,
+  isOrderFeedBootstrap,
+  isOrderFeedDateBootstrap,
+  isOrderWindowReader,
+} from '@openlinker/core/orders';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import { InMemoryIdentifierMappingAdapter } from '@openlinker/core/identifier-mapping/testing';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -287,6 +292,61 @@ describe('SubiektOrderSourceAdapter', () => {
     it('formats a date cursor', async () => {
       const adapter = make(() => envelope({}));
       await expect(adapter.cursorForDate('2026-03-05')).resolves.toBe('2026-03-05T00:00:00.0000000|0');
+    });
+
+    it('takes the day prefix of an ISO instant', async () => {
+      const adapter = make(() => envelope({}));
+      await expect(adapter.cursorForDate('2026-03-05T14:30:00.000Z')).resolves.toBe(
+        '2026-03-05T00:00:00.0000000|0',
+      );
+    });
+
+    it('rejects an instant whose day prefix is not a real date', async () => {
+      const adapter = make(() => envelope({}));
+      await expect(adapter.cursorForDate('2026-02-30T10:00:00Z')).rejects.toThrow(
+        OrderSyncStartUnavailableError,
+      );
+    });
+
+    it('stops the fallback walk at the page cap and tells the operator to upgrade', async () => {
+      let feedCalls = 0;
+      const adapter = make((url) => {
+        if (url.includes('/api/orders/feed/head')) return new Response('', { status: 404 });
+        feedCalls += 1;
+        return envelope({
+          items: [{ id: feedCalls, numer: `ZK ${feedCalls}`, dataWystawienia: '2026-01-01T00:00:00Z' }],
+          nextCursor: `c${feedCalls}`,
+        });
+      });
+      const failure = adapter.headCursor();
+      await expect(failure).rejects.toThrow(OrderSyncStartUnavailableError);
+      await expect(failure).rejects.toThrow(/Upgrade the Subiekt bridge/);
+      expect(feedCalls).toBe(200);
+    });
+
+    it('fallback returns the previous cursor when a non-empty page carries no next cursor', async () => {
+      let calls = 0;
+      const adapter = make((url) => {
+        if (url.includes('/head')) return new Response('', { status: 404 });
+        calls += 1;
+        return calls === 1
+          ? envelope({
+              items: [{ id: 1, numer: 'ZK 1', dataWystawienia: '2026-01-01T00:00:00Z' }],
+              nextCursor: 'c1',
+            })
+          : envelope({
+              items: [{ id: 2, numer: 'ZK 2', dataWystawienia: '2026-01-02T00:00:00Z' }],
+              nextCursor: null,
+            });
+      });
+      await expect(adapter.headCursor()).resolves.toBe('c1');
+    });
+
+    it('declares the bootstrap capabilities and no window reader', () => {
+      const adapter = make(() => envelope({}));
+      expect(isOrderFeedBootstrap(adapter)).toBe(true);
+      expect(isOrderFeedDateBootstrap(adapter)).toBe(true);
+      expect(isOrderWindowReader(adapter)).toBe(false);
     });
 
     it.each(['2026-3-5', 'yesterday', '2026-02-30', ''])('rejects invalid date %p', async (d) => {

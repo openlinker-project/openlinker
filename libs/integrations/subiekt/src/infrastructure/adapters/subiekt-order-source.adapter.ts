@@ -18,8 +18,9 @@
  * every other read in this bridge, order listing goes through raw SQL on
  * `dok__Dokument`. The cursor is therefore a `dataWystawienia` (issue date)
  * watermark, exactly the PrestaShop `date_upd` shape this port's own docblock
- * documents. `null` input means "start from the beginning" (the bridge's own
- * choice of lookback); `null` output means the page was empty.
+ * documents. `null` input means "start from the beginning of the feed" - the
+ * bridge applies no lookback of its own to a null `since`; `null` output means
+ * the page was empty.
  *
  * ## NOT LIVE-VERIFIED (built with no Windows access)
  *
@@ -47,7 +48,12 @@ import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-brid
 import { findTowarVariantExternalId } from './subiekt-variant-identity';
 
 const FALLBACK_WALK_PAGE_SIZE = 1000;
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** 200 pages of 1000 ZK. Past it the walk is not a fallback any more but an
+ * hour-long read holding the poll lock, so it refuses instead. */
+const FALLBACK_WALK_MAX_PAGES = 200;
+/** A bare day or an ISO instant; only the calendar-day prefix is used, as on
+ * PrestaShop, since the bridge keys its cursor on the day it stores. */
+const ISO_DAY_PREFIX = /^(\d{4}-\d{2}-\d{2})(?:$|T)/;
 
 export class SubiektOrderSourceAdapter
   implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap
@@ -73,30 +79,36 @@ export class SubiektOrderSourceAdapter
         'walking the entire order feed to find its end (upgrade the bridge to avoid this)',
     );
     let cursor: string | null = null;
-    for (;;) {
+    for (let pageNumber = 0; pageNumber < FALLBACK_WALK_MAX_PAGES; pageNumber += 1) {
       const page = await this.bridge.listOrderFeed(cursor, FALLBACK_WALK_PAGE_SIZE);
       if (page.items.length === 0 || page.nextCursor === null || page.nextCursor === cursor) {
         return cursor;
       }
       cursor = page.nextCursor;
     }
+    throw new OrderSyncStartUnavailableError(
+      'This Subiekt connection has too many orders to find the newest one with the installed ' +
+        'bridge version. Upgrade the Subiekt bridge to the latest version and try again.',
+    );
   }
 
   cursorForDate(date: string): Promise<string> {
     // A rejected promise, not a synchronous throw: core awaits this and treats a rejection as
     // "this start cannot be honoured".
     return Promise.resolve().then(() => {
-      const parsed = ISO_DATE.test(date) ? new Date(`${date}T00:00:00Z`) : null;
+      const day = ISO_DAY_PREFIX.exec(date)?.[1];
+      const parsed = day === undefined ? null : new Date(`${day}T00:00:00Z`);
       if (
+        day === undefined ||
         parsed === null ||
         Number.isNaN(parsed.getTime()) ||
-        !parsed.toISOString().startsWith(date)
+        !parsed.toISOString().startsWith(day)
       ) {
         throw new OrderSyncStartUnavailableError(
           `Invalid start date "${date}": expected YYYY-MM-DD`,
         );
       }
-      return `${date}T00:00:00.0000000|0`;
+      return `${day}T00:00:00.0000000|0`;
     });
   }
 

@@ -60,6 +60,11 @@ public static class BridgeKeys
     public static string FormatCursor(DateTime watermark, int lastId) =>
         watermark.ToString("o", CultureInfo.InvariantCulture) + "|" + lastId.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>Cursor for the newest ZK, or null when there is none. Same format as the feed's
+    /// nextCursor, so a feed read from it starts strictly after that row.</summary>
+    public static string? FormatHeadCursor(DateTime? watermark, int lastId) =>
+        watermark is null ? null : FormatCursor(watermark.Value, lastId);
+
     /// <summary>The address truth table: at least one field CONFIRMED equal on
     /// both sides, and no field CONTRADICTED. A false negative mints a duplicate
     /// kontrahent; a false positive bills one person's document to another.</summary>
