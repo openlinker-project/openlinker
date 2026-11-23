@@ -42886,6 +42886,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
    with more air between its parts. */
 :is(.release-panel, .whats-new__setup) .release-card { padding: 16px 16px 16px 20px; gap: 12px; }
 :is(.release-panel, .whats-new__setup) .release-card > :not(.release-card__top):not(.release-card__actions) { margin-left: 40px; }
+/* The toggle is as wide as the card, so its 40px indent must come out of its width, not push it past the card edge. */
+:is(.release-panel, .whats-new__setup) .release-card > .release-card__toggle { max-width: calc(100% - 40px); }
 /* The step list scrolls on its own, so the card is never taller than the panel and its buttons no longer
    need to float over the content; pinned, they stacked up at the bottom of the panel and left a blank band
    above them. They sit at the end of the card, in the content column. */
