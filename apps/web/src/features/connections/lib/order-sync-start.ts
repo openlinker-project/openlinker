@@ -41,10 +41,18 @@ export function latestOrderSyncStartDate(today: Date = new Date()): string {
   return toDateString(yesterday);
 }
 
-/** `YYYY-MM-DD` of the earliest day a start date may name. */
+/**
+ * `YYYY-MM-DD` of the earliest day a start date may name: today minus five
+ * years plus one day. The backend compares instants, so the day exactly five
+ * years back (which starts before the same moment five years ago) is refused.
+ */
 export function earliestOrderSyncStartDate(today: Date = new Date()): string {
   return toDateString(
-    new Date(today.getFullYear() - ORDER_SYNC_START_MAX_YEARS, today.getMonth(), today.getDate()),
+    new Date(
+      today.getFullYear() - ORDER_SYNC_START_MAX_YEARS,
+      today.getMonth(),
+      today.getDate() + 1,
+    ),
   );
 }
 
