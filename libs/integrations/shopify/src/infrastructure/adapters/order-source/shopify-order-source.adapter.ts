@@ -123,8 +123,10 @@ import {
   ORDER_FULFILLMENT_READBACK_QUERY,
   ORDER_LINE_ITEMS_PAGE_QUERY,
   ORDER_WINDOW_QUERY,
+  SHOP_TIME_ZONE_QUERY,
 } from '../../readers/shopify-order.queries';
 import type { ShopifyPaymentGatewayNames } from '../../../domain/types/shopify-config.types';
+import { isKnownTimeZone, isRealCalendarDay, zonedDayEdgeToInstant } from '../../../domain/policies/shopify-zoned-time.policy';
 import { ShopifyOrderTooLargeException } from '../../../domain/exceptions/shopify-order-too-large.exception';
 import {
   RETURN_BY_ID_QUERY,
@@ -166,6 +168,7 @@ export class ShopifyOrderSourceAdapter
   private readonly logger = new Logger(ShopifyOrderSourceAdapter.name);
   private readonly options: ShopifyMappingOptionsReader;
   private canReadAllOrders: Promise<boolean | null> | null = null;
+  private shopTimeZone: Promise<string> | null = null;
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
@@ -250,6 +253,11 @@ export class ShopifyOrderSourceAdapter
   }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
+    if (input.fromCursor === null) {
+      // A cursor-less read is the whole history. Without the scope Shopify shows
+      // only the last 60 days, so it would truncate without a word.
+      await this.assertOldOrdersReadable(null);
+    }
     const cursor = parseShopifyFeedCursor(input.fromCursor, this.connection.id);
     const settledBefore = Date.now() - SETTLE_WINDOW_MS;
     const limit = Math.max(1, input.limit);
@@ -330,12 +338,20 @@ export class ShopifyOrderSourceAdapter
   }
 
   /**
-   * A feed cursor at the start of `date` (a bare day is read as UTC midnight),
-   * with id 0 so every real order at that instant sorts after it. Pure, but
-   * async by contract and it refuses a date the shop would not show.
+   * A feed cursor at the start of `date` (a bare day starts at midnight in the
+   * SHOP'S time zone; an ISO instant is kept as given), with id 0 so every real
+   * order at that instant sorts after it. It refuses a date the shop would not
+   * show.
+   *
+   * Known difference from `listOrdersInWindow`: this seed is a position in the
+   * live feed, which is a keyset over `updated_at` (the only key Shopify can
+   * sort and resume on without losing orders), while the window filters on
+   * `created_at`. An order placed before `date` but changed after it is
+   * therefore ingested by a seed at `date` and not by a window starting there.
+   * Both honour the same day boundary; only the date field they test differs.
    */
   async cursorForDate(date: string): Promise<string> {
-    const instant = this.startOfDay(date);
+    const instant = await this.startOfDay(date);
     await this.assertOldOrdersReadable(instant);
     return ['v1', instant, '0'].join('|');
   }
@@ -343,13 +359,14 @@ export class ShopifyOrderSourceAdapter
   /**
    * Orders placed inside [from, to] by placement date, newest or oldest first.
    * The cursor is Shopify's own `endCursor`, which is stable for one query; the
-   * bounds are passed again on every call. No settle window here: a window
+   * bounds are passed again on every call; a bare day is read in the shop's time
+   * zone. No settle window here: a window
    * read is a snapshot of history, not a live feed. Items carry the feed's
    * `eventKey`, so an order imported here and seen by the feed ingests once.
    */
   async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
-    const from = input.from === undefined ? null : this.startOfDay(input.from);
-    const to = input.to === undefined ? null : this.endOfDay(input.to);
+    const from = input.from === undefined ? null : await this.startOfDay(input.from);
+    const to = input.to === undefined ? null : await this.endOfDay(input.to);
     if (from === null || Date.parse(from) < Date.now() - RECENT_ORDERS_HORIZON_MS) {
       await this.assertOldOrdersReadable(from);
     }
@@ -384,13 +401,60 @@ export class ShopifyOrderSourceAdapter
     return direction === 'newest-first';
   }
 
-  private startOfDay(date: string): string {
-    const iso = DATE_ONLY.test(date) ? `${date}T00:00:00.000Z` : date;
-    return this.toInstant(iso, date);
+  private async startOfDay(date: string): Promise<string> {
+    return this.dayEdge(date, 'start');
   }
 
-  private endOfDay(date: string): string {
-    return this.toInstant(DATE_ONLY.test(date) ? `${date}T23:59:59.999Z` : date, date);
+  private async endOfDay(date: string): Promise<string> {
+    return this.dayEdge(date, 'end');
+  }
+
+  /** A bare day in the shop's zone; anything else is an instant and is kept. */
+  private async dayEdge(date: string, edge: 'start' | 'end'): Promise<string> {
+    if (!DATE_ONLY.test(date)) {
+      return this.toInstant(date, date);
+    }
+    if (!isRealCalendarDay(date)) {
+      throw new OrderSyncStartUnavailableError(
+        `"${date}" is not a real calendar day (connection: ${this.connection.id})`,
+      );
+    }
+    const instant = zonedDayEdgeToInstant(date, edge, await this.readShopTimeZone());
+    if (instant === null) {
+      throw new OrderSyncStartUnavailableError(
+        `"${date}" is not a date Shopify can be asked about (connection: ${this.connection.id})`,
+      );
+    }
+    return instant;
+  }
+
+  /** The shop's IANA zone, read once per adapter; UTC with a warning when it cannot be read. */
+  private readShopTimeZone(): Promise<string> {
+    this.shopTimeZone ??= this.loadShopTimeZone();
+    return this.shopTimeZone;
+  }
+
+  private async loadShopTimeZone(): Promise<string> {
+    try {
+      const data = await this.client.query<{ shop: { ianaTimezone: string | null } | null }>(
+        SHOP_TIME_ZONE_QUERY,
+        {},
+      );
+      const zone = data.shop?.ianaTimezone;
+      if (typeof zone === 'string' && isKnownTimeZone(zone)) {
+        return zone;
+      }
+      this.logger.warn(
+        `shopify_time_zone_unreadable: the shop reported no usable time zone ("${String(zone)}"); a date ` +
+          `without a time is read as UTC (connection: ${this.connection.id})`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `shopify_time_zone_unreadable: could not read the shop time zone; a date without a time is read as ` +
+          `UTC (connection: ${this.connection.id}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return 'UTC';
   }
 
   private toInstant(iso: string, original: string): string {
@@ -406,8 +470,9 @@ export class ShopifyOrderSourceAdapter
   /**
    * Shopify shows only the last 60 days to an app without `read_all_orders`, so
    * an older start would silently import less than asked. Refused when the
-   * scope is known to be missing; a failed scope read only warns, since the
-   * scope may well be there.
+   * scope is missing, and also when it cannot be read: an import that may be
+   * silently cut to 60 days is worse than one that stops and says why. The
+   * answer is kept per adapter, so a job asks once, not once per page.
    */
   private async assertOldOrdersReadable(from: string | null): Promise<void> {
     if (from !== null && Date.parse(from) >= Date.now() - RECENT_ORDERS_HORIZON_MS) {
@@ -415,6 +480,13 @@ export class ShopifyOrderSourceAdapter
     }
     this.canReadAllOrders ??= this.readsAllOrders();
     const allowed = await this.canReadAllOrders;
+    if (allowed === null) {
+      throw new OrderSyncStartUnavailableError(
+        `Could not check whether this app may read orders older than 60 days (the ${READ_ALL_ORDERS_SCOPE} ` +
+          `scope), so the import was not started. Try again; if it keeps failing, reconnect the shop ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
     if (allowed === false) {
       throw new OrderSyncStartUnavailableError(
         `Shopify shows an app only the last 60 days of orders without the ${READ_ALL_ORDERS_SCOPE} scope, ` +
@@ -436,8 +508,8 @@ export class ShopifyOrderSourceAdapter
       return scopes.some((scope) => scope.handle === READ_ALL_ORDERS_SCOPE);
     } catch (error) {
       this.logger.warn(
-        `Could not read the granted scopes to check ${READ_ALL_ORDERS_SCOPE}; orders older than 60 days may be ` +
-          `missing (connection: ${this.connection.id}): ${error instanceof Error ? error.message : String(error)}`,
+        `Could not read the granted scopes to check ${READ_ALL_ORDERS_SCOPE}; an import reaching back more than ` +
+          `60 days is refused (connection: ${this.connection.id}): ${error instanceof Error ? error.message : String(error)}`,
       );
       return null;
     }

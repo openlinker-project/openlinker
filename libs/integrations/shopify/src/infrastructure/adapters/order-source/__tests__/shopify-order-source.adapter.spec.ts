@@ -15,14 +15,29 @@ import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopif
 import type { ShopifyGraphqlClient } from '../../../http/shopify-graphql-client';
 import { createShopifyClientRuntime } from '../../../http/shopify-client.builder';
 import type { OrderStatusWriteback } from '@openlinker/core/orders';
-import { ShopifyOrderSourceAdapter } from '../shopify-order-source.adapter';
+import { ShopifyOrderSourceAdapter, ShopifyRefundingOrderSourceAdapter } from '../shopify-order-source.adapter';
+import type { ShopifyRefundExecutor } from '../shopify-refund-executor';
 
 const CONNECTION = { id: 'c1' } as Connection;
 const WRITEBACK: OrderStatusWriteback = { write: jest.fn() };
 
-function build(query: jest.Mock): ShopifyOrderSourceAdapter {
+/**
+ * The shop time zone is answered here and never reaches `query`, so a test's own
+ * call counts and `mock.calls[0]` keep describing only the order reads.
+ */
+function build(query: jest.Mock, zone: string | Error | null = 'UTC'): ShopifyOrderSourceAdapter {
+  const client = {
+    query: (document: string, variables?: unknown): Promise<unknown> => {
+      if (document.includes('OlOrderSourceTimeZone')) {
+        return zone instanceof Error
+          ? Promise.reject(zone)
+          : Promise.resolve({ shop: { ianaTimezone: zone } });
+      }
+      return query(document, variables) as Promise<unknown>;
+    },
+  };
   return new ShopifyOrderSourceAdapter(
-    { query } as unknown as ShopifyGraphqlClient,
+    client as unknown as ShopifyGraphqlClient,
     'dev.myshopify.com',
     CONNECTION,
     WRITEBACK,
@@ -135,7 +150,15 @@ describe('ShopifyOrderSourceAdapter', () => {
         },
       });
 
-      const out = await build(query).listOrderFeed({ fromCursor: null, limit: 10 });
+      const scopes = { currentAppInstallation: { accessScopes: [{ handle: 'read_all_orders' }] } };
+      const answering = jest
+        .fn()
+        .mockImplementation((document: string, variables: unknown): Promise<unknown> =>
+          document.includes('OlOrderSourceScopes')
+            ? Promise.resolve(scopes)
+            : (query(document, variables) as Promise<unknown>),
+        );
+      const out = await build(answering).listOrderFeed({ fromCursor: null, limit: 10 });
 
       expect(out.items.map((i) => [i.externalOrderId, i.eventType])).toEqual([
         ['1', 'updated'],
@@ -143,6 +166,29 @@ describe('ShopifyOrderSourceAdapter', () => {
       ]);
       expect(out.nextCursor).toBe('v1|2026-11-05T11:30:00.000Z|2');
       expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ query: "updated_at:>='1970-01-01T00:00:00Z'" });
+    });
+
+    it('should refuse a cursor-less read when read_all_orders is missing instead of truncating to 60 days', async () => {
+      const query = jest.fn().mockResolvedValue({ currentAppInstallation: { accessScopes: [] } });
+      await expect(build(query).listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError,
+      );
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should refuse a cursor-less read when the scopes cannot be read', async () => {
+      const query = jest.fn().mockRejectedValue(new Error('boom'));
+      await expect(build(query).listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError,
+      );
+    });
+
+    it('should not check the scope on the live feed', async () => {
+      const query = jest.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false } } });
+      await build(query).listOrderFeed({ fromCursor: 'v1|2026-11-05T11:00:00.000Z|5', limit: 10 });
+      expect(
+        query.mock.calls.some(([document]) => (document as string).includes('OlOrderSourceScopes')),
+      ).toBe(false);
     });
 
     it('should skip an order the cursor already covers at the same timestamp', async () => {
@@ -225,9 +271,46 @@ describe('ShopifyOrderSourceAdapter', () => {
       await expect(build(query).cursorForDate('2026-01-01')).resolves.toBe('v1|2026-01-01T00:00:00.000Z|0');
     });
 
-    it('should proceed when the scopes cannot be read', async () => {
+    it('should refuse an old date when the scopes cannot be read, rather than import less than asked', async () => {
       const query = jest.fn().mockRejectedValue(new Error('boom'));
-      await expect(build(query).cursorForDate('2026-01-01')).resolves.toBe('v1|2026-01-01T00:00:00.000Z|0');
+      await expect(build(query).cursorForDate('2026-01-01')).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError,
+      );
+    });
+
+    it('should refuse an old date when the scope answer is absent', async () => {
+      const query = jest.fn().mockResolvedValue({ currentAppInstallation: null });
+      await expect(build(query).cursorForDate('2026-01-01')).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError,
+      );
+    });
+
+    it('should not need the scope for a date inside the last 59 days', async () => {
+      const query = jest.fn();
+      const recent = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
+      await expect(build(query).cursorForDate(recent)).resolves.toMatch(/^v1\|/);
+      expect(query).not.toHaveBeenCalled();
+    });
+
+    it('should start a bare day at midnight in the shop time zone', async () => {
+      await expect(build(jest.fn(), 'Europe/Warsaw').cursorForDate('2026-11-01')).resolves.toBe(
+        'v1|2026-10-31T23:00:00.000Z|0',
+      );
+    });
+
+    it('should read a bare day as UTC when the time zone cannot be read', async () => {
+      await expect(build(jest.fn(), new Error('down')).cursorForDate('2026-11-01')).resolves.toBe(
+        'v1|2026-11-01T00:00:00.000Z|0',
+      );
+      await expect(build(jest.fn(), null).cursorForDate('2026-11-01')).resolves.toBe(
+        'v1|2026-11-01T00:00:00.000Z|0',
+      );
+    });
+
+    it('should refuse a day that is not on the calendar', async () => {
+      await expect(build(jest.fn()).cursorForDate('2026-13-45')).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError,
+      );
     });
   });
 
@@ -290,6 +373,45 @@ describe('ShopifyOrderSourceAdapter', () => {
       expect(result).toEqual({ items: [], nextCursor: null, done: true });
     });
 
+    it('should bound a window by the shop days, not UTC days', async () => {
+      const query = jest.fn().mockResolvedValue(page([], false, null));
+      await build(query, 'America/New_York').listOrdersInWindow({
+        from: '2026-11-02',
+        to: '2026-11-03',
+        direction: 'oldest-first',
+        cursor: null,
+        limit: 10,
+      });
+      expect(vars(query).query).toBe(
+        "created_at:>='2026-11-02T05:00:00.000Z' created_at:<='2026-11-04T04:59:59.999Z'",
+      );
+    });
+
+    it('should refuse an unbounded history when the scopes cannot be read', async () => {
+      const query = jest.fn().mockRejectedValue(new Error('boom'));
+      await expect(
+        build(query).listOrdersInWindow({ direction: 'oldest-first', cursor: null, limit: 10 }),
+      ).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+    });
+
+    it('should ask for the scopes once across pages of one adapter', async () => {
+      const query = jest.fn().mockImplementation((document: string) =>
+        Promise.resolve(
+          document.includes('OlOrderSourceScopes')
+            ? { currentAppInstallation: { accessScopes: [{ handle: 'read_all_orders' }] } }
+            : page([], false, null),
+        ),
+      );
+      const adapter = build(query);
+      const input = { direction: 'oldest-first' as const, limit: 10 };
+      await adapter.listOrdersInWindow({ ...input, cursor: null });
+      await adapter.listOrdersInWindow({ ...input, cursor: 'CUR' });
+      const scopeReads = query.mock.calls.filter(([document]) =>
+        (document as string).includes('OlOrderSourceScopes'),
+      );
+      expect(scopeReads).toHaveLength(1);
+    });
+
     it('should mark a cancelled order as cancelled', async () => {
       const query = jest
         .fn()
@@ -331,6 +453,20 @@ describe('ShopifyOrderSourceAdapter', () => {
       expect(isOrderFeedBootstrap(adapter)).toBe(true);
       expect(isOrderFeedDateBootstrap(adapter)).toBe(true);
       expect(isOrderWindowReader(adapter)).toBe(true);
+    });
+
+    it('should be kept by the refunding subclass', () => {
+      const adapter = new ShopifyRefundingOrderSourceAdapter(
+        { query: jest.fn() } as unknown as ShopifyGraphqlClient,
+        'dev.myshopify.com',
+        CONNECTION,
+        WRITEBACK,
+        { executeRefund: jest.fn() } as unknown as ShopifyRefundExecutor,
+      );
+      expect(isOrderFeedBootstrap(adapter)).toBe(true);
+      expect(isOrderFeedDateBootstrap(adapter)).toBe(true);
+      expect(isOrderWindowReader(adapter)).toBe(true);
+      expect(isRefundExecutor(adapter)).toBe(true);
     });
   });
 

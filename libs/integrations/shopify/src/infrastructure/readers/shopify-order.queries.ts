@@ -113,6 +113,12 @@ export const APP_ACCESS_SCOPES_QUERY = `query OlOrderSourceScopes {
   currentAppInstallation { accessScopes { handle } }
 }`;
 
+/** The shop's own time zone, so a bare calendar day means the shop's day. Its own query:
+ * the shop context also resolves stock locations and can refuse, which must not stop an order read. */
+export const SHOP_TIME_ZONE_QUERY = `query OlOrderSourceTimeZone {
+  shop { ianaTimezone }
+}`;
+
 /**
  * The order this shop already holds for an OpenLinker order, by the
  * `sourceIdentifier` the create stamped on it. Goes through the search index,
