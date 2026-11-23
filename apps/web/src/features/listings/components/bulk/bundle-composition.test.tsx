@@ -142,4 +142,17 @@ describe('BundleComposition - multipack and stock', () => {
     renderIt('74035');
     expect(screen.queryByTestId('bundle-pack-hint')).not.toBeInTheDocument();
   });
+
+  it('should say the price covers the whole set and name the first product on Allegro', () => {
+    renderWithProviders(
+      <BundleComposition
+        preview={preview}
+        connectionId="conn-1"
+        chosenCategoryId="74035"
+        destinationName="Allegro"
+      />
+    );
+    expect(screen.getByTestId('bundle-price-scope')).toBeInTheDocument();
+    expect(screen.getByTestId('bundle-first-product-note')).toHaveTextContent('Kawa 250 g');
+  });
 });

@@ -212,6 +212,9 @@ export function BundleStepGifts({
       <div className="bf-step s3 s3--none">
         <div className="s3-nogift" data-testid="bundle-form-no-gifts">
           <p className="bf-lead">{interpolate(copy.s3NoneLead, { name: bundleLabel })}</p>
+          <p className="pm-help" data-testid="bundle-form-no-own-stock">
+            {copy.s3NoneStock}
+          </p>
           <Button tone="secondary" className="button--sm" onClick={onBackToComponents}>
             {copy.s3GoBack}
           </Button>

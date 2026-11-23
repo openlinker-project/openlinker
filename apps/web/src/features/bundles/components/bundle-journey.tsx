@@ -103,7 +103,7 @@ export function BundleJourney({
           </span>
           <span className="ux-journey__body">
             <strong>{step.title}</strong>
-            <small>{step.hint}</small>
+            <small title={step.hint}>{step.hint}</small>
             {step.action}
           </span>
           <span className="sr-only">{step.done ? copy.done : step.id === nextId ? copy.next : copy.later}</span>

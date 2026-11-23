@@ -242,6 +242,9 @@ export function OrderLineItemsPanel({
               codeIsFallback={!row.component.sku}
               placeholderName={row.component.name ?? row.component.sku ?? row.component.variantId}
             />
+            <span className="cx-tag cx-tag--quiet" data-testid={`order-bundle-deducts-${row.component.sku ?? row.component.variantId}`}>
+              {bundleCopy.order.deductsStock}
+            </span>
             {row.component.giftSlot === true ? (
               <GiftSlotNote
                 component={row.component}

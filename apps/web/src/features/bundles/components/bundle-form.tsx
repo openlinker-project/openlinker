@@ -100,6 +100,8 @@ export interface BundleFormProps {
   bundleVariantId?: string;
   /** A component to start from: "Make a bundle from this" and the multipack hold. */
   seedComponent?: BundleFormSeedComponent;
+  /** Several single-variant products to start from (product list "Create a bundle from selected"). */
+  seedComponents?: BundleFormSeedComponent[];
   /** An existing bundle to copy the components of ("Duplicate"); the form starts on step 1. */
   duplicateFrom?: string;
 }
@@ -132,7 +134,12 @@ function readErrorCode(error: ApiError | null): { code: string | null; reason: s
   return { code: null, reason: null };
 }
 
-export function BundleForm({ bundleVariantId, seedComponent, duplicateFrom }: BundleFormProps): ReactElement {
+export function BundleForm({
+  bundleVariantId,
+  seedComponent,
+  seedComponents,
+  duplicateFrom,
+}: BundleFormProps): ReactElement {
   const copy = useMessages('bundles');
   const giftSettings = useGiftDocumentSettingsQuery();
   const giftLabels = useGiftFormLabels();
@@ -280,6 +287,25 @@ export function BundleForm({ bundleVariantId, seedComponent, duplicateFrom }: Bu
     enabled: seedComponent !== undefined && !editing,
   });
 
+  const multiSeedKey = (seedComponents ?? []).map((c) => `${c.productId ?? ''}:${String(c.quantity)}`).join(',');
+  const multiSeed = useQuery({
+    queryKey: ['bundles', 'seed-components', multiSeedKey],
+    queryFn: async (): Promise<BundleProductChoice[]> =>
+      Promise.all(
+        (seedComponents ?? []).map(async (item) => {
+          const product = await apiClient.products.getById(item.productId ?? '');
+          const variants = product.variants ?? [];
+          const picked = variants.length === 1 ? variants[0] : undefined;
+          if (picked === undefined) {
+            throw new Error('seed variant not found');
+          }
+          return toBundleChoice(product, picked, variants.length);
+        })
+      ),
+    retry: false,
+    enabled: (seedComponents?.length ?? 0) > 0 && !editing,
+  });
+
   const form = useForm<BundleFormValues>({
     resolver: zodResolver(bundleFormSchema),
     defaultValues: { components: [] },
@@ -293,9 +319,14 @@ export function BundleForm({ bundleVariantId, seedComponent, duplicateFrom }: Bu
   const editSeedKey =
     editing && detail.data ? `edit:${detail.data.variantId}:${String(detail.data.version)}` : null;
   const newSeedKey = !editing && seed.data && seedComponent ? `new:${seed.data.variantId}` : null;
+  const multiSeedReady = !editing && multiSeed.data !== undefined && multiSeed.data.length > 0;
   const duplicateSeedKey =
     !editing && duplicateSource.data ? `dup:${duplicateSource.data.variantId}` : null;
-  const seedKey = editSeedKey ?? duplicateSeedKey ?? newSeedKey;
+  const seedKey =
+    editSeedKey ??
+    duplicateSeedKey ??
+    newSeedKey ??
+    (multiSeedReady ? `multi:${multiSeedKey}` : null);
   const toFormRows = (source: NonNullable<typeof detail.data>): BundleFormValues['components'] =>
     source.componentAvailability.map((component) => ({
       variantId: component.variantId,
@@ -336,6 +367,15 @@ export function BundleForm({ bundleVariantId, seedComponent, duplicateFrom }: Bu
           touched: { ...current.touched, name: true },
         }));
       }
+    } else if (multiSeedReady && multiSeed.data && seedComponents) {
+      form.reset({
+        components: multiSeed.data.map((choice, index) => ({
+          ...choice,
+          quantity: String(seedComponents[index]?.quantity ?? 1),
+          gift: false,
+          documentForm: '',
+        })),
+      });
     } else if (seed.data && seedComponent) {
       form.reset({
         components: [

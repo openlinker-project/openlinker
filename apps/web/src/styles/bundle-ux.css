@@ -1448,3 +1448,63 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
   .order-pricing .data-table td:first-child { width: 30%; max-width: 240px; }
   .order-pricing .data-table td { overflow-wrap: anywhere; }
 }
+
+/* === SECTION R4-A: layout, elevation and motion polish (round 4) === */
+
+/* Sticky bar: a fade above it so the last row dissolves instead of being cut, and one elevation
+   level between card and floating surface. The step needs room equal to the bar. */
+.bundle-form .pm-actionbar { box-shadow: 0 -8px 24px rgb(0 0 0 / 0.06), var(--shadow-overlay); }
+.bundle-form .pm-actionbar::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 1.5rem; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg-shell));
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+.bundle-form .bf-grid { padding-bottom: 6rem; }
+
+/* Summary hero: the empty state reads as a place to fill, a positive figure carries the success tone. */
+.bundle-form .s-hero.is-empty { border-style: dashed; border-color: var(--border-strong); background: var(--bg-surface); }
+.bundle-form .s-hero.is-empty .s-hero__note { display: flex; align-items: center; gap: var(--space-2); }
+.bundle-form .s-hero.is-empty .s-hero__note::before {
+  content: ''; flex: none; width: 1rem; height: 1rem; box-sizing: border-box;
+  border: 1.5px solid var(--text-muted); border-radius: 3px;
+  background: linear-gradient(var(--text-muted), var(--text-muted)) center / 100% 1.5px no-repeat;
+}
+.bundle-form .s-hero.is-ok .s-hero__num { color: var(--status-success-strong); font-variant-numeric: tabular-nums; }
+.bundle-form .s-hero__num { transition: color var(--ux-dur) var(--ux-ease); }
+
+/* Picker rows: hover is a quiet surface, selection keeps only the accent edge, and a disabled row
+   dims its name while its reason stays at full contrast. */
+.bpick__row:hover:not(.is-disabled):not(.is-active) { background: var(--bg-surface-hover); }
+.bpick__row.is-active { background: transparent; }
+.bpick__row.is-active:hover:not(.is-disabled) { background: var(--bg-surface-hover); }
+.bpick__row.is-disabled .bpick__why { opacity: 1; }
+.bpick__row.is-disabled .bpick__sets { display: none; }
+
+/* Stepper: legible inactive steps, a 2px connector that fills with the accent once a step is done. */
+@media (min-width: 768px) {
+  .bf-stepper .setup-stepper__step--upcoming .setup-stepper__label { color: var(--text-primary); opacity: 0.72; }
+  .bf-stepper .setup-stepper__connector { height: 2px; }
+  .bf-stepper .setup-stepper__step--done .setup-stepper__indicator { box-shadow: none; }
+}
+
+/* One quiet focus ring everywhere: the search input and component cards drop the extra glow. */
+.bundle-picker input[type='search']:focus-visible,
+.bf-comp:focus-within { box-shadow: none; outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+.bf-comp:focus-within { border-color: var(--accent-primary-border); }
+
+/* Bundle view journey: a card never lets its link or text spill into the neighbour; the hint is
+   clamped to two lines and the full text lives in the title attribute. */
+.ux-journey__step { min-width: 0; align-items: start; }
+.ux-journey__body { overflow: hidden; }
+.ux-journey__body small {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ux-journey__body .button {
+  position: static; display: inline-block; max-width: 100%; white-space: normal; text-align: left; height: auto;
+  padding-block: 0.3rem; line-height: 1.3;
+}
+
+/* Rows entering a list fade and settle; panels already slide (bf-stage). Motion only when allowed. */
+@media (prefers-reduced-motion: no-preference) {
+  .bf-comp, .bf-summary__list > li { animation: bx-rise var(--ux-dur) var(--ux-ease) both; }
+}

@@ -338,13 +338,6 @@ export function BundleProductView({
           >
             {copy.derivedStock}
           </span>
-          {availability.kind === 'known' ? (
-            <p className="bundle-set-stock" data-testid="bundle-view-set-stock">
-              {availability.limitedBy === null
-                ? interpolate(copy.setStockOk, { n: availability.bundles })
-                : interpolate(copy.setStock, { n: availability.bundles, name: availability.limitedBy })}
-            </p>
-          ) : null}
           <div className={`cx-avail ${availabilityTone}`} style={{ alignItems: 'flex-end' }}>
             {availability.kind === 'known' ? (
               <>

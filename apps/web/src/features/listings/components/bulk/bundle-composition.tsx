@@ -124,6 +124,14 @@ export function BundleComposition({
           {isAllegro ? (
             <p className="cx-sub">{interpolate(copy.packHintAllegro, { n: packSize })}</p>
           ) : null}
+          <p className="cx-sub" data-testid="bundle-price-scope">
+            {interpolate(copy.priceWholePack, { n: packSize })}
+          </p>
+          {isAllegro ? (
+            <span className="cx-tag cx-tag--quiet" data-testid="bundle-pack-category-chip">
+              {copy.packCategoryChip}
+            </span>
+          ) : null}
           {preview.components[0] ? (
             <p className="cx-sub bundle-comp__buyer" data-testid="bundle-pack-buyer">
               <b>
@@ -132,6 +140,18 @@ export function BundleComposition({
                   n: packSize,
                 })}
               </b>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {packSize === null ? (
+        <div className="bundle-comp__pack">
+          <p className="cx-sub" data-testid="bundle-price-scope">
+            {interpolate(copy.priceWholeSet, { n: preview.components.length })}
+          </p>
+          {isAllegro && preview.components.length > 1 && preview.components[0] ? (
+            <p className="cx-sub" data-testid="bundle-first-product-note">
+              {interpolate(copy.firstProductNote, { name: preview.components[0].name })}
             </p>
           ) : null}
         </div>

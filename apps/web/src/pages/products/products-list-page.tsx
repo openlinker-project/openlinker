@@ -494,6 +494,22 @@ function ProductsListPageBody(): ReactElement {
     });
   }, []);
 
+  // Link for the selection-bar bundle action. Product ids, not variant ids:
+  // the list selects products, and the wizard resolves a single-variant
+  // product to its variant itself. Bundles cannot be components, and a
+  // multi-variant product has no single component to seed, so both are
+  // excluded rather than silently dropped by the wizard.
+  const selectionBundleLink = useMemo((): string | null => {
+    const picked = items.filter((p) => selectedIds.has(p.id));
+    if (picked.length !== selectedIds.size) return null;
+    if (picked.some((p) => p.bundle || (p.variantCount ?? 1) !== 1)) return null;
+    if (picked.length === 1) {
+      return `/products/bundles/new?componentProduct=${encodeURIComponent(picked[0]!.id)}&quantity=1`;
+    }
+    if (picked.length < 2 || picked.length > 20) return null;
+    return `/products/bundles/new?components=${picked.map((p) => `${encodeURIComponent(p.id)}:1`).join(',')}`;
+  }, [items, selectedIds]);
+
   const visibleIds = useMemo(() => items.map((p) => p.id), [items]);
   const visibleSelectedCount = useMemo(
     () => visibleIds.reduce((sum, id) => sum + (selectedIds.has(id) ? 1 : 0), 0),
@@ -1197,6 +1213,17 @@ function ProductsListPageBody(): ReactElement {
                     <Button tone="ghost" className="button--sm" onClick={clearSelection}>
                       {copy.bulk.clear}
                     </Button>
+                    {bundleWrite.canWrite && selectionBundleLink !== null ? (
+                      <Link
+                        to={selectionBundleLink}
+                        className="button button--ghost button--sm"
+                        data-testid="selection-make-bundle"
+                      >
+                        {selectedIds.size === 1
+                          ? bundleCopy.list.multipackFromSelected
+                          : bundleCopy.list.bundleFromSelected}
+                      </Link>
+                    ) : null}
                     {/* Capability-gated (#1096/#1828): hidden with 0 publish destinations. */}
                     {publishDestinations.length > 0 && write.visible ? (
                       <Button tone="primary" onClick={handleCreateOffers}>

@@ -128,6 +128,7 @@ export function BundleStepReview({
             </li>
             <li>{copy.s4HappensSave}</li>
             <li>{copy.s4HappensNotListed}</li>
+            <li>{copy.s4HappensNoStock}</li>
           </ol>
         </section>
       ) : null}
