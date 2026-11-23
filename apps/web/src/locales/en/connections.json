@@ -1657,6 +1657,7 @@
     },
     "steps": {
       "capabilities": "Capabilities",
+      "orders": "Order history",
       "review": "Review & create",
       "shop": "Shop",
       "token": "API token"

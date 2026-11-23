@@ -51,6 +51,81 @@ describe('ShopifySetupForm', () => {
     expect(test).toHaveBeenCalledWith('conn_shopify_1');
   });
 
+  it('should default the start to new orders only and send nothing for it', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_3', name: 'Shopify my-shop' });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+
+    expect(screen.getByRole('radio', { name: /New orders only/ })).toBeChecked();
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect((create.mock.calls[0][0] as { orderSyncStart?: unknown }).orderSyncStart).toBeUndefined();
+  });
+
+  it('should send the chosen start date for a store that reads orders', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_4', name: 'Shopify my-shop' });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ orderSyncStart: { mode: 'all' } })),
+    );
+  });
+
+  it('should refuse a start date in the future', async () => {
+    const create = vi.fn();
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        connections: { create },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shopify.admin.v1',
+              platformType: 'shopify',
+              supportedCapabilities: ['OrderSource'],
+              orderSyncStartModes: ['now', 'from', 'all'],
+            },
+          ]),
+        },
+      }),
+    });
+
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    const fromCard = await screen.findByRole('radio', { name: /Orders since a date/ });
+    await waitFor(() => expect(fromCard).toBeEnabled());
+    fireEvent.click(fromCard);
+    fireEvent.change(await screen.findByLabelText('First day to import'), { target: { value: '2999-01-01' } });
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('should not ask for a start for a publisher or an OAuth install', () => {
+    renderWithProviders(<ShopifySetupForm />);
+
+    expect(screen.getByRole('radio', { name: /New orders only/ })).toBeInTheDocument();
+    chooseMode(copy.modeOauth);
+    expect(screen.queryByRole('radio', { name: /New orders only/ })).toBeNull();
+    chooseMode(copy.modeClientCredentials);
+    fireEvent.click(screen.getByRole('radio', { name: copy.rolePublisher }));
+    expect(screen.queryByRole('radio', { name: /New orders only/ })).toBeNull();
+  });
+
   it('should send only the access token in access-token mode', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_2', name: 'Shopify my-shop' });
     renderWithProviders(<ShopifySetupForm />, {

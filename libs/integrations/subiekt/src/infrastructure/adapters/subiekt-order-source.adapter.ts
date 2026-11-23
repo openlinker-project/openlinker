@@ -38,12 +38,20 @@ import type {
   OrderFeedInput,
   OrderFeedOutput,
   IncomingOrder,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
 } from '@openlinker/core/orders';
+import { OrderSyncStartUnavailableError } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-bridge.client';
 import { findTowarVariantExternalId } from './subiekt-variant-identity';
 
-export class SubiektOrderSourceAdapter implements OrderSourcePort {
+const FALLBACK_WALK_PAGE_SIZE = 1000;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export class SubiektOrderSourceAdapter
+  implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap
+{
   constructor(
     private readonly bridge: SubiektOrdersBridgeClient,
     private readonly logger: LoggerPort,
@@ -53,6 +61,44 @@ export class SubiektOrderSourceAdapter implements OrderSourcePort {
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly connectionId: string,
   ) {}
+
+  async headCursor(): Promise<string | null> {
+    const head = await this.bridge.getOrderFeedHead();
+    if (head !== null) {
+      return head.nextCursor;
+    }
+    // 404: a bridge that predates GET /api/orders/feed/head. Walk the whole feed.
+    this.logger.warn(
+      'subiekt_order_feed_head_unavailable: bridge has no /api/orders/feed/head; ' +
+        'walking the entire order feed to find its end (upgrade the bridge to avoid this)',
+    );
+    let cursor: string | null = null;
+    for (;;) {
+      const page = await this.bridge.listOrderFeed(cursor, FALLBACK_WALK_PAGE_SIZE);
+      if (page.items.length === 0 || page.nextCursor === null || page.nextCursor === cursor) {
+        return cursor;
+      }
+      cursor = page.nextCursor;
+    }
+  }
+
+  cursorForDate(date: string): Promise<string> {
+    // A rejected promise, not a synchronous throw: core awaits this and treats a rejection as
+    // "this start cannot be honoured".
+    return Promise.resolve().then(() => {
+      const parsed = ISO_DATE.test(date) ? new Date(`${date}T00:00:00Z`) : null;
+      if (
+        parsed === null ||
+        Number.isNaN(parsed.getTime()) ||
+        !parsed.toISOString().startsWith(date)
+      ) {
+        throw new OrderSyncStartUnavailableError(
+          `Invalid start date "${date}": expected YYYY-MM-DD`,
+        );
+      }
+      return `${date}T00:00:00.0000000|0`;
+    });
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     const since = input.fromCursor;

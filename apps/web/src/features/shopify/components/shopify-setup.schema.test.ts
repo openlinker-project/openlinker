@@ -84,4 +84,33 @@ describe('Shopify role presets', () => {
     const input = toCreateConnectionInput(shopifySetupSchema.parse({ ...VALID, role: 'publisher' }));
     expect(input.enabledCapabilities).toEqual(SHOPIFY_ROLE_CAPABILITIES.publisher);
   });
+
+  it('should default the order start to now and send nothing for it', () => {
+    const parsed = shopifySetupSchema.parse(VALID);
+    expect(parsed.orderSyncStart).toEqual({ mode: 'now' });
+    expect(toCreateConnectionInput(parsed).orderSyncStart).toBeUndefined();
+  });
+
+  it('should send the chosen start for the master role and never for a publisher or OAuth', () => {
+    const chosen = { ...VALID, orderSyncStart: { mode: 'from' as const, from: '2024-03-01' } };
+    expect(toCreateConnectionInput(shopifySetupSchema.parse(chosen)).orderSyncStart).toEqual({
+      mode: 'from',
+      from: '2024-03-01',
+    });
+    expect(
+      toCreateConnectionInput(shopifySetupSchema.parse({ ...chosen, role: 'publisher' })).orderSyncStart,
+    ).toBeUndefined();
+    expect(
+      toCreateConnectionInput(shopifySetupSchema.parse({ ...chosen, mode: 'oauth' })).orderSyncStart,
+    ).toBeUndefined();
+  });
+
+  it('should refuse a start date with no day or in the future', () => {
+    expect(
+      shopifySetupSchema.safeParse({ ...VALID, orderSyncStart: { mode: 'from' } }).success,
+    ).toBe(false);
+    expect(
+      shopifySetupSchema.safeParse({ ...VALID, orderSyncStart: { mode: 'from', from: '2999-01-01' } }).success,
+    ).toBe(false);
+  });
 });

@@ -51,8 +51,14 @@ import type {
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
   OrderFeedOutput,
   OrderFulfillmentReadback,
+  OrderImportDirection,
+  OrderWindowInput,
+  OrderWindowPage,
+  OrderWindowReader,
   OrderSourcePort,
   RefundExecutionResult,
   RefundExecutor,
@@ -62,7 +68,7 @@ import type {
   SourceFulfillmentWaybill,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
-import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
+import { OrderSyncStartUnavailableError, unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type {
   IncomingReturn,
   ReturnDeclineCommand,
@@ -111,10 +117,12 @@ import {
 import type { ShopifyRefundExecutor } from './shopify-refund-executor';
 import { ShopifyMappingOptionsReader } from '../../readers/shopify-mapping-options.reader';
 import {
+  APP_ACCESS_SCOPES_QUERY,
   ORDER_BY_ID_QUERY,
   ORDER_FEED_QUERY,
   ORDER_FULFILLMENT_READBACK_QUERY,
   ORDER_LINE_ITEMS_PAGE_QUERY,
+  ORDER_WINDOW_QUERY,
 } from '../../readers/shopify-order.queries';
 import type { ShopifyPaymentGatewayNames } from '../../../domain/types/shopify-config.types';
 import { ShopifyOrderTooLargeException } from '../../../domain/exceptions/shopify-order-too-large.exception';
@@ -133,6 +141,10 @@ const FEED_PAGE_SIZE = 100;
 const MAX_FEED_PAGES = 20;
 /** The fulfillments read per order; a full page may have been cut off. */
 const FULFILLMENTS_PAGE = 20;
+/** Without `read_all_orders` Shopify shows only the last 60 days; a day of margin for clock skew. */
+const RECENT_ORDERS_HORIZON_MS = 59 * 24 * 60 * 60 * 1000;
+const READ_ALL_ORDERS_SCOPE = 'read_all_orders';
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const EPOCH = '1970-01-01T00:00:00Z';
 /** Orders read per return-feed page; each carries its returns' ids, never their lines. */
 const RETURN_FEED_ORDERS_PER_PAGE = 50;
@@ -145,13 +157,15 @@ const MAX_EXTRA_LINE_PAGES = 20;
  * Shopify is written back by the same code the destination role uses.
  */
 export class ShopifyOrderSourceAdapter
-  implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback, SourceOptionsReader, OrderFulfillmentReadback
+  implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback, SourceOptionsReader, OrderFulfillmentReadback,
+    OrderFeedBootstrap, OrderFeedDateBootstrap, OrderWindowReader
 {
   /** Shopify's own `ReturnDeclineReason` values; core treats them as opaque. */
   readonly declineReasonCodes: readonly string[] = ['RETURN_PERIOD_ENDED', 'FINAL_SALE', 'OTHER'];
 
   private readonly logger = new Logger(ShopifyOrderSourceAdapter.name);
   private readonly options: ShopifyMappingOptionsReader;
+  private canReadAllOrders: Promise<boolean | null> | null = null;
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
@@ -291,6 +305,142 @@ export class ShopifyOrderSourceAdapter
       // Advanced over filtered-out event types too, so they are not re-read forever.
       nextCursor: formatShopifyFeedCursor(last) ?? input.fromCursor ?? null,
     };
+  }
+
+  /**
+   * Cursor of the newest order (by `updatedAt`), so a connection that starts
+   * "from now" ingests nothing older. `null` only when the shop has no orders;
+   * a failed read throws, because seeding from nothing would import history.
+   * A head still inside the settle window is a safe seed: the feed's keyset
+   * resumes strictly after it.
+   */
+  async headCursor(): Promise<string | null> {
+    const data: { orders: ShopifyConnection<ShopifyOrderFeedRow> } = await this.client.query(ORDER_FEED_QUERY, {
+      first: 1,
+      reverse: true,
+    });
+    const head = data.orders.nodes[0];
+    if (head === undefined) {
+      return null;
+    }
+    return formatShopifyFeedCursor({
+      updatedAt: new Date(head.updatedAt).toISOString(),
+      orderId: fromShopifyGid(head.id),
+    });
+  }
+
+  /**
+   * A feed cursor at the start of `date` (a bare day is read as UTC midnight),
+   * with id 0 so every real order at that instant sorts after it. Pure, but
+   * async by contract and it refuses a date the shop would not show.
+   */
+  async cursorForDate(date: string): Promise<string> {
+    const instant = this.startOfDay(date);
+    await this.assertOldOrdersReadable(instant);
+    return ['v1', instant, '0'].join('|');
+  }
+
+  /**
+   * Orders placed inside [from, to] by placement date, newest or oldest first.
+   * The cursor is Shopify's own `endCursor`, which is stable for one query; the
+   * bounds are passed again on every call. No settle window here: a window
+   * read is a snapshot of history, not a live feed. Items carry the feed's
+   * `eventKey`, so an order imported here and seen by the feed ingests once.
+   */
+  async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
+    const from = input.from === undefined ? null : this.startOfDay(input.from);
+    const to = input.to === undefined ? null : this.endOfDay(input.to);
+    if (from === null || Date.parse(from) < Date.now() - RECENT_ORDERS_HORIZON_MS) {
+      await this.assertOldOrdersReadable(from);
+    }
+    const filters: string[] = [];
+    if (from !== null) {
+      filters.push(`created_at:>='${from}'`);
+    }
+    if (to !== null) {
+      filters.push(`created_at:<='${to}'`);
+    }
+    const data: { orders: ShopifyConnection<ShopifyOrderFeedRow> } = await this.client.query(ORDER_WINDOW_QUERY, {
+      first: Math.min(Math.max(1, input.limit), FEED_PAGE_SIZE),
+      after: input.cursor,
+      query: filters.length === 0 ? null : filters.join(' '),
+      reverse: this.isNewestFirst(input.direction),
+    });
+    const items = data.orders.nodes.map((row): OrderFeedItem => {
+      const orderId = fromShopifyGid(row.id);
+      return {
+        externalOrderId: orderId,
+        eventType: this.eventTypeOf(row),
+        occurredAt: row.updatedAt,
+        eventKey: `${orderId}:${row.updatedAt}`,
+      };
+    });
+    const endCursor = data.orders.pageInfo?.endCursor ?? null;
+    const done = data.orders.pageInfo?.hasNextPage !== true || endCursor === null;
+    return { items, nextCursor: done ? null : endCursor, done };
+  }
+
+  private isNewestFirst(direction: OrderImportDirection): boolean {
+    return direction === 'newest-first';
+  }
+
+  private startOfDay(date: string): string {
+    const iso = DATE_ONLY.test(date) ? `${date}T00:00:00.000Z` : date;
+    return this.toInstant(iso, date);
+  }
+
+  private endOfDay(date: string): string {
+    return this.toInstant(DATE_ONLY.test(date) ? `${date}T23:59:59.999Z` : date, date);
+  }
+
+  private toInstant(iso: string, original: string): string {
+    const ms = Date.parse(iso);
+    if (Number.isNaN(ms)) {
+      throw new OrderSyncStartUnavailableError(
+        `"${original}" is not a date Shopify can be asked about (connection: ${this.connection.id})`,
+      );
+    }
+    return new Date(ms).toISOString();
+  }
+
+  /**
+   * Shopify shows only the last 60 days to an app without `read_all_orders`, so
+   * an older start would silently import less than asked. Refused when the
+   * scope is known to be missing; a failed scope read only warns, since the
+   * scope may well be there.
+   */
+  private async assertOldOrdersReadable(from: string | null): Promise<void> {
+    if (from !== null && Date.parse(from) >= Date.now() - RECENT_ORDERS_HORIZON_MS) {
+      return;
+    }
+    this.canReadAllOrders ??= this.readsAllOrders();
+    const allowed = await this.canReadAllOrders;
+    if (allowed === false) {
+      throw new OrderSyncStartUnavailableError(
+        `Shopify shows an app only the last 60 days of orders without the ${READ_ALL_ORDERS_SCOPE} scope, ` +
+          `so orders older than that cannot be imported. Grant the scope to the app and reconnect ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
+  }
+
+  private async readsAllOrders(): Promise<boolean | null> {
+    try {
+      const data = await this.client.query<{
+        currentAppInstallation: { accessScopes: ReadonlyArray<{ handle: string }> } | null;
+      }>(APP_ACCESS_SCOPES_QUERY, {});
+      const scopes = data.currentAppInstallation?.accessScopes;
+      if (scopes === undefined) {
+        return null;
+      }
+      return scopes.some((scope) => scope.handle === READ_ALL_ORDERS_SCOPE);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the granted scopes to check ${READ_ALL_ORDERS_SCOPE}; orders older than 60 days may be ` +
+          `missing (connection: ${this.connection.id}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {

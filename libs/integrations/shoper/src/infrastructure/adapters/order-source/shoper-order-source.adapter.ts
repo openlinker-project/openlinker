@@ -41,10 +41,15 @@
  * @implements {OrderStatusWriteback}
  * @implements {SourceOptionsReader}
  * @implements {OrderFulfillmentReadback}
+ * @implements {OrderFeedBootstrap} (#4265) where the feed starts for "only new orders"
+ * @implements {OrderFeedDateBootstrap} (#4265) where the feed starts for "from a date"
+ * @implements {OrderWindowReader} (#4265) one-off import of a date range, either direction
  */
 import type {
   IncomingOrder,
   MappingOption,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
@@ -53,15 +58,19 @@ import type {
   OrderLifecycleEvent,
   OrderSourcePort,
   OrderStatusWriteback,
+  OrderWindowInput,
+  OrderWindowPage,
+  OrderWindowReader,
   OrderWritebackResult,
   SourceFulfillmentReadback,
   SourceFulfillmentWaybill,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
-import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
+import { OrderSyncStartUnavailableError, unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
+import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import type { ShoperOrderLineRow, ShoperOrderRow, ShoperParcel } from '../../../domain/types/shoper-api.types';
 import type {
@@ -78,6 +87,7 @@ import {
   shopLocalToIso,
 } from '../../mappers/shoper-incoming-order.mapper';
 import {
+  EMPTY_SHOPER_FEED_CURSOR,
   formatShoperFeedCursor,
   isWallClock,
   laterWallClock,
@@ -118,7 +128,14 @@ const NEUTRAL_STATUS_LABEL: Readonly<Record<string, string>> = {
 };
 
 export class ShoperOrderSourceAdapter
-  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader, OrderFulfillmentReadback
+  implements
+    OrderSourcePort,
+    OrderStatusWriteback,
+    SourceOptionsReader,
+    OrderFulfillmentReadback,
+    OrderFeedBootstrap,
+    OrderFeedDateBootstrap,
+    OrderWindowReader
 {
   private readonly logger = new Logger(ShoperOrderSourceAdapter.name);
   private readonly statusWriter: ShoperOrderStatusWriter;
@@ -181,24 +198,178 @@ export class ShoperOrderSourceAdapter
       if (isOwnOrder(row)) {
         continue;
       }
-      const id = String(row.order_id);
-      // A terminal order is reported as `cancelled` even on first sight: core
-      // routes that event through the cancellation relay and never through the
-      // create/update path, which would mirror an already-dead order to its
-      // destinations (the PrestaShop and WooCommerce sources do the same).
-      const eventType = isTerminal(await this.statusOf(row)) ? 'cancelled' : 'created';
+      const item = await this.toFeedItem(row, timezone);
       rows.push(row);
-      if (eventTypes !== undefined && !eventTypes.includes(eventType)) {
+      if (eventTypes !== undefined && !eventTypes.includes(item.eventType)) {
         continue;
       }
-      items.push({
-        externalOrderId: id,
-        eventType,
-        occurredAt: shopLocalToIso(row.date, timezone) ?? new Date(0).toISOString(),
-        eventKey: `${id}:${eventType}`,
-      });
+      items.push(item);
     }
     return { items, rows, lastOrderId };
+  }
+
+  /**
+   * The feed item for a NEW order, shared by the live feed and the window read so
+   * both emit the same `eventKey` and one order is never queued twice.
+   *
+   * A terminal order is reported as `cancelled` even on first sight: core
+   * routes that event through the cancellation relay and never through the
+   * create/update path, which would mirror an already-dead order to its
+   * destinations (the PrestaShop and WooCommerce sources do the same).
+   */
+  private async toFeedItem(row: ShoperOrderRow, timezone: string | null): Promise<OrderFeedItem> {
+    const id = String(row.order_id);
+    const eventType: OrderFeedEventType = isTerminal(await this.statusOf(row)) ? 'cancelled' : 'created';
+    return {
+      externalOrderId: id,
+      eventType,
+      occurredAt: shopLocalToIso(row.date, timezone) ?? new Date(0).toISOString(),
+      eventKey: `${id}:${eventType}`,
+    };
+  }
+
+  // ─── Order sync start (#4265) ──────────────────────────────────────────────
+
+  /**
+   * Cursor of the newest order, with the status watermark stamped too: a head
+   * without it would make the first poll stamp it itself, but only AFTER reading
+   * from an unset position, and a seeded feed must never look like a first run.
+   * The newest order is NOT filtered for our own: the feed advances over them too.
+   */
+  async headCursor(): Promise<string | null> {
+    const head = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
+      page: 1,
+      limit: 1,
+      query: { order: 'order_id DESC' },
+    });
+    const row = head.items[0];
+    if (row === undefined) {
+      return null;
+    }
+    const latestStatusDate = await this.readLatestStatusDate();
+    const statusWatermark = laterWallClock(isWallClock(row.status_date) ? row.status_date : null, latestStatusDate);
+    return formatShoperFeedCursor({
+      lastOrderId: String(row.order_id),
+      statusWatermark,
+      statusPassStart: null,
+      statusNextPage: null,
+    });
+  }
+
+  /**
+   * Cursor positioned just before the first order placed at or after `date`.
+   * Shoper dates are naive shop-local, so the bound is compared as the shop's own
+   * wall clock with no zone conversion. With no such order the date is in the
+   * future of the shop's history, so the feed starts at the head.
+   */
+  async cursorForDate(date: string): Promise<string> {
+    const day = parseDay(date);
+    if (day === null) {
+      throw new OrderSyncStartUnavailableError(`"${date}" is not a date Shoper can start order sync from`);
+    }
+    let first: readonly ShoperOrderRow[];
+    try {
+      first = (
+        await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
+          page: 1,
+          limit: 1,
+          query: {
+            order: 'order_id ASC',
+            filters: JSON.stringify({ date: { '>=': `${day} 00:00:00` } }),
+          },
+        })
+      ).items;
+    } catch (error) {
+      if (error instanceof ShoperApiError) {
+        throw new OrderSyncStartUnavailableError(
+          `Shoper refused to filter orders by date (${error.message}); start from "only new orders" or "all" instead`,
+        );
+      }
+      throw error;
+    }
+    const row = first[0];
+    if (row === undefined) {
+      return (await this.headCursor()) ?? formatShoperFeedCursor({ ...EMPTY_SHOPER_FEED_CURSOR });
+    }
+    const latestStatusDate = await this.readLatestStatusDate();
+    return formatShoperFeedCursor({
+      // N-1: the feed reads `order_id > cursor`, so the first order of the day is included.
+      lastOrderId: String(Math.max(Number(row.order_id) - 1, 0)),
+      statusWatermark: latestStatusDate,
+      statusPassStart: null,
+      statusNextPage: null,
+    });
+  }
+
+  /**
+   * One page of orders placed in `[from, to]`, either direction. Keyset on
+   * `order_id` (cursor `id:<n>`), so a page boundary never repeats or skips a row;
+   * it advances by the raw ids, own orders included, or a page made only of them
+   * would stall the import.
+   */
+  async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
+    const limit = Math.min(Math.max(Math.trunc(input.limit), 1), SHOPER_MAX_PAGE_SIZE);
+    const ascending = input.direction === 'oldest-first';
+    const position = parseWindowCursor(input.cursor, this.connection.id);
+
+    const filters: Record<string, Record<string, string>> = {};
+    if (position !== null) {
+      filters.order_id = { [ascending ? '>' : '<']: position };
+    }
+    const date: Record<string, string> = {};
+    if (input.from !== undefined) {
+      const from = parseDay(input.from);
+      if (from === null) {
+        throw new RangeError(`Shoper order window: "${input.from}" is not a date`);
+      }
+      date['>='] = `${from} 00:00:00`;
+    }
+    if (input.to !== undefined) {
+      const to = parseDay(input.to);
+      if (to === null) {
+        throw new RangeError(`Shoper order window: "${input.to}" is not a date`);
+      }
+      date['<='] = `${to} 23:59:59`;
+    }
+    if (Object.keys(date).length > 0) {
+      filters.date = date;
+    }
+
+    const page = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
+      page: 1,
+      limit,
+      query: {
+        order: ascending ? 'order_id ASC' : 'order_id DESC',
+        ...(Object.keys(filters).length === 0 ? {} : { filters: JSON.stringify(filters) }),
+      },
+    });
+
+    const { timezone } = await this.shopContext.get();
+    const zone = timezone ?? null;
+    const items: OrderFeedItem[] = [];
+    let edge: string | null = position;
+    for (const row of page.items) {
+      const id = String(row.order_id);
+      edge =
+        edge === null || (ascending ? Number(id) > Number(edge) : Number(id) < Number(edge)) ? id : edge;
+      if (!isOwnOrder(row)) {
+        items.push(await this.toFeedItem(row, zone));
+      }
+    }
+
+    // A short page is the end: Shoper returns fewer rows than asked only when none are left.
+    const done = page.items.length < limit || edge === null;
+    return { items, nextCursor: done ? null : `id:${edge}`, done };
+  }
+
+  private async readLatestStatusDate(): Promise<string | null> {
+    const latest = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
+      page: 1,
+      limit: 1,
+      query: { order: 'status_date DESC' },
+    });
+    const value = latest.items[0]?.status_date;
+    return isWallClock(value) ? value : null;
   }
 
   // ─── Pass 2: status changes (status_date watermark) ────────────────────────
@@ -265,13 +436,7 @@ export class ShoperOrderSourceAdapter
    * never mean "since the beginning", which would re-sync every order the shop has.
    */
   private async stampWatermark(): Promise<ShoperStatusPassState> {
-    const latest = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
-      page: 1,
-      limit: 1,
-      query: { order: 'status_date DESC' },
-    });
-    const value = latest.items[0]?.status_date;
-    const watermark = isWallClock(value) ? value : null;
+    const watermark = await this.readLatestStatusDate();
     this.logger.warn(
       `Shoper order feed has no status watermark (connection: ${this.connection.id}); stamping it at ` +
         `${watermark ?? '<no orders yet>'}. Status changes made before this are not re-read by the poll.`,
@@ -567,6 +732,25 @@ export class ShoperOrderSourceAdapter
       }
     }
   }
+}
+
+const DAY = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/;
+
+/** The calendar day of a bare date or an ISO instant, as written (no zone conversion), or null. */
+function parseDay(value: string): string | null {
+  const match = DAY.exec(value.trim());
+  return match === null ? null : (match[1]);
+}
+
+function parseWindowCursor(raw: string | null, connectionId: string): string | null {
+  if (raw === null) {
+    return null;
+  }
+  const match = /^id:(\d+)$/.exec(raw);
+  if (match === null) {
+    throw new RangeError(`Shoper order window cursor is not one this adapter wrote, got "${raw}" (connection: ${connectionId})`);
+  }
+  return match[1];
 }
 
 function isOwnOrder(row: ShoperOrderRow): boolean {

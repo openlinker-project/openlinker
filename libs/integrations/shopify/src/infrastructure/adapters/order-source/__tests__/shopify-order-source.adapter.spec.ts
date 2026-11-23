@@ -1,6 +1,11 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { ReturnDeclineRejectedBySourceError } from '@openlinker/core/returns';
-import { isRefundExecutor, isReturnDecliner, isReturnSourceReader, isSourceOptionsReader } from '@openlinker/core/orders';
+import {
+  isOrderFeedBootstrap,
+  isOrderFeedDateBootstrap,
+  isOrderWindowReader,
+  OrderSyncStartUnavailableError,
+  isRefundExecutor, isReturnDecliner, isReturnSourceReader, isSourceOptionsReader } from '@openlinker/core/orders';
 
 import { ShopifyAdapterFactory } from '../../../../application/shopify-adapter.factory';
 import type { ShopifyResolution } from '../../../../application/shopify-adapter.factory';
@@ -165,6 +170,167 @@ describe('ShopifyOrderSourceAdapter', () => {
       await expect(build(jest.fn()).listOrderFeed({ fromCursor: 'allegro-event-1', limit: 10 })).rejects.toBeInstanceOf(
         RangeError,
       );
+    });
+  });
+
+  describe('headCursor', () => {
+    it('should read the newest order by updatedAt and format a feed cursor', async () => {
+      const query = jest.fn().mockResolvedValue({
+        orders: { nodes: [feedRow('42', '2026-11-05T11:59:50Z')], pageInfo: { hasNextPage: true, endCursor: 'x' } },
+      });
+      await expect(build(query).headCursor()).resolves.toBe('v1|2026-11-05T11:59:50.000Z|42');
+      const [, variables] = query.mock.calls[0] as [string, Record<string, unknown>];
+      expect(variables).toEqual({ first: 1, reverse: true });
+    });
+
+    it('should return null when the shop has no orders', async () => {
+      const query = jest.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false } } });
+      await expect(build(query).headCursor()).resolves.toBeNull();
+    });
+
+    it('should throw when the read fails', async () => {
+      const query = jest.fn().mockRejectedValue(new Error('throttled'));
+      await expect(build(query).headCursor()).rejects.toThrow('throttled');
+    });
+  });
+
+  describe('cursorForDate', () => {
+    it('should read a bare date as UTC midnight with id 0', async () => {
+      const query = jest.fn();
+      await expect(build(query).cursorForDate('2026-11-01')).resolves.toBe('v1|2026-11-01T00:00:00.000Z|0');
+      expect(query).not.toHaveBeenCalled();
+    });
+
+    it('should keep a full instant', async () => {
+      await expect(build(jest.fn()).cursorForDate('2026-11-01T10:30:00+01:00')).resolves.toBe(
+        'v1|2026-11-01T09:30:00.000Z|0',
+      );
+    });
+
+    it('should throw OrderSyncStartUnavailableError on an invalid date', async () => {
+      await expect(build(jest.fn()).cursorForDate('not-a-date')).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+    });
+
+    it('should refuse an old date when read_all_orders is not granted', async () => {
+      const query = jest.fn().mockResolvedValue({
+        currentAppInstallation: { accessScopes: [{ handle: 'read_orders' }] },
+      });
+      await expect(build(query).cursorForDate('2026-01-01')).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+    });
+
+    it('should accept an old date when read_all_orders is granted', async () => {
+      const query = jest.fn().mockResolvedValue({
+        currentAppInstallation: { accessScopes: [{ handle: 'read_all_orders' }] },
+      });
+      await expect(build(query).cursorForDate('2026-01-01')).resolves.toBe('v1|2026-01-01T00:00:00.000Z|0');
+    });
+
+    it('should proceed when the scopes cannot be read', async () => {
+      const query = jest.fn().mockRejectedValue(new Error('boom'));
+      await expect(build(query).cursorForDate('2026-01-01')).resolves.toBe('v1|2026-01-01T00:00:00.000Z|0');
+    });
+  });
+
+  describe('listOrdersInWindow', () => {
+    const page = (nodes: unknown[], hasNextPage: boolean, endCursor: string | null): unknown => ({
+      orders: { nodes, pageInfo: { hasNextPage, endCursor } },
+    });
+    const vars = (query: jest.Mock, call = 0): Record<string, unknown> =>
+      (query.mock.calls[call] as [string, Record<string, unknown>])[1];
+
+    it('should filter by placement date with the end day inclusive, oldest first', async () => {
+      const query = jest.fn().mockResolvedValue(page([feedRow('1', '2026-11-02T00:00:00Z')], false, null));
+      const result = await build(query).listOrdersInWindow({
+        from: '2026-11-01',
+        to: '2026-11-03',
+        direction: 'oldest-first',
+        cursor: null,
+        limit: 50,
+      });
+      expect(vars(query)).toMatchObject({
+        first: 50,
+        after: null,
+        reverse: false,
+        query: "created_at:>='2026-11-01T00:00:00.000Z' created_at:<='2026-11-03T23:59:59.999Z'",
+      });
+      expect(result).toEqual({
+        items: [
+          { externalOrderId: '1', eventType: 'updated', occurredAt: '2026-11-02T00:00:00Z', eventKey: '1:2026-11-02T00:00:00Z' },
+        ],
+        nextCursor: null,
+        done: true,
+      });
+    });
+
+    it('should read newest first and page with Shopify end cursor', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce(page([feedRow('3', '2026-11-04T00:00:00Z')], true, 'CUR1'))
+        .mockResolvedValueOnce(page([feedRow('2', '2026-11-03T00:00:00Z')], false, 'CUR2'));
+      const adapter = build(query);
+      const input = { from: '2026-11-01', direction: 'newest-first' as const, limit: 1 };
+      const first = await adapter.listOrdersInWindow({ ...input, cursor: null });
+      expect(first).toMatchObject({ nextCursor: 'CUR1', done: false });
+      expect(vars(query).reverse).toBe(true);
+      const second = await adapter.listOrdersInWindow({ ...input, cursor: first.nextCursor });
+      expect(vars(query, 1).after).toBe('CUR1');
+      expect(second).toMatchObject({ nextCursor: null, done: true });
+    });
+
+    it('should clamp the page size to 100 and report an empty window as done', async () => {
+      const query = jest.fn().mockResolvedValue(page([], false, null));
+      const result = await build(query).listOrdersInWindow({
+        from: '2026-11-01',
+        direction: 'oldest-first',
+        cursor: null,
+        limit: 5000,
+      });
+      expect(vars(query).first).toBe(100);
+      expect(vars(query).query).toBe("created_at:>='2026-11-01T00:00:00.000Z'");
+      expect(result).toEqual({ items: [], nextCursor: null, done: true });
+    });
+
+    it('should mark a cancelled order as cancelled', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValue(page([feedRow('7', '2026-11-03T00:00:00Z', { cancelledAt: '2026-11-03T00:00:00Z' })], false, null));
+      const result = await build(query).listOrdersInWindow({
+        from: '2026-11-01',
+        direction: 'oldest-first',
+        cursor: null,
+        limit: 10,
+      });
+      expect(result.items[0]?.eventType).toBe('cancelled');
+    });
+
+    it('should refuse an unbounded history when read_all_orders is missing', async () => {
+      const query = jest.fn().mockResolvedValue({ currentAppInstallation: { accessScopes: [] } });
+      await expect(
+        build(query).listOrdersInWindow({ direction: 'oldest-first', cursor: null, limit: 10 }),
+      ).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw OrderSyncStartUnavailableError on an invalid date', async () => {
+      await expect(
+        build(jest.fn()).listOrdersInWindow({ from: 'nope', direction: 'oldest-first', cursor: null, limit: 10 }),
+      ).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+    });
+
+    it('should propagate a failed read', async () => {
+      const query = jest.fn().mockRejectedValue(new Error('down'));
+      await expect(
+        build(query).listOrdersInWindow({ from: '2026-11-01', direction: 'oldest-first', cursor: null, limit: 10 }),
+      ).rejects.toThrow('down');
+    });
+  });
+
+  describe('order start capabilities', () => {
+    it('should be detected by the core guards', () => {
+      const adapter = build(jest.fn());
+      expect(isOrderFeedBootstrap(adapter)).toBe(true);
+      expect(isOrderFeedDateBootstrap(adapter)).toBe(true);
+      expect(isOrderWindowReader(adapter)).toBe(true);
     });
   });
 

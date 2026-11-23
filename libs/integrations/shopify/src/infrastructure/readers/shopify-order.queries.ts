@@ -90,11 +90,27 @@ export const ORDER_FULFILLMENT_READBACK_QUERY = `query OlOrderFulfillmentReadbac
   }
 }`;
 
-export const ORDER_FEED_QUERY = `query OlOrderFeed($first: Int!, $after: String, $query: String!) {
-  orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT) {
+export const ORDER_FEED_QUERY = `query OlOrderFeed($first: Int!, $after: String, $query: String, $reverse: Boolean = false) {
+  orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT, reverse: $reverse) {
     nodes { id createdAt updatedAt cancelledAt }
     pageInfo { hasNextPage endCursor }
   }
+}`;
+
+/**
+ * Orders placed inside a window, by placement date, in either direction. Same
+ * row shape as the feed so an imported order dedupes with the live feed's key.
+ */
+export const ORDER_WINDOW_QUERY = `query OlOrderWindow($first: Int!, $after: String, $query: String, $reverse: Boolean!) {
+  orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: $reverse) {
+    nodes { id createdAt updatedAt cancelledAt }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+/** Scopes the app was granted, to tell whether the shop will show orders older than 60 days. */
+export const APP_ACCESS_SCOPES_QUERY = `query OlOrderSourceScopes {
+  currentAppInstallation { accessScopes { handle } }
 }`;
 
 /**

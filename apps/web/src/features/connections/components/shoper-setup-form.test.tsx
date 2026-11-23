@@ -87,6 +87,8 @@ describe('ShoperSetupForm', () => {
     await fillTokenStep();
     fireEvent.click(screen.getByLabelText('OrderSource'));
     next();
+    await screen.findByText('Which orders should OpenLinker import?');
+    next();
 
     expect(await screen.findByText('••••••3456')).toBeInTheDocument();
     expect(screen.queryByText('tok_123456')).toBeNull();
@@ -135,6 +137,8 @@ describe('ShoperSetupForm', () => {
     await fillTokenStep();
     fireEvent.click(screen.getByLabelText('OrderSource'));
     next();
+    await screen.findByText('Which orders should OpenLinker import?');
+    next();
     fireEvent.click(await screen.findByRole('button', { name: 'Create connection' }));
 
     await waitFor(() => {
@@ -148,6 +152,97 @@ describe('ShoperSetupForm', () => {
       });
     });
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
+  });
+
+  it('has no order-history step while OrderSource is off', async () => {
+    renderWithProviders(<ShoperSetupForm />);
+    await reachReview();
+
+    expect(screen.queryByText('Order history')).toBeNull();
+    expect(screen.queryByText('Orders since a date')).toBeNull();
+  });
+
+  it('adds an order-history step for OrderSource, defaulting to new orders only', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Shoper' });
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+    await fillShopStep();
+    await fillTokenStep();
+    fireEvent.click(screen.getByLabelText('OrderSource'));
+    next();
+
+    expect(await screen.findByRole('radio', { name: /New orders only/ })).toBeChecked();
+    next();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect((create.mock.calls[0][0] as { orderSyncStart?: unknown }).orderSyncStart).toBeUndefined();
+  });
+
+  it('sends the chosen start and states it on the review step (#4265)', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Shoper' });
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({
+        connections: { create },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shoper.restapi.v1',
+              platformType: 'shoper',
+              supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource'],
+              orderSyncStartModes: ['now', 'from', 'all'],
+              orderWindowImport: true,
+            },
+          ]),
+        },
+      }),
+    });
+    await fillShopStep();
+    await fillTokenStep();
+    fireEvent.click(screen.getByLabelText('OrderSource'));
+    next();
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+    next();
+    expect(await screen.findAllByText('Every order')).not.toHaveLength(0);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ orderSyncStart: { mode: 'all' } }),
+      ),
+    );
+  });
+
+  it('refuses a start date in the future', async () => {
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shoper.restapi.v1',
+              platformType: 'shoper',
+              supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource'],
+              orderSyncStartModes: ['now', 'from', 'all'],
+            },
+          ]),
+        },
+      }),
+    });
+    await fillShopStep();
+    await fillTokenStep();
+    fireEvent.click(screen.getByLabelText('OrderSource'));
+    next();
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+    fireEvent.change(screen.getByLabelText('First day to import'), {
+      target: { value: '2999-01-01' },
+    });
+    next();
+
+    expect(await screen.findByText('Which orders should OpenLinker import?')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create connection' })).toBeNull();
   });
 
   it('shows the server error when create is rejected', async () => {

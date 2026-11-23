@@ -1,5 +1,6 @@
 import { SubiektOrderSourceAdapter } from '../subiekt-order-source.adapter';
 import { SubiektOrdersBridgeClient } from '../../../bridge/subiekt-orders-bridge.client';
+import { OrderSyncStartUnavailableError } from '@openlinker/core/orders';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import { InMemoryIdentifierMappingAdapter } from '@openlinker/core/identifier-mapping/testing';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -206,6 +207,91 @@ describe('SubiektOrderSourceAdapter', () => {
       await expect(
         mappings.getInternalId(CORE_ENTITY_TYPE.ProductVariant, 'NEVER-SYNCED', CONNECTION_ID),
       ).resolves.toBeNull();
+    });
+  });
+
+  describe('feed bootstrap', () => {
+    const envelope = (data: unknown): Response =>
+      new Response(JSON.stringify({ success: true, data, error: null }), { status: 200 });
+    const make = (
+      handler: (url: string) => Response,
+      logger: LoggerPort = noopLogger,
+    ): SubiektOrderSourceAdapter =>
+      new SubiektOrderSourceAdapter(
+        new SubiektOrdersBridgeClient('http://127.0.0.1:5056', {
+          fetchImpl: ((input: RequestInfo | URL) =>
+            Promise.resolve(handler(String(input)))) as unknown as typeof fetch,
+        }),
+        logger,
+        emptyMappings(),
+        CONNECTION_ID,
+      );
+
+    it('returns the head cursor from the bridge', async () => {
+      const adapter = make(() => envelope({ nextCursor: '2026-09-01T00:00:00.0000000|7' }));
+      await expect(adapter.headCursor()).resolves.toBe('2026-09-01T00:00:00.0000000|7');
+    });
+
+    it('returns null when the bridge has no orders', async () => {
+      const adapter = make(() => envelope({ nextCursor: null }));
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('falls back to walking the feed on a 404 and warns', async () => {
+      const warn = jest.fn();
+      const feedCalls: string[] = [];
+      const adapter = make(
+        (url) => {
+          if (url.includes('/api/orders/feed/head')) return new Response('', { status: 404 });
+          feedCalls.push(url);
+          if (feedCalls.length === 1) {
+            return envelope({
+              items: [{ id: 1, numer: 'ZK 1', dataWystawienia: '2026-01-01T00:00:00Z' }],
+              nextCursor: 'c1',
+            });
+          }
+          if (feedCalls.length === 2) {
+            return envelope({
+              items: [{ id: 2, numer: 'ZK 2', dataWystawienia: '2026-01-02T00:00:00Z' }],
+              nextCursor: 'c2',
+            });
+          }
+          return envelope({ items: [], nextCursor: null });
+        },
+        { ...noopLogger, warn },
+      );
+      await expect(adapter.headCursor()).resolves.toBe('c2');
+      expect(feedCalls[0]).toContain('limit=1000');
+      expect(feedCalls[1]).toContain('since=c1');
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('fallback returns null when the first page is empty', async () => {
+      const adapter = make((url) =>
+        url.includes('/head') ? new Response('', { status: 404 }) : envelope({ items: [], nextCursor: null }),
+      );
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('throws on a 500 from the head route', async () => {
+      const adapter = make(
+        () =>
+          new Response(
+            JSON.stringify({ success: false, data: null, error: { code: 'sfera_error', reason: 'boom' } }),
+            { status: 500 },
+          ),
+      );
+      await expect(adapter.headCursor()).rejects.toThrow();
+    });
+
+    it('formats a date cursor', async () => {
+      const adapter = make(() => envelope({}));
+      await expect(adapter.cursorForDate('2026-03-05')).resolves.toBe('2026-03-05T00:00:00.0000000|0');
+    });
+
+    it.each(['2026-3-5', 'yesterday', '2026-02-30', ''])('rejects invalid date %p', async (d) => {
+      const adapter = make(() => envelope({}));
+      await expect(adapter.cursorForDate(d)).rejects.toThrow(OrderSyncStartUnavailableError);
     });
   });
 });

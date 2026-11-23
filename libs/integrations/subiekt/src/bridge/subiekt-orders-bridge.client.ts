@@ -26,6 +26,7 @@ import type {
   BridgeCreateOrderRequest,
   BridgeCreateOrderResponse,
   BridgeOrderDetailResponse,
+  BridgeOrderFeedHeadResponse,
   BridgeOrderFeedResponse,
   BridgeWriteShippingRequest,
   BridgeWriteShippingResponse,
@@ -72,6 +73,18 @@ export class SubiektOrdersBridgeClient {
     return this.getJson<BridgeOrderFeedResponse>(`/api/orders/feed?${params.toString()}`);
   }
 
+  /**
+   * Cursor of the newest ZK. Resolves `null` when the bridge answers 404, i.e.
+   * a bridge that predates `GET /api/orders/feed/head`; the caller decides on a
+   * fallback. Every other failure throws.
+   */
+  async getOrderFeedHead(): Promise<BridgeOrderFeedHeadResponse | null> {
+    return this.request<BridgeOrderFeedHeadResponse>('/api/orders/feed/head', {
+      method: 'GET',
+      notFoundAsNull: true,
+    });
+  }
+
   async getOrder(id: string): Promise<BridgeOrderDetailResponse> {
     return this.getJson<BridgeOrderDetailResponse>(`/api/orders/${encodeURIComponent(id)}`);
   }
@@ -87,18 +100,21 @@ export class SubiektOrdersBridgeClient {
   }
 
   private async postJson<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+    return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) }) as Promise<T>;
   }
 
   private async putJson<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+    return this.request<T>(path, { method: 'PUT', body: JSON.stringify(body) }) as Promise<T>;
   }
 
   private async getJson<T>(path: string): Promise<T> {
-    return this.request<T>(path, { method: 'GET' });
+    return this.request<T>(path, { method: 'GET' }) as Promise<T>;
   }
 
-  private async request<T>(path: string, init: { method: string; body?: string }): Promise<T> {
+  private async request<T>(
+    path: string,
+    init: { method: string; body?: string; notFoundAsNull?: boolean },
+  ): Promise<T | null> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (this.token !== undefined && this.token.length > 0) {
       headers.authorization = `Bearer ${this.token}`;
@@ -138,6 +154,10 @@ export class SubiektOrdersBridgeClient {
         response.status,
         await readBridgeAuthReason(response, this.token),
       );
+    }
+
+    if (response.status === 404 && init.notFoundAsNull === true) {
+      return null;
     }
 
     let envelope: { success: boolean; data: T | null; error: { code: string; reason: string } | null };

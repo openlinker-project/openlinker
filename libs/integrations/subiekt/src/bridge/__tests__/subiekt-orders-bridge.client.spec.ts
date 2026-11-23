@@ -180,4 +180,41 @@ describe('SubiektOrdersBridgeClient — a server fault wearing the business enve
     expect((error as Error).message).toContain('SQL Server unreachable');
     expect((error as Error).message).not.toContain('Subiekt rejected the request');
   });
+
+  describe('getOrderFeedHead', () => {
+    it('returns the head payload from /api/orders/feed/head', async () => {
+      const urls: string[] = [];
+      const client = new SubiektOrdersBridgeClient(BASE, {
+        fetchImpl: ((url: string) => {
+          urls.push(url);
+          return Promise.resolve(okResponse({ nextCursor: '2026-01-01T00:00:00.0000000|9' }));
+        }) as unknown as FetchLike,
+      });
+      await expect(client.getOrderFeedHead()).resolves.toEqual({
+        nextCursor: '2026-01-01T00:00:00.0000000|9',
+      });
+      expect(urls[0]).toBe(`${BASE}/api/orders/feed/head`);
+    });
+
+    it('resolves null on a 404 (bridge predating the route), even with a non-JSON body', async () => {
+      const client = new SubiektOrdersBridgeClient(BASE, {
+        fetchImpl: (() =>
+          Promise.resolve({
+            status: 404,
+            ok: false,
+            json: (): Promise<unknown> => Promise.reject(new Error('no body')),
+          } as unknown as Response)) as unknown as FetchLike,
+      });
+      await expect(client.getOrderFeedHead()).resolves.toBeNull();
+    });
+
+    it('throws on a 500', async () => {
+      const client = new SubiektOrdersBridgeClient(BASE, {
+        fetchImpl: (() => Promise.resolve(errorResponse(500, 'boom'))) as unknown as FetchLike,
+      });
+      await expect(client.getOrderFeedHead()).rejects.toBeInstanceOf(
+        SubiektBridgeUnreachableWithPhaseError,
+      );
+    });
+  });
 });

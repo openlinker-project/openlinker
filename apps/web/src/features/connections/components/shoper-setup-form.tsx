@@ -2,7 +2,8 @@
  * Shoper Setup Form
  *
  * Multi-step wizard for creating a Shoper connection, the same shape as the
- * PrestaShop and WooCommerce wizards. Steps:
+ * PrestaShop and WooCommerce wizards. Steps (the order-history step appears
+ * only when OrderSource is enabled, #4265):
  *   1. Shop - connection name and the shop host (`baseUrl`)
  *   2. API token - the only credential
  *   3. Capabilities - which roles this connection will fulfil
@@ -53,18 +54,34 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+  readsOrders,
+} from '../lib/order-sync-start';
+import { OrderSyncStartField } from './order-sync-start-field';
 
 
 
-const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ShoperSetupFormValues>>> = [
-  ['name', 'baseUrl'],
-  ['token'],
-  ['enabledCapabilities'],
-  [],
-];
+type StepId = 'shop' | 'token' | 'capabilities' | 'orders' | 'review';
+
+const STEP_FIELDS: Record<StepId, ReadonlyArray<Path<ShoperSetupFormValues>>> = {
+  shop: ['name', 'baseUrl'],
+  token: ['token'],
+  capabilities: ['enabledCapabilities'],
+  orders: ['orderSyncStart'],
+  review: [],
+};
 
 // Analytics step names, kept in English so events stay comparable across languages.
-const STEP_EVENT_IDS = ['Shop', 'API token', 'Capabilities', 'Review & create'] as const;
+const STEP_EVENT_IDS: Record<StepId, string> = {
+  shop: 'Shop',
+  token: 'API token',
+  capabilities: 'Capabilities',
+  orders: 'Order history',
+  review: 'Review & create',
+};
 
 // A host-name example, not prose: the same in every language.
 const SHOP_ADDRESS_EXAMPLE = 'xxxxx.shoparena.pl';
@@ -78,12 +95,7 @@ export function ShoperSetupForm(): ReactElement {
   const copy = useMessages('connections').shoperSetupForm;
   const setupCopy = useMessages('connections').setup;
   const format = useFormat();
-  const STEP_LABELS = [
-    copy.steps.shop,
-    copy.steps.token,
-    copy.steps.capabilities,
-    copy.steps.review,
-  ];
+  const orderStartCopy = useMessages('connections').orderSyncStart;
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -100,6 +112,15 @@ export function ShoperSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const values = form.watch();
+  const selectedCapabilities = values.enabledCapabilities ?? [];
+  // The order-history step only exists for a connection that will read orders.
+  const stepIds: StepId[] = readsOrders(selectedCapabilities)
+    ? ['shop', 'token', 'capabilities', 'orders', 'review']
+    : ['shop', 'token', 'capabilities', 'review'];
+  const STEP_LABELS = stepIds.map((id) => copy.steps[id]);
+  const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
+
   // Abandon-prevention.
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent): void {
@@ -112,6 +133,8 @@ export function ShoperSetupForm(): ReactElement {
   }, [form.formState.isDirty, createdConnectionId]);
 
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === SHOPER_ADAPTER_KEY);
+  const orderSyncStartModes = adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport = adapterMetadata?.orderWindowImport ?? false;
   const platformName =
     usePlatform(adapterMetadata?.platformType ?? '')?.displayName ?? copy.platformFallback;
   // The checkbox list is gated on the well-known core capabilities: the
@@ -127,7 +150,7 @@ export function ShoperSetupForm(): ReactElement {
   );
 
   async function goNext(): Promise<void> {
-    const fields = STEP_FIELDS[stepIndex];
+    const fields = STEP_FIELDS[stepId];
     if (fields.length > 0) {
       const valid = await form.trigger([...fields]);
       if (!valid) return;
@@ -135,7 +158,7 @@ export function ShoperSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'shoper',
-      step: STEP_EVENT_IDS[stepIndex],
+      step: STEP_EVENT_IDS[stepId],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -148,7 +171,7 @@ export function ShoperSetupForm(): ReactElement {
   // advanced to the last step landing on the Create button that replaced Next.
   // Either way it means "Next", never "Create" (the review step must be seen).
   function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
-    if (stepIndex < STEP_LABELS.length - 1) {
+    if (stepIndex < stepIds.length - 1) {
       event.preventDefault();
       void goNext();
       return;
@@ -186,9 +209,6 @@ export function ShoperSetupForm(): ReactElement {
       // surfaced via testConnection.error
     }
   };
-
-  const values = form.watch();
-  const selectedCapabilities = values.enabledCapabilities ?? [];
 
   if (createdConnectionId) {
     return (
@@ -267,7 +287,7 @@ export function ShoperSetupForm(): ReactElement {
           </Alert>
         ) : null}
 
-        {stepIndex === 0 ? (
+        {stepId === 'shop' ? (
           <>
             <FormField
               label={copy.fields.name.label}
@@ -299,7 +319,7 @@ export function ShoperSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 1 ? (
+        {stepId === 'token' ? (
           <>
             <Alert tone="info" title={copy.beforeYouStart.title}>
               {renderRich(
@@ -326,7 +346,7 @@ export function ShoperSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 2 ? (
+        {stepId === 'capabilities' ? (
           <fieldset className="capability-fieldset">
             <legend className="capability-fieldset__legend">{copy.capabilities.legend}</legend>
             <p className="muted-text capability-fieldset__help">
@@ -356,7 +376,19 @@ export function ShoperSetupForm(): ReactElement {
           </fieldset>
         ) : null}
 
-        {stepIndex === 3 ? (
+        {stepId === 'orders' ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepId === 'review' ? (
           <>
             <dl className="wizard-review-list">
               <dt>{copy.review.name}</dt>
@@ -371,6 +403,14 @@ export function ShoperSetupForm(): ReactElement {
                   ? selectedCapabilities.join(', ')
                   : copy.review.noneSelected}
               </dd>
+              {readsOrders(selectedCapabilities) ? (
+                <>
+                  <dt>{orderStartCopy.review.label}</dt>
+                  <dd>
+                    {describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}
+                  </dd>
+                </>
+              ) : null}
             </dl>
             {selectedCapabilities.includes('OrderProcessorManager') ? (
               <Alert tone="info" title={copy.review.orderDefaults.title}>
@@ -389,7 +429,7 @@ export function ShoperSetupForm(): ReactElement {
             ) : null}
           </div>
           <div className="wizard-actions__group">
-            {stepIndex < STEP_LABELS.length - 1 ? (
+            {stepIndex < stepIds.length - 1 ? (
               <Button key="next" type="button" onClick={() => void goNext()}>
                 {setupCopy.next}
               </Button>

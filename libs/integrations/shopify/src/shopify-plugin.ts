@@ -101,6 +101,10 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   // `OfferManager` writes stock to the store and is opt-in for the same reason;
   // the propagation fan-out never writes back to an `InventoryMaster`.
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+  // The orders search takes a date filter, so a start date is honourable (OrderFeedDateBootstrap, #4265).
+  orderSyncStartModes: ['now', 'from', 'all'],
+  // Orders can be read by placement date window, in either direction (OrderWindowReader, #4265).
+  orderWindowImport: true,
   // Shopify signs every webhook with the app client secret, which OpenLinker
   // can only store, never rotate (#3981).
   acceptsCallerSuppliedWebhookSecret: true,

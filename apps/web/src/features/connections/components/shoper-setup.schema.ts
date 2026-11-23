@@ -15,6 +15,12 @@
 import { z } from 'zod';
 import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  readsOrders,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 const msg = schemaMessage('shoperSetupSchema');
 
@@ -40,6 +46,7 @@ export const shoperSetupSchema = z.object({
   baseUrl: z.string().trim().min(1, msg('baseUrlRequired')),
   token: z.string().trim().min(1, msg('tokenRequired')),
   enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
 });
 
 export type ShoperSetupFormValues = z.input<typeof shoperSetupSchema>;
@@ -50,6 +57,7 @@ export const SHOPER_SETUP_DEFAULT_VALUES: ShoperSetupFormValues = {
   baseUrl: '',
   token: '',
   enabledCapabilities: SHOPER_DEFAULT_CAPABILITIES,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(values: ShoperSetupFormSubmission): CreateConnectionInput {
@@ -60,5 +68,8 @@ export function toCreateConnectionInput(values: ShoperSetupFormSubmission): Crea
     credentials: { token: values.token },
     config: { baseUrl: values.baseUrl },
     enabledCapabilities: values.enabledCapabilities,
+    orderSyncStart: readsOrders(values.enabledCapabilities)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
   };
 }

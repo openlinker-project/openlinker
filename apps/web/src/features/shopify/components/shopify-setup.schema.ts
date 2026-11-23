@@ -10,7 +10,14 @@
  * @module features/shopify/components
  */
 import { z } from 'zod';
-import type { CoreCapability, CreateConnectionInput } from '../../connections';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  readsOrders,
+  toOrderSyncStart,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../../connections';
 
 export const SHOPIFY_ADAPTER_KEY = 'shopify.admin.v1';
 
@@ -57,6 +64,7 @@ export const shopifySetupSchema = z
     clientSecret: z.string().trim(),
     accessToken: z.string().trim(),
     locationId: z.string().trim(),
+    orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
   })
   .superRefine((values, ctx) => {
     const need = (field: 'clientId' | 'clientSecret' | 'accessToken'): void => {
@@ -84,6 +92,7 @@ export const SHOPIFY_SETUP_DEFAULT_VALUES: ShopifySetupFormValues = {
   clientSecret: '',
   accessToken: '',
   locationId: '',
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 /** The config seed shared by a direct create and an OAuth install. */
@@ -94,6 +103,15 @@ export function toShopifyConfig(values: ShopifySetupFormSubmission): Record<stri
   };
 }
 
+/**
+ * Whether the order-history choice applies: the role must read orders, and the
+ * OAuth install carries no start (its connect call has no such field), so the
+ * choice is only asked in the two direct-create modes.
+ */
+export function asksOrderSyncStart(role: ShopifySetupRole, mode: ShopifySetupMode): boolean {
+  return mode !== 'oauth' && readsOrders(SHOPIFY_ROLE_CAPABILITIES[role]);
+}
+
 /** Create payload for the two modes that need no redirect. */
 export function toCreateConnectionInput(values: ShopifySetupFormSubmission): CreateConnectionInput {
   return {
@@ -102,6 +120,9 @@ export function toCreateConnectionInput(values: ShopifySetupFormSubmission): Cre
     adapterKey: SHOPIFY_ADAPTER_KEY,
     config: toShopifyConfig(values),
     enabledCapabilities: SHOPIFY_ROLE_CAPABILITIES[values.role],
+    orderSyncStart: asksOrderSyncStart(values.role, values.mode)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
     credentials:
       values.mode === 'access-token'
         ? { accessToken: values.accessToken }

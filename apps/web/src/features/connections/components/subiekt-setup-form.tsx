@@ -54,6 +54,13 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
+import { useAdaptersQuery } from '../../adapters';
+import { OrderSyncStartField } from './order-sync-start-field';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  readsOrders,
+} from '../lib/order-sync-start';
 
 // The product family name, the same in every language.
 const SUBIEKT_FAMILY_NAME = 'Subiekt';
@@ -78,6 +85,10 @@ export function SubiektSetupForm({
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const adapterMetadata = useAdaptersQuery().data?.find((a) => a.adapterKey === identity.adapterKey);
+  // Capabilities are not chosen here, so the adapter's own set decides: Subiekt GT
+  // reads orders, nexo is invoicing only. Unknown until the registry answers.
+  const willReadOrders = readsOrders(adapterMetadata?.supportedCapabilities);
   const [createdConnectionId, setCreatedConnectionId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
@@ -108,7 +119,7 @@ export function SubiektSetupForm({
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity));
+      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity, willReadOrders));
       form.reset(values, { keepValues: true, keepDirty: false });
       setCreatedConnectionId(created.id);
       showToast({
@@ -238,6 +249,18 @@ export function SubiektSetupForm({
           <option value="auto-on-paid">{copy.fields.triggerModel.autoOnPaid}</option>
         </Select>
       </FormField>
+
+      {willReadOrders && !createdConnectionId ? (
+        <OrderSyncStartField
+          value={form.watch('orderSyncStart') ?? ORDER_SYNC_START_DEFAULT_VALUE}
+          onChange={(next) =>
+            form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+          }
+          supportedModes={adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES}
+          windowImport={adapterMetadata?.orderWindowImport ?? false}
+          error={form.formState.errors.orderSyncStart?.from?.message}
+        />
+      ) : null}
 
       {createdConnectionId ? (
         <>

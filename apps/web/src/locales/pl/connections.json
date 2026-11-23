@@ -1695,6 +1695,7 @@
     },
     "steps": {
       "capabilities": "Możliwości",
+      "orders": "Historia zamówień",
       "review": "Sprawdź i utwórz",
       "shop": "Sklep",
       "token": "Token API"

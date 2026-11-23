@@ -14,6 +14,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  OrderSyncStartField,
   useCreateConnectionMutation,
   useTestConnectionMutation,
   type ConnectionTestResult,
@@ -27,11 +30,14 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useAdaptersQuery } from '../../adapters';
 import { useStartShopifyOAuthMutation } from '../hooks/use-start-shopify-oauth-mutation';
 import {
   SHOPIFY_ROLE_CAPABILITIES,
+  SHOPIFY_ADAPTER_KEY,
   SHOPIFY_SETUP_DEFAULT_VALUES,
   ShopifySetupErrorKeyValues,
+  asksOrderSyncStart,
   shopifySetupSchema,
   shopifyOAuthRedirectUri,
   toCreateConnectionInput,
@@ -57,6 +63,8 @@ export function ShopifySetupForm(): ReactElement {
   });
   const mode = form.watch('mode');
   const role = form.watch('role');
+  const orderSyncStart = form.watch('orderSyncStart');
+  const adapterMetadata = useAdaptersQuery().data?.find((a) => a.adapterKey === SHOPIFY_ADAPTER_KEY);
   const errors = form.formState.errors;
   const errorText = (message: string | undefined): string | undefined =>
     message === undefined
@@ -232,6 +240,18 @@ export function ShopifySetupForm(): ReactElement {
           <FormField label={copy.locationId} name="locationId" description={copy.locationIdHint}>
             <Input {...form.register('locationId')} />
           </FormField>
+
+          {asksOrderSyncStart(role, mode) ? (
+            <OrderSyncStartField
+              value={orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+              onChange={(next) =>
+                form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+              }
+              supportedModes={adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES}
+              windowImport={adapterMetadata?.orderWindowImport ?? false}
+              error={errors.orderSyncStart?.from?.message}
+            />
+          ) : null}
 
           <div className="form-actions">
             <Button type="submit" disabled={createConnection.isPending || startOAuth.isPending}>
