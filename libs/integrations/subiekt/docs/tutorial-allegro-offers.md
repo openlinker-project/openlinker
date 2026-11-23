@@ -172,11 +172,18 @@ Subiekt window for reference:
 ![Subiekt products](./assets/allegro-offers/SUB-01-towary-i-uslugi.png)
 ![Subiekt kit](./assets/allegro-offers/SUB-04-komplet-ZESO20-skladniki.png)
 
-> **Known gap (tested on this branch).** Simple products flow end to end (ZK, PA, stock).
-> Bundle and multipack orders currently reach Subiekt as **one line of the placeholder product**,
-> which has stock 0, instead of the component lines. The receipt then fails and Sfera can crash
-> ("Program zostal zamkniety z powodu bledu"). Until components are sent to Subiekt, give set and
-> multipack products stock in Subiekt or do not issue documents automatically for them.
+Bundle and multipack orders reach Subiekt as their **components**, not as the set's own
+product (which has no stock):
+
+| Purchase | ZK | Receipt | Stock |
+|---|---|---|---|
+| Set (mug + pad) | mug x1, pad x1 | same two lines, WZ issued | both down by 1 |
+| Multipack of 3 mugs | mug x3 | mug x3, WZ issued | mug down by 3 |
+| Coffee with a gift | coffee + gift at 0 | same, WZ issued | both down |
+
+Define a multipack **once**. If the Allegro offer already says "3 pieces" and the bundle
+definition also says "3 x mug", OpenLinker multiplies them and sells 9. Map the offer to a
+variant whose definition is "mug x1".
 
 ---
 
