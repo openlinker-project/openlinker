@@ -1005,7 +1005,10 @@ export class OrderIngestionService implements IOrderIngestionService {
           ...(physicalItems.some(
             (item) => 'parentLineId' in item && item.parentLineId !== undefined
           )
-            ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+            ? {
+                physicalProductIds: physicalItems.map((item) => item.productId),
+                physicalItems,
+              }
             : {}),
         });
       } catch (error) {

@@ -9,7 +9,7 @@
  */
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { OrderDeliveryUpdateReport } from '../../domain/types/order-delivery-update.types';
-import type { Order } from '../../domain/types/order.types';
+import type { Order, OrderItem } from '../../domain/types/order.types';
 
 /**
  * Order sync request metadata
@@ -40,6 +40,13 @@ export interface OrderSyncRequest {
    * destination mirror keeps `order.items`.
    */
   physicalProductIds?: readonly string[];
+
+  /**
+   * The physical lines themselves (#3607), when a bundle expanded. Forwarded to
+   * destinations as `OrderCreate.physicalItems` so one that moves stock off its
+   * own document can sell the components. Absent when nothing expanded.
+   */
+  physicalItems?: ReadonlyArray<OrderItem & { parentLineId?: string; giftSlot?: boolean }>;
 
   /**
    * Optional routing filter — the destinations a router selected for this order

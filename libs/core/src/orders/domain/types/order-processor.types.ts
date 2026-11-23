@@ -79,6 +79,17 @@ export interface OrderCreate {
   items: OrderItem[];
 
   /**
+   * The order's PHYSICAL lines (#3607, ADR-083), present only when a bundle or
+   * multipack expanded at least one line. Each component carries
+   * `parentLineId` (the commercial line it came from), and a gift slot is
+   * flagged `giftSlot`. A destination that moves stock off the document it
+   * creates (Subiekt) sells these instead of `items`; a destination that
+   * mirrors the commercial order ignores the field. Absent means the physical
+   * list equals `items`.
+   */
+  physicalItems?: Array<OrderItem & { parentLineId?: string; giftSlot?: boolean }>;
+
+  /**
    * Order totals
    */
   totals: OrderTotals;
