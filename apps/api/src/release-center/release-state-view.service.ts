@@ -8,7 +8,7 @@
  *
  * @module apps/api/src/release-center
  */
-import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import {
   OPERATIONAL_SETTINGS_SERVICE_TOKEN,
@@ -32,6 +32,9 @@ import type {
   IReleaseStateViewService,
   ReleaseStateView,
 } from './release-state-view.service.interface';
+
+/** HttpException.getStatus() is a plain number, so compare against a number rather than the HttpStatus enum. */
+const NOT_FOUND_STATUS = 404;
 
 /** A connection id is a UUID; a step id never ends in that shape. */
 const CONNECTION_SUFFIX = /:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
@@ -103,7 +106,7 @@ export class ReleaseStateViewService implements IReleaseStateViewService {
         // mean "this connection does not exist" and both become the 422 the contract documents.
         if (
           error instanceof ConnectionNotFoundException ||
-          (error instanceof HttpException && error.getStatus() === HttpStatus.NOT_FOUND)
+          (error instanceof HttpException && error.getStatus() === NOT_FOUND_STATUS)
         ) {
           throw new UnknownReleaseConnectionError(change.itemKey, connectionId);
         }
