@@ -197,9 +197,9 @@ export function ReleaseBell(): ReactElement | null {
                 hint: archived.length },
             ]}
           />
-          {tab === 'active' ? <ReleaseWalkAll onNavigate={() => setOpen(false)} /> : null}
         </div>
         <div className="release-panel__list" aria-live="polite">
+          {tab === 'active' ? <ReleaseWalkAll onNavigate={() => setOpen(false)} /> : null}
           {shown.length === 0 ? (
             <div className="release-panel__empty">
               <strong>{tab === 'archive' ? panel.emptyArchiveTitle : panel.emptyDoneTitle}</strong>
