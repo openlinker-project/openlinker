@@ -114,7 +114,16 @@
     "undo": "Undo",
     "unreadLabel": "Unread",
     "versionBadge": "v{version}",
-    "viewedChip": "Viewed"
+    "viewedChip": "Viewed",
+    "walkAll": {
+      "leftTitle": "{count} left to go through",
+      "requiredLeft": "{count} required",
+      "onlyOptional": "Nothing required, all optional",
+      "start": "Go through everything",
+      "doneTitle": "All caught up",
+      "doneBody": "You can walk through the guides again.",
+      "again": "Go through everything again"
+    }
   },
   "showcases": {
     "first-steps": {

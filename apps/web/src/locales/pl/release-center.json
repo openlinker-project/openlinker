@@ -118,7 +118,16 @@
     "undo": "Cofnij",
     "unreadLabel": "Nieprzeczytane",
     "versionBadge": "v{version}",
-    "viewedChip": "Obejrzane"
+    "viewedChip": "Obejrzane",
+    "walkAll": {
+      "leftTitle": "Do przejścia: {count}",
+      "requiredLeft": "w tym wymagane: {count}",
+      "onlyOptional": "Nic wymaganego, same opcjonalne",
+      "start": "Przejdź przez wszystko",
+      "doneTitle": "Wszystko przejrzane",
+      "doneBody": "Możesz przejść przewodniki jeszcze raz.",
+      "again": "Przejdź wszystko jeszcze raz"
+    }
   },
   "showcases": {
     "first-steps": {

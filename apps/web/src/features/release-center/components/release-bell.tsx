@@ -25,6 +25,7 @@ import { ReleaseIcon } from './release-icon';
 import { BellNudge } from './bell-nudge';
 import { ReleaseCard } from './release-card';
 import { ReleaseMessageRow } from './release-message-row';
+import { ReleaseWalkAll } from './release-walk-all';
 
 type Tab = 'active' | 'archive';
 
@@ -196,6 +197,7 @@ export function ReleaseBell(): ReactElement | null {
                 hint: archived.length },
             ]}
           />
+          {tab === 'active' ? <ReleaseWalkAll onNavigate={() => setOpen(false)} /> : null}
         </div>
         <div className="release-panel__list" aria-live="polite">
           {shown.length === 0 ? (
