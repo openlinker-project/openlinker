@@ -42975,7 +42975,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .tour-card__stops { flex: 1; }
 .pseg-strip__gap { flex: 0 0 8px; }
 .pseg {
-  --pseg-base: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface));
+  --pseg-base: color-mix(in srgb, var(--text-muted) 22%, var(--bg-surface));
   --pseg-fill: var(--accent-primary);
   position: relative;
   display: block;
@@ -42989,15 +42989,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   transition: background-color 240ms var(--ease-out), transform 120ms var(--ease-out);
 }
 .pseg[data-kind='showcase'] {
-  --pseg-base: color-mix(in srgb, var(--status-info) 22%, var(--bg-strong));
+  --pseg-base: color-mix(in srgb, var(--status-info) 16%, var(--bg-surface));
   --pseg-fill: var(--status-info);
 }
 .pseg[data-kind='optional'] {
-  --pseg-base: color-mix(in srgb, var(--text-muted) 18%, var(--bg-surface));
+  --pseg-base: color-mix(in srgb, var(--text-muted) 14%, var(--bg-surface));
   background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--bg-surface) 70%, transparent) 3px 5px);
 }
-.pseg[data-state='done'] { background-color: color-mix(in srgb, var(--pseg-fill) 62%, var(--bg-strong)); }
-.pseg[data-state='current'] { background-color: var(--pseg-fill); }
+.pseg[data-state='done'] { background-color: var(--pseg-fill); }
+.pseg[data-state='current'] { background-color: var(--pseg-fill); box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 3.5px var(--pseg-fill); z-index: 1; }
+/* Finished is a full colour; what is still to do stays a quiet grey, so the two never read alike. */
+.pseg[data-state='done'][data-kind='optional'] { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgb(255 255 255 / 0.34) 3px 5px); }
 .pseg[data-state='skipped'] { background-color: color-mix(in srgb, var(--text-muted) 42%, var(--bg-surface)); background-image: none; }
 .pseg--button { cursor: pointer; }
 .pseg--button::before { content: ''; position: absolute; inset: -8px -2px; }
