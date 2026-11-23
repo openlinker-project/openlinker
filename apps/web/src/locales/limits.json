@@ -1068,7 +1068,7 @@
   "orders:orderCorrectionProposal.column.product": 12,
   "orders:orderCorrectionProposal.column.quantity": 13,
   "orders:orderCorrectionProposal.column.unitPrice": 16,
-  "orders:orderEditAction.button": 16,
+  "orders:orderEditAction.button": 18,
   "orders:paymentWriteback.chipLabel": 16,
   "orders:paymentWriteback.chipValue": 24,
   "orders:paymentWriteback.filterCheck": 32,
