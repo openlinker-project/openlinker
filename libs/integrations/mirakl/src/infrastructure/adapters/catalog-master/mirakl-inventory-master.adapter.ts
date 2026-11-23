@@ -5,30 +5,34 @@
  * OF21 `quantity` is the stock of its product's single variant, reported
  * pooled (Mirakl offers carry no warehouse).
  *
- * ## Writing stock
+ * ## Writing stock: queued, never sent on its own
  *
- * OpenLinker adjusts by a delta; STO01 only takes an absolute quantity and
- * applies it asynchronously. So `adjustInventory`:
+ * OpenLinker adjusts by a delta; STO01 only takes an absolute quantity, and
+ * Mirakl takes one STO01 file per shop about every 30 seconds (a second one
+ * inside the window answers 429, measured on Empik staging). Sending each
+ * adjustment as its own file would refuse every second sale of a burst. So
+ * `adjustInventory`:
  *
  * 1. takes a short per-sku lock, so two adjustments of one offer never
  *    interleave their read and write;
  * 2. answers a repeated idempotency key from the cache as `deduplicated`
- *    (seven days, the WooCommerce / PrestaShop #2368 shape), recording a key
- *    only AFTER the submit succeeded;
- * 3. reads the current quantity: the target it submitted itself if that is
- *    still fresh, else OF21 (`mirakl-master-stock.policy.ts`);
- * 4. submits a one-line STO01 with `max(0, current + delta)`.
+ *    (seven days, the WooCommerce / PrestaShop #2368 shape);
+ * 3. reads the current quantity: the newest queued or sent, not yet settled
+ *    target for the offer, else OF21 (`mirakl-master-stock.policy.ts`);
+ * 4. queues `max(0, current + delta)` in `mirakl_offer_writes`.
  *
- * It returns the submitted target with `appliedAt: null`: Mirakl applies it
- * later and reports no instant. A transport failure propagates, which core
- * records as an unknown outcome and never retries blind.
+ * The queue is the #4277 one: `reconcilePendingQuantityAcks` (the scheduled
+ * offer-writes pass) sends every queued line as one STO01 file and settles it
+ * from the import report, so a refused line is recorded with Mirakl's reason.
+ * The adjustment therefore returns before Mirakl has the number, with
+ * `appliedAt: null`: the same "accepted, confirmed later" contract Allegro's
+ * quantity writes have (#2621).
  *
  * Known window, stated rather than hidden: a sale made on the marketplace
- * between the OF21 read and Mirakl applying the import is written over. The
- * submit happens seconds after the read, so the window is that long.
+ * between the OF21 read and Mirakl applying the file is written over.
  *
- * Reads overlay a fresh pending target too, so a master sync running in the
- * seconds after a write does not mirror the old number back.
+ * Reads overlay the queued target too, so a master sync running before the
+ * file is applied does not mirror the old number back.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters/catalog-master
  * @implements {InventoryMasterPort}
@@ -40,33 +44,33 @@ import type {
   InventoryIdempotencySupport,
   InventoryMasterPort,
 } from '@openlinker/core/inventory';
+import type {
+  PendingQuantityAckReconciler,
+  PendingQuantityAckReconcileResult,
+} from '@openlinker/core/listings';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { SyncLockPort } from '@openlinker/core/sync';
 import type { CachePort } from '@openlinker/shared/cache';
 import { Logger } from '@openlinker/shared/logging';
 import { MiraklApiException } from '../../../domain/exceptions/mirakl-api.exception';
+import { MiraklConfigException } from '../../../domain/exceptions/mirakl-config.exception';
 import { MiraklNotSupportedException } from '../../../domain/exceptions/mirakl-not-supported.exception';
 import {
   computeMiraklStockTarget,
-  MIRAKL_PENDING_STOCK_TRUST_MS,
   readMiraklOfferQuantity,
   resolveMiraklCurrentStock,
-  type MiraklPendingStock,
 } from '../../../domain/policies/mirakl-master-stock.policy';
-import {
-  buildMiraklOfferFile,
-  formatMiraklQuantity,
-} from '../../../domain/policies/mirakl-offer-file.policy';
+import { formatMiraklQuantity } from '../../../domain/policies/mirakl-offer-file.policy';
+import type { MiraklOfferWriteRepositoryPort } from '../../../domain/ports/mirakl-offer-write-repository.port';
 import type { IMiraklHttpClient } from '../../http/mirakl-http-client.interface';
+import type { IMiraklImportTracker } from '../../imports/mirakl-import-tracker.interface';
+import { MiraklOfferWriteReconciler } from '../mirakl-offer-write-reconciler';
 import type { MiraklMasterIdentity } from './mirakl-master-identity';
 import type { MiraklOfferReader } from './mirakl-offer-reader';
 
-const STOCK_IMPORT_PATH = '/api/offers/stock/imports';
 /** Seven days, matching the job dedup TTL, so no retry outlives the window. */
 const IDEMPOTENCY_TTL_SEC = 7 * 24 * 60 * 60;
-/** Kept a little past the trust window; the policy decides whether it counts. */
-const PENDING_TTL_SEC = Math.ceil((MIRAKL_PENDING_STOCK_TRUST_MS * 2) / 1000);
-/** The critical section is one OF21 read and one upload. */
+/** The critical section is one OF21 read and one queue write. */
 const LOCK_TTL_MS = 30_000;
 const LOCK_WAIT_MS = 10_000;
 const LOCK_POLL_MS = 250;
@@ -76,9 +80,12 @@ export interface MiraklInventoryMasterSettings {
   readonly connectionId: string;
   readonly brand: string;
   readonly httpClient: IMiraklHttpClient;
+  readonly importTracker: IMiraklImportTracker;
   readonly reader: MiraklOfferReader;
   readonly identity: MiraklMasterIdentity;
-  /** Idempotency and pending targets; without it keys are reported unsupported. */
+  /** The write queue; absent in a process without the database. */
+  readonly writes?: MiraklOfferWriteRepositoryPort;
+  /** Idempotency keys; without it keys are reported unsupported. */
   readonly cache?: CachePort;
   /** Serialises writes to one offer across processes; absent in a bare test. */
   readonly lock?: SyncLockPort;
@@ -92,7 +99,9 @@ interface StockPosition {
   readonly quantity: number;
 }
 
-export class MiraklInventoryMasterAdapter implements InventoryMasterPort {
+export class MiraklInventoryMasterAdapter
+  implements InventoryMasterPort, PendingQuantityAckReconciler
+{
   private readonly logger = new Logger(MiraklInventoryMasterAdapter.name);
   private readonly connectionId: string;
   private readonly now: () => Date;
@@ -128,6 +137,16 @@ export class MiraklInventoryMasterAdapter implements InventoryMasterPort {
     return this.withLock(sku, () => this.adjustLocked(sku, adjustment));
   }
 
+  /** Sends the queue as one STO01 file and settles earlier files (#4277 pass). */
+  reconcilePendingQuantityAcks(limit: number): Promise<PendingQuantityAckReconcileResult> {
+    return new MiraklOfferWriteReconciler(
+      this.connectionId,
+      this.settings.httpClient,
+      this.settings.importTracker,
+      this.store()
+    ).reconcile(limit);
+  }
+
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
     return Promise.reject(new MiraklNotSupportedException('holding stock', this.settings.brand));
   }
@@ -144,6 +163,7 @@ export class MiraklInventoryMasterAdapter implements InventoryMasterPort {
     sku: string,
     adjustment: InventoryAdjustment
   ): Promise<InventoryAdjustmentResult> {
+    const store = this.store();
     const idempotency = this.idempotencySupport(adjustment);
     if (idempotency === 'honoured' && (await this.hasAppliedKey(adjustment.idempotencyKey))) {
       this.logger.log(
@@ -162,19 +182,19 @@ export class MiraklInventoryMasterAdapter implements InventoryMasterPort {
     if (clamped) {
       this.logger.warn(
         `Stock adjustment ${adjustment.quantity} on offer ${sku} would go below zero ` +
-          `(current ${current.quantity}); writing 0 (connection: ${this.connectionId})`
+          `(current ${current.quantity}); queueing 0 (connection: ${this.connectionId})`
       );
     }
 
-    const importId = await this.submitStock(sku, target);
-    this.settings.reader.forget(sku);
-    await this.rememberPending(sku, { target, importId, submittedAt: this.now().toISOString() });
+    await store.recordPending(this.connectionId, 'stock', [
+      { offerSku: sku, value: formatMiraklQuantity(target) },
+    ]);
     if (idempotency === 'honoured') {
       await this.rememberAppliedKey(adjustment.idempotencyKey);
     }
     this.logger.log(
-      `Set ${this.settings.brand} stock of offer ${sku} to ${target} ` +
-        `(${adjustment.reason ?? 'no reason'}, import ${importId}, connection: ${this.connectionId})`
+      `Queued ${this.settings.brand} stock ${target} for offer ${sku} ` +
+        `(${adjustment.reason ?? 'no reason'}, connection: ${this.connectionId})`
     );
 
     return {
@@ -183,38 +203,18 @@ export class MiraklInventoryMasterAdapter implements InventoryMasterPort {
     };
   }
 
-  /** The offer's stock, overlaid with a fresh pending target. */
+  /** The offer's stock, overlaid with a queued, not yet settled target. */
   private async readPosition(productId: string, fresh: boolean): Promise<StockPosition> {
     const sku = await this.settings.identity.skuOf(productId);
     const offer = await this.settings.reader.readBySku(sku, { fresh });
     if (!offer) {
       throw new MasterProductNotFoundError(productId, this.connectionId);
     }
-    const quantity = resolveMiraklCurrentStock(
-      readMiraklOfferQuantity(offer.quantity),
-      await this.readPending(sku),
-      this.now()
-    );
+    const queued = this.settings.writes
+      ? await this.settings.writes.findLatest(this.connectionId, 'stock', sku)
+      : null;
+    const quantity = resolveMiraklCurrentStock(readMiraklOfferQuantity(offer.quantity), queued);
     return { sku, productId, quantity };
-  }
-
-  private async submitStock(sku: string, target: number): Promise<string> {
-    const content = buildMiraklOfferFile('stock', [
-      { offerSku: sku, value: formatMiraklQuantity(target) },
-    ]);
-    const { data } = await this.settings.httpClient.postFile<{ import_id?: string | number }>(
-      STOCK_IMPORT_PATH,
-      {
-        fieldName: 'file',
-        fileName: `stock-${sku}-${this.now().toISOString().replace(/[:.]/g, '-')}.csv`,
-        contentType: 'text/csv',
-        content,
-      }
-    );
-    if (data?.import_id === undefined || data.import_id === null || data.import_id === '') {
-      throw new MiraklApiException('Mirakl answered the stock import without an import_id');
-    }
-    return String(data.import_id);
   }
 
   private async toInventory(position: StockPosition): Promise<Inventory> {
@@ -231,6 +231,16 @@ export class MiraklInventoryMasterAdapter implements InventoryMasterPort {
       reserved: 0,
       available: position.quantity,
     };
+  }
+
+  private store(): MiraklOfferWriteRepositoryPort {
+    if (!this.settings.writes) {
+      throw new MiraklConfigException(
+        `${this.settings.brand} stock writes need the database; this process has none`,
+        this.connectionId
+      );
+    }
+    return this.settings.writes;
   }
 
   private async withLock<T>(sku: string, work: () => Promise<T>): Promise<T> {
@@ -285,25 +295,7 @@ export class MiraklInventoryMasterAdapter implements InventoryMasterPort {
     await this.settings.cache.set(this.appliedKey(key), true, IDEMPOTENCY_TTL_SEC);
   }
 
-  private async readPending(sku: string): Promise<MiraklPendingStock | null> {
-    if (!this.settings.cache) {
-      return null;
-    }
-    return this.settings.cache.get<MiraklPendingStock>(this.pendingKey(sku));
-  }
-
-  private async rememberPending(sku: string, pending: MiraklPendingStock): Promise<void> {
-    if (!this.settings.cache) {
-      return;
-    }
-    await this.settings.cache.set(this.pendingKey(sku), pending, PENDING_TTL_SEC);
-  }
-
   private appliedKey(key: string): string {
     return `mirakl:inventory-adjust:${this.connectionId}:${key}`;
-  }
-
-  private pendingKey(sku: string): string {
-    return `mirakl:stock-pending:${this.connectionId}:${sku}`;
   }
 }

@@ -156,3 +156,15 @@ its reason (`capability-metadata.ts`), which is the whole operator step.
 3. No staging order exists, so the end-to-end "Allegro sale lowers Empik
    stock" path is covered by the int-spec and by a manual STO01 adjust on
    staging, not by a real sale.
+
+## 6. Change after the live test (2026-11-23)
+
+Empik staging accepts one STO01 file per shop about every 30 seconds: a second
+file inside the window answers 429 (`Retry-After: 22`). Sending each
+adjustment as its own file made the second of two quick corrections end
+`in_doubt`. Stock writes from the master are therefore queued in
+`mirakl_offer_writes` and sent by the #4277 reconciler as one file, from a new
+`empik-master-stock-writes` task (every minute). `OfferQuantityAckReconcileService`
+in core asks the `InventoryMaster` adapter when the connection holds no
+`OfferManager`. The queued, not yet settled target replaces the two-minute
+cache overlay.

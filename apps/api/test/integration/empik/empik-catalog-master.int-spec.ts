@@ -5,7 +5,8 @@
  * REAL `MiraklProductMasterAdapter` / `MiraklInventoryMasterAdapter` over an
  * in-memory Mirakl offer API, the production adapter-resolution seam, the REAL
  * master product and inventory sync services, the REAL stock correction
- * service, and real Postgres and Redis.
+ * service, the REAL offer-writes reconcile pass that sends the queued stock,
+ * and real Postgres and Redis.
  *
  * Offer shapes follow OF21 as Empik staging answered it on 2026-11-23.
  *
@@ -23,6 +24,10 @@ import {
   type IMasterInventorySyncService,
 } from '@openlinker/core/inventory';
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
+import {
+  OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
+  type IOfferQuantityAckReconcileService,
+} from '@openlinker/core/listings';
 import {
   MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
   type IMasterProductSyncService,
@@ -119,30 +124,43 @@ describe('Empik catalogue and stock master (#4284)', () => {
     });
   });
 
-  it('M3: a stock correction is written to Empik as an absolute STO01 line', async () => {
+  it('M3: a stock correction is queued, then sent to Empik as one absolute STO01 line', async () => {
     await productSync().syncFromMasterByExternalId(connectionId, SKU);
     await inventorySync().syncFromMasterByExternalId(connectionId, SKU);
     const variant = await syncedVariant();
     const correction = harness
       .getApp()
       .get<IInventoryCorrectionService>(INVENTORY_CORRECTION_SERVICE_TOKEN);
+    const correct = (quantity: number): ReturnType<IInventoryCorrectionService['correctStock']> =>
+      correction.correctStock({
+        productVariantId: variant.id,
+        mode: 'delta',
+        quantity,
+        operatorReason: 'count_correction',
+        idempotencyKey: randomUUID(),
+        actorUserId: 'user-1',
+      });
 
-    const result = await correction.correctStock({
-      productVariantId: variant.id,
-      mode: 'delta',
-      quantity: -3,
-      operatorReason: 'count_correction',
-      idempotencyKey: `test-${randomUUID()}`,
-      actorUserId: 'user-1',
-    });
+    // Two changes inside Mirakl's one-file-per-30-seconds window.
+    await expect(correct(-3)).resolves.toMatchObject({ status: 'applied', quantityAfter: 7 });
+    await expect(correct(-1)).resolves.toMatchObject({ status: 'applied', quantityAfter: 6 });
+    expect(empik.fake.imports).toEqual([]);
 
-    expect(result).toMatchObject({ status: 'applied', quantityAfter: 7 });
+    await harness
+      .getApp()
+      .get<IOfferQuantityAckReconcileService>(OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN)
+      .reconcile(connectionId, 50);
+
     expect(empik.fake.imports).toEqual([
       expect.objectContaining({
         path: '/api/offers/stock/imports',
-        content: `offer-sku;quantity\n${SKU};7\n`,
+        content: `offer-sku;quantity\n${SKU};6\n`,
       }),
     ]);
+    expect(await empik.writes.findLatest(connectionId, 'stock', SKU)).toMatchObject({
+      status: 'submitted',
+      value: '6',
+    });
   });
 
   it('M4: an offer gone from Empik stales the product it was read in as', async () => {

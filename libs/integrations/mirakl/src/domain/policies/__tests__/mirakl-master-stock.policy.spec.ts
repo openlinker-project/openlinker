@@ -5,38 +5,27 @@
  */
 import {
   computeMiraklStockTarget,
-  MIRAKL_PENDING_STOCK_TRUST_MS,
   readMiraklOfferQuantity,
   resolveMiraklCurrentStock,
 } from '../mirakl-master-stock.policy';
 
-const NOW = new Date('2026-11-23T12:00:00.000Z');
-
-function pending(
-  ageMs: number,
-  target = 7
-): { target: number; importId: string; submittedAt: string } {
-  return { target, importId: '1', submittedAt: new Date(NOW.getTime() - ageMs).toISOString() };
-}
-
 describe('resolveMiraklCurrentStock', () => {
-  it('should read OF21 when nothing is pending', () => {
-    expect(resolveMiraklCurrentStock(10, null, NOW)).toBe(10);
+  it('should read OF21 when nothing is queued', () => {
+    expect(resolveMiraklCurrentStock(10, null)).toBe(10);
   });
 
-  it('should read the pending target while it is fresh', () => {
-    expect(resolveMiraklCurrentStock(10, pending(5_000), NOW)).toBe(7);
+  it('should read a queued or sent target that Mirakl has not settled yet', () => {
+    expect(resolveMiraklCurrentStock(10, { status: 'pending', value: '7' })).toBe(7);
+    expect(resolveMiraklCurrentStock(10, { status: 'submitted', value: '6' })).toBe(6);
   });
 
-  it('should read OF21 once the pending target is older than the trust window', () => {
-    expect(resolveMiraklCurrentStock(9, pending(MIRAKL_PENDING_STOCK_TRUST_MS + 1), NOW)).toBe(9);
+  it('should read OF21 once the write is settled, either way', () => {
+    expect(resolveMiraklCurrentStock(9, { status: 'applied', value: '7' })).toBe(9);
+    expect(resolveMiraklCurrentStock(9, { status: 'failed', value: '7' })).toBe(9);
   });
 
-  it('should read OF21 when the pending timestamp is unreadable or in the future', () => {
-    expect(
-      resolveMiraklCurrentStock(9, { target: 1, importId: '1', submittedAt: 'garbage' }, NOW)
-    ).toBe(9);
-    expect(resolveMiraklCurrentStock(9, pending(-60_000), NOW)).toBe(9);
+  it('should read OF21 when the queued value is not a quantity', () => {
+    expect(resolveMiraklCurrentStock(9, { status: 'pending', value: 'abc' })).toBe(9);
   });
 });
 

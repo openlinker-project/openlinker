@@ -3,7 +3,8 @@
  *
  * Registers a test-only adapter key whose factory returns the REAL
  * `MiraklProductMasterAdapter` and `MiraklInventoryMasterAdapter` over a
- * `MiraklFakeOfferApi`, with the app's own identifier mapping, cache and lock.
+ * `MiraklFakeOfferApi`, with the app's own identifier mapping, cache and lock,
+ * and the real `mirakl_offer_writes` queue.
  * A connection pointed at this key therefore resolves through the production
  * path, and the masters' id, deletion and read-then-write rules all run; only
  * the transport is faked.
@@ -32,6 +33,9 @@ import { MiraklInventoryMasterAdapter } from '@openlinker/integrations-mirakl/in
 import { MiraklMasterIdentity } from '@openlinker/integrations-mirakl/infrastructure/adapters/catalog-master/mirakl-master-identity';
 import { MiraklOfferReader } from '@openlinker/integrations-mirakl/infrastructure/adapters/catalog-master/mirakl-offer-reader';
 import { MiraklProductMasterAdapter } from '@openlinker/integrations-mirakl/infrastructure/adapters/catalog-master/mirakl-product-master.adapter';
+import { MiraklImportTracker } from '@openlinker/integrations-mirakl/infrastructure/imports/mirakl-import-tracker';
+import { MiraklOfferWriteOrmEntity } from '@openlinker/integrations-mirakl/infrastructure/persistence/entities/mirakl-offer-write.orm-entity';
+import { MiraklOfferWriteRepository } from '@openlinker/integrations-mirakl/infrastructure/persistence/repositories/mirakl-offer-write.repository';
 
 import type { IntegrationTestHarness } from '../setup';
 import { MiraklFakeOfferApi } from './mirakl-fake-offer-api';
@@ -41,6 +45,7 @@ export const EMPIK_MASTER_TEST_PLATFORM_TYPE = 'empik';
 
 export interface EmpikCatalogMasterHarness {
   readonly fake: MiraklFakeOfferApi;
+  readonly writes: MiraklOfferWriteRepository;
 }
 
 export function installEmpikCatalogMasterHarness(
@@ -51,6 +56,9 @@ export function installEmpikCatalogMasterHarness(
   const identifierMapping = app.get<IdentifierMappingPort>(IDENTIFIER_MAPPING_PORT_TOKEN);
   const cache = app.get<CachePort>(CACHE_PORT_TOKEN, { strict: false });
   const lock = app.get<SyncLockPort>(SYNC_LOCK_TOKEN, { strict: false });
+  const writes = new MiraklOfferWriteRepository(
+    harness.getDataSource().getRepository(MiraklOfferWriteOrmEntity)
+  );
 
   app.get<AdapterRegistryPort>(ADAPTER_REGISTRY_TOKEN).register({
     adapterKey: EMPIK_MASTER_TEST_ADAPTER_KEY,
@@ -73,6 +81,8 @@ export function installEmpikCatalogMasterHarness(
                 connectionId: connection.id,
                 brand: 'Empik',
                 httpClient: fake,
+                importTracker: new MiraklImportTracker(fake, connection.id),
+                writes,
                 reader,
                 identity,
                 cache,
@@ -82,5 +92,5 @@ export function installEmpikCatalogMasterHarness(
       },
     });
 
-  return { fake };
+  return { fake, writes };
 }

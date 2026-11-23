@@ -143,6 +143,8 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
         connectionId: connection.id,
         brand: this.profile.brand,
         httpClient,
+        importTracker,
+        writes: this.deps.offerWrites?.(),
         reader: offerReader,
         identity,
         cache: master.cache,

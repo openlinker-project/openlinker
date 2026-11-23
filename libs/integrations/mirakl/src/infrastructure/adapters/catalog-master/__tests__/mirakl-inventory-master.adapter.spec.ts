@@ -7,18 +7,20 @@ import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { SyncLockPort } from '@openlinker/core/sync';
 import type { CachePort } from '@openlinker/shared/cache';
 import { MiraklApiException } from '../../../../domain/exceptions/mirakl-api.exception';
+import { MiraklConfigException } from '../../../../domain/exceptions/mirakl-config.exception';
 import { MiraklNotSupportedException } from '../../../../domain/exceptions/mirakl-not-supported.exception';
-import type { MiraklFileUpload } from '../../../http/mirakl-http-client.types';
+import type { MiraklOfferWriteRepositoryPort } from '../../../../domain/ports/mirakl-offer-write-repository.port';
+import type { MiraklOfferWriteStatus } from '../../../../domain/types/mirakl-offer-write.types';
+import type { IMiraklImportTracker } from '../../../imports/mirakl-import-tracker.interface';
 import { MiraklInventoryMasterAdapter } from '../mirakl-inventory-master.adapter';
 import { MiraklOfferReader } from '../mirakl-offer-reader';
 import { CONNECTION_ID, fakeIdentity, fakeOffers } from './mirakl-master.fixture';
 
 const NOW = new Date('2026-11-23T12:00:00.000Z');
 
-function memoryCache(): CachePort & { store: Map<string, unknown> } {
+function memoryCache(): CachePort {
   const store = new Map<string, unknown>();
   return {
-    store,
     get: <T>(key: string): Promise<T | null> => Promise.resolve((store.get(key) as T) ?? null),
     set: <T>(key: string, value: T): Promise<void> => {
       store.set(key, value);
@@ -28,18 +30,78 @@ function memoryCache(): CachePort & { store: Map<string, unknown> } {
       store.delete(key);
       return Promise.resolve();
     },
-  } as unknown as CachePort & { store: Map<string, unknown> };
+  } as unknown as CachePort;
 }
 
-function setup(
-  options: { quantity?: number; cache?: CachePort; lock?: SyncLockPort; now?: () => Date } = {}
-): { adapter: MiraklInventoryMasterAdapter; http: ReturnType<typeof fakeOffers> } {
+interface QueuedRow {
+  offerSku: string;
+  value: string;
+  status: MiraklOfferWriteStatus;
+}
+
+type MemoryQueue = MiraklOfferWriteRepositoryPort & {
+  rows: QueuedRow[];
+  failNextRecord: () => void;
+};
+
+/** The write queue in memory: one pending row per offer, replaced in place. */
+function memoryQueue(): MemoryQueue {
+  const rows: QueuedRow[] = [];
+  let failNext = false;
+  return {
+    rows,
+    failNextRecord: (): void => {
+      failNext = true;
+    },
+    recordPending: (
+      _connectionId: string,
+      _kind: string,
+      values: ReadonlyArray<{ offerSku: string; value: string }>
+    ): Promise<void> => {
+      if (failNext) {
+        failNext = false;
+        return Promise.reject(new Error('db down'));
+      }
+      for (const value of values) {
+        const pending = rows.find(
+          (row) => row.offerSku === value.offerSku && row.status === 'pending'
+        );
+        if (pending) {
+          pending.value = value.value;
+        } else {
+          rows.push({ offerSku: value.offerSku, value: value.value, status: 'pending' });
+        }
+      }
+      return Promise.resolve();
+    },
+    findLatest: (_connectionId: string, _kind: string, sku: string): Promise<QueuedRow | null> =>
+      Promise.resolve([...rows].reverse().find((row) => row.offerSku === sku) ?? null),
+  } as unknown as MemoryQueue;
+}
+
+interface SetupOptions {
+  quantity?: number;
+  cache?: CachePort;
+  lock?: SyncLockPort;
+  now?: () => Date;
+  /** `null` builds the adapter without a queue. */
+  queue?: MemoryQueue | null;
+}
+
+function setup(options: SetupOptions = {}): {
+  adapter: MiraklInventoryMasterAdapter;
+  http: ReturnType<typeof fakeOffers>;
+  queue: MemoryQueue;
+} {
   const http = fakeOffers([{ shop_sku: 'A', quantity: options.quantity ?? 10 }]);
   const { identity } = fakeIdentity();
+  const queue = options.queue ?? memoryQueue();
   const adapter = new MiraklInventoryMasterAdapter({
     connectionId: CONNECTION_ID,
     brand: 'Empik',
     httpClient: http.client,
+    importTracker: {} as unknown as IMiraklImportTracker,
+    writes: options.queue === null ? undefined : queue,
     reader: new MiraklOfferReader(http.client),
     identity,
     cache: options.cache,
@@ -47,13 +109,7 @@ function setup(
     now: options.now ?? ((): Date => NOW),
     sleep: () => Promise.resolve(),
   });
-  return { adapter, http };
-}
-
-function submittedFile(http: ReturnType<typeof fakeOffers>, call = 0): string {
-  const calls = http.postFile.mock.calls as Array<[string, MiraklFileUpload]>;
-  const file = calls[call][1];
-  return String(file.content);
+  return { adapter, http, queue };
 }
 
 describe('MiraklInventoryMasterAdapter reads', () => {
@@ -73,6 +129,13 @@ describe('MiraklInventoryMasterAdapter reads', () => {
     await expect(adapter.getAvailableQuantity('ol_product_A')).resolves.toBe(6);
   });
 
+  it('should report a queued target instead of the stale OF21 number', async () => {
+    const { adapter, queue } = setup({ quantity: 10 });
+    queue.rows.push({ offerSku: 'A', value: '4', status: 'submitted' });
+
+    await expect(adapter.getAvailableQuantity('ol_product_A')).resolves.toBe(4);
+  });
+
   it('should report a missing offer as deleted at the master', async () => {
     const { adapter } = setup();
 
@@ -83,17 +146,14 @@ describe('MiraklInventoryMasterAdapter reads', () => {
 });
 
 describe('MiraklInventoryMasterAdapter.adjustInventory', () => {
-  it('should read the live quantity and submit current + delta as one STO01 line', async () => {
-    const { adapter, http } = setup({ quantity: 10 });
+  it('should read the live quantity and queue current + delta, sending nothing itself', async () => {
+    const { adapter, http, queue } = setup({ quantity: 10 });
 
     const result = await adapter.adjustInventory({ productId: 'ol_product_A', quantity: -3 });
 
     expect(http.get).toHaveBeenCalledWith('/api/offers', { queryParams: { sku: 'A' } });
-    expect(http.postFile).toHaveBeenCalledWith(
-      '/api/offers/stock/imports',
-      expect.objectContaining({ fieldName: 'file', contentType: 'text/csv' })
-    );
-    expect(submittedFile(http)).toBe('offer-sku;quantity\nA;7\n');
+    expect(http.postFile).not.toHaveBeenCalled();
+    expect(queue.rows).toEqual([{ offerSku: 'A', value: '7', status: 'pending' }]);
     expect(result).toMatchObject({
       quantity: 7,
       available: 7,
@@ -102,42 +162,43 @@ describe('MiraklInventoryMasterAdapter.adjustInventory', () => {
   });
 
   it('should clamp a removal past zero', async () => {
-    const { adapter, http } = setup({ quantity: 2 });
+    const { adapter, queue } = setup({ quantity: 2 });
 
     const result = await adapter.adjustInventory({ productId: 'ol_product_A', quantity: -5 });
 
-    expect(submittedFile(http)).toBe('offer-sku;quantity\nA;0\n');
+    expect(queue.rows[0].value).toBe('0');
     expect(result.quantity).toBe(0);
   });
 
-  it('should build on its own pending target while Mirakl has not applied it yet', async () => {
-    const cache = memoryCache();
-    const { adapter, http } = setup({ quantity: 10, cache });
+  it('should build on a queued target that has not reached Mirakl yet', async () => {
+    const { adapter, queue } = setup({ quantity: 10 });
 
     await adapter.adjustInventory({ productId: 'ol_product_A', quantity: -1 });
-    // OF21 still answers 10: the first import has not been applied.
-    await adapter.adjustInventory({ productId: 'ol_product_A', quantity: -1 });
+    await adapter.adjustInventory({ productId: 'ol_product_A', quantity: 3 });
 
-    expect(submittedFile(http, 0)).toBe('offer-sku;quantity\nA;9\n');
-    expect(submittedFile(http, 1)).toBe('offer-sku;quantity\nA;8\n');
-    await expect(adapter.getAvailableQuantity('ol_product_A')).resolves.toBe(8);
+    expect(queue.rows).toEqual([{ offerSku: 'A', value: '12', status: 'pending' }]);
   });
 
-  it('should trust OF21 again once the pending target is stale', async () => {
-    const cache = memoryCache();
-    let now = NOW;
-    const { adapter, http } = setup({ quantity: 10, cache, now: () => now });
+  it('should build on a sent target Mirakl has not settled', async () => {
+    const { adapter, queue } = setup({ quantity: 10 });
+    queue.rows.push({ offerSku: 'A', value: '8', status: 'submitted' });
 
     await adapter.adjustInventory({ productId: 'ol_product_A', quantity: -1 });
-    now = new Date(NOW.getTime() + 10 * 60_000);
+
+    expect(queue.rows.at(-1)).toEqual({ offerSku: 'A', value: '7', status: 'pending' });
+  });
+
+  it('should trust OF21 again once the write is settled', async () => {
+    const { adapter, queue } = setup({ quantity: 9 });
+    queue.rows.push({ offerSku: 'A', value: '8', status: 'applied' });
+
     await adapter.adjustInventory({ productId: 'ol_product_A', quantity: -1 });
 
-    expect(submittedFile(http, 1)).toBe('offer-sku;quantity\nA;9\n');
+    expect(queue.rows.at(-1)).toEqual({ offerSku: 'A', value: '8', status: 'pending' });
   });
 
   it('should apply a key once and answer a repeat as deduplicated', async () => {
-    const cache = memoryCache();
-    const { adapter, http } = setup({ quantity: 10, cache });
+    const { adapter, queue } = setup({ quantity: 10, cache: memoryCache() });
 
     const first = await adapter.adjustInventory({
       productId: 'ol_product_A',
@@ -150,7 +211,7 @@ describe('MiraklInventoryMasterAdapter.adjustInventory', () => {
       idempotencyKey: 'sale:1',
     });
 
-    expect(http.postFile).toHaveBeenCalledTimes(1);
+    expect(queue.rows).toEqual([{ offerSku: 'A', value: '8', status: 'pending' }]);
     expect(first.adjustmentOutcome).toMatchObject({
       disposition: 'applied',
       idempotency: 'honoured',
@@ -162,17 +223,22 @@ describe('MiraklInventoryMasterAdapter.adjustInventory', () => {
     expect(second.quantity).toBe(8);
   });
 
-  it('should not record the key when the submit fails', async () => {
-    const cache = memoryCache();
-    const { adapter, http } = setup({ quantity: 10, cache });
-    http.postFile.mockRejectedValueOnce(new Error('network'));
+  it('should not record the key when queueing fails', async () => {
+    const queue = memoryQueue();
+    const { adapter } = setup({ quantity: 10, cache: memoryCache(), queue });
+    queue.failNextRecord();
 
     await expect(
       adapter.adjustInventory({ productId: 'ol_product_A', quantity: -2, idempotencyKey: 'k' })
-    ).rejects.toThrow('network');
-    await adapter.adjustInventory({ productId: 'ol_product_A', quantity: -2, idempotencyKey: 'k' });
+    ).rejects.toThrow('db down');
+    const retry = await adapter.adjustInventory({
+      productId: 'ol_product_A',
+      quantity: -2,
+      idempotencyKey: 'k',
+    });
 
-    expect(http.postFile).toHaveBeenCalledTimes(2);
+    expect(retry.adjustmentOutcome?.disposition).toBe('applied');
+    expect(queue.rows).toEqual([{ offerSku: 'A', value: '8', status: 'pending' }]);
   });
 
   it('should report a key as unsupported without a cache', async () => {
@@ -187,28 +253,35 @@ describe('MiraklInventoryMasterAdapter.adjustInventory', () => {
     expect(result.adjustmentOutcome?.idempotency).toBe('unsupported');
   });
 
-  it('should hold the per-offer lock around the read and the write', async () => {
-    const lock = {
-      acquire: jest.fn().mockResolvedValue('token'),
-      release: jest.fn().mockResolvedValue(true),
-      extend: jest.fn(),
-    } as unknown as SyncLockPort & { acquire: jest.Mock; release: jest.Mock };
+  it('should refuse to write without the queue rather than send directly', async () => {
+    const { adapter, http } = setup({ queue: null });
+
+    await expect(
+      adapter.adjustInventory({ productId: 'ol_product_A', quantity: 1 })
+    ).rejects.toBeInstanceOf(MiraklConfigException);
+    expect(http.postFile).not.toHaveBeenCalled();
+  });
+
+  it('should hold the per-offer lock around the read and the queue write', async () => {
+    const acquire = jest.fn().mockResolvedValue('token');
+    const release = jest.fn().mockResolvedValue(true);
+    const lock = { acquire, release, extend: jest.fn() } as unknown as SyncLockPort;
     const { adapter } = setup({ lock });
 
     await adapter.adjustInventory({ productId: 'ol_product_A', quantity: 1 });
 
-    expect(lock.acquire).toHaveBeenCalledWith(`mirakl:master-stock:${CONNECTION_ID}:A`, 30_000);
-    expect(lock.release).toHaveBeenCalledWith(`mirakl:master-stock:${CONNECTION_ID}:A`, 'token');
+    expect(acquire).toHaveBeenCalledWith(`mirakl:master-stock:${CONNECTION_ID}:A`, 30_000);
+    expect(release).toHaveBeenCalledWith(`mirakl:master-stock:${CONNECTION_ID}:A`, 'token');
   });
 
-  it('should write nothing when the lock stays taken', async () => {
+  it('should queue nothing when the lock stays taken', async () => {
     const lock = {
       acquire: jest.fn().mockResolvedValue(null),
       release: jest.fn(),
       extend: jest.fn(),
     } as unknown as SyncLockPort;
     let tick = NOW.getTime();
-    const { adapter, http } = setup({
+    const { adapter, queue } = setup({
       lock,
       now: () => {
         tick += 1_000;
@@ -219,7 +292,7 @@ describe('MiraklInventoryMasterAdapter.adjustInventory', () => {
     await expect(
       adapter.adjustInventory({ productId: 'ol_product_A', quantity: 1 })
     ).rejects.toBeInstanceOf(MiraklApiException);
-    expect(http.postFile).not.toHaveBeenCalled();
+    expect(queue.rows).toEqual([]);
   });
 
   it('should refuse to hold stock', async () => {

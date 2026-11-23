@@ -156,11 +156,16 @@ target, #1498). Both are off on a new connection, which stays a marketplace.
   offer that disappears from OF21 is a product deleted at the master, so its
   listings elsewhere pause.
 - **Stock**: the offer quantity, pooled. A change from OpenLinker (a routed
-  sale, a manual correction) reads the quantity and writes `current + delta`
-  as a one-line STO01, under a per-offer lock, with a seven-day idempotency
-  key. Because STO01 is applied asynchronously, the submitted number stands in
-  for OF21 for two minutes. Known window: a sale made on the marketplace
-  between that read and Mirakl applying the import is written over.
+  sale, a manual correction) reads the current quantity and queues
+  `current + delta` in `mirakl_offer_writes`, under a per-offer lock, with a
+  seven-day idempotency key. Mirakl takes one STO01 file per shop about every
+  30 seconds (a second one inside the window answers 429, measured on Empik
+  staging), so changes are never sent one by one: the `empik-master-stock-writes`
+  task (every minute, `marketplace.offerQuantity.reconcile`) sends everything
+  queued as one file and settles it from the import report, the #4277 path.
+  Until a write is settled, the queued number stands in for OF21. Known window:
+  a sale made on the marketplace between that read and Mirakl applying the
+  file is written over.
 - **Orders**: on such a connection order lines name the product
   (`shop_sku`) instead of the offer.
 - The core master sweeps (every 20 / 15 minutes) drive both; OF21 has no
