@@ -23,6 +23,18 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Filter a synthetic product id at every consumer, through one helper
+
+**Context**: #4280 accepts a marketplace order line that matches no catalogue product (`catalogueMode: 'none'`) and gives it a deterministic placeholder `productId` (`unmatched:<connectionId>:<offerId>`) because `order_line_items.productId` is `NOT NULL`.
+
+**Problem**: the placeholder satisfies the schema and the type, so nothing fails at the write - and then every consumer that treats a line's `productId` as a real internal id quietly misbehaves: a stock position lookup that finds nothing, a sale-decrement that records a `blocked` row plus an attention flag for a sale that never touched OL's inventory, a tax-rate backfill sweep that re-selects the same line on every run, a fake id sent to an invoicing provider that then counts an unlinked-line defect. The first audit missed half of them because it read an older tree; `main` had since grown sale-decrement, bundles, gifts and promotions that key on the same field.
+
+**Rule**: when a placeholder is introduced into an id column, (1) give it ONE predicate (`isUnmatchedProductId`) and never a string prefix copied into each site, (2) grep the CURRENT `main` for every reader of that column before declaring the guard list complete, and (3) prefer excluding the value in a sweep's QUERY over a per-row `return false`, or the sweep re-reads the same rows forever.
+
+**Applies to**: any consumer of `Order.items[].productId` / `order_line_items.productId` - `libs/core/src/orders`, `inventory`, `invoicing`, `fiscalization`, `returns`, `apps/worker` sale-decrement.
+
+**Source**: #4280
+
 ## Check that every source actually produces the key a design is keyed on
 
 **Context**: #3520 bundles expand per order line, keyed on the line's `variantId`.
