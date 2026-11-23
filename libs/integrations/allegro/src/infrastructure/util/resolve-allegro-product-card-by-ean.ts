@@ -63,13 +63,15 @@ type CachedOutcome =
 export async function resolveAllegroProductCardByEan(
   httpClient: IAllegroHttpClient,
   cache: CachePort | undefined,
-  input: { ean: string; categoryId: string },
+  input: { ean: string; categoryId?: string },
   options?: ResolveAllegroProductCardOptions,
 ): Promise<ResolveProductCardResult> {
   const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
   const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
   const limit = options?.searchLimit ?? DEFAULT_SEARCH_LIMIT;
-  const cacheKey = `${prefix}:${input.categoryId}:${input.ean}`;
+  // No category means a catalogue-wide lookup. A GTIN identifies one product, so
+  // it is a valid key on its own; '*' keeps it apart from a category-scoped entry.
+  const cacheKey = `${prefix}:${input.categoryId ?? '*'}:${input.ean}`;
 
   if (cache) {
     const cached = await cache.get<CachedOutcome>(cacheKey);
@@ -89,7 +91,7 @@ export async function resolveAllegroProductCardByEan(
         // matching the tighter lookup the category matcher uses (#735/#797)
         // rather than the looser phrase-only search this path used before.
         mode: 'GTIN',
-        'category.id': input.categoryId,
+        ...(input.categoryId ? { 'category.id': input.categoryId } : {}),
         limit,
       },
     });

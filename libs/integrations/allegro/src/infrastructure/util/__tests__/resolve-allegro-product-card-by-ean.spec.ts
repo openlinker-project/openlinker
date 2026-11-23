@@ -218,4 +218,27 @@ describe('resolveAllegroProductCardByEan', () => {
 
     expect(result).toEqual({ kind: 'no_match' });
   });
+  it('should search the whole catalogue and omit the category filter when no category is given', async () => {
+    cache.get.mockResolvedValue(null);
+    httpClient.get.mockResolvedValue({
+      data: {
+        products: [
+          {
+            id: 'card-anywhere',
+            parameters: [
+              { id: '225693', name: 'EAN (GTIN)', values: ['5905386992244'], options: { isGTIN: true } },
+            ],
+          },
+        ],
+      },
+    } as never);
+
+    const result = await resolveAllegroProductCardByEan(httpClient, cache, { ean: '5905386992244' });
+
+    expect(result).toEqual({ kind: 'unique', productId: 'card-anywhere' });
+    const query = (httpClient.get.mock.calls[0][1] as { queryParams: Record<string, unknown> }).queryParams;
+    expect(query['category.id']).toBeUndefined();
+    expect(cache.set.mock.calls[0][0]).toContain(':*:5905386992244');
+  });
+
 });
