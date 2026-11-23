@@ -67,6 +67,11 @@ export interface ReleaseShowcaseStop {
   routePattern: string;
   /** Value of the `data-tour` attribute the guided tour highlights. */
   target: string;
+  /**
+   * The screen that opens when the operator does what this stop asks (a row click): any path under
+   * `pathPrefix`. The tour stays open there, highlights `target` and reads the stop's `followBody`.
+   */
+  follow?: { pathPrefix: string; target: string };
 }
 
 /**

@@ -50,19 +50,24 @@ export function tourPathFor(step: TourStepInput): string | null {
  */
 function TourLeaveGuard({
   stepPaths,
+  canFollow,
   onLeave,
 }: {
   stepPaths: ReadonlySet<string>;
+  /** The current step declares a follow-up page, so a link inside its target is a way on, not a way out. */
+  canFollow: boolean;
   onLeave: () => void;
 }): ReactElement {
   const pathsRef = useRef(stepPaths);
   pathsRef.current = stepPaths;
   // A link inside the highlighted area is the step telling the operator where to go, so following it is not leaving.
   const followedAt = useRef(0);
+  const canFollowRef = useRef(canFollow);
+  canFollowRef.current = canFollow;
   useEffect(() => {
     const onClick = (event: MouseEvent): void => {
       const target = event.target;
-      if (target instanceof Element && target.closest('[data-tour] a[href], a[href][data-tour]')) {
+      if (canFollowRef.current && target instanceof Element && target.closest('[data-tour] a[href], a[href][data-tour]')) {
         followedAt.current = Date.now();
       }
     };
@@ -173,6 +178,7 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
       {state.active && dataRouter ? (
         <TourLeaveGuard
           stepPaths={new Set(state.steps.flatMap((step) => { const stop = resolveTourStop(step); return stop ? [stop.path, ...(stop.follow ? [stop.follow.path] : [])] : []; }))}
+          canFollow={Boolean(current && resolveTourStop(current)?.follow)}
           onLeave={close}
         />
       ) : null}

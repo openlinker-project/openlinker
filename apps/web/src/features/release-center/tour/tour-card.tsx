@@ -104,7 +104,12 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const reasonId = useId();
   const location = useLocation();
   // On the page a step's link leads to, the tour points there instead of at the step's own element.
-  const onFollowPage = Boolean(stop?.follow && location.pathname === stop.follow.path);
+  const onFollowPage = Boolean(
+    stop?.follow &&
+      (stop.follow.prefix
+        ? location.pathname.startsWith(`${stop.follow.path}/`)
+        : location.pathname === stop.follow.path)
+  );
   // Which of the follow-up page's stops is shown; starts over with every step and when the page is left.
   const [followIndex, setFollowIndex] = useState(0);
   useEffect(() => setFollowIndex(0), [state.index, onFollowPage]);
@@ -333,7 +338,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     : undefined;
   const stopCopy = showcase ? showcaseCopy?.stops[showcase.stopIndex] : undefined;
   const stepCopy = showcase
-    ? { tourTitle: stopCopy?.title ?? step.stepId, tourBody: stopCopy?.body ?? '' }
+    ? { tourTitle: stopCopy?.title ?? step.stepId, tourBody: stopCopy?.body ?? '', follow0: (stopCopy as { followBody?: string } | undefined)?.followBody }
     : copy.steps[step.stepId as keyof typeof copy.steps];
   const itemKey = releaseStepItemKey(step.stepId, step.connectionId);
   const done = installationStatusOf(releaseState.data, itemKey) === 'done';

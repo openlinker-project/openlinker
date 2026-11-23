@@ -130,6 +130,7 @@
       "stops": {
         "0": {
           "body": "Orders from every channel are here. Click a row to open its details.",
+          "followBody": "These are the details of the order you opened. You can handle it from here. Go back to the list to finish.",
           "title": "Orders list"
         },
         "1": {
@@ -148,6 +149,7 @@
         },
         "1": {
           "body": "Orders from every channel are here. Click a row to open its details.",
+          "followBody": "These are the details of the order you opened. You can handle it from here. Go back to the list to finish.",
           "title": "Orders list"
         },
         "2": {

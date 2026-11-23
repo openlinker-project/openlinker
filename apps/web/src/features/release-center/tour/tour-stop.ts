@@ -16,14 +16,20 @@ export interface TourStop {
   path: string;
   target: string;
   /** The page a link in the step leads to, and what to highlight there. */
-  follow?: { path: string; targets: readonly string[] };
+  follow?: { path: string; targets: readonly string[]; prefix?: boolean };
 }
 
 export function resolveTourStop(step: TourStepInput): TourStop | null {
   if (step.showcase) {
     const showcase = RELEASE_SHOWCASES.find((candidate) => candidate.id === step.stepId);
     const stop = showcase?.stops[step.showcase.stopIndex];
-    return stop ? { path: generatePath(`/${stop.routePattern}`), target: stop.target } : null;
+    return stop
+      ? {
+          path: generatePath(`/${stop.routePattern}`),
+          target: stop.target,
+          follow: stop.follow ? { path: `/${stop.follow.pathPrefix}`, targets: [stop.follow.target], prefix: true } : undefined,
+        }
+      : null;
   }
   const entry = RELEASE_STEPS.find((candidate) => candidate.id === step.stepId);
   if (!entry) return null;

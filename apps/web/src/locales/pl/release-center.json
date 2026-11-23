@@ -134,6 +134,7 @@
       "stops": {
         "0": {
           "body": "Tu są zamówienia ze wszystkich kanałów. Kliknij wiersz, żeby otworzyć szczegóły.",
+          "followBody": "Oto szczegóły zamówienia, które kliknąłeś. Stąd obsłużysz je w całości. Wróć do listy, żeby dokończyć.",
           "title": "Lista zamówień"
         },
         "1": {
@@ -152,6 +153,7 @@
         },
         "1": {
           "body": "Tu są zamówienia ze wszystkich kanałów. Kliknij wiersz, żeby otworzyć szczegóły.",
+          "followBody": "Oto szczegóły zamówienia, które kliknąłeś. Stąd obsłużysz je w całości. Wróć do listy, żeby dokończyć.",
           "title": "Lista zamówień"
         },
         "2": {

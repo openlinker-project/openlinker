@@ -20,7 +20,7 @@ export const RELEASE_SHOWCASES: readonly ReleaseShowcaseEntry[] = [
     appliesWhen: () => true,
     stops: [
       { routePattern: 'orders', target: 'orders-columns' },
-      { routePattern: 'orders', target: 'orders-table' },
+      { routePattern: 'orders', target: 'orders-table', follow: { pathPrefix: 'orders', target: 'order-detail' } },
       { routePattern: 'settings/order-tags', target: 'order-tags-new' },
     ],
   },
@@ -29,7 +29,7 @@ export const RELEASE_SHOWCASES: readonly ReleaseShowcaseEntry[] = [
     id: 'first-steps',
     appliesWhen: () => true,
     stops: [
-      { routePattern: 'orders', target: 'orders-table' },
+      { routePattern: 'orders', target: 'orders-table', follow: { pathPrefix: 'orders', target: 'order-detail' } },
       { routePattern: 'orders', target: 'orders-columns' },
     ],
   },
