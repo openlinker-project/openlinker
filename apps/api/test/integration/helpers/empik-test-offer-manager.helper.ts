@@ -59,13 +59,16 @@ export function installEmpikOfferManagerHarness(
     .get<AdapterFactoryResolverService>(ADAPTER_FACTORY_RESOLVER_TOKEN)
     .registerFactory(EMPIK_OFFER_MANAGER_TEST_ADAPTER_KEY, {
       createCapabilityAdapter: <T>(connection: Connection): Promise<T> => {
-        const adapter = new MiraklOfferManagerAdapter(
-          connection.id,
-          fake,
-          new MiraklImportTracker(fake, connection.id),
-          'Empik',
-          repository
-        );
+        const adapter = new MiraklOfferManagerAdapter({
+          connectionId: connection.id,
+          adapterKey: EMPIK_OFFER_MANAGER_TEST_ADAPTER_KEY,
+          brand: 'Empik',
+          httpClient: fake,
+          importTracker: new MiraklImportTracker(fake, connection.id),
+          writes: repository,
+          taxonomyOwner: 'empik:staging',
+          offerDefaults: { leadTimeToShip: 2, logisticClass: '1' },
+        });
         return Promise.resolve(adapter as unknown as T);
       },
     });

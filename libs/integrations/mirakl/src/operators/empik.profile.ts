@@ -23,4 +23,5 @@ export const empikOperatorProfile: MiraklOperatorProfile = {
   },
   // DO01 on staging (2026-11-23): `CUSTOMER_INVOICE` ("Faktura"), entity ORDER.
   invoiceDocumentTypeCode: 'CUSTOMER_INVOICE',
+  taxonomyOwners: { production: 'empik', staging: 'empik:staging' },
 };

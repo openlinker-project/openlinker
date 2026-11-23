@@ -13,9 +13,9 @@
  *
  * @module libs/integrations/mirakl/src/domain/policies
  */
-import type { MiraklOfferWriteKind } from '../types/mirakl-offer-write.types';
+import type { MiraklBufferedWriteKind } from '../types/mirakl-offer-write.types';
 
-const COLUMN_BY_KIND: Readonly<Record<MiraklOfferWriteKind, string>> = {
+const COLUMN_BY_KIND: Readonly<Record<MiraklBufferedWriteKind, string>> = {
   stock: 'quantity',
   price: 'price',
 };
@@ -27,7 +27,7 @@ function cell(value: string): string {
 
 /** The import file for one kind, one line per offer. */
 export function buildMiraklOfferFile(
-  kind: MiraklOfferWriteKind,
+  kind: MiraklBufferedWriteKind,
   lines: ReadonlyArray<{ readonly offerSku: string; readonly value: string }>
 ): string {
   const rows = lines.map((line) => `${cell(line.offerSku)};${cell(line.value)}`);

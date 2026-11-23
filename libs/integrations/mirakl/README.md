@@ -97,6 +97,31 @@ STO01, PRI01 and order lines use.
 A value written twice is harmless (stock and price are absolute), so a file
 whose answer was lost is simply sent again on the next pass.
 
+## Listing from OpenLinker (#4278, part 1: existing cards)
+
+On a Mirakl operator an offer points to a catalogue card. This part lists
+products whose EAN already has one:
+
+- **Taxonomy**: H11 categories (`CategoryBrowser`), PM11 card attributes with
+  VL11 values (`CategoryParametersReader`), and the tree's identity
+  (`empik` / `empik:staging`), so the destination taxonomy projection,
+  category mappings and attribute rules work.
+- **Card match** (`EanCategoryMatcher`): P31 by EAN, up to 100 per request.
+- **Create** (`OfferCreator`): OF24 once per offer with the full field set
+  (EAN, state 11, price, quantity, lead time, logistic class, `gpsr-*` fields
+  from `Product.gpsr`). The import is recorded, so the offer reads
+  `activating` while it runs and `inactive` with Mirakl's reason if refused.
+  Lead time and logistic class come from the wizard, else
+  `config.offerDefaults`.
+- **No card**: refused with `MIRAKL_PRODUCT_CARD_MISSING`, and the wizard
+  blocks the row before submit.
+
+Not yet: creating cards (P41), variant grouping (`VARIANT_GROUP_MKPL`) and
+bundle or multipack cards. On staging a card import stayed waiting for the
+operator indefinitely, so this waits on Empik's answer about card review. A
+bundle or multipack whose own EAN already has a card is listed like any
+product; core already sends the bundle availability as its stock.
+
 ## Connecting
 
 1. In the operator's seller panel, open the user menu and generate an API key

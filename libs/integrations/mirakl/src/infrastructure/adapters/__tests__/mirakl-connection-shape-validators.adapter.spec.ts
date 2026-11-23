@@ -41,6 +41,7 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
         shopId: '6881',
         orderAcceptance: 'off',
         carrierCodes: { dpd: 'dpd' },
+        offerDefaults: { leadTimeToShip: 2, logisticClass: '1' },
         masterCatalogConnectionId: '1f0e9a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b',
         rateLimit: { requestsPerMinute: 60 },
       }),
@@ -56,6 +57,7 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
         masterCatalogConnectionId: 'nope',
         orderAcceptance: 'manual',
         carrierCodes: { dpd: '' },
+        offerDefaults: { leadTimeToShip: 99 },
       })
       .catch((e: unknown) => e)) as InvalidConnectionConfigException;
 
@@ -65,6 +67,7 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
       'carrierCodes',
       'environment',
       'masterCatalogConnectionId',
+      'offerDefaults',
       'orderAcceptance',
       'shopId',
     ]);

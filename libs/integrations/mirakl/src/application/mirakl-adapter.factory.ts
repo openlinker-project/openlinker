@@ -21,7 +21,9 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { FetchLike } from '@openlinker/shared/http';
 import { MiraklConfigException } from '../domain/exceptions/mirakl-config.exception';
 import {
+  isMiraklEnvironment,
   readMiraklCarrierCodes,
+  readMiraklOfferDefaults,
   readMiraklShopId,
   resolveMiraklBaseUrl,
   resolveMiraklOrderAcceptance,
@@ -90,6 +92,7 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
     );
     const config = (connection.config ?? {}) as MiraklConnectionConfig;
     const carrierCodes = readMiraklCarrierCodes(config.carrierCodes);
+    const offerDefaults = readMiraklOfferDefaults(config.offerDefaults);
     return {
       orderSource: new MiraklOrderSourceAdapter(
         connection.id,
@@ -103,13 +106,19 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
           invoiceTypeCode: this.profile.invoiceDocumentTypeCode,
         },
       ),
-      offerManager: new MiraklOfferManagerAdapter(
-        connection.id,
+      offerManager: new MiraklOfferManagerAdapter({
+        connectionId: connection.id,
+        adapterKey: this.profile.adapterKey,
+        brand: this.profile.brand,
         httpClient,
         importTracker,
-        this.profile.brand,
-        this.deps.offerWrites?.(),
-      ),
+        writes: this.deps.offerWrites?.(),
+        taxonomyOwner:
+          this.profile.taxonomyOwners[
+            isMiraklEnvironment(config.environment) ? config.environment : 'production'
+          ],
+        offerDefaults: offerDefaults.kind === 'valid' ? offerDefaults : {},
+      }),
     };
   }
 

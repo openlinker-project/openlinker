@@ -13,6 +13,7 @@
  *
  * @module libs/integrations/mirakl/src/domain/types
  */
+import type { TaxonomyOwner } from '@openlinker/core/listings';
 import type { MiraklEnvironment } from './mirakl-connection.types';
 
 export interface MiraklOperatorProfile {
@@ -36,4 +37,9 @@ export interface MiraklOperatorProfile {
    * their own order document types (DO01); Empik lists `CUSTOMER_INVOICE`.
    */
   readonly invoiceDocumentTypeCode: string;
+  /**
+   * The category tree a connection reads, per environment (ADR-037). Staging
+   * runs its own catalogue, so it is a tree of its own.
+   */
+  readonly taxonomyOwners: Readonly<Record<MiraklEnvironment, TaxonomyOwner>>;
 }

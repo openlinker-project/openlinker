@@ -56,6 +56,11 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
       'OfferQuantityBatchUpdater',
       'PendingQuantityAckReconciler',
       'OfferFieldUpdater',
+      // Listing on an existing catalogue card (#4278). The FE gates offer
+      // creation on `OfferCreator` and the category step on these two.
+      'OfferCreator',
+      'CategoryBrowser',
+      'EanCategoryMatcher',
     ],
     displayName: profile.displayName,
     version: profile.version,

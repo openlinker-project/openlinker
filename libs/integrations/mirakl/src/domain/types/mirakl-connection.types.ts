@@ -51,4 +51,16 @@ export interface MiraklConnectionConfig {
    * code is sent by name.
    */
   carrierCodes?: Record<string, string>;
+  /**
+   * Values every new offer needs that OpenLinker does not hold (#4278). A
+   * batch can override both in the offer wizard.
+   */
+  offerDefaults?: MiraklOfferDefaults;
+}
+
+export interface MiraklOfferDefaults {
+  /** Days from order to shipment (`leadtime_to_ship`). */
+  leadTimeToShip?: number;
+  /** Operator logistic class code (`logistic_class`), e.g. Empik's `1`. */
+  logisticClass?: string;
 }
