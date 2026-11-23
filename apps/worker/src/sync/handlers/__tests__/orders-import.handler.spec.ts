@@ -5,7 +5,7 @@
  */
 import { OrderSyncStartUnavailableError } from '@openlinker/core/orders';
 import type { IOrderIngestionService } from '@openlinker/core/orders';
-import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { ContendedWriteError, SyncJobExecutionError } from '@openlinker/core/sync';
 import type { SyncJob } from '@openlinker/core/sync';
 import { OrdersImportHandler } from '../orders-import.handler';
 
@@ -46,10 +46,13 @@ describe('OrdersImportHandler', () => {
     );
   });
 
-  it('should retry rather than succeed when another page holds the lock, so the chain is not dropped', async () => {
+  it('should defer penalty-free rather than succeed when another page holds the lock, so the chain is not dropped', async () => {
     importOrderWindow.mockResolvedValue({ fetched: 0, enqueued: 0, done: false, skippedDueToLock: true });
 
-    await expect(handler.execute(makeJob(validPayload))).rejects.toBeInstanceOf(SyncJobExecutionError);
+    const failure = await handler.execute(makeJob(validPayload)).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ContendedWriteError);
+    expect(failure).not.toBeInstanceOf(SyncJobExecutionError);
   });
 
   it('should end as a business failure when the adapter cannot read a window', async () => {

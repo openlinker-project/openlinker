@@ -206,6 +206,10 @@
       "body": "To połączenie jest nieaktywne dla wszystkich możliwości. Żadne zadanie synchronizacji z niego nie skorzysta.",
       "title": "Brak włączonych możliwości"
     },
+    "orderStart": {
+      "cancel": "Anuluj",
+      "confirm": "Włącz pobieranie zamówień"
+    },
     "routingNote": {
       "body": {
         "both": "To połączenie staje się <em>uprawnione</em> do wystawiania dokumentów sprzedaży. O tym, które zamówienia faktycznie je otrzymają, decyduje się w sekcji <link>Kierowanie dokumentów sprzedaży</link>, osobno dla każdego kraju.",
@@ -1163,6 +1167,7 @@
       "oldest": "od najstarszych"
     },
     "restart": {
+      "alreadyFollowingNote": "To połączenie już czyta zamówienia ze sklepu. Aby sięgnąć dalej wstecz, wybierz datę albo wszystkie zamówienia.",
       "cancel": "Anuluj",
       "confirm": "Zastosuj zmianę",
       "confirming": "Zapisywanie…",
@@ -1179,6 +1184,8 @@
           "title": "Przesunąć początek synchronizacji"
         }
       },
+      "nothingToResetMessage": "OpenLinker już czyta zamówienia ze sklepu, więc nie ma startu do zresetowania. Aby pobrać starsze zamówienia, zaimportuj okres.",
+      "nothingToResetTitle": "Nie ma czego zresetować",
       "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia.",
       "rangeConfirm": "Importuj zamówienia",
       "rangeFailedTitle": "Nie udało się rozpocząć importu",

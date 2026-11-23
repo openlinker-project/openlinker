@@ -15,3 +15,4 @@ export {
   validateOrderRange,
   type OrderRangeValue,
 } from './lib/order-range';
+export { syncJobsQueryKeys } from './api/sync.query-keys';

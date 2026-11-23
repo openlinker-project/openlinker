@@ -112,15 +112,17 @@ describe('WooCommerceOrderSourceAdapter', () => {
       await expect(adapter.headCursor()).resolves.toBeNull();
     });
 
-    it('should return the operator initialSyncFrom instant without reading orders', async () => {
-      const get = jest.fn();
+    it('should seed at the real head and ignore initialSyncFrom when the operator chose from now', async () => {
+      const get = jest.fn().mockResolvedValue([
+        { id: 5, date_modified_gmt: '2024-06-01T10:00:10', date_modified: '2024-06-01T12:00:10' },
+      ]);
       const conn = makeConnection({
         config: { siteUrl: 'https://myshop.example.com', orders: { initialSyncFrom: '2024-01-01' } },
       });
       const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), conn);
 
-      await expect(adapter.headCursor()).resolves.toBe('2024-01-01T00:00:00.000Z');
-      expect(get).not.toHaveBeenCalled();
+      await expect(adapter.headCursor()).resolves.toBe('2024-06-01T10:00:08.000Z');
+      expect(get).toHaveBeenCalledTimes(1);
     });
 
     it('should throw when the newest order has no readable modification time', async () => {

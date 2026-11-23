@@ -77,15 +77,82 @@ describe('ConnectionCapabilitiesPanel', () => {
     });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    // Enabling order reading asks where to start first.
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable order reading' }));
 
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         connection.id,
         expect.objectContaining({
           enabledCapabilities: expect.arrayContaining(['ProductMaster', 'OrderSource']),
+          orderSyncStart: { mode: 'now' },
         })
       )
     );
+  });
+
+  it('sends the chosen start when order reading is switched on', async () => {
+    const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+    const apiClient = createMockApiClient({
+      connections: { update },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderSyncStartModes: ['now', 'all'],
+          },
+        ]),
+      },
+    });
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, { apiClient });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable order reading' }));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        connection.id,
+        expect.objectContaining({ orderSyncStart: { mode: 'all' } })
+      )
+    );
+  });
+
+  it('enables order reading at once when the adapter offers no start choice', async () => {
+    const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+    const apiClient = createMockApiClient({
+      connections: { update },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderSyncStartModes: [],
+          },
+        ]),
+      },
+    });
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, { apiClient });
+
+    await waitFor(() => expect(apiClient.adapters.list).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1]).not.toHaveProperty('orderSyncStart');
   });
 
   it('renders supported capabilities as pills above the toggles', () => {
@@ -127,6 +194,7 @@ describe('ConnectionCapabilitiesPanel', () => {
     });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable order reading' }));
 
     expect(await screen.findByText(/Unable to update capabilities/)).toBeInTheDocument();
     expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();

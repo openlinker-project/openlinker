@@ -25,12 +25,11 @@ import { useAdaptersQuery } from '../../adapters';
 import {
   ORDER_RANGE_DEFAULT_VALUE,
   OrderRangeFields,
-  toOrderImportPayload,
-  useEnqueueSyncJobMutation,
   validateOrderRange,
   type OrderRangeValue,
 } from '../../sync-jobs';
 import type { Connection } from '../api/connections.types';
+import { useImportOrdersMutation } from '../hooks/use-import-orders-mutation';
 import { useRestartOrderSyncMutation } from '../hooks/use-restart-order-sync-mutation';
 import {
   ORDER_SYNC_START_DEFAULT_MODES,
@@ -47,23 +46,28 @@ interface OrderSyncRestartDialogProps {
   connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * The connection already follows the shop's order feed, so "only new orders"
+   * would change nothing: that choice is not offered as an action.
+   */
+  hasFeedPosition?: boolean;
 }
 
 export function OrderSyncRestartDialog({
   connection,
   open,
   onOpenChange,
+  hasFeedPosition = false,
 }: OrderSyncRestartDialogProps): ReactElement {
   const copy = useMessages('connections').orderSyncPanel.restart;
   const copyRange = useMessages('sync-jobs').triggerSyncDialog.orderRange;
   const { showToast } = useToast();
   const adapters = useAdaptersQuery();
   const restart = useRestartOrderSyncMutation();
-  const enqueue = useEnqueueSyncJobMutation();
+  const enqueue = useImportOrdersMutation();
   const [kind, setKind] = useState<ImportKind>('range');
   const kindRefs = useRef<Partial<Record<ImportKind, HTMLDivElement | null>>>({});
   const [range, setRange] = useState<OrderRangeValue>(ORDER_RANGE_DEFAULT_VALUE);
-  const [intentKey, setIntentKey] = useState<string>(() => crypto.randomUUID());
   const [rangeTouched, setRangeTouched] = useState(false);
   const [value, setValue] = useState<OrderSyncStartValue>(ORDER_SYNC_START_DEFAULT_VALUE);
 
@@ -95,7 +99,6 @@ export function OrderSyncRestartDialog({
       setRange(ORDER_RANGE_DEFAULT_VALUE);
       setRangeTouched(false);
       setKind('range');
-      setIntentKey(crypto.randomUUID());
       restart.reset();
       enqueue.reset();
     }
@@ -108,9 +111,11 @@ export function OrderSyncRestartDialog({
     try {
       await enqueue.mutateAsync({
         connectionId: connection.id,
-        jobType: 'marketplace.orders.import',
-        payload: toOrderImportPayload(range, intentKey),
-        idempotencyKey: `manual:${connection.id}:marketplace.orders.import:${intentKey}`,
+        request: {
+          from: range.from,
+          ...(range.to !== '' ? { to: range.to } : {}),
+          direction: range.direction,
+        },
       });
       showToast({
         tone: 'success',
@@ -131,12 +136,20 @@ export function OrderSyncRestartDialog({
     if (!parsed.success) return;
     const start = toOrderSyncStart(value) ?? { mode: 'now' as const };
     try {
-      await restart.mutateAsync({ connectionId: connection.id, start });
-      showToast({
-        tone: 'success',
-        title: copy.successTitle,
-        description: value.mode === 'now' ? copy.successNowMessage : copy.successMessage,
-      });
+      const result = await restart.mutateAsync({ connectionId: connection.id, start });
+      if (result.applied) {
+        showToast({
+          tone: 'success',
+          title: copy.successTitle,
+          description: value.mode === 'now' ? copy.successNowMessage : copy.successMessage,
+        });
+      } else {
+        showToast({
+          tone: 'info',
+          title: copy.nothingToResetTitle,
+          description: copy.nothingToResetMessage,
+        });
+      }
       handleOpenChange(false);
     } catch {
       // Shown by the alert below.
@@ -234,7 +247,13 @@ export function OrderSyncRestartDialog({
                 error={showDateError}
                 restart
               />
-              <p className="muted-text">{value.mode === 'now' ? copy.nowNote : copy.repeatNote}</p>
+              <p className="muted-text">
+                {value.mode === 'now'
+                  ? hasFeedPosition
+                    ? copy.alreadyFollowingNote
+                    : copy.nowNote
+                  : copy.repeatNote}
+              </p>
             </>
           )}
         </div>
@@ -250,7 +269,10 @@ export function OrderSyncRestartDialog({
           <Button
             tone="primary"
             onClick={() => void handleConfirm()}
-            disabled={pending || (activeKind === 'start' && !parsed.success)}
+            disabled={
+              pending ||
+              (activeKind === 'start' && (!parsed.success || (hasFeedPosition && value.mode === 'now')))
+            }
           >
             {pending
               ? copy.confirming

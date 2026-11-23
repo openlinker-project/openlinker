@@ -41,10 +41,14 @@ import {
 } from './connection-errors';
 import { codedHttpError } from '../../../common/errors/coded-http.exception';
 import { hasMasterAndPublisher, masterPublisherConflictError } from './connection-capability-rules';
-import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
+import type {
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
+  OrderImportRequest,
+  OrderSyncRestartResult,
+} from '../interfaces/connection.service.types';
 import type {
   Connection,
-  ConnectionUpdate,
   ConnectionFilters,
   ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
@@ -94,7 +98,14 @@ import {
   resolveRequiresCredentials,
   resolveArchivable,
 } from '@openlinker/core/integrations';
-import type { OrderSyncStart, SyncJobRequest } from '@openlinker/core/sync';
+import {
+  SYNC_LOCK_TOKEN,
+  type OrderSyncStart,
+  type SyncJobRequest,
+  type SyncLockPort,
+  buildOrdersImportRequest,
+  generateOrdersImportNonce,
+} from '@openlinker/core/sync';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
@@ -145,6 +156,8 @@ export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE: KnownApiErrorCode =
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
+  /** Long enough for a restart's three writes, short enough that a crash frees the poll quickly. */
+  private static readonly RESTART_LOCK_TTL_MS = 30_000;
   private readonly logger = new Logger(ConnectionService.name);
   private readonly legacyMasterPublisherWarned = new Set<string>();
 
@@ -179,7 +192,11 @@ export class ConnectionService implements IConnectionService {
     private readonly connectionArchiveHookRegistry: ConnectionArchiveHookRegistryService,
     // #4228: where the one-shot order-sync start choice is stored.
     @Inject(SYNC_CURSORS_SERVICE_TOKEN)
-    private readonly syncCursors: ISyncCursorsService
+    private readonly syncCursors: ISyncCursorsService,
+    // #4228: the order poll's own lock, taken by a restart so it cannot race a
+    // poll that is reading the cursor it is about to delete.
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly lock: SyncLockPort
   ) {}
 
   /**
@@ -1220,13 +1237,23 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
-   * Restart a connection's order sync from a new start (#4228): drop the order
-   * cursor and its seed marker, store the new intent, and let the next poll seed
+   * Restart a connection's order sync from a new start (#4228): store the new
+   * intent, drop the order cursor and its seed marker, and let the next poll seed
    * from it. Orders already imported stay; the restart only decides what the next
    * poll reads. `from`/`all` can re-read orders already stored, which is
    * idempotent, and `now` leaves a gap between the old cursor and now.
+   *
+   * Runs under the order poll's lock, and writes the intent BEFORE it deletes the
+   * cursors: if the write fails nothing was reset, and a poll can never see a
+   * cursor-less connection with no intent (which reads as a legacy connection
+   * and imports the whole history).
+   *
+   * @throws ORDER_SYNC_BUSY (409) while a poll holds the lock.
    */
-  async restartOrderSync(connectionId: string, start: OrderSyncStart): Promise<void> {
+  async restartOrderSync(
+    connectionId: string,
+    start: OrderSyncStart
+  ): Promise<OrderSyncRestartResult> {
     const connection = await this.get(connectionId);
     const metadata = await this.integrationsService.resolveAdapterMetadata({
       platformType: connection.platformType,
@@ -1238,20 +1265,122 @@ export class ConnectionService implements IConnectionService {
       connection.enabledCapabilities,
       metadata.orderWindowImport === true
     );
-    // "New orders only" on a feed that already has a position is what the feed is doing:
-    // it reads on from its last check. Resetting it to the shop's head would skip every
-    // order placed since that check, so there is nothing to reset.
-    if (start.mode === 'now' && (await this.syncCursors.hasOrderFeedCursor(connectionId))) {
-      this.logger.log(
-        `Order sync for connection ${connectionId} already imports new orders from its last check; nothing to reset`
+    const lockKey = `marketplace:orders:poll:${connectionId}`;
+    const token = await this.lock.acquire(lockKey, ConnectionService.RESTART_LOCK_TTL_MS);
+    if (!token) {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'ORDER_SYNC_BUSY',
+        'The order poll of this connection is running; retry in a moment',
+        { connectionId }
       );
-      return;
     }
-    const removed = await this.syncCursors.deleteOrderFeedCursors(connectionId);
-    await this.storeOrderSyncStart(connection, start);
+    try {
+      // "New orders only" on a feed that already has a position is what the feed is doing:
+      // it reads on from its last check. Resetting it to the shop's head would skip every
+      // order placed since that check, so there is nothing to reset.
+      if (start.mode === 'now' && (await this.syncCursors.hasOrderFeedCursor(connectionId))) {
+        this.logger.log(
+          `Order sync for connection ${connectionId} already imports new orders from its last check; nothing to reset`
+        );
+        return { applied: false, reason: 'already-following-feed' };
+      }
+      await this.storeOrderSyncStart(connection, start);
+      const removed = await this.syncCursors.deleteOrderFeedCursors(connectionId);
+      this.logger.log(
+        `Restarted order sync for connection ${connectionId} (mode: ${start.mode}); removed cursors: ${removed.join(', ') || 'none'}`
+      );
+      return { applied: true };
+    } finally {
+      await this.lock.release(lockKey, token);
+    }
+  }
+
+  /**
+   * Import orders for a chosen range on demand (#4228): enqueues the first page
+   * of a `marketplace.orders.import` chain, which the worker then walks. The run
+   * id is minted here with a per-request nonce, so asking for the same range
+   * twice is two runs and never a silently swallowed one.
+   *
+   * @throws 400 ORDER_SOURCE_NOT_ENABLED / ORDER_IMPORT_UNSUPPORTED /
+   * ORDER_IMPORT_RANGE_INVALID, 409 CONNECTION_DISABLED when the connection is not active.
+   */
+  async startOrderImport(
+    connectionId: string,
+    request: OrderImportRequest
+  ): Promise<{ runId: string }> {
+    const connection = await this.get(connectionId);
+    if (connection.status !== 'active') {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_DISABLED',
+        'The connection must be active to import orders',
+        { connectionId }
+      );
+    }
+    if (!connection.enabledCapabilities.includes('OrderSource')) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_SOURCE_NOT_ENABLED',
+        'This connection does not import orders',
+        { connectionId }
+      );
+    }
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    if (metadata.orderWindowImport !== true) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_UNSUPPORTED',
+        `Adapter ${metadata.adapterKey} cannot import orders by date or in a chosen order`,
+        { adapterKey: metadata.adapterKey }
+      );
+    }
+    const from = request.from?.trim() || undefined;
+    const to = request.to?.trim() || undefined;
+    const fromMs = from === undefined ? null : Date.parse(from);
+    const toMs = to === undefined ? null : Date.parse(to);
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_RANGE_INVALID',
+        'from and to must be ISO dates',
+        { reason: 'unparseable' }
+      );
+    }
+    if (fromMs !== null && toMs !== null && toMs < fromMs) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_RANGE_INVALID',
+        'to must not be before from',
+        { reason: 'to-before-from' }
+      );
+    }
+    const runId = `manual:${connectionId}:${generateOrdersImportNonce()}`;
+    const first = buildOrdersImportRequest(connectionId, {
+      schemaVersion: 1,
+      runId,
+      ...(from !== undefined ? { from } : {}),
+      ...(to !== undefined ? { to } : {}),
+      direction: request.direction,
+      cursor: null,
+      page: 1,
+    });
+    const { isExisting } = await this.jobEnqueue.enqueueJob({
+      jobType: first.type,
+      connectionId,
+      payload: first.payload,
+      idempotencyKey: first.options.dedupeKey,
+    });
+    if (isExisting) {
+      throw new InternalServerErrorException('The order import was not queued, retry');
+    }
     this.logger.log(
-      `Restarted order sync for connection ${connectionId} (mode: ${start.mode}); removed cursors: ${removed.join(', ') || 'none'}`
+      `Started order import ${runId} for connection ${connectionId} (direction: ${request.direction}, from: ${from ?? '-'}, to: ${to ?? '-'})`
     );
+    return { runId };
   }
 
   async testConnection(connectionId: string): Promise<ConnectionTestResult> {
@@ -1305,6 +1434,17 @@ export class ConnectionService implements IConnectionService {
         `The connection ${connection.id} was created, but its order sync start could not be saved, so it will start from now. Check the connection and recreate it if that is not what you want.`
       );
     }
+  }
+
+  private async storeOrderSyncStartForNewOrderSource(
+    connection: Connection,
+    start: OrderSyncStart | undefined
+  ): Promise<void> {
+    const hasIntent = (await this.syncCursors.getCursor(connection.id, ORDER_SYNC_START_CURSOR_KEY)) !== null;
+    if (hasIntent || (await this.syncCursors.hasOrderFeedCursor(connection.id))) {
+      return;
+    }
+    await this.storeOrderSyncStart(connection, start ?? { mode: 'now' });
   }
 
   async create(payload: ConnectionCreateInput): Promise<Connection> {
@@ -1656,7 +1796,8 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
-  async update(connectionId: string, patch: ConnectionUpdate): Promise<Connection> {
+  async update(connectionId: string, input: ConnectionUpdateInput): Promise<Connection> {
+    const { orderSyncStart, ...patch } = input;
     try {
       this.logger.log(
         `Updating connection: ${connectionId}${patch.status ? ` (status: ${patch.status})` : ''}`
@@ -1702,7 +1843,9 @@ export class ConnectionService implements IConnectionService {
       // consume the result, so a name-only patch (`patch = { name }`) stays
       // free of an extra call.
       const needsAdapterMetadata =
-        patch.enabledCapabilities !== undefined || patch.config !== undefined;
+        patch.enabledCapabilities !== undefined ||
+        patch.config !== undefined ||
+        orderSyncStart !== undefined;
       const metadata = needsAdapterMetadata
         ? await this.integrationsService.resolveAdapterMetadata({
             platformType: existing.platformType,
@@ -1719,6 +1862,15 @@ export class ConnectionService implements IConnectionService {
         }
         this.assertNoWriteBackAuthorityConflict(patch.enabledCapabilities);
         this.assertNotMasterAndPublisher(patch.enabledCapabilities, existing.enabledCapabilities);
+      }
+
+      if (orderSyncStart !== undefined && metadata) {
+        this.assertOrderSyncStart(
+          orderSyncStart,
+          metadata.orderSyncStartModes,
+          patch.enabledCapabilities ?? existing.enabledCapabilities,
+          metadata.orderWindowImport === true
+        );
       }
 
       // #437 / #587 — close the DTO bypass on `Connection.config`. The
@@ -1779,6 +1931,17 @@ export class ConnectionService implements IConnectionService {
         connection.enabledCapabilities.includes('ProductMaster');
       if (becameActive || productMasterEnabled) {
         await this.enqueueInitialCatalogSync(connection);
+      }
+
+      // #4228 - OrderSource switched on for a connection created without it:
+      // create wrote no intent then, and with none the first poll reads the whole
+      // history (the legacy reading). Compared against the PERSISTED capabilities,
+      // and never over an existing feed position, marker or intent.
+      const orderSourceEnabled =
+        !existing.enabledCapabilities.includes('OrderSource') &&
+        connection.enabledCapabilities.includes('OrderSource');
+      if (orderSourceEnabled) {
+        await this.storeOrderSyncStartForNewOrderSource(connection, orderSyncStart);
       }
 
       return connection;

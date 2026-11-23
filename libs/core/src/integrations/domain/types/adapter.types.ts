@@ -232,7 +232,10 @@ export interface AdapterMetadata {
    * Absent means `['now', 'all']`. Declared statically because the wizard and
    * `ConnectionService.create` must decide BEFORE any adapter instance exists
    * (an OAuth connection has no credentials yet); the poll still probes the
-   * capability at run time and fails loudly if a declaration lied. Read it
+   * capability at run time and fails loudly if a declaration lied: a
+   * chosen `now`, `from` or newest-first start the adapter cannot apply ends the
+   * poll with an error naming the remedy (it never falls back to reading the
+   * whole history). Read it
    * through `resolveOrderSyncStartModes` in `@openlinker/core/sync`. The union is
    * spelled inline so this context takes no edge on `sync`.
    */

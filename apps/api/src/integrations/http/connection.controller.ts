@@ -52,6 +52,11 @@ import {
 } from '../application/interfaces/rate-limit-status.service.interface';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { OrderSyncStartDto, toOrderSyncStart } from './dto/order-sync-start.dto';
+import {
+  OrderImportDto,
+  OrderImportResponseDto,
+  OrderSyncRestartResponseDto,
+} from './dto/order-import.dto';
 import type { OrderSyncStart } from '@openlinker/core/sync';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
@@ -60,9 +65,10 @@ import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { ConnectionTestResultDto } from './dto/connection-test-result.dto';
 import { ConnectionService } from '../application/services/connection.service';
+import type { ConnectionUpdateInput } from '../application/interfaces/connection.service.types';
 import type {
   Connection,
-  ConnectionUpdate,
+  
   ConnectionFilters,
   ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
@@ -232,7 +238,9 @@ export class ConnectionController {
     @Body() dto: UpdateConnectionDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
-    const patch: ConnectionUpdate = {
+    const orderSyncStart = toOrderSyncStart(dto.orderSyncStart);
+    const patch: ConnectionUpdateInput = {
+      ...(orderSyncStart ? { orderSyncStart } : {}),
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.status !== undefined && { status: dto.status }),
       ...(dto.config !== undefined && { config: dto.config }),
@@ -452,17 +460,52 @@ export class ConnectionController {
    */
   @Roles('admin')
   @Post(':id/order-sync/restart')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Restart the order sync from a new start (#4228)' })
-  @ApiResponse({ status: 204, description: 'The next poll starts from the new start' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'applied: true when the next poll starts from the new start; applied: false with reason ' +
+      '"already-following-feed" when "now" was asked of a feed that already imports new orders',
+    type: OrderSyncRestartResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Mode not supported by the adapter, or invalid date' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'ORDER_SYNC_BUSY: an order poll is running; retry shortly' })
   async restartOrderSync(
     @Param('id') id: string,
     @Body() dto: OrderSyncStartDto
-  ): Promise<void> {
-    await this.connectionService.restartOrderSync(id, toOrderSyncStart(dto) as OrderSyncStart);
+  ): Promise<OrderSyncRestartResponseDto> {
+    return this.connectionService.restartOrderSync(id, toOrderSyncStart(dto) as OrderSyncStart);
+  }
+
+  /**
+   * Import the orders of a chosen range (#4228): enqueues the first page of an
+   * import chain the worker walks. See `ConnectionService.startOrderImport`.
+   */
+  @Roles('admin')
+  @Post(':id/order-import')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Import orders for a chosen date range (#4228)' })
+  @ApiResponse({ status: 202, description: 'The import was queued', type: OrderImportResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid range, the connection does not import orders, or the adapter cannot import by date or order',
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'The connection is not active' })
+  async startOrderImport(
+    @Param('id') id: string,
+    @Body() dto: OrderImportDto
+  ): Promise<OrderImportResponseDto> {
+    return this.connectionService.startOrderImport(id, {
+      ...(dto.from !== undefined ? { from: dto.from } : {}),
+      ...(dto.to !== undefined ? { to: dto.to } : {}),
+      direction: dto.direction,
+    });
   }
 
   @Roles('admin')

@@ -206,6 +206,10 @@
       "body": "This connection is inactive for every capability. No sync jobs will use it.",
       "title": "No capabilities enabled"
     },
+    "orderStart": {
+      "cancel": "Cancel",
+      "confirm": "Enable order reading"
+    },
     "routingNote": {
       "body": {
         "both": "This connection becomes <em>eligible</em> to issue sales documents. Which orders actually get one is decided under <link>Sales documents routing</link>, per country.",
@@ -1135,6 +1139,7 @@
       "oldest": "oldest first"
     },
     "restart": {
+      "alreadyFollowingNote": "This connection is already reading orders from the shop. To go further back, choose a date or every order.",
       "cancel": "Cancel",
       "confirm": "Apply change",
       "confirming": "Saving…",
@@ -1151,6 +1156,8 @@
           "title": "Move where syncing starts"
         }
       },
+      "nothingToResetMessage": "OpenLinker is already reading orders from the shop, so there is no start to reset. To read older orders, import a period.",
+      "nothingToResetTitle": "Nothing to reset",
       "nowNote": "OpenLinker keeps importing new orders from the last check.",
       "rangeConfirm": "Import orders",
       "rangeFailedTitle": "Could not start the import",

@@ -43,7 +43,8 @@ export function todayOrderRangeDate(now: Date = new Date()): string {
 }
 
 export function earliestOrderRangeDate(now: Date = new Date()): string {
-  return toDateString(new Date(now.getFullYear() - MAX_YEARS, now.getMonth(), now.getDate()));
+  // Plus one day: the backend compares instants, so the exact five-year-old day is refused.
+  return toDateString(new Date(now.getFullYear() - MAX_YEARS, now.getMonth(), now.getDate() + 1));
 }
 
 function isRealDate(value: string): boolean {
