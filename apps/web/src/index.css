@@ -43002,6 +43002,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .pseg[data-state='done'][data-kind='optional'],
 .pseg[data-state='current'][data-kind='optional'] { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgb(255 255 255 / 0.34) 3px 5px); }
 .pseg[data-state='skipped'] { background-color: color-mix(in srgb, var(--text-muted) 14%, var(--bg-surface)); background-image: none; }
+/* What is still to do is an empty outlined capsule and what is finished is filled: shape, not only shade. */
+.pseg[data-state='todo'] {
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pseg-fill) 55%, var(--text-muted));
+}
+.pseg[data-state='todo'][data-kind='optional'] {
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--pseg-fill) 28%, transparent) 3px 5px);
+}
 .pseg--button { cursor: pointer; }
 .pseg--button::before { content: ''; position: absolute; inset: -8px -2px; }
 .pseg--button:hover { transform: scaleY(1.7); }
