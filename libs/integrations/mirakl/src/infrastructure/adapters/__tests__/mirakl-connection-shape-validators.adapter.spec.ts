@@ -39,6 +39,7 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
       validator.validate({
         environment: 'staging',
         shopId: '6881',
+        orderAcceptance: 'off',
         masterCatalogConnectionId: '1f0e9a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b',
         rateLimit: { requestsPerMinute: 60 },
       }),
@@ -47,7 +48,13 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
 
   it('should name every invalid field when several are wrong', async () => {
     const error = (await validator
-      .validate({ environment: 'sandbox', shopId: 'x', baseUrl: 'https://evil.example', masterCatalogConnectionId: 'nope' })
+      .validate({
+        environment: 'sandbox',
+        shopId: 'x',
+        baseUrl: 'https://evil.example',
+        masterCatalogConnectionId: 'nope',
+        orderAcceptance: 'manual',
+      })
       .catch((e: unknown) => e)) as InvalidConnectionConfigException;
 
     expect(error).toBeInstanceOf(InvalidConnectionConfigException);
@@ -55,6 +62,7 @@ describe('MiraklConnectionConfigShapeValidatorAdapter', () => {
       'baseUrl',
       'environment',
       'masterCatalogConnectionId',
+      'orderAcceptance',
       'shopId',
     ]);
   });

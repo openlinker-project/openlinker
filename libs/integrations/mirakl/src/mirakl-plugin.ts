@@ -7,12 +7,12 @@
  * each profile becomes its own adapter key, platform type and connection type
  * (ADR-086).
  *
- * This foundation (#4274) advertises no capabilities yet. It registers what
- * every later capability depends on: config and credentials validators, the
- * connection tester, and the retry and auth-failure classifiers. Each
- * capability is added to `supportedCapabilities` together with the adapter
- * that delivers it (#4275 orders, #4277 offers), in lockstep with the dispatch
- * table below.
+ * It registers what every capability depends on (config and credentials
+ * validators, the connection tester, the retry and auth-failure classifiers)
+ * and advertises `OrderSource` (#4275): the orders poll, which also accepts
+ * new orders. Each capability is added to `supportedCapabilities` together
+ * with the adapter that delivers it, in lockstep with the dispatch table
+ * below (#4277 adds offers).
  *
  * Mirakl offers sellers no webhooks (they are operator-only), so the plugin
  * registers no webhook decoder or provisioner; capabilities poll.
@@ -28,7 +28,9 @@ import { MiraklAuthFailureClassifierAdapter } from './infrastructure/adapters/mi
 import { MiraklConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/mirakl-connection-config-shape-validator.adapter';
 import { MiraklConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/mirakl-connection-credentials-shape-validator.adapter';
 import { MiraklConnectionTesterAdapter } from './infrastructure/adapters/mirakl-connection-tester.adapter';
+import { MiraklEmailNormalizerAdapter } from './infrastructure/adapters/mirakl-email-normalizer.adapter';
 import { MiraklRetryClassifierAdapter } from './infrastructure/adapters/mirakl-retry-classifier.adapter';
+import { buildMiraklSchedulerTasks } from './infrastructure/scheduler/mirakl-scheduler-tasks';
 
 /**
  * Manifest for an operator. No `defaultRateLimit` (#1810): a manifest default
@@ -40,7 +42,7 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
   return {
     adapterKey: profile.adapterKey,
     platformType: profile.platformType,
-    supportedCapabilities: [],
+    supportedCapabilities: ['OrderSource'],
     displayName: profile.displayName,
     version: profile.version,
     isDefault: true,
@@ -75,17 +77,30 @@ export function createMiraklPlugin(profile: MiraklOperatorProfile): AdapterPlugi
         profile.adapterKey,
         new MiraklAuthFailureClassifierAdapter(),
       );
+      host.emailNormalizerRegistry.register(profile.adapterKey, new MiraklEmailNormalizerAdapter());
+      // Registered unconditionally; the env gate is re-read at every tick.
+      for (const task of buildMiraklSchedulerTasks(profile)) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
-    createCapabilityAdapter<T>(
-      _connection: Connection,
+    async createCapabilityAdapter<T>(
+      connection: Connection,
       capability: string,
-      _host: HostServices,
+      host: HostServices,
     ): Promise<T> {
-      // No capability yet. `dispatchCapability` rejects with the standard
-      // "does not support capability" message; the manifest advertises none,
-      // so the host's capability gate stops callers before reaching here.
-      return Promise.resolve().then(() => dispatchCapability<T>(capability, {}, profile.brand));
+      const adapters = await factory.createAdapters(
+        connection,
+        host.credentialsResolver,
+        // Connection-bound outbound transport (#1810): the operator's own rate
+        // limit, if any; the manifest declares no default.
+        host.http.forConnection(connection),
+      );
+      return dispatchCapability<T>(
+        capability,
+        { OrderSource: () => adapters.orderSource },
+        profile.brand,
+      );
     },
   };
 }

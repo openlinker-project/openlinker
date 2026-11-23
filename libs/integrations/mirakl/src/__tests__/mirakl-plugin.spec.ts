@@ -1,10 +1,10 @@
 /**
  * Mirakl Plugin Descriptor: unit tests
  *
- * The manifest comes from the operator profile and advertises no capability
- * yet; `register` wires every side-registration under the profile's adapter
- * key; `createCapabilityAdapter` refuses every capability; the Empik module
- * builds.
+ * The manifest comes from the operator profile and advertises `OrderSource`;
+ * `register` wires every side-registration under the profile's adapter key;
+ * `createCapabilityAdapter` builds the order source and refuses what is not
+ * delivered yet; the Empik module builds.
  *
  * @module libs/integrations/mirakl/src/__tests__
  */
@@ -21,6 +21,8 @@ import { MiraklAuthFailureClassifierAdapter } from '../infrastructure/adapters/m
 import { MiraklConnectionConfigShapeValidatorAdapter } from '../infrastructure/adapters/mirakl-connection-config-shape-validator.adapter';
 import { MiraklConnectionCredentialsShapeValidatorAdapter } from '../infrastructure/adapters/mirakl-connection-credentials-shape-validator.adapter';
 import { MiraklConnectionTesterAdapter } from '../infrastructure/adapters/mirakl-connection-tester.adapter';
+import { MiraklEmailNormalizerAdapter } from '../infrastructure/adapters/mirakl-email-normalizer.adapter';
+import { MiraklOrderSourceAdapter } from '../infrastructure/adapters/mirakl-order-source.adapter';
 import { MiraklRetryClassifierAdapter } from '../infrastructure/adapters/mirakl-retry-classifier.adapter';
 
 function registry(): { register: jest.Mock } {
@@ -28,13 +30,13 @@ function registry(): { register: jest.Mock } {
 }
 
 describe('createMiraklPlugin (Empik)', () => {
-  it('should build the manifest from the Empik profile with no capabilities', () => {
+  it('should build the manifest from the Empik profile with the order source', () => {
     const plugin = createMiraklPlugin(empikOperatorProfile);
 
     expect(plugin.manifest).toEqual({
       adapterKey: EMPIK_ADAPTER_KEY,
       platformType: 'empik',
-      supportedCapabilities: [],
+      supportedCapabilities: ['OrderSource'],
       displayName: 'Empik Marketplace',
       version: '0.1.0',
       isDefault: true,
@@ -43,8 +45,10 @@ describe('createMiraklPlugin (Empik)', () => {
     expect(plugin.manifest).not.toHaveProperty('defaultRateLimit');
   });
 
-  it('should register validators, tester and classifiers under the Empik adapter key', () => {
+  it('should register validators, tester, classifiers, normalizer and the poll under the Empik adapter key', () => {
     const configRegistry = registry();
+    const emailRegistry = registry();
+    const schedulerRegistry = registry();
     const credentialsRegistry = registry();
     const testerRegistry = registry();
     const retryRegistry = registry();
@@ -56,6 +60,8 @@ describe('createMiraklPlugin (Empik)', () => {
       connectionTesterRegistry: testerRegistry,
       retryClassifierRegistry: retryRegistry,
       authFailureClassifierRegistry: authRegistry,
+      emailNormalizerRegistry: emailRegistry,
+      schedulerTaskRegistry: schedulerRegistry,
     } as unknown as HostServices;
 
     createMiraklPlugin(empikOperatorProfile).register?.(host);
@@ -80,18 +86,47 @@ describe('createMiraklPlugin (Empik)', () => {
       EMPIK_ADAPTER_KEY,
       expect.any(MiraklAuthFailureClassifierAdapter),
     );
+    expect(emailRegistry.register).toHaveBeenCalledWith(
+      EMPIK_ADAPTER_KEY,
+      expect.any(MiraklEmailNormalizerAdapter),
+    );
+    expect(schedulerRegistry.register).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: 'empik-orders-poll', jobType: 'marketplace.orders.poll' }),
+    );
   });
 
-  it.each(['OrderSource', 'OfferManager'])(
-    'should refuse the %s capability until an adapter delivers it',
-    async (capability) => {
-      const plugin = createMiraklPlugin(empikOperatorProfile);
+  function capabilityHost(): HostServices {
+    return {
+      credentialsResolver: { get: jest.fn().mockResolvedValue({ apiKey: 'key-1' }) },
+      http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
+    } as unknown as HostServices;
+  }
 
-      await expect(
-        plugin.createCapabilityAdapter({} as Connection, capability, {} as HostServices),
-      ).rejects.toThrow(/Empik/);
-    },
-  );
+  const empikConnection = {
+    id: 'conn-1',
+    config: {},
+    credentialsRef: 'ref-1',
+  } as unknown as Connection;
+
+  it('should build the order source', async () => {
+    const adapter = await createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
+      empikConnection,
+      'OrderSource',
+      capabilityHost(),
+    );
+
+    expect(adapter).toBeInstanceOf(MiraklOrderSourceAdapter);
+  });
+
+  it('should refuse the OfferManager capability until an adapter delivers it', async () => {
+    await expect(
+      createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
+        empikConnection,
+        'OfferManager',
+        capabilityHost(),
+      ),
+    ).rejects.toThrow(/Empik/);
+  });
 
   it('should build the Empik host module', () => {
     expect(EmpikIntegrationModule).toHaveProperty('module');

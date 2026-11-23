@@ -7,6 +7,7 @@ import { empikOperatorProfile } from '../../../operators/empik.profile';
 import {
   isMiraklEnvironment,
   readMiraklShopId,
+  resolveMiraklOrderAcceptance,
   resolveMiraklBaseUrl,
 } from '../mirakl-connection-config.policy';
 
@@ -56,6 +57,19 @@ describe('readMiraklShopId', () => {
     'should report invalid when the value is %p',
     (value) => {
       expect(readMiraklShopId(value)).toEqual({ kind: 'invalid' });
+    },
+  );
+});
+
+describe('resolveMiraklOrderAcceptance', () => {
+  it('should return off only for an explicit off', () => {
+    expect(resolveMiraklOrderAcceptance('off')).toBe('off');
+  });
+
+  it.each([undefined, null, 'auto', 'manual', 1])(
+    'should return auto when the value is %p',
+    (value) => {
+      expect(resolveMiraklOrderAcceptance(value)).toBe('auto');
     },
   );
 });

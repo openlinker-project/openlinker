@@ -20,6 +20,14 @@
 export const MiraklEnvironmentValues = ['production', 'staging'] as const;
 export type MiraklEnvironment = (typeof MiraklEnvironmentValues)[number];
 
+/**
+ * Whether the plugin accepts new orders itself (OR21). `auto` accepts every
+ * line of every order waiting for acceptance on each poll; `off` leaves them
+ * for the seller to accept in the Empik panel.
+ */
+export const MiraklOrderAcceptanceValues = ['auto', 'off'] as const;
+export type MiraklOrderAcceptance = (typeof MiraklOrderAcceptanceValues)[number];
+
 /** Encrypted credentials, resolved through `host.credentialsResolver`. */
 export interface MiraklCredentials {
   /** Shop API key from the operator back office (user menu, "API key"). */
@@ -35,4 +43,6 @@ export interface MiraklConnectionConfig {
    * key has access to several shops; absent means the key's default shop.
    */
   shopId?: number | string;
+  /** Absent means `auto`. */
+  orderAcceptance?: MiraklOrderAcceptance;
 }

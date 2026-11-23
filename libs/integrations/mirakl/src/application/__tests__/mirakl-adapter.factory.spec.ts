@@ -103,4 +103,47 @@ describe('MiraklAdapterFactory', () => {
       ),
     ).rejects.toBeInstanceOf(MiraklConfigException);
   });
+
+  describe('createAdapters', () => {
+    function ordersFetch(): jest.Mock {
+      return jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: null,
+        headers: { get: () => null },
+        text: () => Promise.resolve('{"orders":[],"total_count":0}'),
+      });
+    }
+
+    function requestedUrls(fetchMock: jest.Mock): string[] {
+      return fetchMock.mock.calls.map((call) => (call as unknown[])[0] as string);
+    }
+
+    it('should build an order source that accepts waiting orders by default', async () => {
+      const fetchMock = ordersFetch();
+      const { orderSource } = await factory.createAdapters(
+        connection({}),
+        resolver({ apiKey: 'k' }),
+        fetchMock as unknown as typeof fetch,
+      );
+
+      await orderSource.listOrderFeed({ fromCursor: null, limit: 100 });
+
+      expect(requestedUrls(fetchMock)[0]).toContain('order_state_codes=WAITING_ACCEPTANCE');
+    });
+
+    it('should build an order source that leaves waiting orders alone when acceptance is off', async () => {
+      const fetchMock = ordersFetch();
+      const { orderSource } = await factory.createAdapters(
+        connection({ orderAcceptance: 'off' }),
+        resolver({ apiKey: 'k' }),
+        fetchMock as unknown as typeof fetch,
+      );
+
+      await orderSource.listOrderFeed({ fromCursor: null, limit: 100 });
+
+      expect(requestedUrls(fetchMock).some((url) => url.includes('=WAITING_ACCEPTANCE&'))).toBe(false);
+      expect(requestedUrls(fetchMock)).toHaveLength(1);
+    });
+  });
 });

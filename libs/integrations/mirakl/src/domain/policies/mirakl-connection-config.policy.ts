@@ -10,7 +10,9 @@
  */
 import {
   MiraklEnvironmentValues,
+  MiraklOrderAcceptanceValues,
   type MiraklEnvironment,
+  type MiraklOrderAcceptance,
 } from '../types/mirakl-connection.types';
 import type { MiraklOperatorProfile } from '../types/mirakl-operator-profile.types';
 
@@ -53,4 +55,19 @@ export function readMiraklShopId(value: unknown): MiraklShopIdReading {
     return /^[1-9]\d{0,15}$/.test(trimmed) ? { kind: 'valid', shopId: trimmed } : { kind: 'invalid' };
   }
   return { kind: 'invalid' };
+}
+
+export function isMiraklOrderAcceptance(value: unknown): value is MiraklOrderAcceptance {
+  return (
+    typeof value === 'string' && (MiraklOrderAcceptanceValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Acceptance mode for a connection. Only an explicit `off` turns acceptance
+ * off: the validator refuses any other value on save, and a row written around
+ * it should keep the default rather than silently stop accepting.
+ */
+export function resolveMiraklOrderAcceptance(value: unknown): MiraklOrderAcceptance {
+  return value === 'off' ? 'off' : 'auto';
 }

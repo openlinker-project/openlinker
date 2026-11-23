@@ -23,6 +23,7 @@ import { MiraklConfigException } from '../domain/exceptions/mirakl-config.except
 import {
   readMiraklShopId,
   resolveMiraklBaseUrl,
+  resolveMiraklOrderAcceptance,
 } from '../domain/policies/mirakl-connection-config.policy';
 import type {
   MiraklConnectionConfig,
@@ -31,9 +32,11 @@ import type {
 import type { MiraklOperatorProfile } from '../domain/types/mirakl-operator-profile.types';
 import { MiraklHttpClient } from '../infrastructure/http/mirakl-http-client';
 import type { RetryConfig } from '../infrastructure/http/mirakl-http-client.types';
+import { MiraklOrderSourceAdapter } from '../infrastructure/adapters/mirakl-order-source.adapter';
 import { MiraklImportTracker } from '../infrastructure/imports/mirakl-import-tracker';
 import type {
   IMiraklAdapterFactory,
+  MiraklAdapters,
   MiraklConnectionClients,
 } from './interfaces/mirakl-adapter.factory.interface';
 
@@ -58,6 +61,22 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
       retryConfig,
     );
     return { httpClient, importTracker: new MiraklImportTracker(httpClient, connection.id) };
+  }
+
+  async createAdapters(
+    connection: Connection,
+    credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike,
+  ): Promise<MiraklAdapters> {
+    const { httpClient } = await this.createClients(connection, credentialsResolver, fetchImpl);
+    const config = (connection.config ?? {}) as MiraklConnectionConfig;
+    return {
+      orderSource: new MiraklOrderSourceAdapter(
+        connection.id,
+        httpClient,
+        resolveMiraklOrderAcceptance(config.orderAcceptance),
+      ),
+    };
   }
 
   private async resolveCredentials(

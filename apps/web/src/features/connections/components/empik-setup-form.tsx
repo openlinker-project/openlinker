@@ -7,10 +7,12 @@
  *      optional shop id for a key that reaches several shops.
  *   2. Review & connect.
  *
- * Same shape as the Erli wizard without its sales-documents step: Empik has
- * no order capability yet (#4275 adds it, and the step with it). After a
- * successful create the form offers "Test connection", which calls the generic
- * `/connections/:id/test` endpoint (the backend probes Mirakl A01).
+ * Same shape as the Erli wizard without its sales-documents step, which is a
+ * follow-up for Empik. Orders are accepted automatically (#4275); the
+ * connection config `orderAcceptance` can turn that off and has no field here
+ * yet. After a successful create the form offers "Test connection", which
+ * calls the generic `/connections/:id/test` endpoint (the backend probes
+ * Mirakl A01).
  *
  * The first step also says that offers need a shipping zone set up in the
  * Empik seller panel: Mirakl offers no API for it, and without one every offer

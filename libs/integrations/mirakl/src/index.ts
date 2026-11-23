@@ -24,8 +24,12 @@ export type {
   MiraklConnectionConfig,
   MiraklCredentials,
   MiraklEnvironment,
+  MiraklOrderAcceptance,
 } from './domain/types/mirakl-connection.types';
-export type { IMiraklAdapterFactory } from './application/interfaces/mirakl-adapter.factory.interface';
+export type {
+  IMiraklAdapterFactory,
+  MiraklAdapters,
+} from './application/interfaces/mirakl-adapter.factory.interface';
 
 // Exceptions
 export { MiraklApiException } from './domain/exceptions/mirakl-api.exception';

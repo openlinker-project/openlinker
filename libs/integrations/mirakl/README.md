@@ -20,8 +20,29 @@ connection type in OpenLinker. See ADR-086.
 - `MiraklImportTracker`: status and error reports for offer, stock, price and
   product imports.
 
-No capability is advertised yet. Orders arrive with #4275 and offers with
-#4277 (epic #4273).
+## Orders (#4275)
+
+The plugin advertises `OrderSource`. The `{platform}-orders-poll` scheduler task
+runs every 5 minutes (`OL_EMPIK_ORDERS_POLL_SCHEDULER_ENABLED=false` turns it
+off) and:
+
+1. Accepts every order waiting for acceptance (OR21, every line accepted),
+   unless the connection sets `orderAcceptance: 'off'`. Acceptance does not check
+   stock. `ORDER_INVALID_STATE` counts as already handled; other refusals are
+   logged and not retried.
+2. Reads orders changed in a closed `last_updated_date` window (OR11), with a
+   2-minute overlap and a 7-day lookback on the first run. Orders still in
+   `STAGING` or `WAITING_ACCEPTANCE` are not read. A window that does not fit is
+   halved, and the cursor advances only past what was read whole.
+
+The mapper reads the buyer tax number from the order field `nip`, the email
+from `customer-email`, the pickup point from `shipping_pudo_id` and
+`delivery-point-name`, cash on delivery from a `_POD` shipping type, and the
+line VAT from `taxes[]`. Order lines resolve through `Offer` mappings keyed by
+the shop SKU (`offer_sku`).
+
+The order shape follows the Mirakl spec; it is confirmed on the first real
+Empik order. Offers arrive with #4277 (epic #4273).
 
 ## Connecting
 

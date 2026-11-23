@@ -6,6 +6,7 @@
  *
  * - `environment`: `production` or `staging`.
  * - `shopId`: a positive integer, as a number or a digit string.
+ * - `orderAcceptance`: `auto` or `off`.
  * - `masterCatalogConnectionId`: a UUID (the shared catalogue pairing key).
  * - `baseUrl`: refused. The base URL comes from the operator profile only, so
  *   a connection can never point its key at another host; a stored `baseUrl`
@@ -24,9 +25,13 @@ import {
 } from '@openlinker/core/integrations';
 import {
   isMiraklEnvironment,
+  isMiraklOrderAcceptance,
   readMiraklShopId,
 } from '../../domain/policies/mirakl-connection-config.policy';
-import { MiraklEnvironmentValues } from '../../domain/types/mirakl-connection.types';
+import {
+  MiraklEnvironmentValues,
+  MiraklOrderAcceptanceValues,
+} from '../../domain/types/mirakl-connection.types';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -46,6 +51,12 @@ export class MiraklConnectionConfigShapeValidatorAdapter
     }
     if (readMiraklShopId(config.shopId).kind === 'invalid') {
       issues.push({ path: 'shopId', message: 'must be a positive integer' });
+    }
+    if (config.orderAcceptance !== undefined && !isMiraklOrderAcceptance(config.orderAcceptance)) {
+      issues.push({
+        path: 'orderAcceptance',
+        message: `must be one of: ${MiraklOrderAcceptanceValues.join(', ')}`,
+      });
     }
     if (config.baseUrl !== undefined) {
       issues.push({
