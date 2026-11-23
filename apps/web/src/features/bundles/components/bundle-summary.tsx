@@ -98,6 +98,7 @@ export function BundleSummary({
         : 'is-empty';
   const limitingStock =
     limiting === null ? null : valid.find((row) => row.name === limiting)?.availableToPromise;
+  const formulaRow = limiting === null ? valid[0] : valid.find((row) => row.name === limiting);
   const target = availability.kind === 'known' ? availability.bundles : 0;
   const shown = useCountUp(target, reduceMotion);
 
@@ -148,6 +149,15 @@ export function BundleSummary({
                 {limitingStock === null || limitingStock === undefined
                   ? interpolate(copy.summaryLimitedBy, { name: limiting })
                   : interpolate(copy.summaryLimitedByQty, { name: limiting, n: limitingStock })}
+              </p>
+            ) : null}
+            {formulaRow !== undefined && formulaRow.availableToPromise !== null && formulaRow.availableToPromise !== undefined ? (
+              <p className="s-hero__note" data-testid="bundle-form-formula">
+                {interpolate(copy.summaryFormula, {
+                  stock: formulaRow.availableToPromise,
+                  qty: formulaRow.qty,
+                  n: Math.floor(formulaRow.availableToPromise / formulaRow.qty),
+                })}
               </p>
             ) : null}
             {target === 0 ? (
@@ -209,6 +219,7 @@ export function BundleSummary({
                   {enough === null ? (
                     <small className="s-unk">{copy.s3StockUnknown}</small>
                   ) : (
+                    <>
                     <span
                       className="s-bar"
                       role="img"
@@ -217,6 +228,10 @@ export function BundleSummary({
                     >
                       <span style={{ width: `${String(Math.round((enough / widest) * 100))}%` }} />
                     </span>
+                    <small className="tabular" data-testid="bundle-form-summary-enough">
+                      {interpolate(copy.summaryEnoughShort, { n: enough })}
+                    </small>
+                    </>
                   )}
                 </span>
                 <span className="s-side">

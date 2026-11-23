@@ -2082,6 +2082,8 @@ function BaseScopeForm({
               destinationName={platformName}
               chosenCategoryId={watchedCategoryId || null}
               onUseSuggestedCategory={onUseBundleCategory}
+              title={form.watch('title')}
+              priceAmount={form.watch('priceAmount')}
             />
           </div>
         ) : null}

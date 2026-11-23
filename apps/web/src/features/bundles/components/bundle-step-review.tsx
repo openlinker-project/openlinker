@@ -17,7 +17,7 @@ import { ReadbackSentence } from '../../../shared/ui/readback-sentence';
 import { useConnectionsQuery } from '../../connections';
 import type { BundleAvailability } from '../lib/bundle-availability';
 import { splitBundlePrice } from '../lib/bundle-price-split';
-import type { BundleStepKey, ParsedRow } from '../lib/bundle-form-model';
+import { componentsSum, type BundleStepKey, type ParsedRow } from '../lib/bundle-form-model';
 
 export interface BundleStepReviewProps {
   name: string | null;
@@ -186,6 +186,11 @@ export function BundleStepReview({
         </div>
       </dl>
 
+      <DiscountLine price={price} currency={currency} rows={rows} />
+      <p className="pm-help" data-testid="bundle-form-order-note">
+        <b>{copy.s4OrderTitle}:</b> {copy.s4OrderBody}
+      </p>
+
       <PriceSplit price={price} currency={currency} rows={rows} />
 
       {saved !== null ? <SendOn saved={saved} /> : null}
@@ -270,6 +275,39 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
         </ul>
       )}
     </section>
+  );
+}
+
+/** Always-visible answer to "is this cheaper than buying the parts one by one?"; says nothing when a price is unknown. */
+function DiscountLine({
+  price,
+  currency,
+  rows,
+}: {
+  price: number | null;
+  currency: string | undefined;
+  rows: readonly ParsedRow[];
+}): ReactElement | null {
+  const copy = useMessages('bundles').form;
+  const format = useFormat();
+  const sum = componentsSum(rows);
+  if (price === null || sum === null || sum <= 0) return null;
+  const diff = Math.round((sum - price) * 100) / 100;
+  const values = { sum: format.money(sum, currency), price: format.money(price, currency) };
+  const text =
+    diff > 0
+      ? interpolate(copy.s4Discount, {
+          ...values,
+          discount: format.money(diff, currency),
+          percent: Math.round((diff / sum) * 100),
+        })
+      : diff < 0
+        ? interpolate(copy.s4DiscountMore, { ...values, more: format.money(-diff, currency) })
+        : interpolate(copy.s4DiscountSame, values);
+  return (
+    <p className={`pm-help${diff < 0 ? ' s-warn' : ''}`} data-testid="bundle-form-discount-line">
+      {text}
+    </p>
   );
 }
 

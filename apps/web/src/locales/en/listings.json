@@ -1312,11 +1312,13 @@
     "expand": "Show set contents of {name}",
     "failedNoStock": "The set cannot be listed: component \"{name}\" is out of stock.",
     "firstProductNote": "Allegro assesses the offer by its first product: {name}.",
+    "galleryAdvisory": "The main photo should show the whole set",
     "gift": "gift",
     "insertComponentList": "Insert component list",
     "limitedBy": "limited by {name}",
     "limitedByUnits": "limited by: {name} ({units} pcs)",
     "limitsSet": "limits the set",
+    "mainProductHint": "The first product is the main one: it decides the offer category and condition.",
     "marker": {
       "one": "Set · {n} product",
       "other": "Set · {n} products"
@@ -1338,11 +1340,13 @@
       "ownOfferWithId": "your offer {id}"
     },
     "packBuyerPreview": "The buyer will see: {name} ×{n}",
-    "packCategoryChip": "Multipacks work only in selected Allegro categories",
+    "packCategoryChip": "We cannot check in advance whether this Allegro category accepts multipacks",
     "packCompositionHint": "One product, pack of {n} · the badge shows where the offer takes the product's data from",
+    "packFinalTitle": "{title} - Set of {n} pcs",
     "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
-    "packHintAllegro": "In the Allegro panel this is \"Multiple items as a set\", and the buyer sees a \"Set of {n} items\" label next to the name. Allegro shows the per-item price based on the price of the whole multipack. Check how it looks in the Allegro panel after listing.",
+    "packHintAllegro": "In the Allegro panel this is \"Multiple items as a set\", and the buyer sees a \"Set of {n} items\" label next to the name. Allegro shows the per-item price based on the price of the whole multipack.",
     "packMarker": "Pack · ×{n}",
+    "perPiecePrice": "That is {price} per piece.",
     "previewFailedBanner": "Could not check the composition of your sets, so they cannot be listed yet. Please try again.",
     "previewRetry": "Try again",
     "priceWholePack": "The price is for the whole pack ({n} items), not for one item.",
@@ -1359,6 +1363,7 @@
     "setsExplain": "That many whole sets can be assembled from the components right now.",
     "setsSummary": "Sets available: {n}",
     "setsSummaryLimit": "limited by: {name}",
+    "setsSummaryTooltip": "The set stock is counted from its components. Selling a component separately lowers the number of sets and the other way round.",
     "setsSummaryUnknown": "Sets available: no data",
     "setsUnknown": "no data",
     "setsUnknownHint": "The stock of one of the components is unknown, so the number of sets cannot be counted.",
@@ -1366,6 +1371,8 @@
     "stockLine": "{units} in stock · enough for {sets} sets",
     "sublinePack": "{n} pcs per pack",
     "sublineSet": "Set of: {names}",
+    "titleCounter": "{n}/{max} characters",
+    "tooManyProductsAdvisory": "Allegro usually allows at most 10 different products in a set, and this one has {n}. This is a hint from Allegro help, not a block.",
     "useFirstComponentCategory": "Use first component's category"
   },
   "categoryLookup": {

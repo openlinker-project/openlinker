@@ -196,6 +196,7 @@ export function BundleStepProduct({
   const effectivePrice = draft.touched.price ? draft.price : formatPriceInput(sum);
   const typedPrice = parsePrice(effectivePrice);
   const savings = sum !== null && typedPrice !== null && sum > typedPrice ? sum - typedPrice : null;
+  const markup = sum !== null && typedPrice !== null && typedPrice > sum ? typedPrice - sum : null;
   const skuSuggestion = suggestedSku(parsedRows);
   const effectiveSku = draft.touched.sku ? draft.sku : skuSuggestion;
   const descriptionSuggestion = suggestedDescription(parsedRows);
@@ -296,6 +297,9 @@ export function BundleStepProduct({
   const nameErrorText = showErrors && effectiveName.trim() === '' ? copy.missingNameText : null;
   const skuErrorText = showErrors && effectiveSku.trim() === '' ? copy.missingSkuText : null;
   const eanErrorText = isValidEan(ean) ? null : copy.eanInvalid;
+  // Soft only: some marketplaces reject a bundle that reuses a part's code, but that is advice, not a rule we enforce.
+  const eanOwner =
+    ean.trim() === '' ? undefined : parsedRows.find((row) => row.ean !== null && row.ean !== undefined && row.ean.trim() === ean.trim());
   const symbol = currency === undefined ? 'PLN' : currency;
 
   return (
@@ -573,6 +577,11 @@ export function BundleStepProduct({
                       {interpolate(copy.s2PriceSaves, { amount: format.money(savings, currency) })}
                     </b>
                   ) : null}
+                  {markup !== null ? (
+                    <b className="s-warn" data-testid="bundle-form-markup">
+                      {interpolate(copy.s2PriceMore, { amount: format.money(markup, currency) })}
+                    </b>
+                  ) : null}
                   <span className="pm-help">{copy.s2PriceFixed}</span>
                 </>
               )}
@@ -618,6 +627,11 @@ export function BundleStepProduct({
                   }}
                 />
                 {eanErrorText !== null ? <span className="pm-err pm-err--on">{eanErrorText}</span> : null}
+                {eanOwner !== undefined ? (
+                  <span className="pm-help s-warn" data-testid="bundle-form-ean-component">
+                    {interpolate(copy.s2EanIsComponent, { name: eanOwner.name })}
+                  </span>
+                ) : null}
                 <span className="pm-help">{copy.s2EanHelp}</span>
               </label>
               <label className="form-field">

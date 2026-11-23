@@ -77,6 +77,22 @@ export function BundleProductView({
       availableToPromise: row.availableToPromise,
     }))
   );
+  // A component the shop no longer returns has neither name nor SKU (the list tags
+  // it "removed"); the set cannot be assembled, whatever the other stocks say.
+  const removedCount = rows.filter(
+    (row) => row.summary.name === null && row.summary.sku === null
+  ).length;
+  const priceable = rows.filter((row) => row.giftSlot !== true);
+  const componentsSum =
+    bundle.bundle.price !== null &&
+    priceable.length > 0 &&
+    priceable.every((row) => row.summary.price !== null)
+      ? priceable.reduce((sum, row) => sum + row.quantity * (row.summary.price ?? 0), 0)
+      : null;
+  const discountToday =
+    componentsSum !== null && componentsSum > 0 && bundle.bundle.price !== null
+      ? componentsSum - bundle.bundle.price
+      : null;
   const giftCount = rows.filter((row) => row.giftSlot === true).length;
   const split = splitBundlePrice(
     bundle.bundle.price,
@@ -132,6 +148,12 @@ export function BundleProductView({
           }
           listHref={wizardTo()}
         />
+        {removedCount > 0 ? (
+          <div className="ux-removed-banner" role="alert" data-testid="bundle-view-removed-banner">
+            <strong>{copy.removedTitle}</strong>
+            <p>{interpolate(copy.removedBody, { n: removedCount })}</p>
+          </div>
+        ) : null}
         {nextAction !== null ? (
           <div className="ux-next-strip" data-testid="bundle-next-action">
             <span>{nextAction}</span>
@@ -146,7 +168,11 @@ export function BundleProductView({
         >
           {/* The rail card already states "N bundles, limited by X"; repeat it
               here only when it is an alert (zero or unknown). */}
-          {availability.kind !== 'known' || availability.bundles === 0 ? (
+          {removedCount > 0 ? (
+            <div className="cx-avail is-zero" data-testid="bundle-view-availability-line">
+              {copy.removedAvailabilityLine}
+            </div>
+          ) : availability.kind !== 'known' || availability.bundles === 0 ? (
             <div
               className={`cx-avail ${availabilityTone}`}
               data-testid="bundle-view-availability-line"
@@ -158,6 +184,25 @@ export function BundleProductView({
             components={rows}
             bundlesAvailable={availability.kind === 'known' ? availability.bundles : null}
           />
+          {listedCount > 0 ? (
+            <p className="pm-help" data-testid="bundle-view-edit-offers-note">
+              {interpolate(copy.editOffersNote, { n: listedCount })}
+            </p>
+          ) : null}
+          <p className="pm-help" data-testid="bundle-view-price-stays">
+            {copy.priceStaysNote}
+            {discountToday !== null && componentsSum !== null
+              ? ` ${
+                  discountToday >= 0
+                    ? interpolate(copy.discountToday, {
+                        pct: format.number(Math.round((discountToday / componentsSum) * 100)),
+                      })
+                    : interpolate(copy.discountNegative, {
+                        amount: format.money(-discountToday, currency),
+                      })
+                }`
+              : ''}
+          </p>
           <p className="bundle-dup">
             <Link
               className="button button--secondary button--sm"
@@ -364,9 +409,24 @@ export function BundleProductView({
             data-testid="bundle-view-derived-stock"
           >
             {copy.derivedStock}
+          </span>{' '}
+          <span
+            className="cx-tag cx-tag--quiet bundle-derived-tag"
+            title={copy.virtualHint}
+            tabIndex={0}
+            data-testid="bundle-view-virtual-chip"
+          >
+            {copy.virtualChip}
           </span>
           <div className={`cx-avail ${availabilityTone}`} style={{ alignItems: 'flex-end' }}>
-            {availability.kind === 'known' ? (
+            {removedCount > 0 ? (
+              <>
+                <span className="cx-big mono tabular">
+                  0 <small>{copy.bundlesWord}</small>
+                </span>
+                <span style={{ paddingBottom: 2 }}>{copy.removedAvailabilityLine}</span>
+              </>
+            ) : availability.kind === 'known' ? (
               <>
                 <span className="cx-big mono tabular">
                   {availability.bundles} <small>{copy.bundlesWord}</small>

@@ -58,6 +58,24 @@ interface BundleCompositionProps {
   destinationName?: string;
   /** The "no EAN of its own" note; omitted where the surrounding section says it already. */
   showEanNote?: boolean;
+  /** Offer title as typed in the editor; enables the final-title preview for packs. */
+  title?: string;
+  /** Whole-offer price as typed (decimal text); enables the per-piece hint for packs. */
+  priceAmount?: string;
+}
+
+/** Allegro's title ceiling; advisory only here, the row blocker lives in the plugin. */
+const ALLEGRO_TITLE_LIMIT = 75;
+/**
+ * Allegro's documented cap on different products in one set. It comes from help
+ * pages rather than the API, so the wizard only advises and never blocks on it.
+ */
+const ALLEGRO_SET_PRODUCT_ADVISORY_LIMIT = 10;
+
+function parseDecimal(value: string | undefined): number | null {
+  if (!value) return null;
+  const n = Number(value.replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 export function BundleComposition({
@@ -68,6 +86,8 @@ export function BundleComposition({
   heading,
   destinationName = '',
   showEanNote = false,
+  title,
+  priceAmount,
 }: BundleCompositionProps): ReactElement {
   const copy = useMessages('listings').bundleOffer;
   const plural = usePlural();
@@ -92,6 +112,15 @@ export function BundleComposition({
       (component) => component.mode === 'catalog-card' && !component.cardCategoryId,
     );
 
+  const tooManyProducts =
+    isAllegro && packSize === null && preview.components.length > ALLEGRO_SET_PRODUCT_ADVISORY_LIMIT;
+  const finalTitle =
+    packSize !== null && title && title.trim() !== ''
+      ? interpolate(copy.packFinalTitle, { title: title.trim().replace(/\s+/g, ' '), n: packSize })
+      : null;
+  const price = parseDecimal(priceAmount);
+  const perPiece = packSize !== null && price !== null ? (price / packSize).toFixed(2) : null;
+
   return (
     <div className="bundle-comp" data-testid="bundle-composition">
       {heading ? (
@@ -107,6 +136,7 @@ export function BundleComposition({
       <p
         className={`bundle-comp__summary${preview.availableSets === 0 ? ' is-warn' : ''}`}
         data-testid="bundle-sets-summary"
+        title={copy.setsSummaryTooltip}
       >
         <b>
           {preview.availableSets === null
@@ -133,6 +163,27 @@ export function BundleComposition({
               {copy.packCategoryChip}
             </span>
           ) : null}
+          {finalTitle ? (
+            <p
+              className={`cx-sub bundle-comp__title${
+                finalTitle.length > ALLEGRO_TITLE_LIMIT ? ' is-warn' : ''
+              }`}
+              data-testid="bundle-pack-final-title"
+            >
+              <b>{finalTitle}</b>{' '}
+              <span className="tabular">
+                {interpolate(copy.titleCounter, {
+                  n: finalTitle.length,
+                  max: ALLEGRO_TITLE_LIMIT,
+                })}
+              </span>
+            </p>
+          ) : null}
+          {perPiece ? (
+            <p className="cx-sub" data-testid="bundle-per-piece-price">
+              {interpolate(copy.perPiecePrice, { price: perPiece })}
+            </p>
+          ) : null}
           {preview.components[0] ? (
             <p className="cx-sub bundle-comp__buyer" data-testid="bundle-pack-buyer">
               <b>
@@ -154,6 +205,21 @@ export function BundleComposition({
             <p className="cx-sub" data-testid="bundle-first-product-note">
               {interpolate(copy.firstProductNote, { name: preview.components[0].name })}
             </p>
+          ) : null}
+          {isAllegro && preview.components.length > 1 ? (
+            <p className="cx-sub" data-testid="bundle-main-product-hint">
+              {copy.mainProductHint}
+            </p>
+          ) : null}
+          {tooManyProducts ? (
+            <span className="cx-tag bundle-comp__advisory" data-testid="bundle-too-many-products">
+              {interpolate(copy.tooManyProductsAdvisory, { n: preview.components.length })}
+            </span>
+          ) : null}
+          {isAllegro && preview.components.length > 1 ? (
+            <span className="cx-tag cx-tag--quiet" data-testid="bundle-gallery-advisory">
+              {copy.galleryAdvisory}
+            </span>
           ) : null}
         </div>
       ) : null}

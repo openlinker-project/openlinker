@@ -48,6 +48,22 @@ describe('BundleSummary', () => {
     expect(limiting).toHaveTextContent(/Lowest|Najmniej/);
   });
 
+  it('should show the stock formula with a worked example and a per-component yield', () => {
+    renderWithProviders(
+      <BundleSummary
+        name="Zestaw"
+        price={65}
+        currency="PLN"
+        rows={[row({ variantId: 'a', name: 'Kubek', availableToPromise: 28, qty: 2, quantity: '2' })]}
+        availability={{ kind: 'known', bundles: 14, limitedBy: null }}
+        giftDocumentLine={null}
+      />
+    );
+
+    expect(screen.getByTestId('bundle-form-formula')).toHaveTextContent('28 ÷ 2 = 14');
+    expect(screen.getByTestId('bundle-form-summary-enough')).toHaveTextContent('14');
+  });
+
   it('should show zero muted with a prompt before any component is added', () => {
     renderWithProviders(
       <BundleSummary

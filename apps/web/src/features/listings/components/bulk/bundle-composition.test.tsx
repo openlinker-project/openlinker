@@ -156,3 +156,53 @@ describe('BundleComposition - multipack and stock', () => {
     expect(screen.getByTestId('bundle-first-product-note')).toHaveTextContent('Kawa 250 g');
   });
 });
+
+describe('BundleComposition - Allegro advisories', () => {
+  const component = (i: number): BundleOfferPreviewOk['components'][number] => ({
+    variantId: `v${i}`,
+    productId: `p${i}`,
+    name: `Item ${i}`,
+    sku: `S${i}`,
+    quantity: 1,
+    giftSlot: false,
+    imageUrl: null,
+    mode: 'own-offer',
+    availableUnits: 5,
+    problems: [],
+  });
+  const many: BundleOfferPreviewOk = {
+    variantId: 'big',
+    status: 'ok',
+    suggestedCategoryId: null,
+    availableSets: 5,
+    limitingComponentVariantId: null,
+    components: Array.from({ length: 11 }, (_, i) => component(i)),
+  };
+
+  it('should advise, not block, when a set has more than 10 products', () => {
+    renderWithProviders(
+      <BundleComposition preview={many} connectionId="c" chosenCategoryId={null} destinationName="Allegro" />
+    );
+    expect(screen.getByTestId('bundle-too-many-products')).toHaveTextContent('11');
+    expect(screen.getByTestId('bundle-gallery-advisory')).toBeInTheDocument();
+  });
+
+  it('should show the final pack title with a counter and the per-piece price', () => {
+    const pack: BundleOfferPreviewOk = {
+      ...many,
+      components: [{ ...component(1), quantity: 3 }],
+    };
+    renderWithProviders(
+      <BundleComposition
+        preview={pack}
+        connectionId="c"
+        chosenCategoryId={null}
+        destinationName="Allegro"
+        title="Mug"
+        priceAmount="30,00"
+      />
+    );
+    expect(screen.getByTestId('bundle-pack-final-title')).toHaveTextContent('Mug - Set of 3 pcs');
+    expect(screen.getByTestId('bundle-per-piece-price')).toHaveTextContent('10.00');
+  });
+});

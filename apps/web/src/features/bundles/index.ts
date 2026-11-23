@@ -10,6 +10,7 @@ export {
   type BundleSeedAdjustment,
 } from './components/bundle-form';
 export { MAX_COMPONENT_QUANTITY, clampSeedQuantity } from './lib/bundle-form-model';
+export { BundleBulkCreator } from './components/bundle-bulk-creator';
 export { MultipackHoldBanner } from './components/multipack-hold-banner';
 export { ProductUsedInBundles } from './components/product-used-in-bundles';
 export { BundleComposition } from './components/bundle-composition';

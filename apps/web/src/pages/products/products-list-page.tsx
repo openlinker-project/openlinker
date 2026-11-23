@@ -214,6 +214,8 @@ function ProductsListPageBody(): ReactElement {
   const offset = Number(searchParams.get('offset') ?? '0');
 
   const [searchInput, setSearchInput] = useState(urlSearch);
+  // Page-scoped: lists the loaded bundles whose derived stock is 0 (#6 lane C).
+  const [restockOnly, setRestockOnly] = useState(false);
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
 
 
@@ -525,6 +527,10 @@ function ProductsListPageBody(): ReactElement {
     };
   }, [items, selectedIds]);
   const selectionBundleLink = selectionBundle.link;
+  const restockItems = useMemo(
+    () => items.filter((p) => p.bundle && p.availableToPromise === 0),
+    [items],
+  );
   const limitedByText = useCallback(
     (ref: { name: string | null; sku: string | null }): string =>
       interpolate(bundleCopy.list.limitedBy, { name: ref.name ?? ref.sku ?? '' }),
@@ -1194,13 +1200,27 @@ function ProductsListPageBody(): ReactElement {
         />
       ) : (
         <>
+          {bundleView === 'only' && restockItems.length > 0 ? (
+            <button
+              type="button"
+              className="ux-restock-chip"
+              aria-pressed={restockOnly}
+              title={bundleCopy.list.restockChipHint}
+              data-testid="bundle-list-restock-chip"
+              onClick={() => {
+                setRestockOnly((v) => !v);
+              }}
+            >
+              {interpolate(bundleCopy.list.restockChip, { n: restockItems.length })}
+            </button>
+          ) : null}
           <DataTable
             caption={copy.tableCaption}
             className="products-table list-table--fixed list-table--peek"
             tableTestId="stock-list-table"
             rowAttributes={(product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` })}
             columns={columns}
-            rows={items}
+            rows={restockOnly && bundleView === 'only' ? restockItems : items}
             rowKey={(product) => product.id}
             stickyLeftColumns={2}
             stickyRightColumns={1}
@@ -1252,6 +1272,15 @@ function ProductsListPageBody(): ReactElement {
                       >
                         {bundleCopy.list.bundleFromSelected}
                       </Button>
+                    ) : null}
+                    {bundleWrite.canWrite && selectedIds.size >= 2 ? (
+                      <Link
+                        to={`/products/bundles/bulk?products=${[...selectedIds].map(encodeURIComponent).join(',')}`}
+                        className="button button--ghost button--sm"
+                        data-testid="selection-bulk-multipack"
+                      >
+                        {interpolate(bundleCopy.list.bulkMultipackFromSelected, { n: format.number(selectedIds.size) })}
+                      </Link>
                     ) : null}
                     {/* Capability-gated (#1096/#1828): hidden with 0 publish destinations. */}
                     {publishDestinations.length > 0 && write.visible ? (
