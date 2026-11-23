@@ -26,8 +26,8 @@ import type { RedisClientType } from 'redis';
 import {
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   ADAPTER_REGISTRY_TOKEN,
-  AdapterFactoryResolverService,
-  AdapterRegistryPort,
+  type AdapterFactoryResolverService,
+  type AdapterRegistryPort,
 } from '@openlinker/core/integrations';
 import {
   ORDER_INGESTION_SERVICE_TOKEN,
