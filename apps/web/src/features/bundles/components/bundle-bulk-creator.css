@@ -1,0 +1,67 @@
+/* Bulk multipack creator: layout the table needs beyond the shared .bulk-pack rules.
+   Kept beside the component (bundle-ux.css belongs to the visual-consistency lane). */
+.bulk-pack__all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.bulk-pack__all .control { width: 88px; }
+.bulk-pack__hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  color: var(--text-muted, inherit);
+}
+.bulk-pack__badge {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--status-warning-strong, inherit);
+}
+.bulk-pack__table td:nth-child(3) .control { min-width: 240px; }
+
+/* Under 600px a row becomes a card: price, status and remove stay on screen
+   instead of hiding behind an unmarked sideways scroll. */
+@media (max-width: 599px) {
+  .bulk-pack__scroll { overflow: visible; border: 0; }
+  .bulk-pack__table,
+  .bulk-pack__table tbody { display: block; min-width: 0; }
+  .bulk-pack__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .bulk-pack__row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .bulk-pack__table th,
+  .bulk-pack__table td { display: block; padding: 0; border: 0; width: auto; }
+  .bulk-pack__table td:nth-child(2),
+  .bulk-pack__table td:nth-child(5) { width: auto; }
+  .bulk-pack__product { grid-column: 1 / -1; padding-right: 40px; }
+  .bulk-pack__table td:nth-child(3),
+  .bulk-pack__table td:nth-child(4),
+  .bulk-pack__table td:nth-child(6) { grid-column: 1 / -1; }
+  .bulk-pack__table td:nth-child(3) .control { min-width: 0; }
+  .bulk-pack__table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-muted, inherit);
+  }
+  .bulk-pack__table td:nth-child(6)::before { display: none; }
+  .bulk-pack__remove-cell { position: absolute; top: 8px; right: 8px; }
+}

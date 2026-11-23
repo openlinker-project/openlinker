@@ -582,7 +582,10 @@ export function OrderDetailPage(): ReactElement {
       eyebrow={copy.eyebrow}
       title={copy.title}
       actions={
-        <>
+        <div
+          className="order-detail-actions"
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center' }}
+        >
         <GiftsGuide variant="detail" />
         <OrderConfirmRefundAction
           internalOrderId={order.internalOrderId}
@@ -659,7 +662,7 @@ export function OrderDetailPage(): ReactElement {
             document.getElementById('shipment')?.scrollIntoView({ block: 'start' });
           }}
         />
-        </>
+        </div>
       }
     >
       <OrderDetailHeader

@@ -490,6 +490,12 @@
     "title": "Wybierz kategorię <muted>- {product}</muted>"
   },
   "bulkConfigStep": {
+    "blocked": {
+      "catalogue": "Aby przejść dalej, ustaw katalog główny w ustawieniach połączenia.",
+      "destination": "Aby przejść dalej, wybierz połączenie docelowe.",
+      "section": "Aby przejść dalej, uzupełnij ustawienia kanału powyżej, np. cennik dostaw.",
+      "sharedSlice": "Aby przejść dalej, popraw ceny lub stany w ustawieniach powyżej."
+    },
     "cancel": "Anuluj",
     "destinationLabel": "Połączenie docelowe",
     "generateDescription": {
@@ -787,7 +793,8 @@
     },
     "loading": "Wczytywanie…",
     "parameters": {
-      "bundleNote": "Parametry produktów składowych bierze z ich kart Allegro. Puste pole „Stan” oznacza „Nowy”.",
+      "bundleNote": "Parametry produktów składowych bierze z ich kart Allegro. Puste pole „Stan produktu” oznacza „Nowy”.",
+      "conditionLabel": "Stan produktu (nowy/używany)",
       "eyebrow": "Parametry kategorii",
       "inheritHint": "Wszystko dziedziczy z bazy. Nadpisuj tylko parametry, które różnią się dla tego wariantu.",
       "loadFailed": "Nie udało się wczytać parametrów kategorii. Nadal możesz zapisać - oferta może zostać odrzucona w tle, jeśli brakuje wymaganych parametrów.",
@@ -877,7 +884,7 @@
     "stock": {
       "capLabel": "Limit",
       "flatAria": "Stały stan",
-      "label": "Stan",
+      "label": "Stan magazynowy",
       "modes": {
         "cap": "Ogranicz stan główny",
         "flat": "Stały stan dla wszystkich wierszy",
@@ -1365,12 +1372,20 @@
       "title": "Zmienić kanał docelowy?"
     },
     "description": {
+      "includingSets": "(w tym {sets})",
       "marketplace": "Tworzenie ofert dla: {products} · {variants}.",
+      "marketplaceSets": "Tworzenie ofert dla: {sets}.",
       "productCount": {
         "few": "{n} produkty",
         "many": "{n} produktów",
         "one": "{n} produkt",
         "other": "{n} produktu"
+      },
+      "setCount": {
+        "few": "{n} zestawy",
+        "many": "{n} zestawów",
+        "one": "{n} zestaw",
+        "other": "{n} zestawu"
       },
       "shop": "Publikacja w sklepie: {products} · {variants}.",
       "variantCount": {
@@ -1483,6 +1498,7 @@
     "packFinalTitle": "{title} - Zestaw {n} szt.",
     "packHint": "Jeden produkt sprzedawany w paczce po {n} szt. {destination} wystawia go jako jeden produkt z ilością {n}.",
     "packHintAllegro": "W panelu Allegro to „Wiele sztuk jako zestaw”, a kupujący widzi etykietę „Zestaw {n} sztuk” przy nazwie. Allegro pokazuje cenę za sztukę na podstawie ceny całego wielopaku.",
+    "packHowOnAllegro": "Jak to wygląda na Allegro?",
     "packMarker": "Wielopak · ×{n}",
     "perPiecePrice": "To {price} zł za sztukę.",
     "previewFailedBanner": "Nie udało się sprawdzić składu zestawów, więc nie możemy ich wystawić. Spróbuj ponownie.",
@@ -1514,6 +1530,7 @@
     "sublinePack": "{n} szt. w paczce",
     "sublineSet": "Zestaw z: {names}",
     "titleCounter": "{n}/{max} znaków",
+    "titleLimitReached": "Osiągnięto limit {max} znaków.",
     "tooManyProductsAdvisory": "Allegro zwykle pozwala na maks. 10 różnych produktów w zestawie, a ten ma {n}. To wskazówka z pomocy Allegro, nie blokada.",
     "useFirstComponentCategory": "Użyj kategorii pierwszego składnika"
   },

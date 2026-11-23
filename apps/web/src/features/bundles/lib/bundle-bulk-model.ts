@@ -9,23 +9,73 @@ import {
   MAX_BUNDLE_NAME_LENGTH,
   formatPriceInput,
   parsePrice,
-  shortComponentName,
 } from './bundle-form-model';
 
 export const MIN_PACK_SIZE = 2;
 export const MAX_PACK_SIZE = 99;
 export const DEFAULT_PACK_SIZE = 3;
 
-/** The pack size a typed value means: whole, brought into 2..99; anything unreadable is the default. */
-export function clampPackSize(raw: string): number {
-  const parsed = Number.parseInt(raw.trim(), 10);
-  if (!Number.isFinite(parsed)) return DEFAULT_PACK_SIZE;
-  return Math.min(MAX_PACK_SIZE, Math.max(MIN_PACK_SIZE, parsed));
+/** How many products one bulk run takes; more would be hundreds of shop calls in one click. */
+export const MAX_BULK_ROWS = 50;
+
+/** The pack size a typed value means, or `null` when it is not a whole number in 2..99. */
+export function parsePackSize(raw: string): number | null {
+  const text = raw.trim();
+  if (!/^\d+$/.test(text)) return null;
+  const parsed = Number.parseInt(text, 10);
+  return parsed >= MIN_PACK_SIZE && parsed <= MAX_PACK_SIZE ? parsed : null;
 }
 
-/** "Kubek x3": the same working name the single-product wizard suggests. */
+/**
+ * "Kubek ceramiczny x3": the product's own name plus the pack size. Never cut
+ * to a few words (two different products would end up with one name on the
+ * marketplace); only a name too long for the master is shortened, at a word.
+ */
 export function packName(productName: string, pack: number): string {
-  return `${shortComponentName(productName, 30)} x${String(pack)}`;
+  const suffix = ` x${String(pack)}`;
+  const name = productName.trim();
+  if (name.length + suffix.length <= MAX_BUNDLE_NAME_LENGTH) return `${name}${suffix}`;
+  const room = MAX_BUNDLE_NAME_LENGTH - suffix.length;
+  const cut = name.slice(0, room);
+  const at = cut.lastIndexOf(' ');
+  return `${(at > 0 ? cut.slice(0, at) : cut).trim()}${suffix}`;
+}
+
+/** Lower-cased, trimmed: how two names or SKUs are compared for being the same. */
+export function sameKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/**
+ * For each value, the index of the FIRST earlier row holding the same
+ * non-empty value, or `null` when it is unique so far.
+ */
+export function earlierDuplicateOf(values: readonly string[]): (number | null)[] {
+  const first = new Map<string, number>();
+  return values.map((value, index) => {
+    const key = sameKey(value);
+    if (key === '') return null;
+    const seen = first.get(key);
+    if (seen === undefined) {
+      first.set(key, index);
+      return null;
+    }
+    return seen;
+  });
+}
+
+/**
+ * A name nobody else in the batch has: when two different products would get
+ * the same auto name, the SKU (or a counter) tells them apart.
+ */
+export function uniquifyName(name: string, sku: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(sameKey(name))) return name;
+  const withSku = sku.trim() !== '' ? `${name} (${sku.trim()})` : name;
+  if (!taken.has(sameKey(withSku)) && withSku.length <= MAX_BUNDLE_NAME_LENGTH) return withSku;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${name} (${String(n)})`;
+    if (!taken.has(sameKey(candidate))) return candidate;
+  }
 }
 
 /** "KUB-01-x3"; empty when the product has no SKU, which the operator must then type. */

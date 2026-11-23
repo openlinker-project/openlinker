@@ -6,7 +6,7 @@ import { fireEvent, screen } from '@testing-library/react';
 
 import { renderWithProviders } from '../../../../test/test-utils';
 import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
-import { BundleComposition } from './bundle-composition';
+import { BundleComposition, BundleFinalTitle } from './bundle-composition';
 
 const preview: BundleOfferPreviewOk = {
   variantId: 'bundle-v',
@@ -187,7 +187,7 @@ describe('BundleComposition - Allegro advisories', () => {
     expect(screen.getByTestId('bundle-gallery-advisory')).toBeInTheDocument();
   });
 
-  it('should show the final pack title with a counter and the per-piece price', () => {
+  it('should show the per-piece price and keep the pack explanation behind a disclosure', () => {
     const pack: BundleOfferPreviewOk = {
       ...many,
       components: [{ ...component(1), quantity: 3 }],
@@ -198,11 +198,23 @@ describe('BundleComposition - Allegro advisories', () => {
         connectionId="c"
         chosenCategoryId={null}
         destinationName="Allegro"
-        title="Mug"
         priceAmount="30,00"
       />
     );
-    expect(screen.getByTestId('bundle-pack-final-title')).toHaveTextContent('Mug - Set of 3 pcs');
     expect(screen.getByTestId('bundle-per-piece-price')).toHaveTextContent('10.00');
+    expect(screen.getByTestId('bundle-pack-how').tagName).toBe('DETAILS');
+    expect(screen.queryByTestId('bundle-pack-final-title')).not.toBeInTheDocument();
+  });
+
+  it('should show the final pack title under the input and flag it above the limit', () => {
+    const pack: BundleOfferPreviewOk = {
+      ...many,
+      components: [{ ...component(1), quantity: 3 }],
+    };
+    const { rerender } = renderWithProviders(<BundleFinalTitle preview={pack} title="Mug" />);
+    expect(screen.getByTestId('bundle-pack-final-title')).toHaveTextContent('Mug - Set of 3 pcs');
+    expect(screen.getByTestId('bundle-pack-final-title')).not.toHaveClass('is-warn');
+    rerender(<BundleFinalTitle preview={pack} title={'x'.repeat(74)} />);
+    expect(screen.getByTestId('bundle-pack-final-title')).toHaveClass('is-warn');
   });
 });

@@ -58,7 +58,7 @@ interface BundleCompositionProps {
   destinationName?: string;
   /** The "no EAN of its own" note; omitted where the surrounding section says it already. */
   showEanNote?: boolean;
-  /** Offer title as typed in the editor; enables the final-title preview for packs. */
+  /** Offer title as typed in the editor; kept for callers, the preview moved to BundleFinalTitle. */
   title?: string;
   /** Whole-offer price as typed (decimal text); enables the per-piece hint for packs. */
   priceAmount?: string;
@@ -86,7 +86,6 @@ export function BundleComposition({
   heading,
   destinationName = '',
   showEanNote = false,
-  title,
   priceAmount,
 }: BundleCompositionProps): ReactElement {
   const copy = useMessages('listings').bundleOffer;
@@ -114,10 +113,6 @@ export function BundleComposition({
 
   const tooManyProducts =
     isAllegro && packSize === null && preview.components.length > ALLEGRO_SET_PRODUCT_ADVISORY_LIMIT;
-  const finalTitle =
-    packSize !== null && title && title.trim() !== ''
-      ? interpolate(copy.packFinalTitle, { title: title.trim().replace(/\s+/g, ' '), n: packSize })
-      : null;
   const price = parseDecimal(priceAmount);
   const perPiece = packSize !== null && price !== null ? (price / packSize).toFixed(2) : null;
 
@@ -153,30 +148,22 @@ export function BundleComposition({
             {interpolate(copy.packHint, { n: packSize, destination: destinationName })}
           </p>
           {isAllegro ? (
-            <p className="cx-sub">{interpolate(copy.packHintAllegro, { n: packSize })}</p>
+            <details className="bundle-comp__how" data-testid="bundle-pack-how">
+              <summary>{copy.packHowOnAllegro}</summary>
+              <p className="cx-sub">{interpolate(copy.packHintAllegro, { n: packSize })}</p>
+            </details>
           ) : null}
           <p className="cx-sub" data-testid="bundle-price-scope">
             {interpolate(copy.priceWholePack, { n: packSize })}
           </p>
           {isAllegro ? (
-            <span className="cx-tag cx-tag--quiet" data-testid="bundle-pack-category-chip">
-              {copy.packCategoryChip}
-            </span>
-          ) : null}
-          {finalTitle ? (
             <p
-              className={`cx-sub bundle-comp__title${
-                finalTitle.length > ALLEGRO_TITLE_LIMIT ? ' is-warn' : ''
-              }`}
-              data-testid="bundle-pack-final-title"
+              className="cx-sub bundle-comp__caveat"
+              data-testid="bundle-pack-category-chip"
+              style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'flex-start' }}
             >
-              <b>{finalTitle}</b>{' '}
-              <span className="tabular">
-                {interpolate(copy.titleCounter, {
-                  n: finalTitle.length,
-                  max: ALLEGRO_TITLE_LIMIT,
-                })}
-              </span>
+              <span aria-hidden="true">&#9432;</span>
+              <span>{copy.packCategoryChip}</span>
             </p>
           ) : null}
           {perPiece ? (
@@ -326,5 +313,41 @@ export function BundleComposition({
         </div>
       ) : null}
     </div>
+  );
+}
+
+interface BundleFinalTitleProps {
+  preview: BundleOfferPreviewOk;
+  title: string;
+  limit?: number;
+}
+
+/**
+ * The title a multipack buyer actually sees (the marketplace appends the pack
+ * label), shown directly under the Title input and red above the limit - the
+ * counter on the input itself measures only what the operator typed.
+ */
+export function BundleFinalTitle({
+  preview,
+  title,
+  limit = ALLEGRO_TITLE_LIMIT,
+}: BundleFinalTitleProps): ReactElement | null {
+  const copy = useMessages('listings').bundleOffer;
+  const packSize = packSizeOf(preview);
+  if (packSize === null || title.trim() === '') return null;
+  const finalTitle = interpolate(copy.packFinalTitle, {
+    title: title.trim().replace(/\s+/g, ' '),
+    n: packSize,
+  });
+  return (
+    <p
+      className={`cx-sub bundle-comp__title${finalTitle.length > limit ? ' is-warn' : ''}`}
+      data-testid="bundle-pack-final-title"
+    >
+      <b>{finalTitle}</b>{' '}
+      <span className="tabular">
+        {interpolate(copy.titleCounter, { n: finalTitle.length, max: limit })}
+      </span>
+    </p>
   );
 }

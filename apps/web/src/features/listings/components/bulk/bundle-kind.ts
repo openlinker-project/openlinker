@@ -63,3 +63,20 @@ export function unsettledBundleVariants(
   }
   return { pending, failed: failedOut };
 }
+
+/**
+ * Allegro's "Stan" (condition) parameter id. The adapter sends "new" when it is
+ * empty (see allegro-offer-validation.ts), so on a set it never blocks - yet the
+ * schema marks it required and its name is the same word as the stock field.
+ */
+const CONDITION_PARAMETER_ID = '11323';
+
+/** Condition parameter shown as optional under its own name; others pass through. */
+export function relabelConditionParameter<T extends { id: string; name: string; required?: boolean }>(
+  parameter: T,
+  label: string,
+): T {
+  return parameter.id === CONDITION_PARAMETER_ID
+    ? { ...parameter, name: label, required: false }
+    : parameter;
+}

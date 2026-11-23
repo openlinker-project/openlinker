@@ -171,8 +171,8 @@ import {
 } from './bulk-policy';
 import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
-import { BundleComposition } from './bundle-composition';
-import { packSizeOf } from './bundle-kind';
+import { BundleComposition, BundleFinalTitle } from './bundle-composition';
+import { packSizeOf, relabelConditionParameter } from './bundle-kind';
 
 
 // Grouping-determining category parameters - shared across siblings, edited on
@@ -2029,6 +2029,8 @@ function BaseScopeForm({
   }, [form]);
 
   const watchedCategoryId = form.watch('categoryId');
+  const watchedTitle = form.watch('title') ?? '';
+  const watchedTitleLength = watchedTitle.length;
   const watchedEan = form.watch('ean');
   // A set needs no barcode of its own, so a checksum failure on it is not a
   // problem to raise (#3520).
@@ -2039,7 +2041,7 @@ function BaseScopeForm({
     <FormProvider {...form}>
       <div className={classes} hidden={!active} data-form={mode}>
         <div className="bulk-editor__scope-head">
-          <h4>{mode === 'simple' ? copy.scope.offerFields : copy.scope.sharedBase}</h4>
+          <h3 style={SCOPE_TITLE_STYLE}>{mode === 'simple' ? copy.scope.offerFields : copy.scope.sharedBase}</h3>
           <div className="grow" />
           {mode === 'simple' ? (
             <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -2092,16 +2094,40 @@ function BaseScopeForm({
         <FormField
           name="bulk-edit-title"
           label={copy.fields.title}
-          description={interpolate(copy.fields.titleLimit, { platform: platformName })}
+          description={
+            <>
+              {interpolate(copy.fields.titleLimit, { platform: platformName })}{' '}
+              <span
+                className={`tabular${watchedTitleLength >= TITLE_LIMIT ? ' is-warn' : ''}`}
+                data-testid="bulk-edit-title-counter"
+              >
+                {interpolate(bundleCopy.titleCounter, { n: watchedTitleLength, max: TITLE_LIMIT })}
+              </span>
+            </>
+          }
           error={form.formState.errors.title?.message}
         >
           <Input
             {...form.register('title')}
             className="bulk-editor__input"
-            maxLength={75}
-            aria-invalid={Boolean(form.formState.errors.title)}
+            maxLength={TITLE_LIMIT}
+            aria-invalid={Boolean(form.formState.errors.title) || watchedTitleLength > TITLE_LIMIT}
           />
         </FormField>
+        {/* The input stops typing at the limit, so the only signal a screen reader
+            gets that it was reached is this polite status. */}
+        <span className="sr-only" role="status">
+          {watchedTitleLength >= TITLE_LIMIT
+            ? interpolate(bundleCopy.titleLimitReached, { max: TITLE_LIMIT })
+            : ''}
+        </span>
+        {bundle ? (
+          <BundleFinalTitle
+            preview={bundle}
+            title={watchedTitle}
+            limit={TITLE_LIMIT}
+          />
+        ) : null}
         </div>
 
         {mode === 'simple' ? (
@@ -2520,6 +2546,14 @@ function BaseDescriptionField({
   );
 }
 
+/**
+ * Scope headings were h4 under a dialog h2 with an h3 composition heading
+ * between them (h2 > h4 > h3); h3 keeps the order. The legacy rule sized h4 only.
+ */
+/** Allegro's title ceiling; the input stops typing there. */
+const TITLE_LIMIT = 75;
+const SCOPE_TITLE_STYLE = { fontSize: 14, margin: 0, fontWeight: 600 } as const;
+
 interface BaseParameterSectionProps {
   watchedCategoryId: string | undefined;
   parametersQuery: ReturnType<typeof useCategoryParametersQuery>;
@@ -2566,7 +2600,7 @@ function BaseParameterSection({
       ) : null}
       {isBundle ? <p className="cx-sub">{copy.bundleNote}</p> : null}
       <CategoryParametersStep
-        parameters={categoryParameters}
+        parameters={isBundle ? categoryParameters.map((p) => relabelConditionParameter(p, copy.conditionLabel)) : categoryParameters}
         formNamespace="parameters"
         extraHints={ruleHints?.fields}
       />
@@ -3116,7 +3150,7 @@ function VariantScopeForm({
   return (
     <div className={formClasses} data-form={variant.variantId}>
       <div className="bulk-editor__scope-head">
-        <h4>{interpolate(copy.variant.heading, { variant: label })}</h4>
+        <h3 style={SCOPE_TITLE_STYLE}>{interpolate(copy.variant.heading, { variant: label })}</h3>
         <div className="grow" />
         <div className="bulk-editor__scope-toggles">
           <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -4515,7 +4549,7 @@ function ShopBaseScopeForm({
   return (
     <div className={classes} hidden={!active} data-form={mode}>
       <div className="bulk-editor__scope-head">
-        <h4>{mode === 'simple' ? copy.scope.productFields : copy.scope.sharedBase}</h4>
+        <h3 style={SCOPE_TITLE_STYLE}>{mode === 'simple' ? copy.scope.productFields : copy.scope.sharedBase}</h3>
         <div className="grow" />
         {mode === 'simple' ? (
           <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -4804,7 +4838,7 @@ function ShopVariantScopeForm({
   return (
     <div className={formClasses} data-form={variant.variantId}>
       <div className="bulk-editor__scope-head">
-        <h4>{interpolate(copy.variant.heading, { variant: label })}</h4>
+        <h3 style={SCOPE_TITLE_STYLE}>{interpolate(copy.variant.heading, { variant: label })}</h3>
         <div className="grow" />
         <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <input type="checkbox" checked={included} onChange={(e) => onIncludedChange(e.target.checked)} />

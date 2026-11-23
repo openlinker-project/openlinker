@@ -45,6 +45,7 @@ import {
 import { useCreateBundleProductMutation } from '../hooks/use-create-bundle-product-mutation';
 import { useSyncBundleFromMasterMutation } from '../hooks/use-sync-bundle-from-master-mutation';
 import { useSaveBundleMutation } from '../hooks/use-save-bundle-mutation';
+import { useFreeSku } from '../hooks/use-free-sku';
 import { useSkuConflict } from '../hooks/use-sku-conflict';
 import { computeBundleAvailability } from '../lib/bundle-availability';
 import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
@@ -306,7 +307,14 @@ export function BundleForm({
       if (picked === undefined) {
         throw new Error('seed variant not found');
       }
-      return toBundleChoice(product, picked, variants.length);
+      let atp: number | null | undefined;
+      try {
+        const stock = await apiClient.inventory.availability([picked.id]);
+        atp = stock.items[0]?.availableToPromise ?? null;
+      } catch {
+        atp = undefined;
+      }
+      return toBundleChoice(product, picked, variants.length, atp);
     },
     retry: false,
     enabled: seedComponent !== undefined && !editing,
@@ -334,6 +342,20 @@ export function BundleForm({
         if (outcome.status === 'fulfilled') result.rows.push(outcome.value);
         else result.failed.push(seedComponents?.[index]?.productId ?? '');
       });
+      // The same availability read the search-add path makes: the product row's own figure is
+      // not the variant's promisable stock, and without it every handed-over row read "unknown".
+      if (result.rows.length > 0) {
+        try {
+          const stock = await apiClient.inventory.availability(result.rows.map((r) => r.choice.variantId));
+          const byId = new Map(stock.items.map((item) => [item.productVariantId, item.availableToPromise ?? null]));
+          result.rows = result.rows.map((row) => ({
+            ...row,
+            choice: { ...row.choice, availableToPromise: byId.get(row.choice.variantId) ?? row.choice.availableToPromise },
+          }));
+        } catch {
+          // Rows keep the product-row figure; the review shows stock as unknown until a re-read.
+        }
+      }
       return result;
     },
     retry: false,
@@ -448,7 +470,8 @@ export function BundleForm({
   const masterName = creators.find((target) => target.connectionId === masterId)?.connectionName ?? '';
   const nameSuggestion = suggestedBundleName(parsedRows);
   const effectiveName = draft.touched.name ? draft.name : nameSuggestion;
-  const effectiveSku = draft.touched.sku ? draft.sku : suggestedSku(parsedRows);
+  const freeSkuSuggestion = useFreeSku(suggestedSku(parsedRows), creating && !draft.touched.sku);
+  const effectiveSku = draft.touched.sku ? draft.sku : freeSkuSuggestion;
   const skuConflict = useSkuConflict(effectiveSku, creating);
   const effectivePriceText = draft.touched.price
     ? draft.price
@@ -930,6 +953,7 @@ export function BundleForm({
         effectiveName={effectiveName}
         nameSuggestion={nameSuggestion}
         skuConflict={skuConflict}
+        skuSuggestion={freeSkuSuggestion}
         lockedProduct={createdProduct !== null ? { name: createdProduct.name, sku: effectiveSku.trim() } : null}
         packMismatch={packMismatch}
         targets={targets.data}

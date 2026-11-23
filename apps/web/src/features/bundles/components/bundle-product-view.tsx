@@ -20,6 +20,7 @@ import { useTopProductVariantSalesQuery } from '../../analytics';
 import { useConnectionsQuery } from '../../connections';
 import { useListingsQuery, type OfferLifecycle } from '../../listings';
 import { computeBundleAvailability } from '../lib/bundle-availability';
+import { namedPackSize } from '../lib/bundle-form-model';
 import { splitBundlePrice } from '../lib/bundle-price-split';
 import { describeComponents, diffAgainst } from './bundle-history';
 import { BundleComponentList } from './bundle-component-list';
@@ -92,6 +93,12 @@ export function BundleProductView({
   const discountToday =
     componentsSum !== null && componentsSum > 0 && bundle.bundle.price !== null
       ? componentsSum - bundle.bundle.price
+      : null;
+  // The name promises a pack size the composition does not hold (one product, another quantity).
+  const namedSize = namedPackSize(`${bundle.bundle.name ?? ''} ${bundle.bundle.sku ?? ''}`);
+  const nameMismatch =
+    rows.length === 1 && namedSize !== null && namedSize !== rows[0].quantity
+      ? { named: namedSize, actual: rows[0].quantity }
       : null;
   const giftCount = rows.filter((row) => row.giftSlot === true).length;
   const split = splitBundlePrice(
@@ -186,7 +193,15 @@ export function BundleProductView({
           />
           {listedCount > 0 ? (
             <p className="pm-help" data-testid="bundle-view-edit-offers-note">
-              {interpolate(copy.editOffersNote, { n: listedCount })}
+              {formatPlural(listedCount, copy.editOffersNote, locale)}
+            </p>
+          ) : null}
+          {nameMismatch !== null ? (
+            <p className="pm-help ux-name-mismatch" role="note" data-testid="bundle-view-name-mismatch">
+              {interpolate(copy.nameMismatch, nameMismatch)}{' '}
+              <Link to={`/products/bundles/${encodeURIComponent(bundleVariantId)}`}>
+                {copy.nameMismatchEdit}
+              </Link>
             </p>
           ) : null}
           <p className="pm-help" data-testid="bundle-view-price-stays">
@@ -253,7 +268,7 @@ export function BundleProductView({
 
         <ComposerSection
           title={copy.offersTitle}
-          aside={interpolate(copy.offersAside, { listed: listedCount, total: offerRows.length })}
+          aside={formatPlural(offerRows.length, copy.offersAside, locale, { listed: listedCount })}
           riseIndex={3}
         >
           {listedCount === 0 && offerRows.length > 0 ? (

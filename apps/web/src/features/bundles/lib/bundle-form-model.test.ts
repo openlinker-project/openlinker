@@ -12,6 +12,7 @@ import {
   parsePrice,
   priceProblem,
   shortComponentName,
+  suggestedSku,
   type ParsedRow,
 } from './bundle-form-model';
 
@@ -108,5 +109,19 @@ describe('seed helpers (round 5)', () => {
     expect(packSizeMismatch('Kubek x3', [row({ qty: 3, quantity: '3' })])).toBeNull();
     expect(packSizeMismatch('Kubek x3', [row({}), row({ variantId: 'w' })])).toBeNull();
     expect(packSizeMismatch(null, one)).toBeNull();
+  });
+});
+
+describe('suggestedSku', () => {
+  it('should suffix a pack of one product with its size', () => {
+    expect(suggestedSku([row({ sku: 'KUB', qty: 3 })])).toBe('KUB-x3');
+  });
+
+  it('should call a set of several products a komplet', () => {
+    expect(suggestedSku([row({ sku: 'KUB', qty: 1 }), row({ variantId: 'w', sku: 'POD', qty: 1 })])).toBe('KUB-KPL');
+  });
+
+  it('should fall back to -SET for a single unit', () => {
+    expect(suggestedSku([row({ sku: 'KUB', qty: 1 })])).toBe('KUB-SET');
   });
 });

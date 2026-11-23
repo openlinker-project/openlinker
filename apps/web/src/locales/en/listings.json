@@ -456,6 +456,12 @@
     "title": "Choose category <muted>- {product}</muted>"
   },
   "bulkConfigStep": {
+    "blocked": {
+      "catalogue": "To continue, set the master catalogue in the connection settings.",
+      "destination": "To continue, choose a destination connection.",
+      "section": "To continue, complete the channel settings above, for example the shipping rates.",
+      "sharedSlice": "To continue, fix the price or stock settings above."
+    },
     "cancel": "Cancel",
     "destinationLabel": "Destination connection",
     "generateDescription": {
@@ -732,6 +738,7 @@
     "loading": "Loading…",
     "parameters": {
       "bundleNote": "Component product parameters come from their Allegro cards. An empty \"Condition\" means \"New\".",
+      "conditionLabel": "Condition (new/used)",
       "eyebrow": "Category parameters",
       "inheritHint": "Everything inherits from base. Override only the parameters that differ for this variant.",
       "loadFailed": "Could not load category parameters. You can still save - it may be rejected in the background if required parameters are missing.",
@@ -1239,10 +1246,16 @@
       "title": "Change destination?"
     },
     "description": {
+      "includingSets": "(including {sets})",
       "marketplace": "Creating offers for {products} · {variants}.",
+      "marketplaceSets": "Creating offers for {sets}.",
       "productCount": {
         "one": "{n} product",
         "other": "{n} products"
+      },
+      "setCount": {
+        "one": "{n} bundle",
+        "other": "{n} bundles"
       },
       "shop": "Publishing {products} · {variants} to a shop.",
       "variantCount": {
@@ -1345,6 +1358,7 @@
     "packFinalTitle": "{title} - Set of {n} pcs",
     "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
     "packHintAllegro": "In the Allegro panel this is \"Multiple items as a set\", and the buyer sees a \"Set of {n} items\" label next to the name. Allegro shows the per-item price based on the price of the whole multipack.",
+    "packHowOnAllegro": "How does this look on Allegro?",
     "packMarker": "Pack · ×{n}",
     "perPiecePrice": "That is {price} per piece.",
     "previewFailedBanner": "Could not check the composition of your sets, so they cannot be listed yet. Please try again.",
@@ -1372,6 +1386,7 @@
     "sublinePack": "{n} pcs per pack",
     "sublineSet": "Set of: {names}",
     "titleCounter": "{n}/{max} characters",
+    "titleLimitReached": "Limit of {max} characters reached.",
     "tooManyProductsAdvisory": "Allegro usually allows at most 10 different products in a set, and this one has {n}. This is a hint from Allegro help, not a block.",
     "useFirstComponentCategory": "Use first component's category"
   },

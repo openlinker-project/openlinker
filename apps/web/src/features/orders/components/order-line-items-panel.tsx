@@ -142,7 +142,7 @@ export function OrderLineItemsPanel({
       cell: (item) => (
         <OrderLineItemIdentity
           name={item.name}
-          code={item.sku ?? item.productId ?? item.id}
+          code={item.sku ?? `${copy.idPrefix} ${item.productId ?? item.id}`}
           codeIsFallback={!item.sku}
           imageSrc={item.imageUrl}
           placeholderName={item.name ?? item.sku ?? item.productId ?? item.id}
@@ -220,7 +220,7 @@ export function OrderLineItemsPanel({
         <span className="mono-text">{format.money(item.price * item.quantity, currency)}</span>
       ),
     },
-    ...(costs.enabled ? buildCostColumns(items, costs, copy) : []),
+    ...(costs.enabled ? buildCostColumns(items, costs, copy, new Set(bundleByLine.keys())) : []),
   ];
 
   // Components sit under their bundle line and carry only what is theirs: a
@@ -337,7 +337,11 @@ export function OrderLineItemsPanel({
       {bundleByLine.size > 0 ? (
         <BundleShipStrip items={items} bundleByLine={bundleByLine} documentNumber={documentNumber} />
       ) : null}
-      {costs.enabled && costs.status === 'loaded' ? <CostFootnote lines={costs.lines} /> : null}
+      {costs.enabled && costs.status === 'loaded' ? (
+        <CostFootnote
+          lines={costs.lines.filter((line) => !bundleLineNumbers(items, bundleByLine).has(line.lineNumber))}
+        />
+      ) : null}
     </div>
   );
 }
@@ -553,6 +557,7 @@ function buildCostColumns(
   items: ParsedOrderItem[],
   costs: OrderLineCostsState,
   copy: LineItemsCopy,
+  bundleLineIds: ReadonlySet<string>,
 ): DataTableColumn<ParsedOrderItem>[] {
   return [
     {
@@ -560,7 +565,9 @@ function buildCostColumns(
       header: copy.columns.costAtOrderTime,
       align: 'right',
       hideBelow: 768,
-      cell: (item) => <CostCell line={costForItem(items, costs, item)} />,
+      cell: (item) => (
+        <CostCell line={costForItem(items, costs, item)} fromComponents={bundleLineIds.has(item.id)} />
+      ),
     },
     {
       id: 'lineMargin',
@@ -571,9 +578,21 @@ function buildCostColumns(
   ];
 }
 
-function CostCell({ line }: { line: OrderLineCost | null }): ReactElement {
+function CostCell({
+  line,
+  fromComponents = false,
+}: {
+  line: OrderLineCost | null;
+  fromComponents?: boolean;
+}): ReactElement {
   const copy = useMessages('orders').orderLineItems.cost;
   const format = useFormat();
+  // A bundle has no cost of its own: it is the sum of its components, so "not
+  // recorded" on the bundle line would send the operator to a product that
+  // cannot carry one.
+  if (fromComponents && (!line || line.costOfGoods === null)) {
+    return <span className="text-muted" data-testid="order-bundle-cost-from-components">{copy.fromComponents}</span>;
+  }
   if (!line) return <AbsentValue label={copy.notAvailable} />;
   if (line.costOfGoods !== null) {
     return <span className="mono-text">{format.money(line.costOfGoods, line.unitCostCurrency ?? undefined)}</span>;
@@ -648,4 +667,16 @@ function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
       ) : null}
     </p>
   );
+}
+
+/** Cost-line numbers (the line's position in the order) that belong to a bundle line. */
+function bundleLineNumbers(
+  items: readonly ParsedOrderItem[],
+  bundleByLine: ReadonlyMap<string, OrderBundleLine>,
+): Set<number> {
+  const numbers = new Set<number>();
+  items.forEach((item, index) => {
+    if (bundleByLine.has(item.id)) numbers.add(index);
+  });
+  return numbers;
 }

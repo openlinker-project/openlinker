@@ -15,6 +15,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ReadbackSentence } from '../../../shared/ui/readback-sentence';
 import { useConnectionsQuery } from '../../connections';
+import { displayConnectionName } from '../../../shared/lib/display-connection-name';
 import type { BundleAvailability } from '../lib/bundle-availability';
 import { splitBundlePrice } from '../lib/bundle-price-split';
 import { componentsSum, type BundleStepKey, type ParsedRow } from '../lib/bundle-form-model';
@@ -139,6 +140,7 @@ export function BundleStepReview({
                   : interpolate(copy.s4HappensCreateNoMaster, { name: productName })
                 : interpolate(copy.s4HappensExisting, { name: productName })}
             </li>
+            {creating ? <li>{copy.s4HappensPlain}</li> : null}
             <li>{copy.s4HappensSave}</li>
             <li>{copy.s4HappensNotListed}</li>
             <li>{copy.s4HappensNoStock}</li>
@@ -208,7 +210,7 @@ function NextHint(): ReactElement {
   const sole = marketplaces.length === 1 ? marketplaces[0] : undefined;
   return (
     <p className="bf-nextnote" data-testid="bundle-form-next-hint">
-      {sole !== undefined ? interpolate(copy.s4Next, { name: sole.name }) : copy.s4NextMany}
+      {sole !== undefined ? interpolate(copy.s4Next, { name: displayConnectionName(sole.name) }) : copy.s4NextMany}
     </p>
   );
 }
@@ -258,7 +260,7 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
             ...shops.map((c) => ({ c, kind: 'shop' as const })),
           ].map(({ c, kind }) => (
             <li key={c.id} data-testid={`bundle-form-target-${c.id}`}>
-              <b className="bf-targets__name">{c.name}</b>
+              <b className="bf-targets__name" title={c.name}>{displayConnectionName(c.name)}</b>
               <span className="bf-targets__text">
                 {interpolate(kind === 'shop' ? copy.goShop : copy.goMarketplace, { name: c.name })}
               </span>
@@ -267,7 +269,7 @@ function SendOn({ saved }: { saved: { productId: string; variantId: string } }):
                 to={target(c.id)}
               >
                 {kind === 'marketplace'
-                  ? interpolate(copy.listOnChannel, { name: c.name })
+                  ? interpolate(copy.listOnChannel, { name: displayConnectionName(c.name) })
                   : copy.goButton}
               </Link>
             </li>

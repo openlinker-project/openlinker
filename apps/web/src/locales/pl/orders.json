@@ -1928,7 +1928,7 @@
   },
   "orderEditAction": {
     "amendingTitle": "Zmiana tego zamówienia już czeka na kanał.",
-    "button": "Edytuj zamów."
+    "button": "Edytuj zamówienie"
   },
   "orderEditDialog": {
     "ack": {
@@ -2328,6 +2328,7 @@
       "enteredAfterSaleTitle": "Zamówione przed wpisaniem kosztu",
       "footnoteFrozen": "Koszt jest pobierany z produktu w chwili otrzymania zamówienia i później się nie zmienia.",
       "footnoteNextOrder": "Dodanie kosztu teraz nie zmieni tego zamówienia; będzie liczony od następnego.",
+      "fromComponents": "liczony ze składników",
       "marginNotAvailable": "marża niedostępna",
       "noVariant": "brak wariantu",
       "notAvailable": "koszt niedostępny",
@@ -2336,6 +2337,7 @@
     },
     "emptyMessage": "Dane zamówienia nie zawierają szczegółów pozycji.",
     "emptyTitle": "Brak pozycji",
+    "idPrefix": "ID:",
     "jumpToNextFlagged": "Przejdź do następnej oznaczonej",
     "onlyFlagged": "Tylko oznaczone",
     "qtyWas": "było {quantity}",

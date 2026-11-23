@@ -121,7 +121,9 @@ export function BundleVariantPicker({
   const [added, setAdded] = useState<string | null>(null);
   const [bulk, setBulk] = useState<{ busy: boolean; text: string }>({ busy: false, text: '' });
   const search = useDebouncedValue(text.trim(), 250);
-  const active = search.length >= 2;
+  // Both the typed text and the settled search must be long enough: Escape or deleting hides the
+  // list at once instead of leaving the previous query's rows up for the debounce.
+  const active = search.length >= 2 && text.trim().length >= 2;
 
   const results = useQuery({
     queryKey: ['bundles', 'product-search', search, limit],
@@ -166,20 +168,38 @@ export function BundleVariantPicker({
   );
   const stockPending = !detailsSettled || stock.isPending;
 
+  // Rows on screen belong to an older query while the debounce is pending or a placeholder is shown:
+  // Enter and clicks must not add one of them.
+  const stale = text.trim() !== search || results.isPlaceholderData;
   const initialLoading = active && results.data === undefined && !results.isError;
   const refreshing = active && results.isFetching && results.data !== undefined && results.isPlaceholderData;
 
+  const reasonFor = (product: Product, variantId: string): RowReason | null =>
+    excludeVariantIds.includes(variantId)
+      ? 'taken'
+      : blockedVariantIds.includes(variantId)
+        ? 'blocked'
+        : disallowBundles && product.bundle?.variantId === variantId
+          ? 'bundle'
+          : null;
+  // Products with something choosable come first (stable), so the first usable row is not
+  // buried under greyed bundle rows below the fold.
+  const order = products
+    .map((product, index) => {
+      const variants = details[index]?.data?.variants ?? [];
+      const usable = variants.length === 0 || variants.some((v) => reasonFor(product, v.id) === null);
+      return { index, usable };
+    })
+    .sort((a, b) => Number(b.usable) - Number(a.usable) || a.index - b.index)
+    .map((entry) => entry.index);
+
   const options: Option[] = [];
-  products.forEach((product, index) => {
+  order.forEach((index) => {
+    const product = products[index];
+    if (product === undefined) return;
     const variants = details[index]?.data?.variants ?? [];
     for (const variant of variants) {
-      const reason: RowReason | null = excludeVariantIds.includes(variant.id)
-        ? 'taken'
-        : blockedVariantIds.includes(variant.id)
-          ? 'blocked'
-          : disallowBundles && product.bundle?.variantId === variant.id
-            ? 'bundle'
-            : null;
+      const reason = reasonFor(product, variant.id);
       options.push({
         id: `${baseId}-opt-${variant.id}`,
         disabled: reason !== null,
@@ -205,6 +225,7 @@ export function BundleVariantPicker({
   };
 
   const choose = (option: Option): void => {
+    if (stale) return;
     if (option.reason !== null) {
       setRejection(
         interpolate(copy.rejected, {
@@ -299,7 +320,7 @@ export function BundleVariantPicker({
       // Only the row that is visibly highlighted: never an unseen first option.
       if (nav.activeOption !== null && active) {
         event.preventDefault();
-        choose(nav.activeOption);
+        if (!stale) choose(nav.activeOption);
       }
     } else if (event.key === 'Escape') {
       if (text !== '' || rejection !== null) event.preventDefault();
@@ -335,10 +356,10 @@ export function BundleVariantPicker({
         data-testid={testIdPrefix}
         type="search"
         role="combobox"
-        aria-expanded={active && !results.isError}
+        aria-expanded={active && products.length > 0 && !results.isError}
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-activedescendant={activeId ?? undefined}
+        aria-activedescendant={stale ? undefined : (activeId ?? undefined)}
         autoComplete="off"
         value={text}
         disabled={disabled}
@@ -418,10 +439,16 @@ export function BundleVariantPicker({
         className={`bpick${refreshing ? ' is-refreshing' : ''}`}
         role="listbox"
         aria-label={copy.listLabel}
-        aria-busy={initialLoading || refreshing || !detailsSettled}
+        aria-busy={initialLoading || refreshing || !detailsSettled || stale}
         hidden={products.length === 0}
+        // Scrollable by pointer but not a tab stop: Tab goes input -> "show more", and the arrows keep
+        // moving the highlight. The cap keeps the last rows clear of the sticky action bar.
+        tabIndex={-1}
+        style={{ maxHeight: 'min(360px, calc(100dvh - 14rem))', overflowY: 'auto' }}
       >
-        {products.map((product, index) => {
+        {order.map((index) => {
+          const product = products[index];
+          if (product === undefined) return null;
           const query = details[index];
           const variants = query?.data?.variants ?? [];
           if (query?.isError === true) {
@@ -479,6 +506,7 @@ export function BundleVariantPicker({
                         role="option"
                         aria-selected={isActive}
                         aria-disabled={disabled || reason !== null}
+                        style={{ scrollMarginBottom: '6rem' }}
                         className={`bpick__row${isActive ? ' is-active' : ''}${reason !== null ? ' is-disabled' : ''}`}
                         data-testid={`${testIdPrefix}-result-${sku ?? variant.id}`}
                         onMouseMove={() => {

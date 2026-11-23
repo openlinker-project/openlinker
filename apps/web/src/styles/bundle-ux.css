@@ -60,7 +60,7 @@
 .bf-stepper .setup-stepper__dot { position: relative; list-style: none; }
 .bf-stepper .setup-stepper__dot-button {
   position: absolute; inset: -9px; width: 1.5rem; height: 1.5rem; margin: auto; padding: 0; border: 0;
-  background: transparent; cursor: pointer; border-radius: 999px;
+  background: transparent; cursor: pointer; border-radius: var(--radius-pill);
 }
 .bf-stepper .setup-stepper__dot-button[aria-disabled='true'] { cursor: not-allowed; }
 .bf-stepper .setup-stepper__dot-button:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
@@ -1256,7 +1256,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
   place-items: center;
   width: 1.5rem;
   height: 1.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border-strong);
   font-size: 0.75rem;
   font-weight: 600;
@@ -1365,7 +1365,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
   place-items: center;
   width: 1.25rem;
   height: 1.25rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--accent-primary-soft);
   color: var(--accent-primary-soft-strong);
   font-size: 0.6875rem;
@@ -1451,7 +1451,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
   text-decoration: none;
 }
 .s2-explainer__toggle:hover { background: none; text-decoration: underline; }
-.s2-explainer__toggle:focus-visible { outline: 2px solid var(--focus-ring, var(--text-link)); outline-offset: 2px; border-radius: var(--radius-sm, 4px); }
+.s2-explainer__toggle:focus-visible { outline: 2px solid var(--focus-ring, var(--text-link)); outline-offset: 2px; border-radius: var(--radius-sm); }
 
 /* The order pricing table has seven columns; in the ~720px content width of a 1024px window it
    scrolled sideways and hid Total. Tighter cells and a bounded product column keep it in view. */
@@ -1480,7 +1480,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 .bundle-form .s-hero.is-empty .s-hero__note { display: flex; align-items: center; gap: var(--space-2); }
 .bundle-form .s-hero.is-empty .s-hero__note::before {
   content: ''; flex: none; width: 1rem; height: 1rem; box-sizing: border-box;
-  border: 1.5px solid var(--text-muted); border-radius: 3px;
+  border: 1.5px solid var(--text-muted); border-radius: var(--radius-xs);
   background: linear-gradient(var(--text-muted), var(--text-muted)) center / 100% 1.5px no-repeat;
 }
 .bundle-form .s-hero.is-ok .s-hero__num { color: var(--status-success-strong); font-variant-numeric: tabular-nums; }
@@ -1639,7 +1639,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
   min-height: 32px;
   padding: 0 var(--space-3);
   border: 1px solid var(--status-warning-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -1680,7 +1680,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 .bulk-pack__row:hover:not(.bulk-pack__row--created) { background: var(--surface-muted, transparent); }
 .bulk-pack__row--created { opacity: 0.75; }
 .bulk-pack__row--failed { background: var(--status-error-soft); }
-.bulk-pack__status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; background: var(--surface-muted, transparent); }
+.bulk-pack__status { display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 0.8125rem; font-weight: 600; background: var(--surface-muted, transparent); }
 .bulk-pack__status--created { background: var(--status-success-soft, var(--surface-muted)); color: var(--status-success-strong, inherit); }
 .bulk-pack__status--failed { background: var(--status-error-soft); color: var(--status-error-strong, var(--status-error-fg)); }
 .bulk-pack__status--creating { background: var(--status-info-soft); color: var(--status-info-strong, var(--status-info-fg)); }
@@ -1751,3 +1751,80 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
   text-overflow: clip;
 }
 .bulk-review__c-stock .bundle-stock--zero > span:first-child { color: var(--status-error-fg, var(--status-error-strong)); }
+
+/* === SECTION C7: visual consistency (one chip recipe, one caps label, type scale) and accent text contrast === */
+
+/* Small orange TEXT needs a darker shade than the fill accent: --accent-primary on white is 3.1:1.
+ * Measured: light 52% L is 5.85:1 on white, 5.18:1 on warning-soft, 5.09:1 on accent-soft;
+ * dark 78% L is 8.84:1 on surface, 7.0:1 on warning-soft. */
+:root {
+  --accent-text: oklch(52% 0.17 50);
+  --accent-text-hover: oklch(44% 0.16 50);
+}
+html[data-theme='dark'] {
+  --accent-text: oklch(78% 0.15 55);
+  --accent-text-hover: oklch(84% 0.14 55);
+}
+.bulk-review__edit,
+.bulk-review__back,
+.bulk-editor__cat-change,
+.s-hero__action {
+  color: var(--accent-text);
+}
+.bulk-review__edit:hover,
+.bulk-review__back:hover,
+.bulk-editor__cat-change:hover:not(:disabled),
+.s-hero__action:hover {
+  color: var(--accent-text-hover);
+}
+
+/* One chip recipe: the StatusBadge look (mono, caps, small radius) for every tag. */
+.cx-tag {
+  height: auto;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.cx-cover .cx-tag { height: auto; }
+.s-limit-tag { text-transform: uppercase; }
+
+/* One caps label: mono 11px, same as table headers and key-value labels. */
+.s-hero__label,
+.bf-summary__h {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+}
+.pm-card__aside--plain { font-family: var(--font-sans); font-size: 0.75rem; }
+
+/* Section titles: card title 15px, subsection 14px. */
+.pm-empty__t { font-size: 0.9375rem; }
+.bf-examples__t, .pm-gsec__t, .bf-h3 { font-size: 0.875rem; }
+.s3-doc .bf-h3, .s4-happens .bf-h3 { font-size: 0.875rem; }
+
+/* Tokens instead of hard-coded radii. */
+.bf-stepper .setup-stepper__progress, .s-bar, .s-bar > span { border-radius: var(--radius-xs); }
+
+/* Placeholder initial reads as a letter, not as a zero. */
+.product-thumbnail { font-family: var(--font-sans); font-weight: 600; }
+
+/* Summary rail: one card, rows separated by hairlines instead of four surface treatments. */
+.bundle-form .bf-summary__facts > div {
+  background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0; padding-inline: 0;
+}
+.bf-summary__name { font-size: 0.9375rem; }
+.bundle-form .s-hero.is-empty { border-style: solid; border-color: var(--border-subtle); }
+
+/* Wizard header breathes like other pages. */
+.bundle-form .page-header { padding-top: var(--space-5); }
+.bundle-form .bf-lead, .bundle-form .page-description { max-width: 72ch; }

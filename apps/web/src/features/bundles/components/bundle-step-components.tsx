@@ -172,7 +172,7 @@ export function BundleStepComponents({
 
   return (
     <div className="bf-step">
-      <p className="bf-lead">{copy.s1Lead}</p>
+      <p className="bf-lead">{copy.s1Lead} {copy.s1KompletNote}</p>
       <p className="bf-example" data-testid="bundle-form-example">
         {copy.s1Example}
       </p>

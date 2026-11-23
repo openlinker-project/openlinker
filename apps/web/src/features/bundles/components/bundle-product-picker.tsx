@@ -63,7 +63,9 @@ export function BundleProductPicker({
   const [expanded, setExpanded] = useState<Product | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
   const search = useDebouncedValue(text.trim(), 250);
-  const active = search.length >= 2;
+  const active = search.length >= 2 && text.trim().length >= 2;
+  // Rows belong to an older query until the debounce settles: Enter and clicks must wait.
+  const stale = text.trim() !== search;
 
   const results = useQuery({
     queryKey: ['bundles', 'product-search', search],
@@ -78,16 +80,20 @@ export function BundleProductPicker({
   });
 
   const items = useMemo<Product[]>(() => (active ? (results.data?.items ?? []) : []), [active, results.data]);
-  const options: ProductOption[] = items.map((product) => ({
-    id: `${baseId}-opt-${product.id}`,
-    disabled: disallowBundles && product.bundle != null,
-    product,
-  }));
+  // Choosable products first (stable), so a greyed bundle never pushes the first usable row down.
+  const options: ProductOption[] = items
+    .map((product) => ({
+      id: `${baseId}-opt-${product.id}`,
+      disabled: disallowBundles && product.bundle != null,
+      product,
+    }))
+    .sort((a, b) => Number(a.disabled) - Number(b.disabled));
   const nav = useComboboxNavigation(options);
 
   const [chooseFailed, setChooseFailed] = useState(false);
   const choose = async (option: ProductOption): Promise<void> => {
     const { product } = option;
+    if (stale) return;
     if (option.disabled) {
       setRejection(interpolate(copy.rejected, { name: product.name, reason: copy.reasonBundle }));
       return;
@@ -152,10 +158,10 @@ export function BundleProductPicker({
         data-testid={testIdPrefix}
         type="search"
         role="combobox"
-        aria-expanded={active && !results.isError}
+        aria-expanded={active && items.length > 0 && !results.isError}
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-activedescendant={nav.activeId ?? undefined}
+        aria-activedescendant={stale ? undefined : (nav.activeId ?? undefined)}
         autoComplete="off"
         value={text}
         disabled={disabled}
@@ -193,8 +199,10 @@ export function BundleProductPicker({
         className="bpick"
         role="listbox"
         aria-label={copy.listLabel}
-        aria-busy={results.isFetching}
+        aria-busy={results.isFetching || stale}
         hidden={items.length === 0}
+        tabIndex={-1}
+        style={{ maxHeight: 'min(360px, calc(100dvh - 14rem))', overflowY: 'auto' }}
       >
         {options.map((option) => {
           const { product } = option;
@@ -205,6 +213,7 @@ export function BundleProductPicker({
               id={option.id}
               role="option"
               aria-selected={isActive}
+              style={{ scrollMarginBottom: '6rem' }}
               aria-disabled={disabled || option.disabled}
               className={`bpick__row${isActive ? ' is-active' : ''}${option.disabled ? ' is-disabled' : ''}`}
               data-testid={`${testIdPrefix}-result-${product.sku ?? product.id}`}

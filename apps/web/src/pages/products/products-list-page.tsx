@@ -104,6 +104,8 @@ import { describeApiError } from '../../shared/api/describe-api-error';
 const PAGE_SIZE = 20;
 /** The bundle wizard refuses more components than this, so the selection action says so. */
 const BUNDLE_COMPONENT_LIMIT = 20;
+// The bulk multipack creator fetches at most this many products (MAX_BULK_ROWS in features/bundles/lib/bundle-bulk-model.ts).
+const BULK_MULTIPACK_LIMIT = 50;
 const SEARCH_DEBOUNCE_MS = 300;
 /** Opens the product peek on arrival: `/products?peek=<productId>`. */
 const PEEK_PARAM = 'peek';
@@ -1273,7 +1275,20 @@ function ProductsListPageBody(): ReactElement {
                         {bundleCopy.list.bundleFromSelected}
                       </Button>
                     ) : null}
-                    {bundleWrite.canWrite && selectedIds.size >= 2 ? (
+                    {bundleWrite.canWrite && selectedIds.size > BULK_MULTIPACK_LIMIT ? (
+                      <Button
+                        tone="ghost"
+                        disabled
+                        title={interpolate(bundleCopy.list.bulkMultipackTooMany, {
+                          max: format.number(BULK_MULTIPACK_LIMIT),
+                          n: format.number(selectedIds.size),
+                        })}
+                        data-testid="selection-bulk-multipack-disabled"
+                      >
+                        {interpolate(bundleCopy.list.bulkMultipackFromSelected, { n: format.number(selectedIds.size) })}
+                      </Button>
+                    ) : null}
+                    {bundleWrite.canWrite && selectedIds.size >= 2 && selectedIds.size <= BULK_MULTIPACK_LIMIT ? (
                       <Link
                         to={`/products/bundles/bulk?products=${[...selectedIds].map(encodeURIComponent).join(',')}`}
                         className="button button--ghost button--sm"

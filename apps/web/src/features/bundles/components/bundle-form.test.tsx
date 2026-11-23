@@ -4,7 +4,7 @@
  * (never a zero), the gift mark landing on the saved definition, and a viewer
  * who sees everything and can change nothing.
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -751,7 +751,7 @@ describe('BundleForm (#3624)', () => {
         expect.objectContaining({
           connectionId: 'master-1',
           name: 'Zestaw nowy',
-          sku: 'KUB-350-BI-SET',
+          sku: 'KUB-350-BI-x2',
           price: 80,
           rateSourceVariantId: 'mug',
         })
@@ -865,6 +865,8 @@ describe('BundleForm (#3624)', () => {
       await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
       await toProductStep(user);
       await user.type(await screen.findByTestId('bundle-form-new-name'), 'Nowy');
+      const skuInput = await screen.findByTestId('bundle-form-new-sku');
+      fireEvent.change(skuInput, { target: { value: 'KUB-350-BI-SET' } });
 
       expect(await screen.findByTestId('bundle-form-sku-taken')).toBeInTheDocument();
       expect(screen.getByTestId('bundle-form-next')).toHaveAttribute('aria-disabled', 'true');
@@ -999,5 +1001,21 @@ describe('BundleForm round 5 (seed, examples, pack size)', () => {
     await user.clear(name);
     await user.type(name, 'Kubek x5', { skipClick: true });
     expect(await screen.findByTestId('bundle-form-pack-mismatch')).toHaveTextContent('x5');
+  });
+});
+
+describe('BundleForm component search (#4266 r7)', () => {
+  it('should not add a stale row when Enter is pressed before the search settles', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, { apiClient: api(), sessionAdapter: createAuthenticatedSessionAdapter() });
+    await ready();
+    const input = await screen.findByTestId('bundle-form-component-search');
+    await user.type(input, 'Kubek');
+    await waitFor(() => {
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
+    });
+    await user.clear(input);
+    await user.type(input, 'podk{Enter}');
+    expect(screen.queryByTestId('bundle-form-component-qty-KUB-350-BI')).not.toBeInTheDocument();
   });
 });

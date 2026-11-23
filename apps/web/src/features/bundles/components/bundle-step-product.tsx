@@ -86,6 +86,8 @@ export interface BundleStepProductProps {
   nameSuggestion: string;
   /** A product that already has the typed SKU; the form blocks Next while this is set. */
   skuConflict?: SkuConflict;
+  /** A SKU already checked to be free; falls back to the model's unchecked base. */
+  skuSuggestion?: string;
   /** Set once the shop has made the product: the fields are then fixed, a retry reuses it as it is. */
   lockedProduct?: { name: string; sku: string } | null;
   /** The name claims a pack size the composition does not hold. */
@@ -174,6 +176,7 @@ export function BundleStepProduct({
   effectiveName,
   nameSuggestion,
   skuConflict,
+  skuSuggestion: skuSuggestionProp,
   lockedProduct = null,
   packMismatch = null,
   readOnly: readOnlyProp,
@@ -197,7 +200,7 @@ export function BundleStepProduct({
   const typedPrice = parsePrice(effectivePrice);
   const savings = sum !== null && typedPrice !== null && sum > typedPrice ? sum - typedPrice : null;
   const markup = sum !== null && typedPrice !== null && typedPrice > sum ? typedPrice - sum : null;
-  const skuSuggestion = suggestedSku(parsedRows);
+  const skuSuggestion = skuSuggestionProp ?? suggestedSku(parsedRows);
   const effectiveSku = draft.touched.sku ? draft.sku : skuSuggestion;
   const descriptionSuggestion = suggestedDescription(parsedRows);
   const effectiveDescription = draft.touched.description ? draft.description : descriptionSuggestion;
@@ -407,6 +410,7 @@ export function BundleStepProduct({
               <button
                 type="button"
                 className="link s2-switch"
+                style={{ minWidth: 0, maxWidth: '100%', whiteSpace: 'normal', boxSizing: 'border-box' }}
                 data-testid="bundle-form-switch-create"
                 onClick={() => {
                   onModeChange('create');

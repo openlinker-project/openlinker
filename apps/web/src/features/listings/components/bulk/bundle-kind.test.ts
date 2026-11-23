@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { unsettledBundleVariants } from './bundle-kind';
+import { relabelConditionParameter, unsettledBundleVariants } from './bundle-kind';
 
 describe('unsettledBundleVariants', () => {
   const rows = [
@@ -17,5 +17,17 @@ describe('unsettledBundleVariants', () => {
     const result = unsettledBundleVariants(rows, new Set(), new Set(['b']), false);
     expect([...result.failed]).toEqual(['b']);
     expect(result.pending.size).toBe(0);
+  });
+});
+
+describe('relabelConditionParameter', () => {
+  it('should rename the condition parameter and make it optional', () => {
+    const result = relabelConditionParameter({ id: '11323', name: 'Stan', required: true }, 'Stan produktu');
+    expect(result).toEqual({ id: '11323', name: 'Stan produktu', required: false });
+  });
+
+  it('should leave every other parameter untouched', () => {
+    const other = { id: '1', name: 'Marka', required: true };
+    expect(relabelConditionParameter(other, 'x')).toBe(other);
   });
 });

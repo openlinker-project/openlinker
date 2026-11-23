@@ -19,6 +19,7 @@ import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../.
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { GuideButton } from '../../../../shared/ui/guide-drawer';
 import { BundleGuide } from '../../../bundles/components/bundle-guide';
+import { useBundleProbeQuery } from '../../../bundles/hooks/use-bundle-queries';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -347,6 +348,15 @@ export function BulkWizard({
   const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
   const bundleGuideCopy = useMessages('bundles');
   const hasBundles = bundlePreview.bundles.size > 0;
+  // Step 1 is before the composition check runs, so the header would call a set
+  // "1 product - 1 variant" and the operator cannot tell the handoff carried one.
+  // A lookup by variant id answers which of the chosen variants are bundles.
+  const includedVariantIds = useMemo(
+    () => rows.flatMap((row) => row.variants.filter((v) => v.included).map((v) => v.variantId)),
+    [rows],
+  );
+  const setProbe = useBundleProbeQuery(isShop ? [] : includedVariantIds);
+  const setCount = setProbe.data?.length ?? 0;
 
 
   const platformValidate = useMemo<
@@ -994,10 +1004,19 @@ export function BulkWizard({
         ) : undefined
       }
       description={
-        interpolate(isShop ? copy.description.shop : copy.description.marketplace, {
-          products: productCount,
-          variants: variantCount,
-        })
+        setCount > 0 && setCount === counts.totalVariants
+          ? interpolate(copy.description.marketplaceSets, {
+              sets: plural(setCount, copy.description.setCount),
+            })
+          : interpolate(isShop ? copy.description.shop : copy.description.marketplace, {
+              products: productCount,
+              variants: variantCount,
+            }) +
+            (setCount > 0
+              ? ` ${interpolate(copy.description.includingSets, {
+                  sets: plural(setCount, copy.description.setCount),
+                })}`
+              : '')
       }
     >
       <div className="bulk-wizard">

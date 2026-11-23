@@ -141,7 +141,14 @@ export function componentsSum(rows: readonly ParsedRow[]): number | null {
 
 export function suggestedSku(rows: readonly ParsedRow[]): string {
   const first = rows.find((row) => row.sku !== null && !row.gift) ?? rows.find((row) => row.sku !== null);
-  return first?.sku ? `${first.sku}-SET` : '';
+  if (!first?.sku) return '';
+  const counted = rows.filter((row) => row.qty > 0 && !row.gift);
+  // A pack of one product is "-x3" and a set of several is a komplet ("-KPL"): the old shared
+  // "-SET" suffix collided with the second bundle anyone made from the same first component.
+  if (counted.length === 1 && counted[0] !== undefined && counted[0].qty > 1) {
+    return `${first.sku}-x${String(counted[0].qty)}`;
+  }
+  return counted.length > 1 ? `${first.sku}-KPL` : `${first.sku}-SET`;
 }
 
 /** "Kubek ceramiczny, Kawa ziarnista 250 g" - the names, with quantities when above one. */

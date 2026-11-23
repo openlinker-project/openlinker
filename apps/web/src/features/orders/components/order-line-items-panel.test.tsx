@@ -90,8 +90,8 @@ describe('OrderLineItemsPanel', () => {
     ];
     renderWithProviders(<OrderLineItemsPanel items={itemsMissingSku} />);
 
-    expect(screen.getByText('ol_product_x')).toBeInTheDocument();
-    expect(screen.getByText('ol_orderitem_noProduct')).toBeInTheDocument();
+    expect(screen.getByText('ID: ol_product_x')).toBeInTheDocument();
+    expect(screen.getByText('ID: ol_orderitem_noProduct')).toBeInTheDocument();
   });
 
   it('renders a backfilled rate as estimated from catalogue, never as a live shop/channel read (#2440)', () => {

@@ -11,6 +11,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import type { ApiClient } from '../../../app/api/api-client';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 
 export interface SkuConflict {
@@ -23,33 +24,42 @@ const PROBE_LIMIT = 20;
 /** Hits whose variants are not on the list row are opened one by one, but only this many. */
 const DETAIL_LOOKUPS = 5;
 
+/** The product that already owns this exact SKU, or `null`; shared by the wizard hook and the bulk table. */
+export async function findSkuConflict(apiClient: ApiClient, probe: string): Promise<SkuConflict | null> {
+  const wanted = probe.toLowerCase();
+  const page = await apiClient.products.listRows({ search: probe }, { limit: PROBE_LIMIT, offset: 0 });
+  const same = (value: string | null | undefined): boolean => (value ?? '').trim().toLowerCase() === wanted;
+  for (const product of page.items) {
+    if (same(product.sku) || (product.variants ?? []).some((variant) => same(variant.sku))) {
+      return { productId: product.id, name: product.name, sku: probe };
+    }
+  }
+  for (const product of page.items.filter((item) => item.variants === undefined).slice(0, DETAIL_LOOKUPS)) {
+    try {
+      const detail = await apiClient.products.getById(product.id);
+      if ((detail.variants ?? []).some((variant) => same(variant.sku))) {
+        return { productId: product.id, name: product.name, sku: probe };
+      }
+    } catch {
+      // A product that cannot be opened is no proof of a conflict; the shop still decides on save.
+    }
+  }
+  return null;
+}
+
+export const skuConflictQueryKey = (probe: string): readonly string[] => [
+  'bundles',
+  'sku-conflict',
+  probe.toLowerCase(),
+];
+
 export function useSkuConflict(sku: string, enabled: boolean): SkuConflict | undefined {
   const apiClient = useApiClient();
   const typed = sku.trim();
   const probe = useDebouncedValue(typed, 300);
   const query = useQuery({
-    queryKey: ['bundles', 'sku-conflict', probe.toLowerCase()],
-    queryFn: async (): Promise<SkuConflict | null> => {
-      const wanted = probe.toLowerCase();
-      const page = await apiClient.products.listRows({ search: probe }, { limit: PROBE_LIMIT, offset: 0 });
-      const same = (value: string | null | undefined): boolean => (value ?? '').trim().toLowerCase() === wanted;
-      for (const product of page.items) {
-        if (same(product.sku) || (product.variants ?? []).some((variant) => same(variant.sku))) {
-          return { productId: product.id, name: product.name, sku: probe };
-        }
-      }
-      for (const product of page.items.filter((item) => item.variants === undefined).slice(0, DETAIL_LOOKUPS)) {
-        try {
-          const detail = await apiClient.products.getById(product.id);
-          if ((detail.variants ?? []).some((variant) => same(variant.sku))) {
-            return { productId: product.id, name: product.name, sku: probe };
-          }
-        } catch {
-          // A product that cannot be opened is no proof of a conflict; the shop still decides on save.
-        }
-      }
-      return null;
-    },
+    queryKey: skuConflictQueryKey(probe),
+    queryFn: () => findSkuConflict(apiClient, probe),
     enabled: enabled && probe.length >= 2,
     staleTime: 15_000,
   });
