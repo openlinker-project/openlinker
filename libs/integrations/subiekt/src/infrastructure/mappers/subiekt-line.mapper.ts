@@ -172,7 +172,8 @@ export function expandStockComponents(lines: readonly InvoiceLine[]): InvoiceLin
             : Math.round(((total * component.quantity) / paidUnits) * 100) / 100;
         allocated += share;
       }
-      const { stockComponents: _omit, ...rest } = line;
+      // A component line must not carry the set's own expansion on to the document.
+      const rest: InvoiceLine = { ...line, stockComponents: undefined };
       out.push({
         ...rest,
         name: component.name?.trim() || line.name,
