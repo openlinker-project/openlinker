@@ -2329,6 +2329,7 @@
       "footnoteFrozen": "Koszt jest pobierany z produktu w chwili otrzymania zamówienia i później się nie zmienia.",
       "footnoteNextOrder": "Dodanie kosztu teraz nie zmieni tego zamówienia; będzie liczony od następnego.",
       "fromComponents": "liczony ze składników",
+      "marginFromComponents": "nie liczona dla zestawu",
       "marginNotAvailable": "marża niedostępna",
       "noVariant": "brak wariantu",
       "notAvailable": "koszt niedostępny",
@@ -2339,6 +2340,7 @@
     "emptyTitle": "Brak pozycji",
     "idPrefix": "ID:",
     "jumpToNextFlagged": "Przejdź do następnej oznaczonej",
+    "offerPrefix": "Oferta:",
     "onlyFlagged": "Tylko oznaczone",
     "qtyWas": "było {quantity}",
     "taxRate": {

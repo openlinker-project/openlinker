@@ -135,14 +135,6 @@ export function BundleVariantPicker({
   const products = useMemo<Product[]>(() => (active ? (results.data?.items ?? []) : []), [active, results.data]);
   const maybeMore = active && products.length >= limit;
 
-  // The total is only worth a request when the page came back full.
-  const total = useQuery({
-    queryKey: ['bundles', 'product-count', search],
-    queryFn: () => apiClient.products.count({ search }),
-    enabled: maybeMore,
-    staleTime: 30_000,
-  });
-
   const details = useQueries({
     queries: products.map((product) => ({
       queryKey: ['bundles', 'product-detail', product.id],
@@ -340,7 +332,6 @@ export function BundleVariantPicker({
           ? interpolate(copy.noResultsTitle, { q: search })
           : formatPlural(settledCount, copy.resultsCount, locale)
         : '';
-  const totalCount = total.data?.total;
 
   return (
     <div className="bundle-picker">
@@ -444,7 +435,7 @@ export function BundleVariantPicker({
         // Scrollable by pointer but not a tab stop: Tab goes input -> "show more", and the arrows keep
         // moving the highlight. The cap keeps the last rows clear of the sticky action bar.
         tabIndex={-1}
-        style={{ maxHeight: 'min(360px, calc(100dvh - 14rem))', overflowY: 'auto' }}
+        style={{ maxHeight: 'min(360px, calc(100dvh - 9rem - var(--bf-bar-h, 5rem)))', overflowY: 'auto' }}
       >
         {order.map((index) => {
           const product = products[index];
@@ -580,23 +571,20 @@ export function BundleVariantPicker({
       {maybeMore && !initialLoading ? (
         <div className="bpick__more">
           <span className="bpick__more-note">
-            {totalCount !== undefined
-              ? interpolate(copy.showing, { shown: products.length, total: totalCount })
-              : interpolate(copy.showingSome, { shown: products.length })}
+            {/* The catalogue count is in variants, this list in products: a "of N" here would be a different unit. */}
+            {interpolate(copy.showingSome, { shown: products.length })}
           </span>
-          {totalCount === undefined || totalCount > products.length ? (
-            <Button
-              tone="ghost"
-              className="button--sm"
-              data-testid={`${testIdPrefix}-more`}
-              disabled={results.isFetching}
-              onClick={() => {
-                setLimit((current) => current + PAGE_SIZE);
-              }}
-            >
-              {copy.showMore}
-            </Button>
-          ) : null}
+          <Button
+            tone="ghost"
+            className="button--sm"
+            data-testid={`${testIdPrefix}-more`}
+            disabled={results.isFetching}
+            onClick={() => {
+              setLimit((current) => current + PAGE_SIZE);
+            }}
+          >
+            {copy.showMore}
+          </Button>
         </div>
       ) : null}
     </div>

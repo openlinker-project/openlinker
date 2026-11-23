@@ -792,10 +792,13 @@ export function BundleForm({
     setBlockedNote(null);
     setStep(index);
     setMaxStep((current) => Math.max(current, index));
-    // The page keeps its scroll position; it moves only when the step heading is above the screen.
+    // The page keeps its scroll position; it moves only when the stepper (or the heading) is above the
+    // screen, and then to the stepper so the operator sees which of the steps they are on.
     const heading = headingRef.current;
-    if (heading !== null && heading.getBoundingClientRect().top < 0) {
-      heading.scrollIntoView?.({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+    const stepper = heading?.closest('.bundle-form')?.querySelector('.bf-stepper') ?? null;
+    const anchor = stepper ?? heading;
+    if (anchor !== null && anchor.getBoundingClientRect().top < 0) {
+      anchor.scrollIntoView?.({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
     }
   };
   const goNext = (): void => {

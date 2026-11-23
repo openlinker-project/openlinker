@@ -307,7 +307,11 @@ export function BundleStepProduct({
 
   return (
     <div className="bf-step s2">
-      <p className="bf-lead">{copy.s2Lead}</p>
+      <p className="bf-lead">
+        {onlyCreator !== undefined
+          ? interpolate(copy.s2LeadNamed, { name: onlyCreator.connectionName })
+          : copy.s2Lead}
+      </p>
       <div className="s2-explainer" data-open={explainerOpen} data-testid="bundle-form-explainer">
         {explainerOpen ? (
           <>
@@ -347,12 +351,8 @@ export function BundleStepProduct({
         options={[
           {
             value: 'create',
-            title: (
-              <>
-                {copy.s2ModeNew}
-                {canCreate ? <span className="s2-rec">{copy.s2Recommended}</span> : null}
-              </>
-            ),
+            // No "Recommended" badge: it is only true when no matching item exists yet, which the card text says.
+            title: copy.s2ModeNew,
             description: copy.s2ModeNewText,
             disabled: (targetsLoaded && !canCreate) || targetsFailed,
             disabledReason: copy.s2ModeNewDisabled,
@@ -361,7 +361,10 @@ export function BundleStepProduct({
           {
             value: 'existing',
             title: copy.s2ModeExisting,
-            description: copy.s2ModeExistingText,
+            description:
+              onlyCreator !== undefined
+                ? interpolate(copy.s2ModeExistingTextNamed, { name: onlyCreator.connectionName })
+                : copy.s2ModeExistingText,
             'data-testid': 'bundle-form-mode-existing',
           },
         ]}

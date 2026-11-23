@@ -424,14 +424,6 @@ export function BundleProductView({
             data-testid="bundle-view-derived-stock"
           >
             {copy.derivedStock}
-          </span>{' '}
-          <span
-            className="cx-tag cx-tag--quiet bundle-derived-tag"
-            title={copy.virtualHint}
-            tabIndex={0}
-            data-testid="bundle-view-virtual-chip"
-          >
-            {copy.virtualChip}
           </span>
           <div className={`cx-avail ${availabilityTone}`} style={{ alignItems: 'flex-end' }}>
             {removedCount > 0 ? (

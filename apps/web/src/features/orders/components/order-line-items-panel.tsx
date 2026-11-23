@@ -142,7 +142,14 @@ export function OrderLineItemsPanel({
       cell: (item) => (
         <OrderLineItemIdentity
           name={item.name}
-          code={item.sku ?? `${copy.idPrefix} ${item.productId ?? item.id}`}
+          code={
+            item.sku
+              ? // A bare channel offer number on a bundle line reads like a SKU or a tax id.
+                bundleByLine.has(item.id) && /^\d+$/.test(item.sku)
+                ? `${copy.offerPrefix} ${item.sku}`
+                : item.sku
+              : `${copy.idPrefix} ${item.productId ?? item.id}`
+          }
           codeIsFallback={!item.sku}
           imageSrc={item.imageUrl}
           placeholderName={item.name ?? item.sku ?? item.productId ?? item.id}
@@ -573,7 +580,13 @@ function buildCostColumns(
       id: 'lineMargin',
       header: copy.columns.margin,
       align: 'right',
-      cell: (item) => <MarginCell line={costForItem(items, costs, item)} currency={costs.currency} />,
+      cell: (item) => (
+        <MarginCell
+          line={costForItem(items, costs, item)}
+          currency={costs.currency}
+          fromComponents={bundleLineIds.has(item.id)}
+        />
+      ),
     },
   ];
 }
@@ -629,12 +642,19 @@ function CostCell({
 function MarginCell({
   line,
   currency,
+  fromComponents = false,
 }: {
   line: OrderLineCost | null;
   currency: string | null;
+  fromComponents?: boolean;
 }): ReactElement {
   const copy = useMessages('orders').orderLineItems.cost;
   const format = useFormat();
+  // Same reasoning as the cost cell: the bundle's cost comes from its
+  // components, so "out of margin" would contradict it on the same row.
+  if (fromComponents && (!line || line.margin === null)) {
+    return <span className="text-muted">{copy.marginFromComponents}</span>;
+  }
   if (!line) return <AbsentValue label={copy.marginNotAvailable} />;
   if (line.margin !== null) {
     return <span className="mono-text">{format.money(line.margin, currency ?? undefined)}</span>;

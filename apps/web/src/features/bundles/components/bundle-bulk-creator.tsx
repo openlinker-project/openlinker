@@ -379,7 +379,11 @@ export function BundleBulkCreator({ productIds }: BundleBulkCreatorProps): React
   const skipped = seed.data.skipped;
   const lookupFailures = skipped.filter((item) => item.reason === 'notFound');
   const collapseFailures = lookupFailures.length > SKIP_COLLAPSE_ABOVE;
-  const shownSkipped = collapseFailures ? skipped.filter((item) => item.reason !== 'notFound') : skipped;
+  const tooManyCount = skipped.filter((item) => item.reason === 'tooMany').length;
+  // Over-limit ids carry no loaded name, so a raw id per line says nothing: one summary line instead.
+  const shownSkipped = (collapseFailures ? skipped.filter((item) => item.reason !== 'notFound') : skipped).filter(
+    (item) => item.reason !== 'tooMany',
+  );
   const capped = productIds.length > MAX_BULK_ROWS;
   const noShop = targets.isSuccess && creators.length === 0;
   const submitLabel = running
@@ -423,7 +427,7 @@ export function BundleBulkCreator({ productIds }: BundleBulkCreatorProps): React
           <select
             className="input"
             value={masterId}
-            disabled={running}
+            disabled={running || createdCount > 0}
             onChange={(event) => setMasterChoice(event.target.value)}
           >
             {creators.map((target) => (
@@ -451,6 +455,9 @@ export function BundleBulkCreator({ productIds }: BundleBulkCreatorProps): React
                 <strong>{item.name}</strong>: {copy.bulk.skipReason[item.reason]}
               </li>
             ))}
+            {tooManyCount > 0 ? (
+              <li>{interpolate(copy.bulk.skippedTooMany, { n: format.number(tooManyCount) })}</li>
+            ) : null}
             {collapseFailures ? (
               <li>{interpolate(copy.bulk.skippedMany, { n: format.number(lookupFailures.length) })}</li>
             ) : null}
@@ -607,7 +614,9 @@ export function BundleBulkCreator({ productIds }: BundleBulkCreatorProps): React
                         <button
                           type="button"
                           className="bulk-pack__remove"
-                          disabled={running}
+                          // A row that already owns a product at the master would leave it orphaned.
+                          disabled={running || row.created !== null}
+                          title={row.created !== null ? copy.bulk.removeCreatedTitle : undefined}
                           aria-label={interpolate(copy.bulk.removeAria, { name: row.choice.name })}
                           onClick={() => setRows((current) => current.filter((item) => item.choice.productId !== id))}
                         >
@@ -637,6 +646,12 @@ export function BundleBulkCreator({ productIds }: BundleBulkCreatorProps): React
       ) : null}
 
       <div className="bulk-pack__actions">
+        {running ? (
+          <div className="bulk-pack__progress" data-testid="bulk-progress">
+            <span>{interpolate(copy.bulk.progress, { done: format.number(createdCount), total: format.number(rows.length) })}</span>
+            <progress max={Math.max(rows.length, 1)} value={createdCount} aria-hidden="true" />
+          </div>
+        ) : null}
         <Link className="button button--ghost" to="/products">
           {copy.bulk.cancel}
         </Link>

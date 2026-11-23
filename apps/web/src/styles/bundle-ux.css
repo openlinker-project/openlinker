@@ -1546,7 +1546,6 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 @media (pointer: coarse), (max-width: 768px) {
   .bundle-form .bf-summarychip { min-height: 44px; }
   .bundle-form .bf-skip { min-height: 44px; display: inline-flex; align-items: center; }
-  .bundle-form .pm-qmark { min-width: 44px; justify-content: center; }
   .sortbtn { min-width: 44px; min-height: 44px; }
 }
 
@@ -1828,3 +1827,79 @@ html[data-theme='dark'] {
 /* Wizard header breathes like other pages. */
 .bundle-form .page-header { padding-top: var(--space-5); }
 .bundle-form .bf-lead, .bundle-form .page-description { max-width: 72ch; }
+
+
+/* --- Round 8 lane X --- */
+/* The right rail must never be wider than its grid column: a nowrap pill or a long word was clipping the availability card. */
+.pm-rail, .pm-rail .pm-card, .pm-rail .composer-section { min-width: 0; max-width: 100%; }
+.pm-rail { overflow-wrap: anywhere; }
+.bundle-derived-tag { white-space: normal; height: auto; max-width: 100%; padding-block: 2px; line-height: 1.25; }
+.pm-rail .cx-avail { flex-wrap: wrap; min-width: 0; }
+.pm-rail .cx-tag { white-space: normal; height: auto; }
+
+/* '?' help mark: a fixed 18px circle everywhere, with the 44px hit area on a pseudo-element. */
+.pm-qmark { position: relative; width: 18px; height: 18px; min-width: 18px; flex: 0 0 18px; font-size: 12px; border-radius: 50%; }
+.pm-qmark::after { content: ''; position: absolute; inset: -13px; }
+
+/* Bulk creator: the name is the field to verify, so its column takes the spare width; the footer stays in reach on a long run. */
+.bulk-pack__table td:nth-child(3) { width: 40%; }
+.bulk-pack__table td:nth-child(3) .control { min-width: 16rem; width: 100%; }
+.bulk-pack__actions {
+  position: sticky; bottom: 0; z-index: 5; align-items: center;
+  padding: var(--space-3) 0; background: var(--surface-page, var(--surface)); border-top: 1px solid var(--border-subtle);
+}
+.bulk-pack__progress { display: flex; align-items: center; gap: var(--space-2); margin-right: auto; font-size: 0.8125rem; color: var(--text-secondary); }
+.bulk-pack__progress progress { width: 140px; height: 6px; accent-color: var(--accent-primary); }
+@media (max-width: 599px) {
+  .bulk-pack__table td:nth-child(3) .control { min-width: 0; }
+}
+
+/* Step 1 example cards: a full bordered card, content left-aligned in one column (no empty icon gutter). */
+.bf-examples .bf-example-card {
+  display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-items: start; gap: 4px;
+  padding: 12px 14px; border: 1px solid var(--border-default, var(--border)); border-radius: var(--radius-lg, 10px);
+  background: var(--surface, var(--bg-surface)); box-shadow: none; min-height: 0; height: auto; text-align: left;
+}
+.bf-examples .bf-example-card b { font-weight: 600; color: var(--text-primary); }
+
+/* One chip recipe on the products row: mono 10px caps, tracked, weight 500 (BUNDLE tag, limited-by badge, row CTA, coverage pill). */
+.products-row .cx-tag, .data-table .cx-tag, .status-badge--compact, .products-row-cta, .coverage-pill {
+  font-family: var(--font-mono); font-size: 0.625rem; font-weight: 500; line-height: 1rem;
+  text-transform: uppercase; letter-spacing: var(--tracking-caps);
+}
+.status-badge--compact { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coverage-pill { border-radius: var(--radius-sm); }
+
+/* Sticky action bar height as one variable, so the picker list and its rows stay clear of it. */
+.bundle-form { --bf-bar-h: 5rem; }
+.bpick__row { scroll-margin-bottom: var(--bf-bar-h, 5rem); }
+.bf-stepper { scroll-margin-top: var(--space-3); }
+
+/* Round 8, integrator: the step 1 example cards are <button>s and inherited the global `button` rule
+   (orange fill on hover and press, centred inline-flex content, fixed height). A card is a quiet choice:
+   neutral surface in every state, the accent only on the border, content left aligned. */
+.bf-examples .bf-example-card,
+.bf-examples .bf-example-card:hover,
+.bf-examples .bf-example-card:active,
+.bf-examples .bf-example-card:focus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  justify-content: stretch;
+  justify-items: start;
+  height: auto;
+  min-height: 0;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  background-image: none;
+  box-shadow: none;
+}
+.bf-examples .bf-example-card:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-primary);
+}
+.bf-examples .bf-example-card > b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+.bf-examples .bf-example-card > span { font-size: 0.8125rem; font-weight: 400; color: var(--text-secondary); }

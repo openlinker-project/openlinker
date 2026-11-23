@@ -335,10 +335,14 @@ export function BundleFinalTitle({
   const copy = useMessages('listings').bundleOffer;
   const packSize = packSizeOf(preview);
   if (packSize === null || title.trim() === '') return null;
-  const finalTitle = interpolate(copy.packFinalTitle, {
-    title: title.trim().replace(/\s+/g, ' '),
-    n: packSize,
-  });
+  const cleanTitle = title.trim().replace(/\s+/g, ' ');
+  // A title that already states the quantity ("... x4", "4 szt.") must not get
+  // the pack label appended a second time: it would state it twice and cost
+  // ~16 of the 75 characters.
+  const alreadyStatesQuantity = /(^|[\s(])[x×]\s?\d+\b|\b\d+\s?(szt|sztuk)\b/i.test(cleanTitle);
+  const finalTitle = alreadyStatesQuantity
+    ? cleanTitle
+    : interpolate(copy.packFinalTitle, { title: cleanTitle, n: packSize });
   return (
     <p
       className={`cx-sub bundle-comp__title${finalTitle.length > limit ? ' is-warn' : ''}`}

@@ -13,6 +13,7 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
+import { displayConnectionName } from '../../../../shared/lib/display-connection-name';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
@@ -215,7 +216,7 @@ export function BulkWizard({
     if (!activeConnection) return;
     const previousTitle = document.title;
     document.title = interpolate(isShop ? copy.documentTitle.shop : copy.documentTitle.marketplace, {
-      connection: activeConnection.name,
+      connection: displayConnectionName(activeConnection.name),
     });
     return () => {
       document.title = previousTitle;
@@ -936,7 +937,9 @@ export function BulkWizard({
   );
 
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
-  const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
+  const dupGuardDestinationName = activeConnection
+    ? displayConnectionName(activeConnection.name)
+    : marketplaceName;
 
   // Marketplace publish gate: a duplicate opens the soft confirm first, which on
   // confirm hands off to the existing submit-confirm modal.
@@ -988,7 +991,7 @@ export function BulkWizard({
   const pageTitle =
     step !== 'config' && activeConnection !== null
       ? interpolate(isShop ? copy.title.shopTo : copy.title.marketplaceOn, {
-          connection: activeConnection.name,
+          connection: displayConnectionName(activeConnection.name),
         })
       : baseTitle;
   const productCount = plural(rows.length, copy.description.productCount);
@@ -1191,7 +1194,7 @@ export function BulkWizard({
           description={
             activeConnection
               ? interpolate(copy.changeDestination.descriptionNamed, {
-                  connection: activeConnection.name,
+                  connection: displayConnectionName(activeConnection.name),
                 })
               : copy.changeDestination.description
           }

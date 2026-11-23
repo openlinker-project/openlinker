@@ -2203,6 +2203,7 @@
       "footnoteFrozen": "Cost is taken from the product when the order arrives and never changes afterwards.",
       "footnoteNextOrder": "Adding a cost now will not change this order; it counts from the next one.",
       "fromComponents": "calculated from components",
+      "marginFromComponents": "not calculated for a bundle",
       "marginNotAvailable": "margin not available",
       "noVariant": "no variant",
       "notAvailable": "cost not available",
@@ -2213,6 +2214,7 @@
     "emptyTitle": "No line items",
     "idPrefix": "ID:",
     "jumpToNextFlagged": "Jump to next flagged",
+    "offerPrefix": "Offer:",
     "onlyFlagged": "Only flagged",
     "qtyWas": "was {quantity}",
     "taxRate": {

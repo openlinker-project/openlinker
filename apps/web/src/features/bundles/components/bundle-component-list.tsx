@@ -45,7 +45,9 @@ export function BundleComponentList({
         const name = component.summary.name ?? component.summary.sku ?? component.variantId;
         const stock = component.availableToPromise;
         const sets = stock === null ? null : Math.floor(stock / component.quantity);
-        const limiting = bundlesAvailable !== null && sets !== null && sets === bundlesAvailable;
+        // With one component 'limits' says nothing: it is the only thing the count can come from.
+        const limiting =
+          components.length > 1 && bundlesAvailable !== null && sets !== null && sets === bundlesAvailable;
         const nameNode = linkNames ? (
           <Link to={`/products/${encodeURIComponent(component.productId)}`}>{name}</Link>
         ) : (

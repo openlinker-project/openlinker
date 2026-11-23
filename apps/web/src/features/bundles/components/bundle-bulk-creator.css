@@ -20,7 +20,7 @@
   font-weight: 600;
   color: var(--status-warning-strong, inherit);
 }
-.bulk-pack__table td:nth-child(3) .control { min-width: 240px; }
+.bulk-pack__table td:nth-child(3) .control { min-width: 16rem; }
 
 /* Under 600px a row becomes a card: price, status and remove stay on screen
    instead of hiding behind an unmarked sideways scroll. */

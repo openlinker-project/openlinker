@@ -2139,7 +2139,7 @@ function BaseScopeForm({
                 .filter(Boolean)
                 .join(' ')}
               inputMode="numeric"
-              placeholder={copy.ean.placeholder}
+              placeholder={bundle ? '-' : copy.ean.placeholder}
               aria-label={copy.ean.label}
               aria-invalid={eanInvalid}
               readOnly={Boolean(bundle)}
