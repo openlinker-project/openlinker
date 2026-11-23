@@ -614,7 +614,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
             <p className="tour-card__hint">{tour.viewerHint}</p>
           ) : null}
         </div>
-        {blocked && state.target !== 'missing' ? (
+        {blocked && state.target !== 'missing' && !onFollowPage ? (
           <p id={reasonId} className="tour-card__reason">
             {tour.requiredReason}
           </p>
@@ -654,6 +654,11 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                   {tour.skip} <ReleaseIcon name="arrow-right" size={14} />
                 </Button>
               </>
+            ) : onFollowPage && stepPath ? (
+              /* Here the way on is back to the step, so that is the one button; "Next" would only sit locked. */
+              <Button tone="primary" className="button--sm" onClick={() => void navigate(stepPath)}>
+                {tour.goToStep} <ReleaseIcon name="arrow-right" size={14} />
+              </Button>
             ) : (
               <Button
                 tone="primary"
