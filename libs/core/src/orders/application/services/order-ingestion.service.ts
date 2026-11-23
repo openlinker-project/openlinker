@@ -1237,7 +1237,14 @@ export class OrderIngestionService implements IOrderIngestionService {
         // `persisted`; reading `existing` here would silently answer
         // "not asserted" for every order's first ingestion.
         persisted.buyerTaxId,
-        await this.bundleDocuments.resolveForDocuments(persisted, connectionId)
+        // The bundle lines come from the FROZEN expansion, which is written
+        // after `persistOrder` returned: `persisted` of a first-seen order
+        // still has none, so the document would be composed as if no bundle
+        // existed (the set's own towar sold, with no stock behind it). Re-read.
+        await this.bundleDocuments.resolveForDocuments(
+          (await this.orderRecordService.getOrderRecord(order.id)) ?? persisted,
+          connectionId
+        )
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
