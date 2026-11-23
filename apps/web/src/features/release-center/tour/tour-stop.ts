@@ -16,7 +16,7 @@ export interface TourStop {
   path: string;
   target: string;
   /** The page a link in the step leads to, and what to highlight there. */
-  follow?: { path: string; target: string };
+  follow?: { path: string; targets: readonly string[] };
 }
 
 export function resolveTourStop(step: TourStepInput): TourStop | null {
@@ -36,7 +36,7 @@ export function resolveTourStop(step: TourStepInput): TourStop | null {
   return {
     path: generatePath(`/${entry.routePattern}`, params),
     target: entry.target,
-    follow: entry.follow ? { path: generatePath(`/${entry.follow.routePattern}`), target: entry.follow.target } : undefined,
+    follow: entry.follow ? { path: generatePath(`/${entry.follow.routePattern}`), targets: entry.follow.targets } : undefined,
   };
 }
 

@@ -60,7 +60,6 @@ export function SalesDocumentsPage(): ReactElement {
     >
     <SettingsPageFrame
       wide
-      data-tour="sales-document-routing"
       eyebrow={copy.eyebrow}
       title={copy.title}
       short={tpl.salesMarkets.short}
@@ -73,14 +72,22 @@ export function SalesDocumentsPage(): ReactElement {
           label: copy.sections.markets,
           title: tpl.salesMarkets.title,
           hint: tpl.salesMarkets.hint,
-          children: <SalesDocumentRuleEnginePanel />,
+          children: (
+            <div data-tour="sales-markets">
+              <SalesDocumentRuleEnginePanel />
+            </div>
+          ),
         },
         {
           id: 'providers',
           label: copy.sections.providers,
           title: tpl.salesProviders.title,
           hint: tpl.salesProviders.hint,
-          children: <SalesDocumentsPanel />,
+          children: (
+            <div data-tour="sales-providers">
+              <SalesDocumentsPanel />
+            </div>
+          ),
         },
         {
           id: 'gifts',

@@ -105,7 +105,16 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const location = useLocation();
   // On the page a step's link leads to, the tour points there instead of at the step's own element.
   const onFollowPage = Boolean(stop?.follow && location.pathname === stop.follow.path);
-  const target = useTourTarget(onFollowPage ? (stop?.follow?.target ?? null) : (stop?.target ?? null), state.active, state.index);
+  // Which of the follow-up page's stops is shown; starts over with every step and when the page is left.
+  const [followIndex, setFollowIndex] = useState(0);
+  useEffect(() => setFollowIndex(0), [state.index, onFollowPage]);
+  const followTargets = stop?.follow?.targets ?? [];
+  const followLast = followIndex >= followTargets.length - 1;
+  const target = useTourTarget(
+    onFollowPage ? (followTargets[followIndex] ?? null) : (stop?.target ?? null),
+    state.active,
+    state.index * 100 + (onFollowPage ? followIndex + 1 : 0)
+  );
 
   useEffect(() => {
     if (target.state === 'found') dispatch({ type: 'target', state: 'found' });
@@ -569,7 +578,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
             ) : null}
           </div>
           <p className="tour-card__body">
-            {onFollowPage && 'followBody' in stepCopy && typeof stepCopy.followBody === 'string' ? stepCopy.followBody : stepCopy.tourBody}
+            {(onFollowPage ? (stepCopy as Record<string, string | undefined>)[`follow${followIndex}`] : undefined) ?? stepCopy.tourBody}
           </p>
         </div>
         {!showcase && isAdmin && spec ? (
@@ -655,9 +664,13 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                 </Button>
               </>
             ) : onFollowPage && stepPath ? (
-              /* Here the way on is back to the step, so that is the one button; "Next" would only sit locked. */
-              <Button tone="primary" className="button--sm" onClick={() => void navigate(stepPath)}>
-                {tour.goToStep} <ReleaseIcon name="arrow-right" size={14} />
+              /* Walk the follow-up page's stops, then lead back to the step: "Next" there would only sit locked. */
+              <Button
+                tone="primary"
+                className="button--sm"
+                onClick={() => (followLast ? void navigate(stepPath) : setFollowIndex(followIndex + 1))}
+              >
+                {followLast ? tour.goToStep : tour.next} <ReleaseIcon name="arrow-right" size={14} />
               </Button>
             ) : (
               <Button

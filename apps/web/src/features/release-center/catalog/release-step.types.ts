@@ -54,10 +54,10 @@ export interface ReleaseStepEntry {
   /** Value of the `data-tour` attribute the guided tour highlights. */
   target: string;
   /**
-   * Where the step sends the operator next (a link inside `target`). The tour stays open on that page,
-   * highlights `target` there and reads `steps.<id>.followBody` instead of `tourBody`.
+   * Where the step sends the operator next (a link inside `target`). The tour stays open on that page and
+   * walks `targets` there one by one, reading `steps.<id>.follow<i>` (follow0, follow1, ...) instead of `tourBody`.
    */
-  follow?: { routePattern: string; target: string };
+  follow?: { routePattern: string; targets: readonly string[] };
   appliesWhen: (ctx: ReleaseStepContext) => boolean;
   completeOn: ReleaseStepCompletion;
 }
