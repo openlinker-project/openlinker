@@ -29,6 +29,7 @@ import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { Connection, OrderStartStatus } from '../api/connections.types';
+import { ORDER_SYNC_START_DEFAULT_MODES } from '../lib/order-sync-start';
 import { deriveOrderImportVerdict, type OrderImportVerdict } from '../lib/order-import-verdict';
 import { OrderImportHealth } from './order-import-health';
 import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
@@ -60,7 +61,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
     adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault);
   // An adapter that declares no start modes cannot start from a chosen point (it reads
   // its whole history), so a start row and "Import older orders" would promise nothing.
-  const hasStartChoice = adapter === undefined || (adapter.orderSyncStartModes?.length ?? 0) > 0;
+  const hasStartChoice =
+    (adapter?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES).length > 0;
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
   const retryJobs = useRetryGroupedSyncJobsMutation();
   const { showToast } = useToast();
@@ -224,6 +226,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         connection={connection}
         open={restartOpen}
         onOpenChange={setRestartOpen}
+        hasFeedPosition={data?.orderStart != null && !data.orderStart.pending}
       />
     </div>
   );

@@ -347,12 +347,17 @@ describe('OrderSyncPanel', () => {
     expect(screen.queryByText('Waiting to import')).not.toBeInTheDocument();
   });
 
-  it('hides the start row and the import button for an adapter that cannot start from a chosen point', async () => {
+  it('hides the start row and the import button for an adapter that declares no start modes', async () => {
     const apiClient = createMockApiClient({
       connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
       adapters: {
         list: vi.fn().mockResolvedValue([
-          { adapterKey: 'prestashop.webservice.v1', platformType: 'prestashop', isDefault: true },
+          {
+            adapterKey: 'prestashop.webservice.v1',
+            platformType: 'prestashop',
+            isDefault: true,
+            orderSyncStartModes: [],
+          },
         ]),
       },
     });
@@ -371,12 +376,12 @@ describe('OrderSyncPanel', () => {
   describe('import older orders', () => {
     it('imports a period once as a range run when the shop can read a window', async () => {
       const user = userEvent.setup();
-      const enqueue = vi.fn().mockResolvedValue({ jobId: 'job_1' });
+      const importOrders = vi.fn().mockResolvedValue({ runId: 'run_1' });
       const apiClient = createMockApiClient({
         connections: {
           getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()),
+          importOrders,
         },
-        syncJobs: { enqueue },
         adapters: {
           list: vi.fn().mockResolvedValue([
             {
@@ -396,18 +401,15 @@ describe('OrderSyncPanel', () => {
       await user.click(await screen.findByRole('button', { name: 'Import older orders…' }));
       await user.click(await screen.findByRole('button', { name: 'Import orders' }));
       expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
-      expect(enqueue).not.toHaveBeenCalled();
+      expect(importOrders).not.toHaveBeenCalled();
 
       fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
       await user.click(screen.getByRole('button', { name: 'Import orders' }));
 
-      expect(enqueue).toHaveBeenCalledWith(
-        expect.objectContaining({
-          connectionId: 'conn_1',
-          jobType: 'marketplace.orders.import',
-          payload: expect.objectContaining({ from: '2026-10-01', direction: 'oldest-first' }),
-        })
-      );
+      expect(importOrders).toHaveBeenCalledWith('conn_1', {
+        from: '2026-10-01',
+        direction: 'oldest-first',
+      });
     });
   });
 
@@ -428,7 +430,7 @@ describe('OrderSyncPanel', () => {
 
     it('restarts the sync from the chosen start and confirms', async () => {
       const user = userEvent.setup();
-      const restartOrderSync = vi.fn().mockResolvedValue(undefined);
+      const restartOrderSync = vi.fn().mockResolvedValue({ applied: true });
       const apiClient = createMockApiClient({
         connections: {
           getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()),
@@ -458,7 +460,7 @@ describe('OrderSyncPanel', () => {
 
     it('does not send a start date that is not acceptable', async () => {
       const user = userEvent.setup();
-      const restartOrderSync = vi.fn().mockResolvedValue(undefined);
+      const restartOrderSync = vi.fn().mockResolvedValue({ applied: true });
       const apiClient = createMockApiClient({
         connections: {
           getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()),

@@ -8541,6 +8541,23 @@ html:has(.login-stage) {
   cursor: pointer;
 }
 
+/* ── Capabilities: where order reading starts (#4228) ── */
+.capability-list__order-start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.capability-list__order-start-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 /* ── RateLimitSection (#1810) ── */
 .rate-limit-section {
   display: flex;
