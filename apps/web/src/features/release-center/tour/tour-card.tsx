@@ -355,6 +355,10 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
 
   const handleNext = (): void => {
     if (blocked) return;
+    // Walking past an optional step you could see counts as having looked at it, like "stays as it is".
+    if (!showcase && isAdmin && step.importance === 'optional' && !done && state.target === 'found') {
+      steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
+    }
     if (isLast) onClose();
     else dispatch({ type: 'next' });
   };
