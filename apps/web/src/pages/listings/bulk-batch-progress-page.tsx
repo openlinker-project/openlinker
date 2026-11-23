@@ -69,24 +69,21 @@ export function BulkBatchProgressPage(): ReactElement {
   // gate the wizard's own submit uses (#1615 visible-but-disabled in demo).
   const write = useWriteAccess('listings:write', demoMode);
 
-  const failedRecords = useMemo(
-    () => selectFailedRecords(query.data?.records ?? []),
-    [query.data],
-  );
+  const failedRecords = useMemo(() => selectFailedRecords(query.data?.records ?? []), [query.data]);
   const batchCopy = useMessages('listings').bulkBatch;
   const batchConnection = connectionsQuery.data?.find((c) => c.id === query.data?.connectionId);
-  const accountRefusal = usePlatform(batchConnection?.platformType)?.offerValidation
-    ?.accountLevelRefusal;
+  const batchPlatform = usePlatform(batchConnection?.platformType);
+  const accountRefusal = batchPlatform?.offerValidation?.accountLevelRefusal;
+  // The quote comes from the marketplace, not from the operator's connection label.
+  const platformName =
+    batchPlatform?.shortLabel ?? batchPlatform?.displayName ?? batchConnection?.platformType ?? '';
   // Account-level refusals (#4004) are reported once, above the table; only the
   // offer-level failures are something the wizard can fix.
   const split = useMemo(
     () => splitAccountLevelFailures(failedRecords, accountRefusal?.errorCodes ?? []),
-    [failedRecords, accountRefusal],
+    [failedRecords, accountRefusal]
   );
-  const accountLevelRecordIds = useMemo(
-    () => new Set(split.account.map((r) => r.id)),
-    [split],
-  );
+  const accountLevelRecordIds = useMemo(() => new Set(split.account.map((r) => r.id)), [split]);
   const fixTarget = useMemo(() => resolveBatchFixTarget(split.offer), [split]);
   const offerFailedCount = split.offer.length;
 
@@ -106,16 +103,12 @@ export function BulkBatchProgressPage(): ReactElement {
         batchId: batchId_,
       });
     },
-    [batchId_, batchConnectionId],
+    [batchId_, batchConnectionId]
   );
 
   const inProgress = useMemo(() => {
     if (!query.data) return 0;
-    return (
-      query.data.totalCount -
-      query.data.succeededCount -
-      query.data.failedCount
-    );
+    return query.data.totalCount - query.data.succeededCount - query.data.failedCount;
   }, [query.data]);
 
   const handleRetryAll = useCallback(async () => {
@@ -131,27 +124,21 @@ export function BulkBatchProgressPage(): ReactElement {
       showToast({
         tone: 'error',
         title: copy.toasts.retryFailedTitle,
-        description: serverErrorText(common.serverSaid, (error as Error).message, common.unknownError),
+        description: serverErrorText(
+          common.serverSaid,
+          (error as Error).message,
+          common.unknownError
+        ),
       });
     }
   }, [batchId, common, copy.toasts, plural, retryMutation, showToast]);
 
   if (!batchId) {
-    return (
-      <ErrorState
-        title={copy.missingIdTitle}
-        message={copy.missingIdMessage}
-      />
-    );
+    return <ErrorState title={copy.missingIdTitle} message={copy.missingIdMessage} />;
   }
 
   if (query.isLoading) {
-    return (
-      <LoadingState
-        title={copy.loadingTitle}
-        message={copy.loadingMessage}
-      />
-    );
+    return <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />;
   }
 
   if (query.error) {
@@ -160,7 +147,13 @@ export function BulkBatchProgressPage(): ReactElement {
         title={copy.errorTitle}
         message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
         action={
-          <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
+          <Button
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            {copy.retry}
+          </Button>
         }
       />
     );
@@ -178,8 +171,7 @@ export function BulkBatchProgressPage(): ReactElement {
   const batch = query.data;
   const isTerminal = TERMINAL_BULK_BATCH_STATUSES.includes(batch.status);
   const connectionName =
-    connectionsQuery.data?.find((c) => c.id === batch.connectionId)?.name ??
-    batch.connectionId;
+    connectionsQuery.data?.find((c) => c.id === batch.connectionId)?.name ?? batch.connectionId;
 
   const succeededShare = batch.totalCount > 0 ? batch.succeededCount / batch.totalCount : 0;
   const failedShare = batch.totalCount > 0 ? batch.failedCount / batch.totalCount : 0;
@@ -212,12 +204,12 @@ export function BulkBatchProgressPage(): ReactElement {
             </span>
           ),
         },
-        { batchId: batch.id.slice(0, 8) },
+        { batchId: batch.id.slice(0, 8) }
       )}
       description={renderRich(
         plural(batch.totalCount, copy.statusLine),
         { status: () => <BatchStatusLabel status={batch.status} copy={copy} /> },
-        { connection: connectionName },
+        { connection: connectionName }
       )}
       actions={
         <Link to="/listings" className="button">
@@ -306,7 +298,7 @@ export function BulkBatchProgressPage(): ReactElement {
                     <figure className="batch-triage__quote">
                       <blockquote>{split.firstAccountError.message}</blockquote>
                       <figcaption>
-                        {interpolate(batchCopy.accountRefused.providerSaid, { name: connectionName })}{' '}
+                        {interpolate(batchCopy.accountRefused.providerSaid, { name: platformName })}{' '}
                         <code>{split.firstAccountError.code}</code>
                       </figcaption>
                     </figure>
@@ -352,12 +344,16 @@ export function BulkBatchProgressPage(): ReactElement {
                         batchId: batch.id,
                       })}
                     >
-                      {interpolate(copy.recovery.fixAndResubmit, { count: format.number(offerFailedCount) })}
+                      {interpolate(copy.recovery.fixAndResubmit, {
+                        count: format.number(offerFailedCount),
+                      })}
                     </Link>
                   ) : (
                     <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
                       <Button tone="primary" className="button--sm" disabled>
-                        {interpolate(copy.recovery.fixAndResubmit, { count: format.number(offerFailedCount) })}
+                        {interpolate(copy.recovery.fixAndResubmit, {
+                          count: format.number(offerFailedCount),
+                        })}
                       </Button>
                     </ReadOnlyLock>
                   )}
@@ -370,7 +366,9 @@ export function BulkBatchProgressPage(): ReactElement {
                 <div className="batch-triage__body">
                   <p className="batch-triage__cause">{batchCopy.triage.retryCause}</p>
                   <p className="batch-triage__detail">
-                    {offerFailedCount === 0 ? batchCopy.recovery.accountOnly : batchCopy.triage.retryDetail}
+                    {offerFailedCount === 0
+                      ? batchCopy.recovery.accountOnly
+                      : batchCopy.triage.retryDetail}
                   </p>
                 </div>
                 <div className="batch-triage__action">
@@ -378,7 +376,9 @@ export function BulkBatchProgressPage(): ReactElement {
                     <Button
                       tone="secondary"
                       className="button--sm"
-                      onClick={() => { void handleRetryAll(); }}
+                      onClick={() => {
+                        void handleRetryAll();
+                      }}
                       disabled={!write.canWrite || retryMutation.isPending}
                     >
                       {retryMutation.isPending
@@ -408,13 +408,11 @@ export function BulkBatchProgressPage(): ReactElement {
             <strong>
               {interpolate(
                 batch.status === 'completed' ? copy.summary.completedIn : copy.summary.endedIn,
-                { elapsed },
+                { elapsed }
               )}
             </strong>{' '}
-            <span aria-hidden="true">·</span>{' '}
-            {plural(batch.succeededCount, copy.summary.created)}{' '}
-            <span aria-hidden="true">·</span>{' '}
-            {plural(batch.failedCount, copy.summary.failed)}
+            <span aria-hidden="true">·</span> {plural(batch.succeededCount, copy.summary.created)}{' '}
+            <span aria-hidden="true">·</span> {plural(batch.failedCount, copy.summary.failed)}
           </div>
           <div className="bulk-batch__summary-links">
             <Link to="/listings">
@@ -437,15 +435,35 @@ function BatchStatusLabel({
   const labels = copy.statuses;
   switch (status) {
     case 'pending':
-      return <StatusBadge tone="neutral" withDot>{labels.pending}</StatusBadge>;
+      return (
+        <StatusBadge tone="neutral" withDot>
+          {labels.pending}
+        </StatusBadge>
+      );
     case 'running':
-      return <StatusBadge tone="info" withDot pulse>{labels.running}</StatusBadge>;
+      return (
+        <StatusBadge tone="info" withDot pulse>
+          {labels.running}
+        </StatusBadge>
+      );
     case 'completed':
-      return <StatusBadge tone="success" withDot>{labels.completed}</StatusBadge>;
+      return (
+        <StatusBadge tone="success" withDot>
+          {labels.completed}
+        </StatusBadge>
+      );
     case 'partially-failed':
-      return <StatusBadge tone="warning" withDot>{labels.partiallyFailed}</StatusBadge>;
+      return (
+        <StatusBadge tone="warning" withDot>
+          {labels.partiallyFailed}
+        </StatusBadge>
+      );
     case 'failed':
-      return <StatusBadge tone="error" withDot>{labels.failed}</StatusBadge>;
+      return (
+        <StatusBadge tone="error" withDot>
+          {labels.failed}
+        </StatusBadge>
+      );
   }
 }
 

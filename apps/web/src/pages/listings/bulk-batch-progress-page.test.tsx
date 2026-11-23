@@ -173,6 +173,7 @@ describe('BulkBatchProgressPage', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/2 of 2 variants failed for this reason/)).toBeInTheDocument();
+    expect(screen.getByText(/^Allegro said:/)).toBeInTheDocument();
     expect(screen.getAllByText('Account cannot sell - see above')).toHaveLength(2);
     expect(screen.queryByText('Fix this one')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Fix and resubmit/ })).not.toBeInTheDocument();
