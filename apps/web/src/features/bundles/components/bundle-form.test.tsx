@@ -966,22 +966,6 @@ describe('BundleForm round 5 (seed, examples, pack size)', () => {
     expect(await screen.findByTestId('bundle-form-seed-adjusted')).toHaveTextContent('9999');
   });
 
-  it('should show two example cards on an empty step 1, and the multipack one pre-selects x3', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<BundleForm />, {
-      apiClient: api(),
-      sessionAdapter: createAuthenticatedSessionAdapter(),
-    });
-    await ready();
-    expect(screen.getByTestId('bundle-form-example-mix')).toBeInTheDocument();
-    await user.click(screen.getByTestId('bundle-form-example-multipack'));
-    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
-    await waitFor(() => {
-      expect(screen.getByTestId('bundle-form-component-qty-KUB-350-BI')).toHaveValue(3);
-    });
-    expect(screen.queryByTestId('bundle-form-examples')).not.toBeInTheDocument();
-  });
-
   it('should warn when the name says x3 but the only component is held once', async () => {
     const user = userEvent.setup();
     const apiClient = api({

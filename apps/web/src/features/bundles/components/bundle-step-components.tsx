@@ -93,8 +93,6 @@ export function BundleStepComponents({
   const seenIds = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);
   const [moved, setMoved] = useState<string>('');
-  // The multipack example promises "x3 after the first pick": remembered until a row arrives.
-  const [wantedPack, setWantedPack] = useState<number | null>(null);
   const [pendingFocus, setPendingFocus] = useState<{ id: string; dir: 'up' | 'down' } | null>(null);
 
   // Rows that were already there on mount (editing) must not flash; only one
@@ -117,12 +115,6 @@ export function BundleStepComponents({
       window.clearTimeout(timer);
     };
   }, [components.fields]);
-
-  useEffect(() => {
-    if (wantedPack === null || rows.length !== 1) return;
-    form.setValue('components.0.quantity', String(wantedPack), { shouldDirty: true, shouldValidate: true });
-    setWantedPack(null);
-  }, [wantedPack, rows.length, form]);
 
   // After a move the button that was pressed sits on a different index (or is
   // now disabled); give the focus back so the keyboard can keep going.
@@ -172,7 +164,7 @@ export function BundleStepComponents({
 
   return (
     <div className="bf-step">
-      <p className="bf-lead">{copy.s1Lead} {copy.s1KompletNote}</p>
+      <p className="bf-lead">{copy.s1Lead}</p>
       <p className="bf-example" data-testid="bundle-form-example">
         {copy.s1Example}
       </p>
@@ -199,37 +191,6 @@ export function BundleStepComponents({
           </span>
         ) : null}
       </div>
-      {rows.length === 0 ? (
-        <div className="bf-examples" data-testid="bundle-form-examples">
-          <p className="bf-examples__t">{copy.examplesTitle}</p>
-          <button
-            type="button"
-            className="bf-example-card"
-            disabled={readOnly}
-            data-testid="bundle-form-example-mix"
-            onClick={() => {
-              setWantedPack(null);
-              searchRef.current?.focus();
-            }}
-          >
-            <b>{copy.exampleMixTitle}</b>
-            <span>{copy.exampleMixText}</span>
-          </button>
-          <button
-            type="button"
-            className="bf-example-card"
-            disabled={readOnly}
-            data-testid="bundle-form-example-multipack"
-            onClick={() => {
-              setWantedPack(3);
-              searchRef.current?.focus();
-            }}
-          >
-            <b>{copy.exampleMultiTitle}</b>
-            <span>{copy.exampleMultiText}</span>
-          </button>
-        </div>
-      ) : null}
       {rows.length > SOFT_COMPONENT_LIMIT ? (
         <p className="bf-compnote" data-testid="bundle-form-too-many">
           {copy.tooManyComponents}
