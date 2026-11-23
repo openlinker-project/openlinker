@@ -235,7 +235,6 @@ export function OrderSyncRestartDialog({
                 errors={rangeErrors}
                 disabled={pending}
               />
-              <p className="muted-text">{copy.rangeNote}</p>
             </>
           ) : (
             <>
@@ -247,13 +246,11 @@ export function OrderSyncRestartDialog({
                 error={showDateError}
                 restart
               />
-              <p className="muted-text">
-                {value.mode === 'now'
-                  ? hasFeedPosition
-                    ? copy.alreadyFollowingNote
-                    : copy.nowNote
-                  : copy.repeatNote}
-              </p>
+              {value.mode === 'now' ? (
+                <p className="muted-text">
+                  {hasFeedPosition ? copy.alreadyFollowingNote : copy.nowNote}
+                </p>
+              ) : null}
             </>
           )}
         </div>

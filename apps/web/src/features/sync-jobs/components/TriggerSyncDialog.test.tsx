@@ -268,7 +268,7 @@ describe('TriggerSyncDialog', () => {
         expect(mockApi.syncJobs.enqueue).not.toHaveBeenCalled();
 
         fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
-        fireEvent.change(screen.getByLabelText('Start with'), { target: { value: 'newest-first' } });
+        fireEvent.change(screen.getByLabelText('Order of import'), { target: { value: 'newest-first' } });
         fireEvent.click(screen.getByRole('button', { name: /^trigger$/i }));
         await waitFor(() => {
           expect(mockApi.syncJobs.enqueue).toHaveBeenCalledWith(

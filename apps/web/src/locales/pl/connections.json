@@ -1171,17 +1171,17 @@
       "cancel": "Anuluj",
       "confirm": "Zastosuj zmianę",
       "confirming": "Zapisywanie…",
-      "description": "Zamówienia, które OpenLinker już ma, zostają. Wybierz, jak daleko wstecz czytać ze sklepu.",
+      "description": "Pobiera zamówienia, których OpenLinker jeszcze nie ma. Te, które już ma, są aktualizowane, a nie tworzone drugi raz.",
       "failedTitle": "Nie udało się zmienić startu",
       "kind": {
         "label": "Co chcesz zrobić?",
         "range": {
           "text": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Nowe zamówienia synchronizują się jak dotąd.",
-          "title": "Zaimportować okres"
+          "title": "Zaimportuj zakres dat"
         },
         "start": {
-          "text": "Zmienia, które zamówienia OpenLinker czyta ze sklepu od teraz.",
-          "title": "Przesunąć początek synchronizacji"
+          "text": "Wybierz jeszcze raz, czy OpenLinker czyta tylko nowe zamówienia, zamówienia od daty, czy wszystkie.",
+          "title": "Zmień punkt startu"
         }
       },
       "nothingToResetMessage": "OpenLinker już czyta zamówienia ze sklepu, więc nie ma startu do zresetowania. Aby pobrać starsze zamówienia, zaimportuj okres.",
@@ -1189,10 +1189,8 @@
       "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia.",
       "rangeConfirm": "Importuj zamówienia",
       "rangeFailedTitle": "Nie udało się rozpocząć importu",
-      "rangeNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
       "rangeSuccessMessage": "Zamówienia z tego okresu są właśnie importowane. Postęp widać na tej karcie.",
       "rangeSuccessTitle": "Import rozpoczęty",
-      "repeatNote": "Zamówienia, które OpenLinker już ma, zostaną zaktualizowane, a nie utworzone drugi raz.",
       "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
       "successNowMessage": "Nic się nie zmieniło. Nowe zamówienia nadal wpływają.",
       "successTitle": "Start zmieniony",
