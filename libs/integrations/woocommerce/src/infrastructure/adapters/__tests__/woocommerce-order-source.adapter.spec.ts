@@ -6,7 +6,7 @@ import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-re
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
+import { checkPaymentFactsConsistency, OrderSyncStartUnavailableError } from '@openlinker/core/orders';
 import type { WooCommerceOrder } from '../order-source/woocommerce-order.types';
 
 const makeConnection = (overrides: Partial<Connection> = {}): Connection =>
@@ -160,7 +160,16 @@ describe('WooCommerceOrderSourceAdapter', () => {
     it('should throw on an unreadable date', async () => {
       const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), makeConnection());
 
-      await expect(adapter.cursorForDate('soon')).rejects.toThrow('expected an ISO date');
+      const failure = adapter.cursorForDate('soon');
+      await expect(failure).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+      await expect(failure).rejects.toThrow('expected an ISO date');
+    });
+
+    it('should refuse a day that is not on the calendar', async () => {
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), makeConnection());
+
+      await expect(adapter.cursorForDate('2026-02-30')).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+      await expect(adapter.cursorForDate('2026-13-45')).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
     });
   });
 

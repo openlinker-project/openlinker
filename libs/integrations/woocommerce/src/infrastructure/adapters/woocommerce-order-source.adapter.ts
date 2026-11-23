@@ -30,6 +30,7 @@ import {
   PAYMENT_METHOD,
   PAYMENT_STATUS,
   toCodToCollect,
+  OrderSyncStartUnavailableError,
 } from '@openlinker/core/orders';
 import { deriveWooCommercePaymentMethod } from './woocommerce-payment-method';
 import type { Connection } from '@openlinker/core/identifier-mapping';
@@ -126,17 +127,27 @@ export class WooCommerceOrderSourceAdapter
    * means 00:00:00 GMT of that day; a full instant is used as given. The value
    * is the same `modified_after` GMT instant `listOrderFeed` resumes from.
    *
+   * UTC, not the store's own day, on purpose: WooCommerce's REST API exposes the
+   * site's UTC offset on no cheap, reliable read (`/settings/general` carries no
+   * timezone, and the order's `date_*` fields are site-local with no offset), so
+   * converting would mean guessing. A store east of GMT therefore starts its
+   * chosen day up to a few hours late relative to its own clock.
+   *
    * The operator's explicit choice wins over `orders.initialSyncFrom`, which
    * only supplies the start when no choice was made (see `headCursor`).
    *
-   * @throws when `date` is not a readable ISO date.
+   * @throws OrderSyncStartUnavailableError when `date` is not a real ISO date.
    */
   cursorForDate(date: string): Promise<string> {
     const value = date.trim();
-    const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00.000Z` : value);
-    if (Number.isNaN(parsed.getTime())) {
+    const bareDay = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const parsed = new Date(bareDay ? `${value}T00:00:00.000Z` : value);
+    // V8 rolls "2026-02-30" over to March 2nd instead of rejecting it, so a bare
+    // day is checked against its own round trip.
+    const unreal = Number.isNaN(parsed.getTime()) || (bareDay && !parsed.toISOString().startsWith(value));
+    if (unreal) {
       return Promise.reject(
-        new Error(
+        new OrderSyncStartUnavailableError(
           `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
         )
       );
