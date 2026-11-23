@@ -1,5 +1,5 @@
 /**
- * Rejected cursor writes, remembered in module memory only (#4146, ADR-085)
+ * Rejected cursor writes, remembered in module memory only (#4146, ADR-086)
  *
  * When `PUT /cursor` fails the stored cursor does not move, so the update
  * dialog's "should open" decision would stay true and reopen on every render.

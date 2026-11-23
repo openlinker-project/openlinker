@@ -198,7 +198,7 @@
     "errorTitle": "Nie udało się zaktualizować możliwości",
     "eyebrow": "Możliwości",
     "legacyMasterPublisher": {
-      "body": "To połączenie jest jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty mogą wracać jako duplikaty. Wyłącz jedną z tych dwóch opcji.",
+      "body": "To połączenie jest jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty mogą wracać jako duplikaty. Publikowanie na to połączenie jest odrzucane, dopóki nie wyłączysz roli Źródło produktów.",
       "title": "Katalog i publikowanie na jednym połączeniu"
     },
     "none": "To połączenie nie ma możliwości, które można tu przełączać.",
@@ -852,6 +852,7 @@
       "body": "Popraw poniżej surową konfigurację JSON, zanim zaczniesz edytować pola formularza - są zablokowane, aby własne klucze JSON nie zostały po cichu utracone.",
       "title": "Surowy JSON jest nieprawidłowy"
     },
+    "readOnlyNote": "Masz dostęp tylko do odczytu, więc tych ustawień nie można zmienić.",
     "save": "Zapisz zmiany",
     "saving": "Zapisywanie...",
     "sections": {
@@ -889,6 +890,10 @@
     "notFound": {
       "message": "Nie zwrócono danych połączenia. Sprawdź ID połączenia lub wróć do listy.",
       "title": "Nie znaleziono połączenia"
+    },
+    "readOnly": {
+      "message": "Edycja połączenia wymaga uprawnień do zapisu. Poproś administratora o zmianę tych ustawień.",
+      "title": "Dostęp tylko do odczytu"
     },
     "title": "Edytuj połączenie"
   },

@@ -1,5 +1,5 @@
 /**
- * Release notifications and the bell count (#4148, ADR-085)
+ * Release notifications and the bell count (#4148, ADR-086)
  *
  * Pure derivation of what the bell and the panel show, from the release state
  * and the step catalog. Nothing here reads the clock on its own: `now` is

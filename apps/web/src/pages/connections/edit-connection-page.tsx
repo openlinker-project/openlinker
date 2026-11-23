@@ -5,6 +5,7 @@ import { EditConnectionForm } from '../../features/connections/components/EditCo
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useMessages } from '../../shared/i18n';
+import { usePermission } from '../../shared/auth/use-permission';
 import { describeApiError } from '../../shared/api/describe-api-error';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { usePlatforms } from '../../shared/plugins';
@@ -36,13 +37,16 @@ export function EditConnectionPage(): ReactElement {
   const connectionQuery = useConnectionQuery(connectionId);
   const copy = useMessages('connections').editConnectionPage;
   const common = useMessages('ui').common;
+  // Same convention as the other connection pages: a session without
+  // connections:write must not be offered a form whose save it cannot perform.
+  const canWrite = usePermission('connections:write');
   const platforms = usePlatforms();
   const connection = connectionQuery.data;
   const platformLabel = connection ? resolvePlatformLabel(platforms, connection) : '';
   const environment = connection ? readConnectionEnvironment(connection.config) : null;
   const status = connection ? describeConnectionStatus(connection, STATUS_TONE[connection.status]) : null;
 
-  if (connection && status) {
+  if (connection && status && canWrite) {
     const mark = (
       <span
         className="settings-page__mark"
@@ -102,6 +106,9 @@ export function EditConnectionPage(): ReactElement {
           title={copy.notFound.title}
           message={copy.notFound.message}
         />
+      ) : null}
+      {connectionQuery.data && !canWrite ? (
+        <EmptyState title={copy.readOnly.title} message={copy.readOnly.message} />
       ) : null}
     </PageLayout>
   );

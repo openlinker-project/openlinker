@@ -581,6 +581,7 @@ export function OrderDetailPage(): ReactElement {
         <OrderConfirmRefundAction
           internalOrderId={order.internalOrderId}
           currency={snapshot.totals?.currency ?? null}
+          sourceConnectionId={order.sourceConnectionId}
           orderTotal={
             snapshot.totals
               ? snapshot.totals.total.toFixed(minorUnitExponentFor(snapshot.totals.currency))

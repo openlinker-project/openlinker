@@ -26,6 +26,7 @@ import {
 } from '../../domain/types/location-bootstrap.types';
 import { LOCATION_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import type {
+  ResolveMasterLocationInput,
   CreateInventoryLocationInput,
   UpdateInventoryLocationInput,
   InventoryLocationFilters,
@@ -69,6 +70,45 @@ export class LocationService implements ILocationService {
     }
 
     return updated;
+  }
+
+  async resolveMasterLocation(input: ResolveMasterLocationInput): Promise<InventoryLocation> {
+    const existing = await this.repository.findByOwnerAndExternalRef(
+      input.connectionId,
+      input.externalRef
+    );
+    if (existing) {
+      return existing;
+    }
+    const base = `${input.platformType}-${input.externalRef}`;
+    // A code already taken (an operator authored it, or two connections of one
+    // platform share a reference) falls back to a connection-qualified code
+    // rather than adopting a row this connection does not own.
+    const candidates = [base, `${base}-${input.connectionId.slice(0, 8)}`];
+    for (const code of candidates) {
+      try {
+        return await this.createLocation({
+          code,
+          name: input.name.trim().length > 0 ? input.name : code,
+          kind: 'warehouse',
+          ownerConnectionId: input.connectionId,
+          externalRef: input.externalRef,
+        });
+      } catch (error) {
+        if (!(error instanceof DuplicateLocationCodeError)) {
+          throw error;
+        }
+        // A concurrent sync of the same connection may have won the insert.
+        const winner = await this.repository.findByOwnerAndExternalRef(
+          input.connectionId,
+          input.externalRef
+        );
+        if (winner) {
+          return winner;
+        }
+      }
+    }
+    throw new DuplicateLocationCodeError(base);
   }
 
   async getLocation(id: string): Promise<InventoryLocation | null> {

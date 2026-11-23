@@ -1,5 +1,5 @@
 /**
- * Release step catalog (#4145, ADR-085)
+ * Release step catalog (#4145, ADR-086)
  *
  * The one reviewable list of setup steps a release asks operators for: which
  * exist, since which version, for whom and where they point. Text lives in

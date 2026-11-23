@@ -1,5 +1,5 @@
 /**
- * Changelog parser (#4144, ADR-085)
+ * Changelog parser (#4144, ADR-086)
  *
  * Turns release-please's `CHANGELOG.md` into the plain data the in-app release
  * center renders. Pure and free of Node built-ins so the spec can import it and

@@ -4,7 +4,7 @@
  * Composes what the leaf release-center context deliberately cannot: the
  * `enabled` flag (operational-settings) and the check that a connection-scoped
  * step key (`stepId:connectionId`) names a connection that exists. The leaf
- * imports no sibling context (ADR-085), so both live in the API layer.
+ * imports no sibling context (ADR-086), so both live in the API layer.
  *
  * @module apps/api/src/release-center
  */

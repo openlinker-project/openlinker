@@ -1,7 +1,7 @@
 /**
  * Release Center Types
  *
- * Closed vocabularies, limits and the pure version rules (ADR-085). The
+ * Closed vocabularies, limits and the pure version rules (ADR-086). The
  * version rules live here because the cursor comparison and its SQL twin
  * (`WHERE (major, minor, patch, rank) < (...)`) must change together.
  *

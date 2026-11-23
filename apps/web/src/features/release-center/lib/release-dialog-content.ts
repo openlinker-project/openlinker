@@ -1,5 +1,5 @@
 /**
- * Update dialog content (#4147, ADR-085)
+ * Update dialog content (#4147, ADR-086)
  *
  * Pure selection of what the dialog shows: the curated highlights of the
  * releases the user has not seen (capped at four), how many changes stay in the

@@ -1,5 +1,5 @@
 /**
- * Release dialog host (#4147, ADR-085)
+ * Release dialog host (#4147, ADR-086)
  *
  * Decides, from the stored cursor and the build's changelog, whether the update
  * dialog opens, and writes the cursor when it closes. Mount once inside the

@@ -1,5 +1,5 @@
 /**
- * Release state wire types (#4146, ADR-085)
+ * Release state wire types (#4146, ADR-086)
  *
  * Local mirror of `apps/api/src/release-center/http/dto/release-state.dto.ts`;
  * the browser cannot import `@openlinker/*` (#591), so the shapes live here and

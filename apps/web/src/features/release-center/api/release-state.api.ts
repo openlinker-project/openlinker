@@ -1,5 +1,5 @@
 /**
- * Release state API client (#4146, ADR-085)
+ * Release state API client (#4146, ADR-086)
  *
  * `GET /release-state` and the three PUTs. A 404 or a 5xx on the read means
  * "the feature is not available here" and is answered with a disabled state

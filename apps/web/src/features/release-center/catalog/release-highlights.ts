@@ -1,5 +1,5 @@
 /**
- * Curated release highlights (#4145, ADR-085)
+ * Curated release highlights (#4145, ADR-086)
  *
  * Which changelog entries the update dialog features, per minor. Picked by
  * hand: an automatic "first of Features" always lands on scope `api` because
@@ -13,6 +13,8 @@
 /** Key is `major.minor`. */
 export const RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly string[]>> = {
   '0.19': ['4188fec', 'ba4c7bd'],
+  // The Shopify integration and the label-purchase notification toggle (setup step inpost-notify-buyer).
+  '0.20': ['99754c5', 'ba57a6b'],
 };
 
 /** Minors before this predate the release center and need no highlights. */

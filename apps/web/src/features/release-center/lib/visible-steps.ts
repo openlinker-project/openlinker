@@ -1,5 +1,5 @@
 /**
- * Step visibility (#4145, ADR-085)
+ * Step visibility (#4145, ADR-086)
  *
  * Staging and main build with the previous release's version, so a step whose
  * `introducedIn` is newer than `APP_VERSION` must never render there: an

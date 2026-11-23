@@ -1,5 +1,5 @@
 /**
- * Changelog build plugin (#4144, ADR-085)
+ * Changelog build plugin (#4144, ADR-086)
  *
  * Exposes release-please's `CHANGELOG.md` to the app as the virtual module
  * `virtual:openlinker-changelog` (the parsed {@link ChangelogData}). The file is

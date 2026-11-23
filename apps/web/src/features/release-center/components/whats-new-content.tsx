@@ -1,5 +1,5 @@
 /**
- * What's new content (#4147, ADR-085)
+ * What's new content (#4147, ADR-086)
  *
  * The setup block (steps of the installed version, "X of N" or "All set", a
  * "Set up now" / "Show me where" button or "Done" per row) above the full

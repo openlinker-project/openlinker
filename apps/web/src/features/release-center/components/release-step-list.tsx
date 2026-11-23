@@ -4,7 +4,7 @@
  * The steps of one release, each with its state and the actions the viewer may
  * take. Installation actions are for admins only; everyone else sees them
  * disabled with a reason (the registered exception to hide-write-affordance,
- * ADR-085 decision 8).
+ * ADR-086 decision 8).
  * Required and optional steps differ by a text label, not by colour alone.
  *
  * @module features/release-center/components

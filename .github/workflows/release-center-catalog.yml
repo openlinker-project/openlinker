@@ -3,7 +3,7 @@ name: release-center-catalog
 # The step catalog's hand-written `introducedIn` is the NEXT minor, so it is
 # greater than package.json until release-please bumps it. The check therefore
 # runs on the release PR (where the version has just been bumped) and fails the
-# release if release-please picked a different number (#4145, ADR-085). Make this
+# release if release-please picked a different number (#4145, ADR-086). Make this
 # job a required status for that PR in the branch protection settings.
 on:
   pull_request:

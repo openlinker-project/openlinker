@@ -68,7 +68,8 @@ describe('AllegroExtraSection — Allegro Delivery subsection (#839 AC-8)', () =
     renderWithProviders(<Harness connection={connection} />);
 
     expect(screen.getByText('Allegro Delivery')).toBeInTheDocument();
-    expect(screen.getByText(/No configuration needed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Sender email')).toBeInTheDocument();
+    expect(screen.getByText(/Sender address required/i)).toBeInTheDocument();
   });
 
   it('should hide the Allegro Delivery info when ShippingProviderManager is not declared', () => {
@@ -79,6 +80,7 @@ describe('AllegroExtraSection — Allegro Delivery subsection (#839 AC-8)', () =
     renderWithProviders(<Harness connection={connection} />);
 
     expect(screen.queryByText('Allegro Delivery')).not.toBeInTheDocument();
-    expect(screen.queryByText(/No configuration needed/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Sender email')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sender address required/i)).not.toBeInTheDocument();
   });
 });

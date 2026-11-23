@@ -1,5 +1,5 @@
 /**
- * Release center access (#4146, ADR-085)
+ * Release center access (#4146, ADR-086)
  *
  * Who may call `/release-state` at all. The API admits admin, operator and
  * viewer and refuses `packer`; `fulfillment:read` is held by exactly those

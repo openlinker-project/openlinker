@@ -1,5 +1,5 @@
 /**
- * Release dialog (#4147, ADR-085)
+ * Release dialog (#4147, ADR-086)
  *
  * Two steps on the Radix `Dialog` (focus trap, focus restore and Esc come from
  * it): the highlighted changelog entries, then the setup steps of this update.

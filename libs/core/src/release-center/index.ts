@@ -2,7 +2,7 @@
  * Release Center Context Public API
  *
  * Per-user release cursor and item state, plus installation-wide step state
- * (ADR-085). A zero-sibling-edge leaf, not in the root barrel.
+ * (ADR-086). A zero-sibling-edge leaf, not in the root barrel.
  *
  * @module libs/core/src/release-center
  */

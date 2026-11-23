@@ -1,5 +1,5 @@
 /**
- * Release bell and notification panel (#4148, ADR-085)
+ * Release bell and notification panel (#4148, ADR-086)
  *
  * Replaces the static topbar "Alerts" button. Renders nothing when the feature
  * is off, the session may not read it (a packer), or no provider is mounted, so

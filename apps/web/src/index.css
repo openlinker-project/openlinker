@@ -1413,27 +1413,58 @@ textarea,
   padding: 0;
 }
 
-/* ── Environment badge: version line (#3287) ─────────────────────────
- * The environment label (Dev/Stg/Prod) keeps its pre-existing single-line
- * layout; when a build version is available the badge stacks a second,
- * visibly smaller line below it rather than replacing the label.
+/* ── Environment badge: version on hover (#3287) ─────────────────────
+ * The badge rests as the single-line environment label. The release version
+ * slides out to its right on hover or keyboard focus, so the sidebar brand row
+ * keeps its height. The version stays in the DOM (it is also in the aria-label)
+ * and is only clipped, never display:none, so the width can animate.
  */
-.context-chip.environment-badge--stacked {
+.context-chip.environment-badge--reveal {
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
-  line-height: 1.15;
-  padding-block: 3px;
-  gap: 1px;
+  cursor: default;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .environment-badge__env {
   font-weight: 600;
 }
 
+.environment-badge__version-clip {
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-columns var(--duration-normal) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
+}
+
 .environment-badge__version {
-  font-size: 0.6875rem;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.75rem;
   font-weight: 400;
+  padding-left: 0;
+  transition: padding-left var(--duration-normal) var(--ease-out);
+}
+
+.environment-badge--reveal:hover .environment-badge__version-clip,
+.environment-badge--reveal:focus-visible .environment-badge__version-clip {
+  grid-template-columns: 1fr;
+  opacity: 1;
+}
+
+.environment-badge--reveal:hover .environment-badge__version,
+.environment-badge--reveal:focus-visible .environment-badge__version {
+  padding-left: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .environment-badge__version-clip,
+  .environment-badge__version {
+    transition: none;
+  }
 }
 
 .shell-nav {
@@ -6146,7 +6177,7 @@ a.delivery-rider-banner__button:focus-visible {
   animation: toast-slide-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Release center confirmation toast (ADR-085): the mockup's dark pill under the
+/* Release center confirmation toast (ADR-086): the mockup's dark pill under the
    topbar. It is fixed to the screen rather than stacked in the corner region. */
 .toast.toast--inverse {
   position: fixed;
@@ -23078,6 +23109,86 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* ── Sales channels (#3962): where a product deleted at the source is still on sale.
+   One card; colour is spent on the verdict only, rows stay quiet. */
+.sales-channels { padding: 0; overflow: hidden; }
+.sales-channels__head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--space-3) var(--space-4); padding-block: 20px; padding-inline: 24px;
+}
+.sales-channels--attention .sales-channels__head { background: linear-gradient(90deg, var(--status-error-soft), transparent 70%); }
+.sales-channels--waiting .sales-channels__head { background: linear-gradient(90deg, var(--status-info-soft), transparent 70%); }
+.sales-channels__head-text { display: grid; gap: 4px; min-width: 0; flex: 1 1 340px; }
+.sales-channels__kicker { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.sales-channels__title { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 600; color: var(--text-primary); text-wrap: balance; }
+.sales-channels--attention .sales-channels__title { color: var(--status-error-fg); }
+.sales-channels__facts { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; font-size: 13px; color: var(--text-secondary); }
+.sales-channels__checked { color: var(--text-muted); }
+.sales-channels__head-side { display: flex; align-items: center; gap: var(--space-3); }
+.sales-channels__link { color: var(--text-link); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.sales-channels__link:hover { text-decoration: underline; }
+.sales-channels__link--strong { text-decoration: underline; text-underline-offset: 3px; }
+.sales-channels__toggle { font: inherit; font-size: 13px; font-weight: 500; color: var(--text-link); background: none; border: 0; padding: 6px 0; cursor: pointer; }
+.sales-channels__link:focus-visible, .sales-channels__toggle:focus-visible, .sales-channels__offer:focus-visible {
+  outline: 2px solid var(--accent-ring); outline-offset: 2px; border-radius: 4px;
+}
+.sales-channels__sizes { display: inline-flex; gap: 4px; }
+.sales-channels__size { font-family: var(--font-mono); font-size: 12px; padding: 1px 7px; border-radius: 6px; border: 1px solid var(--border-default); color: var(--text-primary); background: var(--bg-surface); }
+.sales-channels__size--gone { text-decoration: line-through; color: var(--status-error-fg); border-color: var(--status-error-border); background: var(--status-error-soft); }
+.sales-channels__mark {
+  --c: var(--text-secondary);
+  flex: none; width: 34px; height: 34px; border-radius: 9px;
+  display: grid; place-items: center; font-weight: 700; font-size: 15px;
+  color: color-mix(in oklch, var(--c) 70%, var(--text-primary));
+  background: color-mix(in oklch, var(--c) 16%, var(--bg-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--c) 30%, transparent);
+}
+.sales-channels__mark[data-channel='allegro'] { --c: var(--channel-allegro); }
+.sales-channels__mark[data-channel='woocommerce'] { --c: var(--channel-erli); }
+.sales-channels__mark[data-channel='shoper'], .sales-channels__mark[data-channel='prestashop'] { --c: var(--channel-prestashop); }
+.sales-channels__mark[data-channel='erli'] { --c: var(--channel-erli); }
+.sales-channels__mark[data-channel='shopify'] { --c: var(--channel-shopify); }
+.sales-channels__stack { display: inline-flex; }
+.sales-channels__stack .sales-channels__mark { width: 28px; height: 28px; font-size: 12px; border-radius: 8px; margin-left: -6px; box-shadow: 0 0 0 2px var(--bg-surface); }
+.sales-channels__stack .sales-channels__mark:first-child { margin-left: 0; }
+.sales-channels__group { border-top: 1px solid var(--border-subtle); }
+.sales-channels__group-label { margin: 0; padding-block: 10px 2px; padding-inline: 24px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.sales-channels__group-count { font-weight: 500; color: var(--text-muted); margin-left: 4px; }
+.sales-channels__list { list-style: none; margin: 0; padding: 0; }
+.sales-channels__row {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1.2fr) 200px; align-items: center;
+  gap: var(--space-2) var(--space-4); padding-block: 14px; padding-inline: 24px;
+}
+.sales-channels__row:has(.sales-channels__pick) { grid-template-columns: 20px 34px minmax(0, 1fr) minmax(0, 1.2fr) 200px; }
+.sales-channels__row + .sales-channels__row { border-top: 1px solid var(--border-subtle); }
+.sales-channels__row:hover { background: var(--bg-surface-hover); }
+.sales-channels__pick { display: grid; place-items: center; }
+.sales-channels__who, .sales-channels__state { display: grid; gap: 3px; min-width: 0; }
+.sales-channels__name { font-weight: 600; color: var(--text-primary); }
+.sales-channels__row--off_sale .sales-channels__name { font-weight: 500; }
+.sales-channels__offer { font-size: 12px; color: var(--text-secondary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.sales-channels__offer:hover { color: var(--text-link); text-decoration: underline; }
+.sales-channels__status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.sales-channels__qty { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.sales-channels__reason { font-size: 13px; color: var(--text-secondary); }
+.sales-channels__reason--on_sale { color: var(--status-error-fg); }
+.sales-channels__action { justify-self: end; }
+.sales-channels__footer {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding-block: 16px; padding-inline: 24px; border-top: 1px solid var(--border-subtle); background: var(--bg-surface-muted);
+}
+.sales-channels__footer-note { font-size: 13px; color: var(--text-secondary); }
+@media (max-width: 640px) {
+  .sales-channels__head, .sales-channels__row, .sales-channels__footer, .sales-channels__group-label { padding-inline: 16px; }
+  .sales-channels__title { font-size: 17px; }
+  .sales-channels__row { grid-template-columns: 34px minmax(0, 1fr); }
+  .sales-channels__row:has(.sales-channels__pick) { grid-template-columns: 20px 34px minmax(0, 1fr); }
+  .sales-channels__state, .sales-channels__action { grid-column: 2 / -1; justify-self: start; }
+  .sales-channels__row:has(.sales-channels__pick) .sales-channels__state,
+  .sales-channels__row:has(.sales-channels__pick) .sales-channels__action { grid-column: 3 / -1; }
+  .sales-channels__footer .button { width: 100%; }
 }
 
 .product-gallery {

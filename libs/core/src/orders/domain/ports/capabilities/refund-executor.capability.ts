@@ -1,16 +1,17 @@
 /**
  * Refund Executor Capability (#2371, ADR-056)
  *
- * Ask the SOURCE to actually move the buyer's money. A sub-capability of
- * `OrderSourcePort`, beside `ReturnSourceReader` (read) and `ReturnDecliner`
- * (refuse) — the source is where the buyer paid, so it is the only party that
- * can refund them. A destination shop never took the money and refunding
- * through it would refund from the wrong ledger.
+ * Ask a party to execute a refund. Originally the SOURCE channel only (the
+ * buyer paid there, so only it can move their money), beside `ReturnSourceReader`
+ * and `ReturnDecliner`. Since #4100 a DESTINATION order processor may also
+ * implement it, solely to MIRROR a refund already paid on the source so the
+ * destination's books agree; that is not the wrong ledger because it never moves
+ * money OL owns (ADR-056 amendment). It is a guard-only sub-capability narrowed
+ * off the dispatched adapter: for a destination, resolve 'OrderProcessorManager'.
  *
- * ## Implemented by nobody, and that is the point
+ * ## Source-side execution is implemented by nobody
  *
- * No adapter in this repository implements this interface, and a spec asserts
- * it. The seam ships ahead of its first implementer because
+ * No SOURCE adapter implements this interface for returns-driven refunds. The seam ships ahead of its first implementer because
  * [ADR-056](../../../../../../docs/architecture/adrs/056-refund-and-fiscal-authority-never-leave-ol.md)
  * requires the attempted-predicate ordering to be **restated, not inherited by
  * analogy** (R1) — the ordering that makes a double refund impossible has to
@@ -27,9 +28,10 @@
  * applicable precedent is `ModifiedProductLister` (#2220) — guard-only, absent
  * from every manifest and from `CoreCapabilityValues`.
  *
- * When an adapter does implement it, resolve it the way every sibling is
+ * When a source adapter does implement it, resolve it the way every sibling is
  * resolved: `getCapabilityAdapter<OrderSourcePort>(connectionId, 'OrderSource')`
- * then narrow with {@link isRefundExecutor}. Never
+ * then narrow with {@link isRefundExecutor}. For a destination mirror, resolve
+ * `'OrderProcessorManager'` instead. Never
  * `getCapabilityAdapter(connectionId, 'RefundExecutor')` — such a call passes
  * the manifest gate and then fails inside `dispatchCapability` with a generic
  * `Error`, which in the list path aborts the whole listing instead of skipping

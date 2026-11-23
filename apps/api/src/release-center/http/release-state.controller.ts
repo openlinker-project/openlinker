@@ -2,7 +2,7 @@
  * Release State Controller
  *
  * Per-user release cursor and item state, plus installation-wide step state
- * (ADR-085). Every route names its roles: reads and user-scope writes are open
+ * (ADR-086). Every route names its roles: reads and user-scope writes are open
  * to admin/operator/viewer, installation steps are admin only, and `packer`
  * (the bench's temporary role) reaches none of it. The user id comes from the
  * token only.

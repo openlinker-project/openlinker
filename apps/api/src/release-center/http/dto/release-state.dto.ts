@@ -3,7 +3,7 @@
  *
  * Request bodies are explicit allow-lists: a `userId` in a body is not a
  * property here, and the global ValidationPipe whitelist drops it, so the user
- * id can only come from the token (ADR-085).
+ * id can only come from the token (ADR-086).
  *
  * @module apps/api/src/release-center/http/dto
  */

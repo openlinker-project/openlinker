@@ -1,5 +1,5 @@
 /**
- * Update dialog decision (#4145, ADR-085)
+ * Update dialog decision (#4145, ADR-086)
  *
  * Pure: opens only when the app moved to a higher minor or major than the
  * user's cursor AND there is something to show. A patch never opens it (its new

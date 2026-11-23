@@ -58,3 +58,7 @@ export { useListingsQuery } from './hooks/use-listings-query';
 export type { OfferLifecycle } from './api/listings.types';
 export { useVariantListingsQueries } from './hooks/use-variant-listings-queries';
 export type { OfferMapping } from './api/listings.types';
+// #3962 - the product page's sales-channels section and the products banner count.
+export { SalesChannelsSection } from './components/sales-channels-section';
+export type { SalesChannelsVariant } from './components/sales-channels-section';
+export { useSaleHoldAttentionCountQuery } from './hooks/use-sale-hold-attention-count-query';

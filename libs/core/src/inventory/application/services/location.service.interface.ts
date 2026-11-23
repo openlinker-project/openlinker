@@ -11,6 +11,7 @@
 import type { InventoryLocation } from '../../domain/entities/inventory-location.entity';
 import type { LocationBootstrapResult } from '../../domain/types/location-bootstrap.types';
 import type {
+  ResolveMasterLocationInput,
   CreateInventoryLocationInput,
   UpdateInventoryLocationInput,
   InventoryLocationFilters,
@@ -35,6 +36,20 @@ export interface ILocationService {
     id: string,
     input: UpdateInventoryLocationInput
   ): Promise<InventoryLocation>;
+
+  /**
+   * The OL location standing for one of a master's own locations, provisioned
+   * on first sight (ADR-058 decision 1; the multi-location master sync).
+   *
+   * Matched by `(ownerConnectionId = connection, externalRef = the master's
+   * id)`, so a rename or any other operator edit survives every later sync -
+   * only a MISSING row is created, never an existing one rewritten. The
+   * provisioned row is an ordinary warehouse the operator may retire, move or
+   * delete; it is never a stand-in for "the master did not say where".
+   *
+   * @param input.platformType - namespaces the generated code (`SHOPIFY-123`)
+   */
+  resolveMasterLocation(input: ResolveMasterLocationInput): Promise<InventoryLocation>;
 
   /** @returns the location, or `null` when no row carries that id */
   getLocation(id: string): Promise<InventoryLocation | null>;

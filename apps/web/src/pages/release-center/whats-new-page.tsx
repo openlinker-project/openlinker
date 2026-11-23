@@ -1,5 +1,5 @@
 /**
- * What's new page (#4147, ADR-085)
+ * What's new page (#4147, ADR-086)
  *
  * Setup steps of the installed release and the full English changelog. Open to
  * every role that may read release state; a role without access, or an

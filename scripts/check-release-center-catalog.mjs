@@ -3,7 +3,7 @@
  * check-release-center-catalog.mjs
  *
  * Lint-time invariant for the release center step catalog and highlights
- * (#4145, ADR-085). Without it the catalog and the changelog drift silently.
+ * (#4145, ADR-086). Without it the catalog and the changelog drift silently.
  *
  * Rules, in the order they are reported:
  *   1. Every catalog entry has a unique `id` matching ^[a-z0-9]+(-[a-z0-9]+)*$.

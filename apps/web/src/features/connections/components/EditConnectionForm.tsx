@@ -57,6 +57,7 @@ import { SettingsPageFrame } from '../../../shared/ui/settings-page-frame';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { useSession } from '../../../shared/auth/use-session';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
@@ -332,6 +333,7 @@ function readInpostSenderAddress(
       ? (raw.address as Record<string, unknown>)
       : {};
   return {
+    company: typeof raw.company === 'string' ? raw.company : '',
     name: typeof raw.name === 'string' ? raw.name : '',
     email: typeof raw.email === 'string' ? raw.email : '',
     phone: typeof raw.phone === 'string' ? raw.phone : '',
@@ -457,6 +459,12 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
   const navigate = useNavigate();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
+  // Until the session resolves the permission list is empty, which is "not known yet", not "denied":
+  // locking the form then would flash a read-only form at every operator on each page load.
+  const { isReady: sessionReady } = useSession();
+  // The public demo deliberately shows editable inputs with a disabled Save (#1615), so only a real
+  // read-only session locks the whole form.
+  const readOnly = sessionReady && !write.canWrite && !demoMode;
   const [showRawJson, setShowRawJson] = useState(false);
   const [emptySlots, setEmptySlots] = useState<ReadonlySet<string>>(new Set());
   const markSlotEmpty = useCallback((id: string): void => {
@@ -1204,10 +1212,14 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
         short={connection.name}
         description={subtitle ?? copy.meta}
         sections={sections.filter((section) => !emptySlots.has(section.id))}
+        readOnly={readOnly}
         actions={
           <div className="form-actions">
             <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
-              <Button type="submit" disabled={updateConnection.isPending || write.demoReadOnly}>
+              <Button
+                type="submit"
+                disabled={updateConnection.isPending || write.demoReadOnly || readOnly}
+              >
                 {updateConnection.isPending ? copy.saving : copy.save}
               </Button>
             </ReadOnlyLock>

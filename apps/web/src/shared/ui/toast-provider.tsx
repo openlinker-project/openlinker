@@ -34,7 +34,7 @@ interface Toast {
 
 /**
  * `inverse` is a dark pill that drops in under the topbar and carries no
- * dismiss button: the release center's confirmation toast (ADR-085). Every
+ * dismiss button: the release center's confirmation toast (ADR-086). Every
  * other caller keeps the default tone-accented card in the corner.
  */
 export type ToastVariant = 'inverse';

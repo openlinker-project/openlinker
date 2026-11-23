@@ -830,6 +830,7 @@ module.exports = {
         'libs/integrations/subiekt-nexo/**/*.ts',
         'libs/integrations/woocommerce/**/*.ts',
         'libs/integrations/shoper/**/*.ts',
+        'libs/integrations/shopify/**/*.ts',
         // #2390 / ADR-055: `libs/oms` ships no HTTP client by design — the
         // OL-OMS answers from OpenLinker's own tables. Banned here (and
         // scanned by scripts/check-outbound-http.mjs) so that stays enforced.
@@ -930,7 +931,7 @@ module.exports = {
     },
 
     {
-      // #4146 / ADR-085: the release center keeps no state in browser storage.
+      // #4146 / ADR-086: the release center keeps no state in browser storage.
       // The server owns it (GET /release-state); a rejected cursor write is
       // remembered in module memory only.
       files: ['apps/web/src/features/release-center/**/*.{ts,tsx}'],
@@ -942,20 +943,20 @@ module.exports = {
             ['localStorage', 'sessionStorage'].map((property) => ({
               object,
               property,
-              message: 'The release center must not use browser storage (ADR-085); state comes from GET /release-state.',
+              message: 'The release center must not use browser storage (ADR-086); state comes from GET /release-state.',
             }))
           ),
         ],
         'no-restricted-globals': [
           'error',
-          { name: 'localStorage', message: 'The release center must not use browser storage (ADR-085).' },
-          { name: 'sessionStorage', message: 'The release center must not use browser storage (ADR-085).' },
+          { name: 'localStorage', message: 'The release center must not use browser storage (ADR-086).' },
+          { name: 'sessionStorage', message: 'The release center must not use browser storage (ADR-086).' },
         ],
       },
     },
 
     {
-      // #4244 / ADR-085 amendment: message notifications have no server-side source yet, so their content is
+      // #4244 / ADR-086 amendment: message notifications have no server-side source yet, so their content is
       // kept per signed-in user in this browser. Exactly this one file may touch localStorage; every other
       // file of the release center still may not.
       files: ['apps/web/src/features/release-center/lib/notification-store.ts'],

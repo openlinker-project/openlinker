@@ -1,5 +1,5 @@
 /**
- * Release center state (#4141, epic #4131, ADR-085)
+ * Release center state (#4141, epic #4131, ADR-086)
  *
  * - `user_release_state`: one row per user, the version cursor (display text
  *   plus `major/minor/patch/rank` so the guard is a row comparison) and the

@@ -1,4 +1,4 @@
-# ADR-085: Release center is a leaf context with two-scope database state and a catalog of setup steps
+# ADR-086: Release center is a leaf context with two-scope database state and a catalog of setup steps
 
 - **Status**: Proposed
 - **Date**: 2026-11-17

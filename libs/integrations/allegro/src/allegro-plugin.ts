@@ -117,6 +117,9 @@ export const allegroAdapterManifest: AdapterMetadata = {
     // That is also why both returns scheduler tasks require `OrderSource`, not
     // this name — the two facts are complementary, not contradictory.
     'ReturnSourceReader',
+    // `RefundSourceReader` (#4126): seller-side payment refunds, observed only.
+    // Same advertised-without-dispatch rule as `ReturnSourceReader`.
+    'RefundSourceReader',
     // `ReturnDecliner` (#2333) — the ONE customer-returns WRITE, and a capability
     // of its own rather than a method on the read-only `ReturnSourceReader`
     // above (see that capability's docblock). Same advertised-without-dispatch

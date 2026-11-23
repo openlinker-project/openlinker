@@ -204,8 +204,10 @@ export class ConfirmReturnRefundResponseDto {
 
   @ApiProperty({
     description:
-      'Whether money actually moved. `false` for a `denied` / `in_doubt` outcome — the attempt was ' +
-      'recorded and there was nothing to write. Distinct from `refundRecordWritten`.',
+      'Whether OpenLinker moved money, i.e. a refund executor performed the refund. `false` for a ' +
+      '`denied` / `in_doubt` outcome (the attempt was recorded and there was nothing to write) and ' +
+      'for a refund the operator executed out of band, which OpenLinker only records. Distinct ' +
+      'from `refundRecordWritten`.',
   })
   moneyMoved!: boolean;
 

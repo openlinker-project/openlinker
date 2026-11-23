@@ -1,5 +1,5 @@
 /**
- * Release step catalog types (#4145, ADR-085)
+ * Release step catalog types (#4145, ADR-086)
  *
  * A step is one setup decision a release asks an operator to make. The catalog
  * holds only data and predicates; every sentence lives in
