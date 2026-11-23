@@ -8561,6 +8561,16 @@ html:has(.login-stage) {
   font-size: 0.875rem;
 }
 
+/* ── Catalogue mode fieldset (#4281) ──
+ * Semantic grouping only: the visible chrome is the inner `.rate-limit-section`,
+ * so the user-agent fieldset border and legend never show. */
+.catalogue-mode-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 /* ── Guided setup: capability choice + lanes (#3769) ────────────────
  * A setup wizard that lets the operator pick what a connection does, then
  * groups the fields each choice needs. A lane opens with a rule, so the

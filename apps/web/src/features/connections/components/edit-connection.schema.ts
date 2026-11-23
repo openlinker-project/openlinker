@@ -313,6 +313,9 @@ export const editConnectionSchema = z
     masterCatalogConnectionId: z
       .union([z.string().uuid(msg('productCatalogInvalid')), z.literal('')])
       .optional(),
+    // #4281: `config.catalogueMode` (#4280). Defaults to `linked`, which is what a
+    // missing key means, so the form never reports a spurious change.
+    catalogueMode: z.enum(['linked', 'none']).optional(),
     // PrestaShop-only structured field surfacing `config.defaultCarrierId`
     // (#517). Stored as a string on the form so the same `<Select>`
     // primitive can serve both this field and the per-method mapping
@@ -493,6 +496,8 @@ export type StructuredConfigPatch = {
   /** Erli webhook callback URL — `config.callbackBaseUrl` (#1454 follow-up). */
   callbackBaseUrl?: string;
   masterCatalogConnectionId?: string;
+  /** `config.catalogueMode` (#4281). `linked` is written as an explicit `null`. */
+  catalogueMode?: 'linked' | 'none';
   /**
    * PrestaShop fallback carrier id (#517). Empty string clears the key;
    * a non-empty value is coerced to a positive integer. Values that fail
@@ -741,6 +746,13 @@ export function mergeStructuredIntoConfig(
   // value verbatim instead of deleting on empty.
   if (structured.masterCatalogConnectionId !== undefined) {
     next.masterCatalogConnectionId = structured.masterCatalogConnectionId;
+  }
+  // #4281: the default is written as an explicit `null`, never by deleting the
+  // key (#2016). The submit merge is a shallow spread over the freshly fetched
+  // config, so a deleted key would let a stale `'none'` survive; every reader
+  // (core `readCatalogueMode`, the service validator) treats `null` as absent.
+  if (structured.catalogueMode !== undefined) {
+    next.catalogueMode = structured.catalogueMode === 'none' ? 'none' : null;
   }
   if (structured.defaultCarrierId !== undefined) {
     if (structured.defaultCarrierId.length === 0) {

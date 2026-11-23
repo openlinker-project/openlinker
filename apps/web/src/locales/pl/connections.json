@@ -813,6 +813,14 @@
       "staleBody": "To połączenie wskazuje usunięte lub wyłączone połączenie z katalogiem. Wybierz nowe poniżej albo usuń powiązanie.",
       "staleTitle": "Brak powiązanego katalogu"
     },
+    "catalogueMode": {
+      "help": "Zamówienia i oferty działają bez katalogu. Łączenie po kodach kreskowych i mapowanie produktów są wyłączone, dopóki katalog nie jest używany.",
+      "legend": "Katalog produktów",
+      "linked": "Z katalogiem: użyj połączenia z katalogiem produktów (łączenie po kodach kreskowych i EAN)",
+      "none": "Bez katalogu: tylko ten marketplace, bez katalogu produktów",
+      "noneBody": "Zamówienia przychodzą z własnymi pozycjami marketplace'u (oferta, SKU, nazwa, cena) i nie są dopasowywane do produktów. Stany magazynowe, oferty z katalogu i raporty per produkt nie dotyczą tych zamówień.",
+      "noneTitle": "Bez katalogu"
+    },
     "errorTitle": "Nie udało się zaktualizować połączenia",
     "eyebrow": "Edytuj połączenie",
     "fields": {

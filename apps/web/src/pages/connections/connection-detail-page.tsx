@@ -38,6 +38,7 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
+import { readCatalogueMode } from '../../features/connections/lib/catalogue-mode';
 import { usePlatform, usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -237,6 +238,12 @@ function ProductCatalogLinkBanner({
     !connection.enabledCapabilities.includes('OfferManager') &&
     !connection.enabledCapabilities.includes('ProductPublisher')
   ) {
+    return null;
+  }
+
+  // #4281: a connection that declares it has no catalog has nothing to link, so
+  // the "link a catalog" nudge would be asking for the opposite of what was chosen.
+  if (readCatalogueMode(connection.config) === 'none') {
     return null;
   }
 
