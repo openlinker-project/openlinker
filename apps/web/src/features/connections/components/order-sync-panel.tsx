@@ -3,7 +3,7 @@
  *
  * Orders-tab panel for the order import (#4228): where it started, when the
  * shop was last checked and how the import is doing. "Check for new orders" runs
- * the check from here; "Import older orders…" opens the one dialog for a period
+ * the check from here; "Get past orders…" opens the one dialog for a period
  * or a new start. Presentation only - the read is the existing
  * `use-connection-sync-status-query` (same query key as the queue panel, so no
  * extra request).
@@ -60,7 +60,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
     adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
     adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault);
   // An adapter that declares no start modes cannot start from a chosen point (it reads
-  // its whole history), so a start row and "Import older orders" would promise nothing.
+  // its whole history), so a start row and "Get past orders" would promise nothing.
   const hasStartChoice =
     (adapter?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES).length > 0;
   const statusQuery = useConnectionSyncStatusQuery(connectionId);
