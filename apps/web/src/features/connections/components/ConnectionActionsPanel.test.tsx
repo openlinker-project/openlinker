@@ -6,7 +6,11 @@ import {
   sampleConnection,
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
+import { useEffect, type ReactElement } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { act } from '@testing-library/react';
 import { ConnectionActionsPanel } from './ConnectionActionsPanel';
+import { announceGuidedLanded } from '../lib/guided-jump';
 import { getMessages } from '../../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
@@ -253,6 +257,78 @@ describe('ConnectionActionsPanel', () => {
       expect(await screen.findByRole('combobox', { name: /job type/i })).toHaveValue(
         'marketplace.orders.poll',
       );
+      expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('guided arrival chaining (#4228)', () => {
+    const orderSource = {
+      ...sampleConnection,
+      supportedCapabilities: [...sampleConnection.supportedCapabilities, 'OrderSource' as const],
+    };
+    const api = () =>
+      createMockApiClient({
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: sampleConnection.adapterKey,
+              platformType: sampleConnection.platformType,
+              isDefault: true,
+              orderWindowImport: true,
+            },
+          ]),
+        },
+      });
+
+    // Arrives the way the Sync tab sends the operator: a navigation carrying the guided flag.
+    function GuidedArrival(): ReactElement | null {
+      const navigate = useNavigate();
+      const location = useLocation();
+      useEffect(() => {
+        void navigate('/c?tab=actions&sync=orders&scope=range', { state: { guided: true } });
+      }, [navigate]);
+      return location.state ? <ConnectionActionsPanel connection={orderSource} /> : null;
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    it('opens at once, without waiting, when motion is not allowed', async () => {
+      renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
+    });
+
+    it('opens when the tab underline lands, not before', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+      await screen.findByRole('button', { name: /trigger sync/i });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+      act(() => announceGuidedLanded());
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
+    });
+
+    it('opens after the fallback when no landing signal ever comes', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+      await screen.findByRole('button', { name: /trigger sync/i });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i }, { timeout: 2500 })).toHaveValue(
+        'range'
+      );
+    });
+
+    it('does not open after the panel unmounts mid-sequence', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      const view = renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+      await screen.findByRole('button', { name: /trigger sync/i });
+      view.unmount();
+      act(() => announceGuidedLanded());
+
       expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
     });
   });

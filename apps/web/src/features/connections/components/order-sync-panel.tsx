@@ -16,7 +16,7 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useEnqueueSyncJobMutation, useRetryGroupedSyncJobsMutation } from '../../sync-jobs';
@@ -31,12 +31,13 @@ import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { Connection, OrderStartStatus } from '../api/connections.types';
 import { ORDER_SYNC_START_DEFAULT_MODES } from '../lib/order-sync-start';
+import { computeRipple, GUIDED_PRESS_MS, type RippleGeometry } from '../lib/guided-jump';
+import { prefersMotion } from '../../../shared/ui/prefers-motion';
 import { deriveOrderImportVerdict, type OrderImportVerdict } from '../lib/order-import-verdict';
 import { OrderImportHealth } from './order-import-health';
 import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
 
 /** How long the press plays before the operator is taken to the Actions tab. */
-const PRESS_MS = 350;
 
 const VERDICT_TONE: Record<OrderImportVerdict, StatusBadgeTone> = {
   ok: 'success',
@@ -54,6 +55,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const connectionId = connection.id;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const [ripple, setRipple] = useState<RippleGeometry | null>(null);
   const pressTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(pressTimer.current), []);
   const demoMode = useDemoMode();
@@ -78,17 +80,28 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
 
   const enqueueCheck = useEnqueueSyncJobMutation();
 
-  // The button plays a short press first, so the jump to another tab reads as
-  // something the click did rather than as the page changing by itself.
-  function goToPeriodSync(): void {
+  // The button compresses and ripples from the pointer first, so the jump to another tab reads
+  // as something the click did; the tab underline then travels from this tab to Actions.
+  // A second click during the press is ignored. Reduced motion jumps at once.
+  function goToPeriodSync(event: MouseEvent<HTMLButtonElement>): void {
     if (pressed) return;
-    setPressed(true);
-    pressTimer.current = window.setTimeout(() => {
+    const go = (): void => {
       setPressed(false);
       void navigate(`/connections/${connectionId}?tab=actions&sync=orders&scope=range`, {
-        state: { guided: true },
+        state: { guided: true, fromTab: 'orders' },
       });
-    }, PRESS_MS);
+    };
+    if (!prefersMotion()) {
+      go();
+      return;
+    }
+    const box = event.currentTarget.getBoundingClientRect();
+    // `detail` is 0 for a keyboard activation, which has no pointer position.
+    const point =
+      event.detail === 0 ? null : { x: event.clientX - box.left, y: event.clientY - box.top };
+    setRipple(computeRipple(box, point));
+    setPressed(true);
+    pressTimer.current = window.setTimeout(go, GUIDED_PRESS_MS);
   }
 
   async function checkNow(): Promise<void> {
@@ -169,11 +182,25 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
           {canGetPeriod && sync.visible ? (
             <Button
               tone="secondary"
-              className={pressed ? 'button--pressed' : undefined}
+              className={pressed ? 'guided-press' : undefined}
               onClick={goToPeriodSync}
               disabled={sync.demoReadOnly}
             >
               {copy.getPeriod}
+              {ripple ? (
+                <span
+                  className="guided-ripple"
+                  aria-hidden="true"
+                  style={
+                    {
+                      '--ripple-x': `${ripple.x}px`,
+                      '--ripple-y': `${ripple.y}px`,
+                      '--ripple-size': `${ripple.diameter}px`,
+                    } as CSSProperties
+                  }
+                  onAnimationEnd={() => setRipple(null)}
+                />
+              ) : null}
             </Button>
           ) : null}
         </div>

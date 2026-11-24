@@ -21,11 +21,10 @@ import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
+import { GUIDED_DIALOG_FALLBACK_MS, onGuidedLanded } from '../lib/guided-jump';
+import { prefersMotion } from '../../../shared/ui/prefers-motion';
 
 /** Which job the trigger dialog opens on, by the `?sync=` value another tab sends. */
-/** Wait for the guided tab animation before the trigger dialog opens over it. */
-const GUIDED_DIALOG_DELAY_MS = 550;
-
 const SYNC_TARGET_JOB: Record<string, string | undefined> = {
   orders: 'marketplace.orders.poll',
   products: 'master.product.syncAll',
@@ -60,8 +59,10 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   const sync = useWriteAccess('sync:write', demoMode);
 
   // Not cleared when the params drop (that re-runs the effect below), only on unmount.
-  const openTimer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(openTimer.current), []);
+  const cancelGuidedOpen = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => cancelGuidedOpen.current?.(), []);
+  // The first dialog open after a guided arrival gets its own entrance; ordinary opens do not.
+  const [triggerGuidedEntrance, setTriggerGuidedEntrance] = useState(false);
 
   const syncTarget = SYNC_TARGET_JOB[searchParams.get('sync') ?? ''];
   const wantsRange = syncTarget === 'marketplace.orders.poll' && searchParams.get('scope') === 'range';
@@ -78,17 +79,35 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
       },
       { replace: true, state: location.state }
     );
-    const open = (): void => {
+    const open = (guidedEntrance: boolean): void => {
+      setTriggerGuidedEntrance(guidedEntrance);
       setTriggerInitialJob(syncTarget);
       setTriggerInitialScope(wantsRange ? 'range' : 'new');
       setIsTriggerDialogOpen(true);
     };
-    // After a guided arrival the dialog waits for the tab animation, so the operator sees it first.
-    if (!guided) {
-      open();
+    // After a guided arrival the dialog chains to the tab underline landing, so the operator
+    // sees where they were taken first. Without motion (or without a guided arrival) it opens now.
+    if (!guided || !prefersMotion()) {
+      open(false);
       return;
     }
-    openTimer.current = window.setTimeout(open, GUIDED_DIALOG_DELAY_MS);
+    let opened = false;
+    let timer = 0;
+    let unsubscribe = (): void => undefined;
+    const fire = (): void => {
+      if (opened) return;
+      opened = true;
+      window.clearTimeout(timer);
+      unsubscribe();
+      open(true);
+    };
+    unsubscribe = onGuidedLanded(fire);
+    timer = window.setTimeout(fire, GUIDED_DIALOG_FALLBACK_MS);
+    cancelGuidedOpen.current = () => {
+      opened = true;
+      window.clearTimeout(timer);
+      unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per arrival; the params are dropped by this very effect
   }, [syncTarget, wantsRange, sync.visible]);
 
@@ -308,6 +327,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         submitDisabled={sync.demoReadOnly}
         initialJobType={triggerInitialJob}
         initialOrderScope={triggerInitialScope}
+        guidedEntrance={triggerGuidedEntrance}
       />
 
       <ConfirmDialog

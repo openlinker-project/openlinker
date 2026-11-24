@@ -21,7 +21,8 @@ export const TabsTrigger = forwardRef<
   ComponentPropsWithoutRef<typeof RadixTabs.Trigger>
 >(function TabsTrigger({ className = '', ...props }, ref) {
   const classes = ['tabs__trigger', className].filter(Boolean).join(' ');
-  return <RadixTabs.Trigger ref={ref} className={classes} {...props} />;
+  // `data-tab-value` lets a caller find a trigger by its tab (e.g. to measure it for a guided jump).
+  return <RadixTabs.Trigger ref={ref} className={classes} data-tab-value={props.value} {...props} />;
 });
 
 export const TabsContent = forwardRef<

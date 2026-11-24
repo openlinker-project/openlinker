@@ -40930,67 +40930,137 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 
 /* ── Guided jump to a period sync (#4228) ──
-   Motion only under no-preference, and never the only signal: the Actions tab is
-   active and the period option is selected whether or not any of this plays. */
+   One sequence in which a single signal travels: the button presses and ripples, the tab
+   underline travels from the origin tab to Actions, the panel slides in from that side, the
+   dialog lands, and the chosen option draws an outline. Motion only under no-preference, and
+   never the only signal: the Actions tab is active and the period option is selected whether
+   or not any of this plays. Transform and opacity only. */
 @media (prefers-reduced-motion: no-preference) {
-  .button--pressed {
-    animation: button-press 300ms var(--ease-out);
+  /* The press: compress, then spring back past rest by a hair. */
+  .guided-press {
+    position: relative;
+    overflow: hidden; /* clips the ripple to the button */
+    animation: guided-press 260ms var(--ease-out);
   }
+  /* One radial ink ripple from the pointer, sized (in JS) to cover the button from there. */
+  .guided-ripple {
+    position: absolute;
+    left: var(--ripple-x);
+    top: var(--ripple-y);
+    width: var(--ripple-size);
+    height: var(--ripple-size);
+    margin: calc(var(--ripple-size) / -2) 0 0 calc(var(--ripple-size) / -2);
+    border-radius: 50%;
+    background: var(--accent-ring);
+    pointer-events: none;
+    animation: guided-ripple 450ms var(--ease-out) both;
+  }
+  /* The incoming panel enters from the side its tab lies on (--guided-dir is set from tab order). */
   .tabs--guided > .tabs__content[data-state='active'] {
-    animation: guided-panel-in 450ms var(--ease-out) both;
+    animation: guided-panel-in 420ms var(--ease-out) 30ms both;
   }
-  .tabs--guided .tabs__trigger[data-state='active'] {
-    animation: guided-tab-ping 900ms var(--ease-out) 1;
+  /* Its first four children follow one after another, 40 ms apart. */
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(-n + 4) {
+    animation: guided-child-in 360ms var(--ease-out) 80ms both;
   }
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(2) { animation-delay: 120ms; }
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(3) { animation-delay: 160ms; }
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(4) { animation-delay: 200ms; }
+  /* The dialog lands with a small overshoot; ordinary opens keep the shared fade. */
+  .dialog__content.trigger-sync-dialog--guided {
+    animation: guided-dialog-in 340ms cubic-bezier(0.34, 1.45, 0.64, 1) both;
+  }
+  /* "Chosen for you": a soft halo and an accent line drawn left to right, held, then gone. */
   .trigger-sync-dialog__scope--preselected {
-    animation: guided-field-pulse 1200ms var(--ease-out) 1;
+    position: relative;
+    isolation: isolate; /* keeps the halo behind the field but above the dialog surface */
+  }
+  .trigger-sync-dialog__scope--preselected::before,
+  .trigger-sync-dialog__scope--preselected::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+  }
+  .trigger-sync-dialog__scope--preselected::before {
+    inset: calc(var(--space-2) * -1);
+    z-index: -1;
+    border-radius: var(--radius-md);
+    background: var(--accent-primary-soft);
+    animation: guided-halo 1400ms var(--ease-standard) 200ms both;
+  }
+  .trigger-sync-dialog__scope--preselected::after {
+    left: 0;
+    right: 0;
+    bottom: calc(var(--space-2) * -1);
+    height: 2px;
+    background: var(--accent-primary);
+    transform-origin: 0 50%;
+    animation: guided-draw 1400ms var(--ease-out) 200ms both;
   }
 }
-@keyframes button-press {
-  0% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 var(--accent-ring);
+/* Without motion the chosen option just wears a static outline for a moment (the dialog drops it). */
+@media (prefers-reduced-motion: reduce) {
+  .trigger-sync-dialog__scope--preselected {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: var(--space-2);
+    border-radius: var(--radius-md);
   }
-  40% {
-    transform: scale(0.94);
-    box-shadow: 0 0 0 4px var(--accent-ring);
-  }
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 transparent;
-  }
+}
+
+/* The travelling underline: a 1 px wide, 2 px high line placed and stretched with transform, so
+   it never relayouts. It sits where a trigger's own underline sits (bottom -1px) and scrolls
+   with the list. */
+.tabs--guided .tabs__list {
+  position: relative;
+}
+.tabs__ink {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 1px;
+  height: 2px;
+  background: var(--accent-primary);
+  transform-origin: 0 50%;
+  pointer-events: none;
+  will-change: transform;
+}
+/* While the ink travels the target's own underline waits (hidden) and its label has not yet
+   switched; removing this class on landing is the hand-off, in the same commit as the ink. */
+.tabs--guided-travel .tabs__trigger[data-state='active'] {
+  border-bottom-color: transparent;
+  color: var(--text-secondary);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+@keyframes guided-press {
+  0% { transform: scale(1); }
+  45% { transform: scale(0.965); }
+  75% { transform: scale(1.012); }
+  100% { transform: scale(1); }
+}
+@keyframes guided-ripple {
+  from { transform: scale(0); opacity: 0.9; }
+  to { transform: scale(1); opacity: 0; }
 }
 @keyframes guided-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(var(--space-2));
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  from { opacity: 0; transform: translateX(calc(var(--guided-dir, 0) * 24px)); }
+  to { opacity: 1; transform: none; }
 }
-@keyframes guided-tab-ping {
-  0% {
-    box-shadow: 0 0 0 0 var(--accent-ring);
-  }
-  40% {
-    box-shadow: 0 0 0 6px var(--accent-ring);
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
+@keyframes guided-child-in {
+  from { opacity: 0; transform: translateY(var(--space-2)); }
+  to { opacity: 1; transform: none; }
 }
-@keyframes guided-field-pulse {
-  0%,
-  60% {
-    background: var(--accent-primary-soft);
-    box-shadow: 0 0 0 var(--space-2) var(--accent-primary-soft);
-    border-radius: var(--radius-md);
-  }
-  100% {
-    background: transparent;
-    box-shadow: 0 0 0 var(--space-2) transparent;
-    border-radius: var(--radius-md);
-  }
+@keyframes guided-dialog-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes guided-halo {
+  0% { opacity: 0; }
+  20%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes guided-draw {
+  0% { transform: scaleX(0); opacity: 1; }
+  25%, 75% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
 }
