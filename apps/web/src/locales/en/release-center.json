@@ -102,8 +102,8 @@
     "tabArchive": "Archive",
     "tabsLabel": "Filter notifications",
     "tally": {
-      "required": "Required {done}/{total}",
       "optional": "Optional {done}/{total}",
+      "required": "Required {done}/{total}",
       "showcase": "To view {done}/{total}"
     },
     "title": "Notifications",

@@ -106,8 +106,8 @@
     "tabArchive": "Archiwum",
     "tabsLabel": "Filtr powiadomień",
     "tally": {
-      "required": "Wymagane {done}/{total}",
       "optional": "Opcjonalne {done}/{total}",
+      "required": "Wymagane {done}/{total}",
       "showcase": "Do obejrzenia {done}/{total}"
     },
     "title": "Powiadomienia",
