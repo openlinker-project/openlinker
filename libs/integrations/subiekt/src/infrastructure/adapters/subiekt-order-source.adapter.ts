@@ -2,19 +2,19 @@
  * Subiekt Order Source Adapter
  *
  * Implements `OrderSourcePort` over `SubiektOrdersBridgeClient`. Reads customer
- * orders (ZK — Zamówienie od Klienta) entered directly in Subiekt GT — e.g. by
- * an operator over the phone or at the counter — so they can be synchronised
+ * orders (ZK - Zamówienie od Klienta) entered directly in Subiekt GT - e.g. by
+ * an operator over the phone or at the counter - so they can be synchronised
  * out to another system. This is the read-only counterpart of
  * `SubiektOrderProcessorAdapter` (which writes orders INTO Subiekt).
  *
  * Not every Subiekt connection needs this capability; it is opt-in per the
- * connection's `enabledCapabilities`. It is genuinely optional MVP scope —
+ * connection's `enabledCapabilities`. It is genuinely optional MVP scope -
  * a connection that only issues invoices need not enable it.
  *
  * ## Cursor semantics
  *
  * The bridge has no event journal (unlike Allegro) and Subiekt GT's own
- * `SuDokumentyManager.Wybierz()` is a UI picker, not a headless query — so, like
+ * `SuDokumentyManager.Wybierz()` is a UI picker, not a headless query - so, like
  * every other read in this bridge, order listing goes through raw SQL on
  * `dok__Dokument`. The cursor is therefore a `dataWystawienia` (issue date)
  * watermark, exactly the PrestaShop `date_upd` shape this port's own docblock
@@ -50,9 +50,12 @@ import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-brid
 import { findTowarVariantExternalId } from './subiekt-variant-identity';
 
 const FALLBACK_WALK_PAGE_SIZE = 1000;
-/** 200 pages of 1000 ZK. Past it the walk is not a fallback any more but an
- * hour-long read holding the poll lock, so it refuses instead. */
-const FALLBACK_WALK_MAX_PAGES = 200;
+/** 50 pages of 1000 ZK. Past it the walk is not a fallback any more, so it refuses. */
+const FALLBACK_WALK_MAX_PAGES = 50;
+/** The poll lock lasts 5 minutes and is not extended, and one bridge request may
+ * take up to 150 s. The walk stops after 3 minutes in total, checked between
+ * pages, so it never outlives the lock it runs under. */
+const FALLBACK_WALK_BUDGET_MS = 3 * 60 * 1000;
 /** A bare day or an ISO instant; only the calendar-day prefix is used, as on
  * PrestaShop, since the bridge keys its cursor on the day it stores. */
 const ISO_DAY_PREFIX = /^(\d{4}-\d{2}-\d{2})(?:$|T)/;
@@ -68,6 +71,7 @@ export class SubiektOrderSourceAdapter
     // adapter; this was the only one it skipped.
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly connectionId: string,
+    private readonly now: () => number = Date.now,
   ) {}
 
   async headCursor(): Promise<string | null> {
@@ -81,7 +85,11 @@ export class SubiektOrderSourceAdapter
         'walking the entire order feed to find its end (upgrade the bridge to avoid this)',
     );
     let cursor: string | null = null;
+    const startedAt = this.now();
     for (let pageNumber = 0; pageNumber < FALLBACK_WALK_MAX_PAGES; pageNumber += 1) {
+      if (this.now() - startedAt >= FALLBACK_WALK_BUDGET_MS) {
+        break;
+      }
       const page = await this.bridge.listOrderFeed(cursor, FALLBACK_WALK_PAGE_SIZE);
       if (page.items.length === 0 || page.nextCursor === null || page.nextCursor === cursor) {
         return cursor;
@@ -125,7 +133,7 @@ export class SubiektOrderSourceAdapter
     return {
       items: response.items.map((item) => ({
         externalOrderId: String(item.id),
-        // Subiekt GT has no per-row event kind — every row surfaces as
+        // Subiekt GT has no per-row event kind - every row surfaces as
         // 'updated' (the safe, re-ingestable choice: `OrderIngestionService`
         // treats a repeat externalOrderId as a re-pull, never a duplicate
         // create). ZK creation and edits are indistinguishable from this read.
@@ -228,7 +236,7 @@ export class SubiektOrderSourceAdapter
               company: detail.kontrahentNazwa,
               taxId: detail.kontrahentNip,
               // Subiekt GT's kontrahent read carries no structured street/city
-              // split in this MVP slice — address1/city/postalCode are
+              // split in this MVP slice - address1/city/postalCode are
               // required by `IncomingOrderAddress` but not sourced yet.
               address1: '',
               city: '',

@@ -96,7 +96,7 @@ describe('SubiektOrderSourceAdapter', () => {
     expect(order.items).toHaveLength(1);
     expect(order.items[0]).toMatchObject({ sku: 'SKU-1', quantity: 3, price: 41.15 });
     // #3359: `line.symbol` is exactly the towar symbol ProductMaster maps
-    // as `CORE_ENTITY_TYPE.Product` — `type: 'sku'` (a DISTINCT mapping
+    // as `CORE_ENTITY_TYPE.Product` - `type: 'sku'` (a DISTINCT mapping
     // kind nothing in this adapter's ProductMaster sync ever creates) made
     // every native order-line resolution fail 100% of the time.
     expect(order.items[0].productRef).toEqual({ type: 'product', externalId: 'SKU-1' });
@@ -321,7 +321,34 @@ describe('SubiektOrderSourceAdapter', () => {
       const failure = adapter.headCursor();
       await expect(failure).rejects.toThrow(OrderSyncStartUnavailableError);
       await expect(failure).rejects.toThrow(/Upgrade the Subiekt bridge/);
-      expect(feedCalls).toBe(200);
+      expect(feedCalls).toBe(50);
+    });
+
+    it('should stop the fallback walk when the wall-clock budget is spent', async () => {
+      let feedCalls = 0;
+      let clock = 0;
+      const adapter = new SubiektOrderSourceAdapter(
+        new SubiektOrdersBridgeClient('http://127.0.0.1:5056', {
+          fetchImpl: ((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/api/orders/feed/head')) return Promise.resolve(new Response('', { status: 404 }));
+            feedCalls += 1;
+            clock += 70_000;
+            return Promise.resolve(
+              envelope({
+                items: [{ id: feedCalls, numer: `ZK ${feedCalls}`, dataWystawienia: '2026-01-01T00:00:00Z' }],
+                nextCursor: `c${feedCalls}`,
+              }),
+            );
+          }) as unknown as typeof fetch,
+        }),
+        noopLogger,
+        emptyMappings(),
+        CONNECTION_ID,
+        () => clock,
+      );
+      await expect(adapter.headCursor()).rejects.toThrow(/Upgrade the Subiekt bridge/);
+      expect(feedCalls).toBe(3);
     });
 
     it('fallback returns the previous cursor when a non-empty page carries no next cursor', async () => {

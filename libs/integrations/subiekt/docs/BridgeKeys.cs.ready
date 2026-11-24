@@ -11,8 +11,6 @@
 //
 using System.Globalization;
 
-using System.Globalization;
-
 /// <summary>
 /// The bridge's pure decision functions, in one file with NO COM and NO SQL.
 ///
