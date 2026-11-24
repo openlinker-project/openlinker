@@ -8,7 +8,7 @@
  *
  * @module features/release-center/components
  */
-import { useId, type ReactElement } from 'react';
+import { useId, useState, type ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -58,6 +58,8 @@ export function ReleaseCard({
   const { canWriteSteps } = useReleaseCenterAccess();
   // The step list is always open and takes the height it needs: the panel scrolls once, a card never has a scroller of its own.
   const regionId = useId();
+  // Required steps are always on show; the optional ones and the guides fold away, while the strip and tally above stay.
+  const [moreOpen, setMoreOpen] = useState(false);
 
   if (!view) return null;
 
@@ -75,6 +77,8 @@ export function ReleaseCard({
   const allSeen = myShowcases.every((s) => showcaseSeenOf(view.state, s.itemKey));
   const hasSteps = mine.length > 0 || myShowcases.length > 0;
   const left = mine.length - done;
+  const requiredSteps = mine.filter((instance) => instance.importance === 'required');
+  const optionalSteps = mine.filter((instance) => instance.importance !== 'required');
   const counts = emptyProgressCounts();
   mine.forEach((instance, index) =>
     addToProgressCounts(
@@ -207,16 +211,44 @@ export function ReleaseCard({
             <ProgressTally counts={counts} />
             {mine.length > 0 && !canWriteSteps ? <p className="release-progress__note">{copy.adminCompletes}</p> : null}
           </div>
-          <h3 className="release-card__toggle release-card__toggle--static" id={`${regionId}-label`}>
-            <span className="release-card__toggle-label">
-              {showcaseOnly ? copy.stopsLabel : copy.stepsLabel}
-              <span className="release-card__count">{showcaseOnly ? tally.total : mine.length + myShowcases.length}</span>
-            </span>
-          </h3>
-          <div id={regionId} className="release-card__list" aria-labelledby={`${regionId}-label`} role="group">
-            {mine.length > 0 ? <ReleaseStepList instances={mine} onNavigate={onNavigate} /> : null}
-            <ReleaseShowcaseList instances={myShowcases} onNavigate={onNavigate} />
-          </div>
+          {requiredSteps.length > 0 ? (
+            <>
+              <h3 className="release-card__toggle release-card__toggle--static" id={`${regionId}-label`}>
+                <span className="release-card__toggle-label">
+                  {copy.requiredStepsLabel}
+                  <span className="release-card__count">{requiredSteps.length}</span>
+                </span>
+              </h3>
+              <div className="release-card__list" aria-labelledby={`${regionId}-label`} role="group">
+                <ReleaseStepList instances={requiredSteps} onNavigate={onNavigate} />
+              </div>
+            </>
+          ) : null}
+          {optionalSteps.length + myShowcases.length > 0 ? (
+            <>
+              <button
+                type="button"
+                className="release-card__toggle"
+                aria-expanded={moreOpen}
+                aria-controls={`${regionId}-more`}
+                onClick={() => setMoreOpen((value) => !value)}
+              >
+                <span className="release-card__toggle-label">
+                  {requiredSteps.length > 0 ? copy.moreLabel : showcaseOnly ? copy.stopsLabel : copy.optionalAndViewLabel}
+                  <span className="release-card__count">{optionalSteps.length + (showcaseOnly ? tally.total : myShowcases.length)}</span>
+                </span>
+                <span className="release-card__chevron" aria-hidden="true" data-open={moreOpen}>
+                  <ReleaseIcon name="chevron" />
+                </span>
+              </button>
+              <div id={`${regionId}-more`} className="release-card__fold" data-open={moreOpen}>
+                <div className="release-card__fold-inner" inert={moreOpen ? undefined : true}>
+                  {optionalSteps.length > 0 ? <ReleaseStepList instances={optionalSteps} onNavigate={onNavigate} /> : null}
+                  <ReleaseShowcaseList instances={myShowcases} onNavigate={onNavigate} />
+                </div>
+              </div>
+            </>
+          ) : null}
           <div className="release-card__actions">
             <Button
               className="button--sm"
