@@ -33,6 +33,8 @@ interface OrderPricingPanelProps {
   bundleLines?: readonly OrderBundleLine[];
   /** The connection issuing the sales document, once there is one (#3940). */
   documentConnectionId?: string | null;
+  /** Opens a product's peek from its line (#4286). */
+  onOpenProduct?: (productId: string) => void;
 }
 
 /** The API reports the epoch when no operator edit stamped the overlay (a system-added gift only); that is "never edited", not 1 Jan 1970. */
@@ -50,6 +52,7 @@ export function OrderPricingPanel({
   channelName,
   bundleLines,
   documentConnectionId,
+  onOpenProduct,
 }: OrderPricingPanelProps): ReactElement {
   const copy = useMessages('orders').orderPricing;
   const format = useFormat();
@@ -72,6 +75,7 @@ export function OrderPricingPanel({
           channelQuantities={channelQuantities}
           bundleLines={bundleLines}
           documentConnectionId={documentConnectionId}
+          onOpenProduct={onOpenProduct}
         />
       ) : null}
 

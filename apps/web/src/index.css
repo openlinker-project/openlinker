@@ -40505,3 +40505,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-detail__split[data-state='active'] { display: block; column-count: 2; column-gap: 28px; }
   .order-detail__split[data-state='active'] > * { break-inside: avoid; margin-bottom: 28px; }
 }
+/* a product name that opens the product peek (#4286) */
+.order-line-item__name--link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-primary); text-align: left; cursor: pointer; }
+.order-line-item__name--link:hover { text-decoration: underline; }

@@ -25,6 +25,7 @@ import { Tabs, TabsContent } from '../../shared/ui/tabs';
 import { OrderNextStepCard } from '../../features/orders/components/order-next-step-card';
 import { deriveOrderIssues } from '../../features/orders/lib/order-next-step';
 import { OrderShipToBox } from '../../features/orders/components/order-ship-to-box';
+import { ProductPeekById } from '../products/product-peek-by-id';
 import { OrderProgressLine } from '../../features/orders/components/order-progress-line';
 import { OrderHeaderMenu } from '../../features/orders/components/order-header-menu';
 import { holdReasonLabel } from '../../features/orders/lib/order-hold.types';
@@ -203,6 +204,7 @@ export function OrderDetailPage(): ReactElement {
   const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
   const [giftDialogOpen, setGiftDialogOpen] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [productPeekId, setProductPeekId] = useState<string | null>(null);
   const [cancelOutcome, setCancelOutcome] = useState<{
     internalOrderId: string;
     result: CancelOrderResult;
@@ -787,6 +789,7 @@ export function OrderDetailPage(): ReactElement {
             .join(' ') || null
         }
         channelName={cancelSourceName}
+        onOpenProduct={setProductPeekId}
         statusPill={
           nextStep && nextStep.tone !== 'info'
             ? { tone: nextStep.tone === 'error' ? 'error' : 'warning', label: copy.nextStep.short[nextStep.kind] }
@@ -985,6 +988,7 @@ export function OrderDetailPage(): ReactElement {
             channelName={cancelSourceName}
             bundleLines={order.bundleLines}
             documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
+            onOpenProduct={setProductPeekId}
           />
         </section>
       ) : null}
@@ -1258,6 +1262,12 @@ export function OrderDetailPage(): ReactElement {
       </TabsContent>
 
       </Tabs>
+      <ProductPeekById
+        productId={productPeekId}
+        onClose={() => {
+          setProductPeekId(null);
+        }}
+      />
     </PageLayout>
   );
 }

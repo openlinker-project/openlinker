@@ -51,6 +51,8 @@ interface OrderDetailHeaderProps {
   deliveryFact?: string | null;
   shipByFact?: { iso: string; tone: StatusBadgeTone } | null;
   channelName?: string | null;
+  /** Opens a product's peek instead of navigating to its page (#4286). */
+  onOpenProduct?: (productId: string) => void;
   /** The most urgent problem as a status pill; falls back to the health badge when there is none. */
   statusPill?: { tone: StatusBadgeTone; label: string } | null;
 }
@@ -81,6 +83,7 @@ export function OrderDetailHeader({
   deliveryFact = null,
   shipByFact = null,
   channelName = null,
+  onOpenProduct,
   statusPill = null,
 }: OrderDetailHeaderProps): ReactElement {
   const copy = useMessages('orders').orderDetailHeader;
@@ -237,7 +240,16 @@ export function OrderDetailHeader({
             <>
               <span className="order-header__summary-sep">—</span>
               {firstItem?.productId ? (
-                <Link className="order-product-link" to={`/products/${firstItem.productId}`}>
+                <Link
+                  className="order-product-link"
+                  to={`/products/${firstItem.productId}`}
+                  onClick={(event) => {
+                    // A plain click opens the peek; modified clicks still open the page.
+                    if (!onOpenProduct || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                    event.preventDefault();
+                    onOpenProduct(firstItem.productId as string);
+                  }}
+                >
                   {productName}
                 </Link>
               ) : (
