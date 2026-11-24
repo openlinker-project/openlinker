@@ -15966,6 +15966,9 @@ a.kpi-card:focus-visible {
     border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
     padding: 0 8px 0 calc(var(--chip-overlap) + 7px);
   }
+
+  /* Inside the narrow notification panel the extra label has no room: the name on the face is enough. */
+  .release-panel .connection-chip--float .connection-chip__reveal { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -43045,3 +43048,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .pseg { forced-color-adjust: none; border: 1px solid ButtonText; }
   .pseg[data-state='done'], .pseg[data-state='current'] { background-color: Highlight; }
 }
+
+.release-step__body { min-width: 0; }
+.release-step__chips .connection-chip { max-width: 100%; }
