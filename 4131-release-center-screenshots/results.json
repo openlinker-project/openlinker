@@ -45,6 +45,11 @@
   "d": ""
  },
  {
+  "n": "desktop-admin: progress segments are 8px tall, not touch-target sized",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "desktop-admin: config tour offers choices and records steps",
   "pass": true,
   "d": "choice=true writes=4"
@@ -115,6 +120,11 @@
   "d": ""
  },
  {
+  "n": "desktop-viewer: progress segments are 8px tall, not touch-target sized",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "desktop-viewer: view tour has no choices, no step writes, only guides the role can open",
   "pass": true,
   "d": "chip=Guide writes=0"
@@ -177,12 +187,22 @@
  {
   "n": "mobile-admin: tour card inside viewport",
   "pass": true,
-  "d": "{\"x\":0,\"w\":390,\"y\":526,\"h\":318}"
+  "d": "{\"x\":0,\"w\":390,\"y\":585,\"h\":259}"
  },
  {
   "n": "mobile-admin: first stop is not a 'cannot find' dead end",
   "pass": true,
   "d": ""
+ },
+ {
+  "n": "mobile-admin: progress segments are 8px tall, not touch-target sized",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: card folds to the steps only",
+  "pass": true,
+  "d": "full=259 folded=157"
  },
  {
   "n": "mobile-admin: config tour offers choices and records steps",
@@ -247,12 +267,22 @@
  {
   "n": "mobile-viewer: tour card inside viewport",
   "pass": true,
-  "d": "{\"x\":0,\"w\":390,\"y\":514,\"h\":330}"
+  "d": "{\"x\":0,\"w\":390,\"y\":577,\"h\":267}"
  },
  {
   "n": "mobile-viewer: first stop is not a 'cannot find' dead end",
   "pass": true,
   "d": ""
+ },
+ {
+  "n": "mobile-viewer: progress segments are 8px tall, not touch-target sized",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: card folds to the steps only",
+  "pass": true,
+  "d": "full=267 folded=157"
  },
  {
   "n": "mobile-viewer: view tour has no choices, no step writes, only guides the role can open",
