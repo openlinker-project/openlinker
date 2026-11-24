@@ -122,13 +122,50 @@ export function resolveBuyerDataRules(
   };
 }
 
-/** A full set of rules written as the connection's own, ready to store. */
+/**
+ * A set of rules written as the connection's own: the periods and the mode ONLY.
+ * No `enabled` key, so the connection keeps following the general switch; a
+ * stored `enabled` is the operator's deliberate per-connection choice and is
+ * written by `nextBuyerDataOverride` alone.
+ */
 export function overrideFromRules(rules: BuyerDataRules): BuyerDataOverride {
   return {
-    enabled: rules.enabled,
     hideAfterDays: rules.hideAfterDays,
     eraseAfterDays: rules.eraseAfterDays,
     mode: rules.mode,
+  };
+}
+
+/**
+ * The override after the operator edited the shown rules. Periods and mode are
+ * taken from `next`; `enabled` is touched only when the operator moved the
+ * switch: turning it to the general value drops the key (inherit), any other
+ * value is stored as the explicit per-connection choice. An untouched switch
+ * keeps whatever was stored, so editing a period never silently re-enables a
+ * connection that was deliberately switched off.
+ */
+export function nextBuyerDataOverride(
+  previous: BuyerDataOverride | null,
+  effective: BuyerDataRules,
+  next: BuyerDataRules,
+  globalEnabled: boolean
+): BuyerDataOverride {
+  const base = overrideFromRules(next);
+  const enabled =
+    next.enabled !== effective.enabled
+      ? next.enabled === globalEnabled
+        ? undefined
+        : next.enabled
+      : previous?.enabled;
+  return enabled === undefined ? base : { ...base, enabled };
+}
+
+/** The same override with the switch handed back to the general one. */
+export function withoutOwnSwitch(override: BuyerDataOverride): BuyerDataOverride {
+  return {
+    ...(override.hideAfterDays !== undefined && { hideAfterDays: override.hideAfterDays }),
+    ...(override.eraseAfterDays !== undefined && { eraseAfterDays: override.eraseAfterDays }),
+    ...(override.mode !== undefined && { mode: override.mode }),
   };
 }
 
@@ -164,11 +201,12 @@ export const DEFAULT_BUYER_DATA_WIZARD_VALUE: BuyerDataWizardValue = {
 /**
  * The config entry a new connection is created with. "General settings" adds
  * NOTHING - the key stays absent, so the connection follows whatever the general
- * rules become; own rules are stored switched off.
+ * rules become; own rules store the periods and mode only, so the connection
+ * still follows the general switch.
  */
 export function wizardBuyerDataConfig(
   value: BuyerDataWizardValue | undefined
 ): { buyerDataRetention: BuyerDataOverride } | Record<string, never> {
   if (value === undefined || value.choice !== 'own' || value.rules === null) return {};
-  return { buyerDataRetention: overrideFromRules({ ...value.rules, enabled: false }) };
+  return { buyerDataRetention: overrideFromRules(value.rules) };
 }

@@ -1279,6 +1279,36 @@ describe('OrdersController', () => {
       );
     });
 
+    it('should scope the summary to hidden orders when asked (#4289)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+        salesDocumentBlockedOldestAt: null,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        taxRateConflict: 0,
+        omsAttention: 0,
+        reservationShortfalls: 0,
+        openReturn: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+      } as never);
+
+      await controller.statusSummary({ hidden: true });
+
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ hidden: true })
+      );
+    });
+
     it('should pass the open-return id list to the repository and report the new counts (#4025)', async () => {
       listOpenReturnOrderIds.mockResolvedValue(['ol_order_a', 'ol_order_b']);
       repository.countByHealth.mockResolvedValue({

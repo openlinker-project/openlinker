@@ -5,7 +5,7 @@
  * general ones (the recommended default, so a connection created without
  * touching this is governed like every other) or its own. Controlled - the
  * wizard keeps the value in its form state and maps it to config at submit.
- * Own rules are saved switched off. A connection that does not exist yet has no
+ * Own rules store the periods only and follow the general switch. A connection that does not exist yet has no
  * orders, so the compact studio (inputs and the example order) is shown without
  * the strip and the plan; those appear in the connection edit.
  *
@@ -33,7 +33,7 @@ export function BuyerDataWizardStep({ value, onChange }: BuyerDataWizardStepProp
   const rules = value.rules ?? { ...globalRules, enabled: false };
 
   function choose(choice: BuyerDataWizardChoice): void {
-    onChange({ choice, rules: choice === 'own' ? { ...rules, enabled: false } : value.rules });
+    onChange({ choice, rules: choice === 'own' ? rules : value.rules });
   }
 
   return (
@@ -57,7 +57,7 @@ export function BuyerDataWizardStep({ value, onChange }: BuyerDataWizardStepProp
             variant="compact"
             plan={null}
             rules={rules}
-            onChange={(next) => onChange({ choice: 'own', rules: { ...next, enabled: false } })}
+            onChange={(next) => onChange({ choice: 'own', rules: next })}
           />
         </>
       ) : (

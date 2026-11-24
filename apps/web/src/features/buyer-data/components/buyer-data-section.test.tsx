@@ -52,7 +52,7 @@ describe('BuyerDataSection (#4289)', () => {
     expect(screen.queryByTestId('retention-studio-connection')).not.toBeInTheDocument();
   });
 
-  it('should start own rules switched off and write them after setValue', async () => {
+  it('should start own rules following the general switch and write them after setValue', async () => {
     const sync = vi.fn();
     renderWithProviders(<Harness initial={null} sync={sync} />, {
       apiClient: createMockApiClient({
@@ -62,9 +62,9 @@ describe('BuyerDataSection (#4289)', () => {
 
     await userEvent.click(await screen.findByRole('radio', { name: 'Set own' }));
 
-    expect(JSON.parse(screen.getByTestId('value').textContent ?? '')).toMatchObject({
-      enabled: false,
-    });
+    const written = JSON.parse(screen.getByTestId('value').textContent ?? '');
+    expect(written).toHaveProperty('hideAfterDays');
+    expect(written).not.toHaveProperty('enabled');
     expect(sync).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('retention-studio-connection')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Turn on the rules' })).toBeDisabled();

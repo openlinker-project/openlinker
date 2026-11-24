@@ -33,7 +33,7 @@ describe('BuyerDataWizardStep (#4289)', () => {
     expect(screen.queryByTestId('retention-studio-wizard')).not.toBeInTheDocument();
   });
 
-  it('should reveal the questions for own rules and keep them switched off', async () => {
+  it('should reveal the questions for own rules and follow the general switch', async () => {
     renderWithProviders(<Harness />, { apiClient: createMockApiClient() });
 
     await userEvent.click(await screen.findByRole('radio', { name: 'Set own' }));
@@ -43,10 +43,9 @@ describe('BuyerDataWizardStep (#4289)', () => {
     expect(screen.queryByTestId('age-strip')).not.toBeInTheDocument();
     expect(screen.queryByTestId('plan-panel')).not.toBeInTheDocument();
     expect(screen.getByTestId('record-card')).toBeInTheDocument();
-    expect(screen.getByText(/saved switched off/)).toBeInTheDocument();
+    expect(screen.getByText(/follow the general switch/)).toBeInTheDocument();
     expect(JSON.parse(screen.getByTestId('value').textContent ?? '')).toMatchObject({
       choice: 'own',
-      rules: { enabled: false },
     });
   });
 });

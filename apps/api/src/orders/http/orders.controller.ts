@@ -778,7 +778,7 @@ export class OrdersController {
   async statusSummary(
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderHealthSummaryResponseDto> {
-    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    const { sourceConnectionId, customerId, createdFrom, createdTo, hidden } = query;
     // #4025 - the open-return count reads the same id list the ?openReturn=
     // filter resolves. A failure must not fail the whole summary the list page
     // renders above its rows, and must not report 0 either: the two counts
@@ -814,6 +814,7 @@ export class OrdersController {
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
+      hidden,
       openReturnOrderIds,
     });
     const { openReturn, attention, giftNotAdded, ...rest } = summary;
@@ -844,13 +845,14 @@ export class OrdersController {
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async slaSummary(@Query() query: OrderSlaSummaryQueryDto): Promise<OrderSlaSummaryResponseDto> {
-    const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled } = query;
+    const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled, hidden } = query;
     return this.orderRecordRepository.countBySla({
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
       cancelled,
+      hidden,
     });
   }
 
@@ -871,7 +873,7 @@ export class OrdersController {
   async lifecycleSummary(
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderLifecyclePhaseSummaryResponseDto> {
-    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    const { sourceConnectionId, customerId, createdFrom, createdTo, hidden } = query;
     // Deliberately no `cancelled` scope: cancellation is this partition's TOP
     // arm, so scoping by it would re-scope the axis the partition expresses.
     return this.orderRecordRepository.countByLifecyclePhase({
@@ -879,6 +881,7 @@ export class OrdersController {
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
+      hidden,
     });
   }
 

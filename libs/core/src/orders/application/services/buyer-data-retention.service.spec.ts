@@ -117,6 +117,14 @@ describe('BuyerDataRetentionService', () => {
     expect(orders.findErasableOrdersForBuyerDataRetention).not.toHaveBeenCalled();
   });
 
+  it('should sweep a connection whose own override carries no enabled key when the global switch is on', async () => {
+    integrations.listCapabilityAdapters.mockResolvedValue([
+      connection('c1', { buyerDataRetention: { hideAfterDays: 30, eraseAfterDays: 0 } }),
+    ] as never);
+    await service.runOnce(new Date());
+    expect(orders.hideOrdersForBuyerDataRetention).toHaveBeenCalled();
+  });
+
   it('should apply the connection override over the global period', async () => {
     integrations.listCapabilityAdapters.mockResolvedValue([
       connection('c1', { buyerDataRetention: { hideAfterDays: 30, eraseAfterDays: 0 } }),

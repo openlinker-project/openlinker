@@ -3,7 +3,7 @@
  *
  * The three surfaces of one feature, end to end: the general settings page
  * (defaults, trial run, enabling), the new-connection wizard (general settings
- * by default, own rules stored switched off) and the connection edit (own rules,
+ * by default, own rules stored as periods only and following the general switch) and the connection edit (own rules,
  * trial run, enabling, saved into `config.buyerDataRetention`).
  *
  * Runs against a real stack (`pnpm exec playwright test --project=buyer-data`).
@@ -73,7 +73,7 @@ test('general settings: switch locked until the plan is calculated, then saved',
   });
 });
 
-test('Erli wizard: general settings by default, own rules saved switched off', async ({
+test('Erli wizard: general settings by default, own rules saved without an enabled key', async ({
   page,
   pages,
   api,
@@ -104,14 +104,12 @@ test('Erli wizard: general settings by default, own rules saved switched off', a
     expect((created?.config as Record<string, unknown>)['buyerDataRetention']).toBeUndefined();
   });
 
-  await test.step('own: the rules are stored, switched off', async () => {
+  await test.step('own: the periods are stored and the connection follows the general switch', async () => {
     await createErli(OWN_NAME, true);
     const created = (await api.connections.list()).find((c) => c.name === OWN_NAME);
-    expect((created?.config as Record<string, unknown>)['buyerDataRetention']).toMatchObject({
-      enabled: false,
-      hideAfterDays: 180,
-      eraseAfterDays: 1095,
-    });
+    const stored = (created?.config as Record<string, unknown>)['buyerDataRetention'];
+    expect(stored).toMatchObject({ hideAfterDays: 180, eraseAfterDays: 1095 });
+    expect(stored).not.toHaveProperty('enabled');
   });
 });
 
@@ -131,9 +129,9 @@ test('connection edit: own rules need a trial run, then are saved into the confi
     await expect(page.getByText('Same as the general settings:')).toBeVisible();
   });
 
-  await test.step('taking own rules starts them switched off', async () => {
+  await test.step('taking own rules keeps following the general switch (off here)', async () => {
     await section.ownOption.check();
-    await expect(section.enabledSwitch).toBeDisabled();
+    await expect(section.enabledSwitch).toHaveAttribute('aria-checked', 'false');
     await section.rules.choose({ amount: 1, unit: 'years' }, { amount: 2, unit: 'years' });
   });
 

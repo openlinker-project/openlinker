@@ -365,6 +365,7 @@ function buildSummaryQuery(filters?: OrderHealthSummaryFilters): string {
   if (filters?.cancelled !== undefined) {
     params.set('cancelled', String(filters.cancelled));
   }
+  if (filters?.hidden !== undefined) params.set('hidden', String(filters.hidden));
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
 }

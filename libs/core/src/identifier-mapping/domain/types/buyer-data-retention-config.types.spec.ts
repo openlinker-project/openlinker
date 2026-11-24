@@ -40,6 +40,30 @@ describe('buyer data retention config', () => {
     });
   });
 
+  it('should inherit the global switch when an override carries only periods and mode', () => {
+    const on = resolveEffectiveBuyerDataRule(
+      GLOBAL,
+      readBuyerDataRetentionConfig({
+        buyerDataRetention: { hideAfterDays: 90, mode: 'personal-data' },
+      })
+    );
+    expect(on.enabled).toBe(true);
+    const off = resolveEffectiveBuyerDataRule(
+      { ...GLOBAL, enabled: false },
+      readBuyerDataRetentionConfig({ buyerDataRetention: { hideAfterDays: 90 } })
+    );
+    expect(off.enabled).toBe(false);
+  });
+
+  it('should keep a stored explicit enabled:false off while the global switch is on', () => {
+    expect(
+      resolveEffectiveBuyerDataRule(
+        GLOBAL,
+        readBuyerDataRetentionConfig({ buyerDataRetention: { enabled: false, hideAfterDays: 90 } })
+      ).enabled
+    ).toBe(false);
+  });
+
   it('should ignore an unusable stored period when reading', () => {
     expect(readBuyerDataRetentionConfig({ buyerDataRetention: { hideAfterDays: 7 } })).toEqual({});
   });

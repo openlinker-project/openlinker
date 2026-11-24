@@ -3,7 +3,7 @@
  *
  * The connection edit's answer to "which buyer data rules apply to this
  * connection": the general ones (default) or its own. Own rules take
- * precedence, start switched off, and are edited in the retention studio for
+ * precedence, follow the general switch unless switched off here, and are edited in the retention studio for
  * this connection (its own orders on the strip, its own plan). Saved with the
  * rest of the form into `config.buyerDataRetention`; inheriting writes an
  * explicit `null`.
@@ -25,6 +25,7 @@ import type { BuyerDataOverride, BuyerDataRules } from '../api/buyer-data.types'
 import { useBuyerDataSummary } from '../hooks/use-buyer-data-summary';
 import {
   globalRulesFromSettings,
+  nextBuyerDataOverride,
   overrideFromRules,
   resolveBuyerDataRules,
 } from '../lib/buyer-data-config';
@@ -66,13 +67,13 @@ export function BuyerDataSection({
   }
 
   function setSource(source: Source): void {
-    // Own rules start from what applies today but SWITCHED OFF: taking control is
-    // not the same as turning erasing on.
-    store(source === 'own' ? overrideFromRules({ ...effective, enabled: false }) : null);
+    // Own rules start from what applies today and keep following the general
+    // switch: only the periods and the mode are the connection's own.
+    store(source === 'own' ? overrideFromRules(effective) : null);
   }
 
   function changeRules(next: BuyerDataRules): void {
-    store(overrideFromRules(next));
+    store(nextBuyerDataOverride(override, effective, next, globalRules.enabled));
   }
 
   return (
@@ -107,7 +108,7 @@ export function BuyerDataSection({
             name="connection"
             connectionId={connectionId}
             rules={effective}
-            savedEnabled={override.enabled === true}
+            savedEnabled={effective.enabled}
             onChange={changeRules}
             locked={locked}
           />

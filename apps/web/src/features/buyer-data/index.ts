@@ -25,3 +25,4 @@ export {
   BuyerDataWizardReviewRows,
   BuyerDataWizardStep,
 } from './components/buyer-data-wizard-step';
+export { useBuyerDataScopesPlan } from './hooks/use-buyer-data-scopes-plan';

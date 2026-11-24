@@ -124,7 +124,15 @@ describe('BuyerDataPage (#4289)', () => {
     await userEvent.click(screen.getByTestId('buyer-data-save'));
     const dialog = await screen.findByRole('dialog');
     expect(update).not.toHaveBeenCalled();
-    expect(dialog).toHaveTextContent('hide 120 orders and erase personal data from 40');
+    // Shop follows the defaults and Allegro has own rules without an enabled key:
+    // turning the shared switch on reaches both, and the dialog says so.
+    expect(dialog).toHaveTextContent('hide 240 orders and erase personal data from 80');
+    expect(
+      within(screen.getByTestId('enable-dialog-connections')).getByText(/Allegro:/)
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('enable-dialog-connections')).getByText(/Shop:/)
+    ).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Turn on the rules' }));
 
     await waitFor(() =>
@@ -172,7 +180,6 @@ describe('BuyerDataPage (#4289)', () => {
         expect.objectContaining({
           config: {
             buyerDataRetention: {
-              enabled: false,
               hideAfterDays: 180,
               eraseAfterDays: 730,
               mode: 'personal-data',
@@ -242,6 +249,82 @@ describe('BuyerDataPage (#4289)', () => {
     expect(scoped).toContain('conn-shop');
     expect(scoped).not.toContain('conn-allegro');
     expect(scoped).not.toContain(undefined);
+  });
+
+  it('should save unlinked own rules without an enabled key so they inherit the switch', async () => {
+    const { updateConnection } = render();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Shop' }));
+    await userEvent.click(await screen.findByTestId('scope-unlink'));
+    await userEvent.click(screen.getByTestId('buyer-data-save'));
+    await waitFor(() => expect(updateConnection).toHaveBeenCalled());
+    const body = updateConnection.mock.calls[0][1] as {
+      config: { buyerDataRetention: Record<string, unknown> };
+    };
+    expect(body.config.buyerDataRetention).not.toHaveProperty('enabled');
+    expect(body.config.buyerDataRetention).toMatchObject({ hideAfterDays: 90 });
+  });
+
+  it('should name a connection that stays off when the shared switch is turned on', async () => {
+    const stayOff: Connection = {
+      ...sampleConnection,
+      id: 'conn-off',
+      name: 'Muted',
+      config: { buyerDataRetention: { enabled: false, hideAfterDays: 90 } },
+    };
+    renderWithProviders(<BuyerDataPage />, {
+      apiClient: createMockApiClient({
+        operationalSettings: {
+          get: vi.fn().mockResolvedValue(settingsView()),
+          update: vi.fn().mockResolvedValue(undefined) as never,
+        },
+        connections: { list: vi.fn().mockResolvedValue([SHOP, stayOff]) },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(ADMIN),
+    });
+    const toggle = await screen.findByRole('switch', { name: 'Turn on the rules' });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByTestId('buyer-data-save'));
+    expect(await screen.findByTestId('enable-dialog-stays-off')).toHaveTextContent('Muted');
+  });
+
+  it('should show a connection switched off for itself and turn it back on with one click', async () => {
+    const stayOff: Connection = {
+      ...sampleConnection,
+      id: 'conn-off',
+      name: 'Muted',
+      config: { buyerDataRetention: { enabled: false, hideAfterDays: 90 } },
+    };
+    const updateConnection = vi.fn().mockResolvedValue(stayOff);
+    renderWithProviders(<BuyerDataPage />, {
+      apiClient: createMockApiClient({
+        operationalSettings: {
+          get: vi.fn().mockResolvedValue(
+            settingsView({
+              buyerDataRetentionEnabled: { value: true, source: 'setting', workerMayDiffer: false },
+            })
+          ),
+        },
+        connections: {
+          list: vi.fn().mockResolvedValue([stayOff]),
+          update: updateConnection as never,
+        },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(ADMIN),
+    });
+    await userEvent.click(await screen.findByRole('tab', { name: /Muted/ }));
+    expect(await screen.findByTestId('scope-disabled-here')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('scope-enable-here'));
+    await userEvent.click(screen.getByTestId('buyer-data-save'));
+    // Starting to sweep a connection asks again, with its count.
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Turn on the rules' })
+    );
+    await waitFor(() => expect(updateConnection).toHaveBeenCalled());
+    const body = updateConnection.mock.calls[0][1] as {
+      config: { buyerDataRetention: Record<string, unknown> };
+    };
+    expect(body.config.buyerDataRetention).not.toHaveProperty('enabled');
   });
 
   it('should send a connection back to the defaults with an explicit null', async () => {

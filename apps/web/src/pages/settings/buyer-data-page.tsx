@@ -31,10 +31,13 @@ import { useToast } from '../../shared/ui/toast-provider';
 import {
   RetentionScope,
   globalRulesFromSettings,
+  nextBuyerDataOverride,
   overrideFromRules,
   readBuyerDataSettings,
   resolveBuyerDataRules,
+  useBuyerDataScopesPlan,
   useShortPeriod,
+  withoutOwnSwitch,
   validateBuyerDataRules,
   withBuyerDataSettings,
   type BuyerDataOverride,
@@ -197,6 +200,9 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                         <StatusBadge tone={override === null ? 'neutral' : 'info'}>
                           {override === null ? COPY.inherit : COPY.own}
                         </StatusBadge>
+                        {override?.enabled === false && draft.enabled ? (
+                          <StatusBadge tone="warning">{scopeCopy.offChip}</StatusBadge>
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -218,17 +224,33 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
     });
   }
 
-  /** Scopes whose switch goes from off to on with this save. */
-  function newlyEnabled(): string[] {
-    const keys: string[] = [];
-    if (draft.enabled && !saved.enabled) keys.push(DEFAULTS_TAB);
-    for (const c of dirtyConnections) {
-      const next = connDrafts[c.id] ?? null;
-      const before = resolveBuyerDataRules(savedOverride(c), saved).enabled;
-      if (next?.enabled === true && !before) keys.push(c.id);
-    }
-    return keys;
-  }
+  /**
+   * Connections that start being swept with this save (their EFFECTIVE switch
+   * goes from off to on - a connection with its own rules follows the general
+   * switch, so turning that on reaches it too) and the ones that stay off
+   * because the operator switched them off for that connection.
+   */
+  const startingNow = connections.filter(
+    (c) =>
+      resolveBuyerDataRules(overrideOf(c), draft).enabled &&
+      !resolveBuyerDataRules(savedOverride(c), saved).enabled
+  );
+  const staysOff = connections.filter(
+    (c) => overrideOf(c)?.enabled === false && draft.enabled && !saved.enabled
+  );
+  const needsConfirm = (draft.enabled && !saved.enabled) || startingNow.length > 0;
+  const scopePlans = useBuyerDataScopesPlan(
+    startingNow.map((c) => {
+      const r = resolveBuyerDataRules(overrideOf(c), draft);
+      return {
+        connectionId: c.id,
+        hideAfterDays: r.hideAfterDays,
+        eraseAfterDays: r.eraseAfterDays,
+        mode: r.mode,
+      };
+    }),
+    { enabled: confirming }
+  );
 
   async function persist(): Promise<void> {
     setSaving(true);
@@ -261,17 +283,17 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
   }
 
   function save(): void {
-    if (newlyEnabled().length > 0) {
+    if (needsConfirm) {
       setConfirming(true);
       return;
     }
     void persist();
   }
 
-  const dialogCounts = newlyEnabled().reduce(
-    (sum, key) => ({
-      toHide: sum.toHide + (plans.current[key]?.toHide ?? 0),
-      toErase: sum.toErase + (plans.current[key]?.toErase ?? 0),
+  const dialogCounts = startingNow.reduce(
+    (sum, c) => ({
+      toHide: sum.toHide + (scopePlans[c.id]?.toHide ?? 0),
+      toErase: sum.toErase + (scopePlans[c.id]?.toErase ?? 0),
     }),
     { toHide: 0, toErase: 0 }
   );
@@ -369,15 +391,35 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                     tone="secondary"
                     className="button--sm"
                     data-testid="scope-unlink"
-                    onClick={() =>
-                      setConnection(c, overrideFromRules({ ...effective, enabled: false }))
-                    }
+                    onClick={() => setConnection(c, overrideFromRules(effective))}
                   >
                     {scopeCopy.unlink}
                   </Button>
                 )}
               </div>
-              {own ? null : (
+              {own ? (
+                override.enabled === false && draft.enabled ? (
+                  <p className="retention-scope__hint" data-testid="scope-disabled-here">
+                    <StatusBadge tone="warning">{scopeCopy.offChip}</StatusBadge>{' '}
+                    {scopeCopy.disabledHere}{' '}
+                    <Button
+                      type="button"
+                      tone="secondary"
+                      className="button--sm"
+                      data-testid="scope-enable-here"
+                      onClick={() => setConnection(c, withoutOwnSwitch(override))}
+                    >
+                      {scopeCopy.enableHere}
+                    </Button>
+                  </p>
+                ) : (
+                  <p className="retention-scope__hint" data-testid="scope-follows-switch">
+                    {interpolate(scopeCopy.ownFollows, {
+                      state: effective.enabled ? scopeCopy.stateOn : scopeCopy.stateOff,
+                    })}
+                  </p>
+                )
+              ) : (
                 <p className="retention-scope__hint">
                   {interpolate(scopeCopy.linkedSwitch, {
                     state: draft.enabled ? scopeCopy.stateOn : scopeCopy.stateOff,
@@ -392,9 +434,10 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                 ghost={!own}
                 showSwitch={own}
                 footer={comparison}
-                // A grab on a linked scope makes the shown values its own, switched off.
+                // A grab on a linked scope makes the shown values its own; they keep
+                // following the general switch unless the operator moves it here.
                 onChange={(next) =>
-                  setConnection(c, overrideFromRules(own ? next : { ...next, enabled: false }))
+                  setConnection(c, nextBuyerDataOverride(override, effective, next, draft.enabled))
                 }
                 onPlan={(preview) => {
                   plans.current[c.id] = preview;
@@ -435,6 +478,35 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
           toHide: dialogCounts.toHide,
           toErase: dialogCounts.toErase,
         })}
+        body={
+          <div data-testid="enable-dialog-connections">
+            {startingNow.length > 0 ? (
+              <ul className="buyer-data-points">
+                {startingNow.map((c) => {
+                  const plan = scopePlans[c.id];
+                  return (
+                    <li key={c.id}>
+                      {plan === undefined
+                        ? interpolate(COPY.enableDialogPending, { name: c.name })
+                        : interpolate(COPY.enableDialogRow, {
+                            name: c.name,
+                            toHide: plan.toHide,
+                            toErase: plan.toErase,
+                          })}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {staysOff.length > 0 ? (
+              <p className="rate-limit-section__help" data-testid="enable-dialog-stays-off">
+                {interpolate(COPY.enableDialogStaysOff, {
+                  names: staysOff.map((c) => c.name).join(', '),
+                })}
+              </p>
+            ) : null}
+          </div>
+        }
         confirmLabel={COPY.enableDialogConfirm}
         onConfirm={() => {
           setConfirming(false);

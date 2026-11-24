@@ -4,12 +4,14 @@ import {
   daysToPeriod,
   globalRulesFromSettings,
   isValidPeriodDays,
+  nextBuyerDataOverride,
   overrideFromRules,
   periodToDays,
   readBuyerDataSettings,
   resolveBuyerDataRules,
   validateBuyerDataRules,
   withBuyerDataSettings,
+  withoutOwnSwitch,
   wizardBuyerDataConfig,
 } from './buyer-data-config';
 
@@ -125,7 +127,7 @@ describe('buyer data config (#4289)', () => {
       expect(wizardBuyerDataConfig({ choice: 'inherit', rules: null })).toEqual({});
       expect(wizardBuyerDataConfig(undefined)).toEqual({});
     });
-    it('should store own rules switched off', () => {
+    it('should store own rules as periods and mode only, following the general switch', () => {
       const rules = {
         enabled: true,
         hideAfterDays: 90,
@@ -133,7 +135,69 @@ describe('buyer data config (#4289)', () => {
         mode: 'personal-data' as const,
       };
       expect(wizardBuyerDataConfig({ choice: 'own', rules })).toEqual({
-        buyerDataRetention: { ...overrideFromRules(rules), enabled: false },
+        buyerDataRetention: overrideFromRules(rules),
+      });
+    });
+  });
+
+  describe('own override and the switch', () => {
+    const rules = {
+      enabled: true,
+      hideAfterDays: 90,
+      eraseAfterDays: 365,
+      mode: 'personal-data' as const,
+    };
+
+    it('should write no enabled key from overrideFromRules', () => {
+      expect(overrideFromRules(rules)).not.toHaveProperty('enabled');
+    });
+
+    it('should keep following the general switch when only a period changes', () => {
+      expect(
+        nextBuyerDataOverride(
+          overrideFromRules(rules),
+          rules,
+          { ...rules, hideAfterDays: 180 },
+          true
+        )
+      ).not.toHaveProperty('enabled');
+    });
+
+    it('should store enabled:false only when the operator switches the connection off', () => {
+      expect(
+        nextBuyerDataOverride(overrideFromRules(rules), rules, { ...rules, enabled: false }, true)
+      ).toMatchObject({ enabled: false });
+    });
+
+    it('should drop the key when the switch is moved back to the general value', () => {
+      const off = { ...rules, enabled: false };
+      expect(nextBuyerDataOverride({ enabled: false }, off, rules, true)).not.toHaveProperty(
+        'enabled'
+      );
+    });
+
+    it('should keep a legacy enabled:false while a period is edited', () => {
+      const off = { ...rules, enabled: false };
+      expect(
+        nextBuyerDataOverride(
+          { enabled: false, hideAfterDays: 90 },
+          off,
+          { ...off, hideAfterDays: 60 },
+          true
+        )
+      ).toMatchObject({ enabled: false, hideAfterDays: 60 });
+    });
+
+    it('should resolve an override without enabled to the general switch', () => {
+      expect(
+        resolveBuyerDataRules(overrideFromRules(rules), { ...rules, enabled: true }).enabled
+      ).toBe(true);
+      expect(resolveBuyerDataRules({ enabled: false }, rules).enabled).toBe(false);
+    });
+
+    it('should hand the switch back with withoutOwnSwitch', () => {
+      expect(withoutOwnSwitch({ enabled: false, hideAfterDays: 90 })).toEqual({
+        hideAfterDays: 90,
       });
     });
   });

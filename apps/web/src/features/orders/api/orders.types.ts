@@ -1328,6 +1328,12 @@ export interface OrderHealthSummaryFilters {
    * never-shipped order otherwise counts as `overdue`.
    */
   cancelled?: boolean;
+  /**
+   * Buyer data retention (#4289): `true` counts only the orders the retention rule
+   * hid, so the KPI cards agree with `/orders?hidden=true`. Omitted or `false`
+   * excludes them, like the default list.
+   */
+  hidden?: boolean;
 }
 
 export interface OrderPagination {
