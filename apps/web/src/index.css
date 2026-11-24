@@ -42515,9 +42515,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-step__target { display: grid; gap: 6px; }
 .release-step__target[data-several='true'] {
   padding: 8px 10px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: var(--radius-md);
-  background: var(--bg-surface-elevated);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 .release-step__single { display: grid; gap: 6px; }
 /* Steps disclosure: a light text control, not a second button bar. Open and close are different motions:
@@ -42610,14 +42610,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 /* Consecutive rows form one list: cancel the panel's card gap between them. */
 .release-panel .msg + .msg { margin-top: -10px; }
-.release-panel .msg:focus-within { background: var(--bg-surface-hover); }
-@media (hover: hover) { .release-panel .msg:hover { background: var(--bg-surface-hover); } }
-.release-panel .msg[data-unread='true'] { background: color-mix(in srgb, var(--accent-primary) 6%, transparent); }
+.release-panel .msg:focus-within { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
+@media (hover: hover) { .release-panel .msg:hover { background: color-mix(in srgb, var(--text-primary) 3%, transparent); } }
+.release-panel .msg[data-unread='true'] { background: color-mix(in srgb, var(--accent-primary) 2.5%, transparent); }
 .release-panel .msg[data-unread='true']:focus-within {
-  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
+  background: color-mix(in srgb, var(--accent-primary) 5%, transparent);
 }
 @media (hover: hover) {
-  .release-panel .msg[data-unread='true']:hover { background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover)); }
+  .release-panel .msg[data-unread='true']:hover { background: color-mix(in srgb, var(--accent-primary) 5%, transparent); }
 }
 .release-panel .msg[data-archived='true'] .msg__main { opacity: 0.75; }
 .release-panel .msg__icon {
@@ -42669,11 +42669,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: var(--bg-surface);
   transition: background-color 120ms var(--ease-out);
 }
-@media (hover: hover) { :is(.release-panel, .whats-new__setup) .release-card:hover { background: var(--bg-surface-hover); } }
+@media (hover: hover) { :is(.release-panel, .whats-new__setup) .release-card:hover { background: color-mix(in srgb, var(--text-primary) 3%, var(--bg-surface)); } }
 :is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] {
   border-color: var(--border-subtle);
   box-shadow: none;
-  background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-surface));
+  background: color-mix(in srgb, var(--accent-primary) 2.5%, var(--bg-surface));
 }
 :is(.release-panel, .whats-new__setup) .release-card[data-unread='true']::before {
   content: '';
@@ -42687,7 +42687,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 @media (hover: hover) {
   :is(.release-panel, .whats-new__setup) .release-card[data-unread='true']:hover {
-    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
+    background: color-mix(in srgb, var(--accent-primary) 2.5%, color-mix(in srgb, var(--text-primary) 3%, var(--bg-surface)));
   }
 }
 :is(.release-panel, .whats-new__setup) .release-card + .release-card,
@@ -42749,7 +42749,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: var(--radius-md);
   background: var(--bg-surface-hover);
 }
-.release-panel .msg[data-unread='true'] .msg__tools { background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover)); }
+.release-panel .msg[data-unread='true'] .msg__tools { background: color-mix(in srgb, var(--accent-primary) 5%, var(--bg-surface-elevated)); }
 @media (prefers-reduced-motion: reduce) { :is(.release-panel, .whats-new__setup) .release-card { transition: none; } }
 @media (forced-colors: active) { :is(.release-panel, .whats-new__setup) .release-card { border-bottom-color: CanvasText; } }
 /* A page can ask for one column: the sections alone, with no rail beside them. */
