@@ -24,6 +24,15 @@ export const RELEASE_SHOWCASES: readonly ReleaseShowcaseEntry[] = [
       { routePattern: 'settings/order-tags', target: 'order-tags-new' },
     ],
   },
+  {
+    id: 'release-center-tour',
+    introducedIn: '0.20.0',
+    appliesWhen: () => true,
+    stops: [
+      { routePattern: 'whats-new', target: 'release-bell' },
+      { routePattern: 'whats-new', target: 'whats-new-setup' },
+    ],
+  },
   // Standalone: no `introducedIn`, so it belongs to no release and is started by id.
   {
     id: 'first-steps',

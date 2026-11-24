@@ -172,6 +172,20 @@
       },
       "title": "Nowe widoki zamówień",
       "why": "Zobacz, gdzie wybierzesz kolumny listy i gdzie zarządzasz etykietami zamówień."
+    },
+    "release-center-tour": {
+      "stops": {
+        "0": {
+          "body": "Dzwonek zbiera wydania, rzeczy do ustawienia i przewodniki. Z tego miejsca przejdziesz przez wszystko jednym przyciskiem.",
+          "title": "Powiadomienia"
+        },
+        "1": {
+          "body": "Tu masz pełną listę zmian w każdym wydaniu, a obok kroki do ustawienia z postępem.",
+          "title": "Co nowego"
+        }
+      },
+      "title": "Powiadomienia i „Co nowego\"",
+      "why": "Zobacz, gdzie znajdziesz zmiany w każdym wydaniu i rzeczy do ustawienia."
     }
   },
   "steps": {

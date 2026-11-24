@@ -128,6 +128,7 @@ export function ReleaseBell(): ReactElement | null {
           ref={triggerRef}
           type="button"
           className="release-bell"
+          data-tour="release-bell"
           data-ringing={ringing}
           aria-haspopup="dialog"
           aria-expanded={open}

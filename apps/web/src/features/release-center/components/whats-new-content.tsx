@@ -96,7 +96,7 @@ export function WhatsNewContent(): ReactElement {
         {copy.intro}
       </p>
 
-      <aside className="whats-new__rail">
+      <aside className="whats-new__rail" data-tour="whats-new-setup">
       {!view ? null : cards.length > 0 ? (
         <section className="whats-new__setup" aria-label={copy.setupTitle}>
           <h3 className="whats-new__setup-title">{copy.setupTitle}</h3>

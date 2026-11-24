@@ -168,6 +168,20 @@
       },
       "title": "New order views",
       "why": "See where you pick the list columns and where you manage order tags."
+    },
+    "release-center-tour": {
+      "stops": {
+        "0": {
+          "body": "The bell collects releases, things to set up and guides. From here you can go through everything with one button.",
+          "title": "Notifications"
+        },
+        "1": {
+          "body": "The full list of changes for every release lives here, with the steps to set up and their progress beside it.",
+          "title": "What's new"
+        }
+      },
+      "title": "Notifications and What's new",
+      "why": "See where each release's changes and things to set up live."
     }
   },
   "steps": {
