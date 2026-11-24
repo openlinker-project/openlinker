@@ -770,9 +770,12 @@ export function OrderDetailPage(): ReactElement {
             .filter(Boolean)
             .join(' ') || null
         }
-        channelName={cancelSourceName}
         deliveryFact={[carrier, snapshot.pickupPoint?.name].filter(Boolean).join(', ') || null}
-        shipByFact={shipByView ? { label: shipByView.remaining, tone: SHIP_BY_TONE[shipByView.level] } : null}
+        shipByFact={
+          shipByView && order.dispatchByAt
+            ? { iso: order.dispatchByAt, tone: SHIP_BY_TONE[shipByView.level] }
+            : null
+        }
         footer={
           issues.length > 0 ? (
             <OrderNextStepCard

@@ -1564,6 +1564,7 @@
     "received": "Received",
     "routeDestination": "destination",
     "routeSource": "source",
+    "shipBy": "Ship by",
     "title": "Order {number}",
     "units": {
       "one": "{n} unit",

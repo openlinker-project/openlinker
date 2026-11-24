@@ -15,7 +15,6 @@ import { Link } from 'react-router-dom';
 
 import { ConnectionEntityLabel } from '../../connections';
 import { CopyableId } from '../../../shared/ui/copyable-id';
-import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
@@ -50,7 +49,7 @@ interface OrderDetailHeaderProps {
   buyerName?: string | null;
   /** One line about delivery (carrier, pickup point) and the ship-by deadline. */
   deliveryFact?: string | null;
-  shipByFact?: { label: string; tone: StatusBadgeTone } | null;
+  shipByFact?: { iso: string; tone: StatusBadgeTone } | null;
   channelName?: string | null;
 }
 
@@ -116,6 +115,35 @@ export function OrderDetailHeader({
           {title}
         </h1>
         <CopyableId id={order.internalOrderId} />
+        <span className="order-header__channel">
+          <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
+        </span>
+      </div>
+
+      {/* Lead with the buyer-placed-on-marketplace time (#926) when available;
+          fall back to the record's ingestion `createdAt` (NOT snapshot.createdAt,
+          which is vestigial) for older records / sources without a placed time. */}
+      <div className="order-header__identity">
+        {buyerName ? <strong>{buyerName}</strong> : null}
+        {snapshot.placedAt ? (
+          <>
+            <TimeDisplay iso={snapshot.placedAt} format="datetime" className="tabular" />
+            <span className="text-muted">
+              <TimeDisplay iso={snapshot.placedAt} format="relative" />
+            </span>
+          </>
+        ) : (
+          <>
+            <span>{copy.received}</span>
+            <TimeDisplay iso={order.createdAt} format="datetime" className="tabular" />
+            <span className="text-muted">
+              <TimeDisplay iso={order.createdAt} format="relative" />
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="order-header__top order-header__status-row">
         <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
           {healthLabel(healthLevel, order.handledInOpenLinker)}
         </StatusBadge>
@@ -126,6 +154,13 @@ export function OrderDetailHeader({
           <button type="button" className="order-header__issues" onClick={onShowIssues}>
             {interpolate(copy.allIssues, { count: issuesCount })}
           </button>
+        ) : null}
+        {/* One line answering the operator's actual question — what is this order
+            waiting on. Detail only (#2081). */}
+        {isOrderLifecyclePhase(order.lifecyclePhase) ? (
+          <span className="order-header__phase-note text-muted">
+            {orderLifecyclePhaseWaitingOn(order.lifecyclePhase)}
+          </span>
         ) : null}
         <OrderEditedBadge
           edited={order.editedInOpenLinker}
@@ -148,71 +183,13 @@ export function OrderDetailHeader({
         {methodLabel ? <StatusBadge tone="neutral">{methodLabel}</StatusBadge> : null}
       </div>
 
-      {/* One line answering the operator's actual question — what is this order
-          waiting on. Detail only: the list row has no room for a sentence and
-          five badge vocabularies already compete there (#2081). */}
-      {isOrderLifecyclePhase(order.lifecyclePhase) ? (
-        <p className="order-header__phase-note text-muted">
-          {orderLifecyclePhaseWaitingOn(order.lifecyclePhase)}
-        </p>
-      ) : null}
-
-      <div className="order-header__sub">
-        <span className="order-route">
-          <span className="order-route__node">
-            <span className="order-route__dot" aria-hidden="true" />
-            <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
-            <span className="order-route__role">{copy.routeSource}</span>
-          </span>
-          <span className="order-route__arrow" aria-hidden="true">
-            →
-          </span>
-          {order.syncStatus.length > 0 ? (
-            order.syncStatus.map((s) => (
-              <span className="order-route__node" key={s.destinationConnectionId}>
-                <span className="order-route__dot order-route__dot--accent" aria-hidden="true" />
-                <ConnectionEntityLabel connectionId={s.destinationConnectionId} showId={false} />
-                <span className="order-route__role">{copy.routeDestination}</span>
-              </span>
-            ))
-          ) : (
-            <span className="order-route__node text-muted">{copy.noDestination}</span>
-          )}
-        </span>
-
-        {/* Lead with the buyer-placed-on-marketplace time (#926) when available;
-            fall back to the record's ingestion `createdAt` (NOT snapshot.createdAt,
-            which is vestigial) for older records / sources without a placed time. */}
-        <span className="order-header__received">
-          {snapshot.placedAt ? (
-            <>
-              {copy.placed}{' '}
-              <TimeDisplay iso={snapshot.placedAt} format="datetime" className="mono-text tabular" />{' '}
-              <span className="text-muted">
-                · <TimeDisplay iso={snapshot.placedAt} format="relative" />
-              </span>
-            </>
-          ) : (
-            <>
-              {copy.received}{' '}
-              <TimeDisplay iso={order.createdAt} format="datetime" className="mono-text tabular" />{' '}
-              <span className="text-muted">
-                · <TimeDisplay iso={order.createdAt} format="relative" />
-              </span>
-            </>
-          )}
-        </span>
-      </div>
-
-      {buyerName || deliveryFact || shipByFact || channelName ? (
+      {deliveryFact || shipByFact ? (
         <div className="order-header__facts">
-          {buyerName ? <strong>{buyerName}</strong> : null}
-          {channelName ? <span className="text-muted">{channelName}</span> : null}
           {deliveryFact ? <span>{deliveryFact}</span> : null}
           {shipByFact ? (
-            <StatusBadge tone={shipByFact.tone} withDot compact>
-              {shipByFact.label}
-            </StatusBadge>
+            <span className={`order-header__shipby order-header__shipby--${shipByFact.tone}`}>
+              {copy.shipBy} <TimeDisplay iso={shipByFact.iso} format="datetime" className="tabular" />
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -221,9 +198,6 @@ export function OrderDetailHeader({
 
       {itemCount > 0 ? (
         <div className="order-header__summary-line">
-          {firstItem?.imageUrl ? (
-            <ProductThumbnail name={productName ?? order.internalOrderId} src={firstItem.imageUrl} size="sm" />
-          ) : null}
           <strong>
             {plural(itemCount, copy.items)} · {plural(unitCount, copy.units)}
           </strong>

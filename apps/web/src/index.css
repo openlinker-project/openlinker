@@ -40440,3 +40440,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-detail__overview-main, .order-detail__overview-side { gap: 28px; }
 .order-detail__overview-grid { gap: 28px; }
 @media (max-width: 760px) { .order-header__title { font-size: 1.375rem; } }
+/* header layout per the mockup: title row, identity line, status row, facts row, tags */
+.order-header__channel { display: inline-flex; align-items: center; padding: 3px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-pill); font-size: 0.8125rem; }
+.order-header__identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; font-size: 0.9375rem; }
+.order-header__status-row .order-header__phase-note { font-size: 0.875rem; }
+.order-header__facts { color: var(--text-secondary); font-size: 0.875rem; gap: 6px 18px; }
+.order-header__shipby--error { color: var(--status-error); font-weight: 600; }
+.order-header__shipby--warning { color: var(--status-warning-strong, var(--status-warning)); font-weight: 600; }

@@ -1648,6 +1648,7 @@
     "received": "Otrzymane",
     "routeDestination": "kanał docelowy",
     "routeSource": "źródło",
+    "shipBy": "Wyślij do",
     "title": "Zamówienie {number}",
     "units": {
       "few": "{n} sztuki",
