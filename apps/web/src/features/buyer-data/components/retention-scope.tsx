@@ -19,7 +19,7 @@ import type { BuyerDataPreview, BuyerDataRules } from '../api/buyer-data.types';
 import { useBuyerDataFollowersPlan } from '../hooks/use-buyer-data-followers';
 import { useBuyerDataPlan } from '../hooks/use-buyer-data-plan';
 import { validateBuyerDataRules } from '../lib/buyer-data-config';
-import { RetentionStudio } from './retention-studio';
+import { RetentionStudio, type RetentionStudioProps } from './retention-studio';
 
 export interface RetentionScopeProps {
   rules: BuyerDataRules;
@@ -42,6 +42,7 @@ export interface RetentionScopeProps {
   followerIds?: readonly string[];
   /** One line saying whose orders the plan counts. */
   planNote?: string;
+  planFollowers?: RetentionStudioProps['planFollowers'];
   /** Closes the workbench under the studio (the channel comparison). */
   footer?: ReactNode;
   name: string;
@@ -58,6 +59,7 @@ export function RetentionScope({
   onPlan,
   followerIds,
   planNote,
+  planFollowers,
   footer,
   name,
 }: RetentionScopeProps): ReactElement {
@@ -123,6 +125,7 @@ export function RetentionScope({
         plan={plan}
         followerIds={followerIds}
         planNote={planNote}
+        planFollowers={planFollowers}
         disabled={locked}
         ghost={ghost}
         railHead={railHead}

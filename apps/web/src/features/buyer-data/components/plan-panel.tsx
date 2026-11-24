@@ -15,6 +15,8 @@ import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Infotip } from '../../../shared/ui/infotip';
 import type { BuyerDataEraseMode } from '../api/buyer-data.types';
 import type { BuyerDataPlan } from '../hooks/use-buyer-data-plan';
+import type { Connection } from '../../connections';
+import { FollowersCount } from './followers-count';
 import { OdometerNumber } from './odometer-number';
 
 export interface PlanPanelProps {
@@ -24,6 +26,8 @@ export interface PlanPanelProps {
   invalid: boolean;
   /** Whose orders these numbers are about, when that is not obvious. */
   note?: string;
+  /** Like `note`, but the `{n}` in the template is a hoverable list of these connections. */
+  followers?: { template: string; connections: readonly Connection[] };
   /** The rail pins the `glance` (title, figures, bar) and scrolls the `detail`; the sheet shows `all`. */
   part?: 'all' | 'glance' | 'detail';
 }
@@ -33,6 +37,7 @@ export function PlanPanel({
   mode,
   invalid,
   note,
+  followers,
   part = 'all',
 }: PlanPanelProps): ReactElement {
   const copy = useMessages('buyer-data').plan;
@@ -69,20 +74,41 @@ export function PlanPanel({
     <>
       <header className="plan-panel__head">
         <h4 id="plan-panel-title">{copy.title}</h4>
-        <span className="plan-panel__status" role="status" data-testid="plan-status">
-          {invalid
-            ? copy.invalid
-            : plan.isError
-              ? copy.error
-              : plan.calculating
-                ? copy.calculating
-                : plan.computedAt !== undefined
-                  ? interpolate(copy.computedAt, { time: format.time(plan.computedAt) })
-                  : ''}
+        <span className="plan-panel__status">
+          <span role="status" data-testid="plan-status">
+            {invalid
+              ? copy.invalid
+              : plan.isError
+                ? copy.error
+                : plan.calculating
+                  ? copy.calculating
+                  : plan.computedAt !== undefined
+                    ? interpolate(copy.computedAt, { time: format.time(plan.computedAt) })
+                    : ''}
+          </span>
+          <Infotip
+            ariaLabel={copy.untouchedTitle}
+            align="end"
+            definitions={[
+              { term: copy.untouchedInvoices, text: copy.untouchedInvoicesText },
+              { term: copy.untouchedShops, text: copy.untouchedShopsText },
+              { term: copy.untouchedBackups, text: copy.untouchedBackupsText },
+            ]}
+          />
         </span>
       </header>
 
-      {note !== undefined ? (
+      {followers !== undefined ? (
+        <p className="plan-panel__note" data-testid="plan-note">
+          {followers.template
+            .split('{n}')
+            .flatMap((piece, index, pieces) =>
+              index < pieces.length - 1
+                ? [piece, <FollowersCount key={index} connections={followers.connections} />]
+                : [piece]
+            )}
+        </p>
+      ) : note !== undefined ? (
         <p className="plan-panel__note" data-testid="plan-note">
           {note}
         </p>
@@ -172,25 +198,6 @@ export function PlanPanel({
             ) : null}
           </div>
         ) : null}
-      </div>
-
-      <div className="plan-panel__untouched">
-        <span>
-          <strong>{copy.untouchedTitle}</strong>{' '}
-          <Infotip
-            ariaLabel={copy.untouchedTitle}
-            definitions={[
-              { term: copy.untouchedInvoices, text: copy.untouchedInvoicesText },
-              { term: copy.untouchedShops, text: copy.untouchedShopsText },
-              { term: copy.untouchedBackups, text: copy.untouchedBackupsText },
-            ]}
-          />
-        </span>
-        <ul>
-          <li>{copy.untouchedInvoices}</li>
-          <li>{copy.untouchedShops}</li>
-          <li>{copy.untouchedBackups}</li>
-        </ul>
       </div>
     </>
   );

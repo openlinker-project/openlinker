@@ -94,7 +94,7 @@ export function PeriodInput({
           min={1}
           value={never ? '' : amount}
           placeholder={never ? '∞' : undefined}
-          disabled={disabled || never}
+          disabled={disabled}
           invalid={error !== undefined}
           aria-label={`${label}: ${copy.customAmount}`}
           onChange={(event) => {
@@ -104,7 +104,7 @@ export function PeriodInput({
         />
         <Select
           value={unit}
-          disabled={disabled || never}
+          disabled={disabled}
           aria-label={`${label}: ${copy.customUnit}`}
           onChange={(event) => {
             const next = UNITS.find((u) => u === event.target.value) ?? 'days';

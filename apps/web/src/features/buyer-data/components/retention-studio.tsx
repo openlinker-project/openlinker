@@ -26,7 +26,7 @@ import { validateBuyerDataRules } from '../lib/buyer-data-config';
 import { estimateZoneCounts, suggestExampleAge, type RetentionCuts } from '../lib/retention-scale';
 import { AgeStrip, type StripCounts } from './age-strip';
 import { PeriodInput } from './period-input';
-import { PlanPanel } from './plan-panel';
+import { PlanPanel, type PlanPanelProps } from './plan-panel';
 import { RecordCard } from './record-card';
 import { OdometerNumber } from './odometer-number';
 
@@ -41,6 +41,8 @@ export interface RetentionStudioProps {
   followerIds?: readonly string[];
   /** One line saying whose orders the plan counts. */
   planNote?: string;
+  /** The followers note with a list behind its number (Defaults tab). */
+  planFollowers?: PlanPanelProps['followers'];
   /** `compact` drops the strip and the plan: inputs and the example order only. */
   variant?: 'full' | 'compact';
   disabled?: boolean;
@@ -61,6 +63,7 @@ export function RetentionStudio({
   plan,
   followerIds,
   planNote,
+  planFollowers,
   variant = 'full',
   disabled = false,
   ghost = false,
@@ -216,7 +219,7 @@ export function RetentionStudio({
       plan={plan}
     />
   );
-  const planProps = { plan, mode: rules.mode, invalid: issues.length > 0, note: planNote };
+  const planProps = { plan, mode: rules.mode, invalid: issues.length > 0, note: planNote, followers: planFollowers };
   const planPanel = plan !== null ? <PlanPanel {...planProps} plan={plan} /> : null;
   // In the rail the figures stay pinned and the explanation scrolls with the example.
   const planGlance = plan !== null ? <PlanPanel {...planProps} plan={plan} part="glance" /> : null;

@@ -40561,6 +40561,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .scope-compare .data-table__container {
   max-width: 100%;
   overflow-x: auto;
+  margin-top: var(--space-4);
 }
 
 .retention-scope {
@@ -41560,13 +41561,78 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   gap: var(--space-2);
 }
 .plan-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--text-muted);
   font-size: var(--rs-fs-cap);
+}
+.plan-panel__status .section-infotip:hover,
+.plan-panel__status .section-infotip:active {
+  background: none;
+  border-color: transparent;
+  color: var(--text-secondary);
 }
 .plan-panel__note {
   margin: calc(var(--space-2) * -1) 0 0;
   color: var(--text-secondary);
   font-size: var(--rs-fs-cap);
+}
+.followers-count,
+button.followers-count:hover,
+button.followers-count:active {
+  all: unset;
+  box-sizing: border-box;
+  cursor: help;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+button.followers-count:hover {
+  text-decoration-style: solid;
+}
+button.followers-count:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.followers-count__plain {
+  font-variant-numeric: tabular-nums;
+}
+.popover__content.followers-pop {
+  width: fit-content;
+  min-width: 0;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: var(--space-2);
+}
+.followers-pop__list {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.followers-pop__list--scroll {
+  max-height: 14rem;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong, var(--border-subtle)) transparent;
+}
+.followers-pop__list li {
+  display: grid;
+}
+.followers-pop__list li > .connection-chip.followers-pop__chip {
+  display: flex;
+  width: 100%;
+  max-width: none;
+}
+.followers-pop__chip .connection-chip__face {
+  flex: 1;
 }
 .plan-panel__body {
   display: flex;
@@ -41659,19 +41725,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   height: 0.875rem;
   color: var(--status-info-fg);
 }
-.plan-panel__skipped ul,
-.plan-panel__untouched ul {
+.plan-panel__skipped ul {
   margin: var(--space-1) 0 0;
   padding-left: var(--space-4);
-}
-.plan-panel__untouched {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-size: var(--rs-fs-cap);
-}
-.plan-panel__untouched strong {
-  color: var(--text-primary);
 }
 
 /* Odometer: each digit is a reel (drawn here, so the DOM keeps the plain number)

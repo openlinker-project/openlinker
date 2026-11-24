@@ -338,9 +338,12 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
             rules={draft}
             savedEnabled={saved.enabled}
             followerIds={connections.length > 0 ? followerIds : undefined}
-            planNote={
+            planFollowers={
               connections.length > 0
-                ? interpolate(scopeCopy.plansFollowers, { n: followerIds.length })
+                ? {
+                    template: scopeCopy.plansFollowers,
+                    connections: connections.filter((c) => overrideOf(c) === null),
+                  }
                 : undefined
             }
             onChange={setDraft}
