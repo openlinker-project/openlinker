@@ -40389,7 +40389,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-detail__overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 24px; align-items: start; background: none !important; border: 0 !important; padding: 0 !important; }
 .order-detail__overview-main, .order-detail__overview-side { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 .order-detail__overview-main > *:not(:empty), .order-detail__overview-side > *:not(:empty) { background: var(--bg-shell); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 20px 24px; min-width: 0; }
-@media (max-width: 960px) { .order-detail__overview-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1599px) { .order-detail__overview-grid { grid-template-columns: minmax(0, 1fr); } }
 .order-detail__tab[data-state='active'] { gap: 24px; }
 /* tab strip */
 .order-detail__tab-list .tabs__trigger { border-right: 0; padding: 12px 16px; font-size: 0.9375rem; position: relative; }
@@ -40421,7 +40421,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-detail__tab > *:not(:empty) { padding: 14px; }
   .order-detail__tab-list { -webkit-mask-image: linear-gradient(to right, #000 85%, transparent); mask-image: linear-gradient(to right, #000 85%, transparent); }
 }
-@media (max-width: 960px) { .order-detail__overview-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1599px) { .order-detail__overview-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── Order detail: geometry taken from the approved mockup (#4286) ───────
    Measured on docs/plans/mockups/order-detail-v3.html at 1440 px: content column
@@ -40495,13 +40495,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-ship-to__point strong { font-size: 1.0625rem; font-weight: 600; }
 .order-ship-to__point small { color: var(--text-muted); font-size: 0.75rem; }
 /* Shipping tab on a wide screen: the shipment or label form on the left, ship-to on the right (#4286) */
-@media (min-width: 1500px) {
+@media (min-width: 1600px) {
   /* the shipment or label form is the main column; ship-to is the side column, like the Overview */
   .order-shipping-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 28px; align-items: start; }
   .order-shipping-grid > .order-ship-to { order: 2; margin-bottom: 0; position: sticky; top: 16px; }
 }
-/* Wide screens: tabs made of several independent cards flow into two balanced columns (#4286) */
-@media (min-width: 1500px) {
+/* From 1600 px: tabs made of several independent cards flow into two balanced columns (#4286) */
+@media (min-width: 1600px) {
   /* Two columns only when there is more than one card; a single card takes the full width. */
   .order-detail__split[data-state='active']:has(> :nth-child(2):not(:empty)) { display: block; column-count: 2; column-gap: 28px; }
   .order-detail__split[data-state='active']:has(> :nth-child(2):not(:empty)) > * { break-inside: avoid; margin-bottom: 28px; }
