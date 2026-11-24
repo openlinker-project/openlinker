@@ -85,5 +85,33 @@ describe('SyncCursorsService', () => {
 
       await expect(service.hasOrderFeedCursor('conn-1')).resolves.toBe(false);
     });
+
+    describe('with more than one page of cursors', () => {
+      const pagedRepository = (keys: string[]): void => {
+        repository.findMany.mockImplementation((_filters, pagination) => {
+          const offset = pagination?.offset ?? 0;
+          const limit = pagination?.limit ?? 20;
+          return Promise.resolve({
+            items: keys.slice(offset, offset + limit).map((cursorKey) => ({ cursorKey })),
+          } as never);
+        });
+      };
+      const filler = Array.from({ length: 250 }, (_, i) => `master.product.sweep:connection:${i}`);
+
+      it('should find an order cursor that sits after the first 200 rows', async () => {
+        pagedRepository([...filler, 'prestashop.orders.dateUpd']);
+
+        await expect(service.hasOrderFeedCursor('conn-1')).resolves.toBe(true);
+      });
+
+      it('should delete an order cursor that sits after the first 200 rows', async () => {
+        pagedRepository([...filler, 'prestashop.orders.dateUpd']);
+
+        const deleted = await service.deleteOrderFeedCursors('conn-1');
+
+        expect(deleted).toEqual(['prestashop.orders.dateUpd']);
+        expect(repository.delete).toHaveBeenCalledWith('conn-1', 'prestashop.orders.dateUpd');
+      });
+    });
   });
 });
