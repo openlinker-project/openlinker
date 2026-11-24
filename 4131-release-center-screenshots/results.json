@@ -15,6 +15,11 @@
   "d": ""
  },
  {
+  "n": "desktop-admin: no zero badge on the bell",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "desktop-admin: no nested scroller in cards",
   "pass": true,
   "d": ""
@@ -55,6 +60,11 @@
   "d": "choice=true writes=4"
  },
  {
+  "n": "desktop-admin: tour header shows one counter",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "desktop-admin: walked 11 stops",
   "pass": true,
   "d": ""
@@ -91,6 +101,16 @@
  },
  {
   "n": "desktop-viewer: pinned row present",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: no zero badge on the bell",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: viewer sees no 'Keep as it is' or per-step admin chips",
   "pass": true,
   "d": ""
  },
@@ -135,6 +155,11 @@
   "d": "chip=Guide writes=0"
  },
  {
+  "n": "desktop-viewer: tour header shows one counter",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "desktop-viewer: walked 7 stops",
   "pass": true,
   "d": ""
@@ -175,6 +200,11 @@
   "d": ""
  },
  {
+  "n": "mobile-admin: no zero badge on the bell",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "mobile-admin: no nested scroller in cards",
   "pass": true,
   "d": ""
@@ -197,7 +227,7 @@
  {
   "n": "mobile-admin: tour card inside viewport",
   "pass": true,
-  "d": "{\"x\":0,\"w\":390,\"y\":585,\"h\":259}"
+  "d": "{\"x\":0,\"w\":390,\"y\":597,\"h\":247}"
  },
  {
   "n": "mobile-admin: first stop is not a 'cannot find' dead end",
@@ -212,12 +242,17 @@
  {
   "n": "mobile-admin: card folds to the steps only",
   "pass": true,
-  "d": "full=259 folded=157"
+  "d": "full=247 folded=145"
  },
  {
   "n": "mobile-admin: config tour offers choices and records steps",
   "pass": true,
   "d": "choice=true writes=4"
+ },
+ {
+  "n": "mobile-admin: tour header shows one counter",
+  "pass": true,
+  "d": ""
  },
  {
   "n": "mobile-admin: walked 11 stops",
@@ -260,6 +295,16 @@
   "d": ""
  },
  {
+  "n": "mobile-viewer: no zero badge on the bell",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: viewer sees no 'Keep as it is' or per-step admin chips",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "mobile-viewer: no nested scroller in cards",
   "pass": true,
   "d": ""
@@ -282,7 +327,7 @@
  {
   "n": "mobile-viewer: tour card inside viewport",
   "pass": true,
-  "d": "{\"x\":0,\"w\":390,\"y\":577,\"h\":267}"
+  "d": "{\"x\":0,\"w\":390,\"y\":589,\"h\":255}"
  },
  {
   "n": "mobile-viewer: first stop is not a 'cannot find' dead end",
@@ -297,12 +342,17 @@
  {
   "n": "mobile-viewer: card folds to the steps only",
   "pass": true,
-  "d": "full=267 folded=157"
+  "d": "full=255 folded=145"
  },
  {
   "n": "mobile-viewer: view tour has no choices, no step writes, only guides the role can open",
   "pass": true,
   "d": "chip=Guide writes=0"
+ },
+ {
+  "n": "mobile-viewer: tour header shows one counter",
+  "pass": true,
+  "d": ""
  },
  {
   "n": "mobile-viewer: walked 6 stops",
