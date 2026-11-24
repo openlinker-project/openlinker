@@ -31,6 +31,7 @@ const SAMPLE_LIMIT = 5;
 const EMPTY_PREVIEW: BuyerDataPreview = {
   toHide: 0,
   toErase: 0,
+  alreadyHiddenDueForErase: 0,
   total: 0,
   totalOrders: 0,
   skippedProtected: 0,
@@ -43,6 +44,7 @@ export function sumPreviews(previews: readonly BuyerDataPreview[]): BuyerDataPre
     (sum, p) => ({
       toHide: sum.toHide + p.toHide,
       toErase: sum.toErase + p.toErase,
+      alreadyHiddenDueForErase: sum.alreadyHiddenDueForErase + p.alreadyHiddenDueForErase,
       total: sum.total + p.total,
       totalOrders: sum.totalOrders + p.totalOrders,
       skippedProtected: sum.skippedProtected + p.skippedProtected,

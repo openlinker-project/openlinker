@@ -6,8 +6,10 @@
  * asks for confirmation and writes the four knobs; each connection has a tab
  * that links to or breaks from the defaults; connections are compared in a table.
  */
+import type { ReactElement } from 'react';
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { BuyerDataPage } from './buyer-data-page';
 import {
@@ -53,31 +55,110 @@ function settingsView(overrides: Record<string, unknown> = {}): unknown {
   };
 }
 
-function render(opts: { view?: unknown; user?: SessionUser } = {}): {
+function Probe(): ReactElement {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="search">{location.search}</output>
+      <button type="button" onClick={() => void navigate(-1)}>
+        history-back
+      </button>
+    </>
+  );
+}
+
+function render(opts: { view?: unknown; user?: SessionUser; route?: string } = {}): {
   update: Mock;
   updateConnection: Mock;
 } {
   const update = vi.fn().mockResolvedValue(undefined);
   const updateConnection = vi.fn().mockResolvedValue(SHOP);
-  renderWithProviders(<BuyerDataPage />, {
-    apiClient: createMockApiClient({
-      operationalSettings: {
-        get: vi.fn().mockResolvedValue(opts.view ?? settingsView()),
-        update: update as never,
-      },
-      connections: {
-        list: vi.fn().mockResolvedValue([SHOP, ALLEGRO]),
-        update: updateConnection as never,
-      },
-    }),
-    sessionAdapter: createAuthenticatedSessionAdapter(opts.user ?? ADMIN),
-  });
+  renderWithProviders(
+    <>
+      <BuyerDataPage />
+      <Probe />
+    </>,
+    {
+      route: opts.route,
+      apiClient: createMockApiClient({
+        operationalSettings: {
+          get: vi.fn().mockResolvedValue(opts.view ?? settingsView()),
+          update: update as never,
+        },
+        connections: {
+          list: vi.fn().mockResolvedValue([SHOP, ALLEGRO]),
+          update: updateConnection as never,
+        },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(opts.user ?? ADMIN),
+    }
+  );
   return { update, updateConnection };
 }
 
 afterEach(cleanup);
 
 describe('BuyerDataPage (#4289)', () => {
+  describe('scope in the URL', () => {
+    it('should open on the connection named by the scope param', async () => {
+      render({ route: '/settings/buyer-data?scope=conn-shop' });
+
+      expect(await screen.findByRole('tab', { name: 'Shop' })).toHaveAttribute(
+        'data-state',
+        'active'
+      );
+      expect(screen.getByRole('tab', { name: 'Defaults' })).toHaveAttribute(
+        'data-state',
+        'inactive'
+      );
+    });
+
+    it('should put the scope in the URL when a tab is clicked and take it out for Defaults', async () => {
+      render();
+      await userEvent.click(await screen.findByRole('tab', { name: 'Shop' }));
+      expect(screen.getByTestId('search')).toHaveTextContent('?scope=conn-shop');
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Defaults' }));
+      expect(screen.getByTestId('search')).toHaveTextContent('');
+      expect(screen.getByTestId('search').textContent).toBe('');
+    });
+
+    it('should fall back to Defaults and fix the URL for an unknown or stale id', async () => {
+      render({ route: '/settings/buyer-data?scope=gone' });
+
+      expect(await screen.findByRole('tab', { name: 'Defaults' })).toHaveAttribute(
+        'data-state',
+        'active'
+      );
+      await waitFor(() => expect(screen.getByTestId('search').textContent).toBe(''));
+    });
+
+    it('should restore the previous scope on browser back', async () => {
+      render();
+      await userEvent.click(await screen.findByRole('tab', { name: 'Shop' }));
+      await userEvent.click(screen.getByRole('button', { name: 'history-back' }));
+
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: 'Defaults' })).toHaveAttribute(
+          'data-state',
+          'active'
+        )
+      );
+    });
+
+    it('should switch scope from the comparison table through the same setter', async () => {
+      render();
+      await userEvent.click(
+        within(await screen.findByTestId('buyer-data-connections')).getByRole('button', {
+          name: 'Shop',
+        })
+      );
+
+      expect(screen.getByTestId('search')).toHaveTextContent('?scope=conn-shop');
+    });
+  });
+
   it('should state the page is admin-only without connections:write', async () => {
     render({ user: OPERATOR });
     expect(
@@ -229,6 +310,7 @@ describe('BuyerDataPage (#4289)', () => {
     const preview = vi.fn().mockResolvedValue({
       toHide: 1,
       toErase: 0,
+      alreadyHiddenDueForErase: 0,
       total: 1,
       totalOrders: 10,
       skippedProtected: 0,

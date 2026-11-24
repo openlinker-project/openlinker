@@ -56,6 +56,8 @@ export interface BuyerDataSkippedByReason {
 export interface BuyerDataPreview {
   toHide: number;
   toErase: number;
+  /** Of `toErase`, the orders already hidden: in `total`, but not in `totalOrders`. */
+  alreadyHiddenDueForErase: number;
   total: number;
   /** Every order still on the list in scope; `total` only counts the ones a rule reaches. */
   totalOrders: number;

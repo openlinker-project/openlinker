@@ -24,6 +24,7 @@ const RULES: BuyerDataRules = {
 const PREVIEW = {
   toHide: 300,
   toErase: 100,
+  alreadyHiddenDueForErase: 0,
   total: 300,
   totalOrders: 1000,
   skippedProtected: 4,

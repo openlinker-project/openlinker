@@ -777,17 +777,6 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
-  // #4289 - re-serialize `config.buyerDataRetention` into configText. Same shape
-  // as `syncLabelPurchaseNotificationToJson`: the section sets the value FIRST.
-  function syncBuyerDataToJson(): void {
-    if (!configIsParseable) return;
-    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, {
-      buyerDataRetention: form.getValues('buyerDataRetention'),
-    });
-    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
-  }
-
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -1111,13 +1100,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
       {/* #4289 - buyer data rules: read for any connection that takes orders. */}
       {connection.enabledCapabilities.includes('OrderSource') ? (
-        <BuyerDataSection
-          connectionId={connection.id}
-          form={form}
-          configIsParseable={configIsParseable}
-          canWrite={write.canWrite}
-          syncBuyerDataToJson={syncBuyerDataToJson}
-        />
+        <BuyerDataSection connectionId={connection.id} form={form} />
       ) : null}
 
       <div className="config-panel__toggle">

@@ -23,7 +23,8 @@ import { useBuyerDataAgeHistogram } from '../hooks/use-buyer-data-age-histogram'
 import { useBuyerDataFollowersHistogram } from '../hooks/use-buyer-data-followers';
 import type { BuyerDataPlan } from '../hooks/use-buyer-data-plan';
 import { validateBuyerDataRules } from '../lib/buyer-data-config';
-import { estimateZoneCounts, suggestExampleAge, type RetentionCuts } from '../lib/retention-scale';
+import { suggestExampleAge, type RetentionCuts } from '../lib/retention-scale';
+import { computeZoneCounts } from '../lib/zone-counts';
 import { AgeStrip, type StripCounts } from './age-strip';
 import { PeriodInput } from './period-input';
 import { PlanPanel, type PlanPanelProps } from './plan-panel';
@@ -102,50 +103,10 @@ export function RetentionStudio({
       ? 'loading'
       : 'ready';
 
-  const counts = useMemo<StripCounts | null>(() => {
-    // The plan only counts what is still to be done; what the job already hid or
-    // erased is in the histogram and belongs in the zone it sits in.
-    let alreadyHidden = 0;
-    let alreadyErased = 0;
-    for (const bucket of histogram?.buckets ?? []) {
-      alreadyHidden += bucket.hidden;
-      alreadyErased += bucket.erased;
-    }
-    if (plan?.fresh === true && plan.data !== undefined) {
-      const { totalOrders, total, toErase } = plan.data;
-      return {
-        kept: Math.max(0, totalOrders - total),
-        hidden: Math.max(0, total - toErase) + alreadyHidden,
-        erased: toErase + alreadyErased,
-        alreadyHidden,
-        alreadyErased,
-        estimated: false,
-        calculating: false,
-      };
-    }
-    if (histogram !== undefined) {
-      return {
-        ...estimateZoneCounts(histogram.buckets, rules),
-        alreadyHidden,
-        alreadyErased,
-        estimated: true,
-        calculating: plan?.calculating ?? false,
-      };
-    }
-    if (plan?.data !== undefined) {
-      const { totalOrders, total, toErase } = plan.data;
-      return {
-        kept: Math.max(0, totalOrders - total),
-        hidden: Math.max(0, total - toErase),
-        erased: toErase,
-        alreadyHidden: 0,
-        alreadyErased: 0,
-        estimated: true,
-        calculating: true,
-      };
-    }
-    return null;
-  }, [plan, histogram, rules]);
+  const counts = useMemo<StripCounts | null>(
+    () => computeZoneCounts(plan, histogram, rules),
+    [plan, histogram, rules]
+  );
 
   // The example opens on an age that shows the rules doing something: the nearest month
   // with orders past the erase cut, else past the hide cut, else the oldest order.
@@ -219,7 +180,13 @@ export function RetentionStudio({
       plan={plan}
     />
   );
-  const planProps = { plan, mode: rules.mode, invalid: issues.length > 0, note: planNote, followers: planFollowers };
+  const planProps = {
+    plan,
+    mode: rules.mode,
+    invalid: issues.length > 0,
+    note: planNote,
+    followers: planFollowers,
+  };
   const planPanel = plan !== null ? <PlanPanel {...planProps} plan={plan} /> : null;
   // In the rail the figures stay pinned and the explanation scrolls with the example.
   const planGlance = plan !== null ? <PlanPanel {...planProps} plan={plan} part="glance" /> : null;

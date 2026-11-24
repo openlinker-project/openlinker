@@ -196,18 +196,17 @@
     "unlink": "Ustaw własne"
   },
   "section": {
-    "changeGeneral": "Zmień zasady ogólne",
-    "enabledInherited": "Przełącznik jest ogólny, teraz: {state}.",
+    "after": "po {when}",
+    "cta": "Ustaw zasady w ustawieniach",
+    "factErase": "Usuwanie danych",
+    "factHide": "Ukrywanie",
     "heading": "Dane kupujących w tym połączeniu",
-    "help": "Zdecyduj, kiedy zamówienia z tego połączenia znikają z listy i kiedy usuwamy z nich dane osobowe.",
-    "inherit": "Jak ogólne",
-    "inheritedNote": "Takie jak w ustawieniach ogólnych: {summary}",
-    "own": "Ustaw własne",
-    "ownNote": "Własne zasady mają pierwszeństwo przed ogólnymi.",
-    "restore": "Wróć do zasad ogólnych",
-    "sourceLabel": "Źródło zasad",
-    "stateOff": "wyłączony",
-    "stateOn": "włączony"
+    "help": "Kiedy zamówienia z tego połączenia znikają z listy i kiedy usuwamy z nich dane osobowe.",
+    "rulesOff": "Zasady są wyłączone.",
+    "rulesOffHere": "Wyłączone dla tego połączenia.",
+    "rulesOn": "Zasady są włączone.",
+    "statusLinked": "Podąża za ustawieniami domyślnymi",
+    "statusOwn": "Własne zasady"
   },
   "strip": {
     "announce": "{hide}. {erase}. Widoczne {kept}, ukryte {hidden}, dane usunięte {erased}.",

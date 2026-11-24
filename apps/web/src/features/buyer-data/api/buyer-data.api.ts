@@ -18,6 +18,7 @@ import type {
 const previewSchema = z.object({
   toHide: z.number(),
   toErase: z.number(),
+  alreadyHiddenDueForErase: z.number().default(0),
   total: z.number(),
   totalOrders: z.number(),
   skippedProtected: z.number().default(0),

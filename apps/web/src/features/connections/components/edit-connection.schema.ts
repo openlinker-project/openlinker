@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { BuyerDataOverride } from '../../buyer-data/api/buyer-data.types';
+import type { BuyerDataOverride } from '../../buyer-data';
 import type {
   ConnectionConfigContribution,
   PluginEditConnectionFields,

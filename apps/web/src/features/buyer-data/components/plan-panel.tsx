@@ -46,7 +46,10 @@ export function PlanPanel({
 
   const erased = data?.toErase ?? 0;
   const hidden = data === undefined ? 0 : Math.max(0, data.total - data.toErase);
-  const stays = data === undefined ? 0 : Math.max(0, data.totalOrders - data.total);
+  const stays =
+    data === undefined
+      ? 0
+      : Math.max(0, data.totalOrders - (data.total - data.alreadyHiddenDueForErase));
   const whole = Math.max(1, stays + hidden + erased);
 
   const reasons: { id: string; label: string; n: number }[] =

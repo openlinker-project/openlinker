@@ -14,8 +14,16 @@
  *
  * @module apps/web/src/pages/settings
  */
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { describeApiError } from '../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../shared/i18n';
 import { AccessGate } from '../../shared/ui/access-gate';
@@ -55,6 +63,9 @@ import {
 } from '../../features/settings';
 
 const DEFAULTS_TAB = 'defaults';
+/** URL search param holding the selected scope: absent or 'default' = Defaults, else a connection id. */
+const SCOPE_PARAM = 'scope';
+const DEFAULT_SCOPE_VALUE = 'default';
 
 function takesOrders(connection: Connection): boolean {
   return connection.status !== 'archived' && connection.enabledCapabilities.includes('OrderSource');
@@ -114,7 +125,8 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
   const [draft, setDraft] = useState(saved);
   /** Connections edited on this page; absent = as saved. `null` = follow the defaults. */
   const [connDrafts, setConnDrafts] = useState<Record<string, BuyerDataOverride | null>>({});
-  const [tab, setTab] = useState(DEFAULTS_TAB);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabListRef = useRef<HTMLDivElement>(null);
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const plans = useRef<Record<string, BuyerDataPreview | undefined>>({});
@@ -131,6 +143,51 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
     readBuyerDataSettings(c.config);
   const overrideOf = (c: Connection): BuyerDataOverride | null =>
     c.id in connDrafts ? connDrafts[c.id] ?? null : savedOverride(c);
+
+  // The scope lives in the URL (back/forward and a pasted link restore it); an id
+  // that matches no order-taking connection falls back to the defaults.
+  const scopeParam = searchParams.get(SCOPE_PARAM);
+  const tab =
+    scopeParam !== null && connections.some((c) => c.id === scopeParam) ? scopeParam : DEFAULTS_TAB;
+  const setTab = useCallback(
+    (next: string, replace = false): void => {
+      setSearchParams(
+        (current) => {
+          const params = new URLSearchParams(current);
+          if (next === DEFAULTS_TAB) params.delete(SCOPE_PARAM);
+          else params.set(SCOPE_PARAM, next);
+          return params;
+        },
+        { replace }
+      );
+    },
+    [setSearchParams]
+  );
+  const scopeIsStale =
+    !connectionsQuery.isPending &&
+    scopeParam !== null &&
+    (scopeParam === DEFAULT_SCOPE_VALUE || tab === DEFAULTS_TAB);
+  useEffect(() => {
+    // 'default' and stale ids are rewritten to the canonical URL, replacing the entry.
+    if (scopeIsStale) setTab(DEFAULTS_TAB, true);
+  }, [scopeIsStale, setTab]);
+
+  // One indicator slides under the active tab: its place is measured here and read by CSS.
+  const tabNamesKey = connections.map((c) => c.name).join('|');
+  useLayoutEffect(() => {
+    const list = tabListRef.current;
+    if (list === null) return undefined;
+    const place = (): void => {
+      const active = list.querySelector<HTMLElement>('[data-state="active"]');
+      if (active === null) return;
+      list.style.setProperty('--scope-x', `${active.offsetLeft}px`);
+      list.style.setProperty('--scope-w', `${active.offsetWidth}px`);
+      list.dataset.placed = 'true';
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [tab, tabNamesKey]);
 
   const dirtyConnections = connections.filter(
     (c) => c.id in connDrafts && !sameOverride(connDrafts[c.id] ?? null, savedOverride(c))
@@ -313,8 +370,8 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
       }}
       data-testid="buyer-data-page"
     >
-      <Tabs value={tab} onValueChange={setTab} className="scope-tabs">
-        <TabsList aria-label={scopeCopy.tabsLabel}>
+      <Tabs value={tab} onValueChange={(next) => setTab(next)} className="scope-tabs">
+        <TabsList ref={tabListRef} aria-label={scopeCopy.tabsLabel}>
           <TabsTrigger value={DEFAULTS_TAB}>{scopeCopy.defaultsTab}</TabsTrigger>
           {connections.map((c) => {
             const own = overrideOf(c) !== null;

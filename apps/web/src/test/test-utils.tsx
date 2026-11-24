@@ -198,6 +198,7 @@ export function createMockApiClient(
       preview: vi.fn().mockResolvedValue({
         toHide: 120,
         toErase: 40,
+        alreadyHiddenDueForErase: 0,
         total: 1000,
         totalOrders: 1500,
         skippedProtected: 3,

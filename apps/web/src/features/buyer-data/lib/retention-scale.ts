@@ -149,6 +149,24 @@ export function estimateZoneCounts(
 }
 
 /**
+ * Orders already hidden that sit in the Hidden zone under these cuts. A hidden
+ * order older than the erase cut belongs to the Erased zone (the job will erase
+ * it), and one younger than the hide cut to Kept, so neither is "of which
+ * already hidden" in the Hidden card - counting it there too would show the same
+ * order in two cards.
+ */
+export function estimateAlreadyHidden(
+  buckets: readonly { ageMonths: number; hidden: number }[],
+  cuts: RetentionCuts
+): number {
+  let n = 0;
+  for (const bucket of buckets) {
+    if (zoneForAge(monthToAgeDays(bucket.ageMonths), cuts) === 'hidden') n += bucket.hidden;
+  }
+  return n;
+}
+
+/**
  * The age the example order opens on: the nearest month that still has orders
  * past the erase cut (so the example shows the whole effect), else past the hide
  * cut, else the oldest order, else today. It is the middle of that month.

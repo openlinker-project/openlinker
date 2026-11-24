@@ -8529,6 +8529,77 @@ html:has(.login-stage) {
   cursor: pointer;
 }
 
+/* ── Buyer data summary on the connection edit (#4289): read-only, one way out. ── */
+.buyer-data-summary {
+  min-width: 0;
+  animation: retention-soft 120ms linear both;
+}
+.buyer-data-summary__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.buyer-data-summary__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.buyer-data-summary__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1.5px solid var(--text-muted);
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+.buyer-data-summary__dot--own {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+}
+.buyer-data-summary__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+.buyer-data-summary__facts dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.buyer-data-summary__facts dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.buyer-data-summary__cta {
+  align-self: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.buyer-data-summary__arrow {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 120ms var(--ease-out);
+}
+.buyer-data-summary__cta:hover .buyer-data-summary__arrow,
+.buyer-data-summary__cta:focus-visible .buyer-data-summary__arrow {
+  transform: translateX(2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buyer-data-summary__arrow {
+    transition: none;
+  }
+  .scope-tabs .tabs__list[data-placed='true']::before {
+    transition: opacity 120ms linear;
+  }
+}
+
 /* ── RateLimitSection (#1810) ── */
 .rate-limit-section {
   display: flex;
@@ -40412,8 +40483,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* Page rhythm and containment: nothing may push the page wider than the screen. */
 .buyer-data-page,
 .buyer-data-page > *,
-[data-testid='buyer-data-section'],
-[data-testid='buyer-data-section'] > *,
 [data-testid='buyer-data-wizard-step'],
 [data-testid='buyer-data-wizard-step'] > * {
   min-width: 0;
@@ -40424,7 +40493,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   flex-direction: column;
   gap: var(--space-4);
 }
-[data-testid='buyer-data-section'],
 [data-testid='buyer-data-wizard-step'] {
   display: flex;
   flex-direction: column;
@@ -40434,7 +40502,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   margin: 0;
   padding-left: var(--space-4);
 }
-[data-testid='buyer-data-section'] .segmented-control,
 [data-testid='buyer-data-wizard-step'] .segmented-control,
 .retention-studio .segmented-control {
   display: grid;
@@ -40442,7 +40509,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   grid-auto-columns: 1fr;
   max-width: 100%;
 }
-[data-testid='buyer-data-section'] .segmented-control__option,
 [data-testid='buyer-data-wizard-step'] .segmented-control__option,
 .retention-studio .segmented-control__option,
 .record-card .segmented-control__option {
@@ -40456,6 +40522,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* Scope bar: Defaults and each connection as one segmented track; the dot says
    whether a connection follows the defaults (ring) or has rules of its own (filled). */
 .scope-tabs .tabs__list {
+  position: relative;
   display: flex;
   gap: 2px;
   width: fit-content;
@@ -40476,18 +40543,39 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: var(--radius-md);
   font-size: var(--rs-fs-body);
   white-space: nowrap;
-  transition:
-    background var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 .scope-tabs .tabs__trigger:hover {
   background: color-mix(in oklab, var(--bg-surface) 55%, transparent);
 }
 .scope-tabs .tabs__trigger[data-state='active'] {
+  background: transparent;
+}
+/* One indicator slides under the active tab (position measured into --scope-x/--scope-w). */
+.scope-tabs .tabs__list::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: var(--scope-w, 0);
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
   box-shadow:
     0 0 0 1px var(--border-default),
     var(--shadow-xs);
+  transform: translateX(var(--scope-x, 0));
+  opacity: 0;
+  pointer-events: none;
+}
+.scope-tabs .tabs__list[data-placed='true']::before {
+  opacity: 1;
+  transition:
+    transform 220ms var(--ease-spring),
+    width 220ms var(--ease-spring);
 }
 .scope-tabs .tabs__trigger:focus-visible {
   outline: none;
@@ -40495,7 +40583,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .scope-tabs .tabs__content {
   gap: var(--space-4);
-  animation: retention-slide 220ms var(--ease-spring) both;
+  animation: retention-soft 120ms linear both;
 }
 .scope-tabs__lead {
   margin: var(--space-3) 0 0;

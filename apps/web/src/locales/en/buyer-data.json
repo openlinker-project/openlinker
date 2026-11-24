@@ -184,18 +184,17 @@
     "unlink": "Set own"
   },
   "section": {
-    "changeGeneral": "Change the general rules",
-    "enabledInherited": "The switch is the general one, currently {state}.",
+    "after": "after {when}",
+    "cta": "Set rules in settings",
+    "factErase": "Data erasure",
+    "factHide": "Hiding orders",
     "heading": "Buyer data in this connection",
-    "help": "Decide when orders from this connection leave the list and when their personal data is erased.",
-    "inherit": "Same as general",
-    "inheritedNote": "Same as the general settings: {summary}",
-    "own": "Set own",
-    "ownNote": "Own rules take precedence over the general ones.",
-    "restore": "Return to the general rules",
-    "sourceLabel": "Source of the rules",
-    "stateOff": "off",
-    "stateOn": "on"
+    "help": "When orders from this connection leave the list and when their personal data is erased.",
+    "rulesOff": "The rules are switched off.",
+    "rulesOffHere": "Switched off for this connection.",
+    "rulesOn": "The rules are on.",
+    "statusLinked": "Follows the default settings",
+    "statusOwn": "Own rules"
   },
   "strip": {
     "announce": "{hide}. {erase}. Visible {kept}, hidden {hidden}, data erased {erased}.",
