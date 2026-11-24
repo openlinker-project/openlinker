@@ -21,7 +21,7 @@ describe('PopoverOnHover', () => {
         )}
       >
         panel text
-      </PopoverOnHover>,
+      </PopoverOnHover>
     );
     const trigger = screen.getByRole('button', { name: 'trigger' });
     expect(screen.queryByText('panel text')).not.toBeInTheDocument();
@@ -44,7 +44,7 @@ describe('PopoverOnHover', () => {
         )}
       >
         panel text
-      </PopoverOnHover>,
+      </PopoverOnHover>
     );
     fireEvent.focus(screen.getByRole('button', { name: 'trigger' }));
     expect(await screen.findByText('panel text')).toBeInTheDocument();
@@ -62,7 +62,7 @@ describe('PopoverOnHover', () => {
         )}
       >
         panel text
-      </PopoverOnHover>,
+      </PopoverOnHover>
     );
     const trigger = screen.getByRole('button', { name: 'trigger' });
     fireEvent.pointerEnter(trigger, { pointerType: 'touch' });
@@ -84,7 +84,7 @@ describe('PopoverOnHover', () => {
         )}
       >
         panel text
-      </PopoverOnHover>,
+      </PopoverOnHover>
     );
     const trigger = screen.getByRole('button', { name: 'trigger' });
     fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
@@ -100,7 +100,7 @@ describe('IconWithOnHoverPopoverTooltip', () => {
     render(
       <IconWithOnHoverPopoverTooltip icon={<InfoIcon />} label="About this" tone="info">
         the explanation
-      </IconWithOnHoverPopoverTooltip>,
+      </IconWithOnHoverPopoverTooltip>
     );
     const button = screen.getByRole('button', { name: 'About this' });
     expect(button).toHaveClass('icon-tip--info');

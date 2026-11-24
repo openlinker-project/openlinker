@@ -71,10 +71,7 @@ const CONNECTION = {
 
 type GetSyncStatus = (connectionId: string) => Promise<ConnectionSyncStatus>;
 
-function renderPanel(
-  getSyncStatus: Mock<GetSyncStatus>,
-  status?: ConnectionStatus
-): void {
+function renderPanel(getSyncStatus: Mock<GetSyncStatus>, status?: ConnectionStatus): void {
   const apiClient = createMockApiClient({
     connections: { getSyncStatus },
     adapters: {
@@ -134,7 +131,9 @@ describe('OrderSyncPanel', () => {
       )
     );
 
-    expect(await screen.findByText(/^New orders only, from .*Older orders stay in the shop\./)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/^New orders only, from .*Older orders stay in the shop\./)
+    ).toBeInTheDocument();
   });
 
   it('states a whole-history start with its order, not a marker date', async () => {
@@ -159,7 +158,13 @@ describe('OrderSyncPanel', () => {
     renderPanel(
       vi.fn<GetSyncStatus>().mockResolvedValue(
         makeStatus({
-          orderStart: { mode: 'now', from: null, order: 'oldest-first', appliedAt: null, pending: true },
+          orderStart: {
+            mode: 'now',
+            from: null,
+            order: 'oldest-first',
+            appliedAt: null,
+            pending: true,
+          },
         })
       )
     );
@@ -244,14 +249,18 @@ describe('OrderSyncPanel', () => {
       expect(screen.getByText('2 orders could not be imported')).toBeInTheDocument();
       expect(screen.queryByText(/unknown product/)).not.toBeInTheDocument();
 
-      expect(screen.getByRole('button', { name: 'Change where syncing starts…' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Change where syncing starts…' })
+      ).toBeInTheDocument();
       expect(screen.getByText('History import in progress')).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'View' }));
 
       expect(await screen.findByText(/2 orders · unknown product/)).toBeInTheDocument();
       expect(screen.getByText(/Latest: order 37/)).toBeInTheDocument();
-      expect(screen.getByText(/Sync products from the shop, then use Retry failed orders/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Sync products from the shop, then use Retry failed orders/)
+      ).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Sync products…' })).toBeInTheDocument();
     });
 
@@ -259,7 +268,9 @@ describe('OrderSyncPanel', () => {
       const user = userEvent.setup();
       const apiClient = createMockApiClient({
         connections: {
-          getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderImport: importFigures })),
+          getSyncStatus: vi
+            .fn<GetSyncStatus>()
+            .mockResolvedValue(makeStatus({ orderImport: importFigures })),
         },
       });
       renderWithProviders(
@@ -293,7 +304,7 @@ describe('OrderSyncPanel', () => {
               },
             ],
           },
-        }),
+        })
       );
 
       await userEvent.setup().click(await screen.findByRole('button', { name: 'View' }));
@@ -311,7 +322,7 @@ describe('OrderSyncPanel', () => {
             failures: [],
             lastPolledAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
           },
-        }),
+        })
       );
 
       expect(await screen.findByText('Behind')).toBeInTheDocument();
@@ -323,17 +334,19 @@ describe('OrderSyncPanel', () => {
       renderHealth(
         makeStatus({
           orderImport: { ...importFigures, failedLast7d: 0, failures: [], lastPolledAt: null },
-        }),
+        })
       );
 
-      expect(await screen.findByText('There is no successful check of the shop yet.')).toBeInTheDocument();
+      expect(
+        await screen.findByText('There is no successful check of the shop yet.')
+      ).toBeInTheDocument();
     });
 
     it('should not mention failures or a running import when there are none', async () => {
       renderHealth(
         makeStatus({
           orderImport: { ...importFigures, failedLast7d: 0, failures: [], activeImport: null },
-        }),
+        })
       );
 
       expect(await screen.findByText('Imported in the last 24 hours')).toBeInTheDocument();
@@ -346,7 +359,7 @@ describe('OrderSyncPanel', () => {
       renderHealth(makeStatus({ orderImport: null }));
 
       expect(
-        await screen.findByText('Order import figures are not available right now.'),
+        await screen.findByText('Order import figures are not available right now.')
       ).toBeInTheDocument();
       expect(screen.getByText('Unknown')).toBeInTheDocument();
       expect(screen.queryByText('Imported in the last 24 hours')).not.toBeInTheDocument();
@@ -395,7 +408,9 @@ describe('OrderSyncPanel', () => {
 
     expect(await screen.findByRole('button', { name: 'Check for new orders' })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Change where syncing starts…' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Change where syncing starts…' })
+      ).not.toBeInTheDocument();
     });
     expect(screen.queryByText('Import start')).not.toBeInTheDocument();
   });
@@ -460,7 +475,9 @@ describe('OrderSyncPanel', () => {
         expect(button.querySelector('.guided-ripple')).not.toBeNull();
         expect(screen.getByTestId('location')).not.toHaveTextContent('tab=actions');
         await waitFor(() =>
-          expect(screen.getByTestId('location')).toHaveTextContent('tab=actions&sync=orders&scope=range')
+          expect(screen.getByTestId('location')).toHaveTextContent(
+            'tab=actions&sync=orders&scope=range'
+          )
         );
         expect(screen.getByTestId('count')).toHaveTextContent('1');
       } finally {
@@ -478,8 +495,12 @@ describe('OrderSyncPanel', () => {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      expect(await screen.findByRole('button', { name: 'Check for new orders' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Get orders from a period…' })).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', { name: 'Check for new orders' })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Get orders from a period…' })
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -491,9 +512,7 @@ describe('OrderSyncPanel', () => {
       await user.click(await screen.findByRole('button', { name: 'Change where syncing starts…' }));
 
       expect(
-        await screen.findByText(
-          'OpenLinker keeps importing new orders from the last check.'
-        )
+        await screen.findByText('OpenLinker keeps importing new orders from the last check.')
       ).toBeInTheDocument();
       expect(screen.queryByText(/are skipped/)).not.toBeInTheDocument();
     });

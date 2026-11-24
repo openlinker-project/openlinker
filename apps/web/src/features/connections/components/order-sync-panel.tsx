@@ -16,7 +16,14 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactElement } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactElement,
+} from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePlatform } from '../../../shared/plugins';
 import { useToast } from '../../../shared/ui/toast-provider';

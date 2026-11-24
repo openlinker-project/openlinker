@@ -11,7 +11,9 @@ import { SyncCursorsService } from './sync-cursors.service';
 import type { ConnectionCursorRepositoryPort } from '../../domain/ports/connection-cursor-repository.port';
 
 describe('SyncCursorsService', () => {
-  let repository: jest.Mocked<Pick<ConnectionCursorRepositoryPort, 'get' | 'set' | 'delete' | 'findMany'>>;
+  let repository: jest.Mocked<
+    Pick<ConnectionCursorRepositoryPort, 'get' | 'set' | 'delete' | 'findMany'>
+  >;
   let service: SyncCursorsService;
 
   beforeEach(() => {

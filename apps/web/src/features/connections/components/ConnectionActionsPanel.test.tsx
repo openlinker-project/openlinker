@@ -331,7 +331,9 @@ describe('ConnectionActionsPanel', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
-      act(() => announceGuidedLanded());
+      await act(async () => {
+        announceGuidedLanded();
+      });
       expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
     });
 
@@ -350,7 +352,9 @@ describe('ConnectionActionsPanel', () => {
       const view = renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
       await screen.findByRole('button', { name: /trigger sync/i });
       view.unmount();
-      act(() => announceGuidedLanded());
+      await act(async () => {
+        announceGuidedLanded();
+      });
 
       expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
     });

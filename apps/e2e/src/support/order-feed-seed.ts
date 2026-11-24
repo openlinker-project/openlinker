@@ -23,7 +23,7 @@ const seeded = new Set<string>();
 export async function ensureOrderFeedSeeded(
   _api: ApiClient,
   jobs: SyncJobs,
-  connectionId: string,
+  connectionId: string
 ): Promise<void> {
   if (seeded.has(connectionId)) return;
   // A poll that cannot be completed is a slower path to the same answer, not a
@@ -31,7 +31,7 @@ export async function ensureOrderFeedSeeded(
   await jobs
     .triggerAndWait(
       { connectionId, jobType: JobType.marketplaceOrdersPoll },
-      { expectSuccess: false, timeoutMs: 120_000 },
+      { expectSuccess: false, timeoutMs: 120_000 }
     )
     .then(() => seeded.add(connectionId))
     .catch(() => undefined);

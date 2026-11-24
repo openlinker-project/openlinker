@@ -180,7 +180,9 @@ describe('PrestashopSetupForm', () => {
     });
     await advanceToStep(view.container, 3);
 
-    fireEvent.click(within(view.container).getByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(
+      within(view.container).getByRole('radio', { name: /Every order the shop has/ })
+    );
     await advanceOneStep(view.container);
 
     expect(within(view.container).getAllByText('Every order').length).toBeGreaterThan(0);
@@ -188,7 +190,7 @@ describe('PrestashopSetupForm', () => {
 
     await findToastTitle('Connection created');
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ orderSyncStart: { mode: 'all' } }),
+      expect.objectContaining({ orderSyncStart: { mode: 'all' } })
     );
   });
 

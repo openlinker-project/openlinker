@@ -102,7 +102,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
   async function createThrowaway(
     api: ApiClient,
     label: string,
-    orderSyncStart: OrderSyncStartInput,
+    orderSyncStart: OrderSyncStartInput
   ): Promise<Connection> {
     const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
     const input: CreateConnectionInput = {
@@ -112,7 +112,10 @@ test.describe('order ingestion: order sync start (#4228)', () => {
       // The default limit (60 requests a minute) caps a connection at a handful of
       // orders a minute, since every order costs about nine shop requests. A
       // history import needs headroom, so the throwaway connections get it.
-      config: { ...(master?.config ?? {}), rateLimit: { requestsPerMinute: 6000, maxConcurrent: 8 } },
+      config: {
+        ...(master?.config ?? {}),
+        rateLimit: { requestsPerMinute: 6000, maxConcurrent: 8 },
+      },
       credentials: { webserviceApiKey: key },
       enabledCapabilities: ['OrderSource'],
       orderSyncStart,
@@ -135,7 +138,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
   async function pollOnce(jobs: SyncJobs, connectionId: string): Promise<void> {
     await jobs.triggerAndWait(
       { connectionId, jobType: JobType.marketplaceOrdersPoll },
-      { timeoutMs: POLL_BUDGET_MS },
+      { timeoutMs: POLL_BUDGET_MS }
     );
   }
 
@@ -174,7 +177,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
         timeoutMs: POLL_BUDGET_MS,
         intervalMs: 3_000,
         message: `the new order ${fresh.externalOrderId} to arrive on the "now" connection`,
-      },
+      }
     );
     expect(arrived, 'exactly the new order, none of the old ones').toHaveLength(1);
   });
@@ -194,12 +197,15 @@ test.describe('order ingestion: order sync start (#4228)', () => {
         timeoutMs: HISTORY_BUDGET_MS,
         intervalMs: 3_000,
         message: `at least ${HISTORY_FLOW_MIN} historical orders to be imported on the "all" connection`,
-      },
+      }
     );
     expect(total).toBeGreaterThanOrEqual(HISTORY_FLOW_MIN);
   });
 
-  test('from: today imports today\'s orders, and a future date is refused', async ({ api, jobs }) => {
+  test("from: today imports today's orders, and a future date is refused", async ({
+    api,
+    jobs,
+  }) => {
     requireSeeded();
     // The date is the shop-side day the orders were created on. If the runner
     // and the shop straddle midnight in different zones this can miss; that is a
@@ -217,7 +223,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
         timeoutMs: POLL_BUDGET_MS,
         intervalMs: 3_000,
         message: `today's orders to be imported from ${today}`,
-      },
+      }
     );
 
     const tomorrow = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -236,7 +242,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
           created.push(leaked);
           return null;
         },
-        (error: unknown) => error,
+        (error: unknown) => error
       );
     expect(refusal, 'a start date in the future must be refused').toBeInstanceOf(ApiError);
     const apiError = refusal as ApiError;
@@ -260,13 +266,13 @@ test.describe('order ingestion: order sync start (#4228)', () => {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const response = await fetch(
       `${baseUrl}/api/orders?output_format=JSON&date=1&display=[id]&filter[date_upd]=>[${since} 00:00:00]`,
-      { headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString('base64')}` } },
+      { headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString('base64')}` } }
     );
     const body = (await response.json()) as { orders?: Array<{ id: number }> };
     const expected = body.orders?.length ?? 0;
     test.skip(
       expected < 30 || expected > 700,
-      `needs a shop with a few hundred orders in the last week, found ${expected}`,
+      `needs a shop with a few hundred orders in the last week, found ${expected}`
     );
 
     const connection = await createThrowaway(api, 'from-mid', { mode: 'from', from: since });
@@ -280,7 +286,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
         timeoutMs: HISTORY_BUDGET_MS,
         intervalMs: 3_000,
         message: `${expected} orders placed since ${since} to be imported`,
-      },
+      }
     );
     // Exactly the window: nothing older leaks in, and nothing in it is skipped.
     expect(total).toBe(expected);
@@ -301,7 +307,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
       .restartOrderSync(connection.id, { mode: 'from', from: tomorrow })
       .then(
         () => null,
-        (error: unknown) => error,
+        (error: unknown) => error
       );
     expect(refusal, 'a future start date must be refused').toBeInstanceOf(ApiError);
     expect((refusal as ApiError).status).toBe(400);
@@ -317,14 +323,11 @@ test.describe('order ingestion: order sync start (#4228)', () => {
         timeoutMs: HISTORY_BUDGET_MS,
         intervalMs: 3_000,
         message: `at least ${HISTORY_FLOW_MIN} historical orders after restarting from "all"`,
-      },
+      }
     );
   });
 
-  test('the connection orders tab shows the order import status', async ({
-    page,
-    pages,
-  }) => {
+  test('the connection orders tab shows the order import status', async ({ page, pages }) => {
     requireSeeded();
     const connection = created.find((c) => c.name.startsWith('e2e-sync-start-now-'));
     test.skip(!connection, 'the "now" connection was not created');
@@ -359,7 +362,7 @@ test.describe('order ingestion: order sync start (#4228)', () => {
             timeoutMs: 60_000,
             intervalMs: 3_000,
             message: `no ${status} order poll to remain on ${connection.name}`,
-          },
+          }
         );
         expect(open.items).toHaveLength(0);
       }

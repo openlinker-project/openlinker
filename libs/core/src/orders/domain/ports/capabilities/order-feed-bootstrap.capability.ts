@@ -29,7 +29,7 @@ export interface OrderFeedBootstrap {
 }
 
 export function isOrderFeedBootstrap<T extends object>(
-  adapter: T,
+  adapter: T
 ): adapter is T & OrderFeedBootstrap {
   const candidate = adapter as Partial<OrderFeedBootstrap>;
   return typeof candidate.headCursor === 'function';

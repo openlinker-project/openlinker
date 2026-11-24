@@ -14,12 +14,7 @@ import {
   validateDeliveryOnDocumentsShape,
   validateGiftOnDocumentsShape,
 } from '@openlinker/core/sales-documents';
-import {
-  BadRequestException,
-  HttpStatus,
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
 import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
@@ -1392,7 +1387,12 @@ export class ConnectionService implements IConnectionService {
       idempotencyKey: first.options.dedupeKey,
     });
     if (isExisting) {
-      throw new InternalServerErrorException('The order import was not queued, retry');
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_IMPORT_NOT_QUEUED',
+        'The order import was not queued; retry',
+        { connectionId }
+      );
     }
     this.logger.log(
       `Started order import ${runId} for connection ${connectionId} (direction: ${request.direction}, from: ${from ?? '-'}, to: ${to ?? '-'})`
@@ -1433,10 +1433,7 @@ export class ConnectionService implements IConnectionService {
    * connection exists and would start "from now", which is not what was asked, so
    * the operator is told instead of being left to find out from the order list.
    */
-  private async storeOrderSyncStart(
-    connection: Connection,
-    start: OrderSyncStart
-  ): Promise<void> {
+  private async storeOrderSyncStart(connection: Connection, start: OrderSyncStart): Promise<void> {
     try {
       await this.syncCursors.advanceCursor(
         connection.id,
@@ -1447,8 +1444,11 @@ export class ConnectionService implements IConnectionService {
       this.logger.error(
         `Could not store the order sync start for connection ${connection.id}: ${(error as Error).message}`
       );
-      throw new InternalServerErrorException(
-        `The connection ${connection.id} was created, but its order sync start could not be saved, so it will start from now. Check the connection and recreate it if that is not what you want.`
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_SYNC_START_NOT_SAVED',
+        `The order sync start of connection ${connection.id} could not be saved, so its order sync start was not changed`,
+        { connectionId: connection.id }
       );
     }
   }
@@ -1457,7 +1457,8 @@ export class ConnectionService implements IConnectionService {
     connection: Connection,
     start: OrderSyncStart | undefined
   ): Promise<void> {
-    const hasIntent = (await this.syncCursors.getCursor(connection.id, ORDER_SYNC_START_CURSOR_KEY)) !== null;
+    const hasIntent =
+      (await this.syncCursors.getCursor(connection.id, ORDER_SYNC_START_CURSOR_KEY)) !== null;
     if (hasIntent || (await this.syncCursors.hasOrderFeedCursor(connection.id))) {
       return;
     }
