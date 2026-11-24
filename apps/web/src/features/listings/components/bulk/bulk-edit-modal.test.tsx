@@ -11,6 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
 import { BulkEditModal } from './bulk-edit-modal';
 import type * as CategoryParametersStepModule from '../category-parameters-step';
@@ -1277,6 +1278,53 @@ describe('BulkEditModal', () => {
       );
       expect(screen.getByText('Show optional fields (1)')).toBeInTheDocument();
       expect(screen.getByLabelText('Zalezny for Rozmiar: M')).toBeInTheDocument();
+    });
+
+    // #4038 - the bulk editor reuses the shared combobox converter, so a
+    // dictionary pick on a custom-values parameter must reach the save as the
+    // entry id in `valuesIds`, never as the id sent for free text.
+    it('saves a dictionary pick on a custom-values parameter as valuesIds (#4038)', async () => {
+      const onSave = vi.fn();
+      const user = userEvent.setup();
+      mockCategoryParameters = [
+        {
+          id: '201017',
+          name: 'Materiał dominujący',
+          type: 'dictionary',
+          required: true,
+          restrictions: { customValuesEnabled: true },
+          section: 'product',
+          dictionary: [
+            { id: '201017_2317', value: 'bawełna' },
+            { id: '201017_2318', value: 'len' },
+          ],
+        },
+      ];
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={{ ...makeMultiRow(), override: { overrides: { categoryId: 'cat_men' } } }}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={onSave}
+        />,
+      );
+
+      await user.click(
+        await screen.findByRole('combobox', { name: 'Materiał dominujący for Rozmiar: M' }),
+      );
+      await user.click(within(screen.getByRole('listbox')).getByText('bawełna'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+      expect(savedVariantParams(onSave, 'var_m')).toContainEqual(
+        expect.objectContaining({ id: '201017', valuesIds: ['201017_2317'] }),
+      );
     });
 
     describe('attribute prefill (#3851)', () => {
