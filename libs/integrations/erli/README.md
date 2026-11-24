@@ -19,7 +19,7 @@ Erli marketplace adapter for OpenLinker — offer management and order ingestion
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
-**Where order sync starts (#4228).** `OrderFeedBootstrap.headCursor` seeds without marking the inbox read, so a new connection imports only new orders by default. There is no "from a date" start and no window import: Erli's order inbox is an unread queue with no date position, so `cursorForDate` and `listOrdersInWindow` are not implemented and the manifest declares only `now` and `all`.
+**Where order sync starts (#4228).** `OrderFeedBootstrap.headCursor` seeds without marking the inbox read, so a new connection imports only new orders by default. There is no "from a date" start and no window import: Erli's order inbox is an unread queue with no date position, so `cursorForDate` and `listOrdersInWindow` are not implemented and the manifest declares only `now` and `all`. "All history" means only the UNREAD inbox, at most 500 messages: orders already acknowledged are never read.
 
 ## Credentials & config
 

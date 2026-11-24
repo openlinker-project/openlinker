@@ -147,7 +147,7 @@ Opt-in: not on by default, because ingesting a shop's orders creates them in eve
   `OrderWindowReader.listOrdersInWindow` reads a window by `created_at`, so a date window means "placed in that
   range" while the seed means "updated since". A bare date is read in the shop's own time zone (`shop { ianaTimezone }`,
   UTC if it cannot be read). Without the `read_all_orders` scope Shopify returns only about the last 60 days of
-  orders, so an `all` or old-`from` choice cannot reach further back; see the setup guide.
+  orders, so an `all` or old-`from` choice cannot reach further back; see the setup guide. `read_all_orders` is not grantable to custom apps in the admin scope picker and needs Shopify approval, so such a shop may never import older than about 60 days.
 - **Order.** Line prices are what the buyer paid per unit after EVERY discount, the order-level and code-based ones
   included (`discountedUnitPriceAfterAllDiscountsSet`), and shipping is the price after discounts
   (`currentShippingPriceSet`), so lines and shipping add up to the order total and an invoice or receipt can be issued.

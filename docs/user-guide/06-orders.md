@@ -45,7 +45,19 @@ Good to know:
 
 - **Shopify** only shows orders from the last 60 days unless the app has the `read_all_orders` permission. Without it, "From a date" or "All orders" cannot reach further back.
 - **Subiekt GT** needs an up-to-date bridge. An older one still works but must read through the whole order list first, and refuses on a very large list with a message asking you to update the bridge.
-- An empty shop has no "newest order" yet, so orders placed before the first check after you connect can be missed. Place a test order or choose **From a date** for that day.
+- An empty shop has no "newest order" yet, so "Only new orders" there means every order: the first orders are imported as they arrive.
+- **Platform limits:**
+
+| Platform | Limit |
+|---|---|
+| Erli | "All orders" means only the unread inbox, at most 500 messages. Orders already acknowledged are never read. |
+| Shopify | `read_all_orders` cannot be granted to custom apps in the permission picker and needs Shopify approval, so such a shop may never import older than about 60 days. |
+| WooCommerce | "From a date" filters by last modified time, so it also brings older orders changed since. The day is read in UTC. |
+| Shoper | "From a date" assumes order numbers rise with dates, so an order with a higher number but an older date is imported. A later status change on an order older than the start brings it in. |
+| PrestaShop | Oldest-first reads use the last-update date, newest-first and period reads use the creation date. |
+| Subiekt GT | The date is date-only: a back-dated or later-edited order is never re-read. A bridge without the "feed head" call is walked for up to about 3 minutes, then OpenLinker refuses and asks you to update the bridge. |
+| Allegro | A period import pages by offset and Allegro documents no maximum, so a very large import may stop at an API ceiling. Narrow the range and retry. |
+
 - If a choice cannot be applied, OpenLinker says so and keeps your choice, so you can pick another one. It never silently imports everything instead.
 
 ---

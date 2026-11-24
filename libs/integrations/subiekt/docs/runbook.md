@@ -86,7 +86,7 @@ your partner before going live.
 | OpenLinker adapter | `subiekt.gt.v1` |
 | Subiekt GT | InsERT GT 1.89 SP1 |
 | Order source (example) | PrestaShop 9.0.2 webservice |
-| Bridge for "only new orders" on the order source (`GET /api/orders/feed/head`) | commit `4e0d21b` of the bridge repo, branch `4265-orders-feed-head` (reference until a release exists). An older bridge still works: the adapter walks the whole feed (up to 200 pages of 1000 ZK) and then refuses with an upgrade message. |
+| Bridge for "only new orders" on the order source (`GET /api/orders/feed/head`) | commit `4e0d21b` of the bridge repo, branch `4265-orders-feed-head` (reference until a release exists). A bridge without `GET /api/orders/feed/head` still works: the adapter walks the feed within a time budget (about 3 minutes) and then refuses with an upgrade message. |
 
 ---
 

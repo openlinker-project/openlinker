@@ -106,9 +106,10 @@ are implemented; `listOrdersInWindow` is not, so "import older orders" is unavai
 or as an ISO instant, is read as the ZK **issue date** (the calendar-day prefix is used).
 
 `headCursor` needs a bridge with `GET /api/orders/feed/head` (commit `4e0d21b` of the bridge repo, branch
-`4265-orders-feed-head`, until a release exists). An older bridge answers 404: the adapter then walks the feed (up to
-200 pages of 1000 ZK) to find its end, logging that the bridge should be upgraded, and past that cap refuses with a
-message asking for an upgrade. See the [runbook](./docs/runbook.md#version-support-matrix-v1).
+`4265-orders-feed-head`, until a release exists). A bridge without
+that route still works: the adapter walks the feed within a time budget (about 3 minutes) to find its end, logging
+that the bridge should be upgraded, and past the budget refuses with a message asking for an upgrade. The date
+column is date-only, so a back-dated or later-edited ZK is never re-read. See the [runbook](./docs/runbook.md#version-support-matrix-v1).
 
 ## Ingestion latency (#3396)
 

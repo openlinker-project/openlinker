@@ -428,10 +428,13 @@ plugin needs no migration path.
    remedy; core records a business failure. Transient errors (network, 5xx, 429)
    stay plain errors and retry. Auth rejections must still reach your auth
    classifier so the connection can move to `needs_reauth`.
-7. **`headCursor` returns `null` only for an empty source.** A `null` writes
-   nothing and the poll retries. Known limitation: orders placed between
-   connecting and the first poll that sees a non-empty head are seeded past,
-   because an empty shop has no head to seed at.
+7. **`headCursor` returns `null` only for an empty source.** A `null` means the
+   source has no orders, so "only new orders" is the same as "every order": core
+   writes the seeded marker and the applied record, deletes the intent, and the
+   same poll reads from the beginning, so the first orders are not lost. Never
+   return `null` for a source that has orders. (Allegro: an empty event journal
+   on an account that has orders reads the journal from its start, which holds
+   nothing older anyway.)
 8. **`eventKey` is identical in the window and the feed.** The same order must
    produce the same `eventKey` from `listOrdersInWindow` and from
    `listOrderFeed`, so the two deduplicate downstream.

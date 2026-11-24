@@ -31,8 +31,10 @@ A new `OrderSource` connection used to import the source's whole order history o
 
 **Cons / trade-offs:**
 - Every `OrderSource` adapter must implement `headCursor`.
-- An empty shop has no head, so orders placed before the first poll that sees one are seeded past.
+- An empty shop has no head. `headCursor` returning `null` is treated as "the source has no orders, so only new orders means every order": core writes the marker and the applied record, deletes the intent and the same poll reads from the beginning, so nothing is seeded past. (Allegro: an empty event journal on an account that has orders reads the journal from its start, which holds nothing older anyway.)
 - Per-platform limits (date semantics, history cut-offs) are documented per plugin, not unified.
+
+**Known limits** (details in each plugin README): Erli "all history" is only the unread inbox (at most 500 messages, never orders already acknowledged). Shopify may never import older than about 60 days, because `read_all_orders` is not grantable to custom apps in the admin scope picker and needs Shopify approval. WooCommerce "from a date" filters by last modified time (it also brings older orders changed since) and reads the day in UTC. Shoper "from a date" assumes order ids rise with dates, and a later status change on an order older than the start brings it in. PrestaShop oldest-first reads use `date_upd`, newest-first and the period read use `date_add`. Subiekt's date column is date-only (a back-dated or later-edited ZK is never re-read), and a bridge without `GET /api/orders/feed/head` makes OpenLinker walk the feed within a time budget (about 3 minutes) and then refuse. Allegro window import pages by offset sorted by purchase time with no tiebreaker and Allegro documents no maximum offset, so a very large all-history import may stop at an API ceiling (narrow the range and retry).
 
 ## References
 

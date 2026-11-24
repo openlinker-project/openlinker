@@ -445,7 +445,7 @@ work a delivery triggers. Enabling `OrderSource` on a connection still opts it i
   `limit` is capped at 50: Shoper silently answers 10 for anything larger.
 - **Where it starts (#4228, #4265)**: `headCursor` seeds at the highest `order_id`; `cursorForDate` and
   `listOrdersInWindow` (history newest-first, manual date range) filter by order date. Shoper stores naive shop-local
-  timestamps, so a bare date means that day in the shop's time. Pages are capped at 50 rows. Orders OpenLinker created
+  timestamps, so a bare date means that day in the shop's time. Pages are capped at 50 rows. "From a date" assumes order ids rise with dates, so an order with a higher id but an older date is imported, and a later status change on an order older than the start brings it in. Orders OpenLinker created
   in the shop carry a `notes_priv` marker and are skipped, but the cursor advances over them. Only HTTP 400 and 422
   from the date filter become a start refusal (`OrderSyncStartUnavailableError`); auth and other errors keep their
   usual handling.

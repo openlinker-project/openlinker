@@ -196,17 +196,17 @@ async function main() {
   for (const { name, barrel } of GUARDED) {
     const subpath = `./${name}/testing`;
     if (pkgText !== null && !findsExportedSubpath(pkgText, subpath)) {
-      problems.push(`${PKG_FILE} does not export "${subpath}" — the suite is unreachable even from a spec`);
+      problems.push(`${PKG_FILE} does not export "${subpath}" - the suite is unreachable even from a spec`);
     }
     let barrelText = null;
     try {
       barrelText = await readFile(join(repoRoot, barrel), 'utf8');
     } catch {
-      problems.push(`${barrel} could not be read — did the file move?`);
+      problems.push(`${barrel} could not be read - did the file move?`);
     }
     if (barrelText !== null && barrelReexportsTesting(barrelText)) {
       problems.push(
-        `${barrel} re-exports ./testing — that puts Jest globals (describe/it/expect) on the ` +
+        `${barrel} re-exports ./testing - that puts Jest globals (describe/it/expect) on the ` +
           'production barrel every host app and plugin imports',
       );
     }
