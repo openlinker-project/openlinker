@@ -22,6 +22,9 @@ import { StockAtRiskCallout } from '../../features/orders/components/stock-at-ri
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Tabs, TabsContent } from '../../shared/ui/tabs';
+import { OrderNextStepCard } from '../../features/orders/components/order-next-step-card';
+import { deriveOrderNextStep } from '../../features/orders/lib/order-next-step';
+import { holdReasonLabel } from '../../features/orders/lib/order-hold.types';
 import { OrderDetailTabList, type OrderDetailTabEntry } from '../../features/orders/components/order-detail-tab-list';
 import {
   DEFAULT_ORDER_DETAIL_TAB,
@@ -628,6 +631,30 @@ export function OrderDetailPage(): ReactElement {
     { id: 'technical', label: copy.tabs.technical, count: failedDestinations.length + snapshot.parseWarnings.length },
   ];
 
+  const nextStep = deriveOrderNextStep({
+    cancelled: snapshot.status === 'cancelled',
+    failedDestinationCount: failedDestinations.length,
+    activeHoldLabel: order.activeHold ? holdReasonLabel(order.activeHold.reason) : null,
+    // A manual-trigger block is the configured workflow, not a problem, and an
+    // existing document supersedes the block (same reading as the orders list).
+    documentBlocked:
+      order.salesDocumentBlockReason != null &&
+      order.salesDocumentBlockReason !== 'trigger-model-manual' &&
+      order.salesDocument?.document == null,
+    shipByOverdue: shipByView?.level === 'overdue',
+    fulfillment,
+  });
+  const tabLabels: Record<OrderDetailTabId, string> = {
+    overview: copy.tabs.overview,
+    shipping: copy.tabs.shipping,
+    packing: copy.tabs.packing,
+    documents: copy.tabs.documents,
+    returns: copy.tabs.returns,
+    notes: copy.tabs.notes,
+    history: copy.tabs.history,
+    technical: copy.tabs.technical,
+  };
+
   return (
     <PageLayout
       // Close the loop back to wherever the operator came from (#1905): a
@@ -868,6 +895,10 @@ export function OrderDetailPage(): ReactElement {
         }
         onAddGift={canAddGift ? () => setGiftDialogOpen(true) : undefined}
       />
+
+      {nextStep ? (
+        <OrderNextStepCard step={nextStep} tabLabels={tabLabels} onOpenTab={handleTabChange} />
+      ) : null}
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <OrderDetailTabList ariaLabel={copy.tabs.ariaLabel} tabs={tabEntries} />

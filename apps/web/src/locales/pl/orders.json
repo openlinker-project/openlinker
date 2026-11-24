@@ -1669,6 +1669,20 @@
     "loadErrorTitle": "Nie udało się wczytać zamówienia",
     "loadingMessage": "Pobieranie szczegółów zamówienia…",
     "loadingTitle": "Wczytywanie zamówienia",
+    "nextStep": {
+      "documentBlocked": "Dokument sprzedaży wymaga uwagi",
+      "failedDestinations": {
+        "few": "{n} miejsca docelowe nie przyjęły zamówienia",
+        "many": "{n} miejsc docelowych nie przyjęło zamówienia",
+        "one": "{n} miejsce docelowe nie przyjęło zamówienia",
+        "other": "{n} miejsca docelowego nie przyjęło zamówienia"
+      },
+      "label": "Następny krok",
+      "onHold": "Wstrzymane: {reason}",
+      "open": "Otwórz: {tab}",
+      "readyToShip": "Gotowe do wysyłki",
+      "shipByOverdue": "Minął termin wysyłki"
+    },
     "notFound": "Nie znaleziono zamówienia",
     "parseWarnings": {
       "label": {
@@ -1717,13 +1731,13 @@
     },
     "tabs": {
       "ariaLabel": "Sekcje zamówienia",
-      "overview": "Przegląd",
-      "shipping": "Wysyłka",
-      "packing": "Pakowanie",
       "documents": "Dokumenty sprzedaży",
-      "returns": "Zwroty",
-      "notes": "Notatki",
       "history": "Historia",
+      "notes": "Notatki",
+      "overview": "Przegląd",
+      "packing": "Pakowanie",
+      "returns": "Zwroty",
+      "shipping": "Wysyłka",
       "technical": "Dane techniczne"
     },
     "title": "Szczegóły zamówienia",

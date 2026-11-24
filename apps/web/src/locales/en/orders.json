@@ -1581,6 +1581,18 @@
     "loadErrorTitle": "Unable to load order",
     "loadingMessage": "Fetching order details…",
     "loadingTitle": "Loading order",
+    "nextStep": {
+      "documentBlocked": "The sales document needs attention",
+      "failedDestinations": {
+        "one": "{n} destination did not accept this order",
+        "other": "{n} destinations did not accept this order"
+      },
+      "label": "Next step",
+      "onHold": "On hold: {reason}",
+      "open": "Open {tab}",
+      "readyToShip": "Ready to ship",
+      "shipByOverdue": "The ship-by date has passed"
+    },
     "notFound": "Order not found",
     "parseWarnings": {
       "label": {
@@ -1627,13 +1639,13 @@
     },
     "tabs": {
       "ariaLabel": "Order sections",
-      "overview": "Overview",
-      "shipping": "Shipping",
-      "packing": "Packing",
       "documents": "Sales documents",
-      "returns": "Returns",
-      "notes": "Notes",
       "history": "History",
+      "notes": "Notes",
+      "overview": "Overview",
+      "packing": "Packing",
+      "returns": "Returns",
+      "shipping": "Shipping",
       "technical": "Technical"
     },
     "title": "Order detail",

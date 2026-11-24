@@ -40308,3 +40308,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-detail__tab { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .order-detail__tab-list { overflow-x: auto; scrollbar-width: thin; }
 .order-detail__tab-list .tabs__trigger { white-space: nowrap; min-height: 44px; }
+
+/* Order detail next-step card (#4286) */
+.order-next-step { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 18px; border: 1px solid var(--border-default); border-left-width: 4px; border-radius: var(--radius-lg); background: var(--bg-shell); }
+.order-next-step--error { border-left-color: var(--status-error); background: var(--status-error-soft); }
+.order-next-step--warning { border-left-color: var(--status-warning); background: var(--status-warning-soft); }
+.order-next-step--info { border-left-color: var(--status-info); background: var(--status-info-soft); }
+.order-next-step__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.order-next-step__eyebrow { font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.order-next-step__title { font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .order-next-step .button { min-height: 44px; width: 100%; } }
