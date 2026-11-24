@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, type ReactElement } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { hasPricingSyncPage } from '../../features/connections/lib/pricing-destination';
 import { useProductMasterConnections } from '../../features/connections/hooks/use-product-master-connections';
@@ -216,6 +216,9 @@ function ArchivedBanner({ connection }: { connection: Connection }): ReactElemen
 const TAB_VALUES = ['overview', 'orders', 'health', 'actions', 'config', 'gifts'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
+/** How long the guided-arrival animation plays before its flag is dropped. */
+const GUIDED_ARRIVAL_MS = 1200;
+
 function isTabValue(value: string | null): value is TabValue {
   return value !== null && (TAB_VALUES as readonly string[]).includes(value);
 }
@@ -353,6 +356,20 @@ export function ConnectionDetailPage(): ReactElement {
 
   const tabParam = searchParams.get('tab');
   const activeTab: TabValue = isTabValue(tabParam) ? tabParam : 'overview';
+
+  // Arrived from a guided jump (e.g. "Get orders from a period…" on the Sync tab): the tab
+  // animates in once so the operator sees where they were taken, then the flag is dropped so
+  // a reload or a later tab click does not replay it.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const guided = (location.state as { guided?: boolean } | null)?.guided === true;
+  useEffect(() => {
+    if (!guided) return;
+    const timer = window.setTimeout(() => {
+      void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }, GUIDED_ARRIVAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [guided, location.pathname, location.search, navigate]);
 
   const handleTabChange = (value: string): void => {
     setSearchParams(
@@ -499,7 +516,11 @@ export function ConnectionDetailPage(): ReactElement {
         />
       ) : null}
       {connection ? (
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <Tabs
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className={guided ? 'tabs--guided' : undefined}
+        >
           <TabsList className="tabs__list--scroll">
             <TabsTrigger value="overview">{copy.tabs.overview}</TabsTrigger>
             {isOrderSource && !isOms ? (

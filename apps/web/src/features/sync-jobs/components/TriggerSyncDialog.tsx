@@ -7,7 +7,7 @@
  *
  * @module apps/web/src/features/sync-jobs/components
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
@@ -179,6 +179,7 @@ export function TriggerSyncDialog({
   onOpenChange,
   submitDisabled = false,
   initialJobType,
+  initialOrderScope = 'new',
 }: TriggerSyncDialogProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog;
   const adapters = useAdaptersQuery();
@@ -206,6 +207,9 @@ export function TriggerSyncDialog({
   // One "Sync orders" action with two scopes: the new orders since the last check, or
   // a range of days. They are two different jobs underneath, which an operator never sees.
   const [orderScope, setOrderScope] = useState<'new' | 'range'>('new');
+  // A period chosen for the operator (from the Sync tab) pulses once so the choice is noticed.
+  const [scopeHighlight, setScopeHighlight] = useState(false);
+  const scopeTouched = useRef(false);
   // Stable idempotency-key suffix for this dialog open cycle. Reused across
   // retries after a failed submit so the backend dedup (Redis SET NX + DB
   // unique index on idempotency_key) collapses rapid double-clicks into a
@@ -235,10 +239,19 @@ export function TriggerSyncDialog({
       setCustomPositionKey('');
       setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
       setOrderScope('new');
+      setScopeHighlight(false);
+      scopeTouched.current = false;
       setIntentKey(crypto.randomUUID());
       enqueueSyncJob.reset();
     }
   }, [open]); // enqueueSyncJob.reset and triggerableJobs are intentionally excluded — stable on open only
+
+  // The adapter list may land after the dialog opens, so the preselection waits for it.
+  useEffect(() => {
+    if (!open || !canImportRange || initialOrderScope !== 'range' || scopeTouched.current) return;
+    setOrderScope('range');
+    setScopeHighlight(true);
+  }, [open, canImportRange, initialOrderScope]);
 
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
@@ -249,6 +262,8 @@ export function TriggerSyncDialog({
     setCustomPositionKey('');
     setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
     setOrderScope('new');
+    scopeTouched.current = true;
+    setScopeHighlight(false);
     enqueueSyncJob.reset();
   };
 
@@ -366,6 +381,7 @@ export function TriggerSyncDialog({
           ) : null}
 
           {isOrderSync && canImportRange ? (
+            <div className={scopeHighlight ? 'trigger-sync-dialog__scope--preselected' : undefined}>
             <FormField
               label={copy.orderScope.label}
               name="orderScope"
@@ -373,13 +389,18 @@ export function TriggerSyncDialog({
             >
               <Select
                 value={orderScope}
-                onChange={(e) => setOrderScope(e.target.value === 'range' ? 'range' : 'new')}
+                onChange={(e) => {
+                  scopeTouched.current = true;
+                  setScopeHighlight(false);
+                  setOrderScope(e.target.value === 'range' ? 'range' : 'new');
+                }}
                 disabled={enqueueSyncJob.isPending}
               >
                 <option value="new">{copy.orderScope.new}</option>
                 <option value="range">{copy.orderScope.range}</option>
               </Select>
             </FormField>
+            </div>
           ) : null}
 
           {isOrderSync && !isRangeImport ? (

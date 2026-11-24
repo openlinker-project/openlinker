@@ -40928,3 +40928,69 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     transition: color 200ms var(--ease-out);
   }
 }
+
+/* ── Guided jump to a period sync (#4228) ──
+   Motion only under no-preference, and never the only signal: the Actions tab is
+   active and the period option is selected whether or not any of this plays. */
+@media (prefers-reduced-motion: no-preference) {
+  .button--pressed {
+    animation: button-press 300ms var(--ease-out);
+  }
+  .tabs--guided > .tabs__content[data-state='active'] {
+    animation: guided-panel-in 450ms var(--ease-out) both;
+  }
+  .tabs--guided .tabs__trigger[data-state='active'] {
+    animation: guided-tab-ping 900ms var(--ease-out) 1;
+  }
+  .trigger-sync-dialog__scope--preselected {
+    animation: guided-field-pulse 1200ms var(--ease-out) 1;
+  }
+}
+@keyframes button-press {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--accent-ring);
+  }
+  40% {
+    transform: scale(0.94);
+    box-shadow: 0 0 0 4px var(--accent-ring);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@keyframes guided-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes guided-tab-ping {
+  0% {
+    box-shadow: 0 0 0 0 var(--accent-ring);
+  }
+  40% {
+    box-shadow: 0 0 0 6px var(--accent-ring);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@keyframes guided-field-pulse {
+  0%,
+  60% {
+    background: var(--accent-primary-soft);
+    box-shadow: 0 0 0 var(--space-2) var(--accent-primary-soft);
+    border-radius: var(--radius-md);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 var(--space-2) transparent;
+    border-radius: var(--radius-md);
+  }
+}

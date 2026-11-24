@@ -3,8 +3,9 @@
  *
  * Orders-tab panel for the order import (#4228): where it started, when the
  * shop was last checked and how the import is doing. "Check for new orders" runs
- * the check from here; "Get orders from a period…" and "Change where syncing starts…" each open
- * their own dialog (an action and a setting, kept apart). Presentation only - the read is the existing
+ * the check from here; "Get orders from a period…" is a one-off sync, so it takes the operator
+ * to Actions -> Trigger sync with the period option chosen, and "Change where syncing starts…"
+ * opens the start setting. Presentation only - the read is the existing
  * `use-connection-sync-status-query` (same query key as the queue panel, so no
  * extra request).
  *
@@ -15,7 +16,7 @@
  *
  * @module features/connections/components
  */
-import { useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useEnqueueSyncJobMutation, useRetryGroupedSyncJobsMutation } from '../../sync-jobs';
@@ -32,7 +33,10 @@ import type { Connection, OrderStartStatus } from '../api/connections.types';
 import { ORDER_SYNC_START_DEFAULT_MODES } from '../lib/order-sync-start';
 import { deriveOrderImportVerdict, type OrderImportVerdict } from '../lib/order-import-verdict';
 import { OrderImportHealth } from './order-import-health';
-import { OrderSyncRestartDialog, type OrderSyncDialogKind } from './order-sync-restart-dialog';
+import { OrderSyncRestartDialog } from './order-sync-restart-dialog';
+
+/** How long the press plays before the operator is taken to the Actions tab. */
+const PRESS_MS = 350;
 
 const VERDICT_TONE: Record<OrderImportVerdict, StatusBadgeTone> = {
   ok: 'success',
@@ -48,13 +52,10 @@ interface OrderSyncPanelProps {
 
 export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElement {
   const connectionId = connection.id;
-  // The kind outlives the closing animation, so the dialog never flips its content as it fades.
-  const [dialogKind, setDialogKind] = useState<OrderSyncDialogKind>('start');
   const [dialogOpen, setDialogOpen] = useState(false);
-  function openDialog(next: OrderSyncDialogKind): void {
-    setDialogKind(next);
-    setDialogOpen(true);
-  }
+  const [pressed, setPressed] = useState(false);
+  const pressTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(pressTimer.current), []);
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const sync = useWriteAccess('sync:write', demoMode);
@@ -76,6 +77,19 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const { showToast } = useToast();
 
   const enqueueCheck = useEnqueueSyncJobMutation();
+
+  // The button plays a short press first, so the jump to another tab reads as
+  // something the click did rather than as the page changing by itself.
+  function goToPeriodSync(): void {
+    if (pressed) return;
+    setPressed(true);
+    pressTimer.current = window.setTimeout(() => {
+      setPressed(false);
+      void navigate(`/connections/${connectionId}?tab=actions&sync=orders&scope=range`, {
+        state: { guided: true },
+      });
+    }, PRESS_MS);
+  }
 
   async function checkNow(): Promise<void> {
     try {
@@ -152,11 +166,12 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               {copy.syncNow}
             </Button>
           ) : null}
-          {canGetPeriod && write.visible ? (
+          {canGetPeriod && sync.visible ? (
             <Button
               tone="secondary"
-              onClick={() => openDialog('range')}
-              disabled={write.demoReadOnly}
+              className={pressed ? 'button--pressed' : undefined}
+              onClick={goToPeriodSync}
+              disabled={sync.demoReadOnly}
             >
               {copy.getPeriod}
             </Button>
@@ -219,7 +234,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               {write.visible ? (
                 <Button
                   tone="secondary"
-                  onClick={() => openDialog('start')}
+                  onClick={() => setDialogOpen(true)}
                   disabled={write.demoReadOnly}
                 >
                   {copy.change}
@@ -240,7 +255,6 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         </>
       ) : null}
       <OrderSyncRestartDialog
-        kind={dialogKind}
         connection={connection}
         open={dialogOpen}
         onOpenChange={setDialogOpen}

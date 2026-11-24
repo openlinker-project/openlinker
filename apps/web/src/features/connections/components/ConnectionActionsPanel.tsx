@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { canArchive, hasMissingCredentials } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
@@ -23,6 +23,9 @@ import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
 /** Which job the trigger dialog opens on, by the `?sync=` value another tab sends. */
+/** Wait for the guided tab animation before the trigger dialog opens over it. */
+const GUIDED_DIALOG_DELAY_MS = 550;
+
 const SYNC_TARGET_JOB: Record<string, string | undefined> = {
   orders: 'marketplace.orders.poll',
   products: 'master.product.syncAll',
@@ -46,6 +49,9 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   // opens on that job, and the param is dropped so a reload does not reopen it.
   const [searchParams, setSearchParams] = useSearchParams();
   const [triggerInitialJob, setTriggerInitialJob] = useState<string | undefined>(undefined);
+  const [triggerInitialScope, setTriggerInitialScope] = useState<'new' | 'range'>('new');
+  const location = useLocation();
+  const guided = (location.state as { guided?: boolean } | null)?.guided === true;
   const plugin = usePlatform(connection.platformType);
   const PluginActions = plugin?.ConnectionActions;
 
@@ -53,20 +59,38 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   const write = useWriteAccess('connections:write', demoMode);
   const sync = useWriteAccess('sync:write', demoMode);
 
+  // Not cleared when the params drop (that re-runs the effect below), only on unmount.
+  const openTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(openTimer.current), []);
+
   const syncTarget = SYNC_TARGET_JOB[searchParams.get('sync') ?? ''];
+  const wantsRange = syncTarget === 'marketplace.orders.poll' && searchParams.get('scope') === 'range';
   useEffect(() => {
     if (!syncTarget || !sync.visible) return;
-    setTriggerInitialJob(syncTarget);
-    setIsTriggerDialogOpen(true);
+    // The params are dropped at once (so a reload never reopens the dialog), but the history
+    // state stays: the page still needs its guided flag to finish the tab animation.
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
         params.delete('sync');
+        params.delete('scope');
         return params;
       },
-      { replace: true }
+      { replace: true, state: location.state }
     );
-  }, [syncTarget, sync.visible, setSearchParams]);
+    const open = (): void => {
+      setTriggerInitialJob(syncTarget);
+      setTriggerInitialScope(wantsRange ? 'range' : 'new');
+      setIsTriggerDialogOpen(true);
+    };
+    // After a guided arrival the dialog waits for the tab animation, so the operator sees it first.
+    if (!guided) {
+      open();
+      return;
+    }
+    openTimer.current = window.setTimeout(open, GUIDED_DIALOG_DELAY_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per arrival; the params are dropped by this very effect
+  }, [syncTarget, wantsRange, sync.visible]);
 
   const isDisabled = connection.status === 'disabled';
   // #3657 — an archived connection has no credential and resolves no adapter,
@@ -218,6 +242,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
               onClick={() => {
                 captureDemoEvent('demo_connection_sync_dialog_opened', {});
                 setTriggerInitialJob(undefined);
+                setTriggerInitialScope('new');
                 setIsTriggerDialogOpen(true);
               }}
             >
@@ -282,6 +307,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         onOpenChange={setIsTriggerDialogOpen}
         submitDisabled={sync.demoReadOnly}
         initialJobType={triggerInitialJob}
+        initialOrderScope={triggerInitialScope}
       />
 
       <ConfirmDialog
