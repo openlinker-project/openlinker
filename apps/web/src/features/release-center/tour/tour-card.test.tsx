@@ -43,6 +43,9 @@ function Starter(): ReactElement {
       >
         start-missing
       </button>
+      <button onClick={() => tour.start([{ stepId: 'packing-owner', connectionId: 'c1', importance: 'optional' }])}>
+        start-packing
+      </button>
       <div data-tour="label-master">target</div>
     </>
   );
@@ -118,4 +121,34 @@ describe('TourCard', () => {
     expect(screen.getByLabelText('Step 1 of 2: skipped')).toBeInTheDocument();
     expect(screen.getByLabelText('Step 2 of 2: current')).toBeInTheDocument();
   });
+
+  it('should keep showing the choice that was just saved while the connection still reads the old config', async () => {
+    const stale = { id: 'c1', platformType: 'prestashop', name: 'Shop', status: 'active', config: { fulfilmentOwnedByDestination: true } };
+    const update = vi.fn().mockResolvedValue(stale);
+    const get = vi.fn().mockResolvedValue(stale);
+    renderWithProviders(
+      <TourProvider>
+        <Starter />
+        <div data-tour="pack-check">pack</div>
+      </TourProvider>,
+      {
+        apiClient: createMockApiClient({
+          releaseState: { getState: vi.fn().mockResolvedValue({ enabled: true, cursor: null, user: [], installation: [] }) },
+          connections: { getById: get, update },
+        }),
+        sessionAdapter: createAuthenticatedSessionAdapter(admin),
+      }
+    );
+    fireEvent.click(screen.getByText('start-packing'));
+    await screen.findByRole('region', { name: 'Guided tour' });
+    // The config says "another system packs"; the operator picks "OpenLinker packs".
+    const own = await screen.findByRole('button', { name: 'OpenLinker packs' });
+    await waitFor(() => expect(own).not.toBeDisabled());
+    fireEvent.click(own);
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    // The refetch is not awaited and still returns the old config, so the saved choice must win.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'OpenLinker packs' })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByText(/Saved: OpenLinker packs/)).toBeInTheDocument();
+  });
 });
+

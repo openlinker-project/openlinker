@@ -447,7 +447,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     document.addEventListener('change', onChange, true);
     return () => document.removeEventListener('change', onChange, true);
   }, [spec, element]);
-  const shownChoice = pageChoice ?? pressed ?? savedChoice;
+  // Our own save wins until the config catches up: right after it `pressed` still reads the old value.
+  const shownChoice = pageChoice ?? savedChoice ?? pressed;
   // While the target is still being looked for, every control waits: acting now would run against a step nobody has seen.
   const searching = state.target === 'waiting';
 
