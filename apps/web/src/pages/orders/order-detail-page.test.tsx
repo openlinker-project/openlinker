@@ -191,7 +191,8 @@ describe('OrderDetailPage', () => {
     it('renders the buyer-selected pickup point and delivery method', async () => {
       const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
       renderDetail(api);
-      expect(await screen.findByText('POP-WAW-04412')).toBeInTheDocument();
+      // The pickup point shows in the Delivery panel and in the Shipping tab's ship-to tile.
+      expect((await screen.findAllByText('POP-WAW-04412')).length).toBeGreaterThanOrEqual(1);
       // Appears twice: the "Method" field, and the "Carrier" field falling back
       // to the same method name (#1617, no shipment exists for this order).
       expect(screen.getAllByText('InPost Paczkomat').length).toBeGreaterThanOrEqual(1);
@@ -295,10 +296,10 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
 
       expect(await screen.findByText('Carrier')).toBeInTheDocument();
-      // Appears three times: the "Method" field, the "Carrier" field's fallback
-      // to the same value (no shipment record exists for this order), and the
-      // header's delivery line.
-      expect(screen.getAllByText('InPost Paczkomat').length).toBe(3);
+      // Appears four times: the "Method" field, the "Carrier" field's fallback
+      // to the same value (no shipment record exists for this order), the
+      // header's delivery line and the Shipping tab's method row.
+      expect(screen.getAllByText('InPost Paczkomat').length).toBe(4);
     });
 
     it('renders "-" for carrier when neither a shipment nor a delivery method is present', async () => {
