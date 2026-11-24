@@ -8,7 +8,7 @@
  * @module apps/web/src/features/sync-jobs/components
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
 import { Alert } from '../../../shared/ui/alert';
@@ -220,6 +220,7 @@ export function TriggerSyncDialog({
   const [intentKey, setIntentKey] = useState<string | null>(null);
 
   const enqueueSyncJob = useEnqueueSyncJobMutation();
+  const navigate = useNavigate();
   const { showToast } = useToast();
 
   const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
@@ -227,6 +228,11 @@ export function TriggerSyncDialog({
   const isRangeImport = isOrderSync && canImportRange && orderScope === 'range';
   const submittedJobType = isRangeImport ? 'marketplace.orders.import' : selectedJob?.jobType;
   const hasTriggers = triggerableJobs.length > 0;
+  // Opened from "Get orders from a period…": the dialog is that one action, so it is named
+  // and confirmed as such. Any other way in keeps the generic "Trigger sync" wording.
+  const isPeriodEntry = isRangeImport && initialOrderScope === 'range';
+  // A range without a first day cannot be submitted, so the button waits for it.
+  const missingFirstDay = isRangeImport && orderRange.from === '';
 
   useEffect(() => {
     if (open) {
@@ -336,6 +342,10 @@ export function TriggerSyncDialog({
           connection: connection.name,
           jobId: result.jobId,
         }),
+        action: {
+          label: copy.toast.viewJob,
+          onClick: () => void navigate(`/jobs-logs/${result.jobId}`),
+        },
       });
     } catch {
       // Error displayed via enqueueSyncJob.error alert below.
@@ -347,7 +357,7 @@ export function TriggerSyncDialog({
       <DialogContent
         className={guidedEntrance ? 'trigger-sync-dialog trigger-sync-dialog--guided' : 'trigger-sync-dialog'}
       >
-        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogTitle>{isPeriodEntry ? copy.periodTitle : copy.title}</DialogTitle>
         <DialogDescription>
           {renderRich(
             copy.description,
@@ -360,6 +370,9 @@ export function TriggerSyncDialog({
         </DialogDescription>
 
         <div className="trigger-sync-dialog__body">
+          {isPeriodEntry && guidedEntrance ? (
+            <p className="trigger-sync-dialog__intro">{copy.periodIntro}</p>
+          ) : null}
           {enqueueSyncJob.error ? (
             <Alert tone="error" title={copy.enqueueFailed}>
               {describeApiError(enqueueSyncJob.error, 'sync-jobs')}
@@ -433,6 +446,7 @@ export function TriggerSyncDialog({
               onChange={setOrderRange}
               errors={{ from: fieldErrors.from, to: fieldErrors.to }}
               disabled={enqueueSyncJob.isPending}
+              autoFocusFrom={isPeriodEntry}
             />
           ) : null}
 
@@ -458,6 +472,11 @@ export function TriggerSyncDialog({
         </div>
 
         <DialogFooter>
+          {missingFirstDay ? (
+            <p className="trigger-sync-dialog__hint" role="status">
+              {copy.orderRange.firstDayNeeded}
+            </p>
+          ) : null}
           <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
             {copy.cancel}
           </Button>
@@ -466,10 +485,18 @@ export function TriggerSyncDialog({
               tone="primary"
               onClick={() => void handleSubmit()}
               disabled={
-                enqueueSyncJob.isPending || intentKey === null || !hasTriggers || submitDisabled
+                enqueueSyncJob.isPending ||
+                intentKey === null ||
+                !hasTriggers ||
+                submitDisabled ||
+                missingFirstDay
               }
             >
-              {enqueueSyncJob.isPending ? copy.enqueuing : copy.trigger}
+              {enqueueSyncJob.isPending
+                ? copy.enqueuing
+                : isPeriodEntry
+                  ? copy.periodConfirm
+                  : copy.trigger}
             </Button>
           </ReadOnlyLock>
         </DialogFooter>

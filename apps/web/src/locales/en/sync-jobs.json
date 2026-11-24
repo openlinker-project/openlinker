@@ -276,7 +276,7 @@
       "positionSaved": "Saved position {key}, moved {when}"
     },
     "orderRange": {
-      "directionLabel": "Order of import",
+      "directionLabel": "Import order",
       "errors": {
         "fromInvalid": "Enter a valid date",
         "fromRequired": "Choose the first day",
@@ -285,11 +285,12 @@
         "toBeforeFrom": "The last day cannot be before the first day",
         "toInvalid": "Enter a valid date"
       },
+      "firstDayNeeded": "Choose the first day to continue.",
       "fromLabel": "First day",
       "newestFirst": "Newest first",
       "oldestFirst": "Oldest first",
-      "toHelp": "Leave empty to read up to the newest order.",
-      "toLabel": "Last day"
+      "toHelp": "The last day is included. Leave empty to read up to the newest order.",
+      "toLabel": "Last day (optional)"
     },
     "orderScope": {
       "label": "What to sync",
@@ -298,11 +299,15 @@
       "range": "Between two dates",
       "rangeHint": "Reads the orders placed between two days, once. Orders OpenLinker already has are updated, not copied twice."
     },
+    "periodConfirm": "Get orders",
+    "periodIntro": "Set up from “Get orders from a period”. Pick your dates below.",
+    "periodTitle": "Get orders from a period",
     "requiredField": "{field} *",
     "title": "Trigger sync",
     "toast": {
       "description": "\"{job}\" started for \"{connection}\". Job ID: {jobId}",
-      "title": "Sync job enqueued"
+      "title": "Sync job enqueued",
+      "viewJob": "View job"
     },
     "trigger": "Trigger",
     "viewAllJobs": "View all jobs"
