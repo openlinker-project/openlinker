@@ -77,6 +77,7 @@
     "progressShowcase": "Obejrzane przystanki",
     "releaseTitle": "Co zmieniło się w OpenLinker",
     "remind": "Przypomnij za 7 dni",
+    "reopen": "Otwórz ponownie",
     "requiredDone": "Wymagane kroki: gotowe",
     "requiredLeft": "Do zrobienia wymaganych: {n}",
     "requiredStepsLabel": "Wymagane kroki",
@@ -126,6 +127,7 @@
     "toastStaysAsIs": "Krok bez zmian.",
     "undo": "Cofnij",
     "unreadLabel": "Nieprzeczytane",
+    "unview": "Oznacz jako nieobejrzane",
     "versionBadge": "v{version}",
     "viewedChip": "Obejrzane",
     "walkAll": {

@@ -73,6 +73,7 @@
     "progressShowcase": "Stops viewed",
     "releaseTitle": "What changed in OpenLinker",
     "remind": "Remind me in 7 days",
+    "reopen": "Reopen",
     "requiredDone": "Required steps done",
     "requiredLeft": "Required left: {n}",
     "requiredStepsLabel": "Required steps",
@@ -122,6 +123,7 @@
     "toastStaysAsIs": "Step kept as it is.",
     "undo": "Undo",
     "unreadLabel": "Unread",
+    "unview": "Mark as not viewed",
     "versionBadge": "v{version}",
     "viewedChip": "Viewed",
     "walkAll": {

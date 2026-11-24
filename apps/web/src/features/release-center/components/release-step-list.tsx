@@ -165,7 +165,7 @@ export function ReleaseStepList({
               disabled={!canWriteSteps}
               onClick={() => actions.reopenStep(instance.itemKey)}
             >
-              {panel.undo}
+              {panel.reopen}
             </Button>
           </ReadOnlyLock>
         ) : (

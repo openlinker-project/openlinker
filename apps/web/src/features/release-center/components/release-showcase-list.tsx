@@ -93,7 +93,7 @@ export function ReleaseShowcaseList({
                       tone="ghost"
                       onClick={() => actions.resetShowcase(instance.itemKey)}
                     >
-                      {panel.undo}
+                      {panel.unview}
                     </Button>
                   ) : null}
                 </div>
