@@ -40410,7 +40410,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-detail__tab > *:not(:empty) { padding: 16px; }
 }
 .order-next-step .linkbtn { background: none; border: 0; padding: 0; color: var(--accent-primary); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; box-shadow: none; min-height: 0; }
-.order-detail__overview-grid { grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); }
+.order-detail__overview-grid { grid-template-columns: minmax(0, 3fr) minmax(340px, 2fr); }
 .order-detail__tab > .detail-section { background: var(--bg-shell); }
 @media (max-width: 760px) {
   .order-detail__tab .key-value-list { display: block; }
@@ -40426,8 +40426,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* ── Order detail: geometry taken from the approved mockup (#4286) ───────
    Measured on docs/plans/mockups/order-detail-v3.html at 1440 px: content column
    1124 px, header radius 18, title 28/600, tabs 44 px tall with 10/14 padding and
-   a 2 px gap, panel top padding 22 and gap 28, cards radius 12 with 20/24/22 padding. */
-.page-layout:has(.order-header--card) { max-width: 1124px; margin-inline: auto; }
+   a 2 px gap, panel top padding 22 and gap 28, cards radius 12 with 20/24/22 padding. The page itself
+   is not capped at the mockup's 1124 px column. */
+/* The order page uses the full width the shell gives it; the 1124 px of the mockup is its canvas, not a limit. */
 .order-header--card { border-radius: 18px; }
 .order-header__title { font-size: 1.75rem; font-weight: 600; line-height: 1.1; }
 .order-detail__tab-list { gap: 2px; }
