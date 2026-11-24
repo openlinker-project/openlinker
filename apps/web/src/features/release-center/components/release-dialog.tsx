@@ -163,6 +163,7 @@ export function ReleaseDialog({
               <DialogDescription id="release-dialog-desc" className="release-dialog__sr">
                 {copy.highlightsLabel}
               </DialogDescription>
+              {highlights.length > 0 ? (
               <div className="release-dialog__group">
                 <h4>{copy.highlightsLabel}</h4>
                 <ul className="release-dialog__changes" lang="en">
@@ -184,6 +185,7 @@ export function ReleaseDialog({
                   </p>
                 ) : null}
               </div>
+              ) : null}
               <label className="release-dialog__skip">
                 <input
                   type="checkbox"

@@ -12,13 +12,12 @@
 
 /** Key is `major.minor`. */
 export const RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly string[]>> = {
-  '0.19': ['4188fec', 'ba4c7bd'],
-  // The Shopify integration and the label-purchase notification toggle (setup step inpost-notify-buyer).
-  '0.20': ['99754c5', 'ba57a6b'],
+  // The release center ships in 0.21: add its '0.21' list on the release-please PR, when the commit hashes exist
+  // in CHANGELOG.md (the catalog check fails that PR until the list is there).
 };
 
 /** Minors before this predate the release center and need no highlights. */
-export const HIGHLIGHTS_REQUIRED_FROM = '0.19';
+export const HIGHLIGHTS_REQUIRED_FROM = '0.21';
 
 export function highlightsForMinor(majorMinor: string): readonly string[] {
   return RELEASE_HIGHLIGHTS[majorMinor] ?? [];
