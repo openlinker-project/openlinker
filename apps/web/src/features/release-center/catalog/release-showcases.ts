@@ -16,7 +16,7 @@ import type { ReleaseShowcaseEntry } from './release-step.types';
 export const RELEASE_SHOWCASES: readonly ReleaseShowcaseEntry[] = [
   {
     id: 'release-center-tour',
-    introducedIn: '0.20.0',
+    introducedIn: '0.21.0',
     appliesWhen: () => true,
     stops: [
       { routePattern: 'whats-new', target: 'release-bell' },

@@ -37,7 +37,7 @@ export const RELEASE_STEPS: readonly ReleaseStepEntry[] = [
     id: 'shipping-routing',
     viewable: false,
     scope: 'connection',
-    introducedIn: '0.20.0',
+    introducedIn: '0.21.0',
     // Required only while a channel still has carrier-named delivery methods
     // going through the shop: without a decision the behaviour after the update
     // may differ from what the operator expects.
@@ -61,7 +61,7 @@ export const RELEASE_STEPS: readonly ReleaseStepEntry[] = [
     id: 'packing-owner',
     viewable: false,
     scope: 'connection',
-    introducedIn: '0.20.0',
+    introducedIn: '0.21.0',
     importance: () => 'optional',
     requires: 'connections:write',
     routePattern: 'connections/:connectionId/edit',
@@ -79,7 +79,7 @@ export const RELEASE_STEPS: readonly ReleaseStepEntry[] = [
     id: 'inpost-notify-buyer',
     viewable: false,
     scope: 'connection',
-    introducedIn: '0.20.0',
+    introducedIn: '0.21.0',
     importance: () => 'optional',
     requires: 'connections:write',
     routePattern: 'connections/:connectionId/edit',

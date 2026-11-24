@@ -1,9 +1,10 @@
 name: release-center-catalog
 
 # The step catalog's hand-written `introducedIn` is the NEXT minor, so it is
-# greater than package.json until release-please bumps it. The check therefore
-# runs on the release PR (where the version has just been bumped) and fails the
-# release if release-please picked a different number (#4145, ADR-086). Make this
+# greater than package.json until release-please bumps it. Ordinary PRs (lint)
+# allow up to the next minor; this job runs strictly with --release on the release
+# PR (where the version has just been bumped) and fails the release if
+# release-please picked a different number (#4145, ADR-086). Make this
 # job a required status for that PR in the branch protection settings.
 on:
   pull_request:
@@ -23,4 +24,4 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/check-release-center-catalog.mjs --self-check
-      - run: node scripts/check-release-center-catalog.mjs
+      - run: node scripts/check-release-center-catalog.mjs --release

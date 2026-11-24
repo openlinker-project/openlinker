@@ -7,9 +7,11 @@
  *
  * Rules, in the order they are reported:
  *   1. Every catalog entry has a unique `id` matching ^[a-z0-9]+(-[a-z0-9]+)*$.
- *   2. `introducedIn` is valid semver and not greater than package.json's
- *      version (release-please may pick a number other than the hand-written
- *      next minor; this stops the release instead of hiding the step).
+ *   2. `introducedIn` is valid semver. On a normal PR it may be at most the NEXT
+ *      minor after package.json's version (it is written by hand before the
+ *      release exists). With `--release` (the release-please PR, where package.json
+ *      has just been bumped) it may not exceed package.json at all: that stops a
+ *      release whose version differs from the hand-written guess instead of hiding the step.
  *   3. `routePattern` is a route path declared in apps/web/src/app/routes.
  *   4. `target` appears as a `data-tour` value somewhere in apps/web/src outside
  *      the catalog itself. Conditional and plugin-rendered elements qualify:
@@ -135,10 +137,14 @@ export function validate({
   tourTargets,
   changelog,
   notificationLinks = [],
+  strict = false,
   }) {
   const errors = [];
   const pkg = parseSemver(packageVersion);
   if (!pkg) return [`package.json version "${packageVersion}" is not valid semver`];
+  // The highest `introducedIn` a step may carry: the package version on a release PR, the next minor otherwise.
+  const ceiling = strict ? pkg : { core: [pkg.core[0], pkg.core[1] + 1, 0], pre: null };
+  const ceilingText = strict ? packageVersion : `${pkg.core[0]}.${pkg.core[1] + 1}.0 (the next minor)`;
 
   const seen = new Set();
   for (const e of entries) {
@@ -155,9 +161,9 @@ export function validate({
       // A standalone tour ships with no release, so there is no version or highlight to hold it to.
     } else if (!intro) {
       errors.push(`step "${e.id}": introducedIn "${e.introducedIn}" is not valid semver`);
-    } else if (compareSemver(intro, pkg) > 0) {
+    } else if (compareSemver(intro, ceiling) > 0) {
       errors.push(
-        `step "${e.id}": introducedIn ${e.introducedIn} is greater than package.json ${packageVersion}`
+        `step "${e.id}": introducedIn ${e.introducedIn} is greater than ${ceilingText}`
       );
     }
     if (!e.routePattern || !routes.has(e.routePattern)) {
@@ -277,7 +283,9 @@ function selfCheck() {
     [base, 0],
     [{ ...base, entries: [{ ...base.entries[0], id: 'Bad_Id' }] }, 1],
     [{ ...base, entries: [base.entries[0], base.entries[0]] }, 1],
-    [{ ...base, entries: [{ ...base.entries[0], introducedIn: '0.21.0' }] }, 1],
+    [{ ...base, entries: [{ ...base.entries[0], introducedIn: '0.21.0' }] }, 0],
+    [{ ...base, strict: true, entries: [{ ...base.entries[0], introducedIn: '0.21.0' }] }, 1],
+    [{ ...base, entries: [{ ...base.entries[0], introducedIn: '0.22.0' }] }, 1],
     [{ ...base, routes: new Set() }, 1],
     [{ ...base, tourTargets: new Set() }, 1],
     [{ ...base, highlights: { map: {}, from: '0.20' } }, 1],
@@ -305,7 +313,7 @@ function selfCheck() {
 
 async function main() {
   if (process.argv.includes('--self-check')) return selfCheck();
-  const errors = validate(await collect());
+  const errors = validate({ ...(await collect()), strict: process.argv.includes('--release') });
   if (errors.length > 0) {
     console.error('check-release-center-catalog failed:');
     for (const e of errors) console.error(`  - ${e}`);
