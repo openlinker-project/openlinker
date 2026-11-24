@@ -4,21 +4,21 @@
  * Multi-step wizard for creating an Allegro connection. Steps:
  *   1. Credentials — connection name, client ID, client secret
  *   2. Environment — sandbox vs production
- *   3. Product catalog — link to an existing ProductMaster connection
- *      (required when at least one ProductMaster connection exists, per the
- *      style guide; the current form lets operators skip it but we still
- *      surface the relationship explicitly on this step)
+ *   3. Product catalog — link to an existing ProductMaster connection, or
+ *      declare that this connection has no catalogue (#4281): a marketplace-only
+ *      install then ingests orders without any product behind the lines. "None"
+ *      is preselected when the installation has no ProductMaster at all.
  *   4. Sales documents — how delivery appears on receipts and invoices
  *      (skipped when re-authenticating an existing connection)
  *   5. OAuth redirect — final review; submit redirects to Allegro's consent
  *      screen so the access token can come back through the callback page
  */
-import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useStartAllegroOAuthMutation } from '../hooks/use-start-allegro-oauth-mutation';
-import { useProductMasterConnections } from '../../connections';
+import { CatalogueModeFieldset, useProductMasterConnections } from '../../connections';
 import {
   createAllegroSetupSchema,
   ALLEGRO_SETUP_DEFAULT_VALUES,
@@ -94,6 +94,9 @@ export function AllegroSetupForm(): ReactElement {
   const suggestionsQuery = useDeliveryLineSuggestionsQuery();
   const suggestions = suggestionsQuery.data?.suggestions ?? [];
 
+  // Set once the operator picks a catalogue mode, so the "no ProductMaster yet"
+  // preselection below never overrides an explicit choice.
+  const catalogueModeTouched = useRef(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
 
@@ -102,6 +105,16 @@ export function AllegroSetupForm(): ReactElement {
       form.setValue('masterCatalogConnectionId', autoSelectedConnectionId);
     }
   }, [autoSelectedConnectionId, form]);
+
+  // An installation with no catalogue connection at all is the marketplace-only
+  // case this mode exists for, so it starts on "None" (#4281). Not on a reauth,
+  // which never touches config.
+  useEffect(() => {
+    if (reauthConnectionId || catalogueModeTouched.current) return;
+    if (connectionsQuery.isSuccess && productMasterConnections.length === 0) {
+      form.setValue('catalogueMode', 'none');
+    }
+  }, [connectionsQuery.isSuccess, productMasterConnections.length, reauthConnectionId, form]);
 
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent): void {
@@ -177,6 +190,7 @@ export function AllegroSetupForm(): ReactElement {
     .map((row) => `${row.label}: ${row.value}`)
     .join('; ');
   const redirectUri = `${window.location.origin}/integrations/allegro/connect/callback`;
+  const catalogueMode = values.catalogueMode ?? 'linked';
   const selectedCatalog = productMasterConnections.find(
     (c) => c.id === values.masterCatalogConnectionId
   );
@@ -191,6 +205,7 @@ export function AllegroSetupForm(): ReactElement {
           values={values}
           stepIndex={stepIndex}
           selectedCatalogName={selectedCatalog?.name ?? null}
+          catalogueMode={catalogueMode}
           suggestions={suggestions}
           showDelivery={!reauthConnectionId}
         />
@@ -300,34 +315,43 @@ export function AllegroSetupForm(): ReactElement {
             <Alert tone="info" title={copy.catalogueInfo.title}>
               {interpolate(copy.catalogueInfo.body, { platform })}
             </Alert>
-            <FormField
-              label={copy.fields.catalogue.label}
-              name="masterCatalogConnectionId"
-              error={form.formState.errors.masterCatalogConnectionId?.message}
-              description={copy.fields.catalogue.description}
+            <CatalogueModeFieldset
+              value={catalogueMode}
+              disabled={false}
+              onChange={(next) => {
+                catalogueModeTouched.current = true;
+                form.setValue('catalogueMode', next, { shouldDirty: true });
+              }}
             >
-              {connectionsQuery.isLoading ? (
-                <Select disabled>
-                  <option>{copy.fields.catalogue.loading}</option>
-                </Select>
-              ) : connectionsQuery.error ? (
-                <Select disabled>
-                  <option>{copy.fields.catalogue.failed}</option>
-                </Select>
-              ) : (
-                <Select
-                  {...form.register('masterCatalogConnectionId')}
-                  invalid={Boolean(form.formState.errors.masterCatalogConnectionId)}
-                >
-                  <option value="">{copy.none}</option>
-                  {productMasterConnections.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </FormField>
+              <FormField
+                label={copy.fields.catalogue.label}
+                name="masterCatalogConnectionId"
+                error={form.formState.errors.masterCatalogConnectionId?.message}
+                description={copy.fields.catalogue.description}
+              >
+                {connectionsQuery.isLoading ? (
+                  <Select disabled>
+                    <option>{copy.fields.catalogue.loading}</option>
+                  </Select>
+                ) : connectionsQuery.error ? (
+                  <Select disabled>
+                    <option>{copy.fields.catalogue.failed}</option>
+                  </Select>
+                ) : (
+                  <Select
+                    {...form.register('masterCatalogConnectionId')}
+                    invalid={Boolean(form.formState.errors.masterCatalogConnectionId)}
+                  >
+                    <option value="">{copy.none}</option>
+                    {productMasterConnections.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+            </CatalogueModeFieldset>
           </>
         ) : null}
 
@@ -359,7 +383,13 @@ export function AllegroSetupForm(): ReactElement {
                   : copy.environments.sandbox}
               </dd>
               <dt>{copy.steps.productCatalogue}</dt>
-              <dd>{selectedCatalog ? selectedCatalog.name : copy.none}</dd>
+              <dd>
+                {catalogueMode === 'none'
+                  ? copy.review.noCatalogue
+                  : selectedCatalog
+                    ? selectedCatalog.name
+                    : copy.none}
+              </dd>
               {reauthConnectionId ? null : (
                 <>
                   <dt>{copy.review.delivery}</dt>

@@ -35,6 +35,10 @@ export function createAllegroSetupSchema(copy: AllegroSetupSchemaCopy) {
       copy.invalidConnectionId,
     )
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+  // Whether this connection expects its order lines to resolve to catalogue
+  // products (#4281). Structured state set through `setValue`, like the answer
+  // to the "Sales documents" step below.
+  catalogueMode: z.enum(['linked', 'none']).optional(),
   // The answer to the "Sales documents" step. Structured state rather than a
   // registered input, so it is set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
@@ -52,6 +56,7 @@ export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
   clientId: '',
   clientSecret: '',
   masterCatalogConnectionId: '',
+  catalogueMode: 'linked',
   deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
 };
 
@@ -67,9 +72,14 @@ export function toStartOAuthInput(
     redirectUri,
     environment: values.environment,
     connectionName: values.name,
-    ...(values.masterCatalogConnectionId
+    // With no catalogue there is nothing to link a barcode to, so a catalogue
+    // connection picked before switching to "none" is not sent (#4281).
+    ...(values.masterCatalogConnectionId && values.catalogueMode !== 'none'
       ? { masterCatalogConnectionId: values.masterCatalogConnectionId }
       : {}),
+    // Only an explicit none is sent; linked is the default. A reauth rotates
+    // credentials only and must not carry config (#3911).
+    ...(values.catalogueMode === 'none' && !reauthConnectionId ? { catalogueMode: 'none' as const } : {}),
     ...(reauthConnectionId ? { connectionId: reauthConnectionId } : {}),
     // A reauth only rotates credentials; it must not carry config (#3911).
     ...(reauthConnectionId

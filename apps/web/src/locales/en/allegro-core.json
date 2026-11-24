@@ -94,6 +94,7 @@
       "delivery": "Delivery on documents",
       "empty": "-",
       "name": "Name",
+      "noCatalogue": "No catalog (marketplace only)",
       "redirectNote": "After clicking <strong>Connect with {platform}</strong>, you will be redirected to {platform} to authorise this connection. Make sure your {platform} app has <uri>{redirectUri}</uri> registered as a redirect URI."
     },
     "startFailed": "Failed to start authorisation",
@@ -117,6 +118,7 @@
     "environment": "Environment",
     "linkedTo": "Linked to",
     "name": "Name",
+    "noCatalogue": "- no catalog -",
     "notLinked": "- not linked -",
     "productCatalogue": "Product catalogue",
     "production": "Production",

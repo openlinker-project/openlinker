@@ -94,6 +94,7 @@
       "delivery": "Dostawa na dokumentach",
       "empty": "-",
       "name": "Nazwa",
+      "noCatalogue": "Bez katalogu (tylko marketplace)",
       "redirectNote": "Po kliknięciu <strong>Połącz z {platform}</strong> nastąpi przekierowanie do {platform} w celu autoryzacji tego połączenia. Upewnij się, że aplikacja {platform} ma zarejestrowany <uri>{redirectUri}</uri> jako adres przekierowania."
     },
     "startFailed": "Nie udało się rozpocząć autoryzacji",
@@ -117,6 +118,7 @@
     "environment": "Środowisko",
     "linkedTo": "Połączone z",
     "name": "Nazwa",
+    "noCatalogue": "- bez katalogu -",
     "notLinked": "- nie połączono -",
     "productCatalogue": "Katalog produktów",
     "production": "Produkcja",

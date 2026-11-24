@@ -7,6 +7,8 @@ export interface StartAllegroOAuthInput {
   environment?: 'sandbox' | 'production';
   connectionName?: string;
   masterCatalogConnectionId?: string;
+  /** `none` declares a marketplace-only connection with no product catalogue; seeded into the new connection (#4281). */
+  catalogueMode?: 'none';
   /**
    * UUID of an existing Allegro connection to re-authenticate in place. When
    * set, the callback rotates that connection's credentials and clears its
