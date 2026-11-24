@@ -218,6 +218,48 @@ describe('AllegroController', () => {
       );
     });
 
+    it('seeds catalogueMode none into initialConfig for a new connection (#4280)', async () => {
+      oauthService.generateAuthorizationUrl.mockResolvedValue({ authorizationUrl: 'u', state: 's' });
+
+      await controller.connect({
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: 'https://example.com/callback',
+        catalogueMode: 'none',
+      });
+
+      expect(oauthService.generateAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ initialConfig: { environment: 'sandbox', catalogueMode: 'none' } })
+      );
+    });
+
+    it('leaves linked and re-authentication out of config so the default and existing config stay untouched (#4280)', async () => {
+      oauthService.generateAuthorizationUrl.mockResolvedValue({ authorizationUrl: 'u', state: 's' });
+
+      await controller.connect({
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: 'https://example.com/callback',
+        catalogueMode: 'linked',
+      });
+      await controller.connect({
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: 'https://example.com/callback',
+        connectionId: 'conn-existing',
+        catalogueMode: 'none',
+      });
+
+      expect(oauthService.generateAuthorizationUrl).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ initialConfig: { environment: 'sandbox' } })
+      );
+      expect(oauthService.generateAuthorizationUrl).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ initialConfig: { environment: 'sandbox' } })
+      );
+    });
+
     it('drops deliveryOnDocuments when re-authenticating so config is untouched', async () => {
       oauthService.generateAuthorizationUrl.mockResolvedValue({ authorizationUrl: 'u', state: 's' });
 
