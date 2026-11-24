@@ -40432,6 +40432,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-sync-start__card-header {
   display: flex;
   align-items: center;
+  /* The picker header spreads its children apart; here the dot, title and badge sit together. */
+  justify-content: flex-start;
   gap: var(--space-2);
 }
 
@@ -40853,8 +40855,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   }
 }
 
-.order-import-health__stat-note {
+/* Two classes: `.order-import-health__stat dd` would otherwise win and render the note as a stat value. */
+.order-import-health__stat dd.order-import-health__stat-note {
   margin: var(--space-1) 0 0;
+  line-height: 1.4;
   font-size: 0.75rem;
   font-weight: 400;
   color: var(--text-muted);
