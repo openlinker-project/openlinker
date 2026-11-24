@@ -15968,7 +15968,7 @@ a.kpi-card:focus-visible {
   }
 
   /* Inside the narrow notification panel the extra label has no room: the name on the face is enough. */
-  .release-panel .connection-chip--float .connection-chip__reveal { display: none; }
+  :is(.release-panel, .whats-new__setup) .connection-chip--float .connection-chip__reveal { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -43053,7 +43053,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .pseg[data-state='done'], .pseg[data-state='current'] { background-color: Highlight; }
 }
 
-.release-step__body { min-width: 0; }
+.release-step__body { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .release-step__chips .connection-chip { max-width: 100%; }
 
 /* Phone: a tour card that takes half the screen hides what it points at, so it is tighter. */
@@ -43089,3 +43089,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .tour-card[data-collapsed='true'] .tour-card__reason { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .tour-card__fold svg { transition: none; } }
+
+/* Phone: the step list uses the width it has instead of an indent plus a clipped edge. */
+@media (max-width: 480px) {
+  :is(.release-panel, .whats-new__setup) .release-card { padding: 14px 12px 14px 14px; }
+  :is(.release-panel, .whats-new__setup) .release-card > :not(.release-card__top):not(.release-card__actions) { margin-left: 0; }
+  .release-step__actions { flex-wrap: wrap; }
+}
