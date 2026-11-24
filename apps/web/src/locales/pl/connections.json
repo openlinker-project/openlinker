@@ -100,6 +100,20 @@
     "ProductPublisher": "Publikuje oferty w sklepie należącym do tego połączenia i nimi zarządza (wystawianie między platformami).",
     "ReturnsAuthority": "Decyduje, co dzieje się z towarem odesłanym przez klienta - czy wraca do sprzedaży i kto to zatwierdza."
   },
+  "capabilityLabel": {
+    "AvailabilityAuthority": "Decyzje o dostępności",
+    "CategoryProvisioner": "Tworzenie kategorii",
+    "Fiscalization": "Rejestracja fiskalna",
+    "FulfillmentExecutor": "Realizacja zamówień",
+    "InventoryMaster": "Stany magazynowe",
+    "Invoicing": "Wystawianie faktur",
+    "OfferManager": "Oferty na marketplace",
+    "OrderProcessorManager": "Odbiorca zamówień",
+    "OrderSource": "Źródło zamówień",
+    "ProductMaster": "Katalog produktów",
+    "ProductPublisher": "Oferty sklepowe",
+    "ReturnsAuthority": "Decyzje o zwrotach"
+  },
   "capabilityMetadata": {
     "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów.",
     "conflictMasterPublisher": "Niedostępne, gdy wybrano {capability} - opublikowane produkty wróciłyby z tego sklepu jako duplikaty. Drugą rolę ustaw na osobnym połączeniu."
@@ -1119,6 +1133,7 @@
     "checkNowStartedTitle": "Sprawdzanie rozpoczęte",
     "errorTitle": "Nie udało się wczytać importu zamówień",
     "getPeriod": "Pobierz zamówienia z okresu…",
+    "getPeriodHint": "Jednorazowo pobiera zamówienia z jednego minionego okresu.",
     "health": {
       "failures": {
         "banner": "{count} nie udało się zaimportować",
@@ -1156,6 +1171,7 @@
       "fromStart": "od początku",
       "importRunning": "Trwa import historii",
       "imported": "Zaimportowane w ostatnich 24 godz.",
+      "importedFailedNote": "Zamówienia, które się nie udały, nie są tu liczone.",
       "lastChecked": "Ostatnie sprawdzanie nowych zamówień",
       "neverChecked": "Jeszcze nie sprawdzano",
       "newestFirst": "Od najnowszych",
@@ -1201,15 +1217,17 @@
       }
     },
     "restart": {
+      "alreadyFollowingHint": "Połączenie już czyta zamówienia ze sklepu.",
       "alreadyFollowingNote": "To połączenie już czyta zamówienia ze sklepu. Aby sięgnąć dalej wstecz, wybierz datę albo wszystkie zamówienia.",
       "cancel": "Anuluj",
       "confirm": "Zastosuj zmianę",
       "confirming": "Zapisywanie…",
       "failedTitle": "Nie udało się zmienić startu",
+      "noChangeHint": "Nie wprowadzono jeszcze zmiany.",
       "nothingToResetMessage": "OpenLinker już czyta zamówienia ze sklepu, więc nie ma startu do zresetowania. Aby pobrać starsze zamówienia, wybierz zakres dat.",
       "nothingToResetTitle": "Nie ma czego zresetować",
       "nowNote": "OpenLinker dalej pobiera nowe zamówienia od ostatniego sprawdzenia.",
-      "startDescription": "Wybierz, które zamówienia OpenLinker czyta ze sklepu od teraz. Te, które już ma, zostają.",
+      "startDescription": "Wybierz, które zamówienia OpenLinker czyta ze sklepu od teraz. Zamówienia, które już są w OpenLinker, nigdy nie są usuwane i nic nie jest importowane dwa razy.",
       "startTitle": "Zmień początek synchronizacji",
       "successMessage": "Następne sprawdzenie zamówień użyje nowego startu.",
       "successNowMessage": "Nic się nie zmieniło. Nowe zamówienia nadal wpływają.",
@@ -1245,7 +1263,6 @@
     "verdictText": {
       "behind": "Ostatnie sprawdzenie sklepu: {when}.",
       "behindQueued": "Sprawdzone zamówienia czekają w kolejce na import.",
-      "failing": "Nie wszystkie zamówienia udało się zaimportować.",
       "notChecked": "Sklep nie miał jeszcze udanego sprawdzenia.",
       "ok": "Sklep był niedawno sprawdzany i wszystkie zamówienia wchodzą bez błędów.",
       "unknown": "Dane o imporcie zamówień są teraz niedostępne."
@@ -1256,6 +1273,7 @@
       "analytics": "Chcesz dokładnych analiz całej historii? Trzeba zaimportować każde zamówienie, a ta opcja robi dokładnie to.",
       "delay": "Nowe zamówienia czekają za importem i mogą dotrzeć nawet po kilku godzinach.",
       "documents": "Jeśli włączone jest automatyczne wystawianie, OpenLinker wystawi faktury i paragony za stare sprzedaże, z dzisiejszą datą.",
+      "longWarning": "Przy dużej liczbie zamówień może to trwać długo. Każde zaimportowane zamówienie jest kopiowane do Twoich pozostałych podłączonych systemów.",
       "orders": "Każde stare zamówienie zostanie skopiowane do każdego podłączonego sklepu, razem z klientem.",
       "stock": "Stan jest rezerwowany pod zamówienia, które już wysłano, więc dostępny stan może wyglądać na zaniżony.",
       "summary": "Wszystko, co jest już w sklepie, zostanie skopiowane i przetworzone.",
@@ -1265,7 +1283,7 @@
     "dateLabel": "Pierwszy dzień importu",
     "info": {
       "from": "Zamówienia złożone przed {date} nie zostaną zaimportowane.",
-      "now": "Zamówienia, które już są w sklepie, tam zostają i nie są importowane. Importujemy tylko te złożone od teraz."
+      "now": "Możesz to zmienić później na stronie połączenia."
     },
     "intro": "Każde pobrane zamówienie OpenLinker kopiuje do Twoich pozostałych sklepów i systemów. Wybierz, od kiedy zacząć, żeby nie kopiować zamówień, które są już obsłużone.",
     "loadFailed": "Nie udało się wczytać opcji startu dla tego połączenia, więc zacznie od samych nowych zamówień. Możesz to zmienić później na stronie połączenia.",
@@ -1305,12 +1323,26 @@
       "title": "Które zamówienia najpierw?",
       "unsupported": "Niedostępne dla tego połączenia."
     },
+    "recommended": "Polecane",
     "review": {
       "all": "Wszystkie",
       "from": "Od {date}",
       "label": "Zamówienia do importu",
       "newestFirst": "od najnowszych",
       "now": "Tylko nowe"
+    },
+    "system": {
+      "all": {
+        "summary": "Wszystko, co jest już w systemie źródłowym, zostanie skopiowane i przetworzone."
+      },
+      "modes": {
+        "all": {
+          "title": "Wszystkie zamówienia z systemu źródłowego"
+        },
+        "now": {
+          "description": "Zamówienia złożone od teraz. Starsze zostają w systemie źródłowym i nie są kopiowane."
+        }
+      }
     },
     "title": "Które zamówienia OpenLinker ma zaimportować?",
     "unsupported": {
@@ -1682,7 +1714,8 @@
     },
     "capabilities": {
       "help": "Wybierz role, które ma pełnić to połączenie. Możesz to później zmienić na stronie szczegółów połączenia. Przyjmowanie i pobieranie zamówień jest domyślnie wyłączone, bo powoduje tworzenie lub odczytywanie zamówień w sklepie.",
-      "legend": "Możliwości"
+      "legend": "Możliwości",
+      "orderSourceHint": "Dalej wybierzesz, które dotychczasowe zamówienia zaimportować."
     },
     "create": "Utwórz połączenie",
     "createError": "Nie udało się utworzyć połączenia",
@@ -1813,6 +1846,7 @@
     "title": "Stan i cena w tym kanale docelowym"
   },
   "subiektSetupForm": {
+    "advanced": "Zaawansowane",
     "beforeYouStart": {
       "body": "Uruchom mostek OpenLinker na komputerze z Windows, na którym zainstalowano <strong>{product}</strong>, ustaw w nim token w pliku <code>appsettings.json</code>, a następnie wklej poniżej adres tego komputera i ten sam token. OpenLinker komunikuje się z {product} wyłącznie przez mostek - nigdy nie łączy się z nim bezpośrednio.",
       "title": "Zanim zaczniesz"

@@ -199,23 +199,30 @@ export function SubiektSetupForm({
         />
       </FormField>
 
-      <FormField
-        label={copy.fields.timeoutMs.label}
-        name="timeoutMs"
-        error={form.formState.errors.timeoutMs?.message}
-        description={interpolate(copy.fields.timeoutMs.description, {
-          min: format.number(1000),
-          max: format.number(120000),
-        })}
+      {/* Open while the field is invalid, or a bad value would hide behind a closed disclosure. */}
+      <details
+        className="subiekt-advanced"
+        open={form.formState.errors.timeoutMs ? true : undefined}
       >
-        <Input
-          {...form.register('timeoutMs')}
-          inputMode="numeric"
-          placeholder="30000"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.timeoutMs)}
-        />
-      </FormField>
+        <summary className="subiekt-advanced__summary">{copy.advanced}</summary>
+        <FormField
+          label={copy.fields.timeoutMs.label}
+          name="timeoutMs"
+          error={form.formState.errors.timeoutMs?.message}
+          description={interpolate(copy.fields.timeoutMs.description, {
+            min: format.number(1000),
+            max: format.number(120000),
+          })}
+        >
+          <Input
+            {...form.register('timeoutMs')}
+            inputMode="numeric"
+            placeholder="30000"
+            autoComplete="off"
+            invalid={Boolean(form.formState.errors.timeoutMs)}
+          />
+        </FormField>
+      </details>
 
       <FormField
         label={identity.tokenRequired ? copy.fields.bridgeToken.label : copy.fields.bridgeToken.labelOptional}
@@ -259,6 +266,8 @@ export function SubiektSetupForm({
             form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
           }
           error={form.formState.errors.orderSyncStart?.from?.message}
+          sourceKind="system"
+          separated
         />
       ) : null}
 

@@ -62,7 +62,7 @@ async function reachOrdersStep(adapters: unknown = SHOPER_WITH_ORDER_START, crea
   });
   await fillShopStep();
   await fillTokenStep();
-  fireEvent.click(screen.getByLabelText('OrderSource'));
+  fireEvent.click(screen.getByLabelText(/OrderSource/));
   next();
   return create;
 }
@@ -75,6 +75,35 @@ describe('ShoperSetupForm', () => {
     expect(screen.getByLabelText('Connection name')).toBeInTheDocument();
     expect(screen.getByLabelText('Shop address')).toBeInTheDocument();
     expect(screen.queryByLabelText('API token')).toBeNull();
+  });
+
+  it('should show plain labels with the code name and an order-history hint on the capabilities step', async () => {
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({
+        adapters: { list: vi.fn().mockResolvedValue(SHOPER_WITH_ORDER_START) },
+      }),
+    });
+    await fillShopStep();
+    await fillTokenStep();
+    expect(screen.getByText('Order source')).toBeInTheDocument();
+    expect(screen.getByText('OrderSource')).toBeInTheDocument();
+    expect(
+      screen.getByText('Next you will choose which past orders to import.')
+    ).toBeInTheDocument();
+  });
+
+  it('should highlight the new order-history step when OrderSource is ticked', async () => {
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({
+        adapters: { list: vi.fn().mockResolvedValue(SHOPER_WITH_ORDER_START) },
+      }),
+    });
+    await fillShopStep();
+    await fillTokenStep();
+    expect(document.querySelector('.setup-stepper__step--new')).toBeNull();
+    fireEvent.click(screen.getByLabelText(/OrderSource/));
+    const highlighted = document.querySelector('.setup-stepper__step--new');
+    expect(highlighted).toHaveTextContent('Order history');
   });
 
   it('refuses to leave the shop step without a name and an address', async () => {
@@ -99,17 +128,17 @@ describe('ShoperSetupForm', () => {
     await fillShopStep();
     await fillTokenStep();
 
-    expect(screen.getByLabelText('ProductMaster')).toBeChecked();
-    expect(screen.getByLabelText('InventoryMaster')).toBeChecked();
-    expect(screen.getByLabelText('OrderProcessorManager')).not.toBeChecked();
-    expect(screen.getByLabelText('OrderSource')).not.toBeChecked();
+    expect(screen.getByLabelText(/ProductMaster/)).toBeChecked();
+    expect(screen.getByLabelText(/InventoryMaster/)).toBeChecked();
+    expect(screen.getByLabelText(/OrderProcessorManager/)).not.toBeChecked();
+    expect(screen.getByLabelText(/OrderSource/)).not.toBeChecked();
   });
 
   it('shows a masked token and the chosen capabilities on the review step', async () => {
     renderWithProviders(<ShoperSetupForm />);
     await fillShopStep();
     await fillTokenStep();
-    fireEvent.click(screen.getByLabelText('OrderSource'));
+    fireEvent.click(screen.getByLabelText(/OrderSource/));
     next();
     await screen.findByText('Which orders should OpenLinker import?');
     next();
@@ -159,7 +188,7 @@ describe('ShoperSetupForm', () => {
 
     await fillShopStep();
     await fillTokenStep();
-    fireEvent.click(screen.getByLabelText('OrderSource'));
+    fireEvent.click(screen.getByLabelText(/OrderSource/));
     next();
     await screen.findByText('Which orders should OpenLinker import?');
     next();
@@ -193,7 +222,7 @@ describe('ShoperSetupForm', () => {
     });
     await fillShopStep();
     await fillTokenStep();
-    fireEvent.click(screen.getByLabelText('OrderSource'));
+    fireEvent.click(screen.getByLabelText(/OrderSource/));
     next();
 
     expect(await screen.findByRole('radio', { name: /New orders only/ })).toBeChecked();
@@ -224,7 +253,7 @@ describe('ShoperSetupForm', () => {
     });
     await fillShopStep();
     await fillTokenStep();
-    fireEvent.click(screen.getByLabelText('OrderSource'));
+    fireEvent.click(screen.getByLabelText(/OrderSource/));
     next();
 
     fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
@@ -256,7 +285,7 @@ describe('ShoperSetupForm', () => {
     });
     await fillShopStep();
     await fillTokenStep();
-    fireEvent.click(screen.getByLabelText('OrderSource'));
+    fireEvent.click(screen.getByLabelText(/OrderSource/));
     next();
 
     fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
@@ -309,7 +338,7 @@ describe('ShoperSetupForm', () => {
     });
     await fillShopStep();
     await fillTokenStep();
-    fireEvent.click(screen.getByLabelText('OrderSource'));
+    fireEvent.click(screen.getByLabelText(/OrderSource/));
     next();
 
     expect(await screen.findByText(getMessages('connections').orderSyncStart.loadFailed)).toBeInTheDocument();
@@ -323,7 +352,7 @@ describe('ShoperSetupForm', () => {
     // Pick "from" with no day, leave the step, then untick OrderSource: the step is gone.
     fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    fireEvent.click(await screen.findByLabelText('OrderSource'));
+    fireEvent.click(await screen.findByLabelText(/OrderSource/));
     next();
     fireEvent.click(await screen.findByRole('button', { name: 'Create connection' }));
 
@@ -349,7 +378,7 @@ describe('ShoperSetupForm', () => {
     await screen.findByRole('button', { name: 'Create connection' });
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    fireEvent.click(await screen.findByLabelText('OrderSource'));
+    fireEvent.click(await screen.findByLabelText(/OrderSource/));
 
     // Without the order step the review step takes its index; it must not inherit its done mark.
     const steps = Array.from(document.querySelectorAll('.setup-stepper__list .setup-stepper__step'));
@@ -379,7 +408,7 @@ describe('ShoperSetupForm', () => {
 
     await fillShopStep();
     await fillTokenStep();
-    fireEvent.click(screen.getByLabelText('OrderProcessorManager'));
+    fireEvent.click(screen.getByLabelText(/OrderProcessorManager/));
     next();
     fireEvent.click(await screen.findByRole('button', { name: 'Create connection' }));
 

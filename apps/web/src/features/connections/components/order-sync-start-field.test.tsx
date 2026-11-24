@@ -46,7 +46,56 @@ describe('OrderSyncStartField', () => {
       'aria-checked',
       'true'
     );
-    expect(screen.getByText(/Orders already in the shop stay there/)).toBeInTheDocument();
+    expect(screen.getByText(/You can change this later/)).toBeInTheDocument();
+    expect(screen.queryByText(/Orders already in the shop stay there and are not imported/)).toBeNull();
+  });
+
+  it('should show a note for the chosen card only when the mode changes', () => {
+    renderWithProviders(<Harness />);
+    fireEvent.click(screen.getByRole('radio', { name: /Every order the shop has/ }));
+    expect(screen.queryByText(/You can change this later/)).toBeNull();
+    expect(screen.queryByText(/are not imported/)).toBeNull();
+  });
+
+  it('should word the cards for a source system when sourceKind is system', () => {
+    renderWithProviders(
+      <OrderSyncStartField
+        value={{ mode: 'now' }}
+        supportedModes={['now', 'from', 'all']}
+        sourceKind="system"
+        onChange={() => undefined}
+      />
+    );
+    expect(screen.getByRole('radio', { name: /Every order in the source system/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Every order the shop has/)).toBeNull();
+  });
+
+  it('should show a visible long-import warning on the every-order card', () => {
+    renderWithProviders(<Harness />);
+    expect(screen.getByText(/Can take a long time with many orders/)).toBeVisible();
+    expect(screen.getByRole('radio', { name: /Every order the shop has/ })).toHaveAccessibleDescription(
+      /Can take a long time/
+    );
+  });
+
+  it('should label the radio group by its heading and mark the default card recommended', () => {
+    renderWithProviders(<Harness />);
+    expect(
+      screen.getByRole('radiogroup', { name: 'Which orders should OpenLinker import?' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Recommended')).toBeInTheDocument();
+  });
+
+  it('should set the section apart in one-page forms when separated', () => {
+    const { container } = renderWithProviders(
+      <OrderSyncStartField
+        value={{ mode: 'now' }}
+        supportedModes={['now']}
+        separated
+        onChange={() => undefined}
+      />
+    );
+    expect(container.querySelector('.order-sync-start--separated')).not.toBeNull();
   });
 
   it('reveals a date input capped at yesterday for "from a date"', () => {
@@ -67,9 +116,8 @@ describe('OrderSyncStartField', () => {
     expect(screen.getByText('Choose a day before today')).toBeInTheDocument();
   });
 
-  it('does not label cards with Recommended or Slow badges', () => {
+  it('should not label cards with a Slow badge', () => {
     renderWithProviders(<Harness />);
-    expect(screen.queryByText('Recommended')).not.toBeInTheDocument();
     expect(screen.queryByText('Slow')).not.toBeInTheDocument();
   });
 

@@ -61,6 +61,7 @@ import {
   readsOrders,
 } from '../lib/order-sync-start';
 import { OrderSyncStartSection } from './order-sync-start-section';
+import { CapabilityName } from './capability-name';
 
 
 
@@ -124,6 +125,10 @@ export function ShoperSetupForm(): ReactElement {
     stepIds.flatMap((id, index) => (completedStepIds.has(id) ? [index] : [])),
   );
   const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
+  // The order-history step appears the moment OrderSource is ticked: point at it
+  // once so the stepper growing a step reads as a consequence, not a glitch.
+  const ordersStepIndex = stepIds.indexOf('orders');
+  const highlightStep = stepId === 'capabilities' && ordersStepIndex >= 0 ? ordersStepIndex : undefined;
 
   // Abandon-prevention.
   useEffect(() => {
@@ -274,7 +279,12 @@ export function ShoperSetupForm(): ReactElement {
   return (
     <WizardLayout
       stepper={
-        <SetupStepper steps={STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
+        <SetupStepper
+          steps={STEP_LABELS}
+          currentStep={stepIndex}
+          completedSteps={completedSteps}
+          highlightStep={highlightStep}
+        />
       }
     >
       <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
@@ -366,11 +376,16 @@ export function ShoperSetupForm(): ReactElement {
                         value={capability}
                         {...form.register('enabledCapabilities')}
                       />
-                      <span className="capability-list__name mono-text">{capability}</span>
+                      <CapabilityName capability={capability} />
                     </label>
                     <p className="capability-list__help muted-text">
                       {CAPABILITY_HELP[capability]}
                     </p>
+                    {capability === 'OrderSource' ? (
+                      <p className="capability-list__help capability-list__hint">
+                        {copy.capabilities.orderSourceHint}
+                      </p>
+                    ) : null}
                   </li>
                 );
               })}

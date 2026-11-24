@@ -8768,6 +8768,17 @@ html:has(.login-stage) {
   padding-left: 1.5rem;
 }
 
+.capability-list__hint {
+  color: var(--accent-primary);
+}
+
+/* The code name is for support and docs; the plain label carries the choice. */
+.capability-list__code {
+  margin-left: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 .capability-fieldset {
   border: 1px solid var(--border-subtle);
   border-radius: 0.75rem;
@@ -10984,17 +10995,6 @@ a.kpi-card:focus-visible {
   background: var(--accent-primary);
 }
 
-.setup-stepper__dot--current {
-  background: var(--accent-primary);
-  box-shadow: 0 0 0 3px var(--accent-primary-soft);
-}
-
-@media (min-width: 768px) {
-  .setup-stepper__mobile {
-    display: none;
-  }
-
-  .setup-stepper__list {
 @keyframes setup-stepper-new-step {
   0% { background: var(--accent-primary-soft); transform: scale(1.06); }
   100% { background: transparent; transform: none; }
@@ -11007,6 +11007,17 @@ a.kpi-card:focus-visible {
   }
 }
 
+.setup-stepper__dot--current {
+  background: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-primary-soft);
+}
+
+@media (min-width: 768px) {
+  .setup-stepper__mobile {
+    display: none;
+  }
+
+  .setup-stepper__list {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -40380,17 +40391,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   margin: 0;
 }
 
-.order-sync-start__cards {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.order-sync-start__card {
-  cursor: pointer;
-  outline: none;
-}
-
-.order-sync-start__card:focus-visible {
 /* Helper text, not body copy: the cards below are what the operator reads. */
 .order-sync-start__helper {
   font-size: 0.8125rem;
@@ -40405,27 +40405,27 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-top: 1px solid var(--border-default);
 }
 
-  border-color: var(--accent-primary);
-  box-shadow: var(--shadow-focus);
+.order-sync-start__cards {
+  display: grid;
+  gap: var(--space-3);
 }
 
+.order-sync-start__card {
+  cursor: pointer;
+  outline: none;
+}
+
+.order-sync-start__card:focus-visible {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* A tint alone is easy to miss: a heavier border and a filled radio dot say "chosen". */
 .order-sync-start__card--checked {
   border-color: var(--accent-primary);
   background: var(--accent-primary-soft);
-}
-
-.order-sync-start__card--disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-
-.order-sync-start__card--disabled:hover {
-/* A tint alone is easy to miss: a heavier border and a filled radio dot say "chosen". */
-  border-color: var(--border-default);
-  box-shadow: none;
-}
   box-shadow: inset 0 0 0 1px var(--accent-primary);
 }
 
@@ -40482,6 +40482,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.order-sync-start__card--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.order-sync-start__card--disabled:hover {
+  border-color: var(--border-default);
+  box-shadow: none;
+}
 
 .order-sync-start__reason {
   display: block;
@@ -40824,7 +40835,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .order-import-health__run-detail {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -40840,6 +40851,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   50% {
     opacity: 0.35;
   }
+}
+
+.order-import-health__stat-note {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .order-import-health__alert {
@@ -40938,13 +40956,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 
 .order-sync-panel__facts {
-.order-import-health__stat-note {
-  margin: var(--space-1) 0 0;
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-6, 2rem);
@@ -40997,6 +41008,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .order-sync-panel__start {
   color: var(--text-primary);
+}
+
+.order-sync-panel__start-row .button--ghost {
+  /* The quietest of the three actions, but still readable as a link: not the muted
+     ghost grey, which on this card reads as a disabled control. */
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .order-sync-panel__next {
@@ -41095,14 +41114,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     position: absolute;
     pointer-events: none;
   }
-.order-sync-panel__start-row .button--ghost {
-  /* The quietest of the three actions, but still readable as a link: not the muted
-     ghost grey, which on this card reads as a disabled control. */
-  color: var(--text-primary);
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-}
-
   .trigger-sync-dialog__scope--preselected::before {
     inset: calc(var(--space-2) * -1);
     z-index: -1;

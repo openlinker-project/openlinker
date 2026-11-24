@@ -29,6 +29,14 @@ describe('SubiektSetupForm', () => {
     expect(screen.getByLabelText('Bridge token')).toBeInTheDocument();
   });
 
+  it('should keep the request timeout inside a collapsed Advanced disclosure', () => {
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
+    const details = screen.getByText('Advanced').closest('details');
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute('open');
+    expect(details).toContainElement(screen.getByLabelText('Request timeout (ms, optional)'));
+  });
+
   it('requires connection name to be non-empty', async () => {
     renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
@@ -454,7 +462,7 @@ describe('SubiektSetupForm', () => {
       renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
 
       expect(await screen.findByRole('radio', { name: /Orders since a date/ })).toHaveAttribute('aria-disabled', 'true');
-      expect(screen.getByRole('radio', { name: /Every order the shop has/ })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('radio', { name: /Every order in the source system/ })).toHaveAttribute('aria-disabled', 'true');
     });
 
     it('explains a refused start date in the error summary', async () => {

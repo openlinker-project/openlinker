@@ -255,6 +255,7 @@ export function ShopifySetupForm(): ReactElement {
                 form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
               }
               error={errors.orderSyncStart?.from?.message}
+              separated
             />
           ) : null}
 

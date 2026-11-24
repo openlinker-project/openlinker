@@ -35,7 +35,13 @@ interface OrderSyncStartFieldProps {
   restart?: boolean;
   /** The source can import history newest-first (`orderWindowImport` in its manifest). */
   windowImport?: boolean;
+  /** `system` words the cards for an ERP such as Subiekt, which is not a shop. */
+  sourceKind?: OrderSyncSourceKind;
+  /** One-page forms: set the section apart from the credential fields above it. */
+  separated?: boolean;
 }
+
+export type OrderSyncSourceKind = 'shop' | 'system';
 
 export function OrderSyncStartField({
   value,
@@ -44,10 +50,13 @@ export function OrderSyncStartField({
   error,
   restart = false,
   windowImport = false,
+  sourceKind = 'shop',
+  separated = false,
 }: OrderSyncStartFieldProps): ReactElement {
   const copy = useMessages('connections').orderSyncStart;
   const format = useFormat();
   const groupId = useId();
+  const titleId = `${groupId}-title`;
   const cardRefs = useRef<Partial<Record<OrderSyncStartMode, HTMLDivElement | null>>>({});
   const orderRefs = useRef<Partial<Record<OrderImportOrder, HTMLDivElement | null>>>({});
 
@@ -91,25 +100,34 @@ export function OrderSyncStartField({
   const dateIsUsable = value.mode === 'from' && from !== '' && !error;
 
   return (
-    <div className="order-sync-start">
+    <div className={separated ? 'order-sync-start order-sync-start--separated' : 'order-sync-start'}>
       {restart ? null : (
         <div className="order-sync-start__intro">
-          <h3 className="order-sync-start__title">{copy.title}</h3>
-          <p className="muted-text">{copy.intro}</p>
+          <h3 className="order-sync-start__title" id={titleId}>
+            {copy.title}
+          </h3>
+          <p className="order-sync-start__helper">{copy.intro}</p>
         </div>
       )}
 
       <div
         className="order-sync-start__cards"
         role="radiogroup"
-        aria-label={copy.title}
+        aria-label={restart ? copy.title : undefined}
+        aria-labelledby={restart ? undefined : titleId}
         id={groupId}
       >
         {MODES.map((mode) => {
           const disabled = !supportedModes.includes(mode);
           const checked = value.mode === mode;
           const descriptionId = `${groupId}-${mode}`;
-          const card = copy.modes[mode];
+          const base = copy.modes[mode];
+          const systemCard =
+            sourceKind === 'system'
+              ? (copy.system.modes as Partial<Record<OrderSyncStartMode, Partial<typeof base>>>)[mode]
+              : undefined;
+          const card = { ...base, ...systemCard };
+          const warningId = `${descriptionId}-warning`;
           return (
             <div key={mode} className="order-sync-start__option">
               <div
@@ -119,7 +137,9 @@ export function OrderSyncStartField({
                 role="radio"
                 aria-checked={checked}
                 aria-disabled={disabled || undefined}
-                aria-describedby={descriptionId}
+                aria-describedby={
+                  mode === 'all' && !disabled ? `${descriptionId} ${warningId}` : descriptionId
+                }
                 tabIndex={disabled ? -1 : tabStop === mode ? 0 : -1}
                 className={[
                   'platform-picker__card',
@@ -132,8 +152,12 @@ export function OrderSyncStartField({
                 onClick={() => select(mode)}
                 onKeyDown={(event) => handleKeyDown(event, mode)}
               >
-                <div className="platform-picker__card-header">
+                <div className="platform-picker__card-header order-sync-start__card-header">
+                  <span className="order-sync-start__dot" aria-hidden="true" />
                   <h4 className="platform-picker__card-title">{card.title}</h4>
+                  {mode === 'now' && !disabled ? (
+                    <span className="order-sync-start__badge">{copy.recommended}</span>
+                  ) : null}
                 </div>
                 <p id={descriptionId} className="platform-picker__card-description">
                   {card.description}
@@ -141,6 +165,12 @@ export function OrderSyncStartField({
                     <span className="order-sync-start__reason"> {copy.unsupported[mode]}</span>
                   ) : null}
                 </p>
+                {mode === 'all' && !disabled ? (
+                  <p id={warningId} className="order-sync-start__warning">
+                    <WarningIcon />
+                    <span>{copy.all.longWarning}</span>
+                  </p>
+                ) : null}
               </div>
               {!disabled && (mode === 'now' || mode === 'all') ? (
                 <span className="order-sync-start__tip">
@@ -156,7 +186,7 @@ export function OrderSyncStartField({
                         tone="warning"
                         icon={<WarningIcon />}
                         title={copy.all.warningTitle}
-                        summary={copy.all.summary}
+                        summary={sourceKind === 'system' ? copy.system.all.summary : copy.all.summary}
                         items={[
                           copy.all.orders,
                           copy.all.documents,
@@ -266,7 +296,9 @@ export function OrderSyncStartField({
           </FormField>
         ) : null}
 
-        {value.mode === 'now' ? <p className="order-sync-start__note">{copy.info.now}</p> : null}
+        {value.mode === 'now' && !restart ? (
+          <p className="order-sync-start__note">{copy.info.now}</p>
+        ) : null}
 
         {dateIsUsable ? (
           <p className="order-sync-start__note">

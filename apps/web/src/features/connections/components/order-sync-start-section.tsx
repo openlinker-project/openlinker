@@ -15,13 +15,15 @@ import type { ReactElement } from 'react';
 import { useMessages } from '../../../shared/i18n';
 import { useAdaptersQuery } from '../../adapters';
 import { ORDER_SYNC_START_DEFAULT_MODES, type OrderSyncStartValue } from '../lib/order-sync-start';
-import { OrderSyncStartField } from './order-sync-start-field';
+import { OrderSyncStartField, type OrderSyncSourceKind } from './order-sync-start-field';
 
 interface OrderSyncStartSectionProps {
   adapterKey: string;
   value: OrderSyncStartValue;
   onChange: (value: OrderSyncStartValue) => void;
   error?: string;
+  sourceKind?: OrderSyncSourceKind;
+  separated?: boolean;
 }
 
 export function OrderSyncStartSection({
@@ -29,6 +31,8 @@ export function OrderSyncStartSection({
   value,
   onChange,
   error,
+  sourceKind,
+  separated,
 }: OrderSyncStartSectionProps): ReactElement {
   const copy = useMessages('connections').orderSyncStart;
   const adaptersQuery = useAdaptersQuery();
@@ -56,6 +60,8 @@ export function OrderSyncStartSection({
       supportedModes={metadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES}
       windowImport={metadata?.orderWindowImport ?? false}
       error={error}
+      sourceKind={sourceKind}
+      separated={separated}
     />
   );
 }

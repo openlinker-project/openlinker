@@ -54,6 +54,7 @@ import { captureDemoEvent } from '../../demo';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { CapabilityName } from './capability-name';
 
 // Analytics step names, kept in English so events stay comparable across languages.
 type StepId = 'store' | 'credentials' | 'capabilities' | 'orders' | 'review';
@@ -295,7 +296,7 @@ export function WoocommerceSetupForm(): ReactElement {
                         disabled={isBlocked}
                         {...form.register('enabledCapabilities')}
                       />
-                      <span className="capability-list__name mono-text">{capability}</span>
+                      <CapabilityName capability={capability} />
                     </label>
                     <p className="capability-list__help muted-text">
                       {isBlocked && conflict
