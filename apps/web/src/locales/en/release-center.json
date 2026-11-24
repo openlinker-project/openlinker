@@ -264,6 +264,7 @@
     "stepOfRelease": "Version {version}: step {current} of {total}",
     "stopLive": "Stop {current} of {total}: {title}",
     "stopOf": "Stop {current} of {total}",
+    "unsaved": "The change on the page is waiting for “Save changes”.",
     "viewOnly": "For your information",
     "viewWhere": "This is where it changed. There is nothing for you to do here."
   },

@@ -335,6 +335,10 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const config = (connection.data?.config ?? {}) as Record<string, unknown>;
   const pressed = spec ? readChoice(spec, config) : null;
 
+  useEffect(() => {
+    if (savedChoice && pressed && pressed !== savedChoice) setSavedChoice(null);
+  }, [pressed, savedChoice]);
+
   const choose = useMutation({
     mutationKey: ['release-center', 'tour-choice'],
     mutationFn: async (choiceId: string) => {
@@ -354,7 +358,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
           { onError: () => setSaveFailed(true) }
         );
       }
-      await queryClient.invalidateQueries({ queryKey: connectionsQueryKeys.all });
+      // Not awaited: the refetch of every connection query can take seconds, and the choice buttons stay locked while it runs.
+      void queryClient.invalidateQueries({ queryKey: connectionsQueryKeys.all });
     },
     onError: () => setSaveFailed(true),
   });
@@ -391,7 +396,22 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const stepPath = resolveTourStop(step)?.path ?? null;
   const blocked = !showcase && canConfig && step.importance === 'required' && !done;
   const choiceLabels = tour.choices as Record<string, string>;
-  const shownChoice = savedChoice ?? pressed;
+  // The page's own checkbox changes the form before anything is saved: the card follows it so the two never disagree.
+  const [pageChoice, setPageChoice] = useState<string | null>(null);
+  useEffect(() => {
+    setPageChoice(null);
+  }, [state.index, pressed]);
+  useEffect(() => {
+    if (!spec || !element) return undefined;
+    const onChange = (event: Event): void => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement) || input.type !== 'checkbox' || !element.contains(input)) return;
+      setPageChoice(spec.choices.find((choice) => choice.value === input.checked)?.id ?? null);
+    };
+    document.addEventListener('change', onChange, true);
+    return () => document.removeEventListener('change', onChange, true);
+  }, [spec, element]);
+  const shownChoice = pageChoice ?? pressed ?? savedChoice;
   // While the target is still being looked for, every control waits: acting now would run against a step nobody has seen.
   const searching = state.target === 'waiting';
 
@@ -402,6 +422,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     status = stepPath && stepPath !== location.pathname ? tour.away : tour.missing;
   }
   else if (saveFailed) status = tour.saveFailed;
+  else if (pageChoice && pageChoice !== pressed) status = tour.unsaved;
   else if (savedChoice) status = interpolate(tour.saved, { choice: choiceLabels[savedChoice] ?? savedChoice });
 
   const handleNext = (): void => {
