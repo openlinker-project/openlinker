@@ -23,7 +23,7 @@
  * @module apps/web/src/features/fulfillment/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Alert } from '../../../shared/ui/alert';
@@ -39,24 +39,20 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
-import { HOLD_REASON_COPY, HoldReasonValues } from '../../orders';
+import { useMessages } from '../../../shared/i18n';
+import { HoldReasonValues, holdReasonLabel } from '../../orders';
 import type { ApplyFulfillmentTaskActionRequest } from '../api/fulfillment.types';
 import { describeFulfillmentActionError } from '../lib/fulfillment-conflict';
+import type { FulfillmentTaskActionMode } from '../lib/fulfillment-task-labels';
 import {
-  FULFILLMENT_ACTION_MODE_COPY,
-  type FulfillmentTaskActionMode,
-} from '../lib/fulfillment-task.copy';
-import {
-  fulfillmentTaskActionSchema,
+  createFulfillmentTaskActionSchema,
   type FulfillmentTaskActionFormValues,
   type FulfillmentTaskActionSubmission,
 } from './fulfillment-task-action-dialog.schema';
 
 // Re-exported so the panel keeps importing the mode from the component it
-// drives. The copy — and the union it is keyed by — live in the `.copy.ts`,
-// which is the only file shape `scripts/check-ui-vocabulary.mjs` reads string
-// literals from; a `Record` of operator sentences in this `.tsx` was invisible
-// to it.
+// drives. The union lives in `fulfillment-task-labels.ts`; its dialog copy is
+// `fulfillment.actionMode` in the locale files.
 export type { FulfillmentTaskActionMode };
 
 export interface FulfillmentTaskActionDialogProps {
@@ -79,12 +75,16 @@ export function FulfillmentTaskActionDialog({
   onOpenChange,
   onSubmit,
 }: FulfillmentTaskActionDialogProps): ReactElement {
-  const copy = FULFILLMENT_ACTION_MODE_COPY[mode];
+  const messages = useMessages('fulfillment');
+  const copy = messages.actionMode[mode];
+  const dialogCopy = messages.fulfillmentTaskActionDialog;
+  const schemaCopy = messages.fulfillmentTaskActionSchema;
+  const schema = useMemo(() => createFulfillmentTaskActionSchema(schemaCopy), [schemaCopy]);
 
   const form = useForm<FulfillmentTaskActionFormValues, undefined, FulfillmentTaskActionSubmission>(
     {
       defaultValues: { reason: 'operator', note: '' },
-      resolver: zodResolver(fulfillmentTaskActionSchema),
+      resolver: zodResolver(schema),
     }
   );
 
@@ -132,14 +132,14 @@ export function FulfillmentTaskActionDialog({
           {mode === 'hold' ? (
             <FormField
               name="reason"
-              label="Reason"
+              label={dialogCopy.reasonLabel}
               error={form.formState.errors.reason?.message}
-              description="Everyone who looks at this fulfilment task later sees the reason you choose."
+              description={dialogCopy.reasonDescription}
             >
               <Select {...form.register('reason')}>
                 {HoldReasonValues.map((value) => (
                   <option key={value} value={value}>
-                    {HOLD_REASON_COPY[value].label}
+                    {holdReasonLabel(value)}
                   </option>
                 ))}
               </Select>
@@ -149,7 +149,7 @@ export function FulfillmentTaskActionDialog({
           {mode === 'force_cancel' ? null : (
             <FormField
               name="note"
-              label="Note (optional)"
+              label={dialogCopy.noteLabel}
               error={form.formState.errors.note?.message}
             >
               <Textarea rows={3} {...form.register('note')} />
@@ -159,7 +159,7 @@ export function FulfillmentTaskActionDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button tone="secondary" disabled={submitting}>
-                Cancel
+                {dialogCopy.cancel}
               </Button>
             </DialogClose>
             <Button
@@ -167,7 +167,7 @@ export function FulfillmentTaskActionDialog({
               tone={mode === 'force_cancel' ? 'danger' : 'primary'}
               disabled={submitting}
             >
-              {submitting ? 'Working…' : copy.confirm}
+              {submitting ? dialogCopy.working : copy.confirm}
             </Button>
           </DialogFooter>
         </form>

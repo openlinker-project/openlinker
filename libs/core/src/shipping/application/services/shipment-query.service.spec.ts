@@ -31,7 +31,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     null,
     null,
     null,
-    null,
+    overrides.errorMessage ?? null,
     new Date(),
     new Date(),
     overrides.sourceDeliveryMethodId ?? null,
@@ -57,6 +57,8 @@ describe('ShipmentQueryService', () => {
     repository = {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      listConnectionIds: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),
@@ -76,6 +78,18 @@ describe('ShipmentQueryService', () => {
       recordDeliveredRelayFailure: jest.fn(),
     };
     service = new ShipmentQueryService(repository);
+  });
+
+  describe('getOutboundByOrderId (#3540)', () => {
+    it('should read every outbound shipment of the order, terminal ones included', async () => {
+      const shipments = [makeShipment({ id: 's1' }), makeShipment({ id: 's2', status: 'cancelled' })];
+      repository.findByOrderId.mockResolvedValue(shipments);
+
+      const result = await service.getOutboundByOrderId('ol_order_1');
+
+      expect(result).toBe(shipments);
+      expect(repository.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
   });
 
   describe('findByFulfillmentWorkIds', () => {
@@ -163,6 +177,130 @@ describe('ShipmentQueryService', () => {
       // The cohort is stated explicitly (#2373) — the panel shows the order's
       // outbound shipment, never a return label.
       expect(repository.findActiveByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+  });
+
+  describe('getLatestOutboundTrackingNumber (#3553)', () => {
+    it('should be null when the order has no shipment', async () => {
+      repository.findByOrderId.mockResolvedValue([]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should be null when no shipment has a tracking number yet', async () => {
+      repository.findByOrderId.mockResolvedValue([{ trackingNumber: null } as Shipment]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should return the newest tracking number and ask for outbound only', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        { trackingNumber: 'OLD', createdAt: new Date('2026-05-01T00:00:00Z') } as Shipment,
+        { trackingNumber: 'NEW', createdAt: new Date('2026-05-02T00:00:00Z') } as Shipment,
+        { trackingNumber: null, createdAt: new Date('2026-05-03T00:00:00Z') } as Shipment,
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBe('NEW');
+      expect(repository.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+
+    it('should skip a newer cancelled or failed label and keep a delivered one', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({
+          status: 'delivered',
+          trackingNumber: 'REAL',
+          createdAt: new Date('2026-05-01T00:00:00Z'),
+        }),
+        makeShipment({
+          status: 'failed',
+          trackingNumber: 'FAILED',
+          createdAt: new Date('2026-05-02T00:00:00Z'),
+        }),
+        makeShipment({
+          status: 'cancelled',
+          trackingNumber: 'CANCELLED',
+          createdAt: new Date('2026-05-03T00:00:00Z'),
+        }),
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBe('REAL');
+    });
+
+    it('should be null when the only numbered label was cancelled', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({ status: 'cancelled', trackingNumber: 'CANCELLED' }),
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
+  });
+
+  describe('summarize (#4043)', () => {
+    /** A fake count: answers from the filters it was asked about. */
+    function countBy(filters: ShipmentFilters): number {
+      if (filters.waybillRelayFailureCountAtLeast !== undefined) return 4;
+      if (filters.statuses) return filters.shippingMethod === 'omp' ? 1 : 6;
+      if (filters.status) return { draft: 2, failed: 3 }[filters.status as 'draft' | 'failed'] ?? 0;
+      if (filters.hasProviderShipmentId) return 7;
+      if (filters.shippingMethod) return filters.shippingMethod === 'omp' ? 5 : 0;
+      if (filters.connectionId) return filters.connectionId === 'conn-inpost' ? 9 : 0;
+      return 12;
+    }
+
+    beforeEach(() => {
+      repository.count.mockImplementation((filters) => Promise.resolve(countBy(filters)));
+      repository.listConnectionIds.mockResolvedValue(['conn-inpost', 'conn-unused']);
+      repository.findMany.mockResolvedValue({
+        items: [
+          makeShipment({ id: 'a', status: 'failed', errorMessage: 'Receiver phone invalid' }),
+          makeShipment({ id: 'b', status: 'failed', errorMessage: 'Receiver phone invalid' }),
+        ],
+        total: 2,
+      });
+    });
+
+    it('should count each axis with its own filter removed and keep every other filter', async () => {
+      const filters: ShipmentFilters = {
+        status: 'failed',
+        shippingMethod: 'kurier',
+        connectionId: 'conn-inpost',
+        direction: 'outbound',
+      };
+
+      await service.summarize(filters, { waybillRelayStuckFloor: 3 });
+
+      const asked = repository.count.mock.calls.map(([f]) => f);
+      // Status tabs: no status, the other filters kept.
+      expect(asked).toContainEqual({ shippingMethod: 'kurier', connectionId: 'conn-inpost', direction: 'outbound', status: 'draft' });
+      // Method options: no method, status kept.
+      expect(asked).toContainEqual({ status: 'failed', connectionId: 'conn-inpost', direction: 'outbound', shippingMethod: 'omp' });
+      // Connection options: no connection.
+      expect(asked).toContainEqual({ status: 'failed', shippingMethod: 'kurier', direction: 'outbound', connectionId: 'conn-unused' });
+      // Stuck relays: every filter kept, plus the floor.
+      expect(asked).toContainEqual({ ...filters, waybillRelayFailureCountAtLeast: 3 });
+    });
+
+    it('should report each count, drop connections with none, and subtract marketplace-fulfilled from to send', async () => {
+      const summary = await service.summarize({}, { waybillRelayStuckFloor: 3 });
+
+      expect(summary).toMatchObject({
+        total: 12,
+        byStatus: expect.objectContaining({ draft: 2, failed: 3, delivered: 0 }),
+        byProcessor: { omp: 5, carrier: 7 },
+        byMethod: expect.objectContaining({ omp: 5, kurier: 0 }),
+        byConnection: { 'conn-inpost': 9 },
+        waybillRelayStuck: 4,
+        toSend: 5,
+      });
+    });
+
+    it('should group failures from every page, read once with the status swapped for failed', async () => {
+      const summary = await service.summarize({ status: 'delivered' }, { waybillRelayStuckFloor: 3 });
+
+      expect(repository.findMany).toHaveBeenCalledWith({ status: 'failed' }, { limit: 500, offset: 0 });
+      expect(summary.failedCauseGroups).toEqual([
+        expect.objectContaining({ connectionId: 'conn-inpost', count: 2, sampleReason: 'Receiver phone invalid' }),
+      ]);
     });
   });
 

@@ -16,6 +16,8 @@
  *
  * @module features/connections/components
  */
+import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { schemaMessage } from '../lib/schema-message';
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
 
@@ -126,15 +128,20 @@ const startsWithHttpProtocol = (value: string): boolean =>
  * the wizard is where there is an operator to tell.
  */
 export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
+  const msg = schemaMessage('subiektSetupSchema');
+  const copy = (): ResolvedCopy<Messages['connections']>['subiektSetupSchema'] =>
+    getMessages('connections').subiektSetupSchema;
   return z
     .object({
-      name: z.string().trim().min(1, 'Connection name is required'),
+      name: z.string().trim().min(1, msg('nameRequired')),
       bridgeBaseUrl: z
         .string()
         .trim()
-        .min(1, 'Bridge URL is required')
-        .url(`Bridge URL must be a valid URL (e.g. ${identity.bridgeUrlExample})`)
-        .refine(startsWithHttpProtocol, 'Bridge URL must start with http:// or https://'),
+        .min(1, msg('bridgeUrlRequired'))
+        .url({
+          error: () => interpolate(copy().bridgeUrlInvalid, { example: identity.bridgeUrlExample }),
+        })
+        .refine(startsWithHttpProtocol, msg('bridgeUrlProtocol')),
       // RHF text inputs emit strings; the BE validates `@IsInt() @Min(1000) @Max(120000)`.
       // Blank → omitted; a typed value → coerced to a number (TR-IMPORTANT, #1199).
       timeoutMs: z
@@ -142,15 +149,15 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
           z.literal(''),
           z.coerce
             .number()
-            .int('Request timeout must be a whole number of milliseconds')
-            .min(1000, 'Request timeout must be at least 1000 ms')
-            .max(120000, 'Request timeout must be at most 120000 ms'),
+            .int(msg('timeoutWhole'))
+            .min(1000, msg('timeoutMin'))
+            .max(120000, msg('timeoutMax')),
         ])
         .optional(),
       bridgeToken: z.string().trim().optional(),
-      // Only the two usable values: `batched` throws
-      // `BatchedTriggerNotImplementedError`, and `auto-on-shipped` is
-      // meaningless for a connection that issues the document rather than
+      // Only the two values a first setup needs: `batched` (#3583) also needs a
+      // schedule, which is set on the batch issuing screen, and `auto-on-shipped`
+      // is meaningless for a connection that issues the document rather than
       // shipping the parcel.
       triggerModel: z.enum(['manual', 'auto-on-paid']),
     })
@@ -162,7 +169,7 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['bridgeToken'],
-        message: `Bridge token is required — ${identity.productName}'s bridge rejects every request without it.`,
+        message: interpolate(copy().tokenRequired, { product: identity.productName }),
       });
     });
 }
@@ -200,9 +207,10 @@ export function toCreateConnectionInput(
     // routing candidate at all, `chooseSalesDocumentDecision` answers null and
     // `AutoIssueTriggerService` returns `{kind:'none'}`. An order then carries
     // a ZK in Subiekt and no document, with no badge, no failed job and no log
-    // line an operator would read. `triggerModel` is the second gate:
-    // `parseTriggerModel` defaults to `manual`, so even a connection carrying
-    // the kind issues only by hand.
+    // line an operator would read. The trigger model is the second gate: it
+    // defaults to `manual`, so even a connection carrying the kind issues only
+    // by hand. It is written per kind (#3582,
+    // `salesDocument.triggerModels.invoice`), the key the gate reads first.
     //
     // No backend change is needed to write them - the Subiekt config-shape
     // validator runs `whitelist: false` and `CreateConnectionDto.config` is a
@@ -213,8 +221,7 @@ export function toCreateConnectionInput(
     // advertises `Fiscalization`, so `fiscal-receipt` (and `both`) would
     // resolve to `unsupported-document-kind-on-connection` - a picker offering
     // a value that cannot work.
-    salesDocument: { documentKind: 'invoice' },
-    invoicing: { triggerModel: values.triggerModel },
+    salesDocument: { documentKind: 'invoice', triggerModels: { invoice: values.triggerModel } },
   };
   if (typeof values.timeoutMs === 'number') {
     config.timeoutMs = values.timeoutMs;

@@ -56,6 +56,12 @@ import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './s
 // predicate differing between the migration and the entity would let that guard
 // hold in production and silently not in tests.
 const TABLES = [
+  // #3935: the promotions context's four tables (a unique index on (hash, date) and
+  // a unique grant key, both of which the writers depend on).
+  'promotions',
+  'promotion_state',
+  'promotion_grants',
+  'promotion_applications',
   'fulfillment_works',
   'fulfillment_work_lines',
   'fulfillment_holds',

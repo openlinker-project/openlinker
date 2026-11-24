@@ -169,6 +169,29 @@ or
 
 The environment determines which Allegro API endpoints are used.
 
+### Sender address (Allegro Delivery labels)
+
+Allegro Delivery requires a ship-from contact on every label. Set it on the connection edit page, in the **Sender address** section (shown when the connection has the shipping capability), or directly in `config.senderAddress`:
+
+```json
+{
+  "senderAddress": {
+    "name": "ACME Store",
+    "email": "warehouse@acme.pl",
+    "phone": "+48123123123",
+    "address": {
+      "street": "ul. Magazynowa",
+      "buildingNumber": "3",
+      "city": "Warszawa",
+      "postCode": "00-001",
+      "countryCode": "PL"
+    }
+  }
+}
+```
+
+`name` and `company` are optional; every other field is required. Without a complete sender address, label creation is refused before Allegro is called (`preflight.missing-sender-address`) and the error lists the missing fields.
+
 ## 7. Next Steps
 
 After creating a connection:

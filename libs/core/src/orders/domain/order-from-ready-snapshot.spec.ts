@@ -53,9 +53,70 @@ const READY_SNAPSHOT: Record<string, unknown> = {
 };
 
 describe('orderFromReadySnapshot', () => {
+  describe('gift and packQuantity (#3929)', () => {
+    const withItem = (extra: Record<string, unknown>): Record<string, unknown> => ({
+      ...READY_SNAPSHOT,
+      items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 1, ...extra }],
+    });
+
+    it('reads both back when present', () => {
+      const order = orderFromReadySnapshot(
+        makeRecord(withItem({ gift: { source: 'channel', ruleRef: 'r1' }, packQuantity: 3 })),
+      );
+      expect(order.items[0].gift).toEqual({ source: 'channel', ruleRef: 'r1' });
+      expect(order.items[0].packQuantity).toBe(3);
+    });
+
+    it('leaves both keys absent when not stored or not recognised', () => {
+      const plain = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT)).items[0];
+      expect('gift' in plain).toBe(false);
+      expect('packQuantity' in plain).toBe(false);
+
+      const junk = orderFromReadySnapshot(
+        makeRecord(withItem({ gift: { source: 'nope' }, packQuantity: -2 })),
+      ).items[0];
+      expect('gift' in junk).toBe(false);
+      expect('packQuantity' in junk).toBe(false);
+    });
+  });
+
   it('is defined', () => {
     expect(orderFromReadySnapshot).toBeInstanceOf(Function);
     expect(OrderSnapshotUnavailableError).toBeInstanceOf(Function);
+  });
+
+  describe('payment method (#3294)', () => {
+    it('should carry a recognised paymentMethod from the snapshot onto the order', () => {
+      const order = orderFromReadySnapshot(
+        makeRecord({ ...READY_SNAPSHOT, paymentMethod: 'bank_transfer' }),
+      );
+      expect(order.paymentMethod).toBe('bank_transfer');
+    });
+
+    it('should leave it absent when the snapshot has none or an unrecognised value', () => {
+      expect(orderFromReadySnapshot(makeRecord(READY_SNAPSHOT)).paymentMethod).toBeUndefined();
+      expect(
+        orderFromReadySnapshot(makeRecord({ ...READY_SNAPSHOT, paymentMethod: 'barter' }))
+          .paymentMethod,
+      ).toBeUndefined();
+    });
+  });
+
+  describe('payment status (#3583)', () => {
+    it('should carry a recognised paymentStatus, which a batch run gates on', () => {
+      expect(
+        orderFromReadySnapshot(makeRecord({ ...READY_SNAPSHOT, paymentStatus: 'paid' }))
+          .paymentStatus,
+      ).toBe('paid');
+    });
+
+    it('should leave it absent when the snapshot has none or an unrecognised value', () => {
+      expect(orderFromReadySnapshot(makeRecord(READY_SNAPSHOT)).paymentStatus).toBeUndefined();
+      expect(
+        orderFromReadySnapshot(makeRecord({ ...READY_SNAPSHOT, paymentStatus: 'maybe' }))
+          .paymentStatus,
+      ).toBeUndefined();
+    });
   });
 
   it('round-trips a ready snapshot, rehydrating ISO date strings to Date', () => {

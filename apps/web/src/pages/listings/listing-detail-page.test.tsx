@@ -190,7 +190,9 @@ describe('ListingDetailPage', () => {
         await screen.findByRole('heading', { name: 'Vintage Camera Lens 50mm' }),
       ).toBeInTheDocument();
       expect(screen.getByText('ACTIVE')).toBeInTheDocument();
-      expect(screen.getByText('249.00 PLN')).toBeInTheDocument();
+      // The English money format with its currency; Testing Library normalises
+      // the non-breaking space Intl puts after the code to a plain one.
+      expect(screen.getByText('PLN 249.00')).toBeInTheDocument();
       expect(screen.getByText('3')).toBeInTheDocument();
       expect(screen.getByText('Lenses')).toBeInTheDocument();
       const link = screen.getByRole('link', { name: /open on marketplace/i });

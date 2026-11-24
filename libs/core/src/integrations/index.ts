@@ -22,6 +22,7 @@ export { EmailNormalizerRegistryService } from './infrastructure/adapters/email-
 export { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
 export { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
 export { ConnectionCredentialsRewriterRegistryService } from './infrastructure/adapters/connection-credentials-rewriter-registry.service';
+export { ConnectionArchiveHookRegistryService } from './infrastructure/adapters/connection-archive-hook-registry.service';
 export { OAuthCompletionRegistryService } from './infrastructure/adapters/oauth-completion-registry.service';
 
 // Ports
@@ -33,9 +34,13 @@ export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.por
 export { WebhookEventTranslatorPort } from './domain/ports/webhook-event-translator.port';
 export { InboundWebhookDecoderPort } from './domain/ports/inbound-webhook-decoder.port';
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
-export { ConnectionConfigShapeValidatorPort } from './domain/ports/connection-config-shape-validator.port';
+export {
+  ConnectionConfigShapeValidatorPort,
+  ConnectionConfigValidationContext,
+} from './domain/ports/connection-config-shape-validator.port';
 export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
 export { ConnectionCredentialsRewriterPort } from './domain/ports/connection-credentials-rewriter.port';
+export { ConnectionArchiveHookPort } from './domain/ports/connection-archive-hook.port';
 export { OAuthCompletionPort } from './domain/ports/oauth-completion.port';
 export {
   WebhookSecretProviderPort,
@@ -58,8 +63,13 @@ export {
   resolveVariantGroupingModel,
   resolveRequiresCredentials,
   resolveArchivable,
+  readRateLimitBucketKey,
 } from './domain/types/adapter.types';
-export { ConnectionTestResult } from './domain/types/connection-test.types';
+export type { ConnectionTestOutcome, ConnectionTestResult } from './domain/types/connection-test.types';
+export {
+  ConnectionTestOutcomeValues,
+  resolveConnectionTestOutcome,
+} from './domain/types/connection-test.types';
 export { EntityClaimQuery } from './application/types/entity-claim.types';
 export { WebhookProvisioningResult } from './domain/types/webhook-provisioning.types';
 export {

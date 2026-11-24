@@ -11,7 +11,7 @@ function makeRow(overrides: Partial<SalesDocumentRow> = {}): SalesDocumentRow {
     capability: 'Invoicing',
     documentKind: 'invoice',
     isPrimary: false,
-    triggerModel: 'manual',
+    triggerModels: { invoice: 'manual', 'fiscal-receipt': 'manual' },
     ...overrides,
   };
 }

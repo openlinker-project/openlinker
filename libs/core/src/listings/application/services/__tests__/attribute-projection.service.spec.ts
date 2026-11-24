@@ -542,4 +542,113 @@ describe('AttributeProjectionService', () => {
       expect(result.restrictionIssues).toEqual([]);
     });
   });
+
+  describe('origins (#3995)', () => {
+    const colorParam = param({
+      id: 'p-color',
+      name: 'Kolor',
+      type: 'dictionary',
+      required: true,
+      section: 'product',
+      dictionary: [
+        { id: 'd-black', value: 'czarny' },
+        { id: 'd-white', value: 'biały' },
+      ],
+    });
+
+    it('should report a rule-produced value the dictionary accepts, with the rule that produced it', async () => {
+      service = build(
+        ownsAdapter([colorParam]),
+        [],
+        [
+          rule(
+            'Kolor',
+            {
+              kind: 'copy-remap',
+              sourceAttributeKey: 'Color',
+              valueRemap: [{ sourceValue: 'Black', destinationValue: 'czarny' }],
+            },
+            { id: 'rule-color' }
+          ),
+        ]
+      );
+
+      const result = await service.project(input({ Color: 'Black' }));
+
+      expect(result.origins).toEqual([
+        {
+          parameterId: 'p-color',
+          parameterName: 'Kolor',
+          section: 'product',
+          source: 'rule',
+          rawValue: 'czarny',
+          outcome: 'accepted',
+          rule: { id: 'rule-color', kind: 'copy-remap', sourceAttributeKey: 'Color', remapped: true },
+        },
+      ]);
+    });
+
+    it('should report a rule value the dictionary rejects, which never reaches parameters', async () => {
+      service = build(
+        ownsAdapter([colorParam]),
+        [],
+        [rule('Kolor', { kind: 'copy-remap', sourceAttributeKey: 'Color', valueRemap: [] }, { id: 'rule-color' })]
+      );
+
+      const result = await service.project(input({ Color: 'Navy' }));
+
+      expect(result.parameters).toEqual([]);
+      expect(result.unresolvedRequired).toEqual([{ id: 'p-color', name: 'Kolor', section: 'product' }]);
+      expect(result.origins).toEqual([
+        expect.objectContaining({
+          parameterId: 'p-color',
+          source: 'rule',
+          rawValue: 'Navy',
+          outcome: 'rejected',
+          rule: expect.objectContaining({ remapped: false }),
+        }),
+      ]);
+    });
+
+    it('should attribute a mapping-produced value to the mapping', async () => {
+      service = build(
+        ownsAdapter([param({ id: 'p-size', name: 'Rozmiar' })]),
+        [mapping('Size', 'Rozmiar')]
+      );
+
+      const result = await service.project(input({ Size: 'M' }));
+
+      expect(result.origins).toEqual([
+        expect.objectContaining({ parameterId: 'p-size', source: 'mapping', outcome: 'accepted' }),
+      ]);
+      expect(result.origins[0]).not.toHaveProperty('rule');
+    });
+
+    it('should attribute a place-value rule to the product field it placed from', async () => {
+      service = build(
+        passthroughAdapter(),
+        [],
+        [rule('EAN', { kind: 'place-value', source: 'ean' }, { id: 'rule-ean' })]
+      );
+
+      const result = await service.project({ ...input({}), metadata: { ean: '5901234123457' } });
+
+      expect(result.origins).toEqual([
+        expect.objectContaining({
+          parameterId: 'EAN',
+          source: 'rule',
+          rawValue: '5901234123457',
+          rule: { id: 'rule-ean', kind: 'place-value', placeSource: 'ean' },
+        }),
+      ]);
+    });
+
+    it('should report no origin for a parameter nothing filled', async () => {
+      service = build(ownsAdapter([colorParam]), []);
+
+      const result = await service.project(input({}));
+
+      expect(result.origins).toEqual([]);
+    });
+  });
 });

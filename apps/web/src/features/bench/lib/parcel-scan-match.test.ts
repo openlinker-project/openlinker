@@ -45,11 +45,13 @@ function parcel(lines: readonly BenchParcelLine[]): BenchParcel {
     totalAmount: null,
     currency: null,
     carrierName: null,
+    route: null,
     dispatchByAt: null,
     parcelIndex: 1,
     parcelTotal: 2,
     refusal: null,
     holdReason: null,
+    sourceChange: null,
     closedAt: null,
     packedByUserId: null,
     assignedToUserId: null,
@@ -58,6 +60,11 @@ function parcel(lines: readonly BenchParcelLine[]): BenchParcel {
     completedAt: null,
     lines,
     packerNotes: [],
+    buyerNote: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
+    hasBuyerNote: false,
+    otherParcelBuyerNoteAcknowledgements: [],
   };
 }
 

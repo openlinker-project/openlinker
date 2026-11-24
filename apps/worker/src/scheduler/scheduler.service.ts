@@ -352,6 +352,22 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     extraPayload: { limit: STALE_OFFER_PAUSE_DEFAULT_LIMIT },
   },
   {
+    // #3962: the same sweep for shop connections. Most of them are
+    // publish-only (no `OfferManager`), so the task above never reached them
+    // and a deleted product kept selling there. Same job type and handler; a
+    // shop that also writes stock is swept by both, which is harmless because
+    // every write and hold is idempotent.
+    taskId: 'stale-shop-product-pause-sweep',
+    jobType: 'marketplace.offer.pauseStaleSweep',
+    capability: 'ProductPublisher',
+    enabledEnvVar: 'OL_STALE_OFFER_PAUSE_ENABLED',
+    cronEnvVar: 'OL_STALE_OFFER_PAUSE_CRON',
+    defaultCron: '17 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `shop:${connectionId}:product:pauseStaleSweep:${timestamp}`,
+    extraPayload: { limit: STALE_OFFER_PAUSE_DEFAULT_LIMIT },
+  },
+  {
     taskId: 'order-fx-stamp-sweep',
     jobType: 'marketplace.order.fxStampSweep',
     // Scoped to `OrderSource` because `order_records.sourceConnectionId` is the
@@ -495,7 +511,10 @@ export class SchedulerService implements OnModuleDestroy {
       this.registerFulfillmentTimeoutSweepTask();
       this.registerFulfillmentRelaySweepTask();
       this.registerFulfillmentRerouteSweepTask();
+      this.registerFulfillmentRoutingReapSweepTask();
+      this.registerSaleDecrementReconcileSweepTask();
       this.registerOrderHoldReconcileTask();
+      this.registerSalesDocumentBatchTickTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
       // by the time any post-bootstrap start() runs.
@@ -1086,6 +1105,36 @@ export class SchedulerService implements OnModuleDestroy {
    * same minute. The cadence is the TICK, not a cycle: this pass has no cursor,
    * so each tick simply takes the oldest page of whatever is still stalled.
    */
+  /**
+   * Register the batch-issuing tick (#3583).
+   *
+   * Global scope under the nil-UUID system connection: the tick reads every
+   * batched connection's schedule from config and enqueues one
+   * `salesDocument.batch.run` per due slot, each under the batching
+   * connection's own id. Every 5 minutes, which is the precision contract
+   * ("18:00" runs between 18:00 and 18:05).
+   *
+   * **Default ON**, and safe to be: it makes no platform call and enqueues
+   * nothing unless a connection sets a kind to `batched` and gives it a
+   * schedule. The per-tick key is the timestamp; the at-most-once-per-slot
+   * guarantee lives on the run job's slot-derived key, not here.
+   */
+  private registerSalesDocumentBatchTickTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'sales-document-batch-tick',
+      jobType: 'salesDocument.batch.tick',
+      cronExpression: '*/5 * * * *',
+      enabledEnvVar: 'OL_SALES_DOCUMENT_BATCH_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `salesDocument:batch:tick:${timestamp}`,
+    });
+  }
+
   private registerFulfillmentTimeoutSweepTask(): void {
     const systemConnection = this.buildSystemConnection();
 
@@ -1183,6 +1232,71 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `fulfillment:work:reroute-sweep:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the stranded-routing-decision reaper (#2731).
+   *
+   * Its own method beside its fulfilment-sweep siblings, for their stated reason:
+   * coupling a task's REGISTRATION to a foreign concern's flag is how switching
+   * one thing off silently switches another off.
+   *
+   * A routing decision left `live` after an in-doubt `route()` holds its order as
+   * `routing-in-doubt`, which nothing else re-drives. This pass closes such a
+   * decision once it is past `OL_ROUTING_DECISION_TTL_MS` and routes the order
+   * again. Global scope under the nil-UUID system connection id; the route
+   * children carry the stranded decision's router connection.
+   *
+   * **Default ON**, and safe to be: it makes no platform call, and it is INERT on
+   * every install that does not route — `routing_decisions` is empty there.
+   *
+   * Every 15 minutes, so an order waits at most the TTL plus one tick. Minutes
+   * 4/19/34/49 avoid every other system-scoped sweep (the every-10 and
+   * every-20-minute ones, 7/22/37/52, 11/26/41/56, and minutes 15, 35 and 50).
+   */
+  private registerFulfillmentRoutingReapSweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'fulfillment-routing-reap-sweep',
+      jobType: 'fulfillment.routing.reapSweep',
+      cronExpression: '4,19,34,49 * * * *',
+      enabledEnvVar: 'OL_FULFILLMENT_ROUTING_REAP_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `fulfillment:routing:reap-sweep:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the sale-decrement reconcile sweep (#3629, epic #3460).
+   *
+   * Bespoke rather than a `CORE_CAPABILITY_TASKS` row for the relay sweep's
+   * reason: it has no capability to scope by and no connection to run for. Its
+   * subject is a routed work whose decrement job was never enqueued. Global scope
+   * under the nil-UUID system connection; default ON, since it is inert on any
+   * install that does not route (no `fulfillment_works` rows).
+   *
+   * Every 15 minutes: a lost enqueue is a live oversell window, so the backstop
+   * should close it in minutes, not hours. The cadence is the TICK, not a cycle -
+   * there is no cursor, each tick takes the oldest page of what is still missing.
+   */
+  private registerSaleDecrementReconcileSweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'inventory-sale-decrement-reconcile-sweep',
+      jobType: 'inventory.saleDecrement.reconcileSweep',
+      cronExpression: '11,26,41,56 * * * *',
+      enabledEnvVar: 'OL_SALE_DECREMENT_RECONCILE_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:sale-decrement:reconcile-sweep:${timestamp}`,
     });
   }
 

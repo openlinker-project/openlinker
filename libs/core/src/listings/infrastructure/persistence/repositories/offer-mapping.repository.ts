@@ -27,13 +27,22 @@ import {
   readValidationMessages,
   resolveOfferLifecycle,
 } from '../../../domain/types/offer-lifecycle.types';
-import { readValidationProblems } from '../../../domain/types/offer-validation-problem.types';
+import {
+  OFFER_VALIDATION_PROBLEMS_KEY,
+  readValidationProblems,
+} from '../../../domain/types/offer-validation-problem.types';
+import {
+  OFFER_CREATION_STATUS,
+  OFFER_CREATION_UNKNOWN_OUTCOME_ERROR_CODES,
+} from '../../../domain/types/offer-creation-record.types';
 import type {
   OfferLifecycle,
   OfferLifecycleCounts,
 } from '../../../domain/types/offer-lifecycle.types';
 import { deriveVariantLabel } from '../../../domain/types/offer-mapping.types';
 import type {
+  OfferAccountProblemSummary,
+  OfferAttentionCounts,
   OfferMappingChannelStatus,
   OfferMappingCommercial,
   OfferMappingCountFilters,
@@ -98,9 +107,78 @@ interface OfferMappingListRawRow {
  * The one publication status that means the offer is genuinely over and the
  * variant may be listed again (#1934/F2). Every other status - including
  * `inactive` / `inactivating` - describes an offer that still exists on the
- * marketplace and could be reactivated, so re-listing it would duplicate.
+ * marketplace and could be reactivated, so re-listing it would duplicate. The
+ * single exception is an `inactive` offer whose creation the marketplace
+ * refused - see `deadFailedCreationSql` (E2E-25).
  */
 const ENDED_PUBLICATION_STATUS = 'ended';
+
+/** The one status a refused-at-creation offer may sit in to be re-listable (E2E-25). */
+const INACTIVE_PUBLICATION_STATUS = 'inactive';
+
+/**
+ * The offer-creation records table, read by `deadFailedCreationSql` as a raw
+ * correlated subquery (same context as this repository).
+ */
+const OFFER_CREATION_RECORDS_TABLE = 'offer_creation_records';
+
+/**
+ * A mapped offer that OpenLinker created, that the marketplace REFUSED, and
+ * that is not live (E2E-25).
+ *
+ * Allegro accepts an inline-product create with `202` and refuses the product
+ * later, asynchronously (`GtinNotExistsInGtinParameter` for an EAN unknown to
+ * GS1). The offer it already minted stays `inactive` for good and can be
+ * neither ended (`IllegalChangeInactiveOffer`) nor deleted (`405`), yet its
+ * identifier mapping survives - so without this predicate the duplicate guard
+ * read it as "already listed" and the variant could never be listed again.
+ *
+ * Every condition is required, which is what keeps the guard conservative:
+ * - the status snapshot EXISTS and reads `inactive`. `active`, `activating`
+ *   and `inactivating` are live or moving, and an absent snapshot is no
+ *   evidence of anything (#1934/F2);
+ * - the LATEST creation record for this exact offer (same offer id, same
+ *   connection, same variant) is `failed`. A later `draft` / `active` /
+ *   `validating` record means the offer is still in play;
+ * - that failure carries at least one error and none of them is an
+ *   unknown-outcome code. A poll timeout or a dead job means OpenLinker
+ *   stopped watching, not that the marketplace refused, and such an offer may
+ *   still go live.
+ *
+ * Always yields a boolean, never NULL: the caller negates it over a LEFT
+ * join, and `NOT NULL` would silently drop every snapshot-less mapping from
+ * the count - the opposite of the conservative default.
+ *
+ * `CASE` rather than an `AND` chain for the errors test: Postgres does not
+ * promise to short-circuit `AND`, and `jsonb_array_length` raises on a
+ * non-array (the `HAS_VALIDATION_MESSAGES_SQL` trap).
+ *
+ * Reads the `mapping` and `snapshot` aliases of the caller's query.
+ */
+function deadFailedCreationSql(): { sql: string; parameters: Record<string, unknown> } {
+  return {
+    sql:
+      `(COALESCE(snapshot."publicationStatus" = :deadOfferInactiveStatus, false) AND EXISTS (` +
+      `SELECT 1 FROM (` +
+      `SELECT ocr."status", ocr."errors" FROM "${OFFER_CREATION_RECORDS_TABLE}" ocr ` +
+      `WHERE ocr."externalOfferId" = mapping."externalId" ` +
+      `AND ocr."connectionId" = mapping."connectionId" ` +
+      `AND ocr."internalVariantId" = mapping."internalId" ` +
+      `ORDER BY ocr."createdAt" DESC, ocr."id" DESC LIMIT 1` +
+      `) latest ` +
+      `WHERE latest."status" = :deadOfferFailedStatus ` +
+      `AND (CASE WHEN jsonb_typeof(latest."errors") = 'array' ` +
+      `THEN jsonb_array_length(latest."errors") > 0 AND NOT EXISTS (` +
+      `SELECT 1 FROM jsonb_array_elements(latest."errors") AS err ` +
+      `WHERE err ->> 'code' IN (:...deadOfferUnknownOutcomeCodes)) ` +
+      `ELSE false END)))`,
+    parameters: {
+      deadOfferInactiveStatus: INACTIVE_PUBLICATION_STATUS,
+      deadOfferFailedStatus: OFFER_CREATION_STATUS.Failed,
+      deadOfferUnknownOutcomeCodes: [...OFFER_CREATION_UNKNOWN_OUTCOME_ERROR_CODES],
+    },
+  };
+}
 
 /**
  * Whether the status-snapshot LEFT join actually found a row (#2026). Mirrors
@@ -135,6 +213,36 @@ const HAS_VALIDATION_MESSAGES_SQL =
   `(CASE WHEN jsonb_typeof(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') = 'array' ` +
   `THEN jsonb_array_length(oss."statusDetails" -> '${OFFER_VALIDATION_MESSAGES_KEY}') > 0 ` +
   `ELSE false END)`;
+
+/**
+ * A live offer still selling a product deleted in the shop (#4045): the variant
+ * is stale at the master and the channel last reported stock above zero - the
+ * frontend's `isOverselling` rule, so the count and the row badge agree.
+ */
+const SELLING_DELETED_SQL = '(pv."isStale" = true AND ocs."availableQuantity" > 0)';
+
+/**
+ * The listing's account-scoped problems as a row set (#4045). `CASE` keeps
+ * `jsonb_array_elements` away from a non-array (it raises, which would 500 the
+ * page over one malformed snapshot); a missing snapshot reads as no problems.
+ * Only entries with a string message count, matching `readValidationProblems`.
+ */
+function accountProblemsFromSql(problemsExpr: string): string {
+  return (
+    `jsonb_array_elements(CASE WHEN jsonb_typeof(${problemsExpr}) = 'array' ` +
+    `THEN ${problemsExpr} ELSE '[]'::jsonb END) AS vp`
+  );
+}
+const ACCOUNT_PROBLEMS_FROM_SQL = accountProblemsFromSql(
+  `oss."statusDetails" -> '${OFFER_VALIDATION_PROBLEMS_KEY}'`,
+);
+const ACCOUNT_PROBLEM_WHERE_SQL = `vp ->> 'scope' = 'account' AND jsonb_typeof(vp -> 'message') = 'string'`;
+
+/** The listing carries at least one account-scoped problem (#4045). */
+const SHOP_BLOCKED_SQL = `EXISTS (SELECT 1 FROM ${ACCOUNT_PROBLEMS_FROM_SQL} WHERE ${ACCOUNT_PROBLEM_WHERE_SQL})`;
+
+/** Distinct problems kept per connection in the attention counts (#4045). */
+const SHOP_BLOCKED_PROBLEMS_PER_CONNECTION = 5;
 
 /** Raw shape of one `countByLifecycle` group (#2026). */
 interface OfferLifecycleCountRawRow {
@@ -356,6 +464,76 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     return counts;
   }
 
+  async countAttention(filters: OfferMappingCountFilters): Promise<OfferAttentionCounts> {
+    // Each number drops its own filter, so "3 blocked by shop" stays readable
+    // while that filter is the one applied (the orders summary rule, #4025).
+    const withoutStale: OfferMappingCountFilters = { ...filters, staleSignal: undefined };
+    const withoutBlocked: OfferMappingCountFilters = { ...filters, shopBlocked: undefined };
+
+    // The per-problem breakdown needs a lateral over the problems array, which
+    // TypeORM's join API cannot express; the filtered builder becomes a derived
+    // table so the membership predicates stay the one shared definition.
+    const [blockedSql, blockedParams] = this.buildFilteredQuery({ ...withoutBlocked, shopBlocked: true })
+      .select('mapping.id', 'id')
+      .addSelect('mapping.connectionId', 'connectionId')
+      .addSelect(`oss."statusDetails" -> '${OFFER_VALIDATION_PROBLEMS_KEY}'`, 'problems')
+      .getQueryAndParameters();
+
+    const [sellingRow, blockedRows, problemRows] = await Promise.all([
+      this.buildFilteredQuery(withoutStale)
+        .select('COUNT(DISTINCT mapping.id)', 'count')
+        .andWhere(SELLING_DELETED_SQL)
+        .getRawOne<{ count: string }>(),
+      this.buildFilteredQuery({ ...withoutBlocked, shopBlocked: true })
+        .select('mapping.connectionId', 'connectionId')
+        .addSelect('COUNT(DISTINCT mapping.id)', 'count')
+        .groupBy('mapping.connectionId')
+        .getRawMany<{ connectionId: string; count: string }>(),
+      this.repository.manager.query<
+        { connectionId: string; code: string | null; message: string; count: string }[]
+      >(
+        // The guard is repeated even though the inner builder already keeps
+        // only array-shaped problems, so a later change to that predicate
+        // cannot turn one malformed snapshot into a 500. The cap is applied
+        // here rather than after the read so a connection with many distinct
+        // problems does not ship every group to the app; code and message
+        // break count ties so the kept five do not vary between reads.
+        `SELECT "connectionId", "code", "message", "count" FROM (` +
+          `SELECT g.*, ROW_NUMBER() OVER (PARTITION BY g."connectionId" ` +
+          `ORDER BY g."count" DESC, g."code" ASC NULLS LAST, g."message" ASC) AS rn FROM (` +
+          `SELECT t."connectionId" AS "connectionId", vp ->> 'code' AS "code", vp ->> 'message' AS "message", ` +
+          `COUNT(DISTINCT t."id") AS "count" FROM (${blockedSql}) t, ${accountProblemsFromSql('t."problems"')} ` +
+          `WHERE ${ACCOUNT_PROBLEM_WHERE_SQL} GROUP BY 1, 2, 3) g) ranked ` +
+          `WHERE rn <= ${SHOP_BLOCKED_PROBLEMS_PER_CONNECTION} ORDER BY "connectionId", rn`,
+        blockedParams,
+      ),
+    ]);
+
+    const problemsByConnection = new Map<string, OfferAccountProblemSummary[]>();
+    for (const row of problemRows) {
+      const code = row.code?.trim();
+      const list = problemsByConnection.get(row.connectionId) ?? [];
+      list.push({ ...(code ? { code } : {}), message: row.message });
+      problemsByConnection.set(row.connectionId, list);
+    }
+
+    const shopBlockedByConnection = blockedRows
+      .map((row) => ({
+        connectionId: row.connectionId,
+        count: Number(row.count),
+        // Already ranked and capped in SQL; rows arrive in rank order.
+        problems: problemsByConnection.get(row.connectionId) ?? [],
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      sellingDeletedProduct: Number(sellingRow?.count ?? 0),
+      // Summing is exact only because a mapping belongs to exactly one connection.
+      shopBlocked: shopBlockedByConnection.reduce((sum, c) => sum + c.count, 0),
+      shopBlockedByConnection,
+    };
+  }
+
   /**
    * Narrow a persisted `publicationStatus` onto the closed neutral union.
    *
@@ -488,6 +666,14 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       );
     }
 
+    if (filters.staleSignal === 'selling') {
+      qb.andWhere(SELLING_DELETED_SQL);
+    }
+
+    if (filters.shopBlocked === true) {
+      qb.andWhere(SHOP_BLOCKED_SQL);
+    }
+
     return qb;
   }
 
@@ -580,6 +766,13 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     // absence of a status read is not evidence the offer ended). `inactive` and
     // `inactivating` likewise still count: those offers exist and can be
     // reactivated, so re-listing them WOULD duplicate.
+    //
+    // Except an `inactive` offer whose creation the marketplace refused
+    // (E2E-25): it can never sell and cannot be ended, so counting it made the
+    // variant un-relistable for good. `deadFailedCreationSql` names the exact
+    // conditions. This read is shared by the submit guard and the FE
+    // "already on {destination}" chip, so the two cannot disagree.
+    const deadOffer = deadFailedCreationSql();
     const rows = await this.repository
       .createQueryBuilder('mapping')
       .select('mapping.internalId', 'internalId')
@@ -598,6 +791,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .andWhere('(snapshot."publicationStatus" IS NULL OR snapshot."publicationStatus" != :ended)', {
         ended: ENDED_PUBLICATION_STATUS,
       })
+      .andWhere(`NOT ${deadOffer.sql}`, deadOffer.parameters)
       .groupBy('mapping.internalId')
       .getRawMany<{ internalId: string; count: string }>();
 
@@ -606,6 +800,30 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       if (count > 0) result.set(row.internalId, count);
     }
     return result;
+  }
+
+  async findDeadFailedCreationOfferIds(
+    connectionId: string,
+    internalId: string
+  ): Promise<string[]> {
+    const deadOffer = deadFailedCreationSql();
+    const rows = await this.repository
+      .createQueryBuilder('mapping')
+      .select('mapping.externalId', 'externalId')
+      // INNER join: the predicate requires a snapshot, so a mapping without
+      // one can never qualify.
+      .innerJoin(
+        OfferStatusSnapshotOrmEntity,
+        'snapshot',
+        'snapshot."externalOfferId" = mapping."externalId" ' +
+          'AND snapshot."connectionId" = mapping."connectionId"'
+      )
+      .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
+      .andWhere('mapping.connectionId = :connectionId', { connectionId })
+      .andWhere('mapping.internalId = :internalId', { internalId })
+      .andWhere(deadOffer.sql, deadOffer.parameters)
+      .getRawMany<{ externalId: string }>();
+    return rows.map((row) => row.externalId);
   }
 
   async countListedVariantsByProducts(
@@ -665,7 +883,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .andWhere('pv."isStale" = true')
       .andWhere('pv."staleAt" >= :staleSince', { staleSince: options.staleSince })
       .orderBy('pv."staleAt"', 'DESC')
-      .take(options.limit)
+      .limit(options.limit)
       .getRawMany<{ variantId: string; externalOfferId: string; staleAt: Date }>();
 
     return rows.map((row) => ({

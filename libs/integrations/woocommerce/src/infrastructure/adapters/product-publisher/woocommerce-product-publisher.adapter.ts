@@ -23,6 +23,9 @@
  * (`pa_*`) attribute, otherwise it falls back to a free-text custom attribute
  * (#1835).
  *
+ * `ShopProductVisibilityWriter` (#3962) takes a product off sale by moving it
+ * to `draft` (and back to `publish`) when it is deleted at the master.
+ *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/product-publisher
  */
 import { Logger } from '@openlinker/shared/logging';
@@ -47,6 +50,8 @@ import {
   type ShopCategoryBrowser,
   type ShopProductManagerPort,
   type ShopProductPriceUpdater,
+  type ShopProductVisibilityWriter,
+  type SetShopProductVisibilityCommand,
   type ShopProductStatusReadResult,
   type ShopProductStatusReader,
   type ShopPublicationStatus,
@@ -76,6 +81,7 @@ import type {
   WooCommerceProductStatusResponse,
   WooCommerceVariationPublishRequest,
   WooCommerceVariationResponse,
+  WooCommerceVisibilityOnlyUpdateRequest,
 } from './woocommerce-product-publish.types';
 
 const PRODUCTS_PATH = '/wp-json/wc/v3/products';
@@ -116,7 +122,8 @@ export class WooCommerceProductPublisherAdapter
     ShopCategoryBrowser,
     ShopAttributeReader,
     ShopProductStatusReader,
-    ShopProductPriceUpdater
+    ShopProductPriceUpdater,
+    ShopProductVisibilityWriter
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
 
@@ -448,6 +455,34 @@ export class WooCommerceProductPublisherAdapter
     this.logger.debug(
       `Updating price only for product=${cmd.externalProductId}` +
         `${cmd.externalParentProductId ? ` parent=${cmd.externalParentProductId}` : ''} ` +
+        `connection=${this.connection.id}`,
+    );
+
+    try {
+      await this.httpClient.put<WooCommerceProductResponse>(path, body);
+    } catch (err) {
+      throw this.toPublishError(err, true, cmd.externalProductId);
+    }
+  }
+
+  /**
+   * Visibility-only write (#3962, `ShopProductVisibilityWriter`): a sparse PUT
+   * carrying `status` alone. `draft` rather than `private` or trash, because a
+   * draft is off sale for every visitor yet keeps the product, its history and
+   * its mapping intact, so the operator can put it back.
+   *
+   * Always the product resource, never a variation: the command names the
+   * parent of a grouped publish, and WooCommerce hides a variable product as a
+   * whole.
+   */
+  async setShopProductVisibility(cmd: SetShopProductVisibilityCommand): Promise<void> {
+    const body: WooCommerceVisibilityOnlyUpdateRequest = {
+      status: cmd.visible ? 'publish' : 'draft',
+    };
+    const path = `${PRODUCTS_PATH}/${encodeURIComponent(cmd.externalProductId)}`;
+
+    this.logger.debug(
+      `Setting visibility=${body.status} for product=${cmd.externalProductId} ` +
         `connection=${this.connection.id}`,
     );
 
@@ -816,8 +851,10 @@ export class WooCommerceProductPublisherAdapter
     if (cmd.barcode) typed.global_unique_id = cmd.barcode;
     if (cmd.weight != null) typed.weight = String(cmd.weight);
     // Single sideloaded image, create-only (same re-import churn guard as the
-    // simple-product / parent paths, #1846 fix 7).
-    const imageUrl = cmd.content?.imageUrls?.[0];
+    // simple-product / parent paths, #1846 fix 7). The variation's OWN default
+    // images come first - `content.imageUrls` is the parent's whole gallery, so
+    // its first entry would give every variation the product's main picture.
+    const imageUrl = group.imageUrls?.[0] ?? cmd.content?.imageUrls?.[0];
     if (!isUpsert && imageUrl != null) typed.image = { src: imageUrl };
 
     const attributes = group.attributes

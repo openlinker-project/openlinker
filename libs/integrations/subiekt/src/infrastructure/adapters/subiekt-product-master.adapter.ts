@@ -74,6 +74,7 @@ import type {
   ProductMasterPort,
   ProductVariant,
   ProductTaxRateReader,
+  ProductCreator,
   ReadProductTaxRateInput,
   TaxRateResolution,
 } from '@openlinker/core/products';
@@ -266,7 +267,7 @@ function grossSalePrice(
   return undefined;
 }
 
-export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
+export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader, ProductCreator {
   private readonly logger: LoggerPort;
   private readonly baseUrl: string;
   private readonly token?: string;
@@ -396,6 +397,8 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     this.assertStillAProduct(internalId, bridgeProduct);
     return this.toDomainProduct(internalId, bridgeProduct);
   }
+
+  readonly productCreationMode = 'simple-product' as const;
 
   async createProduct(product: ProductCreate): Promise<Product> {
     const request: BridgeCreateProductRequest = {

@@ -40,6 +40,7 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
+import { ReturnLineNotFoundError } from '../../domain/exceptions/return-line-not-found.error';
 import { ReturnMatchRefusedError } from '../../domain/exceptions/return-match-refused.error';
 import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
 import { ReturnRecordRefusedError } from '../../domain/exceptions/return-record-refused.error';
@@ -69,8 +70,12 @@ import type {
   ReturnOrderLineResolutionSummary,
   UpsertReturnObservationResult,
 } from './returns.service.interface';
-import { resolveReturnLineOrderLine } from '../../domain/domain-services/return-order-line-resolution.domain-service';
-import type { ResolvableOrderLine } from '../../domain/domain-services/return-order-line-resolution.domain-service';
+import { findLineRemovedByEdit } from '../../domain/domain-services/return-line-removed-by-edit.domain-service';
+import { resolveReturnLineOrderLine, suggestReturnLineOrderLine } from '../../domain/domain-services/return-order-line-resolution.domain-service';
+import type {
+  ResolvableOrderLine,
+  ReturnOrderLineSuggestion,
+} from '../../domain/domain-services/return-order-line-resolution.domain-service';
 
 /**
  * The two advertised-without-dispatch sub-capability names this service reads
@@ -226,6 +231,48 @@ export class ReturnsService implements IReturnsService {
     }
 
     return summary;
+  }
+
+  /** See {@link IReturnsService.suggestOrderLineForReturnLine}. */
+  async suggestOrderLineForReturnLine(
+    returnLineId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<ReturnOrderLineSuggestion & { alreadyResolvedOrderLineId: string | null }> {
+    const found = await this.repository.findLine(returnLineId);
+    if (found === null) {
+      throw new ReturnLineNotFoundError(returnLineId);
+    }
+    const { line, record } = found;
+    const suggestion = suggestReturnLineOrderLine(
+      {
+        sku: line.sku,
+        offerId: line.offerId,
+        unitPrice: this.readReportedUnitPrice(record, line.lineIndex),
+      },
+      orderLines
+    );
+    return { ...suggestion, alreadyResolvedOrderLineId: line.resolvedOrderLineId };
+  }
+
+  /** See {@link IReturnsService.confirmOrderLineForReturnLine}. */
+  async confirmOrderLineForReturnLine(
+    returnLineId: string,
+    orderLineId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<{ claimed: boolean; known: boolean }> {
+    const found = await this.repository.findLine(returnLineId);
+    if (found === null) {
+      throw new ReturnLineNotFoundError(returnLineId);
+    }
+    const chosen = orderLines.find((candidate) => candidate.id === orderLineId);
+    if (chosen === undefined) {
+      return { claimed: false, known: false };
+    }
+    const claimed = await this.repository.claimOrderLineResolution(returnLineId, orderLineId, {
+      productId: chosen.productId,
+      variantId: chosen.variantId,
+    });
+    return { claimed, known: true };
   }
 
   /**
@@ -564,6 +611,24 @@ export class ReturnsService implements IReturnsService {
           `${input.sourceConnectionId}: OpenLinker holds no mapping for that order there`
       );
       throw new ReturnRecordRefusedError('order-not-on-connection');
+    }
+
+    // E-14: refuse a line an OpenLinker edit removed. Only a positive match
+    // against a zeroed channel line refuses; an unknown sku passes as before.
+    if (input.orderLines !== undefined) {
+      for (const line of input.lines) {
+        const removed = findLineRemovedByEdit(
+          { sku: line.sku, name: line.name },
+          input.orderLines.removedByEdit,
+          input.orderLines.live
+        );
+        if (removed !== null) {
+          throw new ReturnRecordRefusedError(
+            'line-removed-by-edit',
+            removed.name ?? removed.sku ?? line.name ?? line.sku
+          );
+        }
+      }
     }
 
     const record = await this.repository.create({

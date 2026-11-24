@@ -36,11 +36,9 @@ import { usePackersQuery } from '../../users';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useFulfillmentAssignmentRunner } from '../hooks/use-fulfillment-assignment-runner';
 import { formatUnassignedAge } from '../lib/assign-packing-work-duration';
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
+import { formatPackerSubtitle } from '../lib/assign-packing-work-labels';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { FulfillmentAssignmentControls } from './fulfillment-assignment-controls';
-
-const COPY = FULFILLMENT_WORK_DETAIL_COPY;
 
 export interface FulfillmentWorkPackerSectionProps {
   task: FulfillmentTask;
@@ -55,6 +53,8 @@ export function FulfillmentWorkPackerSection({
   canStaff,
   readOnly,
 }: FulfillmentWorkPackerSectionProps): ReactElement {
+  const messages = useMessages('fulfillment');
+  const copy = messages.workDetail;
   const packersQuery = usePackersQuery();
   const assignment = useFulfillmentAssignmentRunner();
   const packers = packersQuery.data?.packers ?? [];
@@ -70,9 +70,9 @@ export function FulfillmentWorkPackerSection({
           ✳
         </span>
         <div className="fulfilment-work-packer__identity">
-          <p className="fulfilment-work-packer__name">{COPY.packer.unassigned}</p>
+          <p className="fulfilment-work-packer__name">{copy.packer.unassigned}</p>
           <p className="fulfilment-work-packer__sub">
-            {age === null ? COPY.packer.waitingUnknown : COPY.packer.waiting(age)}
+            {age === null ? copy.packer.waitingUnknown : interpolate(copy.packer.waiting, { age })}
           </p>
         </div>
       </>
@@ -80,7 +80,7 @@ export function FulfillmentWorkPackerSection({
   } else {
     // While the roster loads the name is not known yet; an off-roster id
     // (deactivated, or no longer a packer) says so rather than vanishing.
-    const name = packer?.username ?? (packersQuery.isPending ? '' : ASSIGN_PACKING_WORK_COPY.lane.offRosterTitle);
+    const name = packer?.username ?? (packersQuery.isPending ? '' : messages.assignPackingWork.lane.offRosterTitle);
     holder = (
       <>
         <span className="assign-packing-work-lane__avatar" aria-hidden="true">
@@ -90,7 +90,7 @@ export function FulfillmentWorkPackerSection({
           <p className="fulfilment-work-packer__name">{name}</p>
           {packer === null ? null : (
             <p className="fulfilment-work-packer__sub">
-              {ASSIGN_PACKING_WORK_COPY.lane.packerSubtitle(packer)}
+              {formatPackerSubtitle(packer)}
             </p>
           )}
         </div>
@@ -100,9 +100,9 @@ export function FulfillmentWorkPackerSection({
 
   return (
     <DetailSection
-      title={COPY.sections.packer}
+      title={copy.sections.packer}
       className="fulfilment-work-packer"
-      aria-label={COPY.sections.packer}
+      aria-label={copy.sections.packer}
       aria-busy={assignment.busyTaskId === task.id}
     >
       <div className="fulfilment-work-packer__holder">{holder}</div>
@@ -126,7 +126,7 @@ export function FulfillmentWorkPackerSection({
       ) : null}
       {canStaff && packersQuery.isError ? (
         <Alert tone="warning" density="compact">
-          {COPY.packer.rosterError}
+          {copy.packer.rosterError}
         </Alert>
       ) : null}
     </DetailSection>

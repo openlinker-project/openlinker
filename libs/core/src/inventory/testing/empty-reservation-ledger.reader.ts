@@ -19,7 +19,9 @@
  * @implements {ReservationLedgerReaderPort}
  */
 import type {
+  LocatedReservedSum,
   ReservationLedgerReaderPort,
+  SumReservedByLocationInput,
   SumReservedInput,
 } from '../domain/ports/reservation-ledger-reader.port';
 
@@ -27,5 +29,9 @@ export class EmptyReservationLedgerReader implements ReservationLedgerReaderPort
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the signature is the contract; Wave 2's reader uses every field.
   sumReservedByVariantIds(_input: SumReservedInput): Promise<ReadonlyMap<string, number>> {
     return Promise.resolve(new Map<string, number>());
+  }
+
+  sumReservedByLocation(_input: SumReservedByLocationInput): Promise<readonly LocatedReservedSum[]> {
+    return Promise.resolve([]);
   }
 }

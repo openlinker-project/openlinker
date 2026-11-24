@@ -20,10 +20,11 @@
 import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 
+import { interpolate, renderRich, useMessages } from '../../../../shared/i18n';
 import { Alert, Button, FormField, Input } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
@@ -84,6 +85,7 @@ export function BulkConfigStep({
   onCancel,
   onConnectionChange,
 }: BulkConfigStepProps): ReactElement {
+  const copy = useMessages('listings').bulkConfigStep;
   const connectionsQuery = useConnectionsQuery();
   // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
   // online shops (ProductPublisher), capability-driven. Marketplaces render a
@@ -204,13 +206,14 @@ export function BulkConfigStep({
   }
 
   if (connectionsQuery.isLoading) {
-    return <Alert tone="info">Loading connections…</Alert>;
+    return <Alert tone="info">{copy.loadingConnections}</Alert>;
   }
   if (publishConnections.length === 0) {
     return (
       <Alert tone="error">
-        No active publish destinations found. Add a marketplace or online-shop connection from{' '}
-        <a href="/connections">Connections</a>.
+        {renderRich(copy.noDestinations, {
+          link: (text) => <a href="/connections">{text}</a>,
+        })}
       </Alert>
     );
   }
@@ -224,12 +227,10 @@ export function BulkConfigStep({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <header>
         <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: 'var(--tracking-tight)' }}>
-          Configure batch
+          {copy.title}
         </h2>
         <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
-          Batch-wide defaults applied to all selected products. You can fine-tune any of
-          them - price, stock, and platform fields like dispatch time - per product in the
-          next Review step (use <strong>Edit</strong> on a row).
+          {renderRich(copy.intro, { strong: (text) => <strong>{text}</strong> })}
         </p>
       </header>
 
@@ -240,7 +241,7 @@ export function BulkConfigStep({
         // publish flow instead of a plain `<Select>` here.
         <div className="form-field">
           <label id="bulk-config-connection-label" className="form-field__label">
-            Destination connection
+            {copy.destinationLabel}
           </label>
           <PublishDestinationRail
             destinations={destinations}
@@ -251,15 +252,21 @@ export function BulkConfigStep({
         </div>
       ) : (
         <Alert tone="info">
-          Publishing as <strong>{publishConnections[0]?.name}</strong>.
+          {renderRich(
+            copy.publishingAs,
+            { strong: (text) => <strong>{text}</strong> },
+            { name: publishConnections[0]?.name ?? '' },
+          )}
         </Alert>
       )}
 
       {!masterCatalogConfigured && connection !== null ? (
         <Alert tone="error">
-          <strong>{connection.name}</strong> has no master catalogue set, so nothing can read
-          the product data these offers need - every offer in the batch would fail. Open the
-          connection&apos;s settings and pick the shop that owns the catalogue, then come back.
+          {renderRich(
+            copy.noMasterCatalogue,
+            { strong: (text) => <strong>{text}</strong> },
+            { name: connection.name },
+          )}
         </Alert>
       ) : null}
 
@@ -267,45 +274,43 @@ export function BulkConfigStep({
           publish time (#1829) - no per-platform section to configure. */}
       {connection && isShop ? (
         <div className="shop-publish-callout">
-          Publishing to an online shop. Category placement, attributes &amp; images are resolved
-          from the master product at publish time - only visibility, price, and stock policy below
-          apply.
+          {copy.shopCallout}
         </div>
       ) : null}
 
       {/* Per-platform config section (Allegro: delivery policy + currency; Erli: dispatch time). */}
       {connection && !isShop ? (
         section ? (
-          <Suspense fallback={<Alert tone="info">Loading marketplace options…</Alert>}>
+          <Suspense fallback={<Alert tone="info">{copy.loadingMarketplaceOptions}</Alert>}>
             <section.component connection={connection} form={form} />
           </Suspense>
         ) : (
           <Alert tone="warning">
-            Bulk offer creation isn't configured for this marketplace yet.
+            {copy.sectionNotConfigured}
           </Alert>
         )
       ) : null}
 
       <fieldset className="bulk-config__policy">
-        <legend>Pricing policy</legend>
+        <legend>{copy.pricing.legend}</legend>
         <PolicyRadio
           name="bulk-pricing-mode"
           checked={values.pricingMode === 'use-master'}
           onChange={() => setPricingMode('use-master')}
-          label="Use master price"
-          hint="Each offer uses the product's own gross price (VAT included). Rows without a master price are flagged."
+          label={copy.pricing.useMaster.label}
+          hint={copy.pricing.useMaster.hint}
         />
         <PolicyRadio
           name="bulk-pricing-mode"
           checked={values.pricingMode === 'markup'}
           onChange={() => setPricingMode('markup')}
-          label="Markup on master price"
-          hint="Apply a percentage to each gross master price (negative = discount)."
+          label={copy.pricing.markup.label}
+          hint={copy.pricing.markup.hint}
         >
           {values.pricingMode === 'markup' ? (
-            <FormField name="bulk-config-markup" label="Markup %">
+            <FormField name="bulk-config-markup" label={copy.pricing.markup.fieldLabel}>
               <Input
-                placeholder="10"
+                placeholder={copy.pricing.markup.placeholder}
                 value={values.markupPercent}
                 onChange={(e) => form.setValue('markupPercent', e.target.value, { shouldDirty: true })}
                 aria-invalid={!markupValid}
@@ -317,13 +322,14 @@ export function BulkConfigStep({
           name="bulk-pricing-mode"
           checked={values.pricingMode === 'flat'}
           onChange={() => setPricingMode('flat')}
-          label="Flat price for all rows"
-          hint={`Same gross price (in ${values.currency}, VAT included) for every offer, ignoring master prices.`}
+          label={copy.pricing.flat.label}
+          hint={interpolate(copy.pricing.flat.hint, { currency: values.currency })}
         >
           {values.pricingMode === 'flat' ? (
-            <FormField name="bulk-config-flat-price" label={`Flat price (${values.currency})`}>
+            <FormField name="bulk-config-flat-price" label={interpolate(copy.pricing.flat.fieldLabel, { currency: values.currency })}
+            >
               <Input
-                placeholder="79.00"
+                placeholder={copy.pricing.flat.placeholder}
                 value={values.flatPriceAmount}
                 onChange={(e) =>
                   form.setValue('flatPriceAmount', e.target.value, { shouldDirty: true })
@@ -336,23 +342,23 @@ export function BulkConfigStep({
       </fieldset>
 
       <fieldset className="bulk-config__policy">
-        <legend>Stock policy</legend>
+        <legend>{copy.stock.legend}</legend>
         <PolicyRadio
           name="bulk-stock-mode"
           checked={values.stockMode === 'use-master'}
           onChange={() => setStockMode('use-master')}
-          label="Use master stock"
-          hint="Each offer uses the product's available quantity. Zero-stock rows are flagged."
+          label={copy.stock.useMaster.label}
+          hint={copy.stock.useMaster.hint}
         />
         <PolicyRadio
           name="bulk-stock-mode"
           checked={values.stockMode === 'cap'}
           onChange={() => setStockMode('cap')}
-          label="Cap master stock"
-          hint="Use the master quantity, capped at N."
+          label={copy.stock.cap.label}
+          hint={copy.stock.cap.hint}
         >
           {values.stockMode === 'cap' ? (
-            <FormField name="bulk-config-cap" label="Cap at">
+            <FormField name="bulk-config-cap" label={copy.stock.cap.fieldLabel}>
               <Input
                 type="number"
                 min={1}
@@ -367,11 +373,11 @@ export function BulkConfigStep({
           name="bulk-stock-mode"
           checked={values.stockMode === 'flat'}
           onChange={() => setStockMode('flat')}
-          label="Flat stock for all rows"
-          hint="Same quantity for every offer, ignoring master stock."
+          label={copy.stock.flat.label}
+          hint={copy.stock.flat.hint}
         >
           {values.stockMode === 'flat' ? (
-            <FormField name="bulk-config-flat-stock" label="Stock">
+            <FormField name="bulk-config-flat-stock" label={copy.stock.flat.fieldLabel}>
               <Input
                 type="number"
                 min={1}
@@ -393,21 +399,19 @@ export function BulkConfigStep({
           onChange={(e) => form.setValue('publishImmediately', e.target.checked, { shouldDirty: true })}
         />
         <span>
-          <strong>Publish immediately</strong>{' '}
+          <strong>{copy.publishImmediately.label}</strong>{' '}
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="bulk-editor__infotip" role="img" aria-label="About publish immediately">
+              <span className="bulk-editor__infotip" role="img" aria-label={copy.publishImmediately.infoAria}>
                 &#9432;
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              Requests publication for every offer. The marketplace still decides: it can keep an
-              offer as a draft if required parameters are missing or invalid on its side (common on
-              Erli).
+              {copy.publishImmediately.tooltip}
             </TooltipContent>
           </Tooltip>
           <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-            Uncheck to create all offers as drafts.
+            {copy.publishImmediately.hint}
           </small>
         </span>
       </label>
@@ -422,7 +426,7 @@ export function BulkConfigStep({
         // never actually have this take effect even if it slipped through.
         <ReadOnlyLock
           active={generateDescriptionAccess.demoReadOnly}
-          message={DEMO_READ_ONLY_ACTION_MESSAGE}
+          message={demoReadOnlyActionMessage()}
         >
           <label
             style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}
@@ -444,12 +448,12 @@ export function BulkConfigStep({
                     🔒
                   </span>
                 ) : null}
-                Generate AI descriptions by default
+                {copy.generateDescription.label}
               </strong>
               <small style={{ display: 'block', color: 'var(--text-muted)' }}>
                 {generateDescriptionAccess.demoReadOnly
-                  ? DEMO_READ_ONLY_ACTION_MESSAGE
-                  : 'Worker uses ContentSuggestionService per row. Per-row toggle in the edit modal overrides this.'}
+                  ? demoReadOnlyActionMessage()
+                  : copy.generateDescription.hint}
               </small>
             </span>
           </label>
@@ -459,10 +463,10 @@ export function BulkConfigStep({
       <footer className="bulk-wizard__footer">
         <div className="bulk-wizard__footer-spacer" />
         <Button tone="ghost" onClick={onCancel}>
-          Cancel
+          {copy.cancel}
         </Button>
         <Button tone="primary" disabled={!canProceed} onClick={handleProceed}>
-          Proceed →
+          {copy.proceed}
         </Button>
       </footer>
     </div>

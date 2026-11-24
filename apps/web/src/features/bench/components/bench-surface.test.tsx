@@ -27,10 +27,12 @@ import type { Session } from '../../../shared/auth/session.types';
 import { useSession } from '../../../shared/auth/use-session';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useScannerInput } from '../hooks/use-scanner-input';
-import { benchIdentityCopy } from '../lib/bench-identity.copy';
+import { getMessages } from '../../../shared/i18n';
 import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
 import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchSurface } from './bench-surface';
+
+const benchIdentityCopy = getMessages('bench').identity;
 
 /**
  * Signs in the way the real app does — flip the adapter, then ask the provider

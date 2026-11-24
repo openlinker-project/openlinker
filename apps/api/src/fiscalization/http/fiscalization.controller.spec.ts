@@ -12,12 +12,16 @@
  *
  * @module apps/api/src/fiscalization/http
  */
+import { SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { Test } from '@nestjs/testing';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -30,7 +34,12 @@ import {
   OrderAlreadyRegisteredException,
 } from '@openlinker/core/fiscalization';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
-import { ORDER_RECORD_SERVICE_TOKEN, OrderRecord } from '@openlinker/core/orders';
+import {
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+  OrderRecord,
+} from '@openlinker/core/orders';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import 'reflect-metadata';
 
@@ -42,7 +51,11 @@ const NOW = new Date('2026-08-14T10:00:00.000Z');
 const CONNECTION_ID = '00000000-0000-0000-0000-0000000019a8';
 const ORDER_ID = 'ol_order_1';
 
-function orderRecord(): OrderRecord {
+function orderRecord(
+  items: Record<string, unknown>[] = [
+    { id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' },
+  ],
+): OrderRecord {
   return new OrderRecord(
     ORDER_ID,
     'cust_1',
@@ -51,7 +64,7 @@ function orderRecord(): OrderRecord {
     {
       id: ORDER_ID,
       status: 'processing',
-      items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' }],
+      items,
       totals: {
         subtotal: 100,
         tax: 0,
@@ -114,6 +127,8 @@ describe('FiscalizationController', () => {
   let controller: FiscalizationController;
   let service: jest.Mocked<IFiscalRegistrationService>;
   let orders: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'markSalesDocumentBlock'>>;
+  let documentEmails: { sendReceiptEmail: jest.Mock };
+  let integrations: { getCapabilityAdapter: jest.Mock };
 
   beforeEach(async () => {
     service = {
@@ -140,11 +155,28 @@ describe('FiscalizationController', () => {
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
     };
 
+    documentEmails = { sendReceiptEmail: jest.fn() };
+    integrations = { getCapabilityAdapter: jest.fn().mockResolvedValue({}) };
+
     const moduleRef = await Test.createTestingModule({
       controllers: [FiscalizationController],
       providers: [
         { provide: FISCAL_REGISTRATION_SERVICE_TOKEN, useValue: service },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
+        {
+          provide: CONNECTION_PORT_TOKEN,
+          useValue: { get: jest.fn().mockResolvedValue({ config: {} }) },
+        },
+        { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
+        {
+          provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+          useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
+        },
+        { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrations },
+        {
+          provide: SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+          useValue: { getGiftDocumentForm: jest.fn().mockResolvedValue({ form: 'technical-cent', source: 'default' }) },
+        },
       ],
     }).compile();
 
@@ -230,6 +262,29 @@ describe('FiscalizationController', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
+    it('should name the blocking receipt by code and record (#3865)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      service.requestRegistration.mockRejectedValue(
+        new OrderAlreadyRegisteredException(
+          ORDER_ID,
+          'conn-other',
+          CONNECTION_ID,
+          'registered',
+          'rec-first',
+        ),
+      );
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'ORDER_ALREADY_HAS_FISCAL_RECEIPT',
+          registeringConnectionId: 'conn-other',
+          blockingRecordId: 'rec-first',
+        },
+      });
+    });
+
     it('should clear the persisted block reason once the registration is accepted (#3646)', async () => {
       // Without this, `trigger-model-manual` outlived the receipt it described
       // and every surface kept saying no document was made.
@@ -297,6 +352,44 @@ describe('FiscalizationController', () => {
         }),
         expect.anything(),
       );
+    });
+
+    it('should take 0.01 from a paid line for a gift when the connection chose show and the adapter refuses zero (#3930)', async () => {
+      const giftRecord = orderRecord([
+        { id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' },
+        { id: 'g1', productId: 'p_g', quantity: 1, price: 0, name: 'Gift', gift: { source: 'channel' } },
+      ]);
+      orders.getOrderRecord.mockResolvedValue(giftRecord);
+      const connectionPort = controller['connectionPort'] as unknown as { get: jest.Mock };
+      connectionPort.get.mockResolvedValue({ config: { giftOnDocuments: { form: 'show-zero' } } });
+      integrations.getCapabilityAdapter.mockResolvedValue({ acceptsZeroValueLine: () => false });
+
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION_ID, 'Fiscalization');
+      const cmd = service.requestRegistration.mock.calls[0][0];
+      expect(cmd.lines).toHaveLength(2);
+      expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+      const total = cmd.lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(10000);
+    });
+
+    it('should refuse retryably, registering nothing, when the saved gift form cannot be read', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      const settings = controller['salesDocumentSettings'] as unknown as { getGiftDocumentForm: jest.Mock };
+      settings.getGiftDocumentForm.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(service.requestRegistration).not.toHaveBeenCalled();
+    });
+
+    it('should still register when the adapter cannot be resolved (#3930)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      integrations.getCapabilityAdapter.mockRejectedValue(new Error('no adapter'));
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+      expect(service.requestRegistration).toHaveBeenCalled();
     });
 
     it('should 404 for an unknown order', async () => {
@@ -589,6 +682,58 @@ describe('FiscalizationController', () => {
       await expect(
         controller.reconcile('11111111-1111-1111-1111-111111111111'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('POST /fiscal-registrations/:id/send-email (#3550)', () => {
+    const REGISTRATION_ID = '11111111-1111-4111-8111-111111111111';
+    const actor = { id: 'user_1', username: 'admin', role: 'admin' } as never;
+
+    it('should be admin-only', () => {
+      expect(
+        Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.sendReceiptEmail),
+      ).toEqual(['admin']);
+    });
+
+    it('should delegate with the operator and report who sent it', async () => {
+      documentEmails.sendReceiptEmail.mockResolvedValue({
+        status: 'sent',
+        sentVia: 'openlinker',
+        recipient: 'buyer@example.com',
+      });
+
+      const result = await controller.sendReceiptEmail(
+        REGISTRATION_ID,
+        { recipient: 'buyer@example.com', locale: 'pl' },
+        actor,
+      );
+
+      expect(documentEmails.sendReceiptEmail).toHaveBeenCalledWith({
+        registrationId: REGISTRATION_ID,
+        recipient: 'buyer@example.com',
+        locale: 'pl',
+        actorUserId: 'user_1',
+      });
+      expect(result).toEqual({
+        delivered: true,
+        recipient: 'buyer@example.com',
+        sentVia: 'openlinker',
+      });
+    });
+
+    it('should answer a refusal with its status, message and code', async () => {
+      documentEmails.sendReceiptEmail.mockResolvedValue({
+        status: 'refused',
+        reason: 'document-not-ready',
+        message: 'Not ready.',
+      });
+
+      const rejection = controller.sendReceiptEmail(REGISTRATION_ID, {}, actor);
+
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException);
+      await expect(rejection).rejects.toMatchObject({
+        response: { message: 'Not ready.', code: 'document-not-ready' },
+      });
     });
   });
 

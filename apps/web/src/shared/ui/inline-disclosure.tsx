@@ -12,6 +12,7 @@
  * @module shared/ui
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useMessages } from '../i18n/use-messages';
 
 export interface InlineDisclosureProps {
   label: string;
@@ -26,16 +27,17 @@ export function InlineDisclosure({
   label,
   value,
   children,
-  changeLabel = 'Change',
+  changeLabel,
   defaultOpen = false,
   className,
 }: InlineDisclosureProps): ReactElement {
+  const copy = useMessages('ui').inlineDisclosure;
   return (
     <details className={['inline-disclosure', className].filter(Boolean).join(' ')} open={defaultOpen}>
       <summary className="inline-disclosure__summary">
         <span className="inline-disclosure__label">{label}</span>{' '}
         <span className="inline-disclosure__value">{value}</span>{' '}
-        <span className="inline-disclosure__cta">{changeLabel} →</span>
+        <span className="inline-disclosure__cta">{changeLabel ?? copy.change} →</span>
       </summary>
       <div className="inline-disclosure__panel">{children}</div>
     </details>

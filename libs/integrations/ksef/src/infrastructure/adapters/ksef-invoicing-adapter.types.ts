@@ -10,8 +10,10 @@
  * @module libs/integrations/ksef/src/infrastructure/adapters
  * @see {@link KsefInvoicingAdapter}
  */
+import type { InvoiceAnnotations } from '@openlinker/core/invoicing';
 import type { KsefEnvironment } from '../../domain/types/ksef-connection.types';
 import type { Fa3PaymentInput } from '../fa3/domain/fa3-xml.types';
+import type { NbpExchangeRateResolverPort } from '../fx/nbp-exchange-rate.types';
 
 export interface KsefInvoicingAdapterOptions {
   /**
@@ -51,4 +53,27 @@ export interface KsefInvoicingAdapterOptions {
   environment?: KsefEnvironment;
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   now?: () => Date;
+  /**
+   * NBP exchange-rate resolver (#1581) for the art. 106e ust. 11 PLN/VAT
+   * conversion of foreign-currency invoices. Injected so specs can fake it;
+   * the factory always wires the concrete {@link NbpExchangeRateClient}. When
+   * absent (bare unit specs), foreign-currency conversion is skipped with a
+   * warning and PLN invoices are unaffected either way.
+   */
+  exchangeRateResolver?: NbpExchangeRateResolverPort;
+  /**
+   * Interim cross-border escape hatch (#1586). When `true`, issuance skips the
+   * `assertCrossBorderHandled` guard and issues even when the buyer country
+   * differs from the seller country (the operator asserts they have handled tax
+   * banding out of band). Defaults to `false` - cross-border sales are refused
+   * with `KsefCrossBorderUnsupportedException` rather than emitting a
+   * silently-wrong domestic-rate document. Resolved by the factory from
+   * `KsefConnectionConfig.allowCrossBorder`.
+   */
+  allowCrossBorder?: boolean;
+  /**
+   * The connection's seller-level annotation defaults (DEF-20), already
+   * validated. Merged UNDER a command's own `annotations`: the command wins.
+   */
+  annotationsDefault?: InvoiceAnnotations;
 }

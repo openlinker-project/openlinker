@@ -123,7 +123,7 @@ section); Erli implements a reconciliation-first subset
 `OfferCurrencyDeclarer` (both Allegro and Erli declare `'PLN'`, matching the
 PL-first / PLN-only assumptions already baked into each adapter).
 
-### `ShopProductManagerPort` (listings) — 5
+### `ShopProductManagerPort` (listings) — 6
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -131,17 +131,23 @@ PL-first / PLN-only assumptions already baked into each adapter).
 | `ShopCategoryBrowser` | Browse the shop's existing category tree (drill-down by parent) so an operator can pick a placement — the shop-side sibling of the marketplace `CategoryBrowser`. Every node is selectable (no leaf gate). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `browseCategories` | `isShopCategoryBrowser` |
 | `ShopAttributeReader` | Read the shop's store-wide global product attributes + their predefined terms so an operator can pick a structured attribute (linked on publish as `pa_*` + term ids), with free-text custom attributes as the fallback. Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `listAttributes`, `listAttributeTerms` | `isShopAttributeReader` |
 | `ShopProductStatusReader` | Read a previously-published product's live shop-side publication status for the steady-state `ShopStatusSyncService` reconcile (#1845) — the shop-side sibling of `OfferStatusReader`. Optional `getShopVariationStatus` reads a grouped/multi-variant publish's CHILD variation status scoped under its parent (a variation lives at a different shop-native resource than a standalone simple product). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `getShopProductStatus`, `getShopVariationStatus?` | `isShopProductStatusReader` |
+| `ShopProductVisibilityWriter` | Take a published product off sale (WooCommerce draft, Shoper / PrestaShop inactive) and put it back, changing visibility and nothing else (#3962). Used when a product is deleted at the master: most shop connections cannot write stock, and stock 0 still sells where backorders are allowed, so hiding is what reliably stops the sale. Advertised-without-dispatch, narrowed from the `ProductPublisher` adapter. | `setShopProductVisibility` | `isShopProductVisibilityWriter` |
 | `ShopCurrencyDeclarer` | Declare the shop's configured currency, the shop-side sibling of `OfferCurrencyDeclarer` (#3203). Kept optional rather than folded onto the base port, and ASYNC (`Promise<string \| null>`) unlike its marketplace sibling — a shop's real currency typically needs a live read (e.g. a store-settings call), so no in-tree shop adapter implements it yet. | `getDestinationCurrency` | `isShopCurrencyDeclarer` |
+| `ShopProductPriceUpdater` | Change the price of an already-published product WITHOUT re-sending the rest of it (#3505). `publishProduct` is a full upsert, so a price-only change through it would overwrite the shop's stock, title and description; `PriceChangeApplyService` uses this whenever the adapter has it and falls back to the guarded publish otherwise. Guard-only (not advertised, not in `CoreCapabilityValues`). | `updateShopProductPrice` | `isShopProductPriceUpdater` |
 
 **Adapter coverage:** WooCommerce implements `CategoryProvisioner` (write),
 `ShopCategoryBrowser` (read, #1834), `ShopAttributeReader` (read, #1835), and
 `ShopProductStatusReader` (read, #1845, including the grouped-variation-aware
-read) on its `ProductPublisher` adapter. No shop adapter implements
+read) on its `ProductPublisher` adapter. Shoper implements `CategoryProvisioner`
+(write, #3713), `ShopCategoryBrowser`, `ShopAttributeReader` and
+`ShopProductStatusReader` (read, #3806) on its `ProductPublisher` adapter.
+WooCommerce, Shoper and PrestaShop (as a publisher) implement
+`ShopProductVisibilityWriter` (#3962). No shop adapter implements
 `ShopCurrencyDeclarer` yet — a WooCommerce destination still falls back to
 `Connection.config.currency` (or an operator-set value) for the price-change
 currency-mismatch guard.
 
-### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 5
+### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 7
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -150,6 +156,8 @@ currency-mismatch guard.
 | `FulfillmentStatusReader` | Read a destination order's current fulfillment status. | `getFulfillmentStatus` | `isFulfillmentStatusReader` |
 | `DestinationOptionsReader` | List a destination's carriers / order-statuses / payment-methods for mapping. | `listCarriers` · `listOrderStatuses` · `listPaymentMethods` | `isDestinationOptionsReader` |
 | `SourceOptionsReader` | List a source's order-statuses / delivery-methods / payment-methods for mapping. | `listOrderStatuses` · `listDeliveryMethods` · `listPaymentMethods` | `isSourceOptionsReader` |
+| `OrderCreateStockEffect` | Declare that creating an order on this destination lowered the shop's own stock, so core may consume the order's holds on positions that destination masters. Probed after the create; anything but a declared `true` keeps the holds until dispatch. Shoper answers from its `shopping_update_stock_on_buy` setting; PrestaShop from the state `validateOrder` created the order in (not `PS_STOCK_MANAGEMENT`, which does not gate the decrement), refusing packs and legacy `depends_on_stock` rows; WooCommerce from the `_reduced_stock` item meta on the created order's lines (stock drops only for a paid-like status on a stock-managed product). PrestaShop and WooCommerce answer for the order the same adapter instance just created, so a skipped create answers `false`. | `lowersStockOnOrderCreate` | `isOrderCreateStockEffect` |
+| `OrderContactRefresher` | Reconcile an order the destination already holds with contact details the source revealed only later. Called best-effort on the create-skip path (the order is already mapped), never after a fresh create; a throw is warn-logged and does not change the sync result. Shoper replaces the placeholder phone it had to create the order with, but only while the shop order still carries it. Shopify fills the e-mail, phone and shipping-address phone the copy holds none of (never overwriting a value already there), and refuses a cancelled or closed copy with a named reason. | `refreshOrderContact` | `isOrderContactRefresher` |
 
 The canonical OL-owned order-lifecycle state machine (authoritative
 `updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders`) is
@@ -199,13 +207,15 @@ the [README Integrations](../README.md#integrations) section.)
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.
 
-### `FiscalizationPort` (fiscalization) — 1
+### `FiscalizationPort` (fiscalization) — 2
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `FiscalRegistrationLocator` | Resolve an `in-doubt` outcome by querying the provider for a registration already made under this `(connectionId, idempotencyKey)` pair — never a resubmit. | `locateByQuery` | `isFiscalRegistrationLocator` |
+| `ReceiptLineNameBudget` | Declare how many characters of a receipt line name, rate suffix included, the registering mechanism compares, so core holds no regime number (#3914, ADR-046 shape). | `getReceiptLineNameMaxLength` | `isReceiptLineNameBudget` |
 
-**Adapter coverage:** eparagony.pl implements `FiscalRegistrationLocator`. No
+**Adapter coverage:** eparagony.pl implements `FiscalRegistrationLocator` and
+`ReceiptLineNameBudget` (40 characters). No
 device/peripheral sub-capability exists: `print`/`fiscalize` are booleans inside
 the vendor's document payload, not separate operations, and no known adapter
 exposes fiscal-printer control as a distinct call — see
@@ -217,11 +227,12 @@ adapter, not yet implemented by any shipped one.
 See [ADR-042](./architecture/adrs/042-fiscalization-capability.md) for the
 fiscalization capability design.
 
-### `ProductMasterPort` (products) — 1
+### `ProductMasterPort` (products) — 2
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `ModifiedProductLister` | The **modified-since rung** of the master capability ladder — enumerate only the external ids whose product record changed after a caller-supplied watermark, instead of the whole catalog. | `listExternalIdsModifiedSince` | `isModifiedProductLister` |
+| `ProductTaxRateReader` | State the tax rate a product (or variant) carries in the master (ADR-063). MUST answer `unknown` rather than a `'0'` code when the read did not establish the rate; `inherited` says a variant defers to its product. Optional `readsTaxRatePerVariant` says whether the master keys tax per variant (PrestaShop does not). Guard-only, resolved by narrowing the dispatched `ProductMaster` adapter. | `readProductTaxRate`, `readsTaxRatePerVariant?` | `isProductTaxRateReader` |
 
 **Adapter coverage:** WooCommerce only (`modified_after` + `dates_are_gmt=true`,
 WC ≥ 5.8). PrestaShop deliberately does **not** declare it: a combination write

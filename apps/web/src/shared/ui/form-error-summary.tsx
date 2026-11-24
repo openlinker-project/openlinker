@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { Alert } from './alert';
+import { useMessages } from '../i18n/use-messages';
 
 interface FormErrorSummaryProps {
   errors: string[];
@@ -8,14 +9,15 @@ interface FormErrorSummaryProps {
 
 export function FormErrorSummary({
   errors,
-  title = 'Please correct the highlighted fields.',
+  title,
 }: FormErrorSummaryProps): ReactElement | null {
+  const copy = useMessages('ui').formErrorSummary;
   if (errors.length === 0) {
     return null;
   }
 
   return (
-    <Alert tone="error" title={title}>
+    <Alert tone="error" title={title ?? copy.title}>
       <ul className="form-error-summary__list">
         {errors.map((error) => (
           <li key={error}>{error}</li>

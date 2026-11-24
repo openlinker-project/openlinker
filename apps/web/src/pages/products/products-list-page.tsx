@@ -2,16 +2,18 @@
  * Products List Page - catalog cockpit (#1720)
  *
  * Operator cockpit for the master catalog, absorbing the removed /inventory
- * list's cross-catalog stock browsing. Composes (orders-cockpit template):
- * - 4 KPI tiles that double as filters (Products / Out of stock / Low stock /
- *   Listing gaps), counted via limit:1 list probes (nav-counts precedent);
- * - a filter rail: debounced search, stock chips (out/low/oversold),
- *   per-connection "Unlisted on" chips, and a source-connection select -
- *   all URL-state-backed;
- * - a server-sorted DataTable (manualSorting + sort/dir URL params) with
- *   aggregated stock, per-connection listings coverage pills, a per-row
- *   "+ Create offers" CTA, and an expandable per-variant drawer
- *   (ProductRowDetail) with a per-connection listings breakdown;
+ * list's cross-catalog stock browsing. Same filter system as the orders list
+ * (#4026, #4027):
+ * - stock tabs (All / Out of stock / Low stock / Oversold) and "Needs a look"
+ *   (listing gaps, no tax rate, no cost price), counted through
+ *   `GET /products/count` (useProductCountProbes, #2947);
+ * - a toolbar: debounced search, Source / Listings / Tax rate / Filters, the
+ *   results count and a Sort menu, with the applied filters as pills - all
+ *   URL-state-backed;
+ * - a server-sorted DataTable (sort/dir URL params, stacked sort headers) with
+ *   aggregated stock, per-connection listings coverage pills and a per-row
+ *   "+ Publish" CTA; a row click or the arrow column opens the product peek
+ *   (ProductPeek) with the per-variant listings breakdown;
  * - bulk selection of 1-100 products for batch offer creation (#739), with
  *   the capability-gated wizard launch (#1096) and write-access gate (#1704)
  *   carried over unchanged.
@@ -33,65 +35,63 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { BundleGuide } from '../../features/bundles/components/bundle-guide';
+import { GuideButton } from '../../shared/ui/guide-drawer';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
-import { Input } from '../../shared/ui/input';
-import { Chip } from '../../shared/ui/chip';
-import { Select } from '../../shared/ui/select';
-import { MetricCard } from '../../shared/ui/metric-card';
-import { KpiCard } from '../../shared/ui/kpi-card';
 import { Alert } from '../../shared/ui/alert';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
-import { useMediaQuery } from '../../shared/ui/use-media-query';
+import { StatusTabs, type StatusTab } from '../../shared/ui/status-tabs';
+import { PeekArrow } from '../../shared/ui/capped-badges';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { usePlatforms } from '../../shared/plugins';
-import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import {
-  useProductRowsQuery,
-  useProductsQuery,
-} from '../../features/products/hooks/use-products-query';
-import { useProductsTotal } from '../../features/products/hooks/use-products-total';
-import { formatPaginatedTotal } from '../../shared/hooks/use-paginated-total';
 import { ListPagination } from '../../shared/ui/list-pagination';
-import type {
-  Product,
-  ProductFilters,
-  ProductListSort,
-  ProductListSortDir,
-  ProductListSortField,
-  ProductStockFilter,
-} from '../../features/products/api/products.types';
+import { ConnectionCell, ConnectionFold } from '../../features/connections';
+import { useProductsQuery } from '../../features/products/hooks/use-products-query';
 import {
+  deriveStockStatus,
+  ProductAttentionSummary,
   ProductListSortDirValues,
   ProductListSortFieldValues,
   ProductStockFilterValues,
-} from '../../features/products/api/products.types';
-import {
-  ConnectionCell,
-  ConnectionFold,
-  readConnectionEnvironment,
-  useConnectionsQuery,
-} from '../../features/connections';
-import type { Connection, ConnectionChipChannel } from '../../features/connections';
-import { selectPublishDestinations } from '../../features/listings';
-import {
-  deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
+  useCostCoverageQuery,
+  useProductCountProbes,
+  useProductRowsQuery,
+  useProductsTotal,
+  type Product,
+  type ProductCountProbe,
+  type ProductFilters,
+  type ProductListSort,
+  type ProductListSortDir,
+  type ProductListSortField,
+  type ProductStockFilter,
 } from '../../features/products';
-import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
-import { ListingsCoveragePills } from './listings-coverage-pills';
-import { ProductRowDetail } from './product-row-detail';
+import { deriveAtpStatus } from '../../features/inventory';
+import {
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
+import { useTrackMargin } from '../../features/analytics';
+import { ProductPeek, type ProductPeekView } from './product-peek';
+import { formatPrice, useProductCells } from './use-product-cells';
+import { ProductsFilterBar } from './products-filter-bar';
+import { useSaleHoldAttentionCountQuery } from '../../features/listings';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
 import {
@@ -99,29 +99,14 @@ import {
   attentionTitle,
   useOmsAttentionQuery,
 } from '../../features/fulfillment-authority';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
+/** Opens the product peek on arrival: `/products?peek=<productId>`. */
+const PEEK_PARAM = 'peek';
 /** Maximum products an operator can bulk-list in one batch (BE-enforced ceiling). */
 export const BULK_SELECTION_CAP = 100;
-/** limit:1 probe pagination shared by the KPI tiles (nav-counts precedent). */
-const KPI_PROBE = { limit: 1 } as const;
-
-// When currency is missing, the raw amount is shown muted with a hover-reveal
-// rather than silently emitting a bare decimal — explicit ambiguity is safer.
-function formatPrice(price: number | null, currency: string | null): ReactNode {
-  if (price === null) {
-    return <span className="text-muted">-</span>;
-  }
-  if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
-  }
-  return (
-    <span className="text-muted" title="Currency unknown">
-      {price.toFixed(2)}
-    </span>
-  );
-}
 
 /** Type-guard for the `stock` URL param (widen-then-narrow, orders pattern). */
 function isStockFilter(value: string | null): value is ProductStockFilter {
@@ -141,23 +126,13 @@ function isSortDir(value: string | null): value is ProductListSortDir {
 const DEFAULT_SORT: ProductListSortField = 'createdAt';
 
 /**
- * Sortable-column wiring (orders #944 pattern). `name` and `stock` are
- * DataTable-native sortable columns (1:1 column id -> server sort key).
- * `price` / `updatedAt` / `createdAt` share one merged "money" column with
- * its own per-label sort buttons (mirrors the orders sortstack) rather than
- * three separate DataTable columns, so they are sorted through
- * `handleMergedSort` directly instead of DataTable's own click handler.
- * `sku` remains a valid server sort key with no dedicated column at all.
+ * Every sortable header is a stack of per-label sort buttons (the orders
+ * sortstack, #4026): Product + SKU, Stock, and Price / Updated / Created. A
+ * click on the active key flips it; another key starts at its default.
  */
-const SORTABLE_COLUMN_IDS: readonly ProductListSortField[] = ['name', 'stock'];
-
-/** Sort keys rendered as stacked buttons in the merged Price/Updated/Created header. */
+const PRODUCT_SORT_FIELDS: readonly ProductListSortField[] = ['name', 'sku'];
+const STOCK_SORT_FIELDS: readonly ProductListSortField[] = ['stock'];
 const MONEY_SORT_FIELDS: readonly ProductListSortField[] = ['price', 'updatedAt', 'createdAt'];
-const MONEY_SORT_LABELS: Record<'price' | 'updatedAt' | 'createdAt', string> = {
-  price: 'Price',
-  updatedAt: 'Updated',
-  createdAt: 'Created',
-};
 
 /** First-click direction per sort key; re-clicking the active column flips it. */
 const DEFAULT_DIR: Record<ProductListSortField, ProductListSortDir> = {
@@ -169,41 +144,40 @@ const DEFAULT_DIR: Record<ProductListSortField, ProductListSortDir> = {
   stock: 'asc',
 };
 
-const STOCK_CHIPS: readonly { value: ProductStockFilter; label: string }[] = [
-  { value: 'out', label: 'Out of stock' },
-  { value: 'low', label: 'Low stock' },
-  { value: 'oversold', label: 'Oversold' },
-];
 
-/** Sort-field options for the collapsed-panel Sort control (narrow viewports). */
-const SORT_OPTIONS: readonly { value: ProductListSortField; label: string }[] = [
-  { value: 'name', label: 'Name' },
-  { value: 'sku', label: 'SKU' },
-  { value: 'price', label: 'Price' },
-  { value: 'stock', label: 'Stock' },
-  { value: 'updatedAt', label: 'Updated' },
-  { value: 'createdAt', label: 'Created' },
-];
 
 export function ProductsListPage(): ReactElement {
+  return (
+    <BundleGuide>
+      <ProductsListPageBody />
+    </BundleGuide>
+  );
+}
+
+function ProductsListPageBody(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const platforms = usePlatforms();
+  const copy = useMessages('products').productsListPage;
+  const plural = usePlural();
+  const format = useFormat();
 
   // ── URL state ──────────────────────────────────────────────────────────
   const urlSearch = searchParams.get('search') ?? '';
   const rawStock = searchParams.get('stock');
   const stock = isStockFilter(rawStock) ? rawStock : undefined;
-  // #2255 — URL-synced like every other filter here, so the tile, the table and
-  // a shared link cannot disagree about what is being shown.
-  // Per SESSION, not persisted: a permanent dismissal removes the only route to
-  // the remedy with no way back (#2255).
-  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
   // #2356 — one read for the page. A failed read costs the notice, never the
   // list: the state is supplementary and losing a settings read must not cost
   // the operator their catalogue.
   const omsAttention = useOmsAttentionQuery();
   const availabilityUnknown = omsAttention.forReason('availability-unknown');
+  const saleHoldCopy = useMessages('listings').salesChannels;
+  const saleHoldAttention = useSaleHoldAttentionCountQuery();
+
+  // #3588 - margin reminders. Off means hidden, never degraded: cost snapshots
+  // keep being written, only the views and nudges go quiet.
+  const trackMargin = useTrackMargin();
+  const costCoverage = useCostCoverageQuery({ enabled: trackMargin });
 
   const rawTaxRateState = searchParams.get('taxRateState');
   const taxRateState =
@@ -220,6 +194,17 @@ export function ProductsListPage(): ReactElement {
   // the master (a "phantom" row, #1689). Default off so an install's
   // existing view is unchanged until the operator asks for it.
   const hideFullyStale = searchParams.get('hideStale') === '1';
+  // #3624 - the "Bundles" view of the same list, URL-synced like every filter here.
+  const rawBundles = searchParams.get('bundles');
+  // `true` is the pre-"Without bundles" spelling of `only`; old links keep working.
+  const bundleView: 'only' | 'exclude' | undefined =
+    rawBundles === 'only' || rawBundles === 'true'
+      ? 'only'
+      : rawBundles === 'exclude'
+        ? 'exclude'
+        : undefined;
+  const bundleCopy = useMessages('bundles');
+  const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
   const rawSort = searchParams.get('sort');
   const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;
   const rawDir = searchParams.get('dir');
@@ -229,12 +214,6 @@ export function ProductsListPage(): ReactElement {
   const [searchInput, setSearchInput] = useState(urlSearch);
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
 
-  // Narrow viewports collapse the inline filter rail into a "Filters" toggle
-  // + panel (same media-query mechanic as DataTable's card switch, at the
-  // 1024px boundary). Panel visibility is local UI state, collapsed by
-  // default; the filters themselves stay URL state either way.
-  const isNarrow = useMediaQuery('(max-width: 1023.98px)');
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Selection state is component-local. It is *not* mirrored into URL params
   // during selection (the URL would balloon on every checkbox toggle, and the
@@ -242,22 +221,9 @@ export function ProductsListPage(): ReactElement {
   // link"). On submit click, the variant IDs are serialised into the wizard
   // route so the destination has the full list.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // Mobile card disclosure (#1720): the variant/stock detail is heavy (its own
-  // queries + a dense table), so it stays collapsed per-card until toggled -
-  // rendering every card's detail open by default made the mobile list
-  // unusable.
-  const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
-  const toggleCardExpanded = useCallback((productId: string) => {
-    setExpandedCardIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(productId)) {
-        next.delete(productId);
-      } else {
-        next.add(productId);
-      }
-      return next;
-    });
-  }, []);
+  // The product the peek shows (#4027); local UI state like the selection.
+  // `?peek=<id>` opens it on arrival - an order line links here (#4026).
+  const [peekId, setPeekId] = useState<string | null>(() => searchParams.get(PEEK_PARAM));
   const [pickerOpen, setPickerOpen] = useState(false);
   // Set when the per-row "+ Create offers" CTA opened the picker for a single
   // product (instead of the bulk selection).
@@ -266,24 +232,25 @@ export function ProductsListPage(): ReactElement {
   // Capability-gated create-offers action (#1096): select target connections by
   // the `OfferManager` capability — never a literal platformType. Display names
   // resolve through the plugin registry.
-  const connectionsQuery = useConnectionsQuery();
+  const {
+    connectionsQuery,
+    offerManagerConnections,
+    publishDestinations,
+    hasShopDestination,
+    connectionById,
+    originChipChannel,
+    hasListingGap,
+    renderStockCell,
+    renderCoveragePills,
+    renderStalenessBadge,
+    buildPeekView,
+  } = useProductCells();
   // The bulk "Create offers" CTA opens the bulk wizard whose final submit is a
   // `listings:write` action; gate the CTA on `write.visible` so a genuinely
   // unauthorized (non-demo) viewer never sees it, while a demo viewer sees it
   // enabled and hits the gated confirm step (#1704).
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
-  const offerManagerConnections = useMemo<Connection[]>(
-    () =>
-      (connectionsQuery.data ?? [])
-        // OfferCreator (not coarse OfferManager, #1498): a quantity-only
-        // OfferManager (WooCommerce stock write-back) must not surface in
-        // offer-creation flows.
-        .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [connectionsQuery.data],
-  );
   const offerCreatorIds = useMemo(
     () => offerManagerConnections.map((c) => c.id),
     [offerManagerConnections],
@@ -300,60 +267,12 @@ export function ProductsListPage(): ReactElement {
     [connectionsQuery.data],
   );
 
-  // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
-  // online shops (ProductPublisher), capability-driven. Drives the publish
-  // CTAs + picker. The gaps KPI / "Unlisted on" chips / per-row gap detection
-  // stay keyed to the marketplace `offerManagerConnections` subset above -
-  // "gap" is a narrower, offer-specific concept. The coverage PILLS, however,
-  // answer "is this published anywhere" and must include shop destinations
-  // too (#1838 follow-up fix - a product published to a WooCommerce
-  // connection previously rendered no pill at all).
-  const publishDestinations = useMemo(
-    () => selectPublishDestinations(connectionsQuery.data ?? []),
-    [connectionsQuery.data],
-  );
-  const hasShopDestination = useMemo(
-    () => publishDestinations.some((d) => d.kind === 'shop'),
-    [publishDestinations],
-  );
-  // Coverage-pill connection set (#1838 follow-up fix): every active publish
-  // destination (marketplace OR shop) - the same union `publishDestinations`
-  // already resolves, since a connection carries at most one listing-mapping
-  // kind (#1837) so it can never double-count here either.
-  const coveragePillConnections = useMemo(
-    () => publishDestinations.map((d) => d.connection),
-    [publishDestinations],
-  );
 
   // Source select lists ALL active connections (any capability); the cockpit
   // source axis is about provenance, not offer creation.
   const activeConnections = useMemo(
     () => (connectionsQuery.data ?? []).filter((c) => c.status === 'active'),
     [connectionsQuery.data],
-  );
-  // One batched read, indexed once — the Source column's `ConnectionCell` must
-  // never cost a request per row (#1996). A whole `Connection` structurally
-  // satisfies `ConnectionCellFacts` (`{ name, status }`), so this existing map
-  // feeds the cell directly rather than growing a second, parallel index.
-  const connectionById = useMemo(() => {
-    const map = new Map<string, Connection>();
-    (connectionsQuery.data ?? []).forEach((c) => map.set(c.id, c));
-    return map;
-  }, [connectionsQuery.data]);
-
-  // The origin chip's channel (#3670): the registry's short label for the face,
-  // and the connection's environment so a sandbox source never reads the same
-  // as its production twin. The platformType comes off the product's own
-  // external-id row, so the chip renders even while the connection itself is
-  // still unresolved.
-  const originChipChannel = useCallback(
-    (origin: { connectionId: string; platformType: string }): ConnectionChipChannel => ({
-      platformType: origin.platformType,
-      label: resolvePlatformLabel(platforms, origin.platformType),
-      shortLabel: resolvePlatformShortLabel(platforms, origin.platformType),
-      environment: readConnectionEnvironment(connectionById.get(origin.connectionId)?.config),
-    }),
-    [platforms, connectionById],
   );
 
   // ── Server queries ─────────────────────────────────────────────────────
@@ -364,6 +283,7 @@ export function ProductsListPage(): ReactElement {
     unlistedOn,
     connectionId: sourceConnectionId,
     hideFullyStale: hideFullyStale || undefined,
+    bundles: bundleView,
   };
   const sort: ProductListSort = { field: sortField, dir: sortDir };
   const pagination = { limit: PAGE_SIZE, offset };
@@ -372,20 +292,6 @@ export function ProductsListPage(): ReactElement {
   // early under this list's name / SKU `ILIKE` search.
   const query = useProductRowsQuery(filters, pagination, sort);
   const totalStage = useProductsTotal(filters, query.data);
-  // `20+` until the count lands (#2947), never `0` - the rows on screen are
-  // evidence for at least that many, and `?? 0` would turn an unloaded page
-  // into a claim. These chips render ABOVE the loading branch, so on a deep
-  // link like `/products?offset=100` an ungated floor would read "All 100+"
-  // before a single row exists - a positive claim computed from a URL.
-  //
-  // A KNOWN total needs no page at all - `formatPaginatedTotal` ignores the
-  // floor when it has a real number - so gating that branch on `query.data`
-  // blanked the chip to `All —` for a round trip on a pure re-sort, where the
-  // count key is unchanged and the answer is already cached (#2957 review, S2).
-  const totalLabel = formatPaginatedTotal(
-    totalStage.total,
-    query.data ? offset + query.data.items.length : null
-  );
   const items = query.data?.items ?? [];
 
   // Fire once per successful list load, not on every filter/page refetch —
@@ -404,31 +310,67 @@ export function ProductsListPage(): ReactElement {
     }
   }, [totalStage.total]);
 
-  // KPI tile counts — four cheap limit:1 probes with distinct query keys
-  // (nav-counts precedent). The gaps probe is disabled with zero OfferCreator
-  // connections (its filter would be meaningless).
-  const allProbe = useProductsQuery(undefined, KPI_PROBE);
-  // #2255 — two probes, because the two states drive different remedies and
-  // must never be added together. `missing` is the tile; `not-checked` is the
-  // sync suggestion, and it is the whole catalogue on day one.
-  const noRateProbe = useProductsQuery({ taxRateState: 'missing' }, KPI_PROBE, undefined, {
-    enabled: hasProductMaster,
-  });
-  const notCheckedProbe = useProductsQuery({ taxRateState: 'not-checked' }, KPI_PROBE, undefined, {
-    enabled: hasProductMaster,
-  });
-  const outProbe = useProductsQuery({ stock: 'out' }, KPI_PROBE);
-  const lowProbe = useProductsQuery({ stock: 'low' }, KPI_PROBE);
+  // KPI tile counts - one count per filter set through `GET /products/count`
+  // (#2947), never a `limit: 1` list read: the count is the expensive half and
+  // the rows would be thrown away. The "All products" probe shares its cache
+  // entry with the unfiltered results count above. The gaps probe is disabled
+  // with zero OfferCreator connections (its filter would be meaningless).
   const gapsFilters = useMemo<ProductFilters>(
     () => ({ unlistedOn: offerCreatorIds }),
     [offerCreatorIds],
   );
-  const gapsProbe = useProductsQuery(gapsFilters, KPI_PROBE, undefined, {
-    enabled: offerCreatorIds.length > 0,
-  });
+  // #2255 - two tax-rate probes, because the two states drive different
+  // remedies and must never be added together. `missing` is the tile;
+  // `not-checked` is the sync suggestion, and it is the whole catalogue on
+  // day one. "Hidden at source" = all products minus what `hideFullyStale` keeps.
+  const kpiProbes = useMemo<ProductCountProbe[]>(
+    () => [
+      { filters: undefined },
+      { filters: { taxRateState: 'missing' }, enabled: hasProductMaster },
+      { filters: { taxRateState: 'not-checked' }, enabled: hasProductMaster },
+      { filters: { stock: 'out' } },
+      { filters: { stock: 'low' } },
+      { filters: { stock: 'oversold' } },
+      { filters: { hideFullyStale: true } },
+      { filters: gapsFilters, enabled: offerCreatorIds.length > 0 },
+    ],
+    [hasProductMaster, gapsFilters, offerCreatorIds.length],
+  );
+  const [allTotal, taxMissingCount, taxNotCheckedCount, outCount, lowCount, oversoldCount, keptTotal, gapsCount] =
+    useProductCountProbes(kpiProbes);
 
-  const probeValue = (total: number | undefined): string =>
-    total === undefined ? '-' : String(total);
+  const sourceProbes = useMemo<ProductCountProbe[]>(
+    () => activeConnections.map((c) => ({ filters: { connectionId: c.id } })),
+    [activeConnections],
+  );
+  const sourceProbeCounts = useProductCountProbes(sourceProbes);
+  const gapProbes = useMemo<ProductCountProbe[]>(
+    () => offerManagerConnections.map((c) => ({ filters: { unlistedOn: [c.id] } })),
+    [offerManagerConnections],
+  );
+  const gapProbeCounts = useProductCountProbes(gapProbes);
+  const sourceCounts = useMemo(
+    () => Object.fromEntries(activeConnections.map((c, i) => [c.id, sourceProbeCounts[i]])),
+    [activeConnections, sourceProbeCounts],
+  );
+  const gapConnections = useMemo(
+    () =>
+      offerManagerConnections.map((c, i) => ({
+        id: c.id,
+        name: c.name,
+        platform: resolvePlatformLabel(platforms, c),
+        count: gapProbeCounts[i],
+      })),
+    [offerManagerConnections, gapProbeCounts, platforms],
+  );
+  const staleCount =
+    allTotal !== undefined && keptTotal !== undefined ? Math.max(allTotal - keptTotal, 0) : undefined;
+  const stockCounts = {
+    all: allTotal,
+    out: outCount,
+    low: lowCount,
+    oversold: oversoldCount,
+  };
 
   // ── URL param setters ──────────────────────────────────────────────────
   /** Set/clear one filter param and reset paging (orders pattern). */
@@ -448,32 +390,6 @@ export function ProductsListPage(): ReactElement {
     [setSearchParams],
   );
 
-  const toggleStock = useCallback(
-    (value: ProductStockFilter): void => {
-      setFilterParam('stock', stock === value ? '' : value);
-    },
-    [setFilterParam, stock],
-  );
-
-  /** #2255 — the tax-rate tile's filter, same present-only shape as its siblings. */
-  const toggleTaxRateState = useCallback(
-    (value: 'missing' | 'not-checked' | 'known'): void => {
-      setFilterParam('taxRateState', taxRateState === value ? '' : value);
-    },
-    [setFilterParam, taxRateState],
-  );
-
-  const toggleUnlistedOn = useCallback(
-    (csv: string): void => {
-      setFilterParam('unlistedOn', unlistedOnParam === csv ? '' : csv);
-    },
-    [setFilterParam, unlistedOnParam],
-  );
-
-  /** #2447 — the "Hide deleted at source" toggle. */
-  const toggleHideStale = useCallback((): void => {
-    setFilterParam('hideStale', hideFullyStale ? '' : '1');
-  }, [setFilterParam, hideFullyStale]);
 
   const handleSearchChange = useCallback(
     (value: string): void => {
@@ -507,7 +423,7 @@ export function ProductsListPage(): ReactElement {
     [setSearchParams],
   );
 
-  /** Explicit sort write for the collapsed-panel Sort control. */
+  /** Explicit sort write (the Sort menu and the header sort buttons). */
   const setSort = useCallback(
     (field: ProductListSortField, dir: ProductListSortDir): void => {
       setSearchParams((prev) => {
@@ -535,29 +451,28 @@ export function ProductsListPage(): ReactElement {
   );
 
   const anyFilterActive = Boolean(
-    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale,
+    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || taxRateState || bundleView !== undefined,
   );
-  // Count badge on the narrow-viewport "Filters" toggle - non-default filter
-  // axes only (search stays visible outside the panel).
-  const activeFilterCount =
-    (stock ? 1 : 0) +
-    (unlistedOnParam ? 1 : 0) +
-    (sourceConnectionId ? 1 : 0) +
-    (hideFullyStale ? 1 : 0);
 
-  const clearFilters = useCallback((): void => {
-    setSearchInput('');
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('search');
-      next.delete('stock');
-      next.delete('unlistedOn');
-      next.delete('connectionId');
-      next.delete('hideStale');
-      next.delete('offset');
-      return next;
-    });
-  }, [setSearchParams]);
+  /** Clears every filter; `keepStock` leaves the stock tab alone (the pills' Clear all). */
+  const clearFilters = useCallback(
+    (keepStock = false): void => {
+      setSearchInput('');
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('search');
+        if (!keepStock) next.delete('stock');
+        next.delete('unlistedOn');
+        next.delete('connectionId');
+        next.delete('hideStale');
+        next.delete('bundles');
+        next.delete('taxRateState');
+        next.delete('offset');
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
 
   // ── Bulk selection (#739) ──────────────────────────────────────────────
   const handleToggleRow = useCallback((productId: string) => {
@@ -675,24 +590,6 @@ export function ProductsListPage(): ReactElement {
 
   const atCap = selectedIds.size >= BULK_SELECTION_CAP;
 
-  /**
-   * Row gap detection for the per-row CTA: any active OfferCreator connection
-   * covering fewer variants than the product has. Requires the BE-enriched
-   * `variantCount`; rows without it (older payloads) render no CTA.
-   */
-  const hasListingGap = useCallback(
-    (product: Product): boolean => {
-      const variantCount = product.variantCount ?? 0;
-      if (variantCount === 0 || offerManagerConnections.length === 0) return false;
-      const listedByConnection = new Map(
-        (product.listingsCoverage ?? []).map((c) => [c.connectionId, c.listedVariants]),
-      );
-      return offerManagerConnections.some(
-        (c) => (listedByConnection.get(c.id) ?? 0) < variantCount,
-      );
-    },
-    [offerManagerConnections],
-  );
 
   /** Shared by the desktop select column and mobile card select slot. */
   const renderSelectCheckbox = useCallback(
@@ -708,77 +605,60 @@ export function ProductsListPage(): ReactElement {
           disabled={disabled}
           ariaLabel={
             checked
-              ? `Unselect ${product.name}`
+              ? interpolate(copy.row.unselect, { name: product.name })
               : disabled
-                ? `Maximum ${BULK_SELECTION_CAP} products per batch reached`
-                : `Select ${product.name}`
+                ? interpolate(copy.row.capReached, { max: format.number(BULK_SELECTION_CAP) })
+                : interpolate(copy.row.select, { name: product.name })
           }
-          tooltip={disabled ? `Max ${BULK_SELECTION_CAP} per batch` : undefined}
+          tooltip={
+            disabled
+              ? interpolate(copy.row.capTooltip, { max: format.number(BULK_SELECTION_CAP) })
+              : undefined
+          }
         />
       );
     },
-    [selectedIds, atCap, handleToggleRow],
+    [selectedIds, atCap, handleToggleRow, copy, format],
   );
 
-  const renderStockCell = useCallback((product: Product): ReactNode => {
-    if (product.totalAvailable === undefined) {
-      return <span className="text-muted">-</span>;
-    }
-    const status = deriveStockStatus(product.totalAvailable);
-    return (
-      <span className="products-cell-stack">
-        <span className="products-stock-value mono tabular">{product.totalAvailable}</span>
-        <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-          {STOCK_STATUS_LABEL[status]}
-        </StatusBadge>
-        {(product.totalReserved ?? 0) > 0 ? (
-          <span className="text-muted products-cell-sub tabular">
-            reserved {product.totalReserved}
-          </span>
-        ) : null}
+
+  /** A header stack of per-label sort buttons; the active key is marked. */
+  const renderSortStack = useCallback(
+    (fields: readonly ProductListSortField[], align: 'left' | 'right' = 'left'): ReactElement => (
+      <span className={align === 'right' ? 'sortstack' : 'sortstack sortstack--left'}>
+        {fields.map((field) => (
+          <button
+            key={field}
+            type="button"
+            className={`sortbtn${sortField === field ? ' sortbtn--active' : ''}`}
+            aria-pressed={sortField === field}
+            onClick={() => {
+              handleMergedSort(field);
+            }}
+          >
+            {field === 'name' ? copy.columns.product : field === 'stock' ? copy.columns.stock : copy.sortOptions[field]}
+            <span className="sortbtn__ind" aria-hidden="true">
+              {sortField === field ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+            </span>
+          </button>
+        ))}
       </span>
-    );
-  }, []);
-
-  const renderCoveragePills = useCallback(
-    (product: Product): ReactNode => (
-      <ListingsCoveragePills
-        coverage={product.listingsCoverage}
-        variantCount={product.variantCount ?? 0}
-        connections={coveragePillConnections}
-      />
     ),
-    [coveragePillConnections],
+    [sortField, sortDir, handleMergedSort, copy],
   );
-
-  /**
-   * #2447 — deleted-at-source flag, shared by the desktop row and the mobile
-   * card meta. "some" (warning) vs "all" (error) so a partially-live
-   * multi-variant product doesn't read as fully gone.
-   */
-  const renderStalenessBadge = useCallback((product: Product): ReactNode => {
-    const staleness = deriveProductStaleness(product);
-    if (!staleness) return null;
-    return (
-      <StatusBadge tone={staleness.tone} withDot compact>
-        {staleness.label}
-      </StatusBadge>
-    );
-  }, []);
 
   const columns: DataTableColumn<Product>[] = useMemo(
     () => [
       {
         id: 'select',
+        width: '2.5rem',
         // Header rendered manually for indeterminate state.
         header: (
           <CheckboxCell
             state={headerCheckboxState}
             onToggle={handleToggleHeader}
             ariaLabel={
-              headerCheckboxState === 'all'
-                ? 'Unselect all visible products'
-                : 'Select all visible products'
+              headerCheckboxState === 'all' ? copy.columns.unselectAll : copy.columns.selectAll
             }
           />
         ),
@@ -787,23 +667,49 @@ export function ProductsListPage(): ReactElement {
       },
       {
         id: 'name',
+        width: '31%',
         // #2538 - Thumbnail, name and a meta line.
         lines: 2,
-        header: 'Product',
-        sortable: true,
+        header: renderSortStack(PRODUCT_SORT_FIELDS),
         cell: (product): ReactNode => {
           const origin = product.externalIds?.[0];
           return (
             <span className="product-row">
-              <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              {product.bundle && !product.images?.[0] ? (
+                <span className="cx-mosaic" aria-hidden="true">
+                  <i className="t-a" />
+                  <i className="t-d" />
+                  <i className="t-b" />
+                  <i className="t-c" />
+                </span>
+              ) : (
+                <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              )}
               <span className="products-cell-stack">
                 <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-                  <Link to={product.id} className="product-row__name product-row__name--link">
+                  <Link
+                    to={product.id}
+                    className="product-row__name product-row__name--link"
+                    data-testid={`stock-list-open-${product.sku ?? product.id}`}
+                  >
                     {product.name}
                   </Link>
+                  {product.bundle ? (
+                    <span className="cx-tag">
+                      <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                      </svg>
+                      {bundleCopy.list.bundleMark}
+                    </span>
+                  ) : null}
+                  {(product.usedInBundlesCount ?? 0) > 0 ? (
+                    <span className="cx-tag cx-tag--quiet" data-testid={`product-used-in-bundles-${product.sku ?? product.id}`}>
+                      {plural(product.usedInBundlesCount ?? 0, bundleCopy.list.usedInBundles)}
+                    </span>
+                  ) : null}
                   {(product.variantCount ?? 0) > 1 ? (
                     <StatusBadge tone="neutral" compact>
-                      {product.variantCount} variants
+                      {plural(product.variantCount ?? 0, copy.row.variantsBadge)}
                     </StatusBadge>
                   ) : null}
                   {renderStalenessBadge(product)}
@@ -821,9 +727,30 @@ export function ProductsListPage(): ReactElement {
                     resolves to a single variant. */}
                 {product.sku ? (
                   <span className="text-muted products-cell-sub">
-                    SKU:{' '}
-                    <span className="mono-text" title={product.sku}>
-                      {product.sku}
+                    {renderRich(
+                      copy.row.sku,
+                      {
+                        value: (text: string) => (
+                          <span className="mono-text" title={text}>
+                            {text}
+                          </span>
+                        ),
+                      },
+                      { sku: product.sku },
+                    )}
+                  </span>
+                ) : null}
+                {/* #3624 - a bundle row says what limits it; its composition opens
+                    with the row (ProductRowDetail). */}
+                {product.bundle?.limitedBy ? (
+                  <span
+                    className="products-cell-sub"
+                    data-testid={`bundle-list-row-${product.sku ?? product.id}`}
+                  >
+                    <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
+                      {interpolate(bundleCopy.list.limitedBy, {
+                        name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
+                      })}
                     </span>
                   </span>
                 ) : null}
@@ -847,9 +774,10 @@ export function ProductsListPage(): ReactElement {
       },
       {
         id: 'source',
+        width: '14%',
         // #2538 - ConnectionCell stacks the name over its status.
         lines: 2,
-        header: 'Source',
+        header: copy.columns.source,
         // Stays 1024 (#1996): lowering it to 768 was rejected because it keeps
         // the column only behind horizontal scroll. The tablet relocation of
         // this fact into the Product cell shipped as #2094 (S8).
@@ -876,13 +804,14 @@ export function ProductsListPage(): ReactElement {
       },
       {
         id: 'stock',
-        header: 'Stock',
-        sortable: true,
+        width: '14%',
+        header: renderSortStack(STOCK_SORT_FIELDS),
         cell: (product) => renderStockCell(product),
       },
       {
         id: 'listings',
-        header: 'Listings',
+        width: '19%',
+        header: copy.columns.listings,
         cell: (product) => (
           <span className="products-cell-stack">
             {renderCoveragePills(product)}
@@ -894,7 +823,7 @@ export function ProductsListPage(): ReactElement {
                   handleCreateOffersForProduct(product.id);
                 }}
               >
-                + Publish
+                {copy.row.publish}
               </Button>
             ) : null}
           </span>
@@ -902,31 +831,16 @@ export function ProductsListPage(): ReactElement {
       },
       {
         id: 'money',
-        header: (
-          <span className="sortstack">
-            {MONEY_SORT_FIELDS.map((field) => (
-              <button
-                key={field}
-                type="button"
-                className={`sortbtn${sortField === field ? ' sortbtn--active' : ''}`}
-                onClick={() => { handleMergedSort(field); }}
-              >
-                {MONEY_SORT_LABELS[field as 'price' | 'updatedAt' | 'createdAt']}
-                <span className="sortbtn__ind" aria-hidden="true">
-                  {sortField === field ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
-                </span>
-              </button>
-            ))}
-          </span>
-        ),
+        width: '14%',
+        header: renderSortStack(MONEY_SORT_FIELDS, 'right'),
         align: 'right',
         cell: (product) => (
           <span className="products-cell-stack products-cell-stack--end">
             <span className="mono tabular products-stock-value">
-              {formatPrice(product.price, product.currency)}
+              {formatPrice(product.price, product.currency, copy.price.currencyUnknown, format)}
             </span>
             <span className="products-cell-sub products-cell-sub--date mono tabular">
-              upd. <TimeDisplay iso={product.updatedAt} format="date" />
+              {copy.row.updatedPrefix} <TimeDisplay iso={product.updatedAt} format="date" />
             </span>
             <span className="products-cell-sub products-cell-sub--date mono tabular">
               <TimeDisplay iso={product.createdAt} format="date" />
@@ -935,8 +849,23 @@ export function ProductsListPage(): ReactElement {
         ),
         hideBelow: 480,
       },
+      {
+        id: 'peek',
+        width: '3rem',
+        // #4027 - the arrow says the row opens a panel from the right.
+        header: <span className="sr-only">{copy.peek.details}</span>,
+        cell: (product) => (
+          <PeekArrow
+            label={interpolate(copy.peek.detailsAria, { name: product.name })}
+            onOpen={() => {
+              setPeekId(product.id);
+            }}
+          />
+        ),
+      },
     ],
     [
+      bundleCopy,
       headerCheckboxState,
       handleToggleHeader,
       renderSelectCheckbox,
@@ -950,152 +879,137 @@ export function ProductsListPage(): ReactElement {
       hasListingGap,
       hasShopDestination,
       handleCreateOffersForProduct,
+      copy,
+      format,
+      plural,
+      renderSortStack,
     ],
   );
 
 
-  // Controlled (server-side) sort state for the DataTable: the active sort
-  // key maps 1:1 to its column id when that column is visible/sortable; the
-  // default createdAt ordering highlights no header.
-  const sortingState = (SORTABLE_COLUMN_IDS as readonly string[]).includes(sortField)
-    ? [{ id: sortField, desc: sortDir === 'desc' }]
-    : [];
+  // ── Peek (#4027) ───────────────────────────────────────────────────────
+  const peekIndex = peekId ? items.findIndex((p) => p.id === peekId) : -1;
+  // A deep-linked product that is not on this page is read on its own, in the
+  // same list shape, so the peek shows the same cells it would from a row.
+  const peekLookup = useProductsQuery(
+    peekId ? { productId: peekId } : undefined,
+    { limit: 1, offset: 0 },
+    undefined,
+    { enabled: Boolean(peekId) && peekIndex < 0 && !query.isLoading },
+  );
+  const peekProduct =
+    peekIndex >= 0 ? items[peekIndex] : peekId ? peekLookup.data?.items.find((p) => p.id === peekId) : undefined;
+  const navigatePeek = useCallback(
+    (step: -1 | 1): void => {
+      const next = items[peekIndex + step];
+      if (next) setPeekId(next.id);
+    },
+    [items, peekIndex],
+  );
+  const peekView: ProductPeekView | null = peekProduct
+    ? buildPeekView(peekProduct, {
+        onPublish: write.visible ? handleCreateOffersForProduct : undefined,
+        canCreateOffers: write.visible,
+      })
+    : null;
 
-  const gapsActive = unlistedOnParam !== '' && unlistedOnParam === gapsCsv;
-  const noKpiFilterActive = stock === undefined && unlistedOnParam === '';
+  const resultCount =
+    totalStage.total !== null
+      ? { value: totalStage.total, atLeast: false }
+      : query.data
+        ? { value: offset + query.data.items.length, atLeast: true }
+        : null;
+
+  const stockTabs: StatusTab<ProductStockFilter>[] = [
+    { key: null, label: copy.listFilters.allProducts, count: stockCounts.all },
+    { key: 'out', label: copy.filters.stockChips.out, tone: 'error', count: stockCounts.out },
+    { key: 'low', label: copy.filters.stockChips.low, tone: 'warning', count: stockCounts.low },
+    { key: 'oversold', label: copy.filters.stockChips.oversold, tone: 'error', count: stockCounts.oversold },
+  ];
+  const costGap =
+    !trackMargin || (costCoverage.data && costCoverage.data.soldVariantsWithoutCost <= 0)
+      ? null
+      : costCoverage.data
+        ? {
+            count: costCoverage.data.soldVariantsWithoutCost,
+            days: costCoverage.data.days,
+            netSales: costCoverage.data.netSalesWithoutCost,
+            currency: costCoverage.data.currency,
+          }
+        : undefined;
 
   return (
     <PageLayout
-      eyebrow="Operations"
-      title="Products"
-      description="Catalog cockpit — search, stock health, and per-channel listings coverage. Select up to 100 products to bulk-create offers."
-    >
-      {/* KPI tiles double as filters (orders-segments mechanic). */}
-      <div className="ds-grid ds-grid--4 products-segments">
-        <button
-          type="button"
-          className={['card-button-reset', 'products-segment', noKpiFilterActive ? 'products-segment--active' : '']
-            .filter(Boolean)
-            .join(' ')}
-          aria-pressed={noKpiFilterActive}
-          onClick={() => {
-            setSearchParams((prev) => {
-              const p = new URLSearchParams(prev);
-              p.delete('stock');
-              p.delete('unlistedOn');
-              p.delete('offset');
-              return p;
-            });
-          }}
-        >
-          <MetricCard label="Products" value={probeValue(allProbe.data?.total)} />
-        </button>
-        <button
-          type="button"
-          className={['card-button-reset', 'products-segment', stock === 'out' ? 'products-segment--active' : '']
-            .filter(Boolean)
-            .join(' ')}
-          aria-pressed={stock === 'out'}
-          onClick={() => {
-            toggleStock('out');
-          }}
-        >
-          <MetricCard
-            label="Out of stock"
-            tone={(outProbe.data?.total ?? 0) > 0 ? 'error' : 'neutral'}
-            value={probeValue(outProbe.data?.total)}
-          />
-        </button>
-        <button
-          type="button"
-          className={['card-button-reset', 'products-segment', stock === 'low' ? 'products-segment--active' : '']
-            .filter(Boolean)
-            .join(' ')}
-          aria-pressed={stock === 'low'}
-          onClick={() => {
-            toggleStock('low');
-          }}
-        >
-          <MetricCard
-            label="Low stock"
-            tone={(lowProbe.data?.total ?? 0) > 0 ? 'warning' : 'neutral'}
-            value={probeValue(lowProbe.data?.total)}
-          />
-        </button>
-        {offerCreatorIds.length > 0 ? (
-          <button
-            type="button"
-            className={['card-button-reset', 'products-segment', gapsActive ? 'products-segment--active' : '']
-              .filter(Boolean)
-              .join(' ')}
-            aria-pressed={gapsActive}
-            onClick={() => {
-              toggleUnlistedOn(gapsCsv);
-            }}
-          >
-            <MetricCard
-              label="Listing gaps"
-              tone={(gapsProbe.data?.total ?? 0) > 0 ? 'info' : 'neutral'}
-              value={probeValue(gapsProbe.data?.total)}
-            />
-          </button>
-        ) : null}
-        {/* #2255 — `KpiCard`, not `MetricCard`: the latter is @deprecated with
-            "no new callers should be added". The tone is COMPUTED, so a healthy
-            install shows no colour at all - hardcoding `error` would paint a red
-            border around a zero. The "Not checked yet" tile is deliberately not
-            built: it reads zero forever after week one, costs a permanent grid
-            slot for a one-off migration, and would print the same number twice
-            forty pixels from the suggestion below. */}
-        {hasProductMaster ? (
-          <button
-            type="button"
-            className={[
-              'card-button-reset',
-              'products-segment',
-              taxRateState === 'missing' ? 'products-segment--active' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            aria-pressed={taxRateState === 'missing'}
-            onClick={() => {
-              toggleTaxRateState('missing');
-            }}
-          >
-            <KpiCard
-              label="No tax rate"
-              tone={(noRateProbe.data?.total ?? 0) > 0 ? 'error' : 'neutral'}
-              value={probeValue(noRateProbe.data?.total)}
-            />
-          </button>
-        ) : null}
-      </div>
-
-      {/* #2255 — the sync suggestion. Four states, not one: idle, running,
-          no-shop-connected, and dismissed. Dismissal is per SESSION, because a
-          permanent one removes the only route to the remedy with no way back.
-          And it never claims a complete result - syncing is per connection while
-          "not checked" is per product, so a product mapped on two shops can be
-          half checked. */}
-      {hasProductMaster && !suggestionDismissed && (notCheckedProbe.data?.total ?? 0) > 0 ? (
-        <Alert
-          tone="info"
-          title={`${String(notCheckedProbe.data?.total ?? 0)} products have never been checked for a tax rate`}
-          action={
-            <Button
-              tone="ghost"
-              onClick={() => {
-                setSuggestionDismissed(true);
-              }}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={interpolate(copy.description, { max: format.number(BULK_SELECTION_CAP) })}
+      actions={
+        <span className="page-header__actions--row">
+          <GuideButton label={bundleCopy.guide.trigger} />
+          {bundleWrite.canWrite ? (
+            <Link
+              className="button button--primary"
+              to="/products/bundles/new"
+              data-testid="bundle-list-new-bundle"
             >
-              Dismiss for this session
-            </Button>
-          }
-        >
-          Rates arrive with the ordinary product sync. Run one to find out which items have a rate
-          and which are missing it.
+              {bundleCopy.list.newBundle}
+            </Link>
+          ) : (
+            <span
+              className="button button--primary"
+              role="button"
+              aria-disabled="true"
+              tabIndex={0}
+              title={bundleCopy.form.viewOnlyReason}
+              data-testid="bundle-list-new-bundle"
+            >
+              {bundleCopy.list.newBundle}
+            </span>
+          )}
+          <Link
+            className="button button--secondary"
+            to="/products/cost-prices"
+            data-testid="products-open-cost-prices"
+          >
+            {copy.costPrices}
+          </Link>
+        </span>
+      }
+    >
+      {!bundleWrite.canWrite ? (
+        <Alert tone="info" title={bundleCopy.list.readonlyTitle} data-testid="bundle-list-readonly-notice">
+          {bundleCopy.list.readonlyNotice}
         </Alert>
       ) : null}
+
+      {/* #4027 - stock tabs and "Needs a look", the orders status bar. */}
+      <div className="list-statusbar">
+        <StatusTabs
+          tabs={stockTabs}
+          value={stock ?? null}
+          onChange={(next) => {
+            setFilterParam('stock', next ?? '');
+          }}
+          aria-label={copy.listFilters.statusTabsAria}
+        />
+        <ProductAttentionSummary
+          allGapsValue={gapsCsv}
+          gapsCount={gapsCount}
+          gapConnections={gapConnections}
+          unlistedOn={unlistedOnParam}
+          onUnlistedOnChange={(next) => {
+            setFilterParam('unlistedOn', next);
+          }}
+          showTax={hasProductMaster}
+          taxMissingCount={taxMissingCount}
+          taxNotCheckedCount={taxNotCheckedCount}
+          taxRateState={taxRateState}
+          onTaxRateStateChange={(next) => {
+            setFilterParam('taxRateState', next ?? '');
+          }}
+          costGap={costGap}
+        />
+      </div>
 
       {/*
         #2356 — A1-U (`availability-unknown`) renders on PRODUCT rows per its
@@ -1119,268 +1033,101 @@ export function ProductsListPage(): ReactElement {
             false here, where nothing is named. Deliberately not reused: the
             link points at the surface that DOES name them instead.
           */}
-          <Link to="/settings/who-decides">Who decides what</Link>
+          <Link to="/settings/who-decides">{copy.availabilityUnknownLink}</Link>
         </Alert>
       ) : null}
 
-      {/* Filter rail — search + source select + chips, all URL-synced. Below
-          1024px the chips/select/sort collapse behind a "Filters" toggle so
-          the rail doesn't wrap into a multi-row block above the table; only
-          the search input stays inline. */}
-      <div className="toolbar products-toolbar">
-        <Input
-          aria-label="Search products by name or SKU"
-          placeholder="Search by name or SKU…"
-          value={searchInput}
-          onChange={(e) => {
-            handleSearchChange(e.target.value);
-          }}
-        />
-        {isNarrow ? (
-          <button
-            type="button"
-            className={[
-              'products-filter-toggle',
-              activeFilterCount > 0 ? 'products-filter-toggle--active' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            aria-expanded={filtersOpen}
-            onClick={() => {
-              setFiltersOpen((open) => !open);
-            }}
-          >
-            Filters
-            {activeFilterCount > 0 ? (
-              <span className="products-filter-toggle__count tabular">{activeFilterCount}</span>
-            ) : null}
-            <span aria-hidden="true">{filtersOpen ? '▾' : '▸'}</span>
-          </button>
-        ) : (
-          <>
-            <Select
-              aria-label="Filter by source connection"
-              value={sourceConnectionId ?? ''}
-              onChange={(e) => {
-                setFilterParam('connectionId', e.target.value);
-              }}
-            >
-              <option value="">Source: All connections</option>
-              {activeConnections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-            {anyFilterActive ? (
-              <Button tone="ghost" className="button--sm" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      {!isNarrow ? (
-        <div
-          className="ds-row"
-          style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}
+      {saleHoldAttention.isError ? (
+        <Alert tone="warning" title={saleHoldCopy.banner.loadFailed} data-testid="sale-hold-banner-failed">
+          {saleHoldCopy.loadFailed.body}
+        </Alert>
+      ) : saleHoldAttention.data && saleHoldAttention.data.productsStillOnSale > 0 ? (
+        <Alert
+          tone="error"
+          title={plural(saleHoldAttention.data.productsStillOnSale, saleHoldCopy.banner.title)}
+          data-testid="sale-hold-banner"
         >
-          <Chip
-            tone="neutral"
-            active={stock === undefined}
-            onClick={() => { setFilterParam('stock', ''); }}
-          >
-            All {totalLabel}
-          </Chip>
-          {STOCK_CHIPS.map((chip) => (
-            <Chip
-              key={chip.value}
-              tone={chip.value === 'low' ? 'warning' : 'error'}
-              active={stock === chip.value}
-              onClick={() => {
-                toggleStock(chip.value);
-              }}
-            >
-              {chip.label}
-            </Chip>
-          ))}
-          {offerManagerConnections.map((c) => (
-            <Chip
-              key={c.id}
-              tone="info"
-              active={unlistedOnParam === c.id}
-              onClick={() => {
-                toggleUnlistedOn(c.id);
-              }}
-            >
-              Unlisted on {c.name}
-            </Chip>
-          ))}
-          {/* #2447 — opt-in: a phantom (fully-deleted-at-source) row is a rare,
-              cleanup-shaped need, not a default-view change. */}
-          <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
-            Hide deleted at source
-          </Chip>
-          {/* A known total needs no page, so a pure re-sort - which leaves the
-              count key untouched - keeps the number on screen instead of
-              unmounting the span for a round trip (#2957 review, S2). */}
-          {totalStage.total !== null || query.data ? (
-            <span
-              className="text-muted mono tabular"
-              style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
-            >
-              {formatPaginatedTotal(
-                totalStage.total,
-                query.data ? offset + query.data.items.length : null
-              )}{' '}
-              results
-            </span>
-          ) : null}
-        </div>
+          {saleHoldCopy.banner.body}{' '}
+          <Link to="/listings?staleSignal=selling">{saleHoldCopy.banner.link}</Link>
+        </Alert>
       ) : null}
 
-      {isNarrow && filtersOpen ? (
-        <div className="products-filter-panel">
-          <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Stock</span>
-            <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <Chip
-                tone="neutral"
-                active={stock === undefined}
-                onClick={() => { setFilterParam('stock', ''); }}
-              >
-                All {totalLabel}
-              </Chip>
-              {STOCK_CHIPS.map((chip) => (
-                <Chip
-                  key={chip.value}
-                  tone={chip.value === 'low' ? 'warning' : 'error'}
-                  active={stock === chip.value}
-                  onClick={() => {
-                    toggleStock(chip.value);
-                  }}
-                >
-                  {chip.label}
-                </Chip>
-              ))}
-            </div>
-          </div>
-          {offerManagerConnections.length > 0 ? (
-            <div className="products-filter-panel__group">
-              <span className="products-filter-panel__label">Listings</span>
-              <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                {offerManagerConnections.map((c) => (
-                  <Chip
-                    key={c.id}
-                    tone="info"
-                    active={unlistedOnParam === c.id}
-                    onClick={() => {
-                      toggleUnlistedOn(c.id);
-                    }}
-                  >
-                    Unlisted on {c.name}
-                  </Chip>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Deleted at source</span>
-            <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
-                Hide deleted at source
-              </Chip>
-            </div>
-          </div>
-          <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Source</span>
-            <Select
-              aria-label="Filter by source connection"
-              value={sourceConnectionId ?? ''}
-              onChange={(e) => {
-                setFilterParam('connectionId', e.target.value);
-              }}
-            >
-              <option value="">Source: All connections</option>
-              {activeConnections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          {/* Sort moves into the panel below 1024px: the sortable Source /
-              Updated columns are hidden there (hideBelow), so headers alone
-              can no longer reach every sort axis. */}
-          <div className="products-filter-panel__group">
-            <span className="products-filter-panel__label">Sort</span>
-            <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <Select
-                aria-label="Sort by"
-                value={sortField}
-                onChange={(e) => {
-                  const field = e.target.value;
-                  if (isSortField(field)) setSort(field, DEFAULT_DIR[field]);
-                }}
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </Select>
-              <Chip
-                active={sortDir === 'asc'}
-                onClick={() => {
-                  setSort(sortField, 'asc');
-                }}
-              >
-                Asc
-              </Chip>
-              <Chip
-                active={sortDir === 'desc'}
-                onClick={() => {
-                  setSort(sortField, 'desc');
-                }}
-              >
-                Desc
-              </Chip>
-            </div>
-          </div>
-          {anyFilterActive ? (
-            <div className="products-filter-panel__group">
-              <Button tone="ghost" className="button--sm" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      <ProductsFilterBar
+        searchInput={searchInput}
+        onSearchChange={handleSearchChange}
+        sources={activeConnections}
+        sourceCounts={sourceCounts}
+        sourceConnectionId={sourceConnectionId}
+        onSourceChange={(id) => {
+          setFilterParam('connectionId', id ?? '');
+        }}
+        allGapsValue={gapsCsv}
+        gapsCount={gapsCount}
+        gapConnections={gapConnections}
+        unlistedOn={unlistedOnParam}
+        onUnlistedOnChange={(next) => {
+          setFilterParam('unlistedOn', next);
+        }}
+        showTax={hasProductMaster}
+        taxRateState={taxRateState}
+        taxMissingCount={taxMissingCount}
+        taxNotCheckedCount={taxNotCheckedCount}
+        onTaxRateStateChange={(next) => {
+          setFilterParam('taxRateState', next ?? '');
+        }}
+        stock={stock}
+        stockCounts={stockCounts}
+        onStockChange={(next) => {
+          setFilterParam('stock', next ?? '');
+        }}
+        hideStale={hideFullyStale}
+        staleCount={staleCount}
+        onHideStaleChange={(next) => {
+          setFilterParam('hideStale', next ? '1' : '');
+        }}
+        bundles={bundleView}
+        onBundlesChange={(next) => {
+          setFilterParam('bundles', next ?? '');
+        }}
+        resultCount={resultCount}
+        sort={sortField}
+        dir={sortDir}
+        defaultDir={DEFAULT_DIR}
+        onSortChange={setSort}
+        onClearAll={() => {
+          clearFilters(true);
+        }}
+      />
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} label="Loading products…" />
+        <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load products"
-          message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          title={copy.error.title}
+          message={describeApiError(query.error, 'products')}
+          action={<Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>}
         />
       ) : items.length === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No products found"
+          title={copy.empty.title}
           message={
             anyFilterActive
-              ? 'No products match the current filters.'
-              : 'No products have been synced yet.'
+              ? copy.empty.filtered
+              : copy.empty.unsynced
           }
           action={
             anyFilterActive ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
+              <Button
+                onClick={() => {
+                  clearFilters();
+                }}
+              >
+                {copy.filters.clear}
+              </Button>
             ) : (
               <Link className="button button--primary" to="/connections">
-                Manage connections
+                {copy.empty.manageConnections}
               </Link>
             )
           }
@@ -1388,74 +1135,56 @@ export function ProductsListPage(): ReactElement {
       ) : (
         <>
           <DataTable
-            caption="Products"
-            className="products-table"
+            caption={copy.tableCaption}
+            className="products-table list-table--fixed list-table--peek"
+            tableTestId="stock-list-table"
+            rowAttributes={(product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` })}
             columns={columns}
             rows={items}
             rowKey={(product) => product.id}
             stickyLeftColumns={2}
+            stickyRightColumns={1}
+            onRowClick={(product) => {
+              setPeekId(product.id);
+            }}
+            rowClassName={(product) => (product.id === peekId ? 'list-row--peek' : undefined)}
             footer={
               <BulkActionBar
                 count={selectedIds.size}
-                itemNoun="product"
+                selectedLabel={copy.bulk.selected}
                 hint={
                   atCap
-                    ? `Max ${BULK_SELECTION_CAP} per batch`
-                    : `Max ${BULK_SELECTION_CAP} per batch · ${BULK_SELECTION_CAP - selectedIds.size} more available`
+                    ? interpolate(copy.bulk.hintAtCap, { max: format.number(BULK_SELECTION_CAP) })
+                    : interpolate(copy.bulk.hint, {
+                        max: format.number(BULK_SELECTION_CAP),
+                        remaining: format.number(BULK_SELECTION_CAP - selectedIds.size),
+                      })
                 }
                 actions={
                   <>
                     <Button tone="ghost" className="button--sm" onClick={clearSelection}>
-                      Clear
+                      {copy.bulk.clear}
                     </Button>
                     {/* Capability-gated (#1096/#1828): hidden with 0 publish destinations. */}
                     {publishDestinations.length > 0 && write.visible ? (
                       <Button tone="primary" onClick={handleCreateOffers}>
                         {soleConnectionName
-                          ? `Publish to ${soleConnectionName} (${selectedIds.size.toLocaleString()})`
-                          : `Publish products (${selectedIds.size.toLocaleString()})`}
+                          ? interpolate(copy.bulk.publishTo, {
+                              destination: soleConnectionName,
+                              n: format.number(selectedIds.size),
+                            })
+                          : interpolate(copy.bulk.publish, { n: format.number(selectedIds.size) })}
                       </Button>
                     ) : null}
                   </>
                 }
               />
             }
-            manualSorting
-            sort={sortingState}
-            onSortChange={(updater) => {
-              // Server-side sort (orders #944 pattern): resolve the clicked
-              // column, then apply our own asc/desc toggle — same column
-              // flips, a new column starts at its default direction.
-              const next = typeof updater === 'function' ? updater(sortingState) : updater;
-              const clickedColumnId = next.length > 0 ? next[0].id : sortField;
-              if (!isSortField(clickedColumnId)) return;
-              const nextDir: ProductListSortDir =
-                clickedColumnId === sortField
-                  ? sortDir === 'asc'
-                    ? 'desc'
-                    : 'asc'
-                  : DEFAULT_DIR[clickedColumnId];
-              setSearchParams((prev) => {
-                const p = new URLSearchParams(prev);
-                p.set('sort', clickedColumnId);
-                p.set('dir', nextDir);
-                p.delete('offset');
-                return p;
-              });
-            }}
-            expandable={{
-              renderDetail: (product) => (
-                <ProductRowDetail
-                  product={product}
-                  connections={offerManagerConnections}
-                  canCreateOffers={write.visible}
-                  onCreateOffers={handleCreateOffersForProduct}
-                />
-              ),
-              toggleLabel: (product, expanded) =>
-                `${expanded ? 'Collapse' : 'Expand'} variant stock for ${product.name}`,
-            }}
             cardView={{
+              // The same hooks the desktop table carries, so a stock check reads
+              // a card exactly as it reads a row.
+              listTestId: 'stock-list-cards',
+              attributes: (product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` }),
               select: (product) => renderSelectCheckbox(product),
               title: (product) => (
                 <span className="product-row">
@@ -1477,17 +1206,39 @@ export function ProductsListPage(): ReactElement {
               subtitle: (product) =>
                 product.sku ? (
                   <>
-                    SKU: <span className="mono-text">{product.sku}</span>
+                    {renderRich(
+                      copy.row.sku,
+                      { value: (text: string) => <span className="mono-text">{text}</span> },
+                      { sku: product.sku },
+                    )}
                   </>
                 ) : null,
               meta: (product) => (
                 <span className="data-table__badge-row">
                   {product.price !== null ? (
                     <span className="mono tabular">
-                      {formatPrice(product.price, product.currency)}
+                      {formatPrice(product.price, product.currency, copy.price.currencyUnknown, format)}
                     </span>
                   ) : null}
-                  {product.totalAvailable !== undefined ? (
+                  {product.availableToPromise !== undefined ? (
+                    <StatusBadge
+                      tone={
+                        deriveAtpStatus(product.availableToPromise) === 'unknown'
+                          ? 'neutral'
+                          : STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.availableToPromise as number)]
+                      }
+                      withDot
+                      compact
+                      data-testid={`stock-list-cell-${product.sku ?? product.id}`}
+                    >
+                      {product.availableToPromise === null
+                        ? copy.stock.notKnown
+                        : interpolate(copy.stock.toSellWithStatus, {
+                            n: format.number(product.availableToPromise),
+                            status: STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)],
+                          })}
+                    </StatusBadge>
+                  ) : product.totalAvailable !== undefined ? (
                     <StatusBadge
                       tone={STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.totalAvailable)]}
                       withDot
@@ -1500,37 +1251,29 @@ export function ProductsListPage(): ReactElement {
                   {renderStalenessBadge(product)}
                 </span>
               ),
-              detail: (product) => {
-                const expanded = expandedCardIds.has(product.id);
-                return (
-                  <>
-                    <button
-                      type="button"
-                      className="products-card-disclosure"
-                      aria-expanded={expanded}
-                      onClick={() => {
-                        toggleCardExpanded(product.id);
-                        if (!expanded) {
-                          captureDemoEvent('demo_product_row_expanded', {});
-                        }
-                      }}
-                    >
-                      <span className="products-card-disclosure__chev" aria-hidden="true">
-                        {expanded ? '▾' : '▸'}
-                      </span>
-                      {product.variantCount ?? 1} variant{(product.variantCount ?? 1) === 1 ? '' : 's'}
-                    </button>
-                    {expanded ? (
-                      <ProductRowDetail
-                        product={product}
-                        connections={offerManagerConnections}
-                        canCreateOffers={write.visible}
-                        onCreateOffers={handleCreateOffersForProduct}
-                      />
-                    ) : null}
-                  </>
-                );
-              },
+            }}
+          />
+
+          <ProductPeek
+            view={peekView}
+            position={peekIndex >= 0 ? peekIndex + 1 : 1}
+            count={peekIndex >= 0 ? items.length : 1}
+            onNavigate={navigatePeek}
+            onOpenChange={(open) => {
+              if (!open) {
+                setPeekId(null);
+                if (searchParams.has(PEEK_PARAM)) {
+                  setSearchParams(
+                    (prev) => {
+                      const next = new URLSearchParams(prev);
+                      next.delete(PEEK_PARAM);
+                      return next;
+                    },
+                    { replace: true },
+                  );
+                }
+              }
+              else captureDemoEvent('demo_product_row_expanded', {});
             }}
           />
 

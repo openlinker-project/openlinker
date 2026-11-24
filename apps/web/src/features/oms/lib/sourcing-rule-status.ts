@@ -26,6 +26,7 @@
  *
  * @module apps/web/src/features/oms/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type { SourcingRule } from '../api/sourcing-rules.types';
 
 export const SOURCING_RULE_STATUS_VALUES = [
@@ -45,30 +46,18 @@ export interface SourcingRuleStatusView {
   hint: string;
 }
 
-const VIEWS: Readonly<Record<SourcingRuleStatus, Omit<SourcingRuleStatusView, 'status'>>> = {
-  active: {
-    label: 'Active',
-    tone: 'success',
-    hint: 'This rule is deciding orders right now.',
-  },
-  scheduled: {
-    label: 'Scheduled',
-    tone: 'info',
-    hint: 'Saved, but it does not start deciding orders until its start date.',
-  },
-  retired: {
-    label: 'Retired',
-    tone: 'neutral',
-    hint: 'Kept for history. It decides nothing.',
-  },
-  unrecognised: {
-    label: 'Unrecognised',
-    tone: 'warning',
-    hint:
-      'This version of OpenLinker cannot evaluate this rule, so the router ignores it. ' +
-      'It can be deleted, but not edited.',
-  },
+const TONES: Readonly<Record<SourcingRuleStatus, SourcingRuleStatusView['tone']>> = {
+  active: 'success',
+  scheduled: 'info',
+  retired: 'neutral',
+  unrecognised: 'warning',
 };
+
+/** Label and hint read from copy at call time, so they follow the active language. */
+function view(status: SourcingRuleStatus): SourcingRuleStatusView {
+  const copy = getMessages('oms-core').sourcingRuleStatus;
+  return { status, label: copy.labels[status], tone: TONES[status], hint: copy.hints[status] };
+}
 
 /**
  * Parse an ISO timestamp to epoch milliseconds, or `null` when it is absent or
@@ -85,15 +74,15 @@ export function resolveSourcingRuleStatus(
   rule: Pick<SourcingRule, 'recognised' | 'effectiveFrom' | 'effectiveTo'>,
   now: Date = new Date()
 ): SourcingRuleStatusView {
-  if (!rule.recognised) return { status: 'unrecognised', ...VIEWS.unrecognised };
+  if (!rule.recognised) return view('unrecognised');
 
   const nowTime = now.getTime();
   const from = toTime(rule.effectiveFrom);
   const to = toTime(rule.effectiveTo);
 
-  if (from !== null && from > nowTime) return { status: 'scheduled', ...VIEWS.scheduled };
-  if (to !== null && to <= nowTime) return { status: 'retired', ...VIEWS.retired };
-  return { status: 'active', ...VIEWS.active };
+  if (from !== null && from > nowTime) return view('scheduled');
+  if (to !== null && to <= nowTime) return view('retired');
+  return view('active');
 }
 
 /**

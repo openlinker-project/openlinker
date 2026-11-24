@@ -11,8 +11,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ReturnReceiveForm } from './return-receive-form';
-import { RETURN_RECEIVE_COPY } from '../lib/return-custody.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { ReturnLine } from '../api/returns.types';
+
+const receiveCopy = getMessages('returns').custody.receive;
 
 function line(overrides: Partial<ReturnLine> = {}): ReturnLine {
   return {
@@ -62,10 +64,10 @@ describe('ReturnReceiveForm (#2380)', () => {
     const onSubmit = renderForm({ quantityAdvised: 5, quantityReceived: 0 });
 
     fireEvent.change(screen.getByLabelText(/units received/i), { target: { value: '6' } });
-    fireEvent.click(screen.getByRole('button', { name: RETURN_RECEIVE_COPY.submit }));
+    fireEvent.click(screen.getByRole('button', { name: receiveCopy.submit }));
 
     await waitFor(() => {
-      expect(screen.getAllByText(RETURN_RECEIVE_COPY.overReceipt).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(receiveCopy.overReceipt).length).toBeGreaterThan(0);
     });
     // The point of the client guard: the operator is told without a round trip.
     expect(onSubmit).not.toHaveBeenCalled();
@@ -75,7 +77,7 @@ describe('ReturnReceiveForm (#2380)', () => {
     const onSubmit = renderForm();
 
     fireEvent.change(screen.getByLabelText(/units received/i), { target: { value: '0' } });
-    fireEvent.click(screen.getByRole('button', { name: RETURN_RECEIVE_COPY.submit }));
+    fireEvent.click(screen.getByRole('button', { name: receiveCopy.submit }));
 
     await waitFor(() => expect(onSubmit).not.toHaveBeenCalled());
   });
@@ -83,7 +85,7 @@ describe('ReturnReceiveForm (#2380)', () => {
   it('should submit the quantity and omit an untouched note', async () => {
     const onSubmit = renderForm({ quantityAdvised: 4 });
 
-    fireEvent.click(screen.getByRole('button', { name: RETURN_RECEIVE_COPY.submit }));
+    fireEvent.click(screen.getByRole('button', { name: receiveCopy.submit }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ quantity: 4 }));
@@ -117,6 +119,6 @@ describe('ReturnReceiveForm (#2380)', () => {
     );
 
     expect(screen.getByLabelText(/units received/i)).toBeDisabled();
-    expect(screen.getByRole('button', { name: RETURN_RECEIVE_COPY.pending })).toBeDisabled();
+    expect(screen.getByRole('button', { name: receiveCopy.pending })).toBeDisabled();
   });
 });

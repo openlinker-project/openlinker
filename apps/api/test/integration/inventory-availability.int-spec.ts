@@ -18,7 +18,9 @@ import {
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
 import {
   AVAILABILITY_SERVICE_TOKEN,
+  INVENTORY_QUERY_SERVICE_TOKEN,
   type IAvailabilityService,
+  type IInventoryQueryService,
 } from '@openlinker/core/inventory';
 import {
   getTestHarness,
@@ -327,5 +329,113 @@ describe('IAvailabilityService observedAt coercion (#2321)', () => {
 
     expect(result.observedAt).toBeInstanceOf(Date);
     expect((result.observedAt as Date).toISOString()).toBe(newer.toISOString());
+  });
+});
+
+describe('GET /inventory/availability and the stock view: held split (#3621)', () => {
+  let harness: IntegrationTestHarness;
+
+  beforeAll(async () => {
+    harness = await getTestHarness();
+  });
+
+  afterEach(async () => {
+    await resetTestHarness();
+  });
+
+  afterAll(async () => {
+    await teardownTestHarness();
+  });
+
+  async function hold(
+    dataSource: DataSource,
+    inventoryItemId: string,
+    quantity: number,
+    atpEffect: 'published' | 'diagnostic'
+  ): Promise<void> {
+    await dataSource.query(
+      `INSERT INTO "reservations"
+         ("orderRecordId", "orderLineId", "inventoryItemId", "quantity", "status", "expiresAt", "atpEffect")
+       VALUES ($1, $2, $3, $4, 'held', now() + interval '7 days', $5)`,
+      ['ol_order_stockview_1', `line-${atpEffect}`, inventoryItemId, quantity, atpEffect]
+    );
+  }
+
+  it('splits holds by atpEffect and exposes them on the availability endpoint', async () => {
+    const http = harness.getHttp();
+    const dataSource = harness.getDataSource();
+    const token = await loginAsAdmin(http, dataSource);
+    const variantId = `ol_variant_held_${Date.now().toString()}`;
+    await seedProductWithVariantInventory(dataSource, [
+      { variantId, rows: [{ availableQuantity: 10, locationId: null }] },
+    ]);
+    const itemId = `ol_inventory_${variantId}_0`;
+    await hold(dataSource, itemId, 3, 'published');
+    await hold(dataSource, itemId, 2, 'diagnostic');
+
+    const response = await http
+      .get(`/v1/inventory/availability?productVariantIds=${variantId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const [item] = response.body.items as Array<Record<string, unknown>>;
+    expect(item).toMatchObject({
+      totalAvailable: 10,
+      // Only the published hold reduces the promise.
+      availableToPromise: 7,
+      provenance: 'computed',
+      heldCounted: 3,
+      heldRecordedOnly: 2,
+      livePositionCount: 1,
+      isStaleSync: false,
+    });
+    expect(typeof item.observedAt).toBe('string');
+  });
+
+  it('reports a variant with no positions as a known zero with no held figures', async () => {
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    const response = await http
+      .get(`/v1/inventory/availability?productVariantIds=ol_variant_none_${Date.now().toString()}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect((response.body.items as Array<Record<string, unknown>>)[0]).toMatchObject({
+      availableToPromise: 0,
+      provenance: 'computed',
+      heldCounted: 0,
+      heldRecordedOnly: 0,
+      livePositionCount: 0,
+      observedAt: null,
+    });
+  });
+
+  it('lists a stale position flagged while leaving it out of totals', async () => {
+    const dataSource = harness.getDataSource();
+    const query = harness.getApp().get<IInventoryQueryService>(INVENTORY_QUERY_SERVICE_TOKEN);
+    const variantId = `ol_variant_stalepos_${Date.now().toString()}`;
+    await seedProductWithVariantInventory(dataSource, [
+      {
+        variantId,
+        rows: [
+          { availableQuantity: 4, locationId: 'warehouse-a' },
+          { availableQuantity: 99, locationId: 'warehouse-b' },
+        ],
+      },
+    ]);
+    await dataSource
+      .getRepository(InventoryItemOrmEntity)
+      .update({ id: `ol_inventory_${variantId}_1` }, { isStale: true });
+
+    const [view] = await query.getStockViewByVariantIds({
+      variantIds: [variantId],
+      staleSyncThresholdMs: 6 * 3_600_000,
+    });
+
+    expect(view.masterAvailable).toBe(4);
+    expect(view.livePositionCount).toBe(1);
+    expect(view.positions).toHaveLength(2);
+    expect(view.positions.filter((p) => p.isStale)).toHaveLength(1);
   });
 });

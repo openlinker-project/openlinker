@@ -10,6 +10,11 @@ import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
 import type { RowsPage } from '../../../shared/api/paginated-total.types';
 import { listingRowFilters } from './listings.query-keys';
 import type {
+  ProductSaleStatusResponse,
+  ReleaseSaleHoldsResponse,
+  SaleHoldAttentionCountResponse,
+} from './listings.types';
+import type {
   CatalogProduct,
   CatalogProductMatchResult,
   CategoryParametersListResponse,
@@ -45,6 +50,10 @@ import type {
   BulkShopPublishBatchResponse,
   PublishedVariantsRequest,
   PublishedVariantsResponse,
+  AttributeProjectionPreviewRequest,
+  BundleOfferPreviewRequest,
+  BundleOfferPreviewResponse,
+  AttributeProjectionPreviewResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
@@ -55,6 +64,7 @@ import type {
   BulkListingRetryResponse,
 } from './bulk-listings.types';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export interface CreateOfferOptions {
   /**
@@ -116,6 +126,12 @@ export interface ListingsApi {
     productId: string,
     connectionId?: string,
   ) => Promise<OfferPublicationStatusResponse[]>;
+  /** #3962 - where the product is on sale, per channel, after a source deletion. */
+  getProductSaleStatus: (productId: string) => Promise<ProductSaleStatusResponse>;
+  /** #3962 - put held listings back on sale (409 while still deleted at the source). */
+  releaseSaleHolds: (productId: string, holdIds: string[]) => Promise<ReleaseSaleHoldsResponse>;
+  /** #3962 - products deleted at the source that a channel still sells. */
+  getSaleHoldAttentionCount: () => Promise<SaleHoldAttentionCountResponse>;
   /**
    * Force-refresh one offer's live publication status now (#1760); upserts the
    * snapshot and returns the observed status.
@@ -173,6 +189,8 @@ export interface ListingsApi {
   shopPublishBulk: (body: BulkShopPublishRequest) => Promise<BulkShopPublishResponse>;
   /** Read a bulk shop-publish batch + its per-record summary. Used for polling. */
   getBulkShopPublishBatch: (batchId: string) => Promise<BulkShopPublishBatchResponse>;
+  /** Re-enqueue every failed child of a shop-publish batch; same shape as `retryBulkFailed`. */
+  retryBulkShopPublishFailed: (batchId: string) => Promise<BulkListingRetryResponse>;
   /** Destination-aware duplicate guard (#1837) - which variants already have a
    *  listing (offer or shop-product) on the connection. */
   checkPublishedVariants: (
@@ -228,6 +246,23 @@ export interface ListingsApi {
     body: ResolveCategoriesBatchRequest,
   ) => Promise<ResolveCategoriesBatchResponse>;
   /**
+   * What the connection's attribute mappings and rules will fill, per variant
+   * (#3995). The same projection an offer publish runs, without publishing.
+   */
+  previewAttributeProjection: (
+    connectionId: string,
+    body: AttributeProjectionPreviewRequest,
+  ) => Promise<AttributeProjectionPreviewResponse>;
+  /**
+   * How each bundle variant would publish as a product-set offer (#3520):
+   * components, their modes and problems, the required category and the whole
+   * sets sellable. Read-only.
+   */
+  previewBundleOffers: (
+    connectionId: string,
+    body: BundleOfferPreviewRequest,
+  ) => Promise<BundleOfferPreviewResponse>;
+  /**
    * Streaming sibling of {@link ListingsApi.resolveCategoriesBatch} (#2211).
    * Same request body and same resolution, delivered one variant at a time so
    * the bulk wizard's Resolve step can show real progress instead of waiting on
@@ -282,6 +317,8 @@ const LISTINGS_FILTER_KEYS: Record<keyof ListingsFilters, true> = {
   search: true,
   lifecycle: true,
   includeLifecycleCounts: true,
+  staleSignal: true,
+  shopBlocked: true,
 };
 
 function buildQuery(
@@ -297,6 +334,8 @@ function buildQuery(
   if (filters?.search) params.set('search', filters.search);
   if (filters?.lifecycle) params.set('lifecycle', filters.lifecycle);
   if (filters?.includeLifecycleCounts) params.set('includeLifecycleCounts', 'true');
+  if (filters?.staleSignal) params.set('staleSignal', filters.staleSignal);
+  if (filters?.shopBlocked) params.set('shopBlocked', 'true');
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   if (options?.withTotal === false) params.set('withTotal', 'false');
@@ -422,7 +461,9 @@ async function readWithIdleCeiling(
     timer = setTimeout(() => {
       reject(
         new ApiError(
-          `No response from the category lookup for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          interpolate(getMessages('listings').categoryLookup.idleTimeout, {
+            seconds: Math.round(idleTimeoutMs / 1000),
+          }),
           408,
           { idleTimeoutMs },
         ),
@@ -531,6 +572,24 @@ export function createListingsApi(
         `/listings/connections/${connectionId}/offers/creation/${offerCreationRecordId}`,
       );
     },
+    getProductSaleStatus(productId): Promise<ProductSaleStatusResponse> {
+      return request<ProductSaleStatusResponse>(
+        `/listings/products/${encodeURIComponent(productId)}/sale-status`,
+      );
+    },
+    releaseSaleHolds(productId, holdIds): Promise<ReleaseSaleHoldsResponse> {
+      return request<ReleaseSaleHoldsResponse>(
+        `/listings/products/${encodeURIComponent(productId)}/sale-holds/release`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ holdIds }),
+        },
+      );
+    },
+    getSaleHoldAttentionCount(): Promise<SaleHoldAttentionCountResponse> {
+      return request<SaleHoldAttentionCountResponse>('/listings/sale-holds/attention-count');
+    },
     getProductOfferStatus(
       productId,
       connectionId,
@@ -605,6 +664,12 @@ export function createListingsApi(
         `/listings/bulk-shop-publish/${encodeURIComponent(batchId)}`,
       );
     },
+    retryBulkShopPublishFailed(batchId): Promise<BulkListingRetryResponse> {
+      return request<BulkListingRetryResponse>(
+        `/listings/bulk-shop-publish/${encodeURIComponent(batchId)}/retry-failed`,
+        { method: 'POST' },
+      );
+    },
     checkPublishedVariants(body): Promise<PublishedVariantsResponse> {
       return request<PublishedVariantsResponse>('/listings/published-variants', {
         method: 'POST',
@@ -655,6 +720,26 @@ export function createListingsApi(
     resolveCategory(connectionId, body): Promise<ResolveCategoryResponse> {
       return request<ResolveCategoryResponse>(
         `/listings/connections/${connectionId}/categories/resolve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    previewBundleOffers(connectionId, body): Promise<BundleOfferPreviewResponse> {
+      return request<BundleOfferPreviewResponse>(
+        `/listings/connections/${connectionId}/bundle-offer-preview`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    previewAttributeProjection(connectionId, body): Promise<AttributeProjectionPreviewResponse> {
+      return request<AttributeProjectionPreviewResponse>(
+        `/listings/connections/${connectionId}/attribute-projection/preview`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

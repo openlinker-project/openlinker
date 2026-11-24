@@ -8,10 +8,16 @@
  * @module libs/core/src/operational-settings/domain/exceptions
  */
 
+import type { OperationalSettingRule } from '../types/operational-settings.types';
+
 export class InvalidOperationalSettingError extends Error {
   constructor(
     public readonly field: string,
-    message: string
+    message: string,
+    /** Which rule the value broke (#3866), so a client can phrase it. */
+    public readonly rule?: OperationalSettingRule,
+    /** The bound that rule names, when it has one. */
+    public readonly limit?: number
   ) {
     super(message);
     this.name = 'InvalidOperationalSettingError';

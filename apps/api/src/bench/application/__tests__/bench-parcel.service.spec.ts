@@ -16,6 +16,7 @@
 import type {
   FulfillmentWorkView,
   IFulfillmentVerificationService,
+  IFulfillmentWorkQueryService,
   IFulfillmentWorklistService,
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
@@ -27,6 +28,7 @@ import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import type { IUserManagementService } from '../../../users/user-management.service.interface';
 import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
+import type { BenchRouteResolver } from '../services/bench-route.resolver';
 import {
   BenchParcelNotAtThisBenchError,
   BenchParcelService,
@@ -58,6 +60,8 @@ const workView = (over: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView 
     labelPrintedAt: null,
     completedAt: null,
     completedByUserId: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
     createdAt: new Date('2026-09-01T09:00:00Z'),
     updatedAt: new Date('2026-09-01T09:00:00Z'),
     lines: [
@@ -97,6 +101,22 @@ function harness(options: {
   claimAssignment?: jest.Mock;
   /** #3525 */
   notifyParcelClosed?: jest.Mock;
+  /** #3538 - the order's note as `OrderRecord.buyerNoteState` reads it. */
+  buyerNoteState?: string | null;
+  hasBuyerNote?: boolean;
+  /** #3624 - the order's bundle lines as `OrderRecord.bundleLines` derives them. */
+  bundleLines?: Array<{ lineId: string; components: Array<{ lineId: string; giftSlot?: boolean }> }>;
+  acknowledgements?: Array<{
+    workId: string;
+    acknowledgedAt: Date;
+    acknowledgedByUserId: string | null;
+  }>;
+  acknowledgeBuyerNote?: jest.Mock;
+  /** #3961 - the shop-change reconcile the bench re-runs after a take-out. */
+  reconcile?: jest.Mock;
+  /** #3586 — pictures of the variant / its product. */
+  variantImages?: string[] | null;
+  productImages?: string[] | null;
 }) {
   const work = options.work ?? workView();
 
@@ -136,9 +156,11 @@ function harness(options: {
     listVerifications: jest.fn().mockResolvedValue([]),
     markInvoicePrinted: jest.fn().mockResolvedValue(true),
     markLabelPrinted: jest.fn().mockResolvedValue(true),
+    acknowledgeBuyerNote: options.acknowledgeBuyerNote ?? jest.fn().mockResolvedValue(true),
     complete: options.complete ?? jest.fn().mockResolvedValue({ outcome: 'completed' }),
     undoCompletion:
       options.undoCompletion ?? jest.fn().mockResolvedValue({ outcome: 'undone' }),
+    voidSurplusOnLine: jest.fn().mockResolvedValue({ outcome: 'voided', voided: 1 }),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -151,6 +173,10 @@ function harness(options: {
     findByIds: jest.fn().mockResolvedValue([
       {
         internalOrderId: 'ol_order_1',
+        buyerNoteState: options.buyerNoteState,
+        hasBuyerNote: options.hasBuyerNote ?? options.buyerNoteState !== undefined,
+        bundleLines: options.bundleLines ?? [],
+        orderItems: options.bundleLines === undefined ? [] : [{ id: 'L1', name: 'Zestaw poranny' }],
         orderSnapshot: {
           orderNumber: 'OL-4471',
           shippingAddress: {
@@ -169,11 +195,24 @@ function harness(options: {
     getVariantsByIds: jest
       .fn()
       .mockResolvedValue([
-        { id: 'ol_variant_1', productId: 'ol_product_1', sku: 'MUG-WHT-350', ean: '5901234123457', gtin: null },
+        {
+          id: 'ol_variant_1',
+          productId: 'ol_product_1',
+          sku: 'MUG-WHT-350',
+          ean: '5901234123457',
+          gtin: null,
+          images: options.variantImages ?? null,
+        },
       ]),
     getProductsByIds: jest
       .fn()
-      .mockResolvedValue([{ id: 'ol_product_1', name: 'Ceramic mug, matte white, 350 ml' }]),
+      .mockResolvedValue([
+        {
+          id: 'ol_product_1',
+          name: 'Ceramic mug, matte white, 350 ml',
+          images: options.productImages ?? null,
+        },
+      ]),
   } as unknown as IProductsService;
 
   const shipments = {
@@ -186,15 +225,35 @@ function harness(options: {
 
   const users = {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
+    getDisplayNames: jest.fn(),
   } as unknown as IUserManagementService;
 
   const notes = {
     getPackerVisibleForOrders: jest.fn().mockResolvedValue(new Map()),
   } as unknown as IOrderNoteService;
 
+  const workQuery = {
+    listBuyerNoteAcknowledgements: jest
+      .fn()
+      .mockResolvedValue(options.acknowledgements ?? []),
+  } as unknown as IFulfillmentWorkQueryService;
+
+  // #3958 - resolved from the order's source connection and delivery method.
+  const routes = {
+    resolve: jest.fn().mockResolvedValue(null),
+  } as unknown as BenchRouteResolver;
+
   const parcelClosureNotifier = {
     notifyParcelClosed: options.notifyParcelClosed ?? jest.fn().mockResolvedValue(undefined),
+    relayRecordedClose: jest.fn().mockResolvedValue(undefined),
   } as unknown as IFulfillmentParcelClosureNotifier;
+
+  const sourceAmendment = {
+    reconcile:
+      options.reconcile ??
+      jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null, closedParcels: [] }),
+    accept: jest.fn(),
+  };
 
   return {
     service: new BenchParcelService(
@@ -207,14 +266,88 @@ function harness(options: {
       inventory,
       users,
       notes,
-      parcelClosureNotifier
+      parcelClosureNotifier,
+      workQuery,
+      sourceAmendment as never,
+      routes
     ),
+    sourceAmendment,
     verification,
     orders,
     worklist,
     parcelClosureNotifier,
+    workQuery,
+    routes,
   };
 }
+
+describe('BenchParcelService buyer-note acknowledgement (#3538)', () => {
+  it('records the first acknowledgement as the viewer', async () => {
+    const { service, verification } = harness({ buyerNoteState: 'Ring twice' });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result.outcome).toBe('acknowledged');
+    expect(verification.acknowledgeBuyerNote).toHaveBeenCalledWith(
+      'work-1',
+      expect.any(Date),
+      'packer-1'
+    );
+  });
+
+  it('answers already-acknowledged on a replay, never an error', async () => {
+    const { service } = harness({
+      buyerNoteState: 'Ring twice',
+      acknowledgeBuyerNote: jest.fn().mockResolvedValue(false),
+    });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-2');
+
+    expect(result).toMatchObject({ outcome: 'already-acknowledged', reason: null });
+  });
+
+  it('refuses when the order has no buyer note, and writes nothing', async () => {
+    const { service, verification } = harness({ hasBuyerNote: false });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'no-buyer-note' });
+    expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
+  });
+
+  it('refuses to acknowledge the note of a cancelled parcel, and writes nothing (N-41)', async () => {
+    const { service, verification } = harness({
+      work: workView({ status: 'cancelled' }),
+      buyerNoteState: 'Ring twice',
+    });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'work-cancelled' });
+    expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
+  });
+
+  it('still acknowledges a note whose text is not stored', async () => {
+    // `OL_STORE_PII=false`: the flag survives, the text does not.
+    const { service } = harness({ hasBuyerNote: true });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result.outcome).toBe('acknowledged');
+  });
+
+  it('refuses a packer the parcel is locked against', async () => {
+    const { service, verification } = harness({
+      work: workView({ assignedToUserId: 'someone-else', selfServeEligible: false }),
+      hasBuyerNote: true,
+    });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable-by-viewer' });
+    expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
+  });
+});
 
 describe('BenchParcelService (#2418)', () => {
   describe('story D2 — a parcel that must not be packed', () => {
@@ -269,6 +402,7 @@ describe('BenchParcelService (#2418)', () => {
               reason: 'address-invalid' as const,
               note: null,
               placedAt: new Date('2026-09-04T09:00:00Z'),
+              fromSourceChange: false,
             })),
           }),
         });
@@ -505,6 +639,38 @@ describe('BenchParcelService (#2418)', () => {
     });
   });
 
+  describe('bundle components (#3624)', () => {
+    it('should name the bundle a component line belongs to, and leave ordinary lines unmarked', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+            { id: 'line-2', orderLineId: 'L2', productVariantId: 'ol_variant_2', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [{ lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1' }] }],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle).toEqual({ lineId: 'L1', name: 'Zestaw poranny', giftSlot: false });
+      expect(parcel.lines[1].bundle).toBeNull();
+    });
+
+    it('should mark the gift slot component from the frozen expansion (#3934)', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [
+          { lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1', giftSlot: true }] },
+        ],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle?.giftSlot).toBe(true);
+    });
+  });
+
   describe('story D4 — the projection an interruption watches', () => {
     it('carries exactly the fields it is supposed to and no others', async () => {
       // This list IS the D4 guarantee: an interruption fires when this
@@ -527,6 +693,15 @@ describe('BenchParcelService (#2418)', () => {
         [
           'assignedToUserId',
           'buyerName',
+          // D12 (#3538) - the buyer's checkout note, read only, plus WHO read
+          // it at the bench for this parcel and for its siblings. The note is a
+          // deliberate new disclosure to the packer role; the three
+          // acknowledgement fields carry a user id and an instant, no PII.
+          'buyerNote',
+          'hasBuyerNote',
+          'buyerNoteAcknowledgedAt',
+          'buyerNoteAcknowledgedByUserId',
+          'otherParcelBuyerNoteAcknowledgements',
           'carrierName',
           'closedAt',
           'currency',
@@ -544,6 +719,11 @@ describe('BenchParcelService (#2418)', () => {
           'parcelIndex',
           'parcelTotal',
           'refusal',
+          // #3958 - who ships the box: a processor kind, an operator-given
+          // connection name and the delivery method's label. No buyer data.
+          'route',
+          // #3961 - what to take out of a box the shop changed; null otherwise.
+          'sourceChange',
           'totalAmount',
           'version',
           'workId',
@@ -553,7 +733,9 @@ describe('BenchParcelService (#2418)', () => {
         [
           'attributes',
           'binCode',
+          'bundle',
           'ean',
+          'gift',
           'gtin',
           'heightMm',
           'imageUrl',
@@ -570,6 +752,58 @@ describe('BenchParcelService (#2418)', () => {
       );
     });
 
+    it('projects the buyer note verbatim, and null for every state without text (#3538)', async () => {
+      const withText = await harness({ buyerNoteState: 'No receipt in the box' }).service.getParcel('work-1');
+      const assertedNone = await harness({ buyerNoteState: null }).service.getParcel('work-1');
+      const unknown = await harness({}).service.getParcel('work-1');
+
+      expect(withText.buyerNote).toBe('No receipt in the box');
+      expect(assertedNone.buyerNote).toBeNull();
+      expect(unknown.buyerNote).toBeNull();
+    });
+
+    it('tells the parcel a note exists even when its text is not stored (B-12)', async () => {
+      const notStored = await harness({ hasBuyerNote: true }).service.getParcel('work-1');
+      const none = await harness({ buyerNoteState: null, hasBuyerNote: false }).service.getParcel('work-1');
+
+      expect(notStored.buyerNote).toBeNull();
+      expect(notStored.hasBuyerNote).toBe(true);
+      expect(none.hasBuyerNote).toBe(false);
+    });
+
+    it('reports this parcel and its siblings acknowledgements separately (#3538)', async () => {
+      const { service } = harness({
+        work: workView({ id: 'work-2' }),
+        siblings: new Map([['ol_order_1', ['work-1', 'work-2']]]),
+        buyerNoteState: 'Ring twice',
+        acknowledgements: [
+          { workId: 'work-1', acknowledgedAt: new Date('2026-10-01T09:00:00Z'), acknowledgedByUserId: 'packer-1' },
+          { workId: 'work-2', acknowledgedAt: new Date('2026-10-01T10:00:00Z'), acknowledgedByUserId: 'packer-2' },
+        ],
+      });
+
+      const parcel = await service.getParcel('work-2');
+
+      expect(parcel.buyerNoteAcknowledgedAt).toBe('2026-10-01T10:00:00.000Z');
+      expect(parcel.buyerNoteAcknowledgedByUserId).toBe('packer-2');
+      expect(parcel.otherParcelBuyerNoteAcknowledgements).toEqual([
+        {
+          workId: 'work-1',
+          parcelIndex: 1,
+          acknowledgedAt: '2026-10-01T09:00:00.000Z',
+          acknowledgedByUserId: 'packer-1',
+        },
+      ]);
+    });
+
+    it('reports an unacknowledged parcel with null markers (#3538)', async () => {
+      const parcel = await harness({}).service.getParcel('work-1');
+
+      expect(parcel.buyerNoteAcknowledgedAt).toBeNull();
+      expect(parcel.buyerNoteAcknowledgedByUserId).toBeNull();
+      expect(parcel.otherParcelBuyerNoteAcknowledgements).toEqual([]);
+    });
+
     it('takes the buyer NAME from the snapshot and nothing else from it', async () => {
       const { service } = harness({});
       const parcel = await service.getParcel('work-1');
@@ -577,6 +811,21 @@ describe('BenchParcelService (#2418)', () => {
       expect(parcel.orderReference).toBe('OL-4471');
       expect(JSON.stringify(parcel)).not.toContain('Testowa');
       expect(JSON.stringify(parcel)).not.toContain('anna@example.test');
+    });
+
+    it("uses the variant's own picture when it has one (#3586)", async () => {
+      const { service } = harness({
+        variantImages: ['https://shop.test/red.jpg'],
+        productImages: ['https://shop.test/p.jpg'],
+      });
+      const line = (await service.getParcel('work-1')).lines[0];
+      expect(line.imageUrl).toBe('/products/variants/ol_variant_1/images/0');
+    });
+
+    it("falls back to the product's picture when the variant has none (#3586)", async () => {
+      const { service } = harness({ productImages: ['https://shop.test/p.jpg'] });
+      const line = (await service.getParcel('work-1')).lines[0];
+      expect(line.imageUrl).toBe('/products/ol_product_1/images/0');
     });
 
     it('describes the line from the catalogue so a packer can match the shelf label', async () => {
@@ -1164,5 +1413,113 @@ describe('BenchParcelService (#2418)', () => {
       expect(result.outcome).not.toBe('refused');
       expect(verification.voidLastVerification).toHaveBeenCalled();
     });
+  });
+
+  describe('#3961 - the packer took the surplus out', () => {
+    const heldWork = (): FulfillmentWorkView =>
+      workView({
+        activeHolds: [{ fromSourceChange: true } as FulfillmentWorkView['activeHolds'][number]],
+      });
+    const orderAsking = (quantity: number): OrderRecord =>
+      ({
+        internalOrderId: 'ol_order_1',
+        orderItems: [{ id: 'ol_line_1', quantity }],
+        physicalItems: [{ id: 'ol_line_1', quantity }],
+        bundleLines: [],
+        orderSnapshot: {},
+      }) as unknown as OrderRecord;
+
+    it('should void the line down to what the order now asks for, re-check, and relay a box that closed', async () => {
+      const closedAt = new Date('2026-11-09T10:00:00Z');
+      const reconcile = jest.fn().mockResolvedValue({
+        outcome: 'applied',
+        lines: [],
+        cause: null,
+        closedParcels: [{ workId: 'work-1', closedAt }],
+      });
+      const { service, verification, orders, parcelClosureNotifier } = harness({ work: heldWork(), reconcile });
+      (orders.findByIds as jest.Mock).mockResolvedValue([orderAsking(1)]);
+
+      const result = await service.confirmSourceChangeTakenOut({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result.outcome).toBe('taken-out');
+      expect(verification.voidSurplusOnLine).toHaveBeenCalledWith({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+      expect(reconcile).toHaveBeenCalledWith({ internalOrderId: 'ol_order_1' });
+      expect(parcelClosureNotifier.relayRecordedClose).toHaveBeenCalledWith('work-1');
+    });
+
+    it('should refuse a box that is no longer held for a shop change, and write nothing', async () => {
+      const { service, verification, sourceAmendment } = harness({});
+
+      const result = await service.confirmSourceChangeTakenOut({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-held-for-source-change' });
+      expect(verification.voidSurplusOnLine).not.toHaveBeenCalled();
+      expect(sourceAmendment.reconcile).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a line that is not in this box', async () => {
+      const { service, verification } = harness({ work: heldWork() });
+
+      const result = await service.confirmSourceChangeTakenOut({
+        workId: 'work-1',
+        workLineId: 'line-elsewhere',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'no-such-line' });
+      expect(verification.voidSurplusOnLine).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('BenchParcelService route (#3958)', () => {
+  it('should carry the resolver answer when the parcel is opened', async () => {
+    const { service, routes } = harness({});
+    const route = {
+      processorKind: 'ol_managed_carrier' as const,
+      processorName: 'InPost',
+      fromRule: true,
+      processorAvailable: true,
+      methodLabel: 'InPost Paczkomat',
+    };
+    (routes.resolve as jest.Mock).mockResolvedValueOnce(route);
+
+    const parcel = await service.getParcel('work-1');
+
+    expect(parcel.route).toEqual(route);
+  });
+
+  it('should ask for the route from the order record when one exists', async () => {
+    const { service, routes } = harness({});
+
+    await service.getParcel('work-1');
+
+    // The harness order is a plain object, so both getters read `undefined`
+    // and must arrive as a plain "no delivery method", never `undefined`.
+    expect(routes.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceDeliveryMethodId: null, methodLabel: null })
+    );
+  });
+
+  it('should report no route when the resolver cannot answer', async () => {
+    const { service } = harness({});
+
+    const parcel = await service.getParcel('work-1');
+
+    expect(parcel.route).toBeNull();
   });
 });

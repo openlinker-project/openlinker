@@ -51,6 +51,8 @@ import type {
   AttributeProjectionInput,
   AttributeProjectionMetadata,
   AttributeProjectionResult,
+  ProjectedParameterOrigin,
+  ProjectedParameterRuleRef,
   ResolvedParameter,
 } from '../types/attribute-projection.types';
 
@@ -58,6 +60,7 @@ import type {
 interface RuleContribution {
   name: string;
   value: string;
+  rule: ProjectedParameterRuleRef;
 }
 
 @Injectable()
@@ -96,6 +99,7 @@ export class AttributeProjectionService implements IAttributeProjectionService {
     const parameters: ResolvedParameter[] = [];
     const unresolvedRequired: AttributeProjectionResult['unresolvedRequired'] = [];
     const restrictionIssues: ParameterRestrictionIssue[] = [];
+    const origins: ProjectedParameterOrigin[] = [];
     const usedSourceKeys = new Set<string>();
 
     // Operator-authored rule layer (#1841): a deterministic, sequenced overlay
@@ -126,6 +130,15 @@ export class AttributeProjectionService implements IAttributeProjectionService {
           continue;
         }
         const resolved = this.toResolvedParameter(param, destinationValue);
+        origins.push({
+          parameterId: param.id,
+          parameterName: param.name,
+          section: param.section,
+          source: rule ? 'rule' : 'mapping',
+          rawValue: destinationValue,
+          outcome: resolved ? 'accepted' : 'rejected',
+          ...(rule ? { rule: rule.rule } : {}),
+        });
         if (resolved) {
           parameters.push(resolved);
           // The value never passes through any UI on this path, so this is the
@@ -158,20 +171,40 @@ export class AttributeProjectionService implements IAttributeProjectionService {
       // borrows / open — name-keyed pass-through. Collect mapping outputs first,
       // then let rules override by destination parameter name.
       const byName = new Map<string, ResolvedParameter>();
+      const originByName = new Map<string, ProjectedParameterOrigin>();
       for (const mapping of applicable.values()) {
         const sourceValue = attributes[mapping.sourceAttributeKey];
         if (sourceValue === undefined || sourceValue === '') continue;
         usedSourceKeys.add(mapping.sourceAttributeKey);
+        const value = this.mapValue(mapping, sourceValue);
         byName.set(this.normalize(mapping.destinationParameterName), {
           id: mapping.destinationParameterName,
-          values: [this.mapValue(mapping, sourceValue)],
+          values: [value],
           section: 'offer',
+        });
+        originByName.set(this.normalize(mapping.destinationParameterName), {
+          parameterId: mapping.destinationParameterName,
+          parameterName: mapping.destinationParameterName,
+          section: 'offer',
+          source: 'mapping',
+          rawValue: value,
+          outcome: 'accepted',
         });
       }
       for (const [key, contribution] of ruleByName) {
         byName.set(key, { id: contribution.name, values: [contribution.value], section: 'offer' });
+        originByName.set(key, {
+          parameterId: contribution.name,
+          parameterName: contribution.name,
+          section: 'offer',
+          source: 'rule',
+          rawValue: contribution.value,
+          outcome: 'accepted',
+          rule: contribution.rule,
+        });
       }
       for (const resolved of byName.values()) parameters.push(resolved);
+      origins.push(...originByName.values());
     }
 
     const unmappedSourceKeys = Object.keys(attributes).filter((key) => {
@@ -191,7 +224,7 @@ export class AttributeProjectionService implements IAttributeProjectionService {
       );
     }
 
-    return { parameters, unmappedSourceKeys, unresolvedRequired, restrictionIssues };
+    return { parameters, unmappedSourceKeys, unresolvedRequired, restrictionIssues, origins };
   }
 
   /**
@@ -296,11 +329,12 @@ export class AttributeProjectionService implements IAttributeProjectionService {
       .filter((rule) => this.ruleMatches(rule, input))
       .sort((a, b) => a.priority - b.priority);
     for (const rule of applicable) {
-      const value = this.computeRuleValue(rule, input, usedSourceKeys);
-      if (value === undefined || value === '') continue;
+      const computed = this.computeRuleValue(rule, input, usedSourceKeys);
+      if (computed === undefined || computed.value === '') continue;
       contributions.set(this.normalize(rule.destinationParameterName), {
         name: rule.destinationParameterName,
-        value,
+        value: computed.value,
+        rule: computed.ref,
       });
     }
     return contributions;
@@ -335,21 +369,32 @@ export class AttributeProjectionService implements IAttributeProjectionService {
     rule: AttributeMappingRule,
     input: AttributeProjectionInput,
     usedSourceKeys: Set<string>
-  ): string | undefined {
+  ): { value: string; ref: ProjectedParameterRuleRef } | undefined {
     const config = rule.config;
     switch (config.kind) {
       case 'fixed':
-        return config.value;
+        return { value: config.value, ref: { id: rule.id, kind: 'fixed' } };
       case 'copy-remap': {
         const sourceValue = input.attributes[config.sourceAttributeKey];
         if (sourceValue === undefined || sourceValue === '') return undefined;
         usedSourceKeys.add(config.sourceAttributeKey);
         const target = this.normalize(sourceValue);
         const remap = config.valueRemap.find((v) => this.normalize(v.sourceValue) === target);
-        return remap ? remap.destinationValue : sourceValue;
+        return {
+          value: remap ? remap.destinationValue : sourceValue,
+          ref: {
+            id: rule.id,
+            kind: 'copy-remap',
+            sourceAttributeKey: config.sourceAttributeKey,
+            remapped: remap !== undefined,
+          },
+        };
       }
-      case 'place-value':
-        return this.placeValue(config.source, input.metadata);
+      case 'place-value': {
+        const value = this.placeValue(config.source, input.metadata);
+        if (value === undefined) return undefined;
+        return { value, ref: { id: rule.id, kind: 'place-value', placeSource: config.source } };
+      }
     }
   }
 

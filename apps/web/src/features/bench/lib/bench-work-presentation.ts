@@ -18,7 +18,7 @@
  */
 import { formatShipBy, type ShipByLevel } from '../../../shared/format/format-ship-by';
 import type { BenchWork } from '../api/bench-work.types';
-import { benchWorkCopy } from './bench-work.copy';
+import { getMessages } from '../../../shared/i18n';
 
 /**
  * Which section a row belongs in.
@@ -117,15 +117,15 @@ export function describeBenchDeadline(
 ): BenchDeadlineView {
   const shipBy = formatShipBy(dispatchByAt, now);
   if (shipBy === null) {
-    return { headline: benchWorkCopy.row.deadlineUnknown, remaining: null, level: null };
+    return { headline: getMessages('bench').work.row.deadlineUnknown, remaining: null, level: null };
   }
 
   const headline =
     shipBy.level === 'overdue'
-      ? benchWorkCopy.row.deadlineOverdue
+      ? getMessages('bench').work.row.deadlineOverdue
       : shipBy.level === 'soon'
-        ? benchWorkCopy.row.deadlineSoon
-        : benchWorkCopy.row.deadlineLater;
+        ? getMessages('bench').work.row.deadlineSoon
+        : getMessages('bench').work.row.deadlineLater;
 
   return { headline, remaining: shipBy.remaining, level: shipBy.level };
 }

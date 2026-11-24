@@ -6,7 +6,10 @@
  *
  * @module libs/core/src/orders/application/services/__tests__
  */
-import type { PostSaleInventoryRefreshService } from '@openlinker/core/inventory';
+import type {
+  IMasterAbsorbedReservationService,
+  PostSaleInventoryRefreshService,
+} from '@openlinker/core/inventory';
 import { OrderSyncService } from '../order-sync.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderProcessorManagerPort } from '../../../domain/ports/order-processor-manager.port';
@@ -22,11 +25,13 @@ import type { IOrderRecordService } from '../../interfaces/order-record.service.
 import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderHold } from '../../../domain/entities/order-hold.entity';
+import type { IRetryClassifierRegistry } from '@openlinker/core/sync';
 import { ORDER_CREATE_LOCK_TTL_MS } from '../order-create-lock';
 import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
 } from '@openlinker/core/identifier-mapping';
+import { computeDeliveryFingerprint } from '../../../domain/types/order-delivery-update.types';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
@@ -37,10 +42,19 @@ describe('OrderSyncService', () => {
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let orderHoldService: jest.Mocked<IOrderHoldService>;
   let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
+  let masterAbsorbedReservations: jest.Mocked<IMasterAbsorbedReservationService>;
+  let retryClassifierRegistry: jest.Mocked<IRetryClassifierRegistry>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
       createOrder: jest.fn().mockResolvedValue(orderRef),
+    }) as unknown as jest.Mocked<OrderProcessorManagerPort>;
+
+  /** A destination declaring that an order create lowers its own stock. */
+  const makeStockLoweringAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
+    ({
+      createOrder: jest.fn().mockResolvedValue(orderRef),
+      lowersStockOnOrderCreate: () => Promise.resolve(true),
     }) as unknown as jest.Mocked<OrderProcessorManagerPort>;
 
   const registerDestinations = (
@@ -54,6 +68,30 @@ describe('OrderSyncService', () => {
         metadata: {} as never,
       }))
     );
+  };
+
+  /**
+   * #3959 - `active` is what the destination listing returns; the counting
+   * read (`includeAllStatuses`) additionally sees `inactiveIds`, i.e.
+   * destinations that exist but are disabled or broken.
+   */
+  const registerTopology = (
+    active: Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>,
+    inactiveIds: string[]
+  ): void => {
+    const entry = (connectionId: string, adapter?: OrderProcessorManagerPort) => ({
+      connectionId,
+      connection: { id: connectionId } as never,
+      adapter: adapter as never,
+      metadata: {} as never,
+    });
+    integrationsService.listCapabilityAdapters.mockImplementation(((filters: {
+      includeAllStatuses?: boolean;
+    }) =>
+      Promise.resolve([
+        ...active.map(({ connectionId, adapter }) => entry(connectionId, adapter)),
+        ...(filters.includeAllStatuses ? inactiveIds.map((id) => entry(id)) : []),
+      ])) as never);
   };
 
   const createOrder = (): Order => ({
@@ -98,12 +136,14 @@ describe('OrderSyncService', () => {
       upsertPaymentMappings: jest.fn().mockResolvedValue([]),
       resolveStatusMapping: jest.fn().mockResolvedValue(null),
       resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+      resolvePaymentMapping: jest.fn().mockResolvedValue(null),
       getOrderStateMappings: jest.fn().mockResolvedValue([]),
       upsertOrderStateMappings: jest.fn().mockResolvedValue([]),
       resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
       getCategoryMappings: jest.fn(),
       upsertCategoryMapping: jest.fn(),
       deleteCategoryMapping: jest.fn(),
+      reassignCategoryMappings: jest.fn(),
       resolveDestinationCategory: jest.fn(),
       getAttributeMappings: jest.fn(),
       getAttributeMappingsByProvenance: jest.fn(),
@@ -130,6 +170,14 @@ describe('OrderSyncService', () => {
 
     orderRecordService = {
       getOrderRecord: jest.fn().mockResolvedValue(null),
+      // #2703 — `syncOrder` persists the destination-routing block on every
+      // path. The `as unknown as` cast below means a missing method is NOT a
+      // compile error, so omitting this made the call throw `TypeError` into
+      // the service's best-effort catch and inflated the `warn` count that the
+      // #2397 tests assert on: three failures that named the warn count and
+      // said nothing about the real cause.
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
+      updateSyncStatus: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     orderHoldService = {
@@ -143,6 +191,25 @@ describe('OrderSyncService', () => {
       enqueue: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<PostSaleInventoryRefreshService>;
 
+    masterAbsorbedReservations = {
+      consumeAbsorbedHolds: jest.fn().mockResolvedValue({
+        closed: 0,
+        alreadyTerminal: 0,
+        failed: 0,
+        keptUnattributed: 0,
+        keptOtherOwner: 0,
+        keptUnknownPosition: 0,
+        keptDiagnostic: 0,
+        keptSharedLine: 0,
+        propagationsEnqueued: 0,
+      }),
+    };
+
+    retryClassifierRegistry = {
+      isNonRetryable: jest.fn().mockReturnValue(false),
+      resolveRetryDeferral: jest.fn().mockReturnValue(null),
+    };
+
     service = new OrderSyncService(
       integrationsService,
       mappingConfigService,
@@ -150,7 +217,9 @@ describe('OrderSyncService', () => {
       identifierMapping,
       orderRecordService,
       orderHoldService,
-      postSaleInventoryRefresh
+      postSaleInventoryRefresh,
+      masterAbsorbedReservations,
+      retryClassifierRegistry
     );
   });
 
@@ -221,6 +290,30 @@ describe('OrderSyncService', () => {
       expect('taxRate' in command.items[0]).toBe(false);
     });
 
+    it('carries gift and packQuantity onto the destination command, absent when unset (#3929)', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      const order = createOrder();
+      order.items[0].gift = { source: 'ol-rule' };
+      order.items[0].packQuantity = 2;
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1', sourceEventId: 'e-1' });
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].gift).toEqual({ source: 'ol-rule' });
+      expect(command.items[0].packQuantity).toBe(2);
+
+      const plainAdapter = makeAdapter({ orderId: 'dest_order_790', orderNumber: 'DEST-002' });
+      registerDestinations([{ connectionId: 'dest-b', adapter: plainAdapter }]);
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'e-2',
+      });
+      const [plain] = plainAdapter.createOrder.mock.calls[0];
+      expect('gift' in plain.items[0]).toBe(false);
+      expect('packQuantity' in plain.items[0]).toBe(false);
+    });
+
     it('leaves the gross keys absent when the source reported none', async () => {
       const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
@@ -288,6 +381,8 @@ describe('OrderSyncService', () => {
         unitPriceGross: { projected: true },
         taxRate: { projected: true },
         taxRateCountry: { projected: true },
+        gift: { projected: true },
+        packQuantity: { projected: true },
         imageUrl: {
           withheld:
             'reserved for future enrichment - no adapter sets it on ingestion and no destination reads it',
@@ -324,6 +419,8 @@ describe('OrderSyncService', () => {
           taxSource: 'shop',
           taxRateReadAt: '2026-10-01T00:00:00.000Z',
           taxRateChannel: '8',
+          gift: { source: 'channel' },
+          packQuantity: 3,
         };
         const order = createOrder();
         order.items = [fullItem];
@@ -369,6 +466,8 @@ describe('OrderSyncService', () => {
           destinationConnectionId: 'dest-a',
           status: 'success',
           orderRef: { orderId: 'dest_order_789', orderNumber: 'DEST-001' },
+          created: true,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -400,6 +499,8 @@ describe('OrderSyncService', () => {
           destinationConnectionId: 'dest-a',
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-1' },
+          created: false,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -476,12 +577,135 @@ describe('OrderSyncService', () => {
         destinationConnectionId: 'dest-ok',
         status: 'success',
         orderRef: { orderId: 'ok-1' },
+        created: true,
+        deliveryFingerprint: expect.any(String),
       });
       expect(badResult).toEqual({
         destinationConnectionId: 'dest-bad',
         status: 'failed',
         error: { message: 'destination down' },
       });
+    });
+
+    it('should rethrow when a destination failure is classified deferrable, after siblings finish (#3984)', async () => {
+      const ok = makeAdapter({ orderId: 'ok-1' });
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([
+        { connectionId: 'dest-ok', adapter: ok },
+        { connectionId: 'dest-bad', adapter: failing },
+      ]);
+      retryClassifierRegistry.resolveRetryDeferral.mockImplementation((cause) =>
+        cause === throttled ? { delaySeconds: 60, reason: 'throttled' } : null
+      );
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          deferralBudget: { spentMs: 0, maxMs: 86_400_000 },
+        })
+      ).rejects.toBe(throttled);
+      expect(ok.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should settle a deferrable failure as failed when the caller passes no budget (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'throttled',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0].status).toBe('failed');
+    });
+
+    it('should settle as failed instead of rethrowing once the deferral budget is spent (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'throttled',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        // 86_400_000 - 59_000 + 60_000 overruns by one second.
+        deferralBudget: { spentMs: 86_341_000, maxMs: 86_400_000 },
+      });
+
+      expect(results[0]).toMatchObject({ destinationConnectionId: 'dest-bad', status: 'failed' });
+    });
+
+    it('should persist the permanent failure before rethrowing for a transient sibling (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const permanent = new Error('validation failed');
+      const transientAdapter = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      const permanentAdapter = {
+        createOrder: jest.fn().mockRejectedValue(permanent),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([
+        { connectionId: 'dest-transient', adapter: transientAdapter },
+        { connectionId: 'dest-permanent', adapter: permanentAdapter },
+      ]);
+      retryClassifierRegistry.resolveRetryDeferral.mockImplementation((cause) =>
+        cause === throttled ? { delaySeconds: 60, reason: 'throttled' } : null
+      );
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          deferralBudget: { spentMs: 0, maxMs: 86_400_000 },
+        })
+      ).rejects.toBe(throttled);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_123',
+        'dest-permanent',
+        {
+          destinationConnectionId: 'dest-permanent',
+          status: 'failed',
+          error: 'validation failed',
+        }
+      );
+    });
+
+    it('should keep a non-retryable failure as failed even if also deferrable (#3984)', async () => {
+      const boom = new Error('validation');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(boom),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.isNonRetryable.mockReturnValue(true);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'x',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0].status).toBe('failed');
     });
 
     it('should exclude the source connection from destinations', async () => {
@@ -503,8 +727,23 @@ describe('OrderSyncService', () => {
       expect(results[0].destinationConnectionId).toBe('dest-other');
     });
 
-    it('should throw when no destinations are available', async () => {
+    it('should return no results, without throwing, when no other destination exists (#3959)', async () => {
       registerDestinations([]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([]);
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenLastCalledWith(
+        createOrder().id,
+        { reason: 'no-destination-configured', detail: null }
+      );
+    });
+
+    it('should throw when destinations exist but none is active (#3959)', async () => {
+      registerTopology([], ['dest-disabled']);
 
       await expect(
         service.syncOrder({
@@ -512,10 +751,36 @@ describe('OrderSyncService', () => {
           sourceConnectionId: 'source-1',
         })
       ).rejects.toThrow(NoOrderDestinationsAvailableException);
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenLastCalledWith(
+        createOrder().id,
+        { reason: 'no-active-destination', detail: null }
+      );
+    });
+
+    it('should count other destinations lazily, across every status', async () => {
+      registerDestinations([]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith({
+        capability: 'OrderProcessorManager',
+        includeAllStatuses: true,
+        lazy: true,
+      });
+    });
+
+    it('should not run the counting read when a destination resolved', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(integrationsService.listCapabilityAdapters).not.toHaveBeenCalledWith(
+        expect.objectContaining({ includeAllStatuses: true })
+      );
     });
 
     it('should attach internalOrderId and sourceConnectionId to the thrown exception', async () => {
-      registerDestinations([]);
+      registerTopology([], ['dest-disabled']);
       const order = createOrder();
 
       let caught: unknown;
@@ -531,15 +796,21 @@ describe('OrderSyncService', () => {
       expect(exception.sourceConnectionId).toBe('source-1');
     });
 
-    it('should throw when the only available destination is the source connection', async () => {
-      registerDestinations([{ connectionId: 'source-1', adapter: makeAdapter() }]);
+    it('should treat a source that is its own only destination as nothing to mirror (#3959)', async () => {
+      const sourceAdapter = makeAdapter();
+      registerDestinations([{ connectionId: 'source-1', adapter: sourceAdapter }]);
 
-      await expect(
-        service.syncOrder({
-          order: createOrder(),
-          sourceConnectionId: 'source-1',
-        })
-      ).rejects.toThrow(NoOrderDestinationsAvailableException);
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([]);
+      expect(sourceAdapter.createOrder).not.toHaveBeenCalled();
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenLastCalledWith(
+        createOrder().id,
+        { reason: 'no-destination-configured', detail: null }
+      );
     });
 
     it('should use resolved status from mapping config when a mapping exists', async () => {
@@ -632,6 +903,55 @@ describe('OrderSyncService', () => {
       );
     });
 
+    it('should pass the neutral payment method through to the destination (#3294)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.paymentMethod = 'cash_on_delivery';
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentMethod: 'cash_on_delivery' })
+      );
+    });
+
+    it('should leave the neutral payment method absent when the source reported none (#3294)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder.mock.calls[0][0].paymentMethod).toBeUndefined();
+    });
+
+    it('should pass the source payment method through as the payment-mapping key (#3474)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.sourcePaymentMethod = 'CASH_ON_DELIVERY';
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourcePaymentMethod: 'CASH_ON_DELIVERY',
+          source: expect.objectContaining({ connectionId: 'source-1' }),
+        })
+      );
+    });
+
+    it('should leave the source payment method absent when the source reported none (#3474)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder.mock.calls[0][0].sourcePaymentMethod).toBeUndefined();
+    });
+
     it('should leave the payment status absent when the source reported none (#2600)', async () => {
       const adapter = makeAdapter();
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
@@ -671,7 +991,7 @@ describe('OrderSyncService', () => {
       // that a two-file edit with no reason recorded in either.
       expect(syncLock.acquire).toHaveBeenCalledWith(
         'order:create:dest-a:ol_order_123',
-        ORDER_CREATE_LOCK_TTL_MS,
+        ORDER_CREATE_LOCK_TTL_MS
       );
       expect(adapter.createOrder).toHaveBeenCalledTimes(1);
       expect(syncLock.release).toHaveBeenCalledWith(
@@ -704,6 +1024,8 @@ describe('OrderSyncService', () => {
           destinationConnectionId: 'dest-a',
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-42' },
+          created: false,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -731,7 +1053,13 @@ describe('OrderSyncService', () => {
       });
 
       expect(results).toEqual([
-        { destinationConnectionId: 'dest-a', status: 'success', orderRef: { orderId: 'dest-1' } },
+        {
+          destinationConnectionId: 'dest-a',
+          status: 'success',
+          orderRef: { orderId: 'dest-1' },
+          created: true,
+          deliveryFingerprint: expect.any(String),
+        },
       ]);
     });
 
@@ -1017,10 +1345,10 @@ describe('OrderSyncService', () => {
       expect(adapter.createOrder).not.toHaveBeenCalled();
     });
 
-    // The guard sits AFTER the no-destinations throw, so a cancelled order with
-    // no destinations still reports the configuration problem.
-    it('should still throw NoOrderDestinationsAvailableException with zero destinations', async () => {
-      registerDestinations([]);
+    // The guard sits AFTER the no-destinations throw, so a cancelled order whose
+    // destinations are all inactive still reports the configuration problem.
+    it('should still throw NoOrderDestinationsAvailableException when no destination is active', async () => {
+      registerTopology([], ['dest-disabled']);
       orderRecordService.getOrderRecord.mockResolvedValue(cancelledRecord);
 
       await expect(
@@ -1150,6 +1478,102 @@ describe('OrderSyncService', () => {
     });
   });
 
+  // ── The destination-routing block write (#2703 / #2704) ───────────────────
+  // Level-triggered: every run states the answer, INCLUDING `null`, and `null` is
+  // the only thing that clears a stale reason. Clearing is the half of #2100's
+  // discipline that regresses silently, so each outcome is asserted explicitly.
+  describe('destination-routing block persistence', () => {
+    const lastBlock = (): unknown[] | undefined =>
+      orderRecordService.markDestinationRoutingBlock.mock.calls.at(-1);
+
+    it('should persist the partial-eligibility reason when the router narrowed the fan-out', async () => {
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a', 'dest-offline'],
+      });
+
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledTimes(1);
+      expect(lastBlock()).toEqual([
+        createOrder().id,
+        expect.objectContaining({
+          reason: 'routed-destinations-partially-unavailable',
+          detail: expect.stringContaining('dest-offline'),
+        }),
+      ]);
+    });
+
+    it('should persist routed-to-no-destination, and not throw, when the router named nobody', async () => {
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: [],
+      });
+
+      expect(lastBlock()).toEqual([
+        createOrder().id,
+        expect.objectContaining({ reason: 'routed-to-no-destination' }),
+      ]);
+    });
+
+    it('should persist the reason BEFORE throwing when no named destination is eligible', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          destinationConnectionIds: ['dest-offline'],
+        })
+      ).rejects.toBeInstanceOf(NoOrderDestinationsAvailableException);
+
+      expect(lastBlock()).toEqual([
+        createOrder().id,
+        expect.objectContaining({ reason: 'routed-destinations-unavailable' }),
+      ]);
+    });
+
+    it('should write an explicit null when nothing narrowed the fan-out', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledTimes(1);
+      expect(lastBlock()).toEqual([createOrder().id, null]);
+    });
+
+    it('should write null when the router named exactly the eligible destinations', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a'],
+      });
+
+      expect(lastBlock()).toEqual([createOrder().id, null]);
+    });
+
+    it('should not fail the sync when the block write itself fails', async () => {
+      orderRecordService.markDestinationRoutingBlock.mockRejectedValue(new Error('db down'));
+      jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toHaveLength(1);
+    });
+  });
+
   // ── Router-filtered fan-out (#2397) ───────────────────────────────────────
   describe('router-filtered fan-out', () => {
     it('should narrow the fan-out to the destinations the router named', async () => {
@@ -1228,8 +1652,8 @@ describe('OrderSyncService', () => {
       expect(exception.message).toContain('dest-offline');
     });
 
-    it('should keep the unfiltered throw unchanged when nothing is configured at all', async () => {
-      registerDestinations([]);
+    it('should keep the unfiltered throw when destinations exist but none is active', async () => {
+      registerTopology([], ['dest-disabled']);
 
       let caught: unknown;
       try {
@@ -1418,6 +1842,412 @@ describe('OrderSyncService', () => {
       // Nothing decremented the master, so a refresh would spend outbound
       // quota against it for no observable change.
       expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('holds absorbed by a destination that is also the master', () => {
+    // A destination that masters the reserved stock lowers it when the order
+    // is created there, so its `published` hold must stop counting or the sale
+    // is subtracted twice. Which holds qualify is the inventory context's call;
+    // this service owns WHEN to ask, for WHICH connection, and whether that
+    // ask republishes.
+    it('should ask the destination to consume its holds without republishing when the order was just created', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledWith({
+        orderRecordId: 'ol_order_123',
+        masterConnectionId: 'dest-a',
+        productIds: ['ol_product_789'],
+        // The post-sale re-read enqueued next republishes with the master's
+        // lowered number; republishing here too could publish the pre-sale one.
+        propagate: false,
+      });
+    });
+
+    it('should consume before the post-sale refresh is enqueued', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
+      const calls: string[] = [];
+      masterAbsorbedReservations.consumeAbsorbedHolds.mockImplementation(() => {
+        calls.push('consume');
+        return Promise.resolve({
+          closed: 1,
+          alreadyTerminal: 0,
+          failed: 0,
+          keptUnattributed: 0,
+          keptOtherOwner: 0,
+          keptUnknownPosition: 0,
+          keptDiagnostic: 0,
+          keptSharedLine: 0,
+          propagationsEnqueued: 0,
+        });
+      });
+      postSaleInventoryRefresh.enqueue.mockImplementation(() => {
+        calls.push('refresh');
+        return Promise.resolve();
+      });
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      // The refresh's `setInventory` propagation must never read an ATP where
+      // the absorbed hold still subtracts.
+      expect(calls).toEqual(['consume', 'refresh']);
+    });
+
+    it('should republish when the order already existed at the destination', async () => {
+      const adapter = makeStockLoweringAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          externalId: 'SHOP-42',
+          connectionId: 'dest-a',
+          platformType: 'shoper',
+          entityType: 'Order',
+        },
+      ]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      // The earlier run's re-read already ran and its key is spent, so nothing
+      // else would publish the corrected number.
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledWith(
+        expect.objectContaining({ masterConnectionId: 'dest-a', propagate: true })
+      );
+    });
+
+    it('should ask only for destinations whose create succeeded', async () => {
+      registerDestinations([
+        { connectionId: 'dest-ok', adapter: makeStockLoweringAdapter() },
+        {
+          connectionId: 'dest-down',
+          adapter: {
+            createOrder: jest.fn().mockRejectedValue(new Error('destination down')),
+          } as unknown as OrderProcessorManagerPort,
+        },
+      ]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledTimes(1);
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledWith(
+        expect.objectContaining({ masterConnectionId: 'dest-ok' })
+      );
+    });
+
+    it('should not fail order sync when consuming the holds throws', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
+      masterAbsorbedReservations.consumeAbsorbedHolds.mockRejectedValue(new Error('db blip'));
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      // The hold stays, but the master still gets re-read.
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalled();
+    });
+
+    it.each([
+      ['declares nothing', makeAdapter],
+      [
+        'declares it does not lower stock',
+        () =>
+          ({
+            createOrder: jest.fn().mockResolvedValue({ orderId: 'dest_order' }),
+            lowersStockOnOrderCreate: () => Promise.resolve(false),
+          }) as unknown as OrderProcessorManagerPort,
+      ],
+      [
+        'fails to answer',
+        () =>
+          ({
+            createOrder: jest.fn().mockResolvedValue({ orderId: 'dest_order' }),
+            lowersStockOnOrderCreate: () => Promise.reject(new Error('shop settings unreadable')),
+          }) as unknown as OrderProcessorManagerPort,
+      ],
+    ])(
+      'should keep the holds when the destination %s',
+      async (_label: string, build: () => OrderProcessorManagerPort) => {
+        // A shop that did not lower its stock never removed the units, so
+        // consuming its holds would over-promise until the next master sync.
+        registerDestinations([{ connectionId: 'dest-a', adapter: build() }]);
+
+        const results = await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+        });
+
+        expect(results[0]).toMatchObject({ status: 'success' });
+        expect(masterAbsorbedReservations.consumeAbsorbedHolds).not.toHaveBeenCalled();
+      }
+    );
+  });
+
+  describe('contact refresh on an order the destination already holds', () => {
+    // A source may reveal a contact field only after the first create (a
+    // marketplace showing the phone once the order is paid). The mapping makes
+    // every later run skip the create, so this is the only way the destination
+    // ever hears about it.
+    type RefreshingAdapter = jest.Mocked<OrderProcessorManagerPort> & {
+      refreshOrderContact: jest.Mock;
+    };
+    const makeRefreshingAdapter = (
+      refresh: jest.Mock = jest.fn().mockResolvedValue(undefined)
+    ): RefreshingAdapter =>
+      ({
+        createOrder: jest.fn().mockResolvedValue({ orderId: 'should-not-be-used' }),
+        refreshOrderContact: refresh,
+      }) as unknown as RefreshingAdapter;
+
+    const mapExisting = (): void => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          externalId: 'SHOP-42',
+          connectionId: 'dest-a',
+          platformType: 'shoper',
+          entityType: 'Order',
+        },
+      ]);
+    };
+
+    it('should ask the destination to refresh contact details with the mapped id when the create is skipped', async () => {
+      const adapter = makeRefreshingAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
+      expect(adapter.refreshOrderContact).toHaveBeenCalledWith({
+        externalOrderId: 'SHOP-42',
+        order: expect.objectContaining({ internalOrderId: 'ol_order_123' }),
+      });
+    });
+
+    it('should not ask for a refresh when the order was just created', async () => {
+      const adapter = makeRefreshingAdapter();
+      (adapter.createOrder as jest.Mock).mockResolvedValue({ orderId: 'SHOP-NEW' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+      // The create itself carried the latest data.
+      expect(adapter.refreshOrderContact).not.toHaveBeenCalled();
+    });
+
+    it('should skip quietly when the destination does not implement the refresh', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
+    });
+
+    it('should not fail order sync when the refresh throws', async () => {
+      const adapter = makeRefreshingAdapter(jest.fn().mockRejectedValue(new Error('shop down')));
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      // The order is already at the destination; the next re-ingestion asks again.
+      expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
+    });
+  });
+
+  describe('delivery point change on an order the destination already holds (#4195)', () => {
+    type DeliveryAdapter = jest.Mocked<OrderProcessorManagerPort> & {
+      updateOrderDelivery: jest.Mock;
+    };
+    const makeDeliveryAdapter = (
+      update: jest.Mock = jest.fn().mockResolvedValue({ outcome: 'updated' })
+    ): DeliveryAdapter =>
+      ({
+        createOrder: jest.fn().mockResolvedValue({ orderId: 'should-not-be-used' }),
+        updateOrderDelivery: update,
+      }) as unknown as DeliveryAdapter;
+
+    const mapExisting = (): void => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'SHOP-42', connectionId: 'dest-a', platformType: 'shopify', entityType: 'Order' },
+      ]);
+    };
+    const orderWithLocker = (id: string) =>
+      ({ ...createOrder(), pickupPoint: { id } }) as ReturnType<typeof createOrder>;
+    const storedFor = (order: ReturnType<typeof createOrder>, extra: object = {}) =>
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        syncStatus: [
+          {
+            destinationConnectionId: 'dest-a',
+            status: 'synced',
+            deliveryFingerprint: computeDeliveryFingerprint({
+              shipping: order.shipping,
+              pickupPoint: order.pickupPoint,
+            }),
+            ...extra,
+          },
+        ],
+      } as never);
+
+    it('should relay a changed pickup point once and report the new fingerprint', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).toHaveBeenCalledTimes(1);
+      expect(adapter.updateOrderDelivery).toHaveBeenCalledWith({
+        externalOrderId: 'SHOP-42',
+        order: expect.objectContaining({ pickupPoint: { id: 'KRK01M' } }),
+      });
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryFingerprint: computeDeliveryFingerprint({ pickupPoint: { id: 'KRK01M' }, shipping: createOrder().shipping }),
+        deliveryUpdate: { outcome: 'updated' },
+      });
+    });
+
+    it('should carry a caveat the destination reports on an update into the report', async () => {
+      const adapter = makeDeliveryAdapter(
+        jest.fn().mockResolvedValue({ outcome: 'updated', detail: 'lost the VAT line' })
+      );
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        deliveryUpdate: { outcome: 'updated', detail: 'lost the VAT line' },
+      });
+    });
+
+    it('should not relay the same delivery point twice', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('KRK01M'));
+
+      await service.syncOrder({ order: orderWithLocker('KRK01M'), sourceConnectionId: 'source-1' });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should record a baseline and relay nothing when no fingerprint was ever stored', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        syncStatus: [{ destinationConnectionId: 'dest-a', status: 'synced' }],
+      } as never);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({ deliveryFingerprint: expect.any(String) });
+    });
+
+    it('should store the fingerprint of a freshly created order without relaying', async () => {
+      const adapter = makeDeliveryAdapter();
+      (adapter.createOrder as jest.Mock).mockResolvedValue({ orderId: 'SHOP-NEW' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({ created: true, deliveryFingerprint: expect.any(String) });
+    });
+
+    it('should report a destination without the capability as unsupported and not fail it', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'unsupported' },
+      });
+    });
+
+    it('should record a refusal with its reason and the new fingerprint so it is not retried', async () => {
+      const adapter = makeDeliveryAdapter(
+        jest.fn().mockResolvedValue({ outcome: 'refused', reason: 'fulfilled', detail: 'already fulfilled' })
+      );
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', detail: 'already fulfilled' },
+      });
+      expect((results[0] as { deliveryFingerprint: string }).deliveryFingerprint).toBe(
+        computeDeliveryFingerprint({ pickupPoint: { id: 'KRK01M' }, shipping: createOrder().shipping })
+      );
+    });
+
+    it('should keep the old fingerprint when the update throws so the next run retries', async () => {
+      const adapter = makeDeliveryAdapter(jest.fn().mockRejectedValue(new Error('shop down')));
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      const previous = orderWithLocker('WAW14A');
+      storedFor(previous);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'failed', detail: 'shop down' },
+        deliveryFingerprint: computeDeliveryFingerprint({
+          shipping: previous.shipping,
+          pickupPoint: previous.pickupPoint,
+        }),
+      });
     });
   });
 });

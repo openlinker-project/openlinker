@@ -40,6 +40,7 @@
  * @module libs/core/src/sales-documents/domain/types
  * @see docs/architecture/adrs/065-sales-document-read-surface.md
  */
+import type { SalesDocumentAfterIssueAttention } from './live-order-issuance-gate.types';
 import type {
   FiscalArtefactSummary,
   FiscalRegistrationFailureMode,
@@ -57,6 +58,7 @@ import type { SalesDocumentKind } from './sales-document-kind.types';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
+  SalesDocumentBlockParams,
 } from './sales-document-reason.types';
 import type { SalesDocumentCondition } from './sales-document-condition.types';
 
@@ -293,6 +295,8 @@ export interface SalesDocumentView {
    * none. Never parsed by a surface - it is displayed or dropped.
    */
   readonly blockDetail: string | null;
+  /** The values behind `blockDetail` (#3866); `null` when it stored none. */
+  readonly blockParams: SalesDocumentBlockParams | null;
   /**
    * Records for this order on other connections. Empty for the overwhelming
    * majority of orders; a non-empty list is surfaced, never hidden behind the
@@ -313,4 +317,12 @@ export interface SalesDocumentView {
    * kind was chosen.
    */
   readonly matchedRule: SalesDocumentMatchedRuleView | null;
+  /**
+   * DEF-26: the sale changed after its document was made - cancelled, or
+   * refunded in whole or in part - so the document may need a correction.
+   * DERIVED on every read from the live order and its refunds, never stored;
+   * `null` when there is no live document or nothing changed. A suggestion
+   * only: whether a correction is due is the operator's call.
+   */
+  readonly afterIssueAttention: SalesDocumentAfterIssueAttention | null;
 }

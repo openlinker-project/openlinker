@@ -8,23 +8,32 @@
  *      (required when at least one ProductMaster connection exists, per the
  *      style guide; the current form lets operators skip it but we still
  *      surface the relationship explicitly on this step)
- *   4. OAuth redirect — final review; submit redirects to Allegro's consent
+ *   4. Sales documents — how delivery appears on receipts and invoices
+ *      (skipped when re-authenticating an existing connection)
+ *   5. OAuth redirect — final review; submit redirects to Allegro's consent
  *      screen so the access token can come back through the callback page
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useStartAllegroOAuthMutation } from '../hooks/use-start-allegro-oauth-mutation';
 import { useProductMasterConnections } from '../../connections';
 import {
-  allegroSetupSchema,
+  createAllegroSetupSchema,
   ALLEGRO_SETUP_DEFAULT_VALUES,
   toStartOAuthInput,
   type AllegroSetupFormSubmission,
   type AllegroSetupFormValues,
 } from './allegro-setup.schema';
 import { AllegroSetupSummary } from './allegro-setup-summary';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  DeliveryWizardStep,
+  useDeliveryLineSuggestionsQuery,
+  wizardRules,
+  wizardSummaryRows,
+} from '../../delivery-on-documents';
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
@@ -34,13 +43,19 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
-const STEP_LABELS = ['Credentials', 'Environment', 'Product catalog', 'Review & connect'] as const;
+const STEP_COUNT = 5;
+
+const SALES_DOCUMENTS_STEP = 3;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<AllegroSetupFormValues>>> = [
   ['name', 'clientId', 'clientSecret'],
   ['environment'],
   ['masterCatalogConnectionId'],
+  [],
   [],
 ];
 
@@ -56,13 +71,28 @@ export function AllegroSetupForm(): ReactElement {
   // a new one (#819).
   const reauthConnectionId = searchParams.get('reauth') ?? undefined;
   const startOAuth = useStartAllegroOAuthMutation();
+  const copy = useMessages('allegro-core').allegroSetupForm;
+  const schemaCopy = useMessages('allegro-core').allegroSetupSchema;
+  const schema = useMemo(() => createAllegroSetupSchema(schemaCopy), [schemaCopy]);
+  const platform = usePlatform('allegro')?.displayName ?? copy.fallbackPlatform;
+  const stepLabels = [
+    copy.steps.credentials,
+    copy.steps.environment,
+    copy.steps.productCatalogue,
+    copy.steps.salesDocuments,
+    copy.steps.review,
+  ];
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
   const { connectionsQuery, productMasterConnections, autoSelectedConnectionId } =
     useProductMasterConnections();
   const form = useForm<AllegroSetupFormValues, undefined, AllegroSetupFormSubmission>({
     defaultValues: ALLEGRO_SETUP_DEFAULT_VALUES,
-    resolver: zodResolver(allegroSetupSchema),
+    resolver: zodResolver(schema),
     mode: 'onBlur',
   });
+
+  const suggestionsQuery = useDeliveryLineSuggestionsQuery();
+  const suggestions = suggestionsQuery.data?.suggestions ?? [];
 
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
@@ -83,8 +113,8 @@ export function AllegroSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : []
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : []
   );
 
   async function goNext(): Promise<void> {
@@ -93,19 +123,44 @@ export function AllegroSetupForm(): ReactElement {
       const valid = await form.trigger([...fields]);
       if (!valid) return;
     }
-    setCompletedSteps((prev) => new Set(prev).add(stepIndex));
-    setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
+    const target = nextStep(stepIndex + 1, 1);
+    setCompletedSteps((prev) => {
+      const done = new Set(prev).add(stepIndex);
+      // A stepped-over step reads as done, not as a gap in the stepper.
+      if (target > stepIndex + 1) done.add(stepIndex + 1);
+      return done;
+    });
+    setStepIndex(target);
   }
 
   function goBack(): void {
-    setStepIndex((i) => Math.max(i - 1, 0));
+    setStepIndex((i) => nextStep(i - 1, -1));
+  }
+
+  // Re-authenticating rotates credentials only, so it has no sales-documents
+  // question to ask: the step is stepped over in both directions (#3911).
+  function nextStep(candidate: number, direction: 1 | -1): number {
+    const bounded = Math.min(Math.max(candidate, 0), STEP_COUNT - 1);
+    return reauthConnectionId && bounded === SALES_DOCUMENTS_STEP ? bounded + direction : bounded;
+  }
+
+  // A submit before the last step is Enter in a field, or the click that
+  // advanced to the last step landing on the Create button that replaced Next.
+  // Either way it means "Next", never "Create" (the review step must be seen).
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (stepIndex < STEP_COUNT - 1) {
+      event.preventDefault();
+      void goNext();
+      return;
+    }
+    void onSubmit(event);
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const redirectUri = `${window.location.origin}/integrations/allegro/connect/callback`;
       const { authorizationUrl } = await startOAuth.mutateAsync(
-        toStartOAuthInput(values, redirectUri, reauthConnectionId)
+        toStartOAuthInput(values, redirectUri, reauthConnectionId, suggestions)
       );
       // Clear the dirty flag so abandon-prevention doesn't pop a native
       // "leave page?" confirm when we navigate to Allegro's consent screen.
@@ -117,6 +172,10 @@ export function AllegroSetupForm(): ReactElement {
   });
 
   const values = form.watch();
+  const deliveryValue = values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE;
+  const deliverySummary = wizardSummaryRows(wizardRules(deliveryValue, suggestions))
+    .map((row) => `${row.label}: ${row.value}`)
+    .join('; ');
   const redirectUri = `${window.location.origin}/integrations/allegro/connect/callback`;
   const selectedCatalog = productMasterConnections.find(
     (c) => c.id === values.masterCatalogConnectionId
@@ -125,86 +184,89 @@ export function AllegroSetupForm(): ReactElement {
   return (
     <WizardLayout
       stepper={
-        <SetupStepper steps={STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
+        <SetupStepper steps={stepLabels} currentStep={stepIndex} completedSteps={completedSteps} />
       }
       summary={
         <AllegroSetupSummary
           values={values}
           stepIndex={stepIndex}
           selectedCatalogName={selectedCatalog?.name ?? null}
+          suggestions={suggestions}
+          showDelivery={!reauthConnectionId}
         />
       }
     >
-      <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+      <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
+        <BackLink to="/connections/new" label={copy.backLabel} className="wizard-card__back" />
 
         {reauthConnectionId ? (
-          <Alert tone="warning" title="Re-authenticating an existing connection">
-            Completing this flow replaces the stored credentials for the flagged connection and
-            resumes syncing. Re-enter the Client ID and Client Secret for the{' '}
-            <strong>same Allegro seller account</strong> from your developer app — the connection and
-            its mappings are preserved. The Environment and Product-catalog selections below do not
-            change the existing connection&rsquo;s configuration; only the credentials are rotated.
+          <Alert tone="warning" title={copy.reauth.title}>
+            {renderRich(copy.reauth.body, strong, { platform })}
           </Alert>
         ) : null}
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}
         {startOAuth.error ? (
-          <Alert tone="error" title="Failed to start authorization">
-            {startOAuth.error.message}
+          <Alert tone="error" title={copy.startFailed}>
+            {describeApiError(startOAuth.error, 'allegro-core')}
           </Alert>
         ) : null}
 
         {stepIndex === 0 ? (
           <>
-            <Alert tone="info" title="Before you start">
-              In the{' '}
-              <a href="https://developer.allegro.pl/" target="_blank" rel="noreferrer noopener">
-                Allegro developer portal
-              </a>
-              , create a developer app and register <span className="mono-text">{redirectUri}</span>{' '}
-              as an allowed redirect URI. Copy the Client ID and Client Secret from that app into
-              the fields below.
+            <Alert tone="info" title={copy.beforeYouStart.title}>
+              {renderRich(
+                copy.beforeYouStart.body,
+                {
+                  link: (text) => (
+                    <a href="https://developer.allegro.pl/" target="_blank" rel="noreferrer noopener">
+                      {text}
+                    </a>
+                  ),
+                  uri: (text) => <span className="mono-text">{text}</span>,
+                },
+                { platform, redirectUri },
+              )}
             </Alert>
 
             <FormField
-              label="Connection name"
+              label={copy.fields.name.label}
               name="name"
               error={form.formState.errors.name?.message}
-              description="A label for this Allegro integration in OpenLinker."
+              description={interpolate(copy.fields.name.description, { platform })}
             >
               <Input
                 {...form.register('name')}
-                placeholder="Allegro sandbox"
+                placeholder={interpolate(copy.fields.name.placeholder, { platform })}
                 invalid={Boolean(form.formState.errors.name)}
               />
             </FormField>
 
             <FormField
-              label="Client ID"
+              label={copy.fields.clientId.label}
               name="clientId"
               error={form.formState.errors.clientId?.message}
-              description="OAuth client ID from your Allegro developer app."
+              description={interpolate(copy.fields.clientId.description, { platform })}
             >
               <Input
                 {...form.register('clientId')}
-                placeholder="your-allegro-client-id"
+                placeholder={copy.fields.clientId.placeholder}
                 invalid={Boolean(form.formState.errors.clientId)}
                 autoComplete="off"
               />
             </FormField>
 
             <FormField
-              label="Client secret"
+              label={copy.fields.clientSecret.label}
               name="clientSecret"
               error={form.formState.errors.clientSecret?.message}
-              description="OAuth client secret from your Allegro developer app."
+              description={interpolate(copy.fields.clientSecret.description, { platform })}
             >
               <Input
                 {...form.register('clientSecret')}
                 type="password"
-                placeholder="your-allegro-client-secret"
+                placeholder={copy.fields.clientSecret.placeholder}
                 invalid={Boolean(form.formState.errors.clientSecret)}
                 autoComplete="off"
               />
@@ -214,12 +276,11 @@ export function AllegroSetupForm(): ReactElement {
 
         {stepIndex === 1 ? (
           <>
-            <Alert tone="info" title="Pick the right environment">
-              Sandbox is a separate Allegro tenant for testing. Production credentials will not work
-              in sandbox and vice versa.
+            <Alert tone="info" title={copy.environmentInfo.title}>
+              {interpolate(copy.environmentInfo.body, { platform })}
             </Alert>
             <FormField
-              label="Environment"
+              label={copy.fields.environment}
               name="environment"
               error={form.formState.errors.environment?.message}
             >
@@ -227,8 +288,8 @@ export function AllegroSetupForm(): ReactElement {
                 {...form.register('environment')}
                 invalid={Boolean(form.formState.errors.environment)}
               >
-                <option value="sandbox">Sandbox</option>
-                <option value="production">Production</option>
+                <option value="sandbox">{copy.environments.sandbox}</option>
+                <option value="production">{copy.environments.production}</option>
               </Select>
             </FormField>
           </>
@@ -236,30 +297,29 @@ export function AllegroSetupForm(): ReactElement {
 
         {stepIndex === 2 ? (
           <>
-            <Alert tone="info" title="Link the product catalog">
-              OpenLinker links Allegro offers to products through barcodes on your ProductMaster
-              connection. Select the shop whose catalog should resolve those barcodes.
+            <Alert tone="info" title={copy.catalogueInfo.title}>
+              {interpolate(copy.catalogueInfo.body, { platform })}
             </Alert>
             <FormField
-              label="Product catalog connection"
+              label={copy.fields.catalogue.label}
               name="masterCatalogConnectionId"
               error={form.formState.errors.masterCatalogConnectionId?.message}
-              description="Select the ProductMaster connection to use for offer-product barcode linking. You can configure this later if you are still setting up the PrestaShop side."
+              description={copy.fields.catalogue.description}
             >
               {connectionsQuery.isLoading ? (
                 <Select disabled>
-                  <option>Loading connections…</option>
+                  <option>{copy.fields.catalogue.loading}</option>
                 </Select>
               ) : connectionsQuery.error ? (
                 <Select disabled>
-                  <option>Failed to load connections</option>
+                  <option>{copy.fields.catalogue.failed}</option>
                 </Select>
               ) : (
                 <Select
                   {...form.register('masterCatalogConnectionId')}
                   invalid={Boolean(form.formState.errors.masterCatalogConnectionId)}
                 >
-                  <option value="">None (configure later)</option>
+                  <option value="">{copy.none}</option>
                   {productMasterConnections.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -271,26 +331,48 @@ export function AllegroSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 3 ? (
+        {stepIndex === SALES_DOCUMENTS_STEP ? (
+          <DeliveryWizardStep
+            value={deliveryValue}
+            suggestions={suggestions}
+            onChange={(next) =>
+              form.setValue('deliveryOnDocuments', next, { shouldDirty: true })
+            }
+          />
+        ) : null}
+
+        {stepIndex === 4 ? (
           <>
             <dl className="wizard-review-list">
-              <dt>Name</dt>
-              <dd>{values.name || '—'}</dd>
-              <dt>Client ID</dt>
-              <dd className="mono-text">{values.clientId || '—'}</dd>
-              <dt>Client secret</dt>
+              <dt>{copy.review.name}</dt>
+              <dd>{values.name || copy.review.empty}</dd>
+              <dt>{copy.fields.clientId.label}</dt>
+              <dd className="mono-text">{values.clientId || copy.review.empty}</dd>
+              <dt>{copy.fields.clientSecret.label}</dt>
               <dd className="mono-text">
-                {values.clientSecret ? maskSecret(values.clientSecret) : '—'}
+                {values.clientSecret ? maskSecret(values.clientSecret) : copy.review.empty}
               </dd>
-              <dt>Environment</dt>
-              <dd>{values.environment === 'production' ? 'Production' : 'Sandbox'}</dd>
-              <dt>Product catalog</dt>
-              <dd>{selectedCatalog ? selectedCatalog.name : 'None (configure later)'}</dd>
+              <dt>{copy.fields.environment}</dt>
+              <dd>
+                {values.environment === 'production'
+                  ? copy.environments.production
+                  : copy.environments.sandbox}
+              </dd>
+              <dt>{copy.steps.productCatalogue}</dt>
+              <dd>{selectedCatalog ? selectedCatalog.name : copy.none}</dd>
+              {reauthConnectionId ? null : (
+                <>
+                  <dt>{copy.review.delivery}</dt>
+                  <dd>{deliverySummary}</dd>
+                </>
+              )}
             </dl>
             <p className="muted-text panel-copy">
-              After clicking <strong>Connect with Allegro</strong>, you will be redirected to
-              Allegro to authorize this connection. Make sure your Allegro app has{' '}
-              <span className="mono-text">{redirectUri}</span> registered as a redirect URI.
+              {renderRich(
+                copy.review.redirectNote,
+                { ...strong, uri: (text) => <span className="mono-text">{text}</span> },
+                { platform, redirectUri },
+              )}
             </p>
           </>
         ) : null}
@@ -299,18 +381,18 @@ export function AllegroSetupForm(): ReactElement {
           <div className="wizard-actions__group">
             {stepIndex > 0 ? (
               <Button tone="secondary" type="button" onClick={goBack}>
-                Back
+                {copy.back}
               </Button>
             ) : null}
           </div>
           <div className="wizard-actions__group">
-            {stepIndex < STEP_LABELS.length - 1 ? (
-              <Button type="button" onClick={() => void goNext()}>
-                Next
+            {stepIndex < STEP_COUNT - 1 ? (
+              <Button key="next" type="button" onClick={() => void goNext()}>
+                {copy.next}
               </Button>
             ) : (
-              <Button type="submit" disabled={startOAuth.isPending}>
-                {startOAuth.isPending ? 'Connecting…' : 'Connect with Allegro'}
+              <Button key="submit" type="submit" disabled={startOAuth.isPending}>
+                {startOAuth.isPending ? copy.connecting : interpolate(copy.connect, { platform })}
               </Button>
             )}
           </div>

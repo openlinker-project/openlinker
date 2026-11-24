@@ -45,9 +45,9 @@ describe('SourceConnectionPricingRollup', () => {
 
     expect(await screen.findByText('Allegro — PL')).toBeInTheDocument();
     expect(screen.getByText(/using Allegro — PL's default rule/)).toBeInTheDocument();
-    expect(screen.getByText(/— own rule just for this source/)).toBeInTheDocument();
-    expect(screen.getByText(/— own mode just for this source/)).toBeInTheDocument();
-    expect(screen.getByText(/— own mode and rule just for this source/)).toBeInTheDocument();
+    expect(screen.getByText(/- own rule just for this source/)).toBeInTheDocument();
+    expect(screen.getByText(/- own mode just for this source/)).toBeInTheDocument();
+    expect(screen.getByText(/- own mode and rule just for this source/)).toBeInTheDocument();
 
     // Read-only per ADR decision 2: the only interactive elements are the
     // "Manage" navigation links, never a form control that could mutate.

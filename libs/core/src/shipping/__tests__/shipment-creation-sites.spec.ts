@@ -8,10 +8,12 @@
  * TWO creation sites, and DESIGN §5.5 itself names the second one as where a 3PL
  * shipment comes from — the ADR-012 branch-1 observed row.
  *
- * So the guarantee actually worth holding is that the OMS bridge adds no THIRD
- * site. That is what this asserts, by pinning the exact set: a new creation site
- * fails here and must justify itself, and REMOVING one fails too, so the list
- * cannot rot into a rubber stamp.
+ * So the guarantee actually worth holding is that the OMS bridge adds no site of
+ * its own. That is what this asserts, by pinning the exact set: a new creation
+ * site fails here and must justify itself, and REMOVING one fails too, so the
+ * list cannot rot into a rubber stamp. The ADR-012 amendment justified a third:
+ * the source-side twin of the branch-1 observed row, which is the same fact read
+ * from the order's source instead of its destination.
  *
  * ## What this test is NOT
  *
@@ -41,6 +43,10 @@ const AUTHORIZED_CREATION_SITES = [
   // contract. Named by DESIGN §5.5 as the 3PL source, and it never writes a
   // `providerShipmentId`, which is #2402 AC-2.
   'application/services/fulfillment-status-sync.service.ts',
+  // The source-side twin of the row above (ADR-012 amendment): a shipment the
+  // order's SOURCE reports was made outside OpenLinker. Same branch-1 shape on
+  // the source connection, so it never writes a `providerShipmentId` either.
+  'application/services/source-fulfillment-status-sync.service.ts',
 ] as const;
 
 function collectSourceFiles(dir: string, acc: string[] = []): string[] {
@@ -59,7 +65,7 @@ describe('shipment creation sites', () => {
     expect(files.length).toBeGreaterThan(20);
   });
 
-  it('should mint shipments from exactly the two authorized sites — no third', () => {
+  it('should mint shipments from exactly the authorized sites, the OMS adding none', () => {
     const found = files
       // ONE regex, not two chained ones: two independent file-scope filters
       // would qualify a file that happens to contain each pattern in unrelated

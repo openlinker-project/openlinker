@@ -18,7 +18,7 @@
  * persisted on the returned `FiscalRegistrationRecord` and the record is
  * returned, so a resolved call is ALWAYS `{ outcome: 'ok' }` here — the job
  * ran to completion, and the record itself (not the job outcome) carries
- * whether the sale was actually registered. `register` DOES still throw five
+ * whether the sale was actually registered. `register` DOES still throw six
  * refusals that never cross the provider boundary at all:
  *  - `MissingIdempotencyKeyException` — a malformed payload; should be
  *    unreachable past this handler's own validation, but treated the same way
@@ -29,6 +29,9 @@
  *  - `MissingFiscalTaxRateException` — ADR-063's refusal of a sale whose lines
  *    do not all name a tax rate. A fact about persisted data, unchanged by a
  *    retry: terminal `business_failure`.
+ *  - `FiscalRegistrationAttemptClosedException` (#3960) - the key names an
+ *    attempt the provider already refused, which is final under that key:
+ *    terminal `business_failure`. Reached by a job enqueued before #3960.
  *  - `FiscalRegistrationContendedException` — a timing accident a retry
  *    resolves once the peer has persisted its row: retryable, wrapped in
  *    `SyncJobExecutionError`.
@@ -63,9 +66,17 @@ import {
   OrderAlreadyHasInvoiceException,
   FiscalRegistrationContendedException,
   MissingFiscalTaxRateException,
+  FiscalRegistrationAttemptClosedException,
 } from '@openlinker/core/fiscalization';
 import type { RegisterTransactionCommand } from '@openlinker/core/fiscalization';
 import { isTaxRateEra } from '@openlinker/core/sales-documents';
+import {
+  IOrderRecordService,
+  IOrderRefundService,
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+import { readLiveOrderIssuanceDecision } from './live-order-issuance';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -86,6 +97,10 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     private readonly fiscalRegistrations: IFiscalRegistrationService,
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
     private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -97,6 +112,21 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     const command = this.toCommand(payload);
 
     try {
+      // DEF-26: a receipt for a cancelled or fully refunded order is not
+      // registered, the same gate `invoicing.issue` applies. A failed read
+      // throws inside this try and so retries rather than registering blind.
+      const decision = await readLiveOrderIssuanceDecision(
+        this.orderRecords,
+        this.orderRefunds,
+        payload.orderId,
+      );
+      if (decision.kind === 'block') {
+        this.logger.warn(
+          `fiscalization.register skipped: ${decision.reason} orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+
       // `register` never throws on a provider rejection (see file docstring) —
       // a resolved call is always a completed job, whatever the returned
       // record's own `status`/`failureMode` says.
@@ -164,6 +194,20 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
             `${String(error.lineCount)} of ${String(error.totalLines)} line(s) with no tax ` +
             `rate; connectionId=${payload.connectionId}. Add the rate in the shop's catalogue ` +
             `and re-sync the product.`,
+        );
+        return { outcome: 'business_failure' };
+      }
+      // #3960: the job's key names an attempt the provider already refused. A
+      // refusal is final under its key, so nothing was sent and no retry can
+      // change it - terminal, never retried. In practice this is a job enqueued
+      // under that key before #3960 deployed. The order is not stranded: the
+      // refused record still offers Retry, which starts the NEXT attempt under
+      // its own key.
+      if (error instanceof FiscalRegistrationAttemptClosedException) {
+        this.logger.warn(
+          `fiscalization.register skipped: attempt ${error.recordId} was already refused and is ` +
+            `final under its key; orderId=${payload.orderId} connectionId=${payload.connectionId}. ` +
+            `Ask again to start the next attempt.`,
         );
         return { outcome: 'business_failure' };
       }

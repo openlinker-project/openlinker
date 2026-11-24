@@ -19,6 +19,7 @@ import type { Connection } from '../../features/connections';
 import type { ProductListingsCoverage } from '../../features/products/api/products.types';
 import { usePlatforms } from '../../shared/plugins';
 import { findPlatformDisplayName } from '../../features/mappings';
+import { useMessages, usePlural } from '../../shared/i18n';
 
 export interface ListingsCoveragePillsProps {
   coverage: ProductListingsCoverage[] | undefined;
@@ -41,6 +42,8 @@ export function ListingsCoveragePills({
   connections,
 }: ListingsCoveragePillsProps): ReactElement | null {
   const platforms = usePlatforms();
+  const copy = useMessages('products').listingsCoveragePills;
+  const plural = usePlural();
 
   if (connections.length === 0) return null;
 
@@ -67,7 +70,7 @@ export function ListingsCoveragePills({
             key={connection.id}
             className={`coverage-pill coverage-pill--${state}`}
             data-channel={connection.platformType}
-            title={`${label}: ${listed} of ${variantCount} variant${variantCount === 1 ? '' : 's'} listed`}
+            title={plural(variantCount, copy.pillTitle, { label, listed })}
           >
             {label}
             <span className="coverage-pill__count tabular">

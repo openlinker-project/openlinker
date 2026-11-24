@@ -14,7 +14,11 @@
  */
 
 import { Injectable, Inject } from '@nestjs/common';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  CapabilityNotSupportedException,
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import {
   ISyncCursorsService,
@@ -24,7 +28,14 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type Connection, type ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+  CONNECTION_PORT_TOKEN,
+  type Connection,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import {
   IAutoIssueTriggerService,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
@@ -35,7 +46,10 @@ import {
   IOrderCustomerProjectionUpdaterService,
   ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN,
 } from '@openlinker/core/customers';
-import { IOrderSyncService } from '../interfaces/order-sync.service.interface';
+import {
+  IOrderSyncService,
+  type OrderSyncRequest,
+} from '../interfaces/order-sync.service.interface';
 import type {
   IOrderIngestionService,
   OrderIngestionOptions,
@@ -44,18 +58,36 @@ import type {
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_GIFT_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
+import { IOrderGiftService } from './order-gift.service.interface';
+import { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
+import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
+import { IOrderSourceAmendmentEffectsService } from '../interfaces/order-source-amendment-effects.service.interface';
+import { IOrderChangeService } from './order-change.service.interface';
+import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
+import { resolveLineExpansionDefinitions } from './order-line-expansion';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
 import type { IncomingOrder, IncomingOrderItem } from '../../domain/types/incoming-order.types';
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  expandBundleLines,
   taxRateState,
+  type IBundleDefinitionService,
+  type LineExpansion,
   type ITaxRateJournalService,
   type StoredTaxRate,
   type TaxRateSource,
@@ -75,7 +107,6 @@ import {
 import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
-  buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
   deriveRoutingHoldOutcome,
   deriveSaleDecrementEnqueueIntents,
@@ -85,23 +116,27 @@ import {
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
-  type RoutingInputLine,
-  type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
 import {
   isFulfillmentRouterUnroutable,
   selectPrimaryFulfillmentRouter,
+  toRouterSelectionClaimants,
   type AuthorityAttentionOutcome,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
+import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import { orderStockRestoreDedupeKey } from '../../domain/types/order-cancel.types';
+import { isRoutingAwaitingPayment } from '../../domain/types/payment-status.types';
+import { cancelRequestTargetRef } from '../../domain/types/order-change.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
 import {
   isOrderFromOwnProductMaster,
   isOrderMirroredBeforeRouting,
+  isOrderFulfilledBySource,
   isOrderShippedElsewhere,
   type FulfillmentRoutingSkipReason,
 } from '../../domain/types/fulfillment-routing-eligibility.types';
@@ -109,10 +144,17 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
+import { describeMultipackHold, hasBundleDefinition, isMultipackLine } from './multipack-hold';
+import {
+  projectOrderForRouting,
+  type OrderRoutingProjection,
+} from '../../domain/project-order-for-routing';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
+import { applyOrderEditsToOrder } from '../../domain/types/order-edits.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
 
 /**
  * What the #2396 intercept decided for one order.
@@ -177,13 +219,6 @@ type RoutingTarget =
   | { readonly kind: 'skip'; readonly reason: FulfillmentRoutingSkipReason }
   | { readonly kind: 'pass' }
   | { readonly kind: 'indeterminate' };
-
-/** The ADR-062 allowlist projection handed to a router. */
-interface RoutingProjection {
-  readonly lines: RoutingInputLine[];
-  readonly shipTo: RoutingShipTo;
-  readonly requestedDeliveryMethod: string | null;
-}
 
 @Injectable()
 export class OrderIngestionService implements IOrderIngestionService {
@@ -261,7 +296,35 @@ export class OrderIngestionService implements IOrderIngestionService {
     // deliberately running router-less, and that misconfiguration is otherwise
     // invisible (the router-less path is a silent, fully-specified pass-through).
     @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
-    private readonly routerResolver: FulfillmentRouterResolverPort
+    private readonly routerResolver: FulfillmentRouterResolverPort,
+    // #3540: ADR-044 "confirms from observation" - an inbound cancel confirms an
+    // operator's still-open cancel request. Appended last like every dependency
+    // since. Leaf-module edge (`OrderChangesModule`), no cycle.
+    @Inject(ORDER_CHANGE_SERVICE_TOKEN)
+    private readonly orderChanges: IOrderChangeService,
+    // #3540 (B-18): the cleanup a cancelled order owes, run for an OBSERVED
+    // confirmation of an operator cancel request exactly as the operator path
+    // runs it. Same module, no cycle.
+    @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
+    private readonly cancellationEffects: IOrderCancellationEffectsService,
+    // #3607: the bundle definitions the physical line list is expanded from.
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    // #3934: the components a document shows for a bundle line when the source
+    // connection asks for the `components` form. Same module, no cycle.
+    @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
+    private readonly bundleDocuments: IOrderBundleDocumentService,
+    // #3961: carries a line change the source reports AFTER routing into the
+    // packing work (or holds the box). Same module, no cycle; appended last.
+    @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
+    private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService,
+    // #3963: mirrors a payment that arrived after a shop got the order. Same
+    // module, no cycle. Appended last.
+    @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
+    private readonly paymentWriteback: IPaymentWritebackService,
+    // #3938: the gift rules applied at ingestion. Same module, no cycle.
+    @Inject(ORDER_GIFT_SERVICE_TOKEN)
+    private readonly orderGifts: IOrderGiftService
   ) {}
 
   async ingestOrders(
@@ -321,7 +384,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // backwards. Enforced only for cursor shapes core can order - see
       // `compareOrderCursors`.
       if (nextCursor && nextCursor.trim() !== '') {
-        if (fromCursor && this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)) {
+        if (
+          fromCursor &&
+          this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)
+        ) {
           this.logger.warn(
             `Cursor regression detected; not committing cursor. cursorKey=${cursorKey}, fromCursor=${fromCursor}, nextCursor=${nextCursor} (connection: ${connectionId})`
           );
@@ -382,7 +448,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     externalOrderId: string,
     sourceEventId?: string,
-    eventType?: OrderFeedEventType
+    eventType?: OrderFeedEventType,
+    deferralBudget?: OrderSyncRequest['deferralBudget']
   ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
     // Inbound cancellation (#1158): a source `cancelled` event must NOT re-run the
     // create/update path (which would re-create the order — the #1132 bug). Route
@@ -390,7 +457,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     // destination(s) via OrderStatusWriteback. OL owns no canonical status here —
     // it forwards the source's fact to the participants it already synced to.
     if (eventType === 'cancelled') {
-      return this.handleSourceCancellation(connectionId, externalOrderId);
+      return this.handleSourceCancellation(connectionId, externalOrderId, sourceEventId);
     }
 
     const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
@@ -399,6 +466,18 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
 
     const incoming = await orderSource.getOrder({ externalOrderId });
+
+    // An order the source says OpenLinker created is an echo by its own
+    // account. Checked before any id is minted: the mapping-based guard below
+    // cannot see it while the creating sync has not yet saved its external-id
+    // mapping, and minting an id here would give the echo an order of its own.
+    if (incoming.createdFromInternalOrderId !== undefined) {
+      this.logger.debug(
+        `Skipping destination-echo re-ingestion of external order ${incoming.externalOrderId} ` +
+          `on connection ${connectionId}: created from ${incoming.createdFromInternalOrderId}`
+      );
+      return [];
+    }
 
     // Step 1: resolve order + customer IDs (no item mapping yet)
     const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
@@ -447,8 +526,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     // Two properties depend on the placement:
     //   - `persistIncomingSnapshot` overwrites `orderSnapshot`, so after it the
     //     prior state this diff needs no longer exists anywhere;
-    //   - Step 4 throws `MissingOrderItemMappingError` before `persistOrder` is
-    //     ever reached, so writing the fact later would lose it permanently on
+    //   - Step 4 throws `MissingOrderItemMappingError` (or, for unlisted offers,
+    //     returns early, #4040) before `persistOrder` is ever reached, so writing the fact later would lose it permanently on
     //     exactly the orders most likely to have been amended (a line the source
     //     changed is a line whose mapping may well have gone with it).
     // The fact is an observation about the SOURCE and is true whether or not
@@ -498,6 +577,18 @@ export class OrderIngestionService implements IOrderIngestionService {
     const cancelledFromEarlySignal =
       snapshotRecord.cancelledAt != null || existing?.cancelledAt != null;
 
+    // C-4 / C-30: a cancellation that arrives as a plain order update (status
+    // CANCELLED, or a consumed early signal) takes the same seam as the
+    // `cancelled` feed event. `existing` is the pre-persist read, so a null
+    // `cancelledAt` there means this is the first time the cancel is observed.
+    if (
+      (incoming.status === 'cancelled' || cancelledFromEarlySignal) &&
+      existing != null &&
+      existing.cancelledAt == null
+    ) {
+      await this.onSourceCancellationObserved(internalOrderId, connectionId, true);
+    }
+
     // Early-fire cancellation hook (#1146): enqueue the stock-restore job
     // immediately after the raw snapshot is persisted and BEFORE item resolution
     // so the signal is never lost when MissingOrderItemMappingError is thrown at
@@ -509,7 +600,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // will carry variantIds; if items never resolve, OfferStockRestoreService
     // will no-op (no variantIds in the raw snapshot) and the job stays visible
     // in the dead-letter queue for operator inspection.
-    if ((incoming.status === 'cancelled' || cancelledFromEarlySignal) && priorStatus !== 'cancelled') {
+    if (
+      (incoming.status === 'cancelled' || cancelledFromEarlySignal) &&
+      priorStatus !== 'cancelled'
+    ) {
       try {
         await this.jobQueue.enqueue({
           type: 'marketplace.offer.stockRestore',
@@ -519,24 +613,50 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {
         this.logger.error(
           `Failed to enqueue stock-restore job (early-fire) for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
       }
     }
 
     // Step 3: attempt item resolution (non-throwing)
     const resolvedItems: Order['items'] = [];
-    const unresolvedRefs: Array<{ itemId: string; reason: string; kind: ItemResolutionFailureKind }> =
-      [];
+    const unresolvedRefs: Array<{
+      itemId: string;
+      reason: string;
+      kind: ItemResolutionFailureKind;
+    }> = [];
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
+      // A ready order with a frozen expansion was already decided: re-asking the
+      // LIVE definitions would flip a (possibly shipped) order back to held
+      // the day a definition or confirmation is retired.
+      const alreadyFrozen = existing?.recordStatus === 'ready' && existing.lineExpansion != null;
+      if (result.resolved && !alreadyFrozen && isMultipackLine(item)) {
+        // #3929: held BEFORE anything reserves. Treating the line as one unit
+        // would reserve and ship a single unit for the price of several. The
+        // hold is level-triggered: every re-ingestion re-asks, so it releases
+        // itself once a bundle definition exists.
+        const defined = await hasBundleDefinition(
+          this.bundleDefinitions,
+          result.internalVariantId,
+          item.packQuantity
+        );
+        if (!defined) {
+          unresolvedRefs.push({
+            itemId: item.id,
+            reason: describeMultipackHold(item),
+            kind: 'multipack_without_bundle',
+          });
+          continue;
+        }
+      }
       if (result.resolved) {
         const tax = await this.resolveLineTaxRate(
           result.internalProductId,
@@ -573,18 +693,24 @@ export class OrderIngestionService implements IOrderIngestionService {
             ? { unitPriceGross: item.unitPriceGross }
             : {}),
           ...tax,
+          // #3929: absent stays absent, so an ordinary line is unchanged.
+          ...(item.gift !== undefined ? { gift: item.gift } : {}),
+          ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
         });
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason, kind: result.kind });
       }
     }
 
-    // Step 4: if any unresolved, persist the honest record state (#1689) then
-    // throw so the job runner retries with backoff. A `source_deleted` ref is
-    // a permanently unresolvable state (deleted at the master, #1599) — distinct
-    // from the ordinary, self-healing `awaiting_mapping` gap; the retry itself
-    // is unchanged (review #11 — routing a stale line to a terminal outcome
-    // and partial-order fulfilment — is out of scope for this issue).
+    // Step 4: if any unresolved, persist the honest record state (#1689), then
+    // end one of two ways:
+    //   - every unresolved line is a `missing_mapping` on an `offer` ref
+    //     (#4040): return early WITHOUT throwing, so the job is not retried;
+    //   - anything else: throw so the job runner retries with backoff.
+    // A `source_deleted` ref is a permanently unresolvable state (deleted at the
+    // master, #1599) - distinct from the ordinary `awaiting_mapping` gap - and
+    // keeps the throw (review #11 - routing a stale line to a terminal outcome
+    // and partial-order fulfilment - is out of scope).
     if (unresolvedRefs.length > 0) {
       const first = unresolvedRefs[0];
       const firstItem = incoming.items.find((i) => i.id === first.itemId);
@@ -594,6 +720,29 @@ export class OrderIngestionService implements IOrderIngestionService {
         status: recordStatus,
         reason: (firstStaleRef ?? first).reason,
       });
+      // #4040: an offer OpenLinker never listed is not a transient gap. The offer
+      // mapping only appears when someone lists or links that offer, which a
+      // retry ladder (10 attempts in hours) cannot wait for, and on a freshly
+      // connected account every historic order is in this state, so retrying
+      // holds the connection's realtime lane for hours. The record already
+      // carries `awaiting_mapping` and its reason, which is the operator's
+      // signal. Known limitation: nothing re-drives the order once the offer is
+      // later mapped (cursor-based feeds never re-deliver the event); the
+      // operator remedy is a manual re-sync of the order.
+      // A line missing from `incoming.items` fails the check and falls through
+      // to the throw, the safe direction.
+      const onlyUnlistedOffers = unresolvedRefs.every(
+        (ref) =>
+          ref.kind === 'missing_mapping' &&
+          incoming.items.find((i) => i.id === ref.itemId)?.productRef.type === 'offer'
+      );
+      if (onlyUnlistedOffers) {
+        this.logger.debug(
+          `Order ${internalOrderId} awaits an offer mapping (connectionId=${connectionId}); ` +
+            `recorded as awaiting_mapping without retrying`
+        );
+        return [];
+      }
       throw new MissingOrderItemMappingError(
         connectionId,
         firstItem?.productRef ?? { type: 'offer', externalId: first.itemId },
@@ -602,22 +751,79 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     // Step 5: all items resolved — build unified order and upsert with recordStatus='ready'
-    const order = this.buildUnifiedOrder(
+    const channelOrder = this.buildUnifiedOrder(
       incoming,
       internalOrderId,
       internalCustomerId,
       resolvedItems
     );
+    // #3588 (D27): the cost snapshot candidates. NOT wrapped in a catch - a
+    // swallowed failure would freeze every line `not-recorded` for good (the
+    // snapshot is never upgraded), so the job retry is the right fallback.
+    const lineCostCandidates = await this.resolveLineCostCandidates(channelOrder);
+
     // The persisted record is captured for its `shippingAddressHash` (#2395),
     // which the #2396 routing projection needs and which the `order` object does
     // not carry. Hashing the snapshot instead would be wrong under hash-only
     // mode — see `projectOrderForRouting`.
+    //
+    // #3542: what is PERSISTED is always the channel's own order - the snapshot
+    // is the channel original and the operator's edits live in an overlay column
+    // this statement never names.
     const persisted = await this.orderRecordService.persistOrder(
-      order,
+      channelOrder,
       connectionId,
       sourceEventId ?? null,
-      incoming.externalUrl ?? null
+      incoming.externalUrl ?? null,
+      lineCostCandidates
     );
+    // #3542: everything BELOW works from the live Order, not the snapshot -
+    // reservations, routing, the destination mirror, auto-issue. It must see the
+    // order as the operator edited it, or every poll would re-reserve the
+    // original quantity and re-route by the original delivery method. The
+    // overlay comes from the upsert's own RETURNING, so it is the one that
+    // applied to this very write rather than a read taken a moment earlier.
+    const overlaidOrder = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
+
+    // #3938: OpenLinker gift rules, evaluated INLINE here - after the overlay and
+    // before the line expansion, the reservation and routing - because the gift
+    // must be a line of the order when stock is reserved. Fail-open and idempotent
+    // inside the service; a cancelled order is never given a gift.
+    const gifted = await this.orderGifts.applyGiftRules({
+      order: overlaidOrder,
+      channelOrder,
+      edits: persisted?.orderEdits ?? null,
+      customerId: internalCustomerId ?? null,
+      sourceConnectionId: connectionId,
+      occurredAt: overlaidOrder.placedAt ?? existing?.createdAt ?? new Date(),
+      isFirstIngestion: !existing,
+      // A gift line added after the order was frozen, routed or mirrored would
+      // never be picked, decremented or mirrored (and its hold would leak): new
+      // grants are only for the window before any of that exists.
+      allowNewGrants:
+        !existing || (existing.lineExpansion == null && (existing.syncStatus ?? []).length === 0),
+      cancelled: cancelledFromEarlySignal || incoming.status === 'cancelled',
+      ...(existing?.lineExpansion != null && {
+        frozenDefinitions: existing.lineExpansion.definitions,
+      }),
+    });
+    // #3939: a gift line is added after the channel's lines were tax-resolved, so it
+    // would reach a destination that needs a rate (WooCommerce, Shoper) with none
+    // and fail the whole order. Resolved here from the shop catalogue like any line.
+    const order = await this.withGiftLineTaxRates(gifted.order);
+
+    // #3607 (ADR-083): the physical line list, frozen ONCE before anything
+    // reserves, routes or decrements. Every stock site below reads it; the
+    // destination mirror and the documents keep `order.items`.
+    const physicalItems = await this.freezePhysicalItems(order, existing);
+
+    // #3554 / D8: T9 `order.received`, once - only when the pre-persist read
+    // found no record, so a re-poll, a webhook replay or a status update
+    // re-ingesting the same order fires nothing. The ingestion lock (#906)
+    // serialises two first ingestions. Best-effort inside the service.
+    if (!existing) {
+      await this.orderRecordService.notifyOrderReceived(persisted, new Date());
+    }
 
     // The order's ADR-012 fulfilment routing, resolved at most once and only if
     // asked for: the reservation's `atpEffect` (#2344) and the #3488 routing
@@ -640,16 +846,20 @@ export class OrderIngestionService implements IOrderIngestionService {
       fulfillmentRouting,
       // #3455 — read from the PRE-persist `existing`: `persistOrder` never
       // writes `syncStatus` (#2140), so it is current, and no extra read is spent.
-      isOrderMirroredBeforeRouting(existing?.syncStatus)
+      isOrderMirroredBeforeRouting(existing?.syncStatus),
+      // #3636 - the source's own statement that it ships the order.
+      isOrderFulfilledBySource(order)
     );
     await this.reserveOrderInventory(
       order,
+      physicalItems,
       connectionId,
       fulfillmentRouting,
       cancelledFromEarlySignal,
       // #3485: every OMS-routed order now stays in OpenLinker — including one
       // still waiting for an address — so its units are OpenLinker's to promise.
-      routingTarget.kind === 'route'
+      routingTarget.kind === 'route',
+      routingTarget.kind === 'skip' && routingTarget.reason === 'source-fulfilled'
     );
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
@@ -671,7 +881,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {
@@ -682,8 +892,36 @@ export class OrderIngestionService implements IOrderIngestionService {
         // error so the missed restore is loud and actionable.
         this.logger.error(
           `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
-          (error as Error).stack,
+          (error as Error).stack
         );
+      }
+
+      // A cancel that arrives as an ordinary order UPDATE (Allegro's status
+      // change, a re-read) used to reach only the stock restore: the relay to
+      // destinations ran solely for a feed event typed `cancelled`, so a copy
+      // already created in a destination stayed live and its stock stayed
+      // consumed. Relay here too, but only where THIS call made the cancelled
+      // transition: `persistIncomingSnapshot` returns a record carrying
+      // `cancelledAt` only when its `markCancelled` reported the transition, so a
+      // concurrent cancel event that stamped first (and relays itself) is not
+      // relayed a second time from here.
+      if (!existing?.isCancelled && snapshotRecord.cancelledAt != null) {
+        try {
+          const relayed = await this.orderLifecycleRelay.relay({
+            internalOrderId,
+            originConnectionId: connectionId,
+            event: { type: 'cancelled' },
+          });
+          this.logger.log(
+            `Cancellation relayed for order ${internalOrderId} on update: ` +
+              (relayed.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') || 'no targets')
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to relay the cancellation of order ${internalOrderId} to its destinations`,
+            (error as Error).stack
+          );
+        }
       }
     }
 
@@ -718,9 +956,19 @@ export class OrderIngestionService implements IOrderIngestionService {
       order,
       connectionId,
       persisted?.shippingAddressHash ?? null,
-      routingTarget
+      routingTarget,
+      physicalItems
     );
     await this.persistFulfillmentOutcome(order.id, routing);
+
+    // #3961: a re-ingested order may carry a line the source changed after it
+    // was routed. Routing answers `already-routed` and touches no work, so the
+    // difference is reconciled here - level-triggered, from the stored record,
+    // so a failed or skipped attempt is simply repeated by the next ingestion.
+    // A first ingestion cannot be an amendment. Never throws.
+    if (existing != null && order.status !== 'cancelled' && !cancelledFromEarlySignal) {
+      await this.sourceAmendmentEffects.reconcile({ internalOrderId: order.id });
+    }
 
     let results: Awaited<ReturnType<IOrderSyncService['syncOrder']>> = [];
 
@@ -734,12 +982,47 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Withholding destination mirror for order ${order.id}: fulfilment routing ` +
           `held it (${routing.block?.reason ?? 'routed'})`
       );
+      // #2703 / #2704 — `OrderSyncService` owns the destination-routing block and
+      // writes it on every branch it takes, but it is NEVER CALLED on this one.
+      // Without this clear a routing reason written by an earlier run would stand
+      // beside the fresh `fulfillmentBlockReason` above and assert "the router
+      // sent this nowhere" about an order that is in fact held — two reasons for
+      // one order, one of them stale. Clearing here keeps the two columns mutually
+      // exclusive on the paths that reach the fan-out decision (this one and
+      // `syncOrder`). An ingestion that exits earlier leaves the previous value
+      // until the next run - a bounded display fault, not a correctness one.
+      await this.persistDestinationRoutingCleared(order.id);
     } else {
-      results = await this.orderSyncService.syncOrder({
-        order,
-        sourceConnectionId: connectionId,
-        sourceEventId,
-      });
+      try {
+        results = await this.orderSyncService.syncOrder({
+          order,
+          sourceConnectionId: connectionId,
+          sourceEventId,
+          // #3984: only a job the runner can defer passes this.
+          ...(deferralBudget ? { deferralBudget } : {}),
+          // Only when a bundle expanded anything, so an order without one sends
+          // the byte-identical request it always did.
+          ...(physicalItems.some(
+            (item) => 'parentLineId' in item && item.parentLineId !== undefined
+          )
+            ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+            : {}),
+        });
+      } catch (error) {
+        // #3959 - no reachable destination is a fact about MIRRORING, not
+        // about the sale. Decide the sales document before the throw takes the
+        // job onto its retry ladder, or the order never gets its invoice.
+        if (error instanceof NoOrderDestinationsAvailableException) {
+          await this.decideSalesDocument(
+            order,
+            connectionId,
+            sourceEventId,
+            existing?.taxRateEra ?? null,
+            persisted
+          );
+        }
+        throw error;
+      }
     }
 
     // Update per-destination sync status; allSettled — one failure doesn't block others
@@ -755,6 +1038,12 @@ export class OrderIngestionService implements IOrderIngestionService {
               syncedAt: new Date(),
               externalOrderId: result.orderRef.orderId,
               externalOrderNumber: result.orderRef.orderNumber,
+              // #4195: what the destination copy now carries about delivery, so
+              // the next re-ingestion relays only a real change.
+              ...(result.deliveryFingerprint !== undefined
+                ? { deliveryFingerprint: result.deliveryFingerprint }
+                : {}),
+              ...(result.deliveryUpdate ? { deliveryUpdate: result.deliveryUpdate } : {}),
             }
           );
         } else if (result.status === 'skipped_held') {
@@ -822,6 +1111,17 @@ export class OrderIngestionService implements IOrderIngestionService {
               error: withheldOnHoldError(result.holdReason),
             }
           );
+        } else if (
+          result.status === 'skipped_cancelled' &&
+          existing?.syncStatus.some(
+            (entry) =>
+              entry.destinationConnectionId === result.destinationConnectionId && entry.status === 'synced'
+          )
+        ) {
+          // The destination already holds this order. "Cancelled before the
+          // create" would be false, and it would erase the external id the
+          // cancellation relay needs to find the copy.
+          return Promise.resolve();
         } else if (result.status === 'skipped_cancelled') {
           // #2284 — terminal, and NOT a failure: the source cancelled before the
           // destination create ran, so provisioning was withheld. `error` carries
@@ -855,6 +1155,46 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
     }
 
+    // #3963: a payment that arrived after a shop got the order never reaches it
+    // through the create path above (an existing mapping skips the create).
+    // Decided here, after the sync settled, so `created` is known per shop;
+    // the send itself runs in its own job. Best-effort - never fails ingestion.
+    await this.paymentWriteback.planAfterSync({
+      order,
+      existing,
+      sourceConnectionId: connectionId,
+      results,
+    });
+
+    await this.decideSalesDocument(
+      order,
+      connectionId,
+      sourceEventId,
+      existing?.taxRateEra ?? null,
+      persisted
+    );
+
+    return results;
+  }
+
+  /**
+   * The sales-document step (OL #1120, #2100): ask the auto-issue gate what this
+   * transition means for the order's invoice or receipt, and persist its answer.
+   *
+   * Runs at the end of every source ingestion, and ALSO before a
+   * `NoOrderDestinationsAvailableException` propagates (#3959): whether the
+   * order could be copied to a destination says nothing about whether the buyer
+   * is owed a document, so a missing or disabled destination must not cost the
+   * order its invoice. The gate is idempotent per order, so a retried job asks
+   * again without issuing a second document.
+   */
+  private async decideSalesDocument(
+    order: Order,
+    connectionId: string,
+    sourceEventId: string | undefined,
+    taxRateEra: OrderRecord['taxRateEra'] | null,
+    persisted: OrderRecord
+  ): Promise<void> {
     // OL #1120 — auto-issue trigger (EV→SVC edge, ADR-026 §3). Fires STRICTLY at
     // the end of the authoritative source poll, AFTER per-destination status is
     // settled.
@@ -865,9 +1205,9 @@ export class OrderIngestionService implements IOrderIngestionService {
     // destination shop or from a routed holder. Skipping it under a hold would
     // silently stop invoicing for exactly the orders a router took over, which
     // is a fiscal regression disguised as a fulfilment change. `results` is
-    // empty on that path, so the settlement loop above simply did nothing.
+    // empty on that path, so the settlement loop in `syncOrderFromSource` did nothing.
     //
-    // The destination-echo early-return (`return []`) above is the
+    // The destination-echo early-return (`return []`) in `syncOrderFromSource` is the
     // INTENDED gate: issuance fires only on the real source ingestion, never on a
     // destination re-read. Threads the in-scope `sourceEventId` as the trace token
     // (D10 — no `correlationId` exists). Wrapped so an enqueue/compose failure
@@ -886,14 +1226,15 @@ export class OrderIngestionService implements IOrderIngestionService {
         // the feature. Without this the marker was write-only and every
         // already-ingested uninvoiced order became un-issuable under strict
         // enforcement.
-        existing?.taxRateEra ?? null,
+        taxRateEra,
         // #3187, ADR-073 decision 1: the OPPOSITE read from taxRateEra above -
         // `persisted`, not `existing`. `buyerTaxId` is computed fresh by
         // `persistOrder` from THIS transition's order, so a first-seen order
         // (`existing === null`) still carries its correct three-state value on
         // `persisted`; reading `existing` here would silently answer
         // "not asserted" for every order's first ingestion.
-        persisted.buyerTaxId
+        persisted.buyerTaxId,
+        await this.bundleDocuments.resolveForDocuments(persisted, connectionId)
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
@@ -914,8 +1255,6 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Auto-issue trigger failed (swallowed): error=${errorName} connectionId=${connectionId} orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`
       );
     }
-
-    return results;
   }
 
   /**
@@ -948,7 +1287,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     orderId: string,
     orderSourceConnectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
-    alreadyMirrored: boolean
+    alreadyMirrored: boolean,
+    fulfilledBySource: boolean
   ): Promise<RoutingTarget> {
     try {
       const connections = await this.connections.list();
@@ -963,6 +1303,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         orderSourceConnectionId,
         connections,
         alreadyMirrored,
+        fulfilledBySource,
         fulfillmentRouting
       );
       if (skipReason === 'routing-unknown') {
@@ -980,9 +1321,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (skipReason !== null) {
         // `log`, not `debug`: the answer to "why is this order not on the pack
         // bench?", invisible at `debug` on a normal deployment (#3490 / #3496 review).
-        this.logger.log(
-          `Not routing order ${orderId}: ${skipReason}; following today's path.`
-        );
+        this.logger.log(`Not routing order ${orderId}: ${skipReason}; following today's path.`);
         return { kind: 'skip', reason: skipReason };
       }
 
@@ -1022,6 +1361,36 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Freeze the order's bundle expansion and return its physical line list
+   * (#3607, ADR-083 decisions 1-2). Written once: a re-poll or a later edit of
+   * a definition reads back what was stored: an already frozen order performs
+   * no definition read and no write. An order that was already `ready` before
+   * bundles existed was stamped with the EMPTY frozen expansion by the
+   * migration, so it keeps its commercial list through the same path. A `ready`
+   * row with NO expansion is therefore never pre-feature: it is an ingestion
+   * that persisted and crashed before freezing, and is frozen now.
+   *
+   * Deliberately NOT caught: continuing after a failed freeze would reserve at
+   * the commercial grain, i.e. a silent no-op for every component.
+   */
+  private async freezePhysicalItems(
+    order: Order,
+    existing: OrderRecord | null | undefined
+  ): Promise<Order['items']> {
+    if (existing?.lineExpansion != null) {
+      return expandBundleLines(order.items, existing.lineExpansion.definitions);
+    }
+    // #3624: multipacks are frozen with the rest, so confirming or changing
+    // something later never moves an open order.
+    const definitions = await resolveLineExpansionDefinitions(order.items, this.bundleDefinitions);
+    const frozen: LineExpansion = await this.orderRecordService.freezeLineExpansion(order.id, {
+      v: 1,
+      definitions,
+    });
+    return expandBundleLines(order.items, frozen.definitions);
+  }
+
+  /**
    * Decide whether fulfilment routing HOLDS this order (#2396, DESIGN §5.5).
    *
    * Three arms, per the issue:
@@ -1053,7 +1422,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     order: Order,
     connectionId: string,
     shippingAddressHash: string | null,
-    target: RoutingTarget
+    target: RoutingTarget,
+    physicalItems: readonly Order['items'][number][]
   ): Promise<FulfillmentInterceptOutcome> {
     try {
       switch (target.kind) {
@@ -1088,7 +1458,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
       const { holder, router } = target;
 
-      const projection = this.projectOrderForRouting(order, shippingAddressHash);
+      const projection = this.projectOrderForRouting(order, shippingAddressHash, physicalItems);
       if (projection === null) {
         // #3485 — HELD, not mirrored: the OMS is this order's router, so sending
         // it to the product masters instead would put it in every one of them.
@@ -1121,6 +1491,12 @@ export class OrderIngestionService implements IOrderIngestionService {
         isCancelled: async () => {
           const record = await this.orderRecordService.getOrderRecord(order.id);
           return record?.isCancelled === true;
+        },
+        // #4033 — an unpaid order is not routed. Read from the stored record,
+        // inside the lock, like `isCancelled`: this ingestion has persisted it.
+        isAwaitingPayment: async () => {
+          const record = await this.orderRecordService.getOrderRecord(order.id);
+          return isRoutingAwaitingPayment(record?.paymentStatus);
         },
       });
 
@@ -1173,12 +1549,18 @@ export class OrderIngestionService implements IOrderIngestionService {
   /**
    * Why this order should deliberately NOT be routed, or `null` (#3455).
    *
+   * Level-triggered per ingestion: an order that was already routed before its
+   * source started asserting `fulfilledBySource` stays routed - nothing here
+   * un-routes existing work.
+   *
    * First match wins, cheapest first:
    *  1. `own-shop-order` (#3487) — the source connection is a product master;
    *     reads the connections already loaded.
    *  2. `mirrored-before-routing` (#3455) — the product master already has the
    *     order; a pre-read boolean.
-   *  3. `shipped-by-other-system` (#3488) — an ADR-012 rule routes the delivery
+   *  3. `source-fulfilled` (#3636) — the source asserts it ships the order
+   *     itself; a fact on the order, so it needs no read and outranks a rule.
+   *  4. `shipped-by-other-system` (#3488) — an ADR-012 rule routes the delivery
    *     method to `omp_fulfilled`; the one arm needing the (memoized, shared)
    *     routing resolve, so it runs last.
    *
@@ -1192,10 +1574,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     connections: readonly Connection[],
     alreadyMirrored: boolean,
+    fulfilledBySource: boolean,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>
   ): Promise<FulfillmentRoutingSkipReason | 'routing-unknown' | null> {
     if (isOrderFromOwnProductMaster(connections, connectionId)) return 'own-shop-order';
     if (alreadyMirrored) return 'mirrored-before-routing';
+    if (fulfilledBySource) return 'source-fulfilled';
     const routing = await fulfillmentRouting();
     // A failed read is not an answer; the caller must not route on it.
     if (routing === null) return 'routing-unknown';
@@ -1401,13 +1785,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    * shop?", so that check costs no extra statement.
    */
   private toRoutingClaimants(connections: readonly Connection[]): AuthorityClaimantInput[] {
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
+    return toRouterSelectionClaimants(connections);
   }
 
   /**
@@ -1421,40 +1799,19 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private projectOrderForRouting(
     order: Order,
-    shippingAddressHash: string | null
-  ): RoutingProjection | null {
-    const shippingAddress = order.shippingAddress;
-    if (shippingAddress === undefined) {
-      return null;
-    }
-
-    return {
-      lines: order.items.map((item) => ({
-        orderLineId: item.id,
-        // A work line needs a variant. `variantId` is optional on `OrderItem`, so
-        // fall back to the product id rather than emitting a blank — a work
-        // object pointing at no variant is unpickable stock nothing would report.
-        productVariantId: item.variantId ?? item.productId,
-        quantity: item.quantity,
-      })),
-      // The OPAQUE key `RoutingInput.requestedDeliveryMethod` documents — the
-      // source's own method id, never a neutral vocabulary.
-      requestedDeliveryMethod: order.shipping?.methodId ?? null,
-      shipTo: buildRoutingShipTo(
-        {
-          countryIso2: shippingAddress.country,
-          postalCode: shippingAddress.postalCode,
-          city: shippingAddress.city,
-          addressHash: shippingAddressHash,
-        },
-        {
-          // `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
-          // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
-          // routing on every ordinary deployment that never enabled hash-only mode.
-          storePii: getEnvBoolean('OL_STORE_PII', true),
-        }
-      ),
-    };
+    shippingAddressHash: string | null,
+    physicalItems: readonly Order['items'][number][]
+  ): OrderRoutingProjection | null {
+    // The reduction itself is the shared pure rule (#2954); only the PII flag is
+    // read here. `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
+    // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
+    // routing on every ordinary deployment that never enabled hash-only mode.
+    return projectOrderForRouting(
+      order,
+      shippingAddressHash,
+      getEnvBoolean('OL_STORE_PII', true),
+      physicalItems
+    );
   }
 
   /**
@@ -1523,6 +1880,30 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Clear the destination-routing block (#2703 / #2704) on the held branch.
+   *
+   * Best-effort and never able to fail ingestion, exactly like
+   * {@link persistFulfillmentOutcome} beside it: the value is an operator-facing
+   * explanation, and a stale one is a display fault rather than a correctness
+   * one. `OrderSyncService` owns every other write of this column.
+   *
+   * Logged at `error`, like that sibling's own swallow path: a failed CLEAR
+   * leaves a stale routing reason standing beside a fresh `fulfillmentBlockReason`,
+   * the two-reasons-for-one-order state this write exists to prevent.
+   */
+  private async persistDestinationRoutingCleared(internalOrderId: string): Promise<void> {
+    try {
+      await this.orderRecordService.markDestinationRoutingBlock(internalOrderId, null);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.error(
+        `Failed to clear the destination-routing block (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId}`
+      );
+    }
+  }
+
+  /**
    * Persist the auto-issue gate's outcome onto the order record (#2100).
    *
    * Three deliberate properties:
@@ -1572,6 +1953,104 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Persist an order whose ONLY observed event was its cancellation (#4032).
+   *
+   * Some feeds keep one event per order (Allegro: the newest), so a buyer who
+   * buys and cancels inside one poll window leaves OpenLinker only a
+   * `cancelled` event for an order it never saw. The early-cancellation signal
+   * is already recorded by the caller; this hydrates the order and writes the
+   * raw snapshot, which consumes that signal and stamps `cancelledAt`, so the
+   * order is listed with its cancellation and payment state.
+   *
+   * Deliberately the snapshot write ONLY: no item resolution, routing, reservation,
+   * destination mirror, document or stock restore - nothing was reserved,
+   * decremented or issued for an order that never went live. The buyer is
+   * resolved through the ordinary `resolveCustomerId` path (which honours
+   * OL_STORE_PII inside the identity resolver); it only writes OL's own
+   * customer mapping/projection and provisions nothing in a destination.
+   *
+   * Failure policy: the feed keeps only this one event, so a transient failure
+   * (timeout, 5xx, rate limit) must NOT be swallowed or the order is never
+   * listed. Only two conditions mean "keep the signal alone": the connection
+   * is not an order source (a cancel echoed on a destination), and the source
+   * answers 404/410 for the order. Core has no neutral order-not-found type,
+   * so the latter is recognised by an HTTP status carried on the error.
+   * Everything else, including a persist failure, rethrows so the job retries;
+   * re-recording the signal is first-write-wins and the snapshot write is
+   * idempotent, so a retry is safe.
+   */
+  private async persistCancelledOrderNeverIngested(
+    connectionId: string,
+    externalOrderId: string,
+    sourceEventId: string | undefined
+  ): Promise<void> {
+    let orderSource: OrderSourcePort;
+    try {
+      orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
+        connectionId,
+        'OrderSource'
+      );
+    } catch (error) {
+      if (error instanceof CapabilityNotSupportedException) {
+        this.logger.warn(
+          `Connection ${connectionId} is not an order source; cancelled unknown order ` +
+            `${externalOrderId} keeps only the pending cancellation signal`
+        );
+        return;
+      }
+      throw error;
+    }
+
+    let incoming: Awaited<ReturnType<OrderSourcePort['getOrder']>> | null | undefined;
+    try {
+      incoming = await orderSource.getOrder({ externalOrderId });
+    } catch (error) {
+      if (this.isSourceOrderNotFound(error)) {
+        this.logger.warn(
+          `Source reports cancelled order ${externalOrderId} on connection ${connectionId} as ` +
+            `not found; only the pending cancellation signal is kept: ${(error as Error).message}`
+        );
+        return;
+      }
+      throw error;
+    }
+    if (!incoming) {
+      return;
+    }
+
+    const internalOrderId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Order,
+      incoming.externalOrderId,
+      connectionId
+    );
+    const internalCustomerId = await this.resolveCustomerId(
+      incoming,
+      connectionId,
+      internalOrderId
+    );
+    await this.orderRecordService.persistIncomingSnapshot(
+      incoming,
+      internalOrderId,
+      internalCustomerId ?? null,
+      connectionId,
+      sourceEventId ?? null
+    );
+    this.logger.log(
+      `Persisted cancelled order ${internalOrderId} (external ${externalOrderId}) that was ` +
+        `never ingested before its cancellation; no routing, mirror or documents created`
+    );
+  }
+
+  private isSourceOrderNotFound(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) {
+      return false;
+    }
+    const candidate = error as { statusCode?: unknown; status?: unknown };
+    const status = candidate.statusCode ?? candidate.status;
+    return status === 404 || status === 410;
+  }
+
+  /**
    * Inbound source cancellation → destination(s) via the lifecycle relay (#1158).
    * Resolves the existing internal order; if unknown (never ingested), there is
    * no `order_records` row to mark cancelled yet — instead, a durable
@@ -1589,7 +2068,8 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async handleSourceCancellation(
     connectionId: string,
-    externalOrderId: string
+    externalOrderId: string,
+    sourceEventId?: string
   ): Promise<never[]> {
     const internalOrderId = await this.identifierMapping.getInternalId(
       CORE_ENTITY_TYPE.Order,
@@ -1599,26 +2079,20 @@ export class OrderIngestionService implements IOrderIngestionService {
     if (!internalOrderId) {
       // #2069: a cancel for an order OL has not yet ingested must still leave
       // a durable trace, or the later create provisions the order as active
-      // at every destination. No internal id exists yet, and minting one via
-      // getOrCreateInternalId would point every downstream trigger at a
-      // phantom order before any real order data arrives (the #2328 lesson
-      // for returns attribution) — so the signal is keyed on
-      // (sourceConnectionId, externalOrderId) instead, and consumed by
+      // at every destination. No internal id exists yet, so the signal is
+      // keyed on (sourceConnectionId, externalOrderId) and consumed by
       // OrderRecordService.persistIncomingSnapshot the moment the order is
-      // genuinely first ingested. Left unguarded (not try/caught): the only
-      // action on this branch is the write, so a DB failure here should
-      // retry the job rather than be silently swallowed — unlike the
-      // known-order branch below, where a relay to already-resolved
-      // destinations must proceed regardless.
+      // first ingested. Unguarded (not try/caught): the write is the only
+      // action here, so a DB failure should retry the job rather than be
+      // swallowed, unlike the known-order branch below where a relay to
+      // already-resolved destinations must proceed regardless.
       //
-      // Sits above the ADR-017 destination-echo guard further down (which
-      // needs an existing record to compare `sourceConnectionId` against): a
-      // cancel arriving on a *destination* connection whose `Order` mapping
-      // is not yet written records a signal keyed to that destination
-      // connection's id — permanently unconsumable, since the echo guard
-      // would early-return before `persistIncomingSnapshot` ever runs for
-      // that connection. Narrow and self-limiting (the signal never affects
-      // provisioning, it just sits there), not worth a second lookup here.
+      // #4032: after the signal, `persistCancelledOrderNeverIngested` hydrates
+      // the order and persists its snapshot (minting the internal id only once
+      // real order data exists, which avoids the phantom-order concern from
+      // #2328). It requires the OrderSource capability, so a cancel echoed on
+      // a destination connection keeps only the signal. Transient hydrate or
+      // persist failures propagate so the job retries.
       await this.orderRecordService.recordEarlyCancellationSignal(
         connectionId,
         externalOrderId,
@@ -1629,6 +2103,7 @@ export class OrderIngestionService implements IOrderIngestionService {
           `has no internal mapping yet — recorded as a pending cancellation signal so the later ` +
           `create is not provisioned active`
       );
+      await this.persistCancelledOrderNeverIngested(connectionId, externalOrderId, sourceEventId);
       return [];
     }
 
@@ -1643,6 +2118,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       );
       return [];
     }
+
+    // Read BEFORE markCancelled (first-write-wins) so "first observation" can be
+    // told apart afterwards; an operator cancel stamps cancelledAt itself, so it
+    // reads as already observed and its own cleanup is not repeated (C-30).
+    const firstObservation = existing != null && existing.cancelledAt == null;
 
     // Durably record the cancellation on the order record itself (#1984) —
     // previously this handler only relayed to destinations and returned,
@@ -1662,6 +2142,44 @@ export class OrderIngestionService implements IOrderIngestionService {
           `future re-poll or retry observes the cancellation again`,
         (error as Error).stack
       );
+    }
+
+    // Release the order's holds and restore its stock (E2E-23). The full-resync
+    // path enqueues this on the `-> cancelled` transition, but a cancel that
+    // arrives as a feed event lands HERE and returns without re-reading the
+    // order, so without this the advisory hold stays `held` for good and every
+    // later publish keeps subtracting a unit nobody bought. Same job and dedupe
+    // key as the resync path, so whichever path sees the cancel first wins and
+    // the other is a no-op. The key has no TTL and no cancellation episode in
+    // it, so it also suppresses a SECOND cancellation of the same order (after
+    // an un-cancel at the source): that restore is a silent no-op, and the
+    // offer is corrected only by the next ordinary propagation.
+    try {
+      await this.jobQueue.enqueue({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}` },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; its holds stay live and marketplace stock will NOT be auto-restored`,
+        (error as Error).stack
+      );
+    }
+
+    const cancelledByOperator = await this.wasCancelledByOperator(internalOrderId);
+
+    await this.onSourceCancellationObserved(internalOrderId, connectionId, firstObservation);
+
+    if (cancelledByOperator) {
+      // The operator's own cancel already told every participant (and the channel
+      // answered it); this is the channel echoing that cancel back. Relaying it
+      // again would cancel at the destination a second time (C-40).
+      this.logger.debug(
+        `Not relaying the source's echo of the operator cancel of order ${internalOrderId}`
+      );
+      return [];
     }
 
     const result = await this.orderLifecycleRelay.relay({
@@ -1699,6 +2217,131 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * ADR-044 "OL confirms from observation" (#3540): the source reporting the
+   * order cancelled IS the channel's answer to an operator's still-open
+   * `order.cancel_request`, so confirm it. Without this, a cancel whose HTTP
+   * answer never came back (the `pending` path) stays open although the channel
+   * has since cancelled.
+   *
+   * Best-effort and never fails ingestion: the order record is already marked
+   * cancelled, and the row would otherwise just age out through the TTL.
+   */
+  /**
+   * Whether an operator's cancel request for this order was already confirmed BY
+   * the operator (not from observation), i.e. the operator path already relayed.
+   * A read failure answers false: relaying twice is the lesser harm than not at all.
+   */
+  private async wasCancelledByOperator(internalOrderId: string): Promise<boolean> {
+    try {
+      const latest = await this.orderChanges.findLatestByTarget(
+        internalOrderId,
+        cancelRequestTargetRef(internalOrderId),
+        'order.cancel_request'
+      );
+      return (
+        latest !== null &&
+        latest.status === 'confirmed' &&
+        latest.confirmedBy !== null &&
+        !latest.confirmedBy.startsWith('source:')
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the cancel request of order ${internalOrderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return false;
+    }
+  }
+
+  /**
+   * The ONE seam for a cancellation the source reported, whichever shape it
+   * arrived in (`cancelled` feed event or a plain update with a cancelled
+   * status): confirm an open operator request, and on the first observation run
+   * the shared cleanup (work, holds, credit proposal) exactly once - from the
+   * confirmed request when there is one, otherwise on its own, so a channel-side
+   * cancel with no operator request is cleaned up too (C-30, C-4).
+   *
+   * Stock restore and reservation release are NOT repeated here: the ingestion
+   * stock-restore job already covers them. Labels ARE voided, best-effort, through
+   * the lazily-resolved `OrderLabelVoiderPort` (shipping depends on orders, so
+   * core orders cannot import it without a module cycle); the operator path
+   * voids them itself before cancelling and opts out.
+   */
+  private async onSourceCancellationObserved(
+    internalOrderId: string,
+    connectionId: string,
+    firstObservation: boolean
+  ): Promise<void> {
+    const effectsRan = await this.confirmOpenCancelRequest(internalOrderId, connectionId);
+    if (!firstObservation || effectsRan) return;
+    try {
+      await this.cancellationEffects.applyEffects({
+        internalOrderId,
+        cancelledAt: new Date(),
+        reason: 'other',
+        actorUserId: null,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Observed cancel of order ${internalOrderId}: the cancellation cleanup failed`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  private async confirmOpenCancelRequest(
+    internalOrderId: string,
+    connectionId: string
+  ): Promise<boolean> {
+    let effectsRan = false;
+    try {
+      const open = await this.orderChanges.findOpenByOrder(internalOrderId);
+      for (const change of open) {
+        if (change.kind !== 'order.cancel_request') continue;
+        // A request exists, so its confirm winner (us or a peer) owns the cleanup.
+        effectsRan = true;
+        if (await this.orderChanges.confirm(change.id, `source:${connectionId}`)) {
+          await this.orderChanges.claimApplied(change.id);
+          // The operator path does this cleanup after the source's HTTP answer;
+          // here that answer never came back, so without it the work stays live,
+          // the hold stays held and an invoiced order gets no credit proposal
+          // (B-18). Idempotent, so a racing operator path is harmless. Only the
+          // confirm WINNER runs it: a loser's peer already owns the cleanup.
+          await this.runObservedCancelEffects(internalOrderId, change);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not confirm the open cancel request for order ${internalOrderId} from the source's cancellation: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+    return effectsRan;
+  }
+
+  private async runObservedCancelEffects(
+    internalOrderId: string,
+    change: OrderChange
+  ): Promise<void> {
+    try {
+      const rawReason = change.payload?.['reason'];
+      await this.cancellationEffects.applyEffects({
+        internalOrderId,
+        cancelledAt: new Date(),
+        reason: typeof rawReason === 'string' ? rawReason : 'other',
+        actorUserId: change.requestedBy,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Observed cancel of order ${internalOrderId} confirmed, but the cancellation cleanup failed`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  /**
    * Defensive read of an order record's prior business status from its snapshot
    * (#1146). Returns `undefined` when there is no prior record or the stored
    * value isn't a string — both treated as non-cancelled by the caller. Pure
@@ -1730,7 +2373,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // unset. Reading it here would put an unrelated configuration failure on
       // the ingestion path — swallowed by the catch below, so the fact would go
       // silently unrecorded. The default matches `getPiiConfig`'s own.
-      const changes = diffOrderAmendment(existing?.orderSnapshot ?? null, incoming, {
+      // The CHANNEL's snapshot on purpose (#3542): the diff answers "did the
+      // SOURCE change this order", and the effective view would report every
+      // operator edit as a source amendment on the next poll.
+      const changes = diffOrderAmendment(existing?.channelSnapshot ?? null, incoming, {
         storePii: getEnvBoolean('OL_STORE_PII', true),
       });
       if (changes.length === 0) {
@@ -1740,7 +2386,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.warn(
         `Source amended order ${internalOrderId} on connection ${connectionId} after ingestion: ` +
           changes
-            .map((c) => (c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`))
+            .map((c) =>
+              c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`
+            )
             .join('; ')
       );
       await this.orderRecordService.recordAmendment(internalOrderId, new Date(), changes);
@@ -1855,10 +2503,68 @@ export class OrderIngestionService implements IOrderIngestionService {
    * an empty string or a zero. It is what holds the document, and the gate
    * child is what reports it.
    */
+  /**
+   * Stamps the catalogue tax rate on every gift line that carries none (#3939).
+   * Best-effort and conservative: a line with a rate is untouched, and a catalogue
+   * that answers nothing leaves the line as it was, so the destination reports its
+   * own refusal instead of this guessing a rate.
+   */
+  private async withGiftLineTaxRates(order: Order): Promise<Order> {
+    if (!order.items.some((item) => item.gift !== undefined && item.taxRate === undefined)) {
+      return order;
+    }
+    const items = await Promise.all(
+      order.items.map(async (item) => {
+        if (item.gift === undefined || item.taxRate !== undefined) return item;
+        const tax = await this.resolveLineTaxRate(item.productId, item.variantId, {});
+        return { ...item, ...tax };
+      })
+    );
+    return { ...order, items };
+  }
+
+  /**
+   * ONE de-duplicated variant lookup per order (#3588, D27). A variant is a
+   * candidate only when it has a cost AND that cost existed when the order was
+   * placed (G11-G: `costUpdatedAt <= placedAt`, falling back to the order's
+   * `createdAt` the way analytics does), so an old order imported later never
+   * receives today's cost. Both instants are floored to the whole second
+   * first: sources such as WooCommerce truncate `placedAt` to the second, so a
+   * cost saved a few hundred ms before the sale must not look "after" it.
+   */
+  private async resolveLineCostCandidates(order: Order): Promise<Map<string, LineCostCandidate>> {
+    const variantIds = [
+      ...new Set(
+        order.items.map((item) => item.variantId).filter((id): id is string => Boolean(id))
+      ),
+    ];
+    const candidates = new Map<string, LineCostCandidate>();
+    if (variantIds.length === 0) {
+      return candidates;
+    }
+    const placedAtSecond = Math.floor((order.placedAt ?? order.createdAt).getTime() / 1000);
+    const variants = await this.productsService.getVariantsByIds(variantIds);
+    for (const variant of variants) {
+      if (
+        variant.netUnitCost == null ||
+        variant.costCurrency == null ||
+        variant.costUpdatedAt == null ||
+        Math.floor(variant.costUpdatedAt.getTime() / 1000) > placedAtSecond
+      ) {
+        continue;
+      }
+      candidates.set(variant.id, {
+        unitCostNet: variant.netUnitCost,
+        currency: variant.costCurrency,
+      });
+    }
+    return candidates;
+  }
+
   private async resolveLineTaxRate(
     productId: string,
     variantId: string | undefined,
-    item: IncomingOrderItem
+    item: Pick<IncomingOrderItem, 'taxRate' | 'taxRateCountry'>
   ): Promise<{
     taxRate?: string;
     taxRateCountry?: string;
@@ -1933,10 +2639,12 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async reserveOrderInventory(
     order: Order,
+    physicalItems: readonly Order['items'][number][],
     connectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
     alreadyCancelled = false,
-    routedByOms = false
+    routedByOms = false,
+    sourceFulfilled = false
   ): Promise<void> {
     try {
       // A kill switch, default ON (#2344 review). The ledger is additive and
@@ -1951,7 +2659,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       // Holding stock for an order that arrived already dead is pure noise.
       if (order.status === 'cancelled' || alreadyCancelled) return;
 
-      const lines: ReserveOrderLineInput[] = order.items
+      const lines: ReserveOrderLineInput[] = physicalItems
         .filter((item) => Boolean(item.productId) && item.quantity > 0)
         .map((item) => ({
           orderLineId: item.id,
@@ -1968,9 +2676,17 @@ export class OrderIngestionService implements IOrderIngestionService {
       // (its default `omp_fulfilled` would stamp `diagnostic` and open an
       // oversell window until the sale decrement lands). The decrement then
       // consumes the hold, so the units are counted once.
-      const atpEffect: ReservationAtpEffect = routedByOms
-        ? 'published'
-        : this.toReservationAtpEffect(order, await fulfillmentRouting());
+      //
+      // #3636: an order the SOURCE ships itself is never executed by OpenLinker,
+      // whatever an ADR-012 rule says (a rule is only configuration, the source's
+      // statement is a fact), so its hold is always `diagnostic` - subtracting
+      // stock for a parcel OpenLinker will not pick is the over-subtraction
+      // ADR-061 calls worse than shipping nothing.
+      const atpEffect: ReservationAtpEffect = sourceFulfilled
+        ? 'diagnostic'
+        : routedByOms
+          ? 'published'
+          : this.toReservationAtpEffect(order, await fulfillmentRouting());
 
       let result;
       try {
@@ -2103,7 +2819,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       shipping: incoming.shipping,
       pickupPoint: incoming.pickupPoint,
       deliverySmart: incoming.deliverySmart,
+      fulfilledBySource: incoming.fulfilledBySource,
       paymentStatus: incoming.paymentStatus,
+      paymentMethod: incoming.paymentMethod,
+      buyerNote: incoming.buyerNote,
+      sourcePaymentMethod: incoming.sourcePaymentMethod,
       codToCollect: incoming.codToCollect,
       dispatchTime: incoming.dispatchTime,
       placedAt: incoming.placedAt ? new Date(incoming.placedAt) : undefined,

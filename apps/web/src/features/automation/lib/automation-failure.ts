@@ -14,28 +14,27 @@
  *
  * @module features/automation/lib
  */
-import {
-  AUTOMATION_FAILURE_COPY,
-  AUTOMATION_FAILURE_TITLE,
-  RETRY_REFUSAL_COPY,
-} from './automation.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
+import { AUTOMATION_FAILURE_COPY } from './automation-labels';
 import type { AutomationRun, AutomationStepResult } from '../api/automation.types';
 
 /** The one string an operator reads first: what could not be done, to which order. */
 export function automationFailureTitle(action: string, subjectRef: string): string {
-  const build = (AUTOMATION_FAILURE_TITLE as Record<string, ((ref: string) => string) | undefined>)[
+  const template = (getMessages('automation').failureTitle as Record<string, string | undefined>)[
     action
   ];
   // Raw-code fallback: an action from a newer backend still says something TRUE
   // (naming its code) rather than nothing, or a wrong verb borrowed from a
   // neighbour.
-  return build ? build(subjectRef) : AUTOMATION_FAILURE_COPY.unknownActionTitle(action, subjectRef);
+  return template !== undefined ? interpolate(template, { ref: subjectRef }) : AUTOMATION_FAILURE_COPY.unknownActionTitle(action, subjectRef);
 }
 
 /** Why `Try again` is not offered. An unrecognised code renders as itself. */
 export function retryRefusalCopy(reason: string | null): string | null {
   if (reason === null) return null;
-  return (RETRY_REFUSAL_COPY as Record<string, string | undefined>)[reason] ?? reason;
+  return (
+    (getMessages('automation').retryRefusal as Record<string, string | undefined>)[reason] ?? reason
+  );
 }
 
 /**

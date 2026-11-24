@@ -49,6 +49,8 @@ import type {
   PendingQuantityAckReconciler,
   PendingQuantityAckReconcileResult,
   OfferQuantityBatchUpdater,
+  OfferStockRestorer,
+  OfferStockRestoreTarget,
   UpdateOfferQuantitiesBatchCommand,
   UpdateOfferQuantitiesBatchResult,
   UpdateOfferQuantitiesBatchFailure,
@@ -58,6 +60,7 @@ import type {
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
+  OfferProductSetComponent,
   OfferCategory,
   CategoryParameter,
   CategoryParameterSection,
@@ -66,6 +69,9 @@ import type {
   MarketplaceOfferProductSetItem,
   SellerPolicies,
   SafetyAttachmentUploader,
+  ProductSetPlanner,
+  ProductSetPlanRequest,
+  ProductSetComponentPlan,
   SafetyAttachmentUploadInput,
   SafetyAttachmentUploadResult,
   TaxonomyIdentityProvider,
@@ -80,8 +86,17 @@ import {
   OfferCreateRejectedException,
   CategoryNotFoundException,
   OfferNotFoundOnMarketplaceException,
+  OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
 } from '@openlinker/core/listings';
-import type { AllegroSellerDefaultsConfig } from '../../domain/types/allegro-seller-defaults.types';
+import type {
+  AllegroSafetyInformation,
+  AllegroSellerDefaultsConfig,
+} from '../../domain/types/allegro-seller-defaults.types';
+import {
+  matchAllegroResponsibleProducer,
+  toAllegroSafetyText,
+  type AllegroProducerMatch,
+} from '../util/resolve-allegro-gpsr-declaration';
 import type { AllegroEnvironment } from '../../domain/types/allegro-config.types';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
@@ -115,6 +130,7 @@ import type {
   AllegroProductOfferCreateRequest,
   AllegroTaxSettingsResponse,
   AllegroProductOfferCreateResponse,
+  AllegroProductOfferOperationResponse,
   AllegroProductSetEntry,
   AllegroValidationError,
   AllegroShippingRatesResponse,
@@ -186,6 +202,35 @@ const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
 const CATEGORY_NODE_CACHE_PREFIX = 'allegro:category-node:';
 
 /**
+ * Cache key prefix for the asynchronous create operation of one offer
+ * (E2E-11). Scoped per connection: an operation id is only readable with the
+ * token of the seller that created the offer.
+ */
+const CREATE_OPERATION_CACHE_PREFIX = 'allegro:offer-create-operation:';
+/**
+ * How long the create operation id is remembered. The creation poller gives
+ * up after ~10 minutes and the post-terminal snapshot reconcile runs within
+ * the next half hour; a day covers both with room to spare. After that the
+ * status read simply falls back to what the offer itself reports.
+ */
+const CREATE_OPERATION_TTL_SEC = 24 * 60 * 60;
+/**
+ * The `Location` of a 202 create names the operation:
+ * `.../sale/product-offers/{offerId}/operations/{operationId}`. Only the id is
+ * kept - the path is rebuilt from it, so no URL taken from a response is ever
+ * requested.
+ */
+const CREATE_OPERATION_LOCATION_PATTERN =
+  /\/sale\/product-offers\/([^/?#]+)\/operations\/([A-Za-z0-9-]+)(?:[?#]|$)/;
+/**
+ * Shown when Allegro removed the inline product card and the offer stayed
+ * inactive, but no create operation is on record to say why.
+ */
+const PRODUCT_REMOVED_WITHOUT_REASON_MESSAGE =
+  'Allegro removed the product details of this offer, so it stays inactive. ' +
+  'Allegro did not say why - activate the offer in the Allegro seller panel to see the reason.';
+
+/**
  * Upper bound on category-breadcrumb ancestor hops (#1752). Allegro's tree is
  * far shallower; the cap only guards against a malformed/cyclic parent chain.
  */
@@ -234,6 +279,33 @@ function slugify(name: string): string {
   );
 }
 
+/** One planned product-set entry (#3520), with the pictures still to re-host. */
+interface PlannedProductSetEntry {
+  index: number;
+  name: string;
+  imageUrls: string[];
+  mode: 'card-from-offer' | 'card-by-ean' | 'inline';
+  variantId: string;
+  quantity: number;
+  entry: AllegroProductSetEntry;
+}
+
+/**
+ * GPSR values taken from the PRODUCT for one offer (`CreateOfferCommand.gpsr`),
+ * already expressed in Allegro's terms. A field is set only when the product
+ * supplied a usable value; otherwise the connection's `sellerDefaults` apply.
+ */
+interface ProductGpsrDeclaration {
+  responsibleProducerId?: string;
+  safetyInformation?: AllegroSafetyInformation;
+}
+
+/** The GPSR declaration an offer is created with, after product-over-defaults precedence. */
+interface AllegroGpsrDeclaration {
+  responsibleProducerId: string;
+  safetyInformation: AllegroSafetyInformation;
+}
+
 /**
  * Defensive runtime check for the persisted `Connection.config
  * .sellerDefaults` (config ROOT) blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
@@ -245,13 +317,17 @@ function slugify(name: string): string {
  * empty result means the blob is structurally complete.
  */
 function collectMissingSellerDefaultsFields(
-  defaults: AllegroSellerDefaultsConfig | undefined
+  defaults: AllegroSellerDefaultsConfig | undefined,
+  satisfiedByProduct: ProductGpsrDeclaration = {}
 ): string[] {
+  // A product-level GPSR value makes the matching default unnecessary for THIS
+  // offer, so its absence is not reported. Location has no product-level
+  // counterpart and is always required.
   if (!defaults) {
     return [
       'sellerDefaults.location',
-      'sellerDefaults.responsibleProducerId',
-      'sellerDefaults.safetyInformation',
+      ...(satisfiedByProduct.responsibleProducerId ? [] : ['sellerDefaults.responsibleProducerId']),
+      ...(satisfiedByProduct.safetyInformation ? [] : ['sellerDefaults.safetyInformation']),
     ];
   }
   const missing: string[] = [];
@@ -260,8 +336,11 @@ function collectMissingSellerDefaultsFields(
   if (!loc?.province) missing.push('sellerDefaults.location.province');
   if (!loc?.city) missing.push('sellerDefaults.location.city');
   if (!loc?.postCode) missing.push('sellerDefaults.location.postCode');
-  if (!defaults.responsibleProducerId) {
+  if (!defaults.responsibleProducerId && !satisfiedByProduct.responsibleProducerId) {
     missing.push('sellerDefaults.responsibleProducerId');
+  }
+  if (satisfiedByProduct.safetyInformation) {
+    return missing;
   }
   const safety = defaults.safetyInformation;
   if (!safety?.type) {
@@ -307,6 +386,7 @@ export class AllegroOfferManagerAdapter
     OfferManagerPort,
     PendingQuantityAckReconciler,
     OfferQuantityBatchUpdater,
+    OfferStockRestorer,
     OfferLister,
     OfferEventReader,
     OfferFieldUpdater,
@@ -325,6 +405,7 @@ export class AllegroOfferManagerAdapter
     SellerPoliciesReader,
     ResponsibleProducerReader,
     SafetyAttachmentUploader,
+    ProductSetPlanner,
     TaxonomyIdentityProvider,
     OfferCurrencyDeclarer
 {
@@ -368,6 +449,12 @@ export class AllegroOfferManagerAdapter
    * resolver.
    */
   private readonly configuredMaxConcurrent: unknown;
+  /**
+   * The seller's responsible-producer registry, read at most once per adapter
+   * instance for GPSR name matching. Memoised as a promise so concurrent offer
+   * creates share one request; a failure is dropped so the next one retries.
+   */
+  private responsibleProducerRegistry: Promise<AllegroResponsibleProducerEntry[]> | null = null;
 
   constructor(
     private readonly connectionId: string,
@@ -571,6 +658,58 @@ export class AllegroOfferManagerAdapter
         error
       );
       throw error;
+    }
+  }
+
+  /**
+   * Restore an offer's stock after its order was cancelled (#1146 capability).
+   *
+   * Allegro does NOT put the units of a cancelled purchase back into the offer:
+   * the seller panel leaves that to the seller ("przywróć przedmioty do
+   * oferty"). Verified on the sandbox (E2E-24): after a buyer cancelled, the
+   * offer stayed one unit short and no stock event followed. The value is an
+   * absolute set, never a read-and-increment, so a retry cannot count the
+   * units twice.
+   *
+   * Core's own cancellation restore declares participation through this
+   * capability but writes through the ordered quantity seam (#2617), so this
+   * method is the contract for a direct caller. Two rules keep it honest:
+   *
+   * - Every target must carry its `idempotencyKey`. The key becomes the Allegro
+   *   command id, so inventing a random one would make every retry a new
+   *   command and defeat the dedupe; a target without one is refused before
+   *   anything is written.
+   * - One offer's failure does not stop the rest. Every offer is attempted and
+   *   the failures are thrown together at the end, so a retry finds the
+   *   successful ones already set and only the failed ones still owed.
+   */
+  async restoreStockOnCancellation(targets: readonly OfferStockRestoreTarget[]): Promise<void> {
+    const unkeyed = targets.filter((target) => !target.idempotencyKey);
+    if (unkeyed.length > 0) {
+      throw new Error(
+        `idempotencyKey is required for every Allegro stock-restore target; missing for offer(s) ` +
+          `${unkeyed.map((target) => target.externalOfferId).join(', ')} - nothing was written`
+      );
+    }
+
+    const failures: string[] = [];
+    for (const target of targets) {
+      try {
+        await this.updateOfferQuantity({
+          offerId: target.externalOfferId,
+          quantity: target.quantity,
+          idempotencyKey: target.idempotencyKey,
+        });
+      } catch (error) {
+        failures.push(`${target.externalOfferId}: ${(error as Error).message}`);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(
+        `Allegro stock restore failed for ${failures.length} of ${targets.length} offer(s) ` +
+          `(connection: ${this.connectionId}): ${failures.join('; ')}`
+      );
     }
   }
 
@@ -1029,7 +1168,140 @@ export class AllegroOfferManagerAdapter
     const publicationStatus = this.mapAllegroPublicationStatus(rawStatus);
     const validationErrors = this.mapValidationErrors(offer.validation?.errors ?? []);
 
+    // E2E-11: Allegro processes an inline-product create asynchronously. While
+    // it does, and after it rejects the product, the offer reads INACTIVE with
+    // an EMPTY `validation.errors` - the reason lives only on the create
+    // operation. Without this an offer still being processed, and one Allegro
+    // refused, both read as a clean draft with nothing to fix.
+    if (rawStatus === 'INACTIVE' && validationErrors.length === 0) {
+      const operation = await this.readCreateOperation(externalOfferId);
+      if (operation.kind === 'in-progress') {
+        return { publicationStatus: 'activating', validationErrors: [], commercial };
+      }
+      if (operation.kind === 'failed') {
+        return { publicationStatus, validationErrors: operation.errors, commercial };
+      }
+      if (this.isProductRemoved(offer)) {
+        // Synthesised from what is MISSING - no operation on record to give a
+        // reason - so core reads it as an unknown outcome, never as a refusal:
+        // the seller may still activate this offer, and re-listing its variant
+        // could then put a second live offer on Allegro.
+        return {
+          publicationStatus,
+          validationErrors: [
+            {
+              field: 'productSet',
+              code: OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
+              message: PRODUCT_REMOVED_WITHOUT_REASON_MESSAGE,
+            },
+          ],
+          commercial,
+        };
+      }
+    }
+
     return { publicationStatus, validationErrors, commercial };
+  }
+
+  /**
+   * What the asynchronous create operation of `offerId` says (E2E-11).
+   *
+   * `none` whenever there is nothing to read - no cache, no remembered
+   * operation (a synchronous 201 create, or one older than the TTL), or an
+   * operation Allegro no longer knows (404) - and also when the operation
+   * finished successfully, since the offer resource is then the authority.
+   * A failed operation answers 4xx with the usual `{ errors }` envelope; any
+   * other failure of the read propagates like every other transport error of
+   * the status read, so the poller retries instead of settling on a guess.
+   */
+  private async readCreateOperation(
+    offerId: string
+  ): Promise<
+    | { kind: 'none' }
+    | { kind: 'in-progress' }
+    | { kind: 'failed'; errors: CreateOfferValidationError[] }
+  > {
+    if (!this.cache) {
+      return { kind: 'none' };
+    }
+    const key = this.createOperationCacheKey(offerId);
+    let operationId: string | null;
+    try {
+      operationId = await this.cache.get<string>(key);
+    } catch (err) {
+      this.logger.warn(
+        `Could not read the remembered create operation of Allegro offer ${offerId}: connection=${this.connectionId} error=${(err as Error).message}`
+      );
+      return { kind: 'none' };
+    }
+    if (!operationId) {
+      return { kind: 'none' };
+    }
+
+    try {
+      const response = await this.httpClient.get<AllegroProductOfferOperationResponse>(
+        `/sale/product-offers/${offerId}/operations/${operationId}`
+      );
+      if (response.data?.operation?.status === 'IN_PROGRESS') {
+        return { kind: 'in-progress' };
+      }
+      return { kind: 'none' };
+    } catch (err) {
+      if (err instanceof AllegroApiException && err.statusCode === 404) {
+        return { kind: 'none' };
+      }
+      if (
+        err instanceof AllegroApiException &&
+        err.statusCode !== undefined &&
+        err.statusCode >= 400 &&
+        err.statusCode < 500 &&
+        (err.allegroErrors?.length ?? 0) > 0
+      ) {
+        return { kind: 'failed', errors: this.mapValidationErrors(err.allegroErrors ?? []) };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Remember the asynchronous create operation named by a 202's `Location`
+   * (E2E-11). Best-effort and never throws: the offer already exists on
+   * Allegro at this point, and a throw would make the job retry the create -
+   * Allegro does not deduplicate product-offer creates, so that would mint a
+   * second offer.
+   */
+  private async rememberCreateOperation(
+    offerId: string,
+    location: string | undefined
+  ): Promise<void> {
+    if (!this.cache || !location) {
+      return;
+    }
+    const match = CREATE_OPERATION_LOCATION_PATTERN.exec(location);
+    if (!match || match[1] !== offerId) {
+      return;
+    }
+    try {
+      await this.cache.set(
+        this.createOperationCacheKey(offerId),
+        match[2],
+        CREATE_OPERATION_TTL_SEC
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not remember the create operation of Allegro offer ${offerId}: connection=${this.connectionId} error=${(err as Error).message}`
+      );
+    }
+  }
+
+  private createOperationCacheKey(offerId: string): string {
+    return `${CREATE_OPERATION_CACHE_PREFIX}${this.connectionId}:${offerId}`;
+  }
+
+  private isProductRemoved(offer: AllegroProductOffer): boolean {
+    return (offer.productSet ?? []).some(
+      (entry) => entry.product?.publication?.status === 'REMOVED'
+    );
   }
 
   /**
@@ -1743,7 +2015,20 @@ export class AllegroOfferManagerAdapter
     }
 
     // #487 — opportunistic seller-defaults backfill (see method JSDoc).
-    const { patch: defaultsPatch, fields: backfilled } = this.buildSellerDefaultsPatch();
+    const built = this.buildSellerDefaultsPatch();
+    const defaultsPatch = built.patch;
+    const backfilled = built.fields;
+    if (defaultsPatch.productSet) {
+      const resolved = await this.resolveProductSetBackfill(
+        cmd.externalOfferId,
+        defaultsPatch.productSet[0]
+      );
+      if (resolved) {
+        defaultsPatch.productSet = resolved;
+      } else {
+        delete defaultsPatch.productSet;
+      }
+    }
     const body: AllegroOfferFieldsPatchBody = { ...defaultsPatch, ...callerBody };
     if (backfilled.length > 0) {
       this.logger.debug(
@@ -1769,6 +2054,59 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
+   * Turn the one-entry GPSR template into a patch that is safe for the live
+   * offer's `productSet` (#3520). A PATCH replaces the whole set, so a bundle
+   * offer (several entries) must be sent back with EVERY entry, each keeping its
+   * `product` and `quantity`, and only a missing GPSR field filled in. Returns
+   * `null` when nothing needs filling or the live set cannot be read (skipping
+   * the backfill is safe, sending fewer entries than exist is not).
+   */
+  private async resolveProductSetBackfill(
+    offerId: string,
+    template: AllegroProductSetEntry
+  ): Promise<AllegroProductSetEntry[] | null> {
+    let live: AllegroProductSetEntry[];
+    try {
+      const offer = await this.fetchProductOfferById(offerId);
+      live = offer?.productSet ?? [];
+    } catch (error) {
+      this.logger.warn(
+        `Allegro updateOfferFields: could not read productSet for offerId=${offerId}, ` +
+          `skipping GPSR backfill: ${(error as Error).message}`
+      );
+      return null;
+    }
+    if (live.length <= 1) {
+      return [template];
+    }
+    let changed = false;
+    const entries = live.map((entry) => {
+      const next: AllegroProductSetEntry = {};
+      if (entry.product) {
+        // `publication` is read-only state of the card, never part of a patch.
+        next.product = { ...entry.product };
+        delete next.product.publication;
+      }
+      if (entry.quantity) {
+        next.quantity = entry.quantity;
+      }
+      const producer = entry.responsibleProducer ?? template.responsibleProducer;
+      const safety = entry.safetyInformation ?? template.safetyInformation;
+      if (producer) {
+        next.responsibleProducer = producer;
+      }
+      if (safety) {
+        next.safetyInformation = safety;
+      }
+      if (producer !== entry.responsibleProducer || safety !== entry.safetyInformation) {
+        changed = true;
+      }
+      return next;
+    });
+    return changed ? entries : null;
+  }
+
+  /**
    * Build the slice of `AllegroOfferFieldsPatchBody` that the connection's
    * `sellerDefaults` is willing to provide on PATCH. Each subfield is
    * independently gated — partial configurations still help (the create-time
@@ -1780,6 +2118,10 @@ export class AllegroOfferManagerAdapter
    * working create path (`applyPlatformParams` below). The wire shape is what
    * Allegro accepts on POST, and we expect the same shape on partial product-
    * set updates; sandbox verification is the AC closer (#487).
+   *
+   * The returned `productSet` is a one-entry TEMPLATE only. `updateOfferFields`
+   * resolves it against the live offer (`resolveProductSetBackfill`, #3520)
+   * so a bundle offer keeps every entry it has.
    *
    * After-sales backfill (`afterSalesServices.{returnPolicy,warranty,
    * impliedWarranty}`) is intentionally not populated here. Those policy ids
@@ -1872,7 +2214,10 @@ export class AllegroOfferManagerAdapter
     // `responsibleProducerId` because the RP dropdown couldn't load).
     // Surface as the neutral `OfferCreateRejectedException` (one error per
     // missing field) — keeps the `core → integration` boundary clean.
-    const missingDefaults = collectMissingSellerDefaultsFields(this.sellerDefaults);
+    // The product's own GPSR data is resolved first, because a product-level
+    // producer or safety text makes the matching default unnecessary.
+    const productGpsr = await this.resolveProductGpsrDeclaration(cmd);
+    const missingDefaults = collectMissingSellerDefaultsFields(this.sellerDefaults, productGpsr);
     if (missingDefaults.length > 0) {
       throw new OfferCreateRejectedException(
         ALLEGRO_ADAPTER_KEY,
@@ -1921,7 +2266,22 @@ export class AllegroOfferManagerAdapter
     // through to inline. Both paths use the seller-defaults checked above.
     const cardLinkResult = await this.maybeResolveProductCard(cmd);
 
-    const body = this.buildCreateOfferRequest(cmd, cardLinkResult);
+    // The preflight above guarantees each value comes from the product or from
+    // a complete `sellerDefaults` field, so neither assertion can see undefined.
+    const gpsrDeclaration: AllegroGpsrDeclaration = {
+      responsibleProducerId:
+        productGpsr.responsibleProducerId ?? this.sellerDefaults!.responsibleProducerId,
+      safetyInformation: productGpsr.safetyInformation ?? this.sellerDefaults!.safetyInformation,
+    };
+
+    const body = this.buildCreateOfferRequest(cmd, cardLinkResult, gpsrDeclaration);
+    // #3520 - a bundle is ONE offer holding one entry per component. Planned
+    // (and refused when a component cannot be expressed) before any image is
+    // uploaded, then written over the single-product entry built above.
+    const productSetPlan = cmd.productSet ? await this.planProductSet(cmd, cmd.productSet) : null;
+    if (productSetPlan) {
+      body.productSet = productSetPlan.map((planned) => planned.entry);
+    }
     if (taxSettings) {
       body.taxSettings = taxSettings;
     }
@@ -1953,6 +2313,28 @@ export class AllegroOfferManagerAdapter
       );
     }
 
+    // #3520 - inline set components carry their OWN pictures (the bundle's
+    // `body.images` show the set, not each part); re-host them on Allegro's CDN
+    // exactly like the offer images.
+    if (productSetPlan) {
+      for (const planned of productSetPlan) {
+        if (planned.imageUrls.length === 0) continue;
+        const upload = await uploadImagesViaAllegro(this.uploadHttpClient, planned.imageUrls);
+        if (!upload.ok) {
+          throw new OfferCreateRejectedException(
+            ALLEGRO_ADAPTER_KEY,
+            0,
+            upload.failures.map((failure) => ({
+              field: `productSet[${planned.index}].product.images`,
+              code: failure.code,
+              message: `Image of bundle component "${planned.name}" could not be re-hosted on Allegro: ${failure.message}`,
+            }))
+          );
+        }
+        planned.entry.product = { ...planned.entry.product, images: upload.locations };
+      }
+    }
+
     // #419 — Allegro requires `productSet[0].product.images` (≥1) when
     // creating an inline product. Mirror the post-upload `body.images` here
     // (not in applyPlatformParams) so the URLs Allegro sees in the inline
@@ -1968,6 +2350,7 @@ export class AllegroOfferManagerAdapter
     // `images` field that Allegro does not expect on the link path. Skip
     // when `product.id` is present.
     if (
+      !productSetPlan &&
       body.productSet?.[0]?.product &&
       body.productSet[0].product.id === undefined &&
       body.images &&
@@ -1981,12 +2364,14 @@ export class AllegroOfferManagerAdapter
     );
 
     let response: AllegroProductOfferCreateResponse;
+    let operationLocation: string | undefined;
     try {
       const httpResponse = await this.httpClient.post<AllegroProductOfferCreateResponse>(
         '/sale/product-offers',
         body as unknown as Record<string, unknown>
       );
       response = httpResponse.data;
+      operationLocation = httpResponse.headers?.['location'];
     } catch (error) {
       if (error instanceof AllegroApiException && error.statusCode !== undefined) {
         // `allegroErrors` is populated by `AllegroHttpClient.handleError`
@@ -2005,6 +2390,12 @@ export class AllegroOfferManagerAdapter
         );
       }
       throw error;
+    }
+
+    // Only an activation request needs the operation: it is what lets the
+    // status read tell "still being processed" from "refused" (E2E-11).
+    if (cmd.publishImmediately) {
+      await this.rememberCreateOperation(response.id, operationLocation);
     }
 
     const validationErrors = this.mapValidationErrors(response.validation?.errors ?? []);
@@ -2035,6 +2426,82 @@ export class AllegroOfferManagerAdapter
       result.publicationStatus = this.mapAllegroPublicationStatus(response.publication.status);
     }
     return result;
+  }
+
+  /**
+   * The product's GPSR data expressed in Allegro's terms, field by field; an
+   * absent field means "use the connection default".
+   *
+   * - Producer: the product's producer name, matched against the seller's own
+   *   responsible-producer registry. No match, two matches, or a failed
+   *   registry read keep the default and log a warning naming the product
+   *   value, so an operator can register the producer (or fix its name) in
+   *   Allegro. A producer is NEVER created here.
+   * - Safety information: the product's safety text as a `TEXT` block; text
+   *   Allegro would reject (over 5000 characters) keeps the default.
+   *
+   * The warnings are the only surface: a create result carries no warning slot,
+   * and the offer itself is fine - it carries the seller's chosen default.
+   */
+  private async resolveProductGpsrDeclaration(
+    cmd: Pick<CreateOfferCommand, 'gpsr' | 'internalVariantId'>
+  ): Promise<ProductGpsrDeclaration> {
+    const declaration: ProductGpsrDeclaration = {};
+    const gpsr = cmd.gpsr;
+    if (!gpsr) {
+      return declaration;
+    }
+
+    const producerName = gpsr.producer?.name;
+    if (producerName) {
+      const match = await this.matchProductProducer(producerName);
+      if (match.kind === 'matched') {
+        declaration.responsibleProducerId = match.id;
+      } else {
+        this.logger.warn(
+          `allegro_gpsr_producer_unmatched: product producer ${JSON.stringify(producerName)} ` +
+            `(${match.reason}) has no single matching responsible producer in the seller's Allegro ` +
+            `registry; using the connection default. connection=${this.connectionId} ` +
+            `variant=${cmd.internalVariantId}`
+        );
+      }
+    }
+
+    const safetyText = gpsr.safetyInformation?.text;
+    if (safetyText) {
+      const safety = toAllegroSafetyText(safetyText);
+      if (safety) {
+        declaration.safetyInformation = safety;
+      } else {
+        this.logger.warn(
+          `allegro_gpsr_safety_text_rejected: product safety text (${safetyText.length} chars) ` +
+            `is longer than Allegro accepts; using the connection default. ` +
+            `connection=${this.connectionId} variant=${cmd.internalVariantId}`
+        );
+      }
+    }
+    return declaration;
+  }
+
+  private async matchProductProducer(producerName: string): Promise<AllegroProducerMatch> {
+    if (this.responsibleProducerRegistry === null) {
+      this.responsibleProducerRegistry = this.httpClient
+        .get<AllegroResponsibleProducersResponse>('/sale/responsible-producers')
+        .then((response) => response.data.responsibleProducers ?? [])
+        .catch((error: unknown) => {
+          this.responsibleProducerRegistry = null;
+          throw error;
+        });
+    }
+    try {
+      return matchAllegroResponsibleProducer(await this.responsibleProducerRegistry, producerName);
+    } catch (error) {
+      this.logger.warn(
+        `Allegro responsible-producer registry read failed (connection: ${this.connectionId}): ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      return { kind: 'unmatched', reason: 'lookup-failed' };
+    }
   }
 
   /**
@@ -2118,6 +2585,226 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
+   * Product-set planning (#3520, ADR-083). One entry per bundle component, each
+   * built by the same rule a single product follows: a catalogue card found by
+   * the component's barcode within the offer's category, otherwise an inline
+   * product (name + its own pictures). `quantity.value` is the number of that
+   * product in ONE sold set, which is what Allegro's `ProductSetElementQuantity`
+   * means. A component that can be neither card-linked nor built inline is
+   * refused by name - falling back to a one-product offer would sell a set as
+   * one of its parts.
+   *
+   * Card order per component: its own live offer's card, then the barcode
+   * lookup, then an inline product carrying the component's own category and
+   * product-section parameters (a component with no category is refused).
+   */
+  private async planProductSet(
+    cmd: CreateOfferCommand,
+    components: readonly OfferProductSetComponent[]
+  ): Promise<PlannedProductSetEntry[]> {
+    const refusals: CreateOfferValidationError[] = [];
+    const planned: PlannedProductSetEntry[] = [];
+
+    for (const [index, component] of components.entries()) {
+      const outcome = await this.evaluateProductSetComponent(
+        cmd.overrides?.categoryId,
+        component,
+        index
+      );
+      if (outcome.kind === 'refused') {
+        refusals.push(outcome.refusal);
+      } else {
+        planned.push(outcome.planned);
+      }
+    }
+
+    if (refusals.length > 0) {
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, refusals);
+    }
+    this.logger.debug(
+      `Allegro product set for variant=${cmd.internalVariantId}: ${JSON.stringify(
+        planned.map((p) => ({
+          index: p.index,
+          variantId: p.variantId,
+          mode: p.mode,
+          quantity: p.quantity,
+        }))
+      )}`
+    );
+    return planned;
+  }
+
+  /**
+   * Read-only product-set preview (#3520): the same per-component decision
+   * `planProductSet` makes at publish time, reported per component instead of
+   * thrown. Only GETs are issued; nothing is created or uploaded.
+   */
+  async previewProductSet(request: ProductSetPlanRequest): Promise<ProductSetComponentPlan[]> {
+    const plans: ProductSetComponentPlan[] = [];
+    for (const [index, component] of request.components.entries()) {
+      const outcome = await this.evaluateProductSetComponent(request.categoryId, component, index);
+      const base = { variantId: component.variantId };
+      if (outcome.kind === 'refused') {
+        plans.push({
+          ...base,
+          mode: 'missing',
+          ...(outcome.cardCategoryId ? { cardCategoryId: outcome.cardCategoryId } : {}),
+          problems: [{ code: outcome.refusal.code, message: outcome.refusal.message }],
+        });
+        continue;
+      }
+      const { planned } = outcome;
+      plans.push({
+        ...base,
+        mode:
+          planned.mode === 'card-from-offer'
+            ? 'own-offer'
+            : planned.mode === 'card-by-ean'
+              ? 'catalog-card'
+              : 'new-product',
+        ...(component.existingOfferExternalId
+          ? { externalOfferId: component.existingOfferExternalId }
+          : {}),
+        ...(outcome.cardCategoryId ? { cardCategoryId: outcome.cardCategoryId } : {}),
+        problems: [],
+      });
+    }
+    return plans;
+  }
+
+  /**
+   * One component's plan or refusal. Card order: its own live offer's card, then
+   * the barcode lookup within the offer's category, then an inline product.
+   */
+  private async evaluateProductSetComponent(
+    categoryId: string | undefined,
+    component: OfferProductSetComponent,
+    index: number
+  ): Promise<
+    | { kind: 'planned'; planned: PlannedProductSetEntry; cardCategoryId?: string }
+    | { kind: 'refused'; refusal: CreateOfferValidationError; cardCategoryId?: string }
+  > {
+    // Preferred: the component's own live offer already owns a product card.
+    const fromOffer = component.existingOfferExternalId
+      ? await this.readProductCardFromOffer(component.existingOfferExternalId)
+      : null;
+    const cardFromOffer = fromOffer?.cardId ?? null;
+    const card = cardFromOffer
+      ? ({ kind: 'unique', productId: cardFromOffer } as const)
+      : component.barcode && categoryId
+        ? await resolveAllegroProductCardByEan(this.httpClient, this.cache, {
+            ean: component.barcode,
+            categoryId,
+          })
+        : ({ kind: 'no_match' } as const);
+    const cardCategoryId =
+      fromOffer?.categoryId ?? (card.kind === 'unique' ? categoryId : undefined);
+    const withCategory = cardCategoryId ? { cardCategoryId } : {};
+
+    const declaration = await this.resolveProductGpsrDeclaration({
+      gpsr: component.gpsr,
+      internalVariantId: component.variantId,
+    });
+    const responsibleProducerId =
+      declaration.responsibleProducerId ?? this.sellerDefaults?.responsibleProducerId;
+    const safetyInformation =
+      declaration.safetyInformation ?? this.sellerDefaults?.safetyInformation;
+    if (!responsibleProducerId || !safetyInformation) {
+      return {
+        kind: 'refused',
+        ...withCategory,
+        refusal: {
+          field: `productSet[${index}]`,
+          code: 'PRODUCT_SET_COMPONENT_GPSR_MISSING',
+          message: `Bundle component "${component.name}" has no responsible producer or safety information, and the connection has no default for them.`,
+        },
+      };
+    }
+    const common = {
+      quantity: { value: component.quantity },
+      responsibleProducer: { id: responsibleProducerId },
+      safetyInformation,
+    };
+
+    if (card.kind === 'unique') {
+      return {
+        kind: 'planned',
+        ...withCategory,
+        planned: {
+          index,
+          name: component.name,
+          imageUrls: [],
+          mode: cardFromOffer ? 'card-from-offer' : 'card-by-ean',
+          variantId: component.variantId,
+          quantity: component.quantity,
+          entry: { product: { id: card.productId }, ...common },
+        },
+      };
+    }
+
+    const name = sanitizeAllegroName(component.name);
+    if (!name || component.imageUrls.length === 0 || !component.categoryId) {
+      return {
+        kind: 'refused',
+        ...withCategory,
+        refusal: {
+          field: `productSet[${index}]`,
+          code: 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE',
+          message:
+            `Bundle component "${component.name}" has no unique Allegro catalogue match` +
+            `${component.barcode ? ' for its barcode' : ' (it has no barcode)'} and cannot be ` +
+            `listed as an inline product without ${
+              !name ? 'a name' : component.imageUrls.length === 0 ? 'a picture' : 'a resolvable category'
+            }. Add a barcode that matches an Allegro product card, a picture, or a category mapping, to that product.`,
+        },
+      };
+    }
+    return {
+      kind: 'planned',
+      planned: {
+        index,
+        name: component.name,
+        imageUrls: component.imageUrls,
+        mode: 'inline',
+        variantId: component.variantId,
+        quantity: component.quantity,
+        entry: {
+          product: {
+            name,
+            category: { id: component.categoryId },
+            ...(component.parameters && component.parameters.length > 0
+              ? {
+                  parameters: this.toAllegroParameters(
+                    component.parameters.filter((p) => p.section === 'product')
+                  ),
+                }
+              : {}),
+          },
+          ...common,
+        },
+      },
+    };
+  }
+
+  /** The product card id and category of a component's own offer, or null when unreadable. */
+  private async readProductCardFromOffer(
+    offerId: string
+  ): Promise<{ cardId: string | null; categoryId?: string } | null> {
+    try {
+      const offer = await this.fetchProductOfferById(offerId);
+      return {
+        cardId: offer.productSet?.[0]?.product?.id ?? null,
+        ...(offer.category?.id ? { categoryId: offer.category.id } : {}),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Could not read bundle component offer ${offerId} for its product card (${(error as Error).message}); falling back`
+      );
+      return null;
+    }
+  }
+
+  /**
    * Smart-link pre-step (#431). Resolves the variant's barcode against
    * Allegro's product catalogue *only* when both an EAN-shaped barcode
    * and a category id are available; otherwise short-circuits to
@@ -2154,7 +2841,8 @@ export class AllegroOfferManagerAdapter
 
   private buildCreateOfferRequest(
     cmd: CreateOfferCommand,
-    cardLinkResult: ResolveProductCardResult
+    cardLinkResult: ResolveProductCardResult,
+    gpsrDeclaration: AllegroGpsrDeclaration
   ): AllegroProductOfferCreateRequest {
     const platformParams = cmd.overrides?.platformParams ?? {};
 
@@ -2234,7 +2922,14 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult, cmd.condition);
+    this.applyPlatformParams(
+      body,
+      platformParams,
+      cmd.parameters,
+      cardLinkResult,
+      cmd.condition,
+      gpsrDeclaration
+    );
 
     return body;
   }
@@ -2419,7 +3114,8 @@ export class AllegroOfferManagerAdapter
     platformParams: Record<string, unknown>,
     parameters: readonly OfferParameter[] | undefined,
     cardLinkResult: ResolveProductCardResult,
-    condition: OfferCondition | undefined
+    condition: OfferCondition | undefined,
+    gpsrDeclaration: AllegroGpsrDeclaration
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -2489,15 +3185,17 @@ export class AllegroOfferManagerAdapter
       // the card per sale item — which defaults to 1 when omitted. Writing the
       // sellable stock here was both wrong-typed (Allegro wants an object, not
       // a bare int → `JsonMappingException` at `productSet[0].quantity`) and
-      // wrong semantics. OL lists 1 variant = 1 sale unit, so we omit it (#808).
-      // `sellerDefaults!` is guaranteed by the `createOffer` preflight
+      // wrong semantics. An ordinary OL variant is one sale unit, so we omit it
+      // (#808); a BUNDLE variant is the exception and takes the product-set path
+      // (`planProductSet`, #3520), where each component carries its own quantity.
+      // `gpsrDeclaration` is complete by the `createOffer` preflight
       // (`collectMissingSellerDefaultsFields`), which runs on every path,
       // card-linked included.
       body.productSet = [
         {
           product: { id: cardLinkResult.productId },
-          responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
-          safetyInformation: this.sellerDefaults!.safetyInformation,
+          responsibleProducer: { id: gpsrDeclaration.responsibleProducerId },
+          safetyInformation: gpsrDeclaration.safetyInformation,
         },
       ];
       this.logger.log(
@@ -2566,18 +3264,18 @@ export class AllegroOfferManagerAdapter
       name: body.name,
       ...(filtered.length > 0 ? { parameters: filtered } : {}),
     };
-    // The `sellerDefaults!` non-null assertions below are guaranteed by the
-    // per-field preflight in `createOffer` (`collectMissingSellerDefaultsFields`,
-    // #430 / #437): if `responsibleProducerId` or `safetyInformation` were
-    // missing, the preflight throws `OfferCreateRejectedException` before this
-    // method runs. Do not weaken the preflight without revisiting these sites.
+    // `gpsrDeclaration` is complete by the per-field preflight in
+    // `createOffer` (`collectMissingSellerDefaultsFields`, #430 / #437): if
+    // neither the product nor `sellerDefaults` supplied a producer or safety
+    // information, the preflight throws `OfferCreateRejectedException` before
+    // this method runs. Do not weaken the preflight without revisiting these sites.
     body.productSet = [
       {
         product: inlineProduct,
         // #430 — GPSR fields required by Allegro on inline-product creation
         // (Reg. 2023/988, mandatory since 13 Dec 2024).
-        responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
-        safetyInformation: this.sellerDefaults!.safetyInformation,
+        responsibleProducer: { id: gpsrDeclaration.responsibleProducerId },
+        safetyInformation: gpsrDeclaration.safetyInformation,
       },
     ];
   }

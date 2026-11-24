@@ -6,14 +6,16 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 
+import type { IBundleDefinitionService } from '@openlinker/core/products';
+import type { IOrderChangeService } from '../order-change.service.interface';
+import type { IPaymentWritebackService } from '../../interfaces/payment-writeback.service.interface';
+import type { IOrderCancellationEffectsService } from '../../interfaces/order-cancellation-effects.service.interface';
+import type { IOrderSourceAmendmentEffectsService } from '../../interfaces/order-source-amendment-effects.service.interface';
 import { OrderIngestionService } from '../order-ingestion.service';
+import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
-import type {
-  ISyncCursorsService,
-  SyncJobQueuePort,
-  SyncLockPort,
-} from '@openlinker/core/sync';
+import type { ISyncCursorsService, SyncJobQueuePort, SyncLockPort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type {
   ICustomerIdentityResolverService,
@@ -38,6 +40,7 @@ import type {
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
+import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
 // #2396 — the ONE router-resolution seam. Mocked so the `selected` arm is
@@ -56,6 +59,7 @@ const routerResolver: FulfillmentRouterResolverPort = {
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
+  let bundleDefinitions: { findCurrentByVariantIds: jest.Mock; findConfirmedMultipacks: jest.Mock };
 
   let integrationsService: jest.Mocked<IIntegrationsService>;
   // Only the two methods the SUT actually calls — tight Pick<> mock surface
@@ -66,6 +70,7 @@ describe('OrderIngestionService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderSyncService: jest.Mocked<IOrderSyncService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
+  let orderGifts: { applyGiftRules: jest.Mock };
   let orderSource: jest.Mocked<OrderSourcePort>;
   let orderItemRefResolver: jest.Mocked<IOrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
@@ -81,7 +86,13 @@ describe('OrderIngestionService', () => {
   // `selectPrimaryFulfillmentRouter` returns `no-claimant` and `route` is never
   // reached. Every pre-existing spec therefore asserts the pass-through.
   let routingCommit: jest.Mocked<IRoutingCommitService>;
+  let orderChanges: jest.Mocked<
+    Pick<IOrderChangeService, 'findOpenByOrder' | 'confirm' | 'claimApplied' | 'findLatestByTarget'>
+  >;
   let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
+  let cancellationEffects: { applyEffects: jest.Mock };
+  let sourceAmendmentEffects: { reconcile: jest.Mock; accept: jest.Mock };
+  let paymentWriteback: { planAfterSync: jest.Mock };
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -147,6 +158,10 @@ describe('OrderIngestionService', () => {
       persistIncomingSnapshot: jest.fn().mockResolvedValue({ cancelledAt: null }),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
+      freezeLineExpansion: jest
+        .fn()
+        .mockImplementation((_id: string, e: unknown) => Promise.resolve(e)),
+      notifyOrderReceived: jest.fn().mockResolvedValue(undefined),
       findMany: jest.fn(),
       findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
@@ -157,6 +172,8 @@ describe('OrderIngestionService', () => {
       markFulfillmentRoutingSkip: jest.fn().mockResolvedValue(undefined),
       markOmsAttention: jest.fn().mockResolvedValue(undefined),
       listOrderIdsByFulfillmentBlockReasons: jest.fn().mockResolvedValue([]),
+      listOrderIdsHeldForVariant: jest.fn(),
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
@@ -186,6 +203,8 @@ describe('OrderIngestionService', () => {
         countryIso2: null,
         readAt: null,
       }),
+      // #3588: default "no variant has a cost".
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IProductsService>;
     // #2250: the provenance journal. Default resolves to `null` (a repeat
     // observation), which is what `record` returns when nothing changed.
@@ -216,6 +235,36 @@ describe('OrderIngestionService', () => {
     } as unknown as jest.Mocked<IRoutingCommitService>;
     connections = { list: jest.fn().mockResolvedValue([]) };
 
+    orderChanges = {
+      findOpenByOrder: jest.fn().mockResolvedValue([]),
+      findLatestByTarget: jest.fn().mockResolvedValue(null),
+      confirm: jest.fn().mockResolvedValue(true),
+      claimApplied: jest.fn().mockResolvedValue(true),
+    };
+    cancellationEffects = {
+      applyEffects: jest.fn().mockResolvedValue({
+        cancelledWorkIds: [],
+        releasedHoldIds: [],
+        correctionProposal: null,
+        correctionUnavailableReason: null,
+      }),
+    };
+    bundleDefinitions = {
+      findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
+      findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
+    };
+    orderGifts = {
+      applyGiftRules: jest
+        .fn()
+        .mockImplementation(({ order }: { order: unknown }) =>
+          Promise.resolve({ order, outcomes: [] })
+        ),
+    };
+    sourceAmendmentEffects = {
+      reconcile: jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null }),
+      accept: jest.fn(),
+    };
+    paymentWriteback = { planAfterSync: jest.fn().mockResolvedValue(undefined) };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -235,7 +284,15 @@ describe('OrderIngestionService', () => {
       fulfillmentRouting,
       routingCommit,
       connections as unknown as ConnectionPort,
-      routerResolver
+      routerResolver,
+      orderChanges as unknown as IOrderChangeService,
+      cancellationEffects as unknown as IOrderCancellationEffectsService,
+      bundleDefinitions as unknown as IBundleDefinitionService,
+      { resolveForDocuments: jest.fn().mockResolvedValue(undefined) } as never,
+      sourceAmendmentEffects as unknown as IOrderSourceAmendmentEffectsService,
+      paymentWriteback as unknown as IPaymentWritebackService,
+      // #3938: no gift rules in these tests unless one overrides the mock.
+      orderGifts as never
     );
   });
 
@@ -280,6 +337,109 @@ describe('OrderIngestionService', () => {
       });
     });
 
+    it('should add the gift lines BEFORE the reservation and reserve them like any line (#3938)', async () => {
+      orderGifts.applyGiftRules.mockImplementation(({ order }: { order: { items: unknown[] } }) =>
+        Promise.resolve({
+          order: {
+            ...order,
+            items: [
+              ...order.items,
+              {
+                id: 'ol-gift:r1:1',
+                productId: 'ol_product_gift',
+                variantId: 'ol_variant_gift',
+                quantity: 1,
+                price: 0,
+                gift: { source: 'ol-rule', ruleRef: 'r1' },
+              },
+            ],
+          },
+          outcomes: [],
+        })
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderGifts.applyGiftRules.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(orderGifts.applyGiftRules).toHaveBeenCalledWith(
+        expect.objectContaining({ isFirstIngestion: true, sourceConnectionId: connectionId })
+      );
+      const input = reservationService.reserveForOrder.mock.calls[0][0];
+      expect(input.lines.map((l: { orderLineId: string }) => l.orderLineId)).toEqual([
+        'line-1',
+        'ol-gift:r1:1',
+      ]);
+    });
+
+    it('should allow new gift grants only before the order is frozen, routed or mirrored', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: true })
+      );
+
+      // A re-ingestion of an order whose lines were frozen (routing follows the freeze).
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        syncStatus: [],
+        lineExpansion: { v: 1, definitions: [] },
+      } as unknown as OrderRecord);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: false })
+      );
+
+      // ... or one already mirrored to a destination.
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        syncStatus: [{ destinationConnectionId: 'dest', status: 'synced' }],
+        lineExpansion: null,
+      } as unknown as OrderRecord);
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+      expect(orderGifts.applyGiftRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ allowNewGrants: false })
+      );
+    });
+
+    it('should stamp the catalogue tax rate on a gift line so a destination that needs one does not refuse the order (#3939)', async () => {
+      productsService.getEffectiveTaxRate.mockImplementation((productId: string) =>
+        Promise.resolve(
+          productId === 'ol_product_gift'
+            ? { code: '23', countryIso2: 'PL', readAt: new Date('2026-01-01T00:00:00Z') }
+            : { code: null, countryIso2: null, readAt: null }
+        )
+      );
+      orderGifts.applyGiftRules.mockImplementation(({ order }: { order: { items: unknown[] } }) =>
+        Promise.resolve({
+          order: {
+            ...order,
+            items: [
+              ...order.items,
+              {
+                id: 'ol-gift:r1:1',
+                productId: 'ol_product_gift',
+                variantId: 'ol_variant_gift',
+                quantity: 1,
+                price: 0,
+                gift: { source: 'ol-rule', ruleRef: 'r1' },
+              },
+            ],
+          },
+          outcomes: [],
+        })
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const sent = orderSyncService.syncOrder.mock.calls[0][0].order.items.find(
+        (item: { id: string }) => item.id === 'ol-gift:r1:1'
+      );
+      expect(sent).toMatchObject({ taxRate: '23', taxSource: 'shop', price: 0 });
+    });
+
     it('should reserve the order lines after persistOrder and before destination dispatch', async () => {
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
@@ -300,6 +460,45 @@ describe('OrderIngestionService', () => {
       expect(reservationService.reserveForOrder.mock.invocationCallOrder[0]).toBeLessThan(
         orderSyncService.syncOrder.mock.invocationCallOrder[0]
       );
+    });
+
+    it('should freeze the expansion and reserve the COMPONENTS of a bundle line (#3607)', async () => {
+      const definition = {
+        variantId: 'ol_variant_1',
+        version: 1,
+        components: [
+          { variantId: 'ol_variant_a', productId: 'ol_product_a', quantity: 3 },
+          { variantId: 'ol_variant_b', productId: 'ol_product_b', quantity: 1 },
+        ],
+      };
+      bundleDefinitions.findCurrentByVariantIds.mockResolvedValue([definition]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.freezeLineExpansion).toHaveBeenCalledWith('ol_order_res', {
+        v: 1,
+        definitions: [definition],
+      });
+      expect(orderRecordService.freezeLineExpansion.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(reservationService.reserveForOrder.mock.calls[0][0].lines).toEqual([
+        expect.objectContaining({
+          orderLineId: 'line-1~c:ol_variant_a',
+          productId: 'ol_product_a',
+          productVariantId: 'ol_variant_a',
+          quantity: 6,
+        }),
+        expect.objectContaining({
+          orderLineId: 'line-1~c:ol_variant_b',
+          productId: 'ol_product_b',
+          quantity: 2,
+        }),
+      ]);
+      // The destination mirror keeps the commercial line.
+      expect(orderSyncService.syncOrder.mock.calls[0][0].order.items).toEqual([
+        expect.objectContaining({ id: 'line-1', variantId: 'ol_variant_1' }),
+      ]);
     });
 
     it('should stamp diagnostic on the omp_fulfilled topology', async () => {
@@ -361,9 +560,7 @@ describe('OrderIngestionService', () => {
     it('should skip the retry entirely when every line was ambiguous', async () => {
       // One line, and it is the ambiguous one — so there is nothing left to
       // claim and no empty second call is issued.
-      reservationService.reserveForOrder.mockRejectedValueOnce(
-        ambiguityFor(['line-1'])
-      );
+      reservationService.reserveForOrder.mockRejectedValueOnce(ambiguityFor(['line-1']));
 
       const results = await service.syncOrderFromSource(connectionId, externalOrderId);
 
@@ -371,13 +568,10 @@ describe('OrderIngestionService', () => {
       expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
     });
 
-    it('should retry once with only the unambiguous lines rather than losing the order\'s holds', async () => {
+    it("should retry once with only the unambiguous lines rather than losing the order's holds", async () => {
       orderSource.getOrder.mockResolvedValue({
         ...reservableIncoming,
-        items: [
-          reservableIncoming.items[0],
-          { ...reservableIncoming.items[0], id: 'line-2' },
-        ],
+        items: [reservableIncoming.items[0], { ...reservableIncoming.items[0], id: 'line-2' }],
       });
       reservationService.reserveForOrder
         .mockRejectedValueOnce(ambiguityFor(['line-1']))
@@ -397,10 +591,7 @@ describe('OrderIngestionService', () => {
       // the outer catch rather than looping.
       orderSource.getOrder.mockResolvedValue({
         ...reservableIncoming,
-        items: [
-          reservableIncoming.items[0],
-          { ...reservableIncoming.items[0], id: 'line-2' },
-        ],
+        items: [reservableIncoming.items[0], { ...reservableIncoming.items[0], id: 'line-2' }],
       });
       reservationService.reserveForOrder
         .mockRejectedValueOnce(ambiguityFor(['line-1']))
@@ -511,6 +702,32 @@ describe('OrderIngestionService', () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
     });
 
+    it("should plan the payment writeback with this run's results after the sync settled (#3963)", async () => {
+      const results = [
+        {
+          destinationConnectionId: 'dest-1',
+          status: 'success' as const,
+          orderRef: { orderId: '1027' },
+          created: false,
+        },
+      ];
+      orderSyncService.syncOrder.mockResolvedValue(results);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-42');
+
+      expect(paymentWriteback.planAfterSync).toHaveBeenCalledTimes(1);
+      expect(paymentWriteback.planAfterSync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order: expect.objectContaining({ id: 'ol_order_test' }),
+          sourceConnectionId: connectionId,
+          results,
+        })
+      );
+      expect(orderSyncService.syncOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        paymentWriteback.planAfterSync.mock.invocationCallOrder[0]
+      );
+    });
+
     it('calls onOrderTransition at the terminal path with the in-scope sourceEventId as the 3rd arg', async () => {
       orderSyncService.syncOrder.mockResolvedValue([]);
 
@@ -590,7 +807,7 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
         'ol_order_test',
         block,
-        { action: 'set', matchedRuleId: null },
+        { action: 'set', matchedRuleId: null }
       );
     });
 
@@ -605,10 +822,14 @@ describe('OrderIngestionService', () => {
       // a caller-side comparison would have to trust a record read before the
       // destination round-trip, and a concurrent clear could make a genuinely
       // new answer look unchanged.
-      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, {
-        action: 'set',
-        matchedRuleId: null,
-      });
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
+        'ol_order_test',
+        null,
+        {
+          action: 'set',
+          matchedRuleId: null,
+        }
+      );
     });
 
     it('threads the matched rule id through on `none` (#3186)', async () => {
@@ -626,7 +847,7 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
         'ol_order_test',
         null,
-        { action: 'set', matchedRuleId: 'rule-1' },
+        { action: 'set', matchedRuleId: 'rule-1' }
       );
     });
 
@@ -881,7 +1102,9 @@ describe('OrderIngestionService', () => {
         connectionId,
         null,
         // sourceExternalUrl (#1713) — the test fixture's incoming order carries none.
-        null
+        null,
+        // lineCostCandidates (#3588) — no costed variant in the default fixture.
+        new Map()
       );
       expect(orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
         orderRecordService.persistOrder.mock.invocationCallOrder[0]
@@ -889,6 +1112,133 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
         orderSyncService.syncOrder.mock.invocationCallOrder[0]
       );
+    });
+
+    describe('line cost snapshot candidates (#3588, D27)', () => {
+      const variantWithCost = (costUpdatedAt: Date | null, netUnitCost: string | null = '4.5000') =>
+        ({
+          id: 'ol_variant_1',
+          netUnitCost,
+          costCurrency: netUnitCost === null ? null : 'PLN',
+          costUpdatedAt,
+        }) as unknown as Awaited<ReturnType<IProductsService['getVariantsByIds']>>[number];
+
+      beforeEach(() => {
+        orderSyncService.syncOrder.mockResolvedValue([]);
+        orderItemRefResolver.tryResolve.mockResolvedValue({
+          resolved: true,
+          internalProductId: 'ol_product_1',
+          internalVariantId: 'ol_variant_1',
+        } as never);
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          // Two lines on one variant: the lookup must still be de-duplicated.
+          items: [
+            {
+              id: 'line-1',
+              productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+              quantity: 1,
+              price: 10,
+            },
+            {
+              id: 'line-2',
+              productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+              quantity: 1,
+              price: 10,
+            },
+          ],
+          placedAt: '2026-05-31T16:00:00.000Z',
+        });
+      });
+
+      it('should look variants up once, de-duplicated, and pass the candidate map to persistOrder', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-01T00:00:00.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(productsService.getVariantsByIds).toHaveBeenCalledTimes(1);
+        const ids = productsService.getVariantsByIds.mock.calls[0][0];
+        expect(new Set(ids).size).toBe(ids.length);
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.get('ol_variant_1')).toEqual({ unitCostNet: '4.5000', currency: 'PLN' });
+      });
+
+      it('should exclude a cost entered after the order was placed (G11-G)', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-06-15T00:00:00.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should compare at second granularity: a cost saved within the order second is recorded', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          items: [
+            {
+              id: 'line-1',
+              productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+              quantity: 1,
+              price: 10,
+            },
+          ],
+          placedAt: '2026-05-31T10:00:00.000Z',
+        });
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-31T10:00:00.700Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.has('ol_variant_1')).toBe(true);
+      });
+
+      it('should not record a cost saved in the second after the order', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          items: [
+            {
+              id: 'line-1',
+              productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+              quantity: 1,
+              price: 10,
+            },
+          ],
+          placedAt: '2026-05-31T10:00:00.000Z',
+        });
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-31T10:00:01.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should exclude a variant without a cost', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([variantWithCost(null, null)]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should propagate a lookup failure instead of freezing not-recorded', async () => {
+        productsService.getVariantsByIds.mockRejectedValue(new Error('db down'));
+
+        await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toThrow(
+          'db down'
+        );
+        expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      });
     });
 
     it('should carry incoming.placedAt onto the unified Order as a Date (#926)', async () => {
@@ -967,6 +1317,31 @@ describe('OrderIngestionService', () => {
         'ol_order_test',
         'dest-conn-1',
         expect.objectContaining({ status: 'synced', externalOrderId: 'ext-order-1' })
+      );
+    });
+
+    it('should store the delivery fingerprint and relay report on the synced row (#4195)', async () => {
+      const at = new Date('2026-11-17T10:00:00Z');
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'success',
+          destinationConnectionId: 'dest-conn-1',
+          orderRef: { orderId: 'ext-order-1' },
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', at },
+        },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_test',
+        'dest-conn-1',
+        expect.objectContaining({
+          status: 'synced',
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', at },
+        })
       );
     });
 
@@ -1083,9 +1458,7 @@ describe('OrderIngestionService', () => {
       it('still writes the withheld row for a destination whose existing row is not synced', async () => {
         orderRecordService.getOrderRecord.mockResolvedValue({
           sourceConnectionId: connectionId,
-          syncStatus: [
-            { destinationConnectionId: 'dest-conn-1', status: 'failed', error: 'boom' },
-          ],
+          syncStatus: [{ destinationConnectionId: 'dest-conn-1', status: 'failed', error: 'boom' }],
         } as unknown as OrderRecord);
         orderSyncService.syncOrder.mockResolvedValue([heldResult]);
 
@@ -1108,6 +1481,79 @@ describe('OrderIngestionService', () => {
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should not decide the sales document when syncOrder fails for another reason', async () => {
+      orderSyncService.syncOrder.mockRejectedValue(new Error('db down'));
+
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toThrow(
+        'db down'
+      );
+
+      expect(autoIssueTrigger.onOrderTransition).not.toHaveBeenCalled();
+    });
+
+    // #3959 - a missing or inactive destination says nothing about whether the
+    // buyer is owed a document, so the document is decided before the throw
+    // takes the job onto its retry ladder.
+    it('should decide and persist the sales document before rethrowing when no destination is reachable', async () => {
+      const noDestinations = new NoOrderDestinationsAvailableException(
+        'ol_order_test',
+        connectionId
+      );
+      // The rethrow path must hand the trigger the JUST-PERSISTED buyer tax id,
+      // exactly as the success path does (#3187), so it is stubbed here and
+      // asserted below rather than left to whatever the default mock returns.
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        buyerTaxId: '5213796333',
+      } as never);
+      orderSyncService.syncOrder.mockRejectedValue(noDestinations);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'none' });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-3959')
+      ).rejects.toBe(noDestinations);
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ol_order_test' }),
+        connectionId,
+        'evt-3959',
+        null,
+        '5213796333',
+        undefined
+      );
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
+        'ol_order_test',
+        null,
+        {
+          action: 'set',
+          matchedRuleId: null,
+        }
+      );
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should still rethrow the destination failure when the sales-document step itself fails', async () => {
+      const noDestinations = new NoOrderDestinationsAvailableException(
+        'ol_order_test',
+        connectionId
+      );
+      orderSyncService.syncOrder.mockRejectedValue(noDestinations);
+      autoIssueTrigger.onOrderTransition.mockRejectedValueOnce(new Error('enqueue failed'));
+
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toBe(
+        noDestinations
+      );
+    });
+
+    it('should decide the sales document once when syncOrder returns no destinations (#3959)', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
       expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
     });
 
@@ -1234,6 +1680,17 @@ describe('OrderIngestionService', () => {
       expect(orderItemRefResolver.tryResolve).not.toHaveBeenCalled();
     });
 
+    it('should skip an order the source says OpenLinker created, before any id is minted (echo race)', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...baseIncoming, createdFromInternalOrderId: 'ol_order_original' });
+
+      const result = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(result).toEqual([]);
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+    });
+
     it('should proceed with ingestion when no existing order record is found (genuinely new order)', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue(null);
       orderSyncService.syncOrder.mockResolvedValue([]);
@@ -1243,6 +1700,26 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
       expect(orderSyncService.syncOrder).toHaveBeenCalled();
+    });
+
+    it('should fire order.received when the order is ingested for the first time (#3554)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.notifyOrderReceived).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not fire order.received when the order is re-ingested (#3554)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.notifyOrderReceived).not.toHaveBeenCalled();
     });
 
     it('should proceed with ingestion when the existing order shares the same source connection (genuine same-source reconcile)', async () => {
@@ -1300,6 +1777,75 @@ describe('OrderIngestionService', () => {
         payload: { schemaVersion: 1, internalOrderId },
         options: { dedupeKey },
       });
+    });
+
+    it('should relay the cancellation to destinations when an update moves an order to cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      // The record carries `cancelledAt` only when this call's markCancelled made the transition.
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({ cancelledAt: new Date() } as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledWith({
+        internalOrderId,
+        originConnectionId: connectionId,
+        event: { type: 'cancelled' },
+      });
+    });
+
+    it('should NOT relay when a concurrent cancel event stamped first and this update made no transition', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+      } as unknown as OrderRecord);
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({ cancelledAt: null } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should NOT relay again when the record was already stamped cancelled by the event path', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: true,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should keep a destination that already holds the order as synced when the order is cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+        isCancelled: false,
+        syncStatus: [{ destinationConnectionId: 'dest-1', status: 'synced', externalOrderId: 'ext-1' }],
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] } as never);
+      orderSyncService.syncOrder.mockResolvedValue([
+        { destinationConnectionId: 'dest-1', status: 'skipped_cancelled', cancelledAt: new Date() },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalledWith(
+        internalOrderId,
+        'dest-1',
+        expect.objectContaining({ status: 'skipped_cancelled' })
+      );
     });
 
     it('should enqueue when a first-seen order is already cancelled (no prior record)', async () => {
@@ -1394,12 +1940,12 @@ describe('OrderIngestionService', () => {
         resolved: false,
         productRef: { type: 'offer', externalId: 'unmapped-offer' },
         reason: 'no mapping',
-      kind: 'missing_mapping' as const,
+        kind: 'missing_mapping' as const,
       });
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
       expect(jobQueue.enqueue).toHaveBeenCalledWith({
@@ -1599,7 +2145,154 @@ describe('OrderIngestionService', () => {
       expect(persistedOrder.items[1].imageUrl).toBeUndefined();
     });
 
-    it('partial unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
+    it('holds a multipack line without a bundle as awaiting_mapping, before any reservation (#3929)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-2',
+          internalVariantId: 'v-2',
+        });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        'ol_order_item_test',
+        {
+          status: 'awaiting_mapping',
+          reason: expect.stringContaining('[multipack-without-bundle]'),
+        }
+      );
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+    });
+
+    it('does not re-hold a ready order whose expansion is frozen when the confirmation is retired (#3520)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-2',
+          internalVariantId: 'v-2',
+        });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        lineExpansion: { v: 1, definitions: [] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.markItemResolutionFailure).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(bundleDefinitions.findCurrentByVariantIds).not.toHaveBeenCalled();
+      expect(orderRecordService.freezeLineExpansion).not.toHaveBeenCalled();
+    });
+
+    it('freezes a ready order that has no expansion yet: a crash between persist and freeze is not pre-feature (#3520)', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...incomingWithItems });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-2',
+          internalVariantId: 'v-2',
+        });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        lineExpansion: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.freezeLineExpansion).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets a confirmed multipack through and freezes it as N units of its own variant (#3624)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-2',
+          internalVariantId: 'v-2',
+        });
+      bundleDefinitions.findConfirmedMultipacks.mockResolvedValue([
+        { variantId: 'v-1', packQuantity: 3 },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.markItemResolutionFailure).not.toHaveBeenCalled();
+      const frozen = orderRecordService.freezeLineExpansion.mock.calls[0][1];
+      expect(frozen.definitions).toEqual([
+        expect.objectContaining({
+          lineId: 'item-1',
+          variantId: 'v-1',
+          components: [{ variantId: 'v-1', productId: 'p-1', quantity: 3 }],
+        }),
+      ]);
+    });
+
+    it('carries gift and packQuantity onto the resolved line when not held (#3929)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [
+          { ...incomingWithItems.items[0], gift: { source: 'cart-rule' as const } },
+          incomingWithItems.items[1],
+        ],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-1',
+          internalVariantId: 'v-1',
+        })
+        .mockResolvedValueOnce({
+          resolved: true,
+          internalProductId: 'p-2',
+          internalVariantId: 'v-2',
+        });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const items = orderRecordService.persistOrder.mock.calls[0][0].items;
+      expect(items[0].gift).toEqual({ source: 'cart-rule' });
+      expect('packQuantity' in items[0]).toBe(false);
+      expect('gift' in items[1]).toBe(false);
+    });
+
+    it('partial unresolved (unlisted offer): persistIncomingSnapshot called, no retry, persistOrder NOT called (#4040)', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
           resolved: true,
@@ -1610,12 +2303,12 @@ describe('OrderIngestionService', () => {
           resolved: false,
           productRef: { type: 'offer', externalId: 'offer-b' },
           reason: 'no mapping',
-        kind: 'missing_mapping' as const,
+          kind: 'missing_mapping' as const,
         });
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
@@ -1640,10 +2333,13 @@ describe('OrderIngestionService', () => {
         service.syncOrderFromSource(connectionId, externalOrderId)
       ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
 
-      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
-        status: 'source_deleted',
-        reason: 'variant ol_variant_b deleted at the master',
-      });
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        'ol_order_item_test',
+        {
+          status: 'source_deleted',
+          reason: 'variant ol_variant_b deleted at the master',
+        }
+      );
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
     });
 
@@ -1666,10 +2362,13 @@ describe('OrderIngestionService', () => {
         service.syncOrderFromSource(connectionId, externalOrderId)
       ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
 
-      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
-        status: 'source_deleted',
-        reason: 'variant ol_variant_b deleted at the master',
-      });
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        'ol_order_item_test',
+        {
+          status: 'source_deleted',
+          reason: 'variant ol_variant_b deleted at the master',
+        }
+      );
     });
 
     it('all missing-mapping (no stale refs) marks the record awaiting_mapping', async () => {
@@ -1689,32 +2388,63 @@ describe('OrderIngestionService', () => {
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
-      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
-        status: 'awaiting_mapping',
-        reason: 'no mapping a',
-      });
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        'ol_order_item_test',
+        {
+          status: 'awaiting_mapping',
+          reason: 'no mapping a',
+        }
+      );
     });
 
-    it('all unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
+    it('should still throw for a missing mapping on a non-offer ref so the job retries (#4040)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [
+          {
+            id: 'item-1',
+            productRef: { type: 'product' as const, externalId: 'p-1' },
+            quantity: 1,
+            price: 9.99,
+          },
+        ],
+      });
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: false,
+        productRef: { type: 'product', externalId: 'p-1' },
+        reason: 'no mapping',
+        kind: 'missing_mapping' as const,
+      });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ status: 'awaiting_mapping' })
+      );
+    });
+
+    it('all unresolved (unlisted offers): persistIncomingSnapshot called, no retry, persistOrder NOT called (#4040)', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
           resolved: false,
           productRef: { type: 'offer', externalId: 'offer-a' },
           reason: 'no mapping a',
-        kind: 'missing_mapping' as const,
+          kind: 'missing_mapping' as const,
         })
         .mockResolvedValueOnce({
           resolved: false,
           productRef: { type: 'offer', externalId: 'offer-b' },
           reason: 'no mapping b',
-        kind: 'missing_mapping' as const,
+          kind: 'missing_mapping' as const,
         });
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
@@ -1802,6 +2532,193 @@ describe('OrderIngestionService', () => {
     });
   });
 
+  describe('syncOrderFromSource – inbound cancel confirms an open operator request (#3540)', () => {
+    const externalOrderId = 'checkout-cancel-3540';
+    const openRequest = { id: 'change-1', kind: 'order.cancel_request' };
+
+    beforeEach(() => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] });
+    });
+
+    it('confirms and claims an open cancel request, attributing it to the source', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.markCancelled).toHaveBeenCalled();
+      expect(orderChanges.confirm).toHaveBeenCalledWith('change-1', `source:${connectionId}`);
+      expect(orderChanges.claimApplied).toHaveBeenCalledWith('change-1');
+    });
+
+    it('should not relay the channel echo of an operator cancel to the destinations again (C-40)', async () => {
+      orderChanges.findLatestByTarget.mockResolvedValue({
+        status: 'confirmed',
+        confirmedBy: 'user-9',
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should still relay a cancel the channel started itself (C-40)', async () => {
+      orderChanges.findLatestByTarget.mockResolvedValue({
+        status: 'confirmed',
+        confirmedBy: `source:${connectionId}`,
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs the same cancellation cleanup the operator path runs, as the requesting operator (B-18)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: { reason: 'fraud' } },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_cancel',
+        cancelledAt: expect.any(Date),
+        reason: 'fraud',
+        actorUserId: 'user-9',
+      });
+    });
+
+    it('does not run the cleanup when a peer won the confirm (B-18)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+      orderChanges.confirm.mockResolvedValue(false);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).not.toHaveBeenCalled();
+    });
+
+    it('never fails ingestion when the cleanup throws (B-18)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+      cancellationEffects.applyEffects.mockRejectedValue(new Error('boom'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).resolves.toEqual([]);
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
+    });
+
+    it('should run the cancellation cleanup once for a channel cancel with no operator request (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledWith(
+        expect.objectContaining({ internalOrderId: 'ol_order_cancel', actorUserId: null })
+      );
+    });
+
+    it('should not repeat the cancellation cleanup when the cancel was already recorded (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).not.toHaveBeenCalled();
+    });
+
+    it('should run the cleanup only once when an open request is also confirmed in the same pass (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: {} },
+      ] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+    });
+
+    it('should confirm an open cancel request and run the cleanup when the cancel arrives as a plain update (C-4)', async () => {
+      const incoming = {
+        externalOrderId: 'checkout-update-cancel',
+        orderNumber: 'checkout-update-cancel',
+        status: 'cancelled',
+        items: [],
+        totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-02T00:00:00Z',
+      };
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_cancel');
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSource.getOrder.mockResolvedValue(incoming);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: {} },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, 'checkout-update-cancel');
+
+      expect(orderChanges.confirm).toHaveBeenCalledWith('change-1', `source:${connectionId}`);
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves every other open change alone', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { id: 'c2', kind: 'order.cancel_correction' },
+        { id: 'c3', kind: 'return.decline' },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.confirm).not.toHaveBeenCalled();
+    });
+
+    it('does not claim application when a peer already confirmed the row', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+      orderChanges.confirm.mockResolvedValue(false);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.claimApplied).not.toHaveBeenCalled();
+    });
+
+    it('never fails ingestion, and still relays, when confirming throws', async () => {
+      orderChanges.findOpenByOrder.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).resolves.toEqual([]);
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
+    });
+
+    it('does not look for a request on a destination-echo cancel', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'other-source',
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.findOpenByOrder).not.toHaveBeenCalled();
+    });
+  });
+
   describe('syncOrderFromSource – inbound cancellation durably recorded on the record (#1984)', () => {
     const externalOrderId = 'checkout-cancel-1984';
 
@@ -1820,10 +2737,37 @@ describe('OrderIngestionService', () => {
         'ol_order_cancel',
         expect.any(Date)
       );
-      const markCancelledOrder =
-        orderRecordService.markCancelled.mock.invocationCallOrder[0];
+      const markCancelledOrder = orderRecordService.markCancelled.mock.invocationCallOrder[0];
       const relayOrder = orderLifecycleRelay.relay.mock.invocationCallOrder[0];
       expect(markCancelledOrder).toBeLessThan(relayOrder);
+    });
+
+    it('should enqueue the stock-restore job that releases the holds when a cancel event arrives (E2E-23)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId: 'ol_order_cancel' },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:ol_order_cancel` },
+      });
+    });
+
+    it('should still relay the cancel when the stock-restore enqueue fails (E2E-23)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      jobQueue.enqueue.mockRejectedValueOnce(new Error('queue down'));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
     });
 
     it('does NOT mark the record cancelled when the order was never ingested (no internal mapping) — instead records a durable early-cancellation signal (#2069)', async () => {
@@ -1844,6 +2788,125 @@ describe('OrderIngestionService', () => {
         expect.any(Date)
       );
       expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('hydrates and persists an order whose only event was its cancellation, with no routing or mirror (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_cancelled_only');
+      const hydrated = { externalOrderId, status: 'cancelled', items: [] } as unknown as Awaited<
+        ReturnType<OrderSourcePort['getOrder']>
+      >;
+      orderSource.getOrder.mockResolvedValue(hydrated);
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        hydrated,
+        'ol_order_cancelled_only',
+        null,
+        connectionId,
+        'evt-1'
+      );
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('keeps only the cancellation signal when the source reports the unknown order as not found (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      orderSource.getOrder.mockRejectedValue(
+        Object.assign(new Error('not found'), { statusCode: 404 })
+      );
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).not.toHaveBeenCalled();
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+    });
+
+    it('rethrows a transient hydrate failure so the job retries, keeping the signal (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      orderSource.getOrder.mockRejectedValue(Object.assign(new Error('boom'), { statusCode: 503 }));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).rejects.toThrow('boom');
+
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('rethrows a persist failure for a hydrated cancelled order (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_cancelled_only');
+      orderSource.getOrder.mockResolvedValue({
+        externalOrderId,
+        status: 'cancelled',
+        items: [],
+      } as unknown as Awaited<ReturnType<OrderSourcePort['getOrder']>>);
+      orderRecordService.persistIncomingSnapshot.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).rejects.toThrow('db down');
+    });
+
+    it('keeps only the signal when the connection is not an order source (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      integrationsService.getCapabilityAdapter.mockRejectedValueOnce(
+        new CapabilityNotSupportedException('some.adapter', 'OrderSource')
+      );
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('resolves the buyer for a hydrated cancelled order like ordinary ingestion (#4032)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_cancelled_only');
+      const hydrated = {
+        externalOrderId,
+        status: 'cancelled',
+        items: [],
+        customerExternalId: 'buyer-1',
+        customerEmail: 'b@example.com',
+      } as unknown as Awaited<ReturnType<OrderSourcePort['getOrder']>>;
+      orderSource.getOrder.mockResolvedValue(hydrated);
+      customerIdentityResolver.resolveCustomerIdentity.mockResolvedValue({
+        internalCustomerId: 'ol_customer_1',
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        hydrated,
+        'ol_order_cancelled_only',
+        'ol_customer_1',
+        connectionId,
+        'evt-1'
+      );
     });
 
     it('propagates a failure recording the early-cancellation signal (#2069) — unlike the known-order branch, there is no relay to protect', async () => {
@@ -1933,11 +2996,14 @@ describe('OrderIngestionService', () => {
       });
     });
 
-    const priorWithQuantity = (quantity: number): OrderRecord =>
-      ({
+    const priorWithQuantity = (quantity: number): OrderRecord => {
+      const snapshot = { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] };
+      return {
         sourceConnectionId: connectionId,
-        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] },
-      }) as unknown as OrderRecord;
+        orderSnapshot: snapshot,
+        channelSnapshot: snapshot,
+      } as unknown as OrderRecord;
+    };
 
     it('should record the fact once with the observed changes when the source amended the order', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
@@ -1978,6 +3044,87 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
     });
 
+    it('should reconcile the packing work on a re-ingest after the snapshot is persisted (#3961)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(sourceAmendmentEffects.reconcile).toHaveBeenCalledWith({ internalOrderId });
+      expect(sourceAmendmentEffects.reconcile.mock.invocationCallOrder[0]).toBeGreaterThan(
+        orderRecordService.persistOrder.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('should still reconcile on an identical re-poll, so a failed earlier attempt is finished (#3961)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(1));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(sourceAmendmentEffects.reconcile).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not reconcile on the first ingestion of an order (#3961)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(sourceAmendmentEffects.reconcile).not.toHaveBeenCalled();
+    });
+
+    it('should diff against the CHANNEL snapshot so an operator edit is never reported as a source amendment (#3542)', async () => {
+      // The effective view says 1 (the operator lowered it); the channel still says 1
+      // and the source re-reports 1. Diffing the effective view against an incoming 3
+      // would be the false positive; here the channel original is what is compared.
+      orderSource.getOrder.mockResolvedValue({
+        ...incoming,
+        items: [{ ...incoming.items[0], quantity: 3 }],
+        totals: { ...incoming.totals, total: 30 },
+      });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity: 1, sku: 'SKU-l1' }] },
+        channelSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity: 3, sku: 'SKU-l1' }] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should persist the channel order but hand everything after it the order as edited (#3542)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incoming,
+        items: [{ ...incoming.items[0], quantity: 3 }],
+        totals: { ...incoming.totals, subtotal: 30, total: 30 },
+      });
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        shippingAddressHash: null,
+        orderEdits: {
+          v: 1,
+          rev: 1,
+          lines: {
+            l1: {
+              changeId: 'chg-1',
+              editedAt: '2026-10-26T10:00:00.000Z',
+              editedBy: null,
+              quantity: 1,
+            },
+          },
+        },
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const persisted = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(persisted.items[0].quantity).toBe(3);
+      expect(persisted.totals.total).toBe(30);
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.items[0].quantity).toBe(1);
+      expect(request.order.totals.total).toBe(10);
+    });
+
     it('should not record anything on a first ingestion', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue(null);
 
@@ -2008,7 +3155,7 @@ describe('OrderIngestionService', () => {
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      ).resolves.toEqual([]);
 
       expect(orderRecordService.recordAmendment).toHaveBeenCalledTimes(1);
     });
@@ -2020,9 +3167,7 @@ describe('OrderIngestionService', () => {
         .spyOn((service as unknown as { logger: { error: jest.Mock } }).logger, 'error')
         .mockImplementation(() => undefined);
 
-      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).resolves.toEqual(
-        []
-      );
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).resolves.toEqual([]);
 
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalledWith(
@@ -2128,9 +3273,7 @@ describe('OrderIngestionService', () => {
         incomingWith([{ id: 'item-1', externalId: 'offer-a', taxRate: '8' }])
       );
 
-      await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId)
-      ).resolves.toEqual([]);
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).resolves.toEqual([]);
       expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
     });
   });
@@ -2200,6 +3343,30 @@ describe('OrderIngestionService', () => {
         sourceEventId: 'evt-1',
       });
       expect(request.destinationConnectionIds).toBeUndefined();
+    });
+
+    it("hands the source's payment method to the sync as the payment-mapping key (#3474)", async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...charIncoming,
+        sourcePaymentMethod: 'CASH_ON_DELIVERY',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.sourcePaymentMethod).toBe('CASH_ON_DELIVERY');
+    });
+
+    it('hands the neutral payment method to the sync, as reported (#3294)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...charIncoming,
+        paymentMethod: 'bank_transfer',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.paymentMethod).toBe('bank_transfer');
     });
 
     it('never writes a fulfilment block reason on a router-less install', async () => {
@@ -2293,11 +3460,13 @@ describe('OrderIngestionService', () => {
         ] as never);
       });
 
-      it('follows today\'s path — the order still reaches its destinations', async () => {
+      it("follows today's path — the order still reaches its destinations", async () => {
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
-        expect(orderSyncService.syncOrder.mock.calls[0][0].destinationConnectionIds).toBeUndefined();
+        expect(
+          orderSyncService.syncOrder.mock.calls[0][0].destinationConnectionIds
+        ).toBeUndefined();
       });
 
       // #3480: an order that will not be routed keeps the dispatch-routing stamp.
@@ -2328,7 +3497,7 @@ describe('OrderIngestionService', () => {
     // #3487 — an order from the operator's own shop (a product master) is not
     // routed: it stays in the shop and is packed there. Otherwise the same
     // parcel would be on the pack bench AND in the shop's back office.
-    describe('an order from the operator\'s own shop (#3487)', () => {
+    describe("an order from the operator's own shop (#3487)", () => {
       const router = { route: jest.fn() };
 
       /** The connection the order was ingested through. */
@@ -2348,7 +3517,7 @@ describe('OrderIngestionService', () => {
         });
       });
 
-      it('should not route the order and should follow today\'s path when its source has ProductMaster enabled', async () => {
+      it("should not route the order and should follow today's path when its source has ProductMaster enabled", async () => {
         connections.list.mockResolvedValue([
           routerConnection('conn-oms'),
           sourceConnection(['ProductMaster', 'InventoryMaster', 'OrderSource']),
@@ -2398,7 +3567,7 @@ describe('OrderIngestionService', () => {
 
       // Checked BEFORE router selection, so an A2 ambiguity is not even
       // consulted for an order that is never routed.
-      it('should follow today\'s path for an own-shop order even when the A2 claim is ambiguous', async () => {
+      it("should follow today's path for an own-shop order even when the A2 claim is ambiguous", async () => {
         connections.list.mockResolvedValue([
           routerConnection('conn-a'),
           routerConnection('conn-b'),
@@ -2458,7 +3627,7 @@ describe('OrderIngestionService', () => {
         ] as never);
       });
 
-      it('should not route the order and should follow today\'s path when a rule resolves omp_fulfilled', async () => {
+      it("should not route the order and should follow today's path when a rule resolves omp_fulfilled", async () => {
         resolveTo('omp_fulfilled', 'rule');
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -2527,6 +3696,133 @@ describe('OrderIngestionService', () => {
     // #3455 — an order the product master already received (a `synced`
     // destination row) before routing was switched on is not routed again on
     // re-ingest: it would be packed twice and its stock lowered twice (#3453).
+    describe('an order the source ships itself (#3636)', () => {
+      const router = { route: jest.fn() };
+
+      const marketplaceSource = {
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities: ['OrderSource', 'OfferManager'],
+        config: {},
+      };
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          marketplaceSource,
+        ] as never);
+      });
+
+      it("should not route the order and should follow today's path when the source asserts it ships it", async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        // No `omp_fulfilled` rule exists: the source's own statement is enough.
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'source-fulfilled']);
+      });
+
+      // First match wins: the cheaper, more specific sentences outrank this one.
+      it('should record own-shop-order when an own-shop order is also source-fulfilled', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          { ...marketplaceSource, enabledCapabilities: ['ProductMaster', 'OrderSource'] },
+        ] as never);
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'own-shop-order']);
+      });
+
+      it('should record mirrored-before-routing when a mirrored order is also source-fulfilled', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [{ destinationConnectionId: 'shop-1', status: 'synced' }],
+        } as unknown as OrderRecord);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'mirrored-before-routing']);
+      });
+
+      // The hold must not subtract stock for a parcel OpenLinker will not pick,
+      // even when a rule says OpenLinker would ship that delivery method.
+      it('should hold a source-fulfilled order as diagnostic even when a rule names ol_managed_carrier', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+      });
+
+      it('should still route an order whose source asserts nothing', async () => {
+        orderSource.getOrder.mockResolvedValue(interceptIncoming as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('an order mirrored before routing was switched on (#3455)', () => {
       const router = { route: jest.fn() };
 
@@ -2553,7 +3849,7 @@ describe('OrderIngestionService', () => {
         ] as never);
       });
 
-      it('should not route the order and should follow today\'s path when a destination already has it', async () => {
+      it("should not route the order and should follow today's path when a destination already has it", async () => {
         orderRecordService.getOrderRecord.mockResolvedValue(
           existingWith([
             { destinationConnectionId: 'shop-1', status: 'synced', externalOrderId: '42' },
@@ -2614,7 +3910,7 @@ describe('OrderIngestionService', () => {
     });
 
     // #3455 — why an order was deliberately not routed is persisted on the order,
-    // one field for all three rules, and only while a connection claims A2.
+    // one field for all four rules, and only while a connection claims A2.
     describe('the persisted routing skip reason (#3455)', () => {
       const router = { route: jest.fn() };
 
@@ -2639,7 +3935,7 @@ describe('OrderIngestionService', () => {
         });
       });
 
-      it('should record own-shop-order for an order from the operator\'s own shop', async () => {
+      it("should record own-shop-order for an order from the operator's own shop", async () => {
         connections.list.mockResolvedValue([
           routerConnection('conn-oms'),
           source(['ProductMaster', 'OrderSource']),
@@ -2784,7 +4080,7 @@ describe('OrderIngestionService', () => {
 
       // #3480 — the routed order's hold counts the sold units from the moment it
       // is routed; the sale decrement then consumes it.
-      describe('stamping the routed order\'s hold (#3480)', () => {
+      describe("stamping the routed order's hold (#3480)", () => {
         beforeEach(() => {
           routingCommit.route.mockResolvedValue({
             status: 'routed',
@@ -3016,27 +4312,28 @@ describe('OrderIngestionService', () => {
       // required field added to an outcome arm would compile here and fail only
       // in production.
       const heldOutcomes: [RoutingCommitOutcome, FulfillmentBlockReason][] = [
-        [
-          { status: 'in-doubt', decisionId: 'dec-1', cause: 'timeout' },
-          'routing-in-doubt',
-        ],
+        [{ status: 'in-doubt', decisionId: 'dec-1', cause: 'timeout' }, 'routing-in-doubt'],
         [{ status: 'contended' }, 'routing-contended'],
-        [
-          { status: 'skipped', reason: 'already-routed' },
-          'routing-already-live-elsewhere',
-        ],
-        [
-          { status: 'skipped', reason: 'already-live-elsewhere' },
-          'routing-already-live-elsewhere',
-        ],
+        [{ status: 'skipped', reason: 'already-routed' }, 'routing-already-live-elsewhere'],
+        [{ status: 'skipped', reason: 'already-live-elsewhere' }, 'routing-already-live-elsewhere'],
         // #3485 — a refused plan is held too: with the OMS as the router the
         // order stays in OpenLinker instead of being created in every master.
         [
-          { status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' },
+          {
+            status: 'refused',
+            decisionId: 'dec-1',
+            reason: 'plan-not-conserving',
+            unfulfillableReasons: [],
+          },
           'routing-refused',
         ],
         [
-          { status: 'refused', decisionId: 'dec-1', reason: 'plan-carries-unfulfillable' },
+          {
+            status: 'refused',
+            decisionId: 'dec-1',
+            reason: 'plan-carries-unfulfillable',
+            unfulfillableReasons: [],
+          },
           'routing-refused',
         ],
       ];
@@ -3050,6 +4347,13 @@ describe('OrderIngestionService', () => {
         expect(markBlock()).toHaveBeenCalledWith(
           'ol_order_int',
           expect.objectContaining({ reason })
+        );
+        // #2703 - `syncOrder` is never called on this branch, so the routing
+        // reason an earlier run wrote is cleared HERE. Without it a stale
+        // "the router sent this nowhere" would stand beside the fresh hold.
+        expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledWith(
+          'ol_order_int',
+          null
         );
       });
 
@@ -3091,7 +4395,7 @@ describe('OrderIngestionService', () => {
         expect(markBlock()).toHaveBeenLastCalledWith('ol_order_int', null);
       });
 
-      it('follows today\'s path when no router is wired (every install today)', async () => {
+      it("follows today's path when no router is wired (every install today)", async () => {
         resolveRouterMock.mockResolvedValue(null);
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -3116,13 +4420,46 @@ describe('OrderIngestionService', () => {
 
       // Before a router is selected OpenLinker cannot tell whether the claim is
       // on, so the old fail-open stands.
-      it('degrades to today\'s path when the routing target cannot be resolved', async () => {
+      it("degrades to today's path when the routing target cannot be resolved", async () => {
         connections.list.mockRejectedValue(new Error('connections unreachable'));
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
         expect(routingCommit.route).not.toHaveBeenCalled();
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      // #4033 — an order nobody has paid for yet is not routed: it is held in
+      // OpenLinker, it is not mirrored, and no sale decrement or dispatch job
+      // is enqueued.
+      it('holds an order the routing commit skipped as awaiting payment, without lowering master stock', async () => {
+        routingCommit.route.mockResolvedValue({ status: 'skipped', reason: 'awaiting-payment' });
+
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        // The outcome is mocked; this proves what the intercept does with it.
+        // The callback itself re-reads the stored record under the routing lock
+        // (the real-DB path is in fulfillment-router-wiring.int-spec.ts).
+        const input = routingCommit.route.mock.calls[0][0];
+        orderRecordService.getOrderRecord.mockResolvedValue({ paymentStatus: 'awaiting' } as never);
+        await expect(input.isAwaitingPayment()).resolves.toBe(true);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(results).toEqual([]);
+        expect(markBlock()).toHaveBeenCalledWith('ol_order_int', {
+          reason: 'routing-awaiting-payment',
+          detail: null,
+        });
+        const enqueuedTypes = jobQueue.enqueue.mock.calls.map(([request]) => request.type);
+        expect(enqueuedTypes).not.toContain('inventory.saleDecrement');
+        expect(enqueuedTypes).not.toContain('fulfillment.work.dispatch');
+      });
+
+      it('lets a cash on delivery order route before it is paid', async () => {
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const input = routingCommit.route.mock.calls[0][0];
+        orderRecordService.getOrderRecord.mockResolvedValue({ paymentStatus: 'cod' } as never);
+        await expect(input.isAwaitingPayment()).resolves.toBe(false);
       });
 
       // #3485 — no shipping address: nothing to route to, and mirroring would
@@ -3145,15 +4482,31 @@ describe('OrderIngestionService', () => {
         });
       });
 
+      it('routes a cash-on-delivery order even though nothing is paid yet', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          paymentStatus: 'cod',
+        });
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-cod',
+          works: [{ workId: 'w-cod', assignedConnectionId: 'dest-1' }],
+        });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+      });
+
       describe('the line-unfulfillable attention (#3485)', () => {
-        const markAttention = () =>
-          orderRecordService.markOmsAttention as unknown as jest.Mock;
+        const markAttention = () => orderRecordService.markOmsAttention as unknown as jest.Mock;
 
         it('raises line-unfulfillable when the plan carried unfulfillable lines', async () => {
           routingCommit.route.mockResolvedValue({
             status: 'refused',
             decisionId: 'dec-1',
             reason: 'plan-carries-unfulfillable',
+            unfulfillableReasons: [],
           });
 
           await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -3204,12 +4557,13 @@ describe('OrderIngestionService', () => {
             status: 'refused',
             decisionId: 'dec-1',
             reason: 'plan-carries-unfulfillable',
+            unfulfillableReasons: [],
           });
           markAttention().mockRejectedValue(new Error('order_records unreachable'));
 
-          await expect(
-            service.syncOrderFromSource(connectionId, externalOrderId)
-          ).resolves.toEqual([]);
+          await expect(service.syncOrderFromSource(connectionId, externalOrderId)).resolves.toEqual(
+            []
+          );
           expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
         });
       });

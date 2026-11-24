@@ -12,7 +12,7 @@
  * page that was their only consumer; `groupTasksIntoLanes` survives because
  * the merged screen still offers that grouping as its second axis, now behind
  * `?groupBy=` rather than behind a second URL. #3096 re-widened the surface:
- * the status/handshake labels and `FULFILLMENT_EXPEDITED_BADGE` left the
+ * the status label and `FULFILLMENT_EXPEDITED_BADGE` left the
  * folder because the detail hero is now a second consumer of both.
  *
  * Deliberately NOT exported, per the start-narrow rule: the api module and
@@ -25,6 +25,8 @@
  */
 export { OrderFulfillmentTasksPanel } from './components/order-fulfillment-tasks-panel';
 export type { OrderFulfillmentTasksPanelProps } from './components/order-fulfillment-tasks-panel';
+export { RoutingDecisionPanel } from './components/routing-decision-panel';
+export type { RoutingDecisionPanelProps } from './components/routing-decision-panel';
 
 // #3098 — the two sections the routed detail page mounts, plus #3291's
 // holder panel folded into the body. Exported so `pages/fulfillment` can
@@ -52,6 +54,8 @@ export {
   type FulfillmentAssignmentChange,
   type FulfillmentAssignmentRunner,
 } from './hooks/use-fulfillment-assignment-runner';
+// Exported so the order page can invalidate tasks after an order cancel (#3541).
+export { fulfillmentQueryKeys } from './api/fulfillment.query-keys';
 export { useHasMultipleLocations } from './hooks/use-has-multiple-locations';
 
 // The action set and its dialog — shared by the fulfilment screen and the
@@ -69,6 +73,7 @@ export {
 } from './hooks/use-fulfillment-tasks-query';
 // #3097 — one task by id, for the detail page. Its key sits under the
 // `['fulfillment', ...]` prefix, so the action mutation below refreshes it.
+export { useOrderFulfillmentTasksQuery } from './hooks/use-order-fulfillment-tasks-query';
 export { useFulfillmentWorkQuery } from './hooks/use-fulfillment-work-query';
 export { useFulfillmentTaskActionMutation } from './hooks/use-fulfillment-task-action-mutation';
 // #3257 — the one place a fulfilment action becomes a request. Every surface
@@ -94,7 +99,6 @@ export {
   UNASSIGNED_LANE_ID,
 } from './lib/assign-packing-work-lanes';
 export type { AssignPackingWorkLane } from './lib/assign-packing-work-lanes';
-export { ASSIGN_PACKING_WORK_COPY } from './lib/assign-packing-work.copy';
 // #3424 — the "Oldest unassigned" metric's inputs; the badge's own use of
 // this module stays internal to the card component.
 export {
@@ -106,21 +110,13 @@ export {
   describeFulfillmentActionError,
   readFulfillmentConflict,
 } from './lib/fulfillment-conflict';
-export { fulfillmentActionLabel, FULFILLMENT_ACTION_COPY } from './lib/fulfillment-task.copy';
-// #3098 — the detail hero renders BOTH axes verbatim, exactly as the card
-// does: heldness lives in `activeHolds`, not in `status`, so neither label
-// may be dropped or merged. Previously private because only the lane
-// sections read them; the page is the second consumer.
-export {
-  fulfillmentRequestStatusLabel,
-  fulfillmentStatusLabel,
-  FULFILLMENT_EXPEDITED_BADGE,
-} from './lib/fulfillment-task.copy';
-export { FULFILLMENT_WORKLIST_COPY } from './lib/fulfillment-worklist.copy';
-// #3096 — the detail page lives in `pages/`, which `check-ui-vocabulary.mjs`
-// does not scan, so every sentence it renders is read from here.
-export { FULFILLMENT_WORK_DETAIL_COPY } from './lib/fulfillment-work-detail.copy';
-// #3099 — the plain-language sentence under the hero's two raw axis labels.
+export { fulfillmentActionLabel } from './lib/fulfillment-task-labels';
+// #3098 — the detail hero renders the state label exactly as the card does:
+// heldness lives in `activeHolds`, not in `status`, so the label is never
+// dropped. #3763 retired the raw request-status label. The copy itself lives
+// in the `fulfillment` namespace of the locale files (#3875).
+export { fulfillmentStatusLabel } from './lib/fulfillment-task-labels';
+// #3099 — the plain-language sentence under the hero's state headline.
 // Pure, and takes a narrow struct rather than the task: a function handed
 // the task could reach `supportedActions`, which is the client-side state
 // machine `check-no-supported-actions-mirror.mjs` cannot catch.

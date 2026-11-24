@@ -17,6 +17,7 @@ function ormRow(
     rateBasis: 'current',
     includeBackfilledTaxRatesInNetSales: false,
     netGrossBasis: 'gross',
+    trackMargin: true,
     updatedAt: new Date('2026-08-14T06:00:00Z'),
     updatedByUserId: 'user-1',
     ...overrides,
@@ -63,6 +64,7 @@ describe('AnalyticsDisplaySettingsRepository', () => {
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
         netGrossBasis: 'gross',
+        trackMargin: true,
         updatedAt: new Date('2026-08-14T06:00:00Z'),
         updatedByUserId: 'user-1',
       });
@@ -116,6 +118,26 @@ describe('AnalyticsDisplaySettingsRepository', () => {
       );
       expect(saved.displayCurrency).toBe('EUR');
       expect(saved.rateBasis).toBe('order-date');
+    });
+
+    it('should write trackMargin when given and leave it out of the upsert when absent', async () => {
+      ormRepository.findOneOrFail.mockResolvedValue(ormRow({ trackMargin: false }));
+      const base = {
+        displayCurrency: null,
+        rateBasis: 'current' as const,
+        includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross' as const,
+      };
+
+      await repository.upsertSettings({ ...base, trackMargin: false }, 'user-2');
+      expect(ormRepository.upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({ trackMargin: false }),
+        { conflictPaths: ['id'] }
+      );
+
+      await repository.upsertSettings(base, 'user-2');
+      const written = ormRepository.upsert.mock.calls[1][0] as Record<string, unknown>;
+      expect('trackMargin' in written).toBe(false);
     });
 
     it('should accept a null actor for a system-driven write', async () => {

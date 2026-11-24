@@ -92,12 +92,14 @@ export type {
   CreateFulfillmentWorkInput,
   CreateFulfillmentWorkLineInput,
   FulfillmentWorkTransaction,
+  ListStalledUnsubmittedWorksInput,
   ListTimedOutDispatchesInput,
   PlaceFulfillmentHoldInput,
   RecordFulfillmentAcceptanceInput,
   RecordFulfillmentLineProgressInput,
   RecordFulfillmentRejectionInput,
   ReleaseFulfillmentHoldInput,
+  StalledUnsubmittedFulfillmentWork,
   TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
@@ -150,7 +152,31 @@ export type { IFulfillmentRelayGateService } from './application/interfaces/fulf
 // to ask what work covers an order. The repository port stays off the barrel;
 // `check-cross-context-imports.mjs` denies a cross-context `*RepositoryPort`.
 export * from './domain/types/fulfillment-work-link.types';
+export * from './domain/types/order-work-summary.types';
 export type { IFulfillmentWorkQueryService } from './application/interfaces/fulfillment-work-query.service.interface';
+
+export type {
+  IFulfillmentOrderCancellationService,
+  OrderCancellationWorkSummary,
+  OrderWorkCancellationResult,
+} from './application/interfaces/fulfillment-order-cancellation.service.interface';
+
+export type {
+  IFulfillmentOrderEditService,
+  LineComponentRef,
+  LineComponentsByLine,
+  HoldForSourceChangeInput,
+  HoldForSourceChangeResult,
+  ReleaseSourceChangeHoldsResult,
+  OrderWorkEditAssessment,
+  LowerLineQuantityInput,
+  LowerLineQuantityResult,
+  ClosedParcelReport,
+  LowerLineOutcome,
+  AddLineToWorkInput,
+  AddLineToWorkResult,
+  AddLineToWorkOutcome,
+} from './application/interfaces/fulfillment-order-edit.service.interface';
 
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
@@ -215,12 +241,25 @@ export * from './domain/types/fulfillment-dispatch-timeout.types';
 export type { IFulfillmentDispatchTimeoutService } from './application/interfaces/fulfillment-dispatch-timeout.service.interface';
 export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
 
+// The stranded-routing-decision reaper (#2731). The SERVICE INTERFACE, its I/O
+// and the pure TTL rules cross the barrel; the decision repository port's
+// reads stay behind the service.
+export * from './domain/types/routing-decision-ttl.types';
+export type { IRoutingDecisionReaperService } from './application/interfaces/routing-decision-reaper.service.interface';
+export * from './application/types/routing-decision-reaper.types';
+
 // The dispatch-relay reconcile pass (#2728). The pure rules, the read seam and
 // its I/O shapes; the re-drive itself is `orders`' `relayDispatch` and is
 // deliberately not reachable from here.
 export * from './domain/types/fulfillment-relay-reconcile.types';
 export type { IFulfillmentRelayReconcileService } from './application/interfaces/fulfillment-relay-reconcile.service.interface';
 export * from './application/types/fulfillment-relay-reconcile-sweep.types';
+
+// The sale-decrement reconcile read (#3629). The enqueue is the worker's:
+// `fulfillment` may not import `@openlinker/core/sync`.
+export * from './domain/types/fulfillment-sale-decrement-reconcile.types';
+export type { IFulfillmentSaleDecrementReconcileService } from './application/interfaces/fulfillment-sale-decrement-reconcile.service.interface';
+export * from './application/types/fulfillment-sale-decrement-reconcile-sweep.types';
 
 export { FulfillmentModule } from './fulfillment.module';
 

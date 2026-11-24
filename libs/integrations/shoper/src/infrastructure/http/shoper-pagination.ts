@@ -127,6 +127,26 @@ export async function fetchShoperWindow<T>(
   return rows.slice(skip, skip + limit);
 }
 
+/**
+ * Every row of a small reference table (`/shippings`, `/payments`, `/statuses`):
+ * pages of 50 until the shop's own last page. Not for orders or products, whose
+ * size is unbounded. The caller passes an explicit `order`.
+ */
+export async function fetchAllShoperRows<T>(
+  client: ShoperHttpClient,
+  path: string,
+  query: ShoperQuery,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const result = await fetchShoperPage<T>(client, path, { page, limit: SHOPER_MAX_PAGE_SIZE, query });
+    rows.push(...result.items);
+    if (result.items.length === 0 || page >= result.pages) {
+      return rows;
+    }
+  }
+}
+
 export async function fetchShoperPage<T>(
   client: ShoperHttpClient,
   path: string,

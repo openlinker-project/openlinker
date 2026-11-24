@@ -25,7 +25,7 @@ Sfera GT is the classic COM automation surface InsERT GT products expose (ProgID
 | Bridge URL | `config.bridgeBaseUrl` | `http://<host>:5056`, or `https://<host>:5055` once a certificate is configured — **no** `/api` suffix. |
 | Bridge token | credential `bridgeToken` | **Required.** The bridge's `InvoiceToken`, which the operator chooses and sets in the bridge's `appsettings.json` (or `OL_BRIDGE_INVOICE_TOKEN`). Sent as both `Authorization: Bearer` and `x-bridge-token`; the bridge accepts either. Without it every `/api/*` route answers 401. Stored encrypted. |
 | Request timeout | `config.timeoutMs` | optional, 1000–120000 ms. |
-| Trigger model | `config.invoicing.triggerModel` | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
+| Trigger model | `config.salesDocument.triggerModels.invoice` (#3582; the legacy `config.invoicing.triggerModel` is still read as the fallback) | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
 
 ## Bridge configuration (Windows)
 
@@ -159,6 +159,6 @@ not where an operator looks.
 
 | Flag | Effect |
 |---|---|
-| `config.invoicing.triggerModel = auto-on-paid` | Worker auto-enqueues issuance when an order is marked paid. |
+| `config.salesDocument.triggerModels.invoice = auto-on-paid` (or the legacy `config.invoicing.triggerModel`) | Worker auto-enqueues issuance when an order is marked paid. |
 | Regulatory-status reconcile job | Periodically refreshes `regulatoryStatus` (KSeF) for issued documents. |
 | Bridge reachability sweep (#3358) | Every 5 minutes, the worker checks bridge reachability and logs `subiekt_bridge_reachability_sweep_failed` on failure — no built-in alerting, an operator must watch worker logs or wire their own alert on that log line. |

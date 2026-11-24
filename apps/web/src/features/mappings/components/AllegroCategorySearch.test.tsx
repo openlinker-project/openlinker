@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/mappings/components
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AllegroCategorySearch } from './AllegroCategorySearch';
@@ -119,9 +119,11 @@ describe('AllegroCategorySearch', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^select$/i }));
 
-    // Staged row renders with "Selected:" label and the full path
-    expect(screen.getByText('Selected:')).toBeInTheDocument();
-    expect(screen.getByText('Electronics > Phones')).toBeInTheDocument();
+    // The staged pick renders as a path: ancestors, then the category itself
+    const staged = screen.getByTestId('category-mapping-staged');
+    expect(within(staged).getByText('Map to')).toBeInTheDocument();
+    expect(within(staged).getByText('Electronics')).toBeInTheDocument();
+    expect(within(staged).getByText('Phones')).toBeInTheDocument();
     // Save + Cancel actions are available
     expect(screen.getByRole('button', { name: /save mapping/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
@@ -190,13 +192,45 @@ describe('AllegroCategorySearch', () => {
 
     await screen.findByText('Books');
     fireEvent.click(screen.getByRole('button', { name: /^select$/i }));
-    expect(screen.getByText('Selected:')).toBeInTheDocument();
+    expect(screen.getByTestId('category-mapping-staged')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
     // Staged row is gone; onSelect was never called
-    expect(screen.queryByText('Selected:')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('category-mapping-staged')).not.toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
+  });
+  it('should show a shared fallback mapping without a Clear action when it has no source (#3993)', async () => {
+    const apiClient = createMockApiClient({
+      mappings: {
+        getAllegroCategories: vi.fn(
+          mockCategoriesEndpoint({ root: [{ id: 'cat-books', name: 'Books', parentId: null, leaf: true }] }),
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <AllegroCategorySearch
+        marketplaceConnectionId={connectionId}
+        currentMapping={{
+          id: 'm-shared',
+          connectionId,
+          sourceConnectionId: null,
+          prestashopCategoryId: '7',
+          allegroCategoryId: 'cat-books',
+          allegroCategoryName: 'Books',
+          allegroCategoryPath: null,
+        }}
+        onSelect={vi.fn()}
+        onClear={vi.fn()}
+        isSaving={false}
+      />,
+      { apiClient },
+    );
+
+    const current = await screen.findByTestId('category-mapping-current');
+    expect(within(current).getByText('Shared by every catalogue')).toBeInTheDocument();
+    expect(within(current).queryByRole('button', { name: /clear mapping/i })).not.toBeInTheDocument();
   });
   describe('whole-tree search (#2075)', () => {
     // Until #2075 this component was named "Search" and offered only
@@ -245,7 +279,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(mockApi());
       expect(await screen.findByText('Electronics')).toBeInTheDocument();
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'smart');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'smart');
 
       expect(await screen.findByText('Smartfony')).toBeInTheDocument();
     });
@@ -254,7 +288,7 @@ describe('AllegroCategorySearch', () => {
       const { onSelect } = renderSearch(mockApi());
       await screen.findByText('Electronics');
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'smart');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'smart');
       await userEvent.click(await screen.findByRole('button', { name: 'Select Smartfony' }));
 
       // Staged, not saved — the confirm step is unchanged by #2075.
@@ -274,7 +308,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(apiClient);
       await screen.findByText('Electronics');
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'a');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'a');
 
       await new Promise((resolve) => setTimeout(resolve, 400));
       expect(apiClient.mappings.searchCategories).not.toHaveBeenCalled();
@@ -284,7 +318,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(mockApi([]));
       await screen.findByText('Electronics');
 
-      await userEvent.type(screen.getByLabelText('Search all categories'), 'zzz');
+      await userEvent.type(screen.getByLabelText('Search all categories...'), 'zzz');
 
       expect(await screen.findByText('No matching categories')).toBeInTheDocument();
       expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
@@ -294,7 +328,7 @@ describe('AllegroCategorySearch', () => {
       renderSearch(mockApi());
       await screen.findByText('Electronics');
 
-      const input = screen.getByLabelText('Search all categories');
+      const input = screen.getByLabelText('Search all categories...');
       await userEvent.type(input, 'smart');
       await screen.findByText('Smartfony');
 

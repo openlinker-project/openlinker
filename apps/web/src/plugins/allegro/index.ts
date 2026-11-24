@@ -17,6 +17,7 @@ import {
 } from '../../features/listings';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { allegroMessages, getAllegroMessages } from './messages';
 import { allegroCallbackRoute } from './allegro-callback.route';
 import { allegroSetupRoute } from './allegro-setup.route';
 import { AllegroExtraSection } from './components/allegro-extra-section';
@@ -36,6 +37,7 @@ declare module '../../app/api/api-client' {
 
 export const allegroPlugin: OpenLinkerPlugin = definePlugin({
   id: 'allegro',
+  messages: allegroMessages,
   platformType: 'allegro',
   build: {
     routes: [allegroCallbackRoute, allegroSetupRoute],
@@ -45,8 +47,11 @@ export const allegroPlugin: OpenLinkerPlugin = definePlugin({
     displayName: 'Allegro',
     setupCard: {
       title: 'Allegro',
-      description:
-        'Connect an Allegro seller account. Authorization uses OAuth 2.0 — no manual token paste.',
+      // Getters, not values: the card is read at render, so the copy follows
+      // the active language instead of freezing at module load.
+      get description(): string {
+        return getAllegroMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/allegro',
       badge: 'OAuth 2.0',
     },

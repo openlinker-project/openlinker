@@ -1,5 +1,5 @@
 /**
- * KSeF numbering — document routing card (#1694)
+ * KSeF numbering - document routing card (#1694)
  *
  * Maps each KSeF FA(3) document variant (VAT / KOR / ZAL / …) to the numbering
  * series that supplies its number. Routing is per-connection and multi-axis: a
@@ -29,6 +29,8 @@ import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { interpolate, useFormat, type Formatters } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 import { KSEF_ROUTED_DOCUMENT_TYPES, type KsefRoutedDocumentType } from './ksef-numbering.lib';
 
 /** A create-editor prefill carried from the row the operator clicked. */
@@ -54,15 +56,14 @@ interface RoutingRow {
   source: string | null;
 }
 
-/** Wildcard display for a null axis. */
-const ANY = 'any';
+type RoutingCopy = ReturnType<typeof useKsefMessages>['ksefNumberingRoutingCard'];
 
 function axisKey(register: string | null, currency: string | null, source: string | null): string {
   return `${register ?? ''}::${currency ?? ''}::${source ?? ''}`;
 }
 
-function seriesOption(series: NumberingSeries): string {
-  return `${series.name} — ${series.pattern}`;
+function seriesOption(copy: RoutingCopy, series: NumberingSeries): string {
+  return interpolate(copy.seriesOption, { name: series.name, pattern: series.pattern });
 }
 
 function routeMatchesAxes(
@@ -126,6 +127,8 @@ export function KsefNumberingRoutingCard({
   readOnly,
   onAddSeries,
 }: KsefNumberingRoutingCardProps): ReactElement {
+  const copy = useKsefMessages().ksefNumberingRoutingCard;
+  const format = useFormat();
   const upsertRoute = useUpsertNumberingRouteMutation();
   const deleteRoute = useDeleteNumberingRouteMutation();
   const { showToast } = useToast();
@@ -134,7 +137,7 @@ export function KsefNumberingRoutingCard({
 
   async function applyRoute(row: RoutingRow, seriesId: string): Promise<void> {
     setError(null);
-    const scope = describeScope(row.register, row.currency, row.source);
+    const scope = describeScope(copy, format, row.register, row.currency, row.source);
     try {
       if (seriesId === '') {
         await deleteRoute.mutateAsync({
@@ -148,8 +151,8 @@ export function KsefNumberingRoutingCard({
         });
         showToast({
           tone: 'success',
-          title: 'Route removed',
-          description: `${row.doc.label}${scope} is no longer routed.`,
+          title: copy.toasts.removed.title,
+          description: scoped(copy.toasts.removed, row.doc.label, scope),
         });
       } else {
         await upsertRoute.mutateAsync({
@@ -164,12 +167,12 @@ export function KsefNumberingRoutingCard({
         });
         showToast({
           tone: 'success',
-          title: 'Route saved',
-          description: `${row.doc.label}${scope} now uses the selected series.`,
+          title: copy.toasts.saved.title,
+          description: scoped(copy.toasts.saved, row.doc.label, scope),
         });
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not update the route.');
+      setError(caught instanceof Error ? caught.message : copy.updateFallback);
     }
   }
 
@@ -185,22 +188,19 @@ export function KsefNumberingRoutingCard({
             routes KSeF document types to numbering series. Keeping the generic
             name here would leave a search for it landing on the wrong feature. */}
         <h3 className="section-title" id="numbering-routing-heading">
-          Numbering routing
+          {copy.heading}
         </h3>
-        <p className="muted-text">
-          Choose which series numbers each KSeF document type on this connection. A route can be
-          refined by register, currency, and source; the most specific matching route wins.
-        </p>
+        <p className="muted-text">{copy.intro}</p>
       </div>
 
       {showNoRoutesNudge ? (
-        <Alert tone="info" title="Series created">
-          Assign a series to a document type below to start numbering.
+        <Alert tone="info" title={copy.nudge.title}>
+          {copy.nudge.body}
         </Alert>
       ) : null}
 
       {error ? (
-        <Alert tone="error" title="Could not update routing">
+        <Alert tone="error" title={copy.errorTitle}>
           {error}
         </Alert>
       ) : null}
@@ -209,11 +209,11 @@ export function KsefNumberingRoutingCard({
         <table className="numbering-routing__table">
           <thead>
             <tr>
-              <th scope="col">Document type</th>
-              <th scope="col">Register</th>
-              <th scope="col">Currency</th>
-              <th scope="col">Source</th>
-              <th scope="col">Series</th>
+              <th scope="col">{copy.columns.documentType}</th>
+              <th scope="col">{copy.columns.register}</th>
+              <th scope="col">{copy.columns.currency}</th>
+              <th scope="col">{copy.columns.source}</th>
+              <th scope="col">{copy.columns.series}</th>
             </tr>
           </thead>
           <tbody>
@@ -242,9 +242,9 @@ export function KsefNumberingRoutingCard({
                     <span className="numbering-routing__code mono-text">{row.doc.code}</span>{' '}
                     <span className="numbering-routing__name">{row.doc.label}</span>
                   </td>
-                  <td>{axisCell(row.register)}</td>
-                  <td>{axisCell(row.currency)}</td>
-                  <td>{axisCell(row.source)}</td>
+                  <td>{axisCell(copy, row.register)}</td>
+                  <td>{axisCell(copy, row.currency)}</td>
+                  <td>{axisCell(copy, row.source)}</td>
                   <td>
                     {eligible.length === 0 && !currentSeries ? (
                       <button
@@ -257,13 +257,16 @@ export function KsefNumberingRoutingCard({
                           })
                         }
                       >
-                        Add a series first
+                        {copy.addSeriesFirst}
                       </button>
                     ) : (
                       <>
                         <label className="sr-only" htmlFor={selectId}>
-                          Series for {row.doc.label}
-                          {describeScope(row.register, row.currency, row.source)}
+                          {scoped(
+                            copy.seriesFor,
+                            row.doc.label,
+                            describeScope(copy, format, row.register, row.currency, row.source),
+                          )}
                         </label>
                         <Select
                           id={selectId}
@@ -271,10 +274,10 @@ export function KsefNumberingRoutingCard({
                           disabled={readOnly || isPending}
                           onChange={(event) => void applyRoute(row, event.target.value)}
                         >
-                          <option value="">Not assigned</option>
+                          <option value="">{copy.notAssigned}</option>
                           {options.map((s) => (
                             <option key={s.id} value={s.id}>
-                              {seriesOption(s)}
+                              {seriesOption(copy, s)}
                             </option>
                           ))}
                         </Select>
@@ -299,7 +302,7 @@ export function KsefNumberingRoutingCard({
           />
         ) : (
           <Button tone="secondary" onClick={() => setShowAddForm(true)} disabled={readOnly}>
-            + Add route
+            {copy.addRoute}
           </Button>
         )}
       </div>
@@ -310,25 +313,38 @@ export function KsefNumberingRoutingCard({
 }
 
 /** Render one axis cell: the value in mono, or a muted "any" for a wildcard. */
-function axisCell(value: string | null): ReactElement {
+function axisCell(copy: RoutingCopy, value: string | null): ReactElement {
   return value ? (
     <span className="mono-text">{value}</span>
   ) : (
-    <span className="muted-text">{ANY}</span>
+    <span className="muted-text">{copy.any}</span>
   );
 }
 
-/** Human scope suffix for toasts / labels, e.g. " (register warehouse-2, EUR, allegro)". */
+/** Human scope for toasts / labels, e.g. "register warehouse-2, EUR, allegro"; null when unscoped. */
 function describeScope(
+  copy: RoutingCopy,
+  format: Formatters,
   register: string | null,
   currency: string | null,
   source: string | null,
-): string {
+): string | null {
   const parts: string[] = [];
-  if (register) parts.push(`register ${register}`);
+  if (register) parts.push(interpolate(copy.scopeRegister, { register }));
   if (currency) parts.push(currency);
   if (source) parts.push(source);
-  return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+  return parts.length > 0 ? format.list(parts, 'unit') : null;
+}
+
+/** Pick the scoped or the plain sentence of a pair and fill in the document and scope. */
+function scoped(
+  sentences: { readonly plain: string; readonly scoped: string },
+  document: string,
+  scope: string | null,
+): string {
+  return scope === null
+    ? interpolate(sentences.plain, { document })
+    : interpolate(sentences.scoped, { document, scope });
 }
 
 interface AddRouteFormProps {
@@ -351,6 +367,7 @@ function AddRouteForm({
   onClose,
   onError,
 }: AddRouteFormProps): ReactElement {
+  const copy = useKsefMessages().ksefNumberingRoutingCard;
   const upsertRoute = useUpsertNumberingRouteMutation();
   const { showToast } = useToast();
   const [documentType, setDocumentType] = useState<DocumentType>(
@@ -369,7 +386,7 @@ function AddRouteForm({
   async function submit(): Promise<void> {
     onError(null);
     if (seriesId === '') {
-      onError('Choose a series for the new route.');
+      onError(copy.addForm.seriesRequired);
       return;
     }
     try {
@@ -383,20 +400,24 @@ function AddRouteForm({
           seriesId,
         },
       });
-      showToast({ tone: 'success', title: 'Route added', description: 'The routing rule is saved.' });
+      showToast({
+        tone: 'success',
+        title: copy.toasts.added.title,
+        description: copy.toasts.added.description,
+      });
       onClose();
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not add the route.');
+      onError(caught instanceof Error ? caught.message : copy.addForm.addFallback);
     }
   }
 
   const busy = disabled || upsertRoute.isPending;
 
   return (
-    <div className="numbering-routing__add-form" role="group" aria-label="Add a routing rule">
+    <div className="numbering-routing__add-form" role="group" aria-label={copy.addForm.ariaLabel}>
       <div className="numbering-routing__add-grid">
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Document type</span>
+          <span className="numbering-routing__field-label">{copy.addForm.documentType}</span>
           <Select
             value={documentType}
             disabled={busy}
@@ -410,39 +431,39 @@ function AddRouteForm({
           </Select>
         </label>
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Register (any)</span>
+          <span className="numbering-routing__field-label">{copy.addForm.register}</span>
           <Input
             value={register}
             disabled={busy}
-            placeholder="any"
+            placeholder={copy.any}
             onChange={(event) => setRegister(event.target.value)}
           />
         </label>
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Currency (any)</span>
+          <span className="numbering-routing__field-label">{copy.addForm.currency}</span>
           <Input
             value={currency}
             disabled={busy}
-            placeholder="any"
+            placeholder={copy.any}
             onChange={(event) => setCurrency(event.target.value)}
           />
         </label>
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Source (any)</span>
+          <span className="numbering-routing__field-label">{copy.addForm.source}</span>
           <Input
             value={source}
             disabled={busy}
-            placeholder="any"
+            placeholder={copy.any}
             onChange={(event) => setSource(event.target.value)}
           />
         </label>
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Series</span>
+          <span className="numbering-routing__field-label">{copy.addForm.series}</span>
           <Select value={seriesId} disabled={busy} onChange={(event) => setSeriesId(event.target.value)}>
-            <option value="">Choose a series…</option>
+            <option value="">{copy.addForm.chooseSeries}</option>
             {eligible.map((s) => (
               <option key={s.id} value={s.id}>
-                {seriesOption(s)}
+                {seriesOption(copy, s)}
               </option>
             ))}
           </Select>
@@ -450,15 +471,18 @@ function AddRouteForm({
       </div>
       <div className="numbering-routing__add-actions">
         <Button tone="secondary" onClick={onClose} disabled={busy}>
-          Cancel
+          {copy.addForm.cancel}
         </Button>
         <Button tone="primary" onClick={() => void submit()} disabled={busy}>
-          {upsertRoute.isPending ? 'Adding…' : 'Add route'}
+          {upsertRoute.isPending ? copy.addForm.adding : copy.addForm.add}
         </Button>
       </div>
     </div>
   );
 }
+
+/** A fallback step; also its copy key under `resolution.steps`. */
+type ResolutionStepId = 'exact' | 'dropSource' | 'dropCurrency' | 'default';
 
 interface ResolutionOrderPanelProps {
   routes: NumberingRoute[];
@@ -466,7 +490,7 @@ interface ResolutionOrderPanelProps {
 
 /** One step of the fallback chain rendered in the resolution panel. */
 interface ResolutionStep {
-  label: string;
+  id: ResolutionStepId;
   register: string | null;
   currency: string | null;
   source: string | null;
@@ -481,6 +505,9 @@ interface ResolutionStep {
  * whole chain.
  */
 function ResolutionOrderPanel({ routes }: ResolutionOrderPanelProps): ReactElement {
+  const cardCopy = useKsefMessages().ksefNumberingRoutingCard;
+  const copy = cardCopy.resolution;
+  const any = cardCopy.any;
   const documentTypes = Array.from(new Set(routes.map((r) => r.documentType)));
   const [documentType, setDocumentType] = useState<string>(
     documentTypes[0] ?? KSEF_ROUTED_DOCUMENT_TYPES[0]?.documentType ?? 'invoice',
@@ -494,15 +521,15 @@ function ResolutionOrderPanel({ routes }: ResolutionOrderPanelProps): ReactEleme
     const cur = normalizeAxis(currency);
     const src = normalizeAxis(source);
     const candidates: Array<{
-      label: string;
+      id: ResolutionStepId;
       register: string | null;
       currency: string | null;
       source: string | null;
     }> = [
-      { label: 'Exact', register: reg, currency: cur, source: src },
-      { label: 'Drop source', register: reg, currency: cur, source: null },
-      { label: 'Drop currency', register: reg, currency: null, source: null },
-      { label: 'Default', register: null, currency: null, source: null },
+      { id: 'exact', register: reg, currency: cur, source: src },
+      { id: 'dropSource', register: reg, currency: cur, source: null },
+      { id: 'dropCurrency', register: reg, currency: null, source: null },
+      { id: 'default', register: null, currency: null, source: null },
     ];
     return candidates.map((candidate) => ({
       ...candidate,
@@ -519,15 +546,12 @@ function ResolutionOrderPanel({ routes }: ResolutionOrderPanelProps): ReactEleme
   return (
     <div className="numbering-resolution" aria-labelledby="numbering-resolution-heading">
       <h4 className="numbering-resolution__heading" id="numbering-resolution-heading">
-        Resolution order
+        {copy.heading}
       </h4>
-      <p className="muted-text">
-        For an example document, the most specific matching route wins; unmatched axes are dropped in
-        order (source, then currency, then register) until a route matches.
-      </p>
+      <p className="muted-text">{copy.intro}</p>
       <div className="numbering-resolution__inputs">
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Document type</span>
+          <span className="numbering-routing__field-label">{copy.documentType}</span>
           <Select value={documentType} onChange={(event) => setDocumentType(event.target.value)}>
             {KSEF_ROUTED_DOCUMENT_TYPES.map((doc) => (
               <option key={doc.documentType} value={doc.documentType}>
@@ -537,16 +561,16 @@ function ResolutionOrderPanel({ routes }: ResolutionOrderPanelProps): ReactEleme
           </Select>
         </label>
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Register</span>
-          <Input value={register} placeholder="any" onChange={(event) => setRegister(event.target.value)} />
+          <span className="numbering-routing__field-label">{copy.register}</span>
+          <Input value={register} placeholder={any} onChange={(event) => setRegister(event.target.value)} />
         </label>
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Currency</span>
-          <Input value={currency} placeholder="any" onChange={(event) => setCurrency(event.target.value)} />
+          <span className="numbering-routing__field-label">{copy.currency}</span>
+          <Input value={currency} placeholder={any} onChange={(event) => setCurrency(event.target.value)} />
         </label>
         <label className="numbering-routing__field">
-          <span className="numbering-routing__field-label">Source</span>
-          <Input value={source} placeholder="any" onChange={(event) => setSource(event.target.value)} />
+          <span className="numbering-routing__field-label">{copy.source}</span>
+          <Input value={source} placeholder={any} onChange={(event) => setSource(event.target.value)} />
         </label>
       </div>
       <ol className="numbering-resolution__steps">
@@ -561,14 +585,17 @@ function ResolutionOrderPanel({ routes }: ResolutionOrderPanelProps): ReactEleme
             .filter(Boolean)
             .join(' ');
           return (
-            <li key={step.label} className={className}>
-              <span className="numbering-resolution__step-label">{step.label}</span>
+            <li key={step.id} className={className}>
+              <span className="numbering-resolution__step-label">{copy.steps[step.id]}</span>
               <span className="numbering-resolution__step-key mono-text">
-                register={step.register ?? ANY}, currency={step.currency ?? ANY}, source=
-                {step.source ?? ANY}
+                {interpolate(copy.stepKey, {
+                  register: step.register ?? any,
+                  currency: step.currency ?? any,
+                  source: step.source ?? any,
+                })}
               </span>
               <span className="numbering-resolution__step-result">
-                {step.matched ? (isWinner ? 'matches ✓' : 'matches') : 'no route'}
+                {step.matched ? (isWinner ? copy.matchesWinner : copy.matches) : copy.noRoute}
               </span>
             </li>
           );
@@ -576,8 +603,7 @@ function ResolutionOrderPanel({ routes }: ResolutionOrderPanelProps): ReactEleme
       </ol>
       {winnerIndex === -1 ? (
         <p className="muted-text numbering-resolution__none">
-          No route matches this example — issuing would fail with "no numbering series". Add a
-          default route for this document type.
+          {copy.none}
         </p>
       ) : null}
     </div>

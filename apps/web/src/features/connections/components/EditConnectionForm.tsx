@@ -1,4 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import {
+  interpolate,
+  renderRich,
+  useMessages,
+  usePlural,
+  type Messages,
+  type PluralFn,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
@@ -20,7 +29,11 @@ import {
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
+import { PaymentWritebackSection } from './payment-writeback-section';
+import { LabelPurchaseNotificationSection } from './label-purchase-notification-section';
+import { readNotifyOnLabelPurchase } from '../lib/label-purchase-notification';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
+import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -32,7 +45,8 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useSession } from '../../../shared/auth/use-session';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
   usePlatform,
@@ -40,14 +54,26 @@ import {
   type PluginEditConnectionFields,
 } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
-import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { resolveTriggerModelForKind } from '../lib/resolve-trigger-model-for-kind';
 import { isPricingDestination } from '../lib/pricing-destination';
 import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
 import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+
+// A technical example, not prose: the same in every language.
+const ADAPTER_KEY_EXAMPLE = 'prestashop.webservice.v1';
 
 interface EditConnectionFormProps {
   connection: Connection;
+}
+
+type EditConnectionCopy = ResolvedCopy<Messages['connections']>['editConnectionForm'];
+
+function describeInvalidFields(copy: EditConnectionCopy, plural: PluralFn, count: number): string {
+  if (count >= 1) return plural(count, copy.needsAttention, { n: count });
+  return copy.someNeedAttention;
 }
 
 /**
@@ -102,23 +128,18 @@ function readUnmanagedStockQuantity(config: Record<string, unknown>): string {
 }
 
 /**
- * #759 — Read the Subiekt invoice trigger model out of NESTED
- * `config.invoicing.triggerModel`. Narrows to a known
- * `INVOICE_TRIGGER_MODEL_VALUES` value; out-of-band / legacy values fall
- * through to `''` (the operator re-picks), exactly as the BE
- * `getInvoiceTriggerModel` warns-and-defaults. Clone of `readUnmanagedStockQuantity`.
+ * #759 — Read the Subiekt invoice trigger model. Since #3582 this is the
+ * EFFECTIVE `invoice` model, resolved like the BE gate
+ * (`salesDocument.triggerModels.invoice` → legacy `invoicing.triggerModel`), so
+ * the form shows the value that will be enforced even after the sales-documents
+ * table set a kind-scoped one. Nothing recognised reads as `''` (the operator
+ * re-picks), as before.
  */
 function readTriggerModel(
   config: Record<string, unknown>,
 ): NonNullable<EditConnectionFormValues['subiektTriggerModel']> {
-  const invoicing =
-    typeof config.invoicing === 'object' && config.invoicing !== null
-      ? (config.invoicing as Record<string, unknown>)
-      : {};
-  const raw = invoicing.triggerModel;
-  return typeof raw === 'string' && (INVOICE_TRIGGER_MODEL_VALUES as readonly string[]).includes(raw)
-    ? (raw as (typeof INVOICE_TRIGGER_MODEL_VALUES)[number])
-    : '';
+  const resolved = resolveTriggerModelForKind(config, 'invoice');
+  return resolved.source === 'default' ? '' : resolved.model;
 }
 
 /**
@@ -294,6 +315,7 @@ function readInpostSenderAddress(
       ? (raw.address as Record<string, unknown>)
       : {};
   return {
+    company: typeof raw.company === 'string' ? raw.company : '',
     name: typeof raw.name === 'string' ? raw.name : '',
     email: typeof raw.email === 'string' ? raw.email : '',
     phone: typeof raw.phone === 'string' ? raw.phone : '',
@@ -411,9 +433,20 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const apiClient = useApiClient();
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
+  const copy = useMessages('connections').editConnectionForm;
+  const plural = usePlural();
+  // DEF-21: advisory notices the save returned. They outlive the toast, so the
+  // form stays put and lets the operator read them before moving on.
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
   const navigate = useNavigate();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
+  // Until the session resolves the permission list is empty, which is "not known yet", not "denied":
+  // locking the form then would flash a read-only form at every operator on each page load.
+  const { isReady: sessionReady } = useSession();
+  // The public demo deliberately shows editable inputs with a disabled Save (#1615), so only a real
+  // read-only session locks the whole form.
+  const readOnly = sessionReady && !write.canWrite && !demoMode;
   const [showRawJson, setShowRawJson] = useState(false);
   const plugin = usePlatform(connection.platformType);
   // #1330 — the platform's non-render structured-config half: Zod schema
@@ -491,6 +524,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       stockLocationOverride: readStockLocationOverride(connection.config),
       // "This system packs and ships orders itself" (#2118) — platform-neutral.
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
+      // "When the buyer pays later" (#3963) — platform-neutral.
+      paymentWriteback: readPaymentWritebackForm(connection.config),
+      // "Tell the shop when a label is bought" (#4097) — carrier connections.
+      notifyOnLabelPurchase: readNotifyOnLabelPurchase(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -499,9 +536,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     resolver: zodResolver(resolverSchema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
-  );
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   // Structured-config dispatch (#578/#579):
   //   - A platform plugin may contribute its own structured inputs (today: PS).
@@ -716,6 +751,29 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #3963 — re-serialize `config.paymentWriteback` into configText. Same shape
+  // as `syncFulfilmentOwnershipToJson`: the section sets the value FIRST.
+  function syncPaymentWritebackToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      paymentWriteback: form.getValues('paymentWriteback'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #4097 — re-serialize `config.shipping.notifyMarketplaceOnLabelPurchase` into
+  // configText. Same shape as `syncFulfilmentOwnershipToJson`: the section sets
+  // the value FIRST; the merge keeps the namespace's other keys.
+  function syncLabelPurchaseNotificationToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      notifyOnLabelPurchase: form.getValues('notifyOnLabelPurchase'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -739,6 +797,13 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     needsMasterCatalog,
     hasStoredMaster,
   ]);
+
+  // #3765 - every click on Save must end in a visible signal. The inline
+  // `Alert` / `FormErrorSummary` sit at the top of a long form while the
+  // button is at the bottom, so a failure is also reported as a toast.
+  const showSaveFailedToast = (description: string): void => {
+    showToast({ tone: 'error', title: copy.notSavedTitle, description });
+  };
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -767,15 +832,30 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       if (needsMasterCatalog) {
         delete mergedConfig.pricingRule;
       }
-      await updateConnection.mutateAsync({
+      // #3908 - `config.deliveryOnDocuments` is owned by the mappings page's
+      // "Delivery on documents" tab, which writes it immediately. This form's
+      // `configText` snapshot predates any such save, so letting it through
+      // would restore a stale copy over the operator's newer settings. Keep
+      // whatever the fresh connection holds, and never let the snapshot add
+      // the key where the connection has none.
+      if (fresh.config.deliveryOnDocuments === undefined) {
+        delete mergedConfig.deliveryOnDocuments;
+      } else {
+        mergedConfig.deliveryOnDocuments = fresh.config.deliveryOnDocuments;
+      }
+      const saved = await updateConnection.mutateAsync({
         connectionId: connection.id,
         input: { ...input, config: mergedConfig },
       });
       showToast({
         tone: 'success',
-        title: 'Connection updated',
-        description: 'Connection settings have been saved.',
+        title: copy.updatedTitle,
+        description: copy.updatedDescription,
       });
+      if (saved?.warnings && saved.warnings.length > 0) {
+        setSaveWarnings(saved.warnings);
+        return;
+      }
       void navigate(`/connections/${connection.id}`);
     } catch (error) {
       // #3207 — a 400 naming `config.stockLocationOverride` (unknown/retired
@@ -792,56 +872,90 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // prose the backend is free to reword, and a reworded message would
       // have silently reverted this to the generic banner (review finding).
       if (error instanceof ApiError && isStockLocationOverrideValidationError(error)) {
-        form.setError('stockLocationOverride', { message: error.message });
+        form.setError('stockLocationOverride', { message: describeApiError(error, 'connections') });
         updateConnection.reset();
+        // The field and the summary already carry the message; the toast
+        // points at them rather than repeating it a third time.
+        showSaveFailedToast(describeInvalidFields(copy, plural, 1));
         return;
       }
-      return;
+      // Covers the PATCH rejecting (also shown in the top-of-form `Alert`) and
+      // anything thrown before it - the pre-submit refetch or the input
+      // mapping - which `updateConnection.error` never sees.
+      showSaveFailedToast(describeApiError(error, 'connections'));
     }
+  }, (errors) => {
+    showSaveFailedToast(
+      describeInvalidFields(copy, plural, collectFormErrorMessages(errors).length),
+    );
   });
 
   return (
     <form className="form-card form-narrow" onSubmit={(event) => void onSubmit(event)} noValidate>
+      {/* A session without the write permission gets a form it can read but not
+          change; the backend refuses the save anyway (403), so offering it only
+          produces a misleading failure. */}
+      <fieldset
+        disabled={readOnly}
+        style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'contents' }}
+      >
+      {readOnly ? <Alert tone="info">{copy.readOnlyNote}</Alert> : null}
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Edit connection</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title">{connection.name}</h3>
         </div>
-        <span className="panel__meta">Update settings</span>
+        <span className="panel__meta">{copy.meta}</span>
       </div>
 
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
       {updateConnection.error ? (
-        <Alert tone="error" title="Unable to update connection">
-          {updateConnection.error.message}
+        <Alert tone="error" title={copy.errorTitle}>
+          {describeApiError(updateConnection.error, 'connections')}
+        </Alert>
+      ) : null}
+      {saveWarnings.length > 0 ? (
+        <Alert
+          tone="warning"
+          title={copy.warningsTitle}
+          data-testid="connection-save-warnings"
+          action={
+            <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
+              {copy.goToConnection}
+            </Button>
+          }
+        >
+          {saveWarnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
         </Alert>
       ) : null}
 
-      <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
+      <FormField label={copy.fields.name.label} name="name" error={form.formState.errors.name?.message}>
         <Input
           {...form.register('name')}
-          placeholder="Main PrestaShop Store"
+          placeholder={copy.fields.name.placeholder}
           invalid={Boolean(form.formState.errors.name)}
         />
       </FormField>
 
-      <FormField label="Platform type" name="platformType">
+      <FormField label={copy.fields.platformType} name="platformType">
         <Input value={connection.platformType} disabled />
       </FormField>
 
       {PluginCredentialsPanel ? (
         <PluginCredentialsPanel connection={connection} />
       ) : (
-        <FormField label="Credentials" name="credentials">
+        <FormField label={copy.fields.credentials.label} name="credentials">
           <Input
             value={
               hasMissingCredentials(connection)
-                ? 'Not set - removed when this connection was archived'
+                ? copy.fields.credentials.removed
                 : connection.credentialsBacked
-                  ? 'Stored securely (managed by integration)'
-                  : 'Environment variable (not editable via UI)'
+                  ? copy.fields.credentials.stored
+                  : copy.fields.credentials.environment
             }
             disabled
           />
@@ -849,22 +963,21 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       )}
 
       <FormField
-        label="Adapter key"
+        label={copy.fields.adapterKey.label}
         name="adapterKey"
         error={form.formState.errors.adapterKey?.message}
-        description="Optional when the default adapter can be inferred from the selected platform."
+        description={copy.fields.adapterKey.description}
       >
         <Input
           {...form.register('adapterKey')}
-          placeholder="prestashop.webservice.v1"
+          placeholder={ADAPTER_KEY_EXAMPLE}
           invalid={Boolean(form.formState.errors.adapterKey)}
         />
       </FormField>
 
       {hasStructuredInputs && !configIsParseable ? (
-        <Alert tone="warning" title="Raw JSON is invalid">
-          Fix the raw config JSON below before editing the structured inputs — they are locked so
-          your custom JSON keys are not silently lost.
+        <Alert tone="warning" title={copy.rawJsonInvalid.title}>
+          {copy.rawJsonInvalid.body}
         </Alert>
       ) : null}
 
@@ -902,6 +1015,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           form={form}
           configIsParseable={configIsParseable}
           syncSellerDefaultsToJson={syncSellerDefaultsToJson}
+          syncInpostSenderAddressToJson={syncInpostSenderAddressToJson}
         />
       ) : null}
 
@@ -961,6 +1075,26 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         />
       ) : null}
 
+      {/* #3963 — read only where a late payment can be mirrored: an order destination. */}
+      {connection.enabledCapabilities.includes('OrderProcessorManager') ? (
+        <PaymentWritebackSection
+          connectionId={connection.id}
+          form={form}
+          configIsParseable={configIsParseable}
+          syncPaymentWritebackToJson={syncPaymentWritebackToJson}
+        />
+      ) : null}
+
+      {/* #4097 — read only by the label-purchase dispatch path: a carrier connection. */}
+      {connection.enabledCapabilities.includes('ShippingProviderManager') ? (
+        <LabelPurchaseNotificationSection
+          form={form}
+          configIsParseable={configIsParseable}
+          canWrite={write.canWrite}
+          syncLabelPurchaseNotificationToJson={syncLabelPurchaseNotificationToJson}
+        />
+      ) : null}
+
       <div className="config-panel__toggle">
         <Button
           tone="secondary"
@@ -968,16 +1102,16 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           onClick={() => setShowRawJson((prev) => !prev)}
           aria-expanded={showRawJson}
         >
-          {showRawJson ? 'Hide raw config JSON' : 'Show raw config JSON'}
+          {showRawJson ? copy.rawJson.hide : copy.rawJson.show}
         </Button>
       </div>
 
       {showRawJson || !hasStructuredInputs ? (
         <FormField
-          label="Config JSON"
+          label={copy.rawJson.label}
           name="configText"
           error={form.formState.errors.configText?.message}
-          description="Raw configuration. Edit carefully — secrets must remain outside the browser."
+          description={copy.rawJson.description}
         >
           <Textarea
             {...form.register('configText')}
@@ -988,15 +1122,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       ) : null}
 
       <div className="form-actions">
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-          <Button type="submit" disabled={updateConnection.isPending || write.demoReadOnly}>
-            {updateConnection.isPending ? 'Saving...' : 'Save changes'}
+        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
+          <Button
+            type="submit"
+            disabled={updateConnection.isPending || write.demoReadOnly || readOnly}
+          >
+            {updateConnection.isPending ? copy.saving : copy.save}
           </Button>
         </ReadOnlyLock>
         <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
-          Cancel
+          {copy.cancel}
         </Button>
       </div>
+      </fieldset>
     </form>
   );
 }
@@ -1024,6 +1162,7 @@ function MarketplaceCatalogPicker({
   onChange,
   onRetry,
 }: MarketplaceCatalogPickerProps): ReactElement {
+  const copy = useMessages('connections').editConnectionForm.catalogPicker;
   const noCandidates = !isLoading && !loadError && candidates.length === 0 && !isStale;
 
   return (
@@ -1031,45 +1170,44 @@ function MarketplaceCatalogPicker({
       {loadError ? (
         <Alert
           tone="error"
-          title="Could not load ProductMaster connections"
+          title={copy.loadErrorTitle}
           action={
             <Button tone="secondary" type="button" onClick={onRetry}>
-              Retry
+              {copy.retry}
             </Button>
           }
         >
-          {loadError.message}
+          {describeApiError(loadError, 'connections')}
         </Alert>
       ) : null}
 
       {noCandidates ? (
-        <Alert tone="info" title="No ProductMaster connections yet">
-          Barcode linking needs a catalog source.{' '}
-          <Link to="/connections/new?platform=prestashop">Add a PrestaShop connection</Link> to
-          enable offer-to-product linking.
+        <Alert tone="info" title={copy.emptyTitle}>
+          {renderRich(copy.emptyBody, {
+            link: (text) => <Link to="/connections/new?platform=prestashop">{text}</Link>,
+          })}
         </Alert>
       ) : null}
 
       {isStale ? (
-        <Alert tone="error" title="Linked catalog is missing">
-          This connection points to a deleted or disabled ProductMaster. Pick a new one below or
-          clear the link.
+        <Alert tone="error" title={copy.staleTitle}>
+          {copy.staleBody}
         </Alert>
       ) : null}
 
       <FormField
-        label="Product catalog connection"
+        label={copy.label}
         name="masterCatalogConnectionId"
         error={errorMessage}
-        description="OpenLinker uses this ProductMaster connection to resolve offer barcodes (EAN/GTIN) to internal product variants. If left empty and exactly one ProductMaster connection exists, it is used automatically."
+        description={copy.description}
       >
         {isLoading ? (
           <Select disabled>
-            <option>Loading connections…</option>
+            <option>{copy.loading}</option>
           </Select>
         ) : loadError ? (
           <Select disabled>
-            <option>Failed to load connections</option>
+            <option>{copy.loadFailed}</option>
           </Select>
         ) : (
           <Select
@@ -1078,7 +1216,7 @@ function MarketplaceCatalogPicker({
             disabled={disabled}
             invalid={Boolean(errorMessage) || isStale}
           >
-            <option value="">None (barcode linking disabled)</option>
+            <option value="">{copy.none}</option>
             {candidates.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -1086,7 +1224,7 @@ function MarketplaceCatalogPicker({
             ))}
             {isStale ? (
               <option value={value} disabled>
-                Missing: {value}
+                {interpolate(copy.missing, { id: value })}
               </option>
             ) : null}
           </Select>

@@ -271,7 +271,9 @@ describe('fiscal_registration_records persistence (integration)', () => {
       expect(reread.status).toBe('registering');
     });
 
-    it('claims a terminal-rejected failed row (the provider created nothing)', async () => {
+    it('does NOT claim a refused row: a refusal is final under its key (#3960)', async () => {
+      // Asking again starts a NEW attempt record under a new key. Re-claiming the
+      // refused row would resend under the key the provider already refused.
       const saved = await repo.save(row({ status: 'failed', failureMode: 'rejected' }));
 
       const claimed = await repository.claimForRegistration(
@@ -279,8 +281,9 @@ describe('fiscal_registration_records persistence (integration)', () => {
         new Date(Date.now() + 60_000),
       );
 
-      expect(claimed).not.toBeNull();
-      expect(claimed!.status).toBe('registering');
+      expect(claimed).toBeNull();
+      const reread = await repo.findOneOrFail({ where: { id: saved.id } });
+      expect(reread.status).toBe('failed');
     });
 
     it('does NOT claim an in-doubt failed row (the sale may already be registered)', async () => {

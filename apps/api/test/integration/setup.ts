@@ -19,6 +19,7 @@ import { VersioningType } from '@nestjs/common';
 import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
 import { buildGlobalExceptionFilters } from '../../src/common/filters/global-filters';
+import { createValidationPipe } from '../../src/common/validation/coded-validation.pipe';
 import { API_VERSION } from '../../src/app-info/app-info.types';
 
 const harness = createIntegrationTestHarness({
@@ -28,7 +29,11 @@ const harness = createIntegrationTestHarness({
   // 400/404/409/422/503 rather than a default 500). The list is the FULL set
   // main.ts registers — a partial mirror makes an int-spec assert a 500 the
   // running app never returns, which is a passing test about the wrong app.
+  // The harness's own pipe is off: the pipe main.ts registers is installed in
+  // `configureApp` below, so requests are validated the way the app does it.
+  validationPipe: false,
   configureApp: (app) => {
+    app.useGlobalPipes(createValidationPipe());
     // The SAME roster main.ts registers, from the one producer — a second copy
     // here is a copy that silently stops matching, and this copy is what decides
     // what every status-code assertion in the suite is really testing.
@@ -81,6 +86,16 @@ const harness = createIntegrationTestHarness({
     // cannot reach it; a claim left by one case would otherwise make the next
     // case's decrement a no-op.
     'inventory_sale_decrements',
+    // #3607 - bundle compositions. No foreign key (a definition is keyed by a
+    // variant id by value), so the CASCADE closure walk cannot reach it.
+    'bundle_definitions',
+    // #3624 - multipack confirmations, keyed by value like the definitions.
+    'multipack_confirmations',
+    // #3565 — the stock movement ledger. No foreign key (an audit record
+    // outlives what it names), so the CASCADE walk cannot reach it.
+    'inventory_movements',
+    // #4062 — what OpenLinker sent each channel. No foreign key either.
+    'channel_quantity_pushes',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the
@@ -151,6 +166,7 @@ const harness = createIntegrationTestHarness({
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
     'invoice_records',
+    'invoice_marketplace_uploads',
     // fiscal_registration_records (#1908) — order- + connection-scoped
     // fiscalization projection. Its migration declares NO FK by design (same
     // choice as invoice_records), so the table sits outside the CASCADE closure
@@ -158,6 +174,13 @@ const harness = createIntegrationTestHarness({
     // rows would then leak across cases and collide on
     // UQ_fiscal_registration_records_connection_idempotency. Truncate explicitly.
     'fiscal_registration_records',
+    // document_email_deliveries (#3550) — one row per manual document email.
+    // No FK by design (references by value), so it sits outside the CASCADE
+    // closure `truncateTables` walks; truncate explicitly so a case starts clean.
+    'document_email_deliveries',
+    // buyer_email_deliveries (#3554) — one row per automatic buyer email. No FK
+    // by design, so truncate explicitly for the same reason.
+    'buyer_email_deliveries',
     // refund_records (#2036) — order-scoped refund-capture projection. No
     // ORM/migration FK to order_records (plain indexed text column, matching
     // the invoice_records precedent); truncate explicitly so each refund case
@@ -211,6 +234,10 @@ const harness = createIntegrationTestHarness({
     'order_tag_assignments',
     'order_tags',
     'order_exports',
+    // Batch issuing (#3583): the items' FK to the run exists in the migration
+    // only, so the synchronize-built schema has none; list both.
+    'sales_document_batch_run_items',
+    'sales_document_batch_runs',
     // automation_* (#2358) — the OMS automation v1 storage. NOTHING here
     // carries an FK: not runs/firings -> automation_rules (a deleted rule must
     // neither destroy its history nor be blocked by it), and not subjectId ->
@@ -222,6 +249,12 @@ const harness = createIntegrationTestHarness({
     // wrong behaviour between test cases.
     'automation_runs',
     'automation_trigger_firings',
+    // promotions (#3935): the gift ledger and application log (no FKs, so explicit).
+    'promotions',
+    'promotion_state',
+    'promotion_grants',
+    'promotion_applications',
+    'return_gift_decisions',
     'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
@@ -237,10 +270,16 @@ const harness = createIntegrationTestHarness({
     // FK, so it never cascades; a row written by one case would otherwise
     // change what every later case resolves as the reporting currency.
     'reporting_currency_setting',
+    // sales_document_settings (#3941) - the singleton OpenLinker-wide gift form on
+    // documents. No FK, so it never cascades; a saved row would change every later
+    // case's resolved default.
+    'sales_document_settings',
     // operational_settings (#2651) — the singleton sweep-budget / deletion-audit
     // row. No FK, so it never cascades; a row written by one case would
     // otherwise change every later case's resolved budgets.
     'operational_settings',
+    // login_page_settings (#4028) - singleton login-page copy row, no FK.
+    'login_page_settings',
     // analytics_remediation_runs (#2468) — the Data Coverage remediation audit
     // ledger. No FK anywhere (its `triggered_by` is a plain text user id, the
     // invoice_records precedent), so nothing cascades into it — and its partial

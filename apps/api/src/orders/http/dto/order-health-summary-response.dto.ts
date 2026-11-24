@@ -11,7 +11,34 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/**
+ * The three "Needs a look" group totals (#4025). Each is a count of DISTINCT
+ * orders matching ANY filter in its group, so it is NOT the sum of the
+ * per-filter counts beside it.
+ */
+export class OrderAttentionSummaryResponseDto {
+  @ApiProperty({
+    description:
+      'Orders that are SLA overdue, SLA at risk, or due to ship within 24 hours (union, each order once)',
+  })
+  lateToShip!: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a blocked sales document, an OpenLinker inert state, a routing block, a wait in ' +
+      'OpenLinker or a tax rate conflict (union, each order once)',
+  })
+  stuck!: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Orders on the pack bench, with a buyer note, or with an open return (union, each order once). ' +
+      'Absent when the open returns could not be read: the count is unknown, never 0.',
+  })
+  toHandle?: number;
+}
 
 export class OrderHealthSummaryResponseDto {
   @ApiProperty({ description: 'Total order records in scope (sum of the five buckets)' })
@@ -46,6 +73,40 @@ export class OrderHealthSummaryResponseDto {
 
   @ApiProperty({
     description:
+      'Orders whose fulfilment routing decision narrowed the destination fan-out in an ' +
+      'attention-worthy way (#2703/#2704). ORTHOGONAL to the five health buckets and NOT part of ' +
+      'the partition — such an order is also counted in exactly one of them — so this number must ' +
+      'never be added to their sum. Counts the attention-worthy subset only: a deliberate ' +
+      '"routed-to-no-destination" decision and the "no-destination-configured" fact (#3959) are ' +
+      'badged neutrally per order and never aggregated.',
+  })
+  destinationRoutingBlocked!: number;
+
+  @ApiProperty({
+    description:
+      'Orders OpenLinker holds as waiting (#3482): out of stock, no shipping address or a ' +
+      'routing error (#3485). ORTHOGONAL to the five health buckets and NOT part of the ' +
+      'partition, so this number must never be added to their sum.',
+  })
+  waitingInOpenLinker!: number;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When the OLDEST waiting order started waiting (ISO 8601), or null when none waits ' +
+      '(#3482). Rendered as the chip\'s age, the salesDocumentBlockedOldestAt shape.',
+  })
+  waitingInOpenLinkerOldestAt!: string | null;
+
+  @ApiProperty({
+    description:
+      'Orders with a live pack-bench work whose box is not shut yet - To pack or Packing ' +
+      '(#3482). ORTHOGONAL to the health partition; a list filter only.',
+  })
+  onPackBench!: number;
+
+  @ApiProperty({
+    description:
       'Orders where the shop and the channel named DIFFERENT tax rates (#2254). Its OWN count, ' +
       'never part of salesDocumentBlocked: a conflict does not stop the invoice, so an order can ' +
       'be in conflict and perfectly healthy, and folding it in would print one number twice on ' +
@@ -65,6 +126,13 @@ export class OrderHealthSummaryResponseDto {
   omsAttention!: number;
 
   @ApiProperty({
+    description:
+      'Orders where a shop still shows the order unpaid and OpenLinker gave up sending the payment ' +
+      '(#3963). Its own axis, never inside the health partition.',
+  })
+  paymentNotSent!: number;
+
+  @ApiProperty({
     nullable: true,
     description:
       'When the OLDEST still-held order was held (ISO 8601), or null when nothing is held ' +
@@ -80,4 +148,66 @@ export class OrderHealthSummaryResponseDto {
       'trigger model, so counting it as blocked would put a large red number on a healthy install.',
   })
   salesDocumentIssuedOnRequest!: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Orders with an open return (#4025) - the same id list the ?openReturn=true filter uses. ' +
+      'Orthogonal to the health partition. Absent when the open returns could not be read: ' +
+      'the count is unknown, never 0.',
+  })
+  openReturn?: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a buyer note an operator can act on (#4025) - the ?hasBuyerNote=true predicate. ' +
+      'Orthogonal to the health partition.',
+  })
+  hasBuyerNote!: number;
+
+  @ApiProperty({
+    description:
+      'Orders carrying a gift line (#3935) - the ?withGift=true predicate. Orthogonal to the health partition.',
+  })
+  withGift!: number;
+
+  @ApiProperty({
+    description:
+      'Orders carrying a bundle (#3935) - the ?withBundle=true predicate. Orthogonal to the health partition.',
+  })
+  withBundle!: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Orders where a promotion could not give its gift and nobody handled it (#3935) - the ?giftNotAdded=true ' +
+      'predicate. Absent when the promotion log could not be read: the count is unknown, never 0.',
+  })
+  giftNotAdded?: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a gift line the shop refused (#3935) - the ?giftShopRejected=true predicate.',
+  })
+  giftShopRejected!: number;
+
+  @ApiProperty({
+    description:
+      'Orders with a ship-by deadline within the next 24 hours or already past (#4025) - the ' +
+      '?dueBefore=<now + 24h> predicate. Orthogonal to the health partition.',
+  })
+  dueWithin24h!: number;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    description:
+      'Order count per source connection id (#4025), counted with every scope EXCEPT ' +
+      'sourceConnectionId itself. A connection with no orders in scope is absent, never 0.',
+  })
+  bySource!: Record<string, number>;
+
+  @ApiProperty({
+    type: OrderAttentionSummaryResponseDto,
+    description: 'The three "Needs a look" group totals (#4025)',
+  })
+  attention!: OrderAttentionSummaryResponseDto;
 }

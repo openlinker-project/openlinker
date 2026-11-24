@@ -40,6 +40,8 @@ const view = (overrides: Partial<OperationalSettingsView> = {}): OperationalSett
   deletionAuditBudget: number(100, 2000, 20_000),
   syncJobRetentionDays: number(30, 365, 365),
   syncJobDeadRetentionDays: number(90, 365, 365),
+  inventoryMovementRetentionDays: number(365, 730, 1825),
+  stockStaleSyncThresholdHours: number(6, 48, 168),
   deletionAuditCadence: { value: '0 * * * *', source: 'default', workerMayDiffer: true },
   catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
   inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
@@ -194,6 +196,8 @@ describe('OperationalSettingsController', () => {
         deletionAuditBudget: 444,
         syncJobRetentionDays: 555,
         syncJobDeadRetentionDays: 666,
+        inventoryMovementRetentionDays: 777,
+        stockStaleSyncThresholdHours: 777,
         deletionAuditCadence: '*/7 * * * *',
         acknowledgeAboveRecommended: true,
       };
@@ -231,6 +235,44 @@ describe('OperationalSettingsController', () => {
       await expect(
         controller.update({ catalogueSweepBudget: 5000 }, {} as AuthenticatedUser, res)
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should send the refused field as a coded param (#3865)', async () => {
+      settings.updateSettings.mockRejectedValue(
+        new InvalidOperationalSettingError(
+          'catalogueSweepBudget',
+          'catalogueSweepBudget must be an integer between 1 and 2000'
+        )
+      );
+
+      await expect(
+        controller.update({ catalogueSweepBudget: 5000 }, {} as AuthenticatedUser, res)
+      ).rejects.toMatchObject({
+        response: {
+          code: 'OPERATIONAL_SETTING_INVALID',
+          params: { field: 'catalogueSweepBudget' },
+        },
+      });
+    });
+
+    it('should send the broken rule and its limit as params (#3866)', async () => {
+      settings.updateSettings.mockRejectedValue(
+        new InvalidOperationalSettingError(
+          'catalogueSweepBudget',
+          'catalogueSweepBudget above the recommended maximum of 2000 requires acknowledgeAboveRecommended: true.',
+          'recommended',
+          2000
+        )
+      );
+
+      await expect(
+        controller.update({ catalogueSweepBudget: 5000 }, {} as AuthenticatedUser, res)
+      ).rejects.toMatchObject({
+        response: {
+          code: 'OPERATIONAL_SETTING_INVALID',
+          params: { field: 'catalogueSweepBudget', rule: 'recommended', limit: 2000 },
+        },
+      });
     });
 
     it('should let an unrelated error through rather than mislabelling it a bad request', async () => {

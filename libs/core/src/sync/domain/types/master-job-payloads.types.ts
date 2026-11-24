@@ -37,6 +37,12 @@ export interface MasterProductSyncBatchPayloadV1 {
 export interface MasterInventorySyncBatchPayloadV1 {
   schemaVersion: 1;
   externalIds: string[];
+  /**
+   * The sweep cycle the batch belongs to (#4062), written onto every stock
+   * movement the batch records. Optional: a job queued before the field
+   * existed falls back to its own job id.
+   */
+  syncRunId?: string;
 }
 
 export interface MasterInventorySyncByExternalIdPayloadV1 {

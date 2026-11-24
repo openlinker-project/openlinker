@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApiClient, STREAM_HEAD_TIMEOUT_MS } from './api-client';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { ApiError } from '../../shared/api/api-error';
+import { setActiveLocale } from '../../shared/i18n/active-locale';
 
 const BASE_URL = 'http://localhost:3000';
 
@@ -177,5 +178,44 @@ describe('requestStream head timeout', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('createApiClient - Accept-Language (#3856)', () => {
+  function clientWith(
+    fetchFn: ReturnType<typeof vi.fn<typeof fetch>>,
+  ): ReturnType<typeof createApiClient> {
+    return createApiClient({
+      baseUrl: BASE_URL,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      sessionAdapter: makeAdapter(),
+    });
+  }
+
+  it('should send the active language when the operator chose Polish', async () => {
+    setActiveLocale('pl');
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(makeResponse(200, { ok: true }) as unknown as Response);
+
+    try {
+      await clientWith(fetchFn).request('/anything');
+    } finally {
+      setActiveLocale('en');
+    }
+
+    const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get('Accept-Language')).toBe('pl-PL');
+  });
+
+  it('should keep a caller-supplied Accept-Language header', async () => {
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(makeResponse(200, { ok: true }) as unknown as Response);
+
+    await clientWith(fetchFn).request('/anything', { headers: { 'Accept-Language': 'de-DE' } });
+
+    const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get('Accept-Language')).toBe('de-DE');
   });
 });

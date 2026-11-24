@@ -99,6 +99,7 @@ import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
+import { PrestashopPackUnreadableException } from '../../domain/exceptions/prestashop-pack-unreadable.exception';
 import { PrestashopOrFilterIgnoredException } from '../../domain/exceptions/prestashop-or-filter-ignored.exception';
 import { PrestashopOlModuleException } from '../../domain/exceptions/prestashop-ol-module.exception';
 
@@ -168,6 +169,7 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof PrestashopTruncatedReadException ||
       cause instanceof PrestashopPackFilterIgnoredException ||
       cause instanceof PrestashopOrFilterIgnoredException ||
+      cause instanceof PrestashopPackUnreadableException ||
       // #3469 IMPORTANT-1 review — a non-idempotent write (createResource,
       // or importOrder once its own by-reference recovery lookup also
       // failed to find what may have been created) that failed with an
@@ -197,24 +199,26 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
   }
 
   getRetryDeferral(cause: unknown): RetryDeferral | null {
-    if (!(cause instanceof PrestashopApiException)) {
+    const found = findThrottleOrOutage(cause);
+    if (found === null) {
       return null;
     }
+    const { statusCode, retryAfterSeconds } = found;
 
-    if (cause.statusCode === 429) {
+    if (statusCode === 429) {
       return {
         delaySeconds: Math.max(
-          cause.retryAfterSeconds ?? THROTTLE_DEFAULT_DEFERRAL_SECONDS,
+          retryAfterSeconds ?? THROTTLE_DEFAULT_DEFERRAL_SECONDS,
           MIN_DEFERRAL_SECONDS
         ),
         reason: 'shop rate-limited the request (429)',
       };
     }
 
-    if (cause.statusCode === 503) {
+    if (statusCode === 503) {
       return {
         delaySeconds: Math.max(
-          cause.retryAfterSeconds ?? UNAVAILABLE_DEFERRAL_SECONDS,
+          retryAfterSeconds ?? UNAVAILABLE_DEFERRAL_SECONDS,
           MIN_DEFERRAL_SECONDS
         ),
         reason: 'shop unavailable (503)',
@@ -223,4 +227,48 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
 
     return null;
   }
+}
+
+/**
+ * How many errors of an `Error.cause` chain are inspected, the outer one
+ * included (#3984): the outer error plus up to three nested causes.
+ */
+const MAX_CAUSE_DEPTH = 4;
+
+/**
+ * Finds the 429 / 503 behind a re-wrapped failure (#3984). The order adapter and
+ * the provisioners re-wrap every lower error, so the outer class says nothing
+ * about the status; they keep the original as `cause`.
+ *
+ * Only a webservice 429 / 503 and a module 429 count. A module 503 is left out
+ * on purpose: it comes from the order-import POST, which may already have
+ * committed the order, so re-sending it is not a safe deferral. Any
+ * `PrestashopAmbiguousWriteException` anywhere in the chain vetoes the whole
+ * lookup for the same reason (it is itself terminal in `isNonRetryable`).
+ */
+function findThrottleOrOutage(
+  cause: unknown
+): { statusCode: 429 | 503; retryAfterSeconds?: number } | null {
+  let current: unknown = cause;
+  let found: { statusCode: 429 | 503; retryAfterSeconds?: number } | null = null;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+    if (!(current instanceof Error)) {
+      break;
+    }
+    if (current instanceof PrestashopAmbiguousWriteException) {
+      return null;
+    }
+    if (found === null) {
+      if (
+        current instanceof PrestashopApiException &&
+        (current.statusCode === 429 || current.statusCode === 503)
+      ) {
+        found = { statusCode: current.statusCode, retryAfterSeconds: current.retryAfterSeconds };
+      } else if (current instanceof PrestashopOlModuleException && current.status === 429) {
+        found = { statusCode: 429 };
+      }
+    }
+    current = current.cause;
+  }
+  return found;
 }

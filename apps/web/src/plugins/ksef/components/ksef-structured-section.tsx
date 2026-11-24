@@ -22,6 +22,7 @@
  * @module plugins/ksef/components
  */
 import type { ReactElement } from 'react';
+import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
@@ -31,35 +32,42 @@ import {
   KSEF_FORMA_PLATNOSCI_VALUES,
   KSEF_LINE_UNIT_SUGGESTIONS,
 } from './ksef-setup.schema';
+import {
+  KSEF_EXEMPTION_KIND_VALUES,
+  KSEF_MARGIN_KIND_VALUES,
+  KSEF_PLACEHOLDER_EXEMPTION_TEXT,
+} from '../lib/ksef-annotations-config';
+import { isStructurallyPlausibleNip, isValidNipChecksum, normalizeNip } from '../lib/ksef-nip';
+import { interpolate } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 
-const ENVIRONMENT_LABELS: Record<(typeof KSEF_ENVIRONMENT_VALUES)[number], string> = {
-  test: 'Test (sandbox)',
-  demo: 'Demo (pre-production)',
-  prod: 'Production (live clearance)',
-};
-
-const FORMA_PLATNOSCI_LABELS: Record<(typeof KSEF_FORMA_PLATNOSCI_VALUES)[number], string> = {
-  '1': 'Gotówka (cash)',
-  '2': 'Karta (card)',
-  '3': 'Bon (voucher)',
-  '4': 'Czek (cheque)',
-  '5': 'Kredyt (credit)',
-  '6': 'Przelew (bank transfer)',
-  '7': 'Mobilna (mobile payment)',
-};
 
 export function KsefStructuredSection({
   form,
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const messages = useKsefMessages();
+  const copy = messages.ksefStructuredSection;
+  const fields = messages.common.fields;
+  const nip = normalizeNip(form.watch('sellerNip') ?? '');
+  // DEF-28: a valid checksum on an odd shape is worth a word, not a refusal.
+  const nipLooksOdd = isValidNipChecksum(nip) && !isStructurallyPlausibleNip(nip);
+  const marginScheme = form.watch('annMarginScheme') === 'true';
+  const exemptionText = (form.watch('annExemptionText') ?? '').trim();
+  const checkbox = (field: 'ksefAllowCrossBorder' | 'annCashAccounting' | 'annSelfBilling' | 'annMarginScheme') => ({
+    checked: form.watch(field) === 'true',
+    disabled: !configIsParseable,
+    onChange: (event: { target: { checked: boolean } }) =>
+      syncStructuredToJson(field, event.target.checked ? 'true' : ''),
+  });
   return (
     <>
       <FormField
-        label="Environment"
+        label={fields.environment.label}
         name="ksefEnvironment"
         error={form.formState.errors.ksefEnvironment?.message}
-        description="KSeF target environment (config.env). Production clears live invoices."
+        description={copy.environment.description}
       >
         <Select
           value={form.watch('ksefEnvironment') ?? ''}
@@ -68,139 +76,144 @@ export function KsefStructuredSection({
           invalid={Boolean(form.formState.errors.ksefEnvironment)}
         >
           <option value="" disabled>
-            Select an environment…
+            {copy.environment.placeholder}
           </option>
           {KSEF_ENVIRONMENT_VALUES.map((env) => (
             <option key={env} value={env}>
-              {ENVIRONMENT_LABELS[env]}
+              {messages.common.environments[env]}
             </option>
           ))}
         </Select>
       </FormField>
       <FormField
-        label="Seller NIP"
+        label={fields.sellerNip.label}
         name="sellerNip"
         error={form.formState.errors.sellerNip?.message}
-        description="10-digit Polish tax identifier of the issuing seller. Required to issue invoices."
+        description={fields.sellerNip.description}
       >
         <Input
           value={form.watch('sellerNip') ?? ''}
           onChange={(event) => syncStructuredToJson('sellerNip', event.target.value)}
-          placeholder="1234567890"
+          placeholder={fields.sellerNip.placeholder}
           inputMode="numeric"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerNip)}
         />
       </FormField>
+      {nipLooksOdd ? (
+        <Alert tone="warning" density="compact">
+          {copy.nipLooksOdd}
+        </Alert>
+      ) : null}
       <FormField
-        label="Seller legal name"
+        label={fields.sellerName.label}
         name="sellerName"
         error={form.formState.errors.sellerName?.message}
-        description="Registered company name (Podmiot1) printed on the invoice. Required to issue."
+        description={fields.sellerName.description}
       >
         <Input
           value={form.watch('sellerName') ?? ''}
           onChange={(event) => syncStructuredToJson('sellerName', event.target.value)}
-          placeholder="ACME Sp. z o.o."
+          placeholder={fields.sellerName.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerName)}
         />
       </FormField>
       <FormField
-        label="Address line 1"
+        label={fields.addressLine1.label}
         name="sellerAddressLine1"
         error={form.formState.errors.sellerAddressLine1?.message}
-        description="Street and building number. Required to issue."
+        description={fields.addressLine1.description}
       >
         <Input
           value={form.watch('sellerAddressLine1') ?? ''}
           onChange={(event) => syncStructuredToJson('sellerAddressLine1', event.target.value)}
-          placeholder="ul. Przykładowa 1"
+          placeholder={fields.addressLine1.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerAddressLine1)}
         />
       </FormField>
       <FormField
-        label="Address line 2"
+        label={fields.addressLine2.label}
         name="sellerAddressLine2"
         error={form.formState.errors.sellerAddressLine2?.message}
-        description="Apartment, suite, or unit. Optional."
+        description={fields.addressLine2.description}
       >
         <Input
           value={form.watch('sellerAddressLine2') ?? ''}
           onChange={(event) => syncStructuredToJson('sellerAddressLine2', event.target.value)}
-          placeholder="(optional)"
+          placeholder={fields.optional}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerAddressLine2)}
         />
       </FormField>
       <FormField
-        label="City"
+        label={fields.city.label}
         name="sellerCity"
         error={form.formState.errors.sellerCity?.message}
-        description="Required to issue."
+        description={fields.city.description}
       >
         <Input
           value={form.watch('sellerCity') ?? ''}
           onChange={(event) => syncStructuredToJson('sellerCity', event.target.value)}
-          placeholder="Warszawa"
+          placeholder={fields.city.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerCity)}
         />
       </FormField>
       <FormField
-        label="Postal code"
+        label={fields.postalCode.label}
         name="sellerPostalCode"
         error={form.formState.errors.sellerPostalCode?.message}
-        description="Required to issue."
+        description={fields.postalCode.description}
       >
         <Input
           value={form.watch('sellerPostalCode') ?? ''}
           onChange={(event) => syncStructuredToJson('sellerPostalCode', event.target.value)}
-          placeholder="00-001"
+          placeholder={fields.postalCode.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerPostalCode)}
         />
       </FormField>
       <FormField
-        label="Country"
+        label={fields.country.label}
         name="sellerCountryIso2"
         error={form.formState.errors.sellerCountryIso2?.message}
-        description="ISO 3166-1 alpha-2 code. Defaults to PL."
+        description={fields.country.description}
       >
         <Input
           value={form.watch('sellerCountryIso2') ?? ''}
           onChange={(event) => syncStructuredToJson('sellerCountryIso2', event.target.value)}
-          placeholder="PL"
+          placeholder={fields.country.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerCountryIso2)}
         />
       </FormField>
       <FormField
-        label="Context identifier"
+        label={fields.contextIdentifier.label}
         name="contextIdentifier"
         error={form.formState.errors.contextIdentifier?.message}
-        description="Optional KSeF subject/context identifier when issuing on behalf of a sub-unit."
+        description={copy.contextIdentifier.description}
       >
         <Input
           value={form.watch('contextIdentifier') ?? ''}
           onChange={(event) => syncStructuredToJson('contextIdentifier', event.target.value)}
-          placeholder="(optional)"
+          placeholder={fields.optional}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.contextIdentifier)}
         />
       </FormField>
       <FormField
-        label="Default payment method"
+        label={copy.paymentMethod.label}
         name="paymentFormaPlatnosci"
         error={form.formState.errors.paymentFormaPlatnosci?.message}
-        description="Emitted as Platnosc/FormaPlatnosci. Optional — omit to leave payment info off issued invoices."
+        description={copy.paymentMethod.description}
       >
         <Select
           value={form.watch('paymentFormaPlatnosci') ?? ''}
@@ -208,24 +221,24 @@ export function KsefStructuredSection({
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.paymentFormaPlatnosci)}
         >
-          <option value="">(not set)</option>
+          <option value="">{copy.notSet}</option>
           {KSEF_FORMA_PLATNOSCI_VALUES.map((code) => (
             <option key={code} value={code}>
-              {FORMA_PLATNOSCI_LABELS[code]}
+              {messages.common.formaPlatnosci[code]}
             </option>
           ))}
         </Select>
       </FormField>
       <FormField
-        label="Bank account number"
+        label={copy.bankAccount.label}
         name="paymentBankAccountNrRb"
         error={form.formState.errors.paymentBankAccountNrRb?.message}
-        description="Emitted as Platnosc/RachunekBankowy/NrRB. Optional."
+        description={copy.bankAccount.description}
       >
         <Input
           value={form.watch('paymentBankAccountNrRb') ?? ''}
           onChange={(event) => syncStructuredToJson('paymentBankAccountNrRb', event.target.value)}
-          placeholder="61 1090 1014 0000 0000 9999 9999"
+          placeholder={copy.bankAccount.placeholder}
           className="mono-text"
           autoComplete="off"
           disabled={!configIsParseable}
@@ -233,30 +246,30 @@ export function KsefStructuredSection({
         />
       </FormField>
       <FormField
-        label="Bank name"
+        label={copy.bankName.label}
         name="paymentBankAccountBankName"
         error={form.formState.errors.paymentBankAccountBankName?.message}
-        description="Emitted as Platnosc/RachunekBankowy/NazwaBanku. Optional."
+        description={copy.bankName.description}
       >
         <Input
           value={form.watch('paymentBankAccountBankName') ?? ''}
           onChange={(event) => syncStructuredToJson('paymentBankAccountBankName', event.target.value)}
-          placeholder="(optional)"
+          placeholder={fields.optional}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.paymentBankAccountBankName)}
         />
       </FormField>
       <FormField
-        label="SWIFT"
+        label={copy.swift.label}
         name="paymentBankAccountSwift"
         error={form.formState.errors.paymentBankAccountSwift?.message}
-        description="Emitted as Platnosc/RachunekBankowy/SWIFT. Optional — for foreign-currency transfers."
+        description={copy.swift.description}
       >
         <Input
           value={form.watch('paymentBankAccountSwift') ?? ''}
           onChange={(event) => syncStructuredToJson('paymentBankAccountSwift', event.target.value)}
-          placeholder="(optional)"
+          placeholder={fields.optional}
           className="mono-text"
           autoComplete="off"
           disabled={!configIsParseable}
@@ -264,61 +277,61 @@ export function KsefStructuredSection({
         />
       </FormField>
       <FormField
-        label="Default payment term (days)"
+        label={copy.paymentTerm.label}
         name="paymentTermDays"
         error={form.formState.errors.paymentTermDays?.message}
-        description="Emitted as Platnosc/TerminPlatnosci/TerminOpis (days from the issue date). Optional; max 999."
+        description={copy.paymentTerm.description}
       >
         <Input
           value={form.watch('paymentTermDays') ?? ''}
           onChange={(event) => syncStructuredToJson('paymentTermDays', event.target.value)}
-          placeholder="14"
+          placeholder={copy.paymentTerm.placeholder}
           inputMode="numeric"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.paymentTermDays)}
         />
       </FormField>
       <FormField
-        label="Early-payment discount conditions"
+        label={copy.skontoConditions.label}
         name="paymentSkontoConditions"
         error={form.formState.errors.paymentSkontoConditions?.message}
-        description="Emitted as Platnosc/Skonto/WarunkiSkonta. Optional; required together with the discount amount."
+        description={copy.skontoConditions.description}
       >
         <Input
           value={form.watch('paymentSkontoConditions') ?? ''}
           onChange={(event) => syncStructuredToJson('paymentSkontoConditions', event.target.value)}
-          placeholder="e.g. paid within 7 days"
+          placeholder={copy.skontoConditions.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.paymentSkontoConditions)}
         />
       </FormField>
       <FormField
-        label="Early-payment discount amount"
+        label={copy.skontoAmount.label}
         name="paymentSkontoAmount"
         error={form.formState.errors.paymentSkontoAmount?.message}
-        description="Emitted as Platnosc/Skonto/WysokoscSkonta. Optional; required together with the discount conditions."
+        description={copy.skontoAmount.description}
       >
         <Input
           value={form.watch('paymentSkontoAmount') ?? ''}
           onChange={(event) => syncStructuredToJson('paymentSkontoAmount', event.target.value)}
-          placeholder="e.g. 2%"
+          placeholder={copy.skontoAmount.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.paymentSkontoAmount)}
         />
       </FormField>
       <FormField
-        label="Default line unit"
+        label={fields.lineUnit.label}
         name="invoiceDefaultLineUnit"
         error={form.formState.errors.invoiceDefaultLineUnit?.message}
-        description="Unit of measure stamped on issued-invoice lines (config.invoiceDefaults.lineUnit). Clear it to omit the unit from documents."
+        description={copy.lineUnit.description}
       >
         <Input
           value={form.watch('invoiceDefaultLineUnit') ?? ''}
           onChange={(event) => syncStructuredToJson('invoiceDefaultLineUnit', event.target.value)}
           list="ksef-edit-line-unit-suggestions"
-          placeholder="szt."
+          placeholder={fields.lineUnit.placeholder}
           autoComplete="off"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.invoiceDefaultLineUnit)}
@@ -330,6 +343,91 @@ export function KsefStructuredSection({
           <option key={unit} value={unit} />
         ))}
       </datalist>
+
+      {/* DEF-18 / DEF-20 / DEF-22: the seller's tax treatment. OpenLinker
+          suggests; each of these is the seller's own decision. */}
+      <fieldset className="ksef-tax-treatment">
+        <legend>{copy.taxTreatment.legend}</legend>
+        <p className="text-muted">{copy.taxTreatment.intro}</p>
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('annCashAccounting')} />
+          <span>{copy.taxTreatment.cashAccounting}</span>
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('annSelfBilling')} />
+          <span>{copy.taxTreatment.selfBilling}</span>
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('annMarginScheme')} />
+          <span>{copy.taxTreatment.marginScheme}</span>
+        </label>
+        {marginScheme ? (
+          <FormField label={copy.marginKind.label} name="annMarginKind">
+            <Select
+              value={form.watch('annMarginKind') ?? ''}
+              onChange={(event) => syncStructuredToJson('annMarginKind', event.target.value)}
+              disabled={!configIsParseable}
+            >
+              <option value="">{copy.marginKind.default}</option>
+              {KSEF_MARGIN_KIND_VALUES.map((kind) => (
+                <option key={kind} value={kind}>
+                  {copy.marginKind.options[kind]}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+        ) : null}
+        <FormField
+          label={copy.exemptionKind.label}
+          name="annExemptionKind"
+          error={form.formState.errors.annExemptionKind?.message}
+          description={copy.exemptionKind.description}
+        >
+          <Select
+            value={form.watch('annExemptionKind') ?? ''}
+            onChange={(event) => syncStructuredToJson('annExemptionKind', event.target.value)}
+            disabled={!configIsParseable}
+            invalid={Boolean(form.formState.errors.annExemptionKind)}
+          >
+            <option value="">{copy.notSet}</option>
+            {KSEF_EXEMPTION_KIND_VALUES.map((kind) => (
+              <option key={kind} value={kind}>
+                {copy.exemptionKind.options[kind]}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField
+          label={copy.exemptionText.label}
+          name="annExemptionText"
+          error={form.formState.errors.annExemptionText?.message}
+          description={copy.exemptionText.description}
+        >
+          <Input
+            value={form.watch('annExemptionText') ?? ''}
+            onChange={(event) => syncStructuredToJson('annExemptionText', event.target.value)}
+            placeholder={copy.exemptionText.placeholder}
+            maxLength={256}
+            autoComplete="off"
+            disabled={!configIsParseable}
+            invalid={Boolean(form.formState.errors.annExemptionText)}
+          />
+        </FormField>
+        {exemptionText.length === 0 ? (
+          <Alert tone="warning" density="compact">
+            {interpolate(copy.exemptionText.missing, { text: KSEF_PLACEHOLDER_EXEMPTION_TEXT })}
+          </Alert>
+        ) : null}
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('ksefAllowCrossBorder')} />
+          <span>
+            {copy.crossBorder.label}
+            <small className="text-muted" style={{ display: 'block' }}>
+              {copy.crossBorder.description}
+            </small>
+          </span>
+        </label>
+      </fieldset>
     </>
   );
 }

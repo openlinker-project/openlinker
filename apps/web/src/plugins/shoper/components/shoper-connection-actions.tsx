@@ -3,18 +3,22 @@
  *
  * Plugin-owned action row for Shoper connections: "Configure webhooks"
  * (#3644). Registers one webhook with the shop that calls back into
- * OpenLinker. Shoper has no test ping, so success means the shop accepted
- * the registration.
+ * OpenLinker, carrying order events when Order source is enabled and product
+ * events when Product master is (the backend picks the set and refuses with
+ * neither). Shoper has no test ping, so success means the shop accepted the
+ * registration.
  *
  * @module plugins/shoper/components
  */
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useShoperMessages } from '../messages';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import type { Connection } from '../../../features/connections';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ShoperConnectionActionsProps {
   connection: Connection;
@@ -27,12 +31,17 @@ export function ShoperConnectionActions({
 }: ShoperConnectionActionsProps): ReactElement {
   const configureWebhooks = useConfigureWebhooksMutation();
   const { showToast } = useToast();
+  const copy = useShoperMessages().shoperConnectionActions;
 
   const webhooksConfigured =
     typeof connection.config === 'object' &&
     connection.config !== null &&
     (connection.config as Record<string, unknown>).webhooksConfigured === true;
-  const orderSourceEnabled = connection.enabledCapabilities.includes('OrderSource');
+  // Mirrors the provisioner's own refusal: webhooks need a capability that
+  // consumes them. The backend refuses either way; this keeps the button honest.
+  const webhookCapabilityEnabled =
+    connection.enabledCapabilities.includes('OrderSource') ||
+    connection.enabledCapabilities.includes('ProductMaster');
 
   async function handleConfigureWebhooks(): Promise<void> {
     try {
@@ -40,21 +49,21 @@ export function ShoperConnectionActions({
       if (result.webhooksConfigured) {
         showToast({
           tone: 'success',
-          title: 'Webhooks configured',
-          description: 'Shoper will now notify OpenLinker when an order is created or changes.',
+          title: copy.toast.configured.title,
+          description: copy.toast.configured.description,
         });
       } else {
         showToast({
           tone: 'error',
-          title: 'Webhook registration failed',
-          description: result.warning ?? 'Shoper did not accept the webhook registration.',
+          title: copy.toast.failed.title,
+          description: result.warning ?? copy.toast.failed.notAccepted,
         });
       }
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Webhook registration failed',
-        description: (error as Error).message,
+        title: copy.toast.failed.title,
+        description: describeApiError(error, 'shoper'),
       });
     }
   }
@@ -62,24 +71,23 @@ export function ShoperConnectionActions({
   return (
     <div className="action-list__item">
       <div>
-        <strong>Configure webhooks</strong>
+        <strong>{copy.title}</strong>
         <p className="muted-text">
-          Registers a webhook in Shoper so new and changed orders reach OpenLinker right away.
-          Needs the OL callback URL and the Order source capability.
-          {webhooksConfigured ? ' Currently configured ✓' : ''}
+          {copy.description}
+          {webhooksConfigured ? ` ${copy.currentlyConfigured}` : ''}
         </p>
       </div>
-      <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone={webhooksConfigured ? 'secondary' : 'primary'}
-          disabled={configureWebhooks.isPending || readOnly || !orderSourceEnabled}
+          disabled={configureWebhooks.isPending || readOnly || !webhookCapabilityEnabled}
           onClick={() => void handleConfigureWebhooks()}
         >
           {configureWebhooks.isPending
-            ? 'Configuring...'
+            ? copy.configuring
             : webhooksConfigured
-              ? 'Re-configure webhooks'
-              : 'Configure webhooks'}
+              ? copy.reconfigure
+              : copy.configure}
         </Button>
       </ReadOnlyLock>
     </div>

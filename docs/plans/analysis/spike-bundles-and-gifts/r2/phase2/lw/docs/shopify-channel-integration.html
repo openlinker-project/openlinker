@@ -1,0 +1,110 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/shopify-channel-integration"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Shopify channel integration</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Shopify channel integration';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1_1757326147" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+Shopify Channel Integration
+<a href="/articles/documentation/shopify-channel-integration/a/h1_1757326147" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-channel-integration/a/h1_1757326147&#39;,this);"></a></h1>
+
+<div class="row">
+  
+  <div class="main-intro">
+    Shopify integration allows you to connect to your Shopify seller account via API.  
+    
+  </div>
+  <div class="main-logo">
+    <img class="main-logo" title="aliexpress logo200x200new" src="/resources/Storage/documentation/Logos/Shopify.png" data-id="27930" data-shortcode="image" style="" alt="Shopify" data-ch-thumbnail-mode="none"/>
+  </div>
+</div>
+
+
+<div class="alert-success">
+  <span class="fa fa-info-circle icon-background-blue"></span>&nbsp;Shopify&nbsp;channel integration is a <b>Linnworks Direct&nbsp;</b>integration - developed, maintained, and supported by Linnworks.
+</div>
+
+
+
+
+
+<h3 id="h4__751493465" style="" data-has-heading-anchor="true">
+  Supported features
+<a href="/articles/documentation/shopify-channel-integration/a/h4__751493465" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-channel-integration/a/h4__751493465&#39;,this);"></a></h3>
+    <table class="table-striped">
+  <tbody>
+    <tr><td><a href="/articles/documentation/channels-inventory-updates" target="_blank" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">Inventory Updates</a><br/></td><td>Linnworks can automatically send changes in stock levels to the channel.</td></tr><tr><td><a href="/articles/documentation/channels-order-download" target="_blank" onclick="return n(&#39;!documentation/channels-order-download&#39;,this);">Order Download</a><br/></td><td>Channel orders can be automatically downloaded into Linnworks.<br/></td></tr><tr><td width="20%">
+        <a href="/articles/documentation/channels-tax" target="_blank" onclick="return n(&#39;!documentation/channels-tax&#39;,this);">Channel Tax</a>
+      </td><td>Tax information and settings displayed on orders in Linnworks are provided by the channel during order download.</td></tr>
+  <tr><td width="20%">
+      <a href="/articles/documentation/channels-inventory-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a>
+    </td><td>
+      Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+    </td></tr>
+  <tr><td width="20%"><a href="/articles/documentation/listing-creation-steps" target="_blank" onclick="return n(&#39;!documentation/listing-creation-steps&#39;,this);">Listing Creation</a>
+    </td><td>
+      New listings on the channel can be created via Linnworks. A full guide on the Shopify listing tool is <a href="/articles/documentation/shopify-configurator" onclick="return n(&#39;!documentation/shopify-configurator&#39;,this);">here</a>.</td></tr>
+  <tr><td width="20%">
+      <a href="/articles/documentation/channels-location-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+    </td><td>
+      Orders can be downloaded and inventory updates sent from specific locations.
+    </td></tr>
+  <tr><td width="20%">
+      <a href="/articles/documentation/channels-order-cancellation" target="_blank" onclick="return n(&#39;!documentation/channels-order-cancellation&#39;,this);">Order Cancellation</a>
+    </td><td>
+      Orders can be canceled on the channel via Linnworks.
+    </td></tr>
+  <tr><td width="20%">
+      <a href="/articles/documentation/channels-order-despatch" target="_blank" onclick="return n(&#39;!documentation/channels-order-despatch&#39;,this);">Order Dispatch</a>
+    </td><td>
+      Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+    </td></tr>
+  
+  <tr><td width="20%">
+      <a href="/articles/documentation/channels-order-refunds" target="_blank" onclick="return n(&#39;!documentation/channels-order-refunds&#39;,this);">Order Refunds</a>
+    </td><td>
+      Orders can be refunded on the channel via Linnworks
+    </td></tr>
+  <tr><td width="20%">
+      <a href="/articles/documentation/channels-payment-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a>
+    </td><td>
+      Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the selection on the channel.
+    </td></tr>
+  <tr><td>
+      <a href="/articles/documentation/channels-price-change" target="_blank" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a>
+    </td><td>
+      Prices on channel listings can be automatically updated via Linnworks.
+    </td></tr>
+  <tr><td width="20%">
+      <a href="/articles/documentation/channels-shipping-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a>
+    </td><td>
+      Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the selection on the channel.
+    </td></tr>
+</tbody>
+</table>
+<span class=" CHNavCaption"><h4 id="h4_15828802" data-has-heading-anchor="true">Next steps:<a href="/articles/documentation/shopify-channel-integration/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/shopify-channel-integration/a/h4_15828802&#39;,this);"></a></h4></span><ul class="CHSeeAlso_hasChildren CHSeeAlso"><li class="CHSeeAlso_item CHSeeAlso_itemChild"><a href="/articles/documentation/shopify-rules" onclick="return n(&#39;!documentation/shopify-rules&#39;,this);">Rules &amp; Guidelines</a></li><li class="CHSeeAlso_item CHSeeAlso_itemChild"><a href="/articles/documentation/shopify-add-new" onclick="return n(&#39;!documentation/shopify-add-new&#39;,this);">Add New</a></li><li class="CHSeeAlso_item CHSeeAlso_itemChild"><a href="/articles/documentation/shopify-settings" onclick="return n(&#39;!documentation/shopify-settings&#39;,this);">Configure</a></li><li class="CHSeeAlso_item CHSeeAlso_itemChild"><a href="/articles/documentation/shopify-bopis" onclick="return n(&#39;!documentation/shopify-bopis&#39;,this);">Shopify BOPIS</a></li></ul>
+<br/><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

@@ -1,0 +1,84 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "Webservice API",
+      "description": "Connect a PrestaShop store via the Webservice API. You will need the shop URL and a webservice key."
+    }
+  },
+  "prestashopConnectionActions": {
+    "configure": "Configure webhooks",
+    "configuring": "Configuring...",
+    "currentlyConfigured": "Currently configured ✓",
+    "description": "Push Base URL, Connection ID, and a freshly-rotated Webhook Secret to the PrestaShop module via WS. Verifies with a synchronous test ping.",
+    "reconfigure": "Re-configure webhooks",
+    "title": "Configure webhooks",
+    "toast": {
+      "configured": {
+        "description": "PrestaShop module updated and verified by a test ping. You're done.",
+        "title": "Webhooks configured"
+      },
+      "failed": {
+        "notAccepted": "PrestaShop did not accept the configuration push.",
+        "title": "Configuration push failed"
+      },
+      "pingMissing": {
+        "description": "Configuration is in place but the test ping did not arrive. Click again to retry, or wait for the next real event.",
+        "title": "Webhooks configured (ping not received)"
+      }
+    }
+  },
+  "prestashopCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "Stored securely on the server. Rotate to replace the key without restarting the API.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "envBackedLabel": "Credentials",
+    "label": "Webservice key",
+    "newKeyPlaceholder": "New webservice key",
+    "rotate": "Rotate webservice key",
+    "rotating": "Rotating...",
+    "save": "Save new key",
+    "toast": {
+      "description": "The new webservice key is now in use.",
+      "title": "Credentials rotated"
+    }
+  },
+  "prestashopSetupRoute": {
+    "crumb": "Connect PrestaShop"
+  },
+  "prestashopStructuredSection": {
+    "callbackUrl": {
+      "description": "OpenLinker's URL from PrestaShop's perspective - used by the PS module to POST webhooks back to OL. Pre-filled with the API address this app uses; override for Docker dev (e.g. http://host.docker.internal:3000) or unusual deploys. Required to use the 'Configure webhooks' action.",
+      "label": "OL callback URL",
+      "placeholder": "https://api.openlinker.example"
+    },
+    "fallbackCarrier": {
+      "description": "Used when an Allegro shipping method has no carrier mapping. Leave unset to use the OpenLinker Dynamic carrier (exact Allegro shipping cost) at sync time - works only when the OL PrestaShop module is installed.",
+      "dynamicOption": "{label} - exact Allegro cost",
+      "failed": "Failed to load carriers",
+      "label": "Fallback carrier (optional)",
+      "loading": "Loading carriers…",
+      "noFallbackWarning": "No fallback carrier is set and the OpenLinker PrestaShop module isn't installed on this connection. Sync will fail for any Allegro shipping method without a carrier mapping until you pick a fallback or install the OL PS module.",
+      "none": "None - use OpenLinker Dynamic at runtime"
+    },
+    "inpostModuleType": {
+      "description": "Select the official InPost PrestaShop module installed on this shop. When set, OL reads the paczkomat locker code from the delivery address during order ingestion. Leave unset if InPost orders are not in use.",
+      "label": "InPost PS module type (optional)",
+      "none": "None (disabled)",
+      "officialInpost": "Official InPost module (address2)"
+    },
+    "shopId": {
+      "description": "Only needed for multi-shop PrestaShop installations.",
+      "label": "Shop ID (optional)"
+    },
+    "shopUrl": {
+      "description": "The public URL of the PrestaShop storefront.",
+      "label": "Shop URL",
+      "placeholder": "https://shop.example.com"
+    },
+    "storefrontUrl": {
+      "description": "Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same - defaults to Shop URL.",
+      "label": "Storefront URL (optional)",
+      "placeholder": "https://shop.example.com"
+    }
+  }
+}

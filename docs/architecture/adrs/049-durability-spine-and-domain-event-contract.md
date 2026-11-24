@@ -287,6 +287,33 @@ group" — that drain shipped in v0.8.0 and was itself deleted by #2300. Both no
 two consumer groups remain (`master-deletion-offer-pause`, `job-intake`) and that the
 `webhook-handler` group has no reader anywhere in the tree.
 
+## Amendment (2026-10-25) - one delivery, several jobs
+
+The #2280 amendment above built the gate as one delivery row plus at most ONE work row. Shoper broke
+that assumption: it sends a single `product.edit` both for a product edit and for a panel stock edit,
+with nothing in the body to tell them apart, so routing it to the product sync alone left a stock
+change waiting for the inventory sweep. The gate now commits a LIST of work rows with the delivery
+row, still in one transaction. What changed and what did not:
+
+- **The fan-out is decided by the plugin, not the core routing table.** `WebhookEventTranslatorPort.translate`
+  may return an ordered array of `CanonicalInboundEvent`s (an empty array means undecodable, like
+  `null`). `InboundRoutingPolicyService` is untouched: it still maps one event to one job, so
+  PrestaShop, WooCommerce and every other single-event plugin produce byte-identical jobs and keys.
+- **Decision 4 is extended, not reopened.** The first event's job keeps the derived
+  `{platformType}:{connectionId}:{sourceEventId}` key - the lookup endpoint and the frontend rebuild
+  exactly that form - and each later job's key is that plus `:{jobType}`. Keys follow the event's
+  POSITION in the translator's list rather than the order in which events happened to pass the
+  capability gate, so an event's key is stable across redeliveries even when the gate changes in
+  between (a primary that was gated on the first delivery must not find its key taken by a sibling on
+  the second). Two events routing to the same job type would share a key, so the second is dropped.
+- **Partial gating routes what it can.** Events that resolve become jobs and gated ones are logged;
+  only a delivery where NOTHING resolves is dead-lettered. When the primary event is the gated one, the
+  delivery row records the first job that did resolve.
+- **Atomicity is unchanged in kind.** Every job is inserted before the delivery row in the same
+  transaction, so a failure on any job rolls back the earlier jobs and the delivery row together, and
+  the source's retry re-enters cleanly. The delivery row's single `downstreamJobId` names the primary;
+  the dead-letter repair targets the primary. A replay dedups every job on its own key.
+
 ## References
 
 - Related issues: #2162, #2163, #2164, #2165, #2280, #1135, #1134, #1396, #2603, #2604, #2614, #2652 (the shop-side outbox amendment)

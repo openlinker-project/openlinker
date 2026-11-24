@@ -9,6 +9,7 @@ import type {
   ShoperOption,
   ShoperOptionValue,
   ShoperProduct,
+  ShoperProductImage,
   ShoperStock,
 } from '../../domain/types/shoper-api.types';
 import type { ShoperMapContext } from '../mappers/shoper-product.mapper';
@@ -67,6 +68,20 @@ export function buildProduct(overrides: Partial<ShoperProduct> = {}): ShoperProd
   };
 }
 
+/** A `product-images` row, shaped like product 161's live gallery (26 Oct 2026). */
+export function buildImage(overrides: Partial<ShoperProductImage> = {}): ShoperProductImage {
+  return {
+    gfx_id: '312',
+    product_id: '161',
+    unic_name: '312',
+    extension: 'jpg',
+    order: '1',
+    hidden: '0',
+    main: 0,
+    ...overrides,
+  };
+}
+
 /** Shoper list envelope: `count` is a string, `pages` / `page` are numbers. */
 export function envelope<T>(
   list: readonly T[],
@@ -92,9 +107,13 @@ export const LIVE_OPTION_VALUES: readonly ShoperOptionValue[] = [
   { ovalue_id: '76', option_id: '10', translations: { pl_PL: { value: 'Shoper blue' } } },
 ];
 
-/** The three `product-stocks` rows of live product 127: one default with `[]`, two with `{ "10": id }`. */
+/**
+ * The three `product-stocks` rows of live product 127: the base stock
+ * (`extended: "0"`, options `[]`) and two variant stocks (`extended: "1"`,
+ * `{ "10": id }`). `extended` re-read live on 26 Oct 2026.
+ */
 export const LIVE_VARIANT_STOCKS: readonly ShoperStock[] = [
-  buildStock({ stock_id: '215', product_id: '127', code: '1E72-8147C_20250917135829', ean: '', options: [] }),
-  buildStock({ stock_id: '217', product_id: '127', code: '', ean: '', default: '0', options: { '10': '68' } }),
-  buildStock({ stock_id: '218', product_id: '127', code: '', ean: '', default: '0', options: { '10': '76' } }),
+  buildStock({ stock_id: '215', product_id: '127', code: '1E72-8147C_20250917135829', ean: '', options: [], extended: '0' }),
+  buildStock({ stock_id: '217', product_id: '127', code: '', ean: '', default: '0', options: { '10': '68' }, extended: '1' }),
+  buildStock({ stock_id: '218', product_id: '127', code: '', ean: '', default: '0', options: { '10': '76' }, extended: '1' }),
 ];

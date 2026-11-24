@@ -25,11 +25,25 @@ export interface WooCommerceOrder {
   date_paid_gmt?: string | null;
   /** Site-local twin of `date_paid_gmt`. Read only as a presence signal. */
   date_paid?: string | null;
+  /**
+   * The payment gateway id the buyer chose, e.g. `cod`, `bacs`, `paypal`.
+   * WooCommerce core ships a handful of ids; every other value is a slug a
+   * store's own plugin picked, so only the core ids are evidence of a method
+   * (see `deriveWooCommercePaymentMethod`). Absent on a payload that omits it.
+   */
+  payment_method?: string;
+  /**
+   * The buyer's checkout note to the seller (#3538). WooCommerce core always
+   * returns the field, as `''` when the buyer wrote nothing; absent only on a
+   * payload that omits it, which reads as unknown.
+   */
+  customer_note?: string;
   customer_id: number; // 0 = guest
   billing: WooCommerceBillingAddress;
   shipping: WooCommerceShippingAddress;
   line_items: WooCommerceLineItem[];
   shipping_lines: WooCommerceShippingLine[];
+  tax_lines?: WooCommerceTaxLine[];
   total: string; // decimal string
   total_tax: string; // decimal string
   shipping_total: string; // decimal string, tax EXCLUDED
@@ -115,6 +129,16 @@ export interface WooCommerceShippingLine {
   method_id: string;
   method_title: string;
   total: string;
+  /** Tax on this shipping line; `id` is the `tax_lines[].rate_id` it was charged under. */
+  taxes?: { id: number; total: string }[];
+}
+
+/** One tax rate applied to the order, with the part of it charged on shipping. */
+export interface WooCommerceTaxLine {
+  id?: number;
+  rate_id: number;
+  rate_percent?: number;
+  shipping_tax_total?: string; // decimal string
 }
 
 export interface WooCommerceFeeLine {

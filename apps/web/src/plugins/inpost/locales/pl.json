@@ -1,0 +1,106 @@
+{
+  "inpostCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Token Bearer ShipX bezpiecznie przechowywany na serwerze. Wymień go, aby zastąpić token bez restartu API.",
+    "envBacked": "Zmienna środowiskowa (nie można edytować w interfejsie)",
+    "envBackedLabel": "Dane uwierzytelniające",
+    "label": "Token API ShipX",
+    "newTokenPlaceholder": "Nowy token API ShipX",
+    "rotate": "Wymień token API",
+    "rotating": "Wymienianie...",
+    "save": "Zapisz nowy token",
+    "toast": {
+      "description": "Nowy token API ShipX jest już w użyciu.",
+      "title": "Dane uwierzytelniające wymienione"
+    }
+  },
+  "inpostSetupRoute": {
+    "crumb": "Połącz InPost"
+  },
+  "inpostWebhookRunbook": {
+    "copyEmail": "Kopiuj szablon e-maila",
+    "emailTemplate": "Hello InPost Integration Team,\n\nPlease enable shipment-tracking webhooks for our account, delivered to:\n\n{webhookUrl}\n\nTopic: Shipment.Tracking\n\nThank you.",
+    "generate": "Wygeneruj sekret webhooka",
+    "generating": "Generowanie...",
+    "intro": "ShipX API nie ma punktu końcowego do zakładania webhooków, więc OpenLinker nie może zarejestrować webhooka automatycznie. Zarejestruj go samodzielnie:",
+    "rotate": "Wymień sekret webhooka",
+    "secretAlert": {
+      "body": "Zapisz go teraz - nie będzie można go ponownie odczytać. Ustaw go w InPost jako sekret podpisywania webhooków; musi być zgodny z tym, który przechowuje OpenLinker.",
+      "title": "Sekret webhooka (wyświetlany jeden raz)"
+    },
+    "steps": {
+      "fallback": "<strong>Rozwiązanie zapasowe - e-mail do zespołu integracji.</strong> Jeśli konto nie ma dostępu do panelu, użyj przycisku szablonu, aby wysłać na adres <code>{email}</code> ten sam punkt końcowy.",
+      "hmac": "<strong>Wygeneruj sekret HMAC.</strong> Kliknij poniżej <em>Wygeneruj sekret webhooka</em> i ustaw wyświetloną wartość w InPost, aby dostarczane zdarzenia były nim podpisywane. OpenLinker weryfikuje każde dostarczenie przez HMAC-SHA256 (ADR-021); brak sekretu lub niezgodny sekret kończy się odrzuceniem z kodem <code>401 Invalid webhook signature</code>.",
+      "primary": "<strong>Sposób podstawowy - panel InPost Manager.</strong> W ustawieniach organizacji otwórz <em>Adresy webhook</em> → <em>Dodaj do API</em> i dodaj poniższy punkt końcowy (InPost zweryfikuje go metodą ping-pong)."
+    },
+    "title": "Konfiguracja webhooka (instrukcja)",
+    "toast": {
+      "copied": {
+        "description": "Wyślij go na adres {email}, jeśli nie możesz samodzielnie zarejestrować webhooka w panelu InPost Manager.",
+        "title": "Skopiowano szablon e-maila"
+      },
+      "copyFailed": "Nie udało się skopiować",
+      "generateFailed": "Nie udało się wygenerować sekretu webhooka",
+      "generated": {
+        "description": "Skopiuj go teraz - jest wyświetlany tylko raz. Ustaw tę samą wartość w InPost.",
+        "title": "Wygenerowano sekret webhooka"
+      }
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "ShipX API",
+      "description": "Połącz konto kurierskie InPost ShipX. Potrzebny będzie token API ShipX i ID organizacji."
+    }
+  },
+  "settings": {
+    "apiBaseUrl": {
+      "description": "Publiczny adres URL API OpenLinker obsługujący przychodzące webhooki (POST /webhooks) - tam InPost dostarcza zdarzenia śledzenia, więc musi to być host API, a nie ten panel administracyjny. Zostaw puste tylko wtedy, gdy API i ten interfejs mają wspólny origin (np. za jednym reverse proxy); w przeciwnym razie ustaw publiczny bazowy adres URL API. Na jego podstawie powstaje adres webhooka pokazany w instrukcji konfiguracji poniżej.",
+      "label": "Publiczny bazowy adres URL API OpenLinker (opcjonalnie)",
+      "placeholder": "https://api.openlinker.example"
+    },
+    "environment": {
+      "description": "Docelowe środowisko ShipX. Użyj sandboxa do weryfikacji przed przełączeniem na produkcję.",
+      "label": "Środowisko",
+      "production": "Produkcja",
+      "sandbox": "Sandbox",
+      "unset": "- nie ustawiono -"
+    },
+    "organizationId": {
+      "description": "ID organizacji ShipX - parametr ścieżki URL w każdym punkcie końcowym przesyłek.",
+      "label": "ID organizacji"
+    },
+    "sender": {
+      "buildingNumber": {
+        "label": "Numer budynku"
+      },
+      "city": {
+        "label": "Miejscowość",
+        "placeholder": "Warszawa"
+      },
+      "countryCode": {
+        "description": "ISO 3166-1 alpha-2 (np. PL).",
+        "label": "Kraj"
+      },
+      "email": {
+        "label": "E-mail nadawcy",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "name": {
+        "label": "Nazwa nadawcy (opcjonalnie)",
+        "placeholder": "Sklep ACME"
+      },
+      "phone": {
+        "label": "Telefon nadawcy"
+      },
+      "postCode": {
+        "description": "Format polski NN-NNN (np. 00-001).",
+        "label": "Kod pocztowy"
+      },
+      "street": {
+        "label": "Ulica",
+        "placeholder": "ul. Magazynowa"
+      }
+    }
+  }
+}

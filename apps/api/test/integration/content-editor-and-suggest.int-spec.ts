@@ -165,31 +165,22 @@ describe('Content Editor + AI Suggest Integration', () => {
   });
 
   describe('POST /suggest', () => {
-    it('returns a deterministic suggestion from the fake provider', async () => {
+    it('answers 422 when no ProductMaster connection claims the product', async () => {
       const http = harness.getHttp();
       const dataSource = harness.getDataSource();
       const token = await loginAsAdmin(http, dataSource);
       const productId = await seedProduct(dataSource, 'suggest-1');
 
-      // No ProductMaster adapter is registered in this harness (no active
-      // PrestaShop connection), so the suggest endpoint short-circuits with
-      // NoProductMasterAdapter → in the controller this surfaces as the
-      // domain exception bubbling up (500). To exercise the happy-path we
-      // rely on the fact that the adapter registry does have a Fake AI
-      // provider, but ProductMaster only binds to an active connection.
-      //
-      // For MVP we assert the 500-path bubble when no master exists; end-to-end
-      // with a live PrestaShop adapter is covered by manual QA + the existing
-      // integration-test pattern (live-creds gap).
-      const response = await http
+      // The harness has no ProductMaster connection, so nothing claims the
+      // seeded product. The suggestion reads the product's OWN master (#4068),
+      // finds none, and the controller maps NoProductMasterAdapterException to
+      // a 422 - a configuration the operator can fix, never a 500. The happy
+      // path with a live master is covered by the unit specs.
+      await http
         .post(`/v1/products/${productId}/content/suggest`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ channel: 'allegro', tone: 'casual' });
-
-      // Either 500 (NoProductMasterAdapterException, harness has no active
-      // PrestaShop connection) or 200 if a future test seed provisions one.
-      // Accept both and let the unit tests carry the detailed assertion.
-      expect([200, 500]).toContain(response.status);
+        .send({ channel: 'allegro', tone: 'casual' })
+        .expect(422);
     });
 
     it('validates DTO: tone capped at 64 chars', async () => {

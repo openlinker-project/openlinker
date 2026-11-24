@@ -23,13 +23,11 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   Res,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -44,9 +42,19 @@ import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import {
+  adapterCapabilityNotSupported,
+  masterCatalogConnectionNotConfigured,
+  categoryNotFound,
+  offerMappingNotFound,
+  providerCapabilityUnsupported,
+} from './listings-errors';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import {
   AdapterCapabilityNotSupportedException,
+  ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
   CatalogProductNotFoundException,
   CategoryNotFoundException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -64,8 +72,11 @@ import {
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   DELIVERY_PRICE_LIST_SERVICE_TOKEN,
+  IAttributeProjectionPreviewService,
+  IBundleOfferPreviewService,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
+  MasterCatalogConnectionNotConfiguredException,
   IOfferStatusReadService,
   IOfferStatusSyncService,
   IPublishedVariantsService,
@@ -83,6 +94,7 @@ import type {
   OfferCreationRecord,
   OfferLifecycle,
   OfferLifecycleCounts,
+  OfferAttentionCounts,
   OfferManagerPort,
   OfferMappingListItem,
   OfferPublicationStatusView,
@@ -98,7 +110,10 @@ import { JobEnqueuePort } from '@openlinker/core/sync';
 import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { MarketplaceOfferResponseDto } from './dto/marketplace-offer-response.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
-import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
+import {
+  PaginatedOfferMappingsResponseDto,
+  type OfferAttentionCountsResponseDto,
+} from './dto/paginated-offer-mappings-response.dto';
 import { CountOfferMappingsQueryDto } from './dto/count-offer-mappings-query.dto';
 import type {
   OfferMappingCountFilters,
@@ -133,6 +148,16 @@ import {
   ResolveCategoryBatchRequestDto,
   ResolveCategoryBatchResponseDto,
 } from './dto/resolve-category-batch.dto';
+import {
+  BundleOfferPreviewRequestDto,
+  BundleOfferPreviewResponseDto,
+  type BundleOfferPreviewEntryView,
+} from './dto/bundle-offer-preview.dto';
+import {
+  AttributeProjectionPreviewRequestDto,
+  AttributeProjectionPreviewResponseDto,
+  type AttributeProjectionPreviewEntryView,
+} from './dto/attribute-projection-preview.dto';
 import type { ResolveCategoryStreamLine } from './dto/resolve-category-stream.dto';
 import {
   RESOLVE_CATEGORY_STREAM_CONTENT_TYPE,
@@ -181,6 +206,21 @@ function toOfferMappingBucketFilters(
     connectionId: query.connectionId,
     internalId: query.internalId,
     search: query.search,
+    staleSignal: query.staleSignal,
+    shopBlocked: query.shopBlocked,
+  };
+}
+
+/** Readonly domain arrays onto the mutable DTO shape the response declares. */
+function toAttentionCountsDto(counts: OfferAttentionCounts): OfferAttentionCountsResponseDto {
+  return {
+    sellingDeletedProduct: counts.sellingDeletedProduct,
+    shopBlocked: counts.shopBlocked,
+    shopBlockedByConnection: counts.shopBlockedByConnection.map((c) => ({
+      connectionId: c.connectionId,
+      count: c.count,
+      problems: c.problems.map((p) => ({ ...p })),
+    })),
   };
 }
 
@@ -209,6 +249,10 @@ export class ListingsController {
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
     private readonly productVariantRepository: ProductVariantRepositoryPort,
+    @Inject(ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN)
+    private readonly attributeProjectionPreview: IAttributeProjectionPreviewService,
+    @Inject(BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN)
+    private readonly bundleOfferPreview: IBundleOfferPreviewService,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
     private readonly categoryResolution: ICategoryResolutionService,
     @Inject(OFFER_STATUS_READ_SERVICE_TOKEN)
@@ -312,8 +356,9 @@ export class ListingsController {
     // filtered set (see `OfferLifecycleValues`'s docblock), so their sum is
     // provably the same number a second `COUNT(DISTINCT)` over the identical
     // join would return. `findManyRows` therefore fetches the page alone.
-    const [lifecycleCounts, items] = await Promise.all([
+    const [lifecycleCounts, attentionCounts, items] = await Promise.all([
       this.offerMappingRepository.countByLifecycle(toOfferMappingBucketFilters(query)),
+      this.offerMappingRepository.countAttention(toOfferMappingBucketFilters(query)),
       this.offerMappingRepository.findManyRows(filters, { limit, offset }),
     ]);
 
@@ -321,6 +366,7 @@ export class ListingsController {
       items: items.map((m) => this.toListDto(m)),
       total: this.deriveTotal(lifecycleCounts, lifecycle),
       lifecycleCounts,
+      attentionCounts: toAttentionCountsDto(attentionCounts),
       limit,
       offset,
     };
@@ -362,10 +408,15 @@ export class ListingsController {
       return { total };
     }
 
-    const lifecycleCounts = await this.offerMappingRepository.countByLifecycle(
-      toOfferMappingBucketFilters(query)
-    );
-    return { total: this.deriveTotal(lifecycleCounts, lifecycle), lifecycleCounts };
+    const [lifecycleCounts, attentionCounts] = await Promise.all([
+      this.offerMappingRepository.countByLifecycle(toOfferMappingBucketFilters(query)),
+      this.offerMappingRepository.countAttention(toOfferMappingBucketFilters(query)),
+    ]);
+    return {
+      total: this.deriveTotal(lifecycleCounts, lifecycle),
+      lifecycleCounts,
+      attentionCounts: toAttentionCountsDto(attentionCounts),
+    };
   }
 
   @AnyRole()
@@ -381,7 +432,7 @@ export class ListingsController {
   ): Promise<OfferMappingResponseDto> {
     const mapping = await this.offerMappingRepository.findById(id);
     if (!mapping) {
-      throw new NotFoundException(`Offer mapping not found: ${id}`);
+      throw offerMappingNotFound(id, `Offer mapping not found: ${id}`);
     }
 
     const dto = this.toDto(mapping);
@@ -439,13 +490,14 @@ export class ListingsController {
   ): Promise<MarketplaceOfferResponseDto> {
     const mapping = await this.offerMappingRepository.findById(id);
     if (!mapping) {
-      throw new NotFoundException(`Offer mapping not found: ${id}`);
+      throw offerMappingNotFound(id, `Offer mapping not found: ${id}`);
     }
     // Treat non-Offer mappings as 404 rather than a separate 4xx — the
     // existence of the mapping isn't actionable for the live-offer surface
     // and the response shape is identical to "mapping doesn't exist".
     if (mapping.entityType !== ('Offer' satisfies CoreEntityType)) {
-      throw new NotFoundException(
+      throw offerMappingNotFound(
+        id,
         `Offer mapping ${id} is not of entityType=Offer (got: ${mapping.entityType})`
       );
     }
@@ -459,7 +511,10 @@ export class ListingsController {
     );
 
     if (!isOfferReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'OfferReader',
+        mapping.connectionId,
         `Adapter for connection ${mapping.connectionId} does not support live offer reading`
       );
     }
@@ -473,7 +528,10 @@ export class ListingsController {
       // renders the soft "live data unavailable" fallback rather than a hard
       // error, keeping the rest of the detail page rendering.
       if (error instanceof OfferNotFoundOnMarketplaceException) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'MARKETPLACE_OFFER_NOT_FOUND', error.message, {
+          externalOfferId: error.externalOfferId,
+          connectionId: error.connectionId,
+        });
       }
       throw error;
     }
@@ -623,7 +681,12 @@ export class ListingsController {
     const record = await this.offerCreationRecords.findById(offerCreationRecordId);
     if (!record || record.connectionId !== connectionId) {
       // Cross-connection lookups return 404 to avoid leaking record existence.
-      throw new NotFoundException(`Offer creation record not found: ${offerCreationRecordId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'OFFER_CREATION_RECORD_NOT_FOUND',
+        `Offer creation record not found: ${offerCreationRecordId}`,
+        { recordId: offerCreationRecordId }
+      );
     }
     return this.toOfferCreationStatusDto(record);
   }
@@ -671,8 +734,11 @@ export class ListingsController {
       internalVariantId: body.internalVariantId,
     });
     if (publicationStatus === null) {
-      throw new NotFoundException(
-        `Live status unavailable for offer ${externalOfferId} on connection ${connectionId}`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'OFFER_LIVE_STATUS_UNAVAILABLE',
+        `Live status unavailable for offer ${externalOfferId} on connection ${connectionId}`,
+        { externalOfferId, connectionId }
       );
     }
     return { publicationStatus };
@@ -785,7 +851,10 @@ export class ListingsController {
     );
 
     if (!isCategoryParametersReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CategoryParametersReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support category-parameters reading`
       );
     }
@@ -798,9 +867,7 @@ export class ListingsController {
         // Bubble category-level 404 distinct from connection-level 404 — the FE
         // can show a friendlier message and let the operator pick a different
         // category without re-resolving the connection.
-        throw new NotFoundException(
-          `Category ${categoryId} not found on connection ${connectionId}`
-        );
+        throw categoryNotFound(categoryId, connectionId);
       }
       throw err;
     }
@@ -845,7 +912,10 @@ export class ListingsController {
     );
 
     if (!isCategoryPathReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CategoryPathReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support category-path reading`
       );
     }
@@ -855,9 +925,7 @@ export class ListingsController {
       path = await adapter.fetchCategoryPath(categoryId);
     } catch (err) {
       if (err instanceof CategoryNotFoundException) {
-        throw new NotFoundException(
-          `Category ${categoryId} not found on connection ${connectionId}`
-        );
+        throw categoryNotFound(categoryId, connectionId);
       }
       throw err;
     }
@@ -963,7 +1031,109 @@ export class ListingsController {
         // `getCapabilityAdapter('OfferManager')` gate). An adapter that simply
         // can't batch-match EANs no longer reaches here — the service degrades
         // it to per-variant `no-match` for manual category selection (ADR-025 §3).
-        throw new UnprocessableEntityException(error.message);
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Post('connections/:connectionId/attribute-projection/preview')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Preview the parameters attribute mappings and rules fill, per variant (#3995)',
+    description:
+      'Runs the same attribute projection an offer publish runs - mappings (#1038) and ' +
+      'operator rules (#1841) against the live category schema - for up to 200 variants, ' +
+      'without creating anything. The bulk offer wizard reads it to show rule-filled values ' +
+      'and to let them satisfy its required-parameter check. A value the operator sets on ' +
+      'the offer still wins over a rule at publish, by parameter id.',
+  })
+  @ApiResponse({ status: 200, type: AttributeProjectionPreviewResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Connection is not an OfferManager marketplace, or has no master catalogue connection.',
+  })
+  async previewAttributeProjection(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: AttributeProjectionPreviewRequestDto
+  ): Promise<AttributeProjectionPreviewResponseDto> {
+    try {
+      const { entries } = await this.attributeProjectionPreview.preview({
+        connectionId,
+        items: dto.items.map((item) => ({
+          internalVariantId: item.variantId,
+          categoryId: item.categoryId,
+          ...(item.ean ? { ean: item.ean } : {}),
+        })),
+      });
+      return {
+        entries: entries.map(
+          ({ internalVariantId, ...rest }): AttributeProjectionPreviewEntryView => ({
+            variantId: internalVariantId,
+            ...rest,
+          })
+        ),
+      };
+    } catch (error) {
+      if (error instanceof AdapterCapabilityNotSupportedException) {
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (error instanceof MasterCatalogConnectionNotConfiguredException) {
+        throw masterCatalogConnectionNotConfigured(error, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Post('connections/:connectionId/bundle-offer-preview')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'Preview how bundles would be published as product-set offers (#3520)',
+    description:
+      'For each bundle variant, reports its components in order with how each would enter the ' +
+      'set offer (own live offer, catalogue card, new product, or missing), what blocks it, ' +
+      'the category the destination will require (that of the first component\'s card) and ' +
+      'how many whole sets are sellable now. Read-only: the marketplace is only read.',
+  })
+  @ApiResponse({ status: 200, type: BundleOfferPreviewResponseDto })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Connection is not an OfferManager marketplace, or has no master catalogue connection.',
+  })
+  async previewBundleOffers(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: BundleOfferPreviewRequestDto
+  ): Promise<BundleOfferPreviewResponseDto> {
+    try {
+      const { entries } = await this.bundleOfferPreview.preview({
+        connectionId,
+        items: dto.items.map((item) => ({
+          internalVariantId: item.variantId,
+          ...(item.categoryId ? { categoryId: item.categoryId } : {}),
+        })),
+      });
+      return {
+        entries: entries.map(
+          ({ internalVariantId, ...rest }): BundleOfferPreviewEntryView => ({
+            variantId: internalVariantId,
+            ...rest,
+          })
+        ),
+      };
+    } catch (error) {
+      if (error instanceof AdapterCapabilityNotSupportedException) {
+        throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (error instanceof MasterCatalogConnectionNotConfiguredException) {
+        throw masterCatalogConnectionNotConfigured(error, HttpStatus.UNPROCESSABLE_ENTITY);
       }
       throw error;
     }
@@ -1148,7 +1318,7 @@ export class ListingsController {
         if (error instanceof AdapterCapabilityNotSupportedException) {
           // Mirrors the batch route: the connection is not an OfferManager
           // marketplace at all.
-          throw new UnprocessableEntityException(error.message);
+          throw adapterCapabilityNotSupported(error, HttpStatus.UNPROCESSABLE_ENTITY);
         }
         throw error;
       }
@@ -1249,7 +1419,10 @@ export class ListingsController {
     );
 
     if (!isCatalogProductReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CatalogProductReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support catalog-product reading`
       );
     }
@@ -1296,7 +1469,10 @@ export class ListingsController {
     );
 
     if (!isCatalogProductReader(adapter)) {
-      throw new UnprocessableEntityException(
+      throw providerCapabilityUnsupported(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'CatalogProductReader',
+        connectionId,
         `Adapter for connection ${connectionId} does not support catalog-product reading`
       );
     }
@@ -1306,8 +1482,11 @@ export class ListingsController {
       return this.toCatalogProductResponseDto(product);
     } catch (err) {
       if (err instanceof CatalogProductNotFoundException) {
-        throw new NotFoundException(
-          `Catalog product ${productId} not found on connection ${connectionId}`
+        throw codedHttpError(
+          HttpStatus.NOT_FOUND,
+          'CATALOG_PRODUCT_NOT_FOUND',
+          `Catalog product ${productId} not found on connection ${connectionId}`,
+          { productId, connectionId }
         );
       }
       throw err;

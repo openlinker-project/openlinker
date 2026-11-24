@@ -23,11 +23,23 @@ import type { Order, OrderItem } from '@openlinker/core/orders';
 import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   describeNetPricedOrderRefusal,
-  minorUnitExponentFor,
+  formatReceiptLineName,
+  resolveDeliveryLine,
+  shippingSplitInputs,
+  spreadDeliveryAcrossLines,
   splitShippingAcrossRates,
   describeDiscountCause,
   quantityScaledReconciliationEpsilon,
+  type ResolvedDeliveryLine,
+  reconcileDiscountRounding,
+  presentGiftLines,
+  presentBundleComponents,
+  type BundleDocumentPresentation,
+  resolveGiftDocumentForm,
+  resolveGiftPresentationFields,
+  type GiftLineForm,
 } from '@openlinker/core/sales-documents';
+import { Logger } from '@openlinker/shared/logging';
 
 import type {
   FiscalRecipient,
@@ -37,12 +49,7 @@ import type {
 import { InvalidFiscalLineError } from './errors/invalid-fiscal-line.error';
 import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fiscal-price-treatment.error';
 
-/**
- * Default carrier-neutral label for the shipping line. Core has no locale, so
- * this English default is intentionally untranslated; a caller that has a locale
- * overrides it via {@link OrderToRegisterTransactionCommandInput.shippingLineName}.
- */
-const SHIPPING_LINE_NAME = 'Shipping';
+const logger = new Logger('OrderToRegisterTransactionCommandMapper');
 
 /** Inputs to {@link toRegisterTransactionCommand}. */
 export interface OrderToRegisterTransactionCommandInput {
@@ -54,8 +61,18 @@ export interface OrderToRegisterTransactionCommandInput {
    * run one.
    */
   idempotencyKey: string;
-  /** Optional locale-specific override for the shipping line label. */
+  /**
+   * Legacy single name for the shipping line (`config.invoicing.shippingLineName`).
+   * Used only when no {@link deliveryLine} is supplied (ADR-082 decision 5).
+   */
   shippingLineName?: string;
+  /**
+   * The delivery line resolved from the order-source connection's
+   * `deliveryOnDocuments` (#3905, ADR-082). Absent resolves to the legacy name
+   * (or `Shipping`) in `goods` mode - the pre-#3905 behaviour plus the rate
+   * suffix a receipt name always carries.
+   */
+  deliveryLine?: ResolvedDeliveryLine;
   /**
    * The order's `order_records.taxRateEra` marker (#2260 review), passed
    * through onto the command so the write-path tax-rate guard can exempt
@@ -80,6 +97,26 @@ export interface OrderToRegisterTransactionCommandInput {
    * command, which is correct either way: nothing to send.
    */
   buyerTaxId?: string | null;
+  /**
+   * The connection's gift-form override (`readGiftConnectionForm`); absent
+   * inherits the OpenLinker-wide default. A gift's own form wins over both
+   * (gifts spec section 8.3).
+   */
+  giftConnectionForm?: GiftLineForm;
+  /** The amount that goes with a `custom-price` connection form. */
+  giftConnectionUnitPrice?: string;
+  /** The OpenLinker-wide default; absent is `technical-cent`. */
+  giftGlobalForm?: GiftLineForm;
+  /** The amount that goes with a `custom-price` OpenLinker-wide default. */
+  giftGlobalUnitPrice?: string;
+  /**
+   * Ignored: a receipt is always composed as if the register refuses a
+   * zero-value line (ADR-082 decision 7), whatever the provider declares.
+   * Kept so existing callers still compile.
+   */
+  acceptsZeroValueLine?: boolean;
+  /** Components of bundle lines, presented by the automatic rate rule (#3934). */
+  bundleDocument?: BundleDocumentPresentation;
 }
 
 /**
@@ -99,6 +136,8 @@ export function toRegisterTransactionCommand(
   input: OrderToRegisterTransactionCommandInput,
 ): RegisterTransactionCommand {
   const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra, buyerTaxId } = input;
+  const deliveryLine =
+    input.deliveryLine ?? resolveDeliveryLine(null, { legacyName: shippingLineName });
 
   // GROSS-only: a net-priced order would register net amounts labelled as gross,
   // and core may not convert (it never computes or defaults a tax rate). Fail
@@ -113,25 +152,97 @@ export function toRegisterTransactionCommand(
     throw new UnsupportedFiscalPriceTreatmentError(refusal);
   }
 
-  const lines = order.items.map((item) => toFiscalLine(item, order.id));
+  // Presented before delivery and discount reconciliation (#3930), so the
+  // receipt total still equals what the buyer paid. The provider refusing a
+  // zero line is the reason this runs here and not in an
+  // adapter: the amount has to move between lines of the same rate.
+  type WorkingLine = FiscalTransactionLine & {
+    isGift?: boolean;
+    giftForm?: GiftLineForm;
+    giftUnitPriceGross?: number;
+    itemId?: string;
+    referenceUnitPriceGross?: number;
+  };
+  const itemLines = presentBundleComponents<WorkingLine>(
+    order.items.map((item) => ({
+      ...toFiscalLine(item, order.id),
+      isGift: item.gift !== undefined,
+      ...(item.gift !== undefined && resolveGiftPresentationFields(item.gift.documentForm, item.gift.documentUnitPrice, input)),
+      // The receipt line carries no order line id; the item id is what the
+      // bundle presentation keys on.
+      itemId: item.id,
+    })),
+    (line) => line.itemId,
+    input.bundleDocument,
+    (parent, part) => ({
+      ...parent,
+      // A component keeps its own name at its own rate: the register binds one
+      // name to one rate, so the set's name must never be repeated.
+      name:
+        part.component.name?.trim() ||
+        part.component.sku?.trim() ||
+        `${parent.name} / ${part.component.variantId}`,
+      quantity: part.quantity,
+      unitPriceGross: part.unitPriceGross,
+      taxRate: part.taxRate,
+      productId: part.component.productId,
+      sku: part.component.sku ?? null,
+      isGift: part.isGift,
+      // A gift slot's own form is the most specific level (#3940).
+      ...(part.isGift && part.component.giftDocumentForm !== undefined && {
+        giftForm: part.component.giftDocumentForm,
+      }),
+      ...(part.referenceUnitPriceGross !== undefined && {
+        referenceUnitPriceGross: part.referenceUnitPriceGross,
+      }),
+    }),
+    { currency: order.totals.currency },
+  );
+  // A receipt always refuses zero (`false`, never the provider's declaration).
+  const presentedGifts = presentGiftLines(
+    itemLines.lines,
+    resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm, {
+      connection: input.giftConnectionUnitPrice,
+      global: input.giftGlobalUnitPrice,
+    }).form,
+    false,
+    { currency: order.totals.currency },
+  );
+  for (const note of presentedGifts.notes) {
+    logger.warn(`Order ${order.id}: gift presentation note ${note}`);
+  }
+  if (presentedGifts.internalRecordLines.length > 0) {
+    logger.log(
+      `Order ${order.id}: ${presentedGifts.internalRecordLines.length} gift line(s) kept off the receipt (internal record)`,
+    );
+  }
+  // The gift marker stays through rounding reconciliation (a gap must never
+  // land on a free item) and is stripped afterwards.
+  const productLines: WorkingLine[] = presentedGifts.lines;
 
-  lines.push(
-    ...toShippingLines(
-      order.totals.shippingGross ?? order.totals.shipping,
-      order.items,
-      order.totals.currency,
-      shippingLineName
-    ),
+  const lines = applyDelivery(productLines, order, deliveryLine);
+
+  // E-45: a discounted multi-unit line must not drift a minor unit from the total.
+  const reconciledLines = reconcileDiscountRounding(lines, productLines.length, order.totals).map(
+    (presented) => {
+      const line: WorkingLine = { ...presented };
+      delete line.isGift;
+      delete line.giftForm;
+      delete line.giftUnitPriceGross;
+      delete line.itemId;
+      delete line.referenceUnitPriceGross;
+      return line as FiscalTransactionLine;
+    },
   );
 
-  assertLinesSumToTotal(lines, order.totals, order.id);
+  assertLinesSumToTotal(reconciledLines, order.totals, order.id);
 
   const command: RegisterTransactionCommand = {
     connectionId,
     orderId: order.id,
     idempotencyKey,
     currency: order.totals.currency,
-    lines,
+    lines: reconciledLines,
     totalGross: order.totals.total,
   };
 
@@ -279,50 +390,121 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
 }
 
 /**
- * Compose the shipping lines from the order's gross shipping cost, or none when
- * the buyer paid nothing for shipping (no phantom line).
+ * Apply the delivery to the receipt: returns the complete line list - the
+ * product lines followed by the delivery lines, or in `spread` mode new copies
+ * of the product lines carrying the raised price and no delivery line. The
+ * input lines are never mutated (see the invoicing twin for what the raised
+ * price means for a later correction).
  *
- * Shipping inherits the basket's rate, and a mixed-rate basket splits it in
- * proportion to line gross so the parts sum exactly to what the buyer paid
- * (#2248) - a fiscal receipt has to state a rate per line just as an invoice
- * does. When the split is uncomputable, one line with an empty rate is emitted
- * and the service refuses the whole registration; dropping the shipping instead
- * would understate the receipt total.
+ * A receipt registers what was paid, so it never carries a zero delivery line
+ * (ADR-082 decision 7) - `freeDelivery` is an invoice-only setting.
+ *
+ * Every delivery line NAMES its rate (ADR-082 decision 4). A fiscal device
+ * binds a name to one rate and refuses it for good once the rate goes up after
+ * it went down, so one name at two rates on a mixed basket gets the whole
+ * registration rejected; a name that changes with the rate cannot.
+ *
+ * Shipping inherits the basket's rate in `goods` mode, and a mixed-rate basket
+ * splits it in proportion to line gross so the parts sum exactly to what the
+ * buyer paid (#2248). When the split is uncomputable, one line with an empty
+ * rate is emitted and the service refuses the whole registration; dropping the
+ * shipping instead would understate the receipt total.
  */
-function toShippingLines(
-  shipping: number,
-  items: readonly OrderItem[],
-  currency: string | null | undefined,
-  name?: string,
+function applyDelivery(
+  productLines: readonly FiscalTransactionLine[],
+  order: Order,
+  delivery: ResolvedDeliveryLine
 ): FiscalTransactionLine[] {
+  const spread = spreadIntoProductLines(productLines, order, delivery);
+  if (spread !== null) return spread;
+  return [...productLines, ...deliveryLinesFor(order, delivery)];
+}
+
+/**
+ * `spread` mode: new product lines carrying their share of the delivery, or
+ * `null` when the mode is not `spread`, there is no paid delivery, or the
+ * amount cannot be folded in exactly (no quantity-1 line to take the
+ * remainder) - the caller then emits a separate delivery line rather than
+ * inventing a price.
+ */
+function spreadIntoProductLines(
+  productLines: readonly FiscalTransactionLine[],
+  order: Order,
+  delivery: ResolvedDeliveryLine
+): FiscalTransactionLine[] | null {
+  if (delivery.rate !== 'spread') return null;
+  const { shipping, exponent } = shippingSplitInputs(order);
+  if (!Number.isFinite(shipping) || shipping <= 0) return null;
+  const increases = spreadDeliveryAcrossLines(shipping, productLines, exponent);
+  if (increases === null) {
+    logger.warn(
+      `Order ${order.id}: delivery cannot be spread across product lines; ` +
+        'falling back to a separate delivery line'
+    );
+    return null;
+  }
+  return productLines.map((line, index) => ({
+    ...line,
+    unitPriceGross: line.unitPriceGross + increases[index],
+  }));
+}
+
+/** The delivery lines to append after the product lines. */
+function deliveryLinesFor(
+  order: Order,
+  delivery: ResolvedDeliveryLine
+): FiscalTransactionLine[] {
+  const { lines: splitLines, shipping, exponent } = shippingSplitInputs(order);
   if (!Number.isFinite(shipping) || shipping <= 0) {
     return [];
   }
-  const label = name?.trim() || SHIPPING_LINE_NAME;
-  const parts = splitShippingAcrossRates(
-    shipping,
-    items.map((item) => ({
-      taxRate: item.taxRate?.trim() ?? null,
-      // The field is named `gross` and must be given one. On a gross-priced
-      // source `price` already is; on a net-priced one that reports its own
-      // gross figure (#3365) it is not, and a net weight is wrong here for a
-      // specific reason: the split is proportional, so a uniform-rate basket
-      // is unaffected, but a MIXED-rate one shifts, because net scales to
-      // gross by a different factor per rate. The shipping then lands under
-      // the wrong rate - silently, with the total still adding up.
-      gross: (item.unitPriceGross ?? item.price) * item.quantity,
-    })),
-    // The order's own currency decides how many decimals the parts round to, so
-    // they sum exactly in the units the buyer paid in (#2260 review).
-    minorUnitExponentFor(currency),
-  );
+
+  if (delivery.rate === 'fixed' && delivery.fixedRate !== undefined) {
+    return [
+      {
+        name: formatReceiptLineName(
+          delivery.name,
+          delivery.fixedRate,
+          delivery.rateFormat,
+          delivery.rateLabel,
+        ),
+        quantity: 1,
+        unitPriceGross: shipping,
+        taxRate: delivery.fixedRate,
+        sku: null,
+      },
+    ];
+  }
+
+  const parts = splitShippingAcrossRates(shipping, splitLines, exponent);
 
   if (parts === null) {
-    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: '', sku: null }];
+    // The basket cannot state a rate, but the source may have reported the one
+    // it charged on delivery (ADR-063: carried, never computed).
+    const sourceRate = order.totals.shippingTaxRate?.trim() ?? '';
+    return [
+      {
+        name: formatReceiptLineName(
+          delivery.name,
+          sourceRate,
+          delivery.rateFormat,
+          delivery.rateLabel,
+        ),
+        quantity: 1,
+        unitPriceGross: shipping,
+        taxRate: sourceRate,
+        sku: null,
+      },
+    ];
   }
 
   return parts.map((part) => ({
-    name: label,
+    name: formatReceiptLineName(
+          delivery.name,
+          part.taxRate,
+          delivery.rateFormat,
+          delivery.rateLabel,
+        ),
     quantity: 1,
     unitPriceGross: part.amount,
     taxRate: part.taxRate,

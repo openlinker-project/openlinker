@@ -29,8 +29,10 @@ import { FulfillmentHandshakeService } from './application/services/fulfillment-
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
 import { FulfillmentRelayReconcileService } from './application/services/fulfillment-relay-reconcile.service';
+import { FulfillmentSaleDecrementReconcileService } from './application/services/fulfillment-sale-decrement-reconcile.service';
 import { FulfillmentVerificationService } from './application/services/fulfillment-verification.service';
 import { RoutingCommitService } from './application/services/routing-commit.service';
+import { RoutingDecisionReaperService } from './application/services/routing-decision-reaper.service';
 import {
   FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
@@ -38,10 +40,14 @@ import {
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
   FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+  FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
+  ROUTING_DECISION_REAPER_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN,
+  FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
   FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
 } from './fulfillment.tokens';
@@ -54,6 +60,8 @@ import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/
 import { FulfillmentWorkVerificationOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-verification.orm-entity';
 import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
+import { FulfillmentOrderCancellationService } from './application/services/fulfillment-order-cancellation.service';
+import { FulfillmentOrderEditService } from './application/services/fulfillment-order-edit.service';
 import { FulfillmentWorkQueryService } from './application/services/fulfillment-work-query.service';
 import { FulfillmentWorklistService } from './application/services/fulfillment-worklist.service';
 import { RoutingDecisionRepository } from './infrastructure/persistence/repositories/routing-decision.repository';
@@ -96,13 +104,33 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
       provide: FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
       useExisting: FulfillmentRelayReconcileService,
     },
+    FulfillmentSaleDecrementReconcileService,
+    {
+      provide: FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
+      useExisting: FulfillmentSaleDecrementReconcileService,
+    },
     FulfillmentWorkQueryService,
     {
       provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
       useExisting: FulfillmentWorkQueryService,
     },
+    FulfillmentOrderCancellationService,
+    {
+      provide: FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN,
+      useExisting: FulfillmentOrderCancellationService,
+    },
+    FulfillmentOrderEditService,
+    {
+      provide: FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
+      useExisting: FulfillmentOrderEditService,
+    },
     RoutingCommitService,
     { provide: ROUTING_COMMIT_SERVICE_TOKEN, useExisting: RoutingCommitService },
+    RoutingDecisionReaperService,
+    {
+      provide: ROUTING_DECISION_REAPER_SERVICE_TOKEN,
+      useExisting: RoutingDecisionReaperService,
+    },
     FulfillmentWorklistService,
     { provide: FULFILLMENT_WORKLIST_SERVICE_TOKEN, useExisting: FulfillmentWorklistService },
     FulfillmentVerificationService,
@@ -121,11 +149,20 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
     // Exported for the worker's dispatch-relay reconcile sweep (#2728).
     FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+    // Exported for the worker's sale-decrement reconcile sweep (#3629).
+    FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,
     // Exported for `ShippingModule` (#2402): the shipment bridge resolves an
     // order's work through this interface, never through the repository port.
     FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+    // Exported for the operator order cancel (#3540), composed in `apps/api`.
+    FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN,
+    // Exported for the operator order edit (#3542), composed in `apps/api`.
+    FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
     ROUTING_COMMIT_SERVICE_TOKEN,
+    // Exported for the worker's stranded-decision reaper and the read-only
+    // routing-decision endpoint (#2731); neither reaches the repository port.
+    ROUTING_DECISION_REAPER_SERVICE_TOKEN,
     // Exported for `FulfillmentApiModule` (#2406): the operator worklist read
     // model. `apps/api` reaches the aggregate through this interface and never
     // through `FulfillmentWorkRepositoryPort`, which stays off the barrel.

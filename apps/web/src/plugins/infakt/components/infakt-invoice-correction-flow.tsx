@@ -19,7 +19,7 @@
  * @module plugins/infakt/components
  */
 import { type ReactElement, useRef, useState } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { renderRich, useFormat, interpolate } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
@@ -29,7 +29,12 @@ import {
   useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
+import { useInfaktMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LineRow {
   originalLineNumber: string;
@@ -73,9 +78,13 @@ export function InfaktInvoiceCorrectionFlow({
   onCorrectionIssued,
   suggestedLines,
 }: InvoiceCorrectionFlowProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useInfaktMessages().infaktInvoiceCorrectionFlow;
+  const format = useFormat();
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
+  const strongMono = { strong: (text: string) => <strong className="mono-text">{text}</strong> };
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   // Per-mount stable idempotency key — prevents duplicate KOR issuance on timeout/retry.
@@ -83,7 +92,7 @@ export function InfaktInvoiceCorrectionFlow({
     `infakt-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   );
 
-  const [reason, setReason] = useState('');
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
@@ -105,10 +114,7 @@ export function InfaktInvoiceCorrectionFlow({
     if (linesAreAuthoritative) {
       if (gridLines.length === 0) {
         setLinesError(
-          t(
-            'infakt.correction.gridLinesRequired',
-            'Change at least one line’s quantity or price before issuing a correction.',
-          ),
+          copy.gridLinesRequired,
         );
         return;
       }
@@ -117,56 +123,60 @@ export function InfaktInvoiceCorrectionFlow({
       const parsed = parseLineRows(lines);
       if (parsed === null) {
         setLinesError(
-          t(
-            'infakt.correction.lineDeltaRequired',
-            'Each line must specify a new quantity and/or a new price.',
-          ),
+          copy.lineDeltaRequired,
         );
         return;
       }
       if (parsed.length === 0) {
         setLinesError(
-          t(
-            'infakt.correction.linesRequired',
-            'At least one line with a line number is required.',
-          ),
+          copy.linesRequired,
         );
         return;
       }
       parsedLines = parsed;
     }
     setLinesError(null);
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reason.trim() !== '' ? reason.trim() : undefined,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
+      return;
+    }
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('infakt.correction.issued', 'KOR issued'),
-            description: t(
-              'infakt.correction.issuedBody',
-              'The correcting document was submitted to KSeF via inFakt.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: copy.issued,
+              description: copy.issuedBody,
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: copy.failed,
+              description: describeApiError(error, 'infakt'),
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('infakt.correction.failed', 'KOR failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -175,54 +185,40 @@ export function InfaktInvoiceCorrectionFlow({
     <div className="infakt-correction">
       {/* Header */}
       <div className="infakt-correction__head">
-        <h3>{t('infakt.correction.title', 'Issue KOR correction')}</h3>
+        <h3>{copy.title}</h3>
         <span className="section-card__provider">
-          {t('infakt.correction.providerTag', 'inFakt · slot')}
+          {copy.providerTag}
         </span>
       </div>
 
       {/* Original invoice reference */}
       <div className="infakt-correction__orig">
         <span>
-          {t('infakt.correction.correcting', 'Correcting')}{' '}
-          <strong>{invoice.providerInvoiceNumber ?? invoice.id}</strong>
+          {renderRich(copy.correcting, strong, {
+            reference: invoice.providerInvoiceNumber ?? invoice.id,
+          })}
         </span>
         {invoice.clearanceReference ? (
           <span>
-            {t('infakt.correction.ksefRef', 'KSeF')}{' '}
-            <strong className="mono-text">
-              {invoice.clearanceReference.slice(0, 14)}…
-            </strong>
+            {renderRich(copy.ksefRef, strongMono, {
+              reference: `${invoice.clearanceReference.slice(0, 14)}…`,
+            })}
           </span>
         ) : null}
         {invoice.issuedAt ? (
           <span>
-            {t('infakt.correction.issuedOn', 'Issued')}{' '}
-            <strong className="mono-text">
-              {invoice.issuedAt.slice(0, 10)}
-            </strong>
+            {renderRich(copy.issuedOn, strongMono, { date: format.date(invoice.issuedAt) })}
           </span>
         ) : null}
       </div>
 
       {/* Reason */}
-      <div className="field infakt-correction__reason">
-        <label htmlFor="infakt-reason">
-          {t('infakt.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="infakt-reason"
-          className="textarea"
-          placeholder={t(
-            'infakt.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-        />
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="infakt"
+        disabled={isSubmitting}
+        className="infakt-correction__reason"
+      />
 
       {/* Line items */}
       {linesError ? (
@@ -232,7 +228,7 @@ export function InfaktInvoiceCorrectionFlow({
       ) : null}
 
       {contentQuery.isLoading ? (
-        <p className="text-muted">{t('infakt.correction.loadingLines', 'Loading invoice lines…')}</p>
+        <p className="text-muted">{copy.loadingLines}</p>
       ) : linesAreAuthoritative ? (
         <CorrectionLineGrid
           invoiceId={invoice.id}
@@ -246,14 +242,14 @@ export function InfaktInvoiceCorrectionFlow({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{t('infakt.correction.col.lp', 'Lp')}</th>
+                  <th>{copy.col.lp}</th>
                   <th className="infakt-correction__col-qty">
-                    {t('infakt.correction.col.newQty', 'New qty')}
+                    {copy.col.newQty}
                   </th>
                   <th className="infakt-correction__col-price">
-                    {t('infakt.correction.col.newPrice', 'New gross')}
+                    {copy.col.newPrice}
                   </th>
-                  <th aria-label={t('infakt.correction.col.remove', 'Remove')} />
+                  <th aria-label={copy.col.remove} />
                 </tr>
               </thead>
               <tbody>
@@ -264,7 +260,7 @@ export function InfaktInvoiceCorrectionFlow({
                         invoiceId={invoice.id}
                         value={row.originalLineNumber}
                         onChange={(next) => updateLine(i, 'originalLineNumber', next)}
-                        ariaLabel={`${t('infakt.correction.lineNum', 'Line number')} ${i + 1}`}
+                        ariaLabel={interpolate(copy.lineNum, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -274,10 +270,10 @@ export function InfaktInvoiceCorrectionFlow({
                         className="input input--w-qty"
                         value={row.newQuantity}
                         onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('infakt.correction.newQty', 'New qty, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newQty, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -287,10 +283,10 @@ export function InfaktInvoiceCorrectionFlow({
                         className="input input--w-price"
                         value={row.newUnitPriceGross}
                         onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('infakt.correction.newPrice', 'New gross, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newPrice, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -299,7 +295,7 @@ export function InfaktInvoiceCorrectionFlow({
                         tone="secondary"
                         onClick={() => removeLine(i)}
                         disabled={lines.length === 1 || isSubmitting}
-                        aria-label={`${t('infakt.correction.removeLine', 'Remove line')} ${i + 1}`}
+                        aria-label={interpolate(copy.removeLine, { n: i + 1 })}
                       >
                         ✕
                       </Button>
@@ -311,14 +307,11 @@ export function InfaktInvoiceCorrectionFlow({
           </div>
 
           <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
-            {t('infakt.correction.addLine', '+ Add line')}
+            {copy.addLine}
           </Button>
 
           <p className="infakt-correction__note">
-            {t(
-              'infakt.correction.note',
-              'A KOR document corrects quantity and/or price per line. inFakt submits it to KSeF; OpenLinker reconciles the status automatically.',
-            )}
+            {copy.note}
           </p>
         </>
       )}
@@ -327,14 +320,15 @@ export function InfaktInvoiceCorrectionFlow({
       <div className="wizard__actions">
         <span className="wizard__spacer" />
         <Button tone="secondary" onClick={onClose} disabled={isSubmitting}>
-          {t('infakt.correction.cancel', 'Cancel')}
+          {copy.cancel}
         </Button>
         <Button tone="primary" onClick={handleSubmit} disabled={isSubmitting}>
           {isSubmitting
-            ? t('infakt.correction.submitting', 'Issuing…')
-            : t('infakt.correction.submit', 'Issue KOR')}
+            ? copy.submitting
+            : copy.submit}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

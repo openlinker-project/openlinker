@@ -91,7 +91,10 @@ import {
 } from '../interfaces/bench-parcel.service.interface';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 
-import { productImageProxyPath } from '../../../products/http/product-image-path';
+import {
+  productImageProxyPath,
+  variantImageProxyPath,
+} from '../../../products/http/product-image-path';
 import type { IBenchWorkService } from '../interfaces/bench-work.service.interface';
 import type { BenchClaimNextResultView } from '../types/bench-parcel.types';
 import type {
@@ -103,8 +106,6 @@ import type {
   BenchWorkState,
   BenchWorkView,
 } from '../types/bench-work.types';
-
-
 
 /**
  * The most parcels this read will collect before it truncates.
@@ -130,6 +131,24 @@ export const BENCH_WORK_HARD_CAP = 5 * FULFILLMENT_WORKLIST_MAX_LIMIT;
  * surface can say how many more there are rather than implying this is all.
  */
 const RAIL_ITEM_LIMIT = 3;
+
+/** Units of the parcel's lines that are gifts (#3935); cancelled units do not count. */
+function countGiftUnits(work: FulfillmentWorkView, order: OrderRecord | undefined): number {
+  if (order === undefined) {
+    return 0;
+  }
+  const giftLineIds = new Set(order.orderItems.filter((item) => item.gift !== undefined).map((item) => item.id));
+  for (const bundle of order.bundleLines) {
+    for (const component of bundle.components) {
+      if (component.giftSlot === true) {
+        giftLineIds.add(component.lineId);
+      }
+    }
+  }
+  return work.lines
+    .filter((line) => giftLineIds.has(line.orderLineId))
+    .reduce((sum, line) => sum + Math.max(0, line.totalQuantity - line.cancelledQuantity), 0);
+}
 
 @Injectable()
 export class BenchWorkService implements IBenchWorkService {
@@ -437,7 +456,14 @@ export class BenchWorkService implements IBenchWorkService {
     order: OrderRecord | undefined,
     siblings: readonly string[] | undefined,
     viewerId: string,
-    variantById: ReadonlyMap<string, { readonly productId: string }>,
+    variantById: ReadonlyMap<
+      string,
+      {
+        readonly id: string;
+        readonly productId: string;
+        readonly images?: readonly string[] | null;
+      }
+    >,
     // Structural, and it carries `images` because `productImageProxyPath`
     // reads it - typing this as `{ name }` alone compiled under ts-jest and
     // failed the real build, which is the one that matters.
@@ -491,11 +517,19 @@ export class BenchWorkService implements IBenchWorkService {
             // is a fact the packer can act on, and a fabricated name is not.
             name: product?.name ?? null,
             quantity: Math.max(0, line.totalQuantity - line.cancelledQuantity),
-            imageUrl: productImageProxyPath(product),
+            // The variant's own picture when it has one (#3586), else the product's.
+            imageUrl:
+              variant !== undefined && (variant.images?.length ?? 0) > 0
+                ? variantImageProxyPath(variant, 0)
+                : productImageProxyPath(product),
           };
         })
         .filter((item) => item.quantity > 0)
         .slice(0, RAIL_ITEM_LIMIT),
+      // Units of this parcel that are gifts (#3935), for the rail's "+N with a
+      // gift" line: a promotion's, the channel's or an operator's gift line, and
+      // the gift slot of a bundle. A count only; the bench never shows a price.
+      giftUnits: countGiftUnits(work, order),
       // Units still to be confirmed against the box. Cancelled units are
       // subtracted because nobody will put them in; `fulfilledQuantity` is
       // deliberately NOT consulted — see the view type's module note on B2.
@@ -511,6 +545,8 @@ export class BenchWorkService implements IBenchWorkService {
       assignmentState,
       claimable,
       completedAt: work.completedAt?.toISOString() ?? null,
+      hasBuyerNote: order?.hasBuyerNote ?? false,
+      buyerNoteAcknowledgedAt: work.buyerNoteAcknowledgedAt?.toISOString() ?? null,
     };
   }
 }

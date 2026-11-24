@@ -46,8 +46,10 @@ import { Logger } from '@openlinker/shared/logging';
 import {
   FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   type FulfillmentWorkView,
   type IFulfillmentVerificationService,
+  type IFulfillmentWorkQueryService,
   type IFulfillmentWorklistService,
   type ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
@@ -56,7 +58,10 @@ import {
   OrderRecordNotFoundException,
   IOrderRecordService,
   ORDER_NOTE_SERVICE_TOKEN,
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   type IOrderNoteService,
+  type IOrderSourceAmendmentEffectsService,
+  type OrderRecord,
 } from '@openlinker/core/orders';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
@@ -80,6 +85,7 @@ import {
 import {
   deriveBenchWorkState,
   isBenchWorkSelectable,
+  isCancelledBenchState,
   isClaimableByViewer,
 } from '../bench-work-eligibility';
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
@@ -93,18 +99,42 @@ import type {
 } from '../interfaces/bench-parcel.service.interface';
 import type {
   BenchActivityEntryView,
+  BenchBuyerNoteAcknowledgementResultView,
+  BenchSourceChangeTakenOutRefusal,
+  BenchSourceChangeTakenOutResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
   BenchParcelLineView,
+  BenchParcelSourceChangeView,
   BenchParcelRefusal,
   BenchParcelView,
   BenchReopenResultView,
   BenchUndoResultView,
   BenchVerificationResultView,
 } from '../types/bench-parcel.types';
-import { productImageProxyPath } from '../../../products/http/product-image-path';
+import {
+  productImageProxyPath,
+  variantImageProxyPath,
+} from '../../../products/http/product-image-path';
 import { BenchExecutorResolver } from './bench-executor.resolver';
+import { BenchRouteResolver, type BenchRouteQuery } from './bench-route.resolver';
+
+/**
+ * The order facts a route is resolved from, or `null` when there is no order.
+ *
+ * `?? null` on the two getters: an order record that predates either column
+ * reads `undefined` rather than `null`, and the routing query wants a plain
+ * "no delivery method", which resolves to the default route.
+ */
+function toRouteQuery(order: OrderRecord | undefined): BenchRouteQuery | null {
+  if (order === undefined) return null;
+  return {
+    sourceConnectionId: order.sourceConnectionId,
+    sourceDeliveryMethodId: order.sourceDeliveryMethodId ?? null,
+    methodLabel: order.sourceDeliveryMethodName ?? null,
+  };
+}
 
 /** Raised when the work is not a parcel this bench may see at all. */
 export class BenchParcelNotAtThisBenchError extends Error {
@@ -112,6 +142,43 @@ export class BenchParcelNotAtThisBenchError extends Error {
     super(`Work ${workId} is not packing work at this bench`);
     this.name = 'BenchParcelNotAtThisBenchError';
   }
+}
+
+/**
+ * Component physical line id -> its bundle (#3624). Reads the commercial
+ * lines for the bundle's NAME only (what the buyer saw); the grouping itself
+ * comes from the order's frozen expansion.
+ */
+/**
+ * Commercial line ids that are a gift by themselves (#3935): a promotion's,
+ * the channel's or an operator's gift line, not a component of a bundle. No price
+ * or cost is read: the bench shows the marker only.
+ */
+function standaloneGiftLineIds(order: OrderRecord | undefined): ReadonlySet<string> {
+  if (order === undefined) {
+    return new Set();
+  }
+  return new Set(order.orderItems.filter((item) => item.gift !== undefined).map((item) => item.id));
+}
+
+function bundleOf(
+  order: OrderRecord | undefined
+): Map<string, { lineId: string; name: string | null; giftSlot: boolean }> {
+  const result = new Map<string, { lineId: string; name: string | null; giftSlot: boolean }>();
+  if (order === undefined) {
+    return result;
+  }
+  for (const bundle of order.bundleLines) {
+    const name = order.orderItems.find((item) => item.id === bundle.lineId)?.name ?? null;
+    for (const component of bundle.components) {
+      result.set(component.lineId, {
+        lineId: bundle.lineId,
+        name,
+        giftSlot: component.giftSlot === true,
+      });
+    }
+  }
+  return result;
 }
 
 @Injectable()
@@ -147,13 +214,87 @@ export class BenchParcelService implements IBenchParcelService {
     // #3525 - the SAME notifier the desktop worklist's manual close uses.
     // Best-effort by contract; never able to fail the scan.
     @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
-    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
+    // #3538 - the per-parcel buyer-note acknowledgements of the ORDER, read once
+    // per projection so a split order's other parcels can be shown.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly workQuery: IFulfillmentWorkQueryService,
+    // #3961 - "Done, I took it out" re-runs the reconcile that held the box.
+    @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
+    private readonly sourceAmendment: IOrderSourceAmendmentEffectsService,
+    // #3958 - who ships this box, for the label card.
+    private readonly routes: BenchRouteResolver
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
     const work = await this.loadBenchWork(workId);
     const state = await this.verification.getState(workId);
     return await this.project(work, state);
+  }
+
+  /**
+   * "Done, I took it out" (#3961). The box was held because the shop lowered a
+   * line and the packer had already scanned more units of it. The packer took
+   * the extra units back out; this voids exactly those scans on THAT line (the
+   * generic undo voids whichever scan was last, often a different item) and
+   * re-runs the same reconcile that held the box, which now finds it matching
+   * and applies the change: narrower work, released hold, stock given back.
+   *
+   * Answers the parcel as it now stands. A box no longer held for a source
+   * change, a line it does not carry, or a packer locked out of the parcel
+   * changes nothing and gets the current parcel back.
+   */
+  async confirmSourceChangeTakenOut(input: {
+    readonly workId: string;
+    readonly workLineId: string;
+    readonly actorUserId: string;
+  }): Promise<BenchSourceChangeTakenOutResultView> {
+    await this.noteActivity(input.actorUserId);
+    const work = await this.loadBenchWork(input.workId);
+    const refused = async (
+      reason: BenchSourceChangeTakenOutRefusal
+    ): Promise<BenchSourceChangeTakenOutResultView> => ({
+      outcome: 'refused',
+      reason,
+      parcel: await this.project(work, await this.verification.getState(input.workId)),
+    });
+
+    // The SAME lock every other bench write checks (ADR-074).
+    if (!isClaimableByViewer(work, input.actorUserId)) return refused('not-claimable-by-viewer');
+    if (!work.activeHolds.some((hold) => hold.fromSourceChange)) {
+      return refused('not-held-for-source-change');
+    }
+    const workLine = work.lines.find((line) => line.id === input.workLineId);
+    if (workLine === undefined) return refused('no-such-line');
+
+    const order = (await this.orders.findByIds([work.orderId]))[0];
+    // The PHYSICAL list: a bundle's work lines carry its component ids, which
+    // only the expansion knows (ADR-083). For an ordinary order the two lists agree.
+    const keep = (order?.physicalItems ?? [])
+      .filter((item) => item.id === workLine.orderLineId)
+      .reduce((sum, item) => sum + item.quantity, 0);
+    await this.verification.voidSurplusOnLine({
+      workId: input.workId,
+      workLineId: input.workLineId,
+      keep,
+      actorUserId: input.actorUserId,
+    });
+    const reconciled = await this.sourceAmendment.reconcile({ internalOrderId: work.orderId });
+    this.logger.log(
+      `bench_source_change_taken_out work=${input.workId} line=${input.workLineId} keep=${String(keep)} outcome=${reconciled.outcome}`
+    );
+    // A box the change left exactly full was closed and recorded as shipped by
+    // core; tell the order's channel now rather than at the next relay sweep.
+    for (const closed of reconciled.closedParcels) {
+      await this.parcelClosureNotifier.relayRecordedClose(closed.workId);
+    }
+
+    const after = await this.worklist.get(input.workId);
+    return {
+      outcome: 'taken-out',
+      reason: null,
+      parcel: await this.project(after, await this.verification.getState(input.workId)),
+    };
   }
 
   /**
@@ -445,6 +586,59 @@ export class BenchParcelService implements IBenchParcelService {
    * must too, since a parcel locked to a different packer must not be
    * finished by someone else either.
    */
+  async acknowledgeBuyerNote(
+    workId: string,
+    viewerId: string
+  ): Promise<BenchBuyerNoteAcknowledgementResultView> {
+    await this.noteActivity(viewerId);
+    const work = await this.loadBenchWork(workId);
+
+    // The SAME lock every other bench write checks (ADR-074): a packer locked
+    // out of a parcel does not get to sign off its buyer note either.
+    if (!isClaimableByViewer(work, viewerId)) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable-by-viewer',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const refusal = this.refusalFor(work);
+    if (refusal !== null && isCancelledBenchState(refusal)) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'work-cancelled',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    // `hasBuyerNote`, not the text: under `OL_STORE_PII=false` the text is not
+    // stored but a note still exists, and acknowledging it stays meaningful.
+    const [order] = await this.orders.findByIds([work.orderId]);
+    if (!order?.hasBuyerNote) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'no-buyer-note',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const applied = await this.verification.acknowledgeBuyerNote(workId, new Date(), viewerId);
+
+    // `project` reads the acknowledgements fresh, but the work row it is handed
+    // carries `version`-bearing state, so re-fetch like `completeParcel` does.
+    const fresh = await this.worklist.get(workId);
+    const state = await this.verification.getState(workId);
+    return {
+      outcome: applied ? 'acknowledged' : 'already-acknowledged',
+      reason: null,
+      parcel: await this.project(fresh, state),
+    };
+  }
+
   async completeParcel(input: BenchCompleteInput): Promise<BenchCompleteResultView> {
     await this.noteActivity(input.completedByUserId);
     const work = await this.loadBenchWork(input.workId);
@@ -478,9 +672,7 @@ export class BenchParcelService implements IBenchParcelService {
     return { outcome: 'completed', reason: null, parcel: await this.project(fresh, state) };
   }
 
-  async undoCompletion(
-    input: BenchUndoCompletionInput
-  ): Promise<BenchUndoCompletionResultView> {
+  async undoCompletion(input: BenchUndoCompletionInput): Promise<BenchUndoCompletionResultView> {
     const work = await this.loadBenchWork(input.workId);
 
     // The SAME lock `completeParcel` checks, checked the same way and first.
@@ -721,11 +913,13 @@ export class BenchParcelService implements IBenchParcelService {
     work: FulfillmentWorkView,
     state: ParcelVerificationState
   ): Promise<BenchParcelView> {
-    const [order, siblings, lines, packerNotesByOrder] = await Promise.all([
-      this.orders.findByIds([work.orderId]).then((records) => records[0]),
+    const orderRead = this.orders.findByIds([work.orderId]).then((records) => records[0]);
+    const [order, siblings, lines, packerNotesByOrder, acknowledgements] = await Promise.all([
+      orderRead,
       this.worklist.listSiblingWorkIds([work.orderId]),
-      this.describeLines(work, state),
+      this.describeLines(work, state, orderRead),
       this.notes.getPackerVisibleForOrders([work.orderId]),
+      this.workQuery.listBuyerNoteAcknowledgements(work.orderId),
     ]);
 
     // A parcel whose siblings could not be read is "1 of 1" rather than "1 of
@@ -733,6 +927,14 @@ export class BenchParcelService implements IBenchParcelService {
     const parcels = siblings.get(work.orderId) ?? [work.id];
     const index = parcels.indexOf(work.id);
     const hold = work.activeHolds[0];
+    // Read from the acknowledgement list rather than from `work`: the list is
+    // fetched inside this projection, so it is never staler than the response
+    // that carries it, whichever write preceded the call.
+    const ownAcknowledgement = acknowledgements.find((entry) => entry.workId === work.id);
+
+    // After the order read rather than inside the `Promise.all` above: the
+    // route is resolved FROM the order's source connection and delivery method.
+    const route = await this.routes.resolve(toRouteQuery(order));
 
     // Field-by-field, never a spread — see the view type's module note.
     return {
@@ -749,11 +951,13 @@ export class BenchParcelService implements IBenchParcelService {
       totalAmount: order?.totalAmount ?? null,
       currency: order?.currency ?? null,
       carrierName: order?.sourceDeliveryMethodName ?? null,
+      route,
       dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
       parcelIndex: index >= 0 ? index + 1 : 1,
       parcelTotal: parcels.length > 0 ? parcels.length : 1,
       refusal: this.refusalFor(work),
       holdReason: hold?.reason ?? null,
+      sourceChange: describeSourceChange(work, lines, order),
       closedAt: state.closedAt?.toISOString() ?? null,
       packedByUserId: state.packedByUserId,
       // From `work`, unlike `closedAt`/`packedByUserId`/`version` above: none
@@ -771,6 +975,24 @@ export class BenchParcelService implements IBenchParcelService {
       // D12 (#3531) - flagged notes only, read only, no tags. Absent from the
       // map (an order with none) reads as an empty array here rather than
       // undefined, matching every other array field on this view.
+      // #3538 (D12) - the order's buyer note, read only. `buyerNoteState` is a
+      // string only when text was stored; asserted-none, unknown and not-stored
+      // all read `null` here, because a packer can only act on words.
+      buyerNote:
+        typeof order?.buyerNoteState === 'string' ? order.buyerNoteState : null,
+      hasBuyerNote: order?.hasBuyerNote === true,
+      buyerNoteAcknowledgedAt: ownAcknowledgement?.acknowledgedAt.toISOString() ?? null,
+      buyerNoteAcknowledgedByUserId: ownAcknowledgement?.acknowledgedByUserId ?? null,
+      otherParcelBuyerNoteAcknowledgements: acknowledgements
+        .filter((entry) => entry.workId !== work.id)
+        .map((entry) => ({
+          workId: entry.workId,
+          parcelIndex: parcels.indexOf(entry.workId) + 1,
+          acknowledgedAt: entry.acknowledgedAt.toISOString(),
+          acknowledgedByUserId: entry.acknowledgedByUserId,
+        }))
+        // A sibling the parcel list could not place keeps no index to show.
+        .filter((entry) => entry.parcelIndex > 0),
       packerNotes: (packerNotesByOrder.get(work.orderId) ?? []).map((note) => ({
         id: note.id,
         body: note.body,
@@ -789,10 +1011,15 @@ export class BenchParcelService implements IBenchParcelService {
    */
   private async describeLines(
     work: FulfillmentWorkView,
-    state: ParcelVerificationState
+    state: ParcelVerificationState,
+    orderRead: Promise<OrderRecord | undefined>
   ): Promise<BenchParcelLineView[]> {
+    const orderForLines = await orderRead;
+    const bundleByComponentLine = bundleOf(orderForLines);
+    const giftLineIds = standaloneGiftLineIds(orderForLines);
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
-    const variants = variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
+    const variants =
+      variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
     const productIds = [...new Set(variants.map((variant) => variant.productId))];
     const [products, binCodes] = await Promise.all([
       productIds.length === 0 ? Promise.resolve([]) : this.products.getProductsByIds(productIds),
@@ -812,6 +1039,8 @@ export class BenchParcelService implements IBenchParcelService {
       const counts = stateByLine.get(line.id);
       return {
         workLineId: line.id,
+        bundle: bundleByComponentLine.get(line.orderLineId) ?? null,
+        gift: giftLineIds.has(line.orderLineId),
         productVariantId: line.productVariantId,
         // `null`, never a placeholder that reads like a name: a variant absent
         // from the catalogue is a fact the packer can act on (match the codes),
@@ -822,14 +1051,17 @@ export class BenchParcelService implements IBenchParcelService {
         gtin: variant?.gtin ?? null,
         requiredQuantity: counts?.requiredQuantity ?? 0,
         verifiedQuantity: counts?.verifiedQuantity ?? 0,
-        // #3410 (epic #3401) — the parent PRODUCT's image; ProductVariant
-        // carries none of its own.
+        // #3410 (epic #3401) — the variant's OWN picture when the master gave
+        // it one (#3586), else the parent PRODUCT's.
         //
         // The PROXY path, never the stored url (pack-bench completion follow-up): what the
         // catalogue sync wrote is the address the BACKEND used to reach the
         // shop, which on a compose deployment the browser cannot resolve at
         // all. See `products/application/services/product-image-proxy.service.ts`.
-        imageUrl: productImageProxyPath(product),
+        imageUrl:
+          variant !== undefined && (variant.images?.length ?? 0) > 0
+            ? variantImageProxyPath(variant, 0)
+            : productImageProxyPath(product),
         attributes: variant?.attributes ?? null,
         binCode: binCodes.get(line.productVariantId) ?? null,
         weightGrams: variant?.weightGrams ?? null,
@@ -839,4 +1071,31 @@ export class BenchParcelService implements IBenchParcelService {
       };
     });
   }
+}
+
+/**
+ * What must come back out of a box held for a source change (#3961): per line,
+ * units verified into THIS box beyond what the order now asks for. Read from the
+ * order's effective items (operator overlay applied), so it agrees with the
+ * reconcile that placed the hold.
+ */
+function describeSourceChange(
+  work: FulfillmentWorkView,
+  lines: readonly BenchParcelLineView[],
+  order: OrderRecord | undefined
+): BenchParcelSourceChangeView | null {
+  if (!work.activeHolds.some((hold) => hold.fromSourceChange)) return null;
+  const orderQuantity = new Map<string, number>();
+  for (const item of order?.orderItems ?? []) {
+    orderQuantity.set(item.id, (orderQuantity.get(item.id) ?? 0) + item.quantity);
+  }
+  const orderLineByWorkLine = new Map(work.lines.map((line) => [line.id, line.orderLineId]));
+  const takeOut: Array<{ workLineId: string; units: number }> = [];
+  for (const line of lines) {
+    const orderLineId = orderLineByWorkLine.get(line.workLineId);
+    if (orderLineId === undefined) continue;
+    const units = line.verifiedQuantity - (orderQuantity.get(orderLineId) ?? 0);
+    if (units > 0) takeOut.push({ workLineId: line.workLineId, units });
+  }
+  return { takeOut };
 }

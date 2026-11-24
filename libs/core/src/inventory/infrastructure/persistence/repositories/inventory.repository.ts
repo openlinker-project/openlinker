@@ -22,7 +22,7 @@
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, QueryFailedError, Repository } from 'typeorm';
+import { Brackets, In, QueryFailedError, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
@@ -39,6 +39,7 @@ import type {
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
+  ReportedLocationSet,
   DuplicatePositionReport,
   InventoryOwnerPosition,
   InventoryPositionCandidate,
@@ -329,6 +330,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       .select('inv.productVariantId', 'productVariantId')
       .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
       .addSelect('COUNT(DISTINCT inv.locationId)', 'locationCount')
+      .addSelect('COUNT(inv.id)', 'positionCount')
       .addSelect('MAX(inv.updatedAt)', 'stockUpdatedAt')
       .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
       // Exclude soft-deleted rows so offer flows never act on dead stock (#1478).
@@ -338,6 +340,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
         productVariantId: string;
         totalAvailable: string;
         locationCount: string;
+        positionCount: string;
         stockUpdatedAt: Date | string;
       }>();
 
@@ -350,6 +353,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       productVariantId: row.productVariantId,
       totalAvailable: Number(row.totalAvailable),
       locationCount: Number(row.locationCount),
+      positionCount: Number(row.positionCount),
       stockUpdatedAt:
         row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
     }));
@@ -469,6 +473,18 @@ export class InventoryRepository implements InventoryRepositoryPort {
       totalReserved: Number(row.totalReserved),
       stockUpdatedAt: row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
     }));
+  }
+
+  async findPositionsByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly InventoryItem[]> {
+    if (variantIds.length === 0) return [];
+
+    const entities = await this.repository.find({
+      where: { productVariantId: In([...variantIds]) },
+      order: { updatedAt: 'DESC', id: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async findBinCodesByVariantIds(
@@ -607,6 +623,54 @@ export class InventoryRepository implements InventoryRepositoryPort {
     scope: ProvenanceScope
   ): Promise<PruneStaleVariantsResult> {
     return this.markSameSourceOrphanPositionsStale(productId, pooledVariantKeys, scope, 'located');
+  }
+
+  /** See the port docblock: multi-location pruning, same raw-SQL / no-`updatedAt`-bump rules as the repairs. */
+  async markUnreportedLocationsStaleForSource(
+    productId: string,
+    reported: readonly ReportedLocationSet[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    const variantIds = new Set<string>();
+    let markedCount = 0;
+    let markedProductLevel = false;
+    for (const entry of reported) {
+      const params: unknown[] = [productId, [...entry.locationIds]];
+      let variantClause = '"productVariantId" IS NULL';
+      if (entry.variantKey !== null) {
+        params.push(entry.variantKey);
+        variantClause = `"productVariantId" = $${params.length}`;
+      }
+      params.push(scope.sourceConnectionId);
+      const provenance = [`"sourceConnectionId" = $${params.length}`];
+      if (scope.includeUnattributedProvenance) {
+        provenance.push('"sourceConnectionId" IS NULL');
+        params.push(LEGACY_SOURCE_CONNECTION_ID);
+        provenance.push(`"sourceConnectionId" = $${params.length}`);
+      }
+      const rows = (await this.repository.query(
+        `UPDATE "inventory_items"
+            SET "isStale" = true
+          WHERE "productId" = $1
+            AND "isStale" = false
+            AND "locationId" IS NOT NULL
+            AND NOT ("locationId" = ANY($2::text[]))
+            AND ${variantClause}
+            AND (${provenance.join(' OR ')})
+      RETURNING "productVariantId"`,
+        params
+      )) as unknown;
+      const outer = Array.isArray(rows) ? rows : [];
+      const raw = (Array.isArray(outer[0]) ? outer[0] : outer) as {
+        productVariantId: string | null;
+      }[];
+      markedCount += raw.length;
+      for (const r of raw) {
+        if (r.productVariantId === null) markedProductLevel = true;
+        else variantIds.add(r.productVariantId);
+      }
+    }
+    return { markedCount, variantIds: [...variantIds], markedProductLevel };
   }
 
   /**

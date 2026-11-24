@@ -12,22 +12,22 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { ORDER_TAG_LIMIT } from '../lib/order-tags';
 
 export function OrderTagsSettingsTile(): ReactElement {
+  const copy = useMessages('orders').orderTagsSettingsTile;
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Orders</p>
-          <h3 className="section-title">Order tags</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
       </div>
-      <p className="muted-text">
-        Colour, rename and delete the workspace's order tags. Up to 50, created from the tag
-        picker on any order.
-      </p>
+      <p className="muted-text">{interpolate(copy.description, { limit: ORDER_TAG_LIMIT })}</p>
       <Link className="button button--secondary button--sm" to="/settings/order-tags">
-        Manage tags
+        {copy.manageTags}
       </Link>
     </article>
   );

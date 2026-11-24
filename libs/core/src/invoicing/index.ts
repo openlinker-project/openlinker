@@ -9,6 +9,9 @@
  * @module libs/core/src/invoicing
  */
 export * from './domain/types/invoicing.types';
+export * from './domain/types/stored-document-hash.types';
+export * from './domain/domain-services/invoice-failure-classification.domain-service';
+export { buildOriginalDocumentFromIssuedRecord } from './domain/domain-services/invoice-original-document.domain-service';
 export * from './domain/types/invoice-numbering.types';
 export * from './domain/types/numbering-audit.types';
 export {
@@ -21,17 +24,18 @@ export {
 export {
   InvoiceTriggerModelValues,
   parseTriggerModel,
+  resolveTriggerModelForKind,
+  describeInvalidTriggerModels,
+  isInBatchRun,
+  TriggerModelSourceValues,
 } from './domain/types/invoice-trigger.types';
-export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
-// One-invoice-per-order primary selection (#2047).
-export {
-  parseIsPrimaryInvoicing,
-  selectPrimaryInvoicingConnection,
-} from './domain/types/invoicing-primary.types';
 export type {
-  InvoicingConnectionCandidate,
-  InvoicingConnectionSelection,
-} from './domain/types/invoicing-primary.types';
+  AutoIssueBatchRunScope,
+  AutoIssueOptions,
+  InvoiceTriggerModel,
+  ResolvedTriggerModel,
+  TriggerModelSource,
+} from './domain/types/invoice-trigger.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
 // A missing per-line tax rate holds the document (#2248, ADR-063 § 6).
 export {
@@ -59,6 +63,7 @@ export * from './domain/entities/invoice-numbering-series.entity';
 export * from './domain/ports/invoicing.port';
 // Re-exports both `DocumentNumberConsumer` and `isDocumentNumberConsumer` (#1575).
 export * from './domain/ports/capabilities/document-number-consumer.capability';
+export * from './domain/ports/capabilities/buyer-identity-corrector.capability';
 // Re-exports both `RegulatoryStatusReader` and `isRegulatoryStatusReader`.
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 // Re-exports both `PaymentStatusReader` and `isPaymentStatusReader` (#1354).
@@ -92,16 +97,16 @@ export * from './domain/exceptions/invalid-numbering-pattern.exception';
 export * from './domain/exceptions/invoice-numbering-series-not-found.exception';
 export * from './domain/exceptions/numbering-gap-note-reason-required.exception';
 export * from './domain/exceptions/source-document-immutable.error';
-export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';
 export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-buyer-profile.error';
 export { InvalidInvoiceLineError } from './application/mappers/errors/invalid-invoice-line.error';
 export { UnsupportedPriceTreatmentError } from './application/mappers/errors/unsupported-price-treatment.error';
 export * from './domain/exceptions/unsupported-regulatory-document-kind.error';
+export * from './domain/exceptions/regulatory-document-not-ready.error';
 export {
   toIssueInvoiceCommand,
   OrderToIssueInvoiceCommandInput,
 } from './application/mappers/order-to-issue-invoice-command.mapper';
-export { IInvoiceService } from './application/services/invoice.service.interface';
+export { IInvoiceService, IssueInvoiceOptions } from './application/services/invoice.service.interface';
 export { InvoiceService } from './application/services/invoice.service';
 // Per-order issuance lock key + TTL (#2047), reused verbatim by
 // FiscalRegistrationService (#2157) so both write paths serialize under the
@@ -124,6 +129,9 @@ export type {
   OfflineResubmissionResult,
 } from './application/services/offline-resubmission.service.interface';
 export { OfflineResubmissionService } from './application/services/offline-resubmission.service';
+export type { IInvoiceAttachmentService } from './application/services/invoice-attachment.service.interface';
+export { InvoiceAttachmentService } from './application/services/invoice-attachment.service';
+export * from './domain/types/invoice-attachment.types';
 export type {
   IPendingRecoveryService,
   PendingRecoveryOptions,
@@ -143,3 +151,5 @@ export type { INumberingSeriesService } from './application/services/numbering-s
 export { NumberingSeriesService } from './application/services/numbering-series.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';
+// #3960 - one derivation of the invoice exactly-once key and its retry root.
+export * from './domain/types/invoice-idempotency-key.types';

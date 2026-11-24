@@ -35,5 +35,19 @@ export interface ConnectionConfigShapeValidatorPort {
    *   Other throws propagate as 500 — only the documented exception type
    *   maps to a 400 at the API boundary.
    */
-  validate(config: Record<string, unknown>): Promise<void>;
+  validate(
+    config: Record<string, unknown>,
+    context?: ConnectionConfigValidationContext,
+  ): Promise<void>;
+}
+
+/**
+ * What the caller knows besides the payload (DEF-19). Optional, so every
+ * existing implementation keeps compiling. `previous` is the persisted config
+ * on an UPDATE and absent on a CREATE: a validator may then refuse only a value
+ * that CHANGED, so a stored value that predates a stricter rule does not block
+ * every unrelated save of the same connection (the #2407 / #3206 rule).
+ */
+export interface ConnectionConfigValidationContext {
+  previous?: Record<string, unknown>;
 }

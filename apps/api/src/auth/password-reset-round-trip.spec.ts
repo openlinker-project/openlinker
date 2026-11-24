@@ -1,10 +1,11 @@
 /**
  * Password Reset - Full Round-Trip Test
  *
- * Exercises the real delivery + reset flow end-to-end with only the SMTP
- * transport and repositories faked: PasswordResetService issues a token and
- * hands it to the real MailerPasswordResetNotifierAdapter, which composes the
- * real SmtpMailerAdapter (not the console dev default) to "send" the email.
+ * Exercises the real delivery + reset flow end-to-end with only the mailer
+ * port and repositories faked: PasswordResetService issues a token and hands
+ * it to the real MailerPasswordResetNotifierAdapter, which "sends" the email
+ * through `MailerPort`. The SMTP transport itself (sender address, nodemailer
+ * hand-off) is covered beside the adapter in `libs/core/src/mailer`.
  * The token is scraped from the captured message body (as a user would copy
  * it from the link), fed into PasswordResetService.resetPassword, and the
  * resulting password hash is verified against AuthService.validateUser to
@@ -25,12 +26,12 @@ import {
   PasswordResetToken,
   User,
   type PasswordResetTokenRepositoryPort,
+  type MailerPort,
   type UserRepositoryPort,
 } from '@openlinker/core/users';
 import { PasswordResetService } from './password-reset.service';
 import { AuthService } from './auth.service';
 import { MailerPasswordResetNotifierAdapter } from './adapters/mailer-password-reset-notifier.adapter';
-import { SmtpMailerAdapter, type SmtpTransport } from './adapters/smtp-mailer.adapter';
 
 const makeConfig = (values: Record<string, string | number> = {}): ConfigService =>
   ({
@@ -48,7 +49,7 @@ function extractTokenFromLink(text: string): string {
 describe('Password reset - delivery + reset round trip', () => {
   let userRepo: jest.Mocked<UserRepositoryPort>;
   let tokenRepo: jest.Mocked<PasswordResetTokenRepositoryPort>;
-  let smtpTransport: jest.Mocked<SmtpTransport>;
+  let mailer: jest.Mocked<MailerPort>;
   let notifier: MailerPasswordResetNotifierAdapter;
   let passwordResetService: PasswordResetService;
   let authService: AuthService;
@@ -153,10 +154,9 @@ describe('Password reset - delivery + reset round trip', () => {
       invalidateActiveForUser: jest.fn(),
     };
 
-    smtpTransport = { sendMail: jest.fn().mockResolvedValue({}) };
-    const smtpAdapter = new SmtpMailerAdapter(smtpTransport, 'no-reply@openlinker.local');
+    mailer = { sendEmail: jest.fn().mockResolvedValue(undefined) };
     notifier = new MailerPasswordResetNotifierAdapter(
-      smtpAdapter,
+      mailer,
       makeConfig({ WEB_URL: 'https://app.example.com' }),
     );
 
@@ -170,13 +170,12 @@ describe('Password reset - delivery + reset round trip', () => {
     authService = new AuthService(userRepo, new JwtService({ secret: 'test-secret' }));
   });
 
-  it('delivers the reset link via the real mailer transport, then a full reset + login succeeds', async () => {
+  it('delivers the reset link via the mailer port, then a full reset + login succeeds', async () => {
     await passwordResetService.requestReset(user.email!);
 
-    expect(smtpTransport.sendMail).toHaveBeenCalledTimes(1);
-    const sentMessage = smtpTransport.sendMail.mock.calls[0][0];
+    expect(mailer.sendEmail).toHaveBeenCalledTimes(1);
+    const sentMessage = mailer.sendEmail.mock.calls[0][0];
     expect(sentMessage.to).toBe(user.email);
-    expect(sentMessage.from).toBe('no-reply@openlinker.local');
 
     const rawToken = extractTokenFromLink(sentMessage.text);
 
@@ -197,7 +196,7 @@ describe('Password reset - delivery + reset round trip', () => {
 
   it('does not send an email and does not error for an unknown email (no enumeration)', async () => {
     await expect(passwordResetService.requestReset('nobody@example.com')).resolves.toBeUndefined();
-    expect(smtpTransport.sendMail).not.toHaveBeenCalled();
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
   });
 
   it('rejects an already-expired token even though the hash matches a real issued token', async () => {
@@ -205,7 +204,7 @@ describe('Password reset - delivery + reset round trip', () => {
     const shortLivedService = new PasswordResetService(userRepo, tokenRepo, notifier, expiredConfig);
 
     await shortLivedService.requestReset(user.email!);
-    const sentMessage = smtpTransport.sendMail.mock.calls[0][0];
+    const sentMessage = mailer.sendEmail.mock.calls[0][0];
     const rawToken = extractTokenFromLink(sentMessage.text);
 
     await expect(
@@ -214,7 +213,7 @@ describe('Password reset - delivery + reset round trip', () => {
   });
 
   it('never lets a mailer/transport failure surface as a thrown error (keeps the 200 response shape)', async () => {
-    smtpTransport.sendMail.mockRejectedValueOnce(new Error('SMTP connection refused'));
+    mailer.sendEmail.mockRejectedValueOnce(new Error('SMTP connection refused'));
 
     await expect(passwordResetService.requestReset(user.email!)).resolves.toBeUndefined();
     // Token was still issued even though delivery failed — verifies the

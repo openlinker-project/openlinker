@@ -20,12 +20,12 @@
  */
 import type { ReactElement } from 'react';
 import { Select } from '../../../shared/ui/select';
-import { useTranslation } from '../../../shared/i18n';
+import { getMessages, useMessages } from '../../../shared/i18n';
 
 /** The only document type any shipped `InvoicingPort` adapter actually issues. */
 const OPTIONS = ['invoice'] as const;
 
-/** EN fallbacks for the well-known document types (PL via `t()`). Exported as
+/** Labels for the well-known document types, read from copy. Exported as
  *  the single source of truth so the issued-state line in the `orders` feature's
  *  `SalesDocumentPanel` (#2160, previously `OrderInvoicePanel`) reuses the same
  *  labels instead of re-declaring them. Unknown adapter-supplied
@@ -39,21 +39,25 @@ const OPTIONS = ['invoice'] as const;
  *  `corrected` on all three surfaces, and telling a correction from an original
  *  is the one distinction an accountant needs at a glance. */
 export const DOCUMENT_TYPE_LABEL_FALLBACK: Record<string, string> = {
-  invoice: 'Invoice (faktura)',
-  receipt: 'Receipt (paragon)',
-  corrected: 'Correction (korekta)',
-  'credit-note': 'Credit note (nota kredytowa)',
-  proforma: 'Proforma (faktura pro forma)',
-  prepayment: 'Prepayment (faktura zaliczkowa)',
+  get invoice() {
+    return getMessages('invoicing').invoice.documentType.invoice;
+  },
+  get receipt() {
+    return getMessages('invoicing').invoice.documentType.receipt;
+  },
+  get corrected() {
+    return getMessages('invoicing').invoice.documentType.corrected;
+  },
+  get 'credit-note'() {
+    return getMessages('invoicing').invoice.documentType['credit-note'];
+  },
+  get proforma() {
+    return getMessages('invoicing').invoice.documentType.proforma;
+  },
+  get prepayment() {
+    return getMessages('invoicing').invoice.documentType.prepayment;
+  },
 };
-
-/** Shown where `documentType` is the empty string — the state a record carries
- *  between creation and a successful issue (`InvoiceService` writes
- *  `cmd.documentType ?? ''` on the pending row and the failure patch never
- *  backfills it), which means every `pending` / `issuing` / `failed` row. Both
- *  production issuance paths omit the type, so this is the common case on a
- *  triage-filtered list, not an edge (#2090). */
-export const DOCUMENT_TYPE_UNKNOWN_LABEL = 'Not yet issued';
 
 interface DocumentTypeSelectProps {
   value: string;
@@ -70,18 +74,18 @@ export function DocumentTypeSelect({
   disabled = false,
   className,
 }: DocumentTypeSelectProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoice.documentType;
   return (
     <Select
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       className={className}
-      aria-label={t('invoice.documentType.label', 'Document type')}
+      aria-label={copy.label}
     >
       {OPTIONS.map((option) => (
         <option key={option} value={option}>
-          {t(`invoice.documentType.${option}`, DOCUMENT_TYPE_LABEL_FALLBACK[option])}
+          {copy[option]}
         </option>
       ))}
     </Select>

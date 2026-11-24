@@ -45,6 +45,12 @@ export class ReturnLineEvent {
     public readonly actorUserId: string | null,
     public readonly occurredAt: Date,
     public readonly attestedByEventId: string | null,
-    public readonly createdAt: Date
+    public readonly createdAt: Date,
+    /** The bundle component this act is about; null for an act on the line itself (#3933). */
+    public readonly componentVariantId: string | null = null,
+    /** Shared by the per-component acts of one dispose call. */
+    public readonly componentGroup: string | null = null,
+    /** Gross share of the set price of a partially returned component; null otherwise. */
+    public readonly componentShareGross: number | null = null
   ) {}
 }

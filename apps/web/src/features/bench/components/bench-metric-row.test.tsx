@@ -48,7 +48,7 @@ describe('BenchMetricRow (#3413)', () => {
     expect(screen.getByText('Packed today')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByText('+3 vs yesterday')).toBeInTheDocument();
-    expect(screen.getByText('To pack — all benches')).toBeInTheDocument();
+    expect(screen.getByText('To pack - all benches')).toBeInTheDocument();
     expect(screen.getByText('34')).toBeInTheDocument();
   });
 

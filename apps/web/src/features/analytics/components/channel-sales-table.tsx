@@ -72,14 +72,14 @@
  * @module features/analytics/components
  */
 import { useMemo, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Chip } from '../../../shared/ui/chip';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Sparkline } from '../../../shared/ui/sparkline';
-import { formatAmount } from '../../../shared/format/format-amount';
-import { useNumberFormat } from '../../../shared/i18n/use-number-format';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { ConnectionCell, useConnectionsQuery, type Connection } from '../../connections';
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
@@ -109,6 +109,7 @@ import {
   type ChannelExclusionMap,
 } from '../lib/channel-exclusion-map.lib';
 import { AnalyticsExclusionNote } from './analytics-exclusion-note';
+import { ExportCsvButton } from './export-csv-button';
 import { RecalculatingValue } from './recalculating-value';
 
 const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
@@ -146,15 +147,17 @@ function ChannelIdentity({
 }
 
 function ChannelFlags({ row }: { row: ChannelDataRow }): ReactElement | null {
+  const copy = useMessages('analytics').channelSalesTable;
+  const plural = usePlural();
   const flags: ReactElement[] = [];
   if (!row.channel.coverageComplete) {
     flags.push(
       <Chip
         key="coverage"
         tone="info"
-        title="This channel's earliest ingested order postdates the start of the selected range — its figures cover less than the full period."
+        title={copy.partialHistory.title}
       >
-        Partial history
+        {copy.partialHistory.label}
       </Chip>
     );
   }
@@ -163,9 +166,9 @@ function ChannelFlags({ row }: { row: ChannelDataRow }): ReactElement | null {
       <Chip
         key="unconverted"
         tone="info"
-        title={`${row.channel.unconvertedCount} order(s) in this channel have no reporting-currency FX stamp yet and are excluded from Net sales/Orders/AOV here.`}
+        title={plural(row.channel.unconvertedCount, copy.awaitingFx.title)}
       >
-        Awaiting FX stamp
+        {copy.awaitingFx.label}
       </Chip>
     );
   }
@@ -263,10 +266,12 @@ export function ChannelSalesTable({
   onOpenCategory,
   netGrossBasis = 'gross',
 }: ChannelSalesTableProps): ReactElement {
+  const messages = useMessages('analytics');
+  const copy = messages.channelSalesTable;
+  const plural = usePlural();
+  const format = useFormat();
   const query = useSalesAnalyticsQuery(filters);
   const connectionsQuery = useConnectionsQuery();
-  const pctFormat = useNumberFormat(PERCENT_FORMAT_OPTIONS);
-  const intFormat = useNumberFormat();
 
   // One request for every cross-referenceable category together (#2713/
   // #2714) — `enabled` only when the `coverage` prop (the unfiltered
@@ -301,9 +306,9 @@ export function ChannelSalesTable({
   if (query.isLoading) {
     return (
       <LoadingState
-        eyebrow="Loading"
-        title="Loading by-channel figures"
-        message="Fetching revenue, orders and units per connected channel…"
+        eyebrow={copy.loading.eyebrow}
+        title={copy.loading.title}
+        message={copy.loading.message}
       />
     );
   }
@@ -311,9 +316,9 @@ export function ChannelSalesTable({
   if (query.error) {
     return (
       <ErrorState
-        title="Unable to load by-channel figures"
-        message={query.error.message}
-        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+        title={copy.error.title}
+        message={describeApiError(query.error, 'analytics')}
+        action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
       />
     );
   }
@@ -364,7 +369,7 @@ export function ChannelSalesTable({
   // `netGrossBasis` prop doc comment. Both columns always read the SAME
   // basis, so they can never disagree with each other the way the removed
   // dual-column design once did.
-  const revenueLabel = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
+  const revenueLabel = netGrossBasis === 'net' ? messages.common.netSales : messages.common.gmv;
   function revenueOf(value: { revenue: number; netRevenue: number }): number {
     return netGrossBasis === 'net' ? value.netRevenue : value.revenue;
   }
@@ -382,7 +387,7 @@ export function ChannelSalesTable({
     if (row.kind === 'total') {
       return (
         <>
-          {formatAmount(
+          {format.money(
             convertToDisplay(averageOrderValueOf(row.total), row.total.currency),
             displayCurrencyFor(row.total.currency)
           )}
@@ -392,7 +397,7 @@ export function ChannelSalesTable({
     if (row.channel.currency !== null) {
       return (
         <>
-          {formatAmount(
+          {format.money(
             convertToDisplay(averageOrderValueOf(row.channel), row.channel.currency),
             displayCurrencyFor(row.channel.currency)
           )}
@@ -402,7 +407,7 @@ export function ChannelSalesTable({
     // No unconverted-evidence fallback, same reasoning as the money column:
     // an unconverted amount is a GROSS figure and would misrepresent itself
     // as a net average under the `net` basis.
-    return <EmptyValue label="No AOV figure can be given for this channel in range" />;
+    return <EmptyValue label={copy.noAov} />;
   }
 
   function renderNovCell(row: ChannelRow): ReactElement {
@@ -418,7 +423,7 @@ export function ChannelSalesTable({
     if (row.kind === 'total') {
       return (
         <strong>
-          {formatAmount(
+          {format.money(
             convertToDisplay(revenueOf(row.total), row.total.currency),
             displayCurrencyFor(row.total.currency)
           )}
@@ -428,7 +433,7 @@ export function ChannelSalesTable({
     if (row.channel.currency !== null) {
       return (
         <>
-          {formatAmount(
+          {format.money(
             convertToDisplay(revenueOf(row.channel), row.channel.currency),
             displayCurrencyFor(row.channel.currency)
           )}
@@ -436,17 +441,19 @@ export function ChannelSalesTable({
       );
     }
     return (
-      <EmptyValue label={`No ${revenueLabel} figure can be given for this channel in range`} />
+      <EmptyValue label={interpolate(copy.noRevenue, { revenue: revenueLabel })} />
     );
   }
 
   const columns: DataTableColumn<ChannelRow>[] = [
     {
       id: 'channel',
-      header: 'Channel',
+      header: copy.columns.channel,
       cell: (row) =>
         row.kind === 'total' ? (
-          <strong>Total · {displayCurrencyFor(row.total.currency)}</strong>
+          <strong>
+            {interpolate(copy.total, { currency: displayCurrencyFor(row.total.currency) })}
+          </strong>
         ) : (
           <ChannelName
             connectionsLoading={connectionsQuery.isLoading}
@@ -464,25 +471,25 @@ export function ChannelSalesTable({
     },
     {
       id: 'orders',
-      header: 'Orders',
+      header: copy.columns.orders,
       align: 'right',
       cell: (row) =>
-        intFormat.format(row.kind === 'total' ? row.total.orderCount : row.channel.orderCount),
+        format.number(row.kind === 'total' ? row.total.orderCount : row.channel.orderCount),
       hideBelow: 480,
     },
     {
       id: 'aov',
-      header: 'AOV',
+      header: copy.columns.aov,
       align: 'right',
       cell: renderAovCell,
       hideBelow: 768,
     },
     {
       id: 'units',
-      header: 'Units',
+      header: copy.columns.units,
       align: 'right',
       cell: (row) =>
-        intFormat.format(
+        format.number(
           row.kind === 'total'
             ? row.total.unitsSold
             : row.channel.unitsSold + row.channel.unconvertedUnitsSold,
@@ -491,15 +498,18 @@ export function ChannelSalesTable({
     },
     {
       id: 'share',
-      header: 'Share',
+      header: copy.columns.share,
       align: 'right',
       cell: (row) =>
-        pctFormat.format(row.kind === 'total' ? row.total.revenueShare : row.channel.revenueShare),
+        format.number(
+          row.kind === 'total' ? row.total.revenueShare : row.channel.revenueShare,
+          PERCENT_FORMAT_OPTIONS
+        ),
       hideBelow: 768,
     },
     {
       id: 'trend',
-      header: 'Trend',
+      header: copy.columns.trend,
       cell: (row) => {
         if (row.kind === 'total') return null;
         const values = revenueTrendValues(row.channel.trend);
@@ -509,10 +519,10 @@ export function ChannelSalesTable({
             tone={trendTone(values)}
             width={72}
             height={20}
-            ariaLabel="Channel revenue trend"
+            ariaLabel={copy.trendAria}
           />
         ) : (
-          <EmptyValue label="Not enough data for a trend" />
+          <EmptyValue label={copy.noTrend} />
         );
       },
       hideBelow: 1024,
@@ -523,19 +533,35 @@ export function ChannelSalesTable({
 
   return (
     <>
+      <div className="analytics-export-row">
+        <ExportCsvButton
+          testId="export-csv-sales-channel"
+          reportLabel={copy.caption}
+          request={{
+            report: 'sales-channel',
+            filters: {
+              from: filters.from,
+              to: filters.to,
+              sourceConnectionId: filters.sourceConnectionId,
+            },
+            basis: netGrossBasis,
+          }}
+          displayCurrency={filters.displayCurrency}
+          reportingCurrency={headline?.currency ?? null}
+        />
+      </div>
       <DataTable
-        caption="Sales by channel"
+        caption={copy.caption}
         rows={rows}
         columns={columns}
         rowKey={(row) =>
           row.kind === 'total' ? `total:${row.total.currency}` : row.channel.sourceConnectionId
         }
-        emptyState={<EmptyValue label="No channel has any orders in this range" />}
+        emptyState={<EmptyValue label={copy.empty} />}
       />
       {unconvertedCount > 0 ? (
         <p className="data-table__footnote">
-          {unconvertedCount} {unconvertedCount === 1 ? 'order' : 'orders'} not yet converted to the
-          reporting currency — excluded from the figures above.
+          {plural(unconvertedCount, copy.unconverted)}
         </p>
       ) : null}
     </>

@@ -478,6 +478,8 @@ export class SubiektOrderProcessorAdapter
           return { outcome: 'applied' };
         }
 
+        // The cancel reason stays in OpenLinker (#3540): the ZK status write has no
+        // reason field, so `event.reason` is not sent.
         case 'cancelled': {
           await this.updateFulfillment({
             externalOrderId: event.externalOrderId,
@@ -491,6 +493,16 @@ export class SubiektOrderProcessorAdapter
         // bridge would get for them has never been checked by anyone reading
         // a Subiekt document.
         case 'delivered':
+        case 'paid': {
+          // #3963: a Subiekt GT sales order (ZK) carries no payment status, so
+          // there is nothing to mark paid. `unsupported` reads as "not tracked
+          // here" on the order, never as a failure.
+          return {
+            outcome: 'unsupported',
+            detail: 'Subiekt GT sales orders have no payment status',
+          };
+        }
+
         case 'in-progress': {
           return {
             outcome: 'unsupported',

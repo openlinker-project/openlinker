@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { getMessages } from '../../../shared/i18n';
 import { AnalyticsNeedsAttention } from './analytics-needs-attention';
 import type { NeedsAttentionSummary } from '../api/needs-attention.types';
 import type { Connection } from '../../connections';
@@ -52,7 +53,7 @@ describe('AnalyticsNeedsAttention', () => {
     renderWithProviders(<AnalyticsNeedsAttention />, { apiClient });
 
     expect(await screen.findByText('Unable to check for open items')).toBeInTheDocument();
-    expect(screen.getByText('boom')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('should render the all-clear line when every category is resolved', async () => {

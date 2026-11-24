@@ -33,8 +33,8 @@
  * dependency-free-leaf property (see `sales-document-reason.types.ts` and
  * `libs/core/src/__tests__/barrel-purity.spec.ts`) for no benefit, since
  * `ConnectionConfig` carries an open index signature anyway. It reads the raw
- * `unknown` JSONB value the same way `parseIsPrimaryInvoicing` /
- * `parseTriggerModel` do (`libs/core/src/invoicing/domain/types/`).
+ * `unknown` JSONB value the same way `parseTriggerModel` does
+ * (`libs/core/src/invoicing/domain/types/`).
  *
  * @module libs/core/src/sales-documents/domain/types
  * @see docs/architecture/adrs/041-sales-document-routing-policy.md
@@ -111,7 +111,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Read a connection's sales-document routing configuration from its raw,
  * untrusted `config` JSONB value. Pure, no I/O — mirrors the
- * `parseTriggerModel` / `parseIsPrimaryInvoicing` coercion precedent.
+ * `parseTriggerModel` coercion precedent.
  *
  * `isPrimary` reads `config.invoicing.isPrimary` — the EXACT shape #2047
  * already writes (decision 4 fixes that shape, it does not introduce a second

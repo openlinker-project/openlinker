@@ -16,6 +16,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { useMessages, usePlural } from '../../../shared/i18n';
 
 interface AnalyticsCoverageAlertProps {
   /**
@@ -35,22 +36,18 @@ export function AnalyticsCoverageAlert({
   affectedCount,
   onDismiss,
 }: AnalyticsCoverageAlertProps): ReactElement {
+  const copy = useMessages('analytics').analyticsCoverageAlert;
+  const plural = usePlural();
   return (
     <div className="coverage-alert" role="status">
       <span className="coverage-alert__icon" aria-hidden="true">
         ✓
       </span>
       <span className="coverage-alert__body">
-        <span className="coverage-alert__title">
-          Recalculation finished for the {affectedCount} order{affectedCount === 1 ? '' : 's'} you
-          selected
-        </span>
-        <span className="coverage-alert__sub">
-          The real exchange rate from each order&rsquo;s own date, saved for good. Logged in Jobs &amp;
-          Logs with who ran it and when.
-        </span>
+        <span className="coverage-alert__title">{plural(affectedCount, copy.title)}</span>
+        <span className="coverage-alert__sub">{copy.sub}</span>
       </span>
-      <button type="button" className="coverage-alert__close" aria-label="Dismiss" onClick={onDismiss}>
+      <button type="button" className="coverage-alert__close" aria-label={copy.dismiss} onClick={onDismiss}>
         ×
       </button>
     </div>

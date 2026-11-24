@@ -1,9 +1,10 @@
 /**
  * Plain-language summary for one fulfilment task (#3099)
  *
- * The sentence rendered beneath the hero's two raw axis labels. The headline
- * stays those labels joined (`In progress · Accepted`); this derives the line
- * under it, because neither axis alone answers what an operator is asking.
+ * The sentence rendered beneath the hero's state headline. The headline is
+ * the orchestration label, qualified only when acceptance is news (#3763,
+ * `fulfillment-task-acceptance.ts`); this derives the line under it, because
+ * neither axis alone answers what an operator is asking.
  *
  * ## The input is a narrow struct, never the task, and that is the point
  *
@@ -41,12 +42,15 @@
  * Not a guessed one, and not a fallback that hedges. A sentence is a claim
  * about what is happening to somebody's parcel, and this build may not know —
  * the same fail-safe direction `fulfillmentActionHint` already takes by
- * returning `null` rather than a fabricated tooltip. The hero's two axis
- * labels still render, so the page is never blank.
+ * returning `null` rather than a fabricated tooltip. The hero's state
+ * headline still renders, so the page is never blank.
  *
  * Two reachable states produce no sentence, both confirmed rather than
  * papered over: `open` + `unsubmitted` with a location and no holds, and
- * `requestStatus: 'rejected'`. `open` + `accepted` used to be a third; #3096
+ * `requestStatus: 'rejected'`. Neither is silent on the page since #3763: for a
+ * task with an executor, the detail page replaces this sentence with one
+ * about the pack bench, and a stuck or refused task adds a reason under
+ * "Why it's stuck". `open` + `accepted` used to be a third; #3096
  * gave it `acceptedWaiting`, because it is the state most live tasks sit in
  * and a hero with nothing under its headline read as a broken page.
  *
@@ -58,9 +62,20 @@
  *
  * @module apps/web/src/features/fulfillment/lib
  */
-import { FULFILLMENT_WORK_DETAIL_COPY } from './fulfillment-work-detail.copy';
+import {
+  formatPlural,
+  getLocale,
+  getMessages,
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 
-const SUMMARY = FULFILLMENT_WORK_DETAIL_COPY.summary;
+type SummaryCopy = ResolvedCopy<Messages['fulfillment']>['workDetail']['summary'];
+
+function summaryCopy(): SummaryCopy {
+  return getMessages('fulfillment').workDetail.summary;
+}
 
 /**
  * Everything the sentence is derived from, and deliberately nothing more.
@@ -100,12 +115,13 @@ export interface FulfillmentWorkSummaryInput {
  * same way, for the same reason.
  */
 function summariseCancelled(reason: string | null, subject: string): string | null {
+  const SUMMARY = summaryCopy();
   switch (reason) {
     case 'operator_forced':
-      return SUMMARY.cancelledByOperator(subject);
+      return interpolate(SUMMARY.cancelledByOperator, { subject });
     case 'holder_rejected':
     case 'holder_unreachable':
-      return SUMMARY.cancelledGivenBack(subject);
+      return interpolate(SUMMARY.cancelledGivenBack, { subject });
     default:
       return null;
   }
@@ -117,21 +133,22 @@ function summariseCancelled(reason: string | null, subject: string): string | nu
  * else, and mutates neither.
  */
 export function summariseFulfillmentWork(input: FulfillmentWorkSummaryInput): string | null {
+  const SUMMARY = summaryCopy();
   const subject = input.executorName ?? SUMMARY.executorFallback;
 
   if (input.status === 'cancelled') return summariseCancelled(input.cancellationReason, subject);
-  if (input.status === 'incomplete') return SUMMARY.incomplete(subject);
-  if (input.activeHoldCount > 0) return SUMMARY.onHold(input.activeHoldCount);
+  if (input.status === 'incomplete') return interpolate(SUMMARY.incomplete, { subject });
+  if (input.activeHoldCount > 0) return formatPlural(input.activeHoldCount, SUMMARY.onHold, getLocale());
   if (input.requestStatus === 'cancellation_requested')
-    return SUMMARY.cancellationRequested(subject);
-  if (input.requestStatus === 'cancellation_rejected') return SUMMARY.cancellationRejected(subject);
-  if (input.requestStatus === 'submitted') return SUMMARY.awaitingAnswer(subject);
+    return interpolate(SUMMARY.cancellationRequested, { subject });
+  if (input.requestStatus === 'cancellation_rejected') return interpolate(SUMMARY.cancellationRejected, { subject });
+  if (input.requestStatus === 'submitted') return interpolate(SUMMARY.awaitingAnswer, { subject });
   // #3096 — the commonest live state a routed task sits in, and the one that
   // left the hero with no sentence at all beneath its headline. Ahead of the
   // location check: an executor that ACCEPTED the task has been routed to,
   // whatever `locationId` says, so "not yet assigned anywhere" would be false.
   if (input.status === 'open' && input.requestStatus === 'accepted')
-    return SUMMARY.acceptedWaiting(subject);
+    return interpolate(SUMMARY.acceptedWaiting, { subject });
   // Only where "nothing to pick yet" is actually true. A task can reach
   // `in_progress` or `closed` while `locationId` stays null — nothing in the
   // server's action derivation reads the location, and on the default
@@ -141,11 +158,11 @@ export function summariseFulfillmentWork(input: FulfillmentWorkSummaryInput): st
   // finished.
   if (input.locationId === null && (input.status === 'open' || input.status === 'scheduled'))
     return SUMMARY.unassigned;
-  if (input.status === 'scheduled') return SUMMARY.scheduled(subject);
+  if (input.status === 'scheduled') return interpolate(SUMMARY.scheduled, { subject });
   if (input.status === 'in_progress') {
     return input.expeditedAt !== null
-      ? SUMMARY.inProgressExpedited(subject)
-      : SUMMARY.inProgress(subject);
+      ? interpolate(SUMMARY.inProgressExpedited, { subject })
+      : interpolate(SUMMARY.inProgress, { subject });
   }
   if (input.status === 'closed') return SUMMARY.closed;
 

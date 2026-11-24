@@ -22,6 +22,13 @@ export interface OrderSyncStatusJson {
   externalOrderId?: string;
   externalOrderNumber?: string;
   error?: string;
+  deliveryFingerprint?: string;
+  deliveryUpdate?: {
+    outcome: string;
+    reason?: string;
+    detail?: string;
+    at: string;
+  };
 }
 
 /**
@@ -50,6 +57,48 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_reporting', ['sourceConnectionId', 'reportingCurrency'], {
   where: '"reportingCurrency" IS NOT NULL',
 })
+// Destination-routing block (#2703 / #2704). PARTIAL on `IS NOT NULL` rather
+// than over a hardcoded reason list: the list form is exactly what silently went
+// stale on `IDX_order_records_salesDocumentBlockReason` when #2248 widened that
+// union without touching the index, whereas a NULL predicate cannot go stale
+// when the vocabulary widens. Just as small either way — it matches only
+// routing-narrowed orders, i.e. no rows at all on every install today. Declared
+// HERE as well as in the migration because the integration harness builds schema
+// by `synchronize`, so a migration-only index does not exist in tests.
+@Index('IDX_order_records_destinationRoutingBlockReason', ['destinationRoutingBlockReason'], {
+  where: '"destinationRoutingBlockReason" IS NOT NULL',
+})
+// #3558: `listOrderIdsHeldForVariant` runs on every stock-change propagation,
+// so its held-order predicate needs an index. Partial on `IS NOT NULL` for the
+// same reason as the index above: it cannot go stale as the reason union grows,
+// and it is tiny, since held orders are rare. Declared here AND in the
+// migration, because the integration harness builds schema by `synchronize`.
+@Index('IDX_order_records_fulfillmentBlockReason', ['fulfillmentBlockReason'], {
+  where: '"fulfillmentBlockReason" IS NOT NULL',
+})
+@Index('IDX_order_records_paymentWritebackProblem', ['paymentWritebackProblem'], {
+  where: '"paymentWritebackProblem" = true',
+})
+// #4025: the orders list's "newest first" sort is `placedAt DESC NULLS LAST`.
+// The plain `placedAt` index above is ASC NULLS LAST, whose backward scan yields
+// DESC NULLS FIRST - the wrong null position, so the planner cannot use it for a
+// LIMIT and sorts the whole scope instead. The migration builds this index as
+// `("placedAt" DESC NULLS LAST)`. TypeORM's `@Index` cannot express a sort order
+// and does not compare one, so the declaration here carries only the name and
+// column: it keeps a future `migration:generate` from dropping the index, and
+// gives the `synchronize`-built test schema an index of the same name. That
+// schema's index is therefore ASCENDING under this name: a migration-parity spec
+// on `order_records` must compare this index by name, not by definition.
+@Index('IDX_order_records_placedAt_desc', ['placedAt'])
+// Batch issuing queue (#3583): the orders waiting for one connection's next
+// batch run, keyset-paged by order id. Partial on the one reason that means
+// "queued", so it holds only queued orders. Declared here AND in the migration
+// for the `synchronize`-built integration schema.
+@Index(
+  'IDX_order_records_sales_document_batch_queue',
+  ['salesDocumentBlockConnectionId', 'internalOrderId'],
+  { where: `"salesDocumentBlockReason" = 'trigger-model-batched'` },
+)
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -151,6 +200,18 @@ export class OrderRecordOrmEntity {
   fulfillmentState!: string | null;
 
   /**
+   * Instant the `order.shipped` trigger fired for this order (#3554). `null` =
+   * not yet. The at-most-once claim for that trigger, written ONLY by
+   * `OrderRecordRepository.claimShippedNotification` and never by the ingestion
+   * upsert. It is a column rather than the `fulfillmentState` transition
+   * because the trigger may wait for the carrier's tracking number after the
+   * order has already turned shipped (InPost mints it minutes later, #1947), so
+   * "entered shipped" and "announced shipped" are two different moments.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  shippedNotifiedAt!: Date | null;
+
+  /**
    * Neutral `SalesDocumentGateBlockReason` naming why no fiscal document was
    * issued (#2100, ADR-041 decision 11). `null` = nothing blocking. Indexed
    * because it IS a filter axis (the orders list ships an "Invoicing blocked"
@@ -180,6 +241,29 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   salesDocumentBlockDetail!: string | null;
+
+  /**
+   * The values behind `salesDocumentBlockDetail` (#3866), for the frontend to
+   * phrase in the operator's language. Same PII rule and single writer as the
+   * detail; coerced on read.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  salesDocumentBlockParams!: Record<string, unknown> | null;
+
+  /**
+   * The connection and document kind the block above is ABOUT (#3583), when
+   * routing named one. Set today only for `trigger-model-batched`, where the
+   * pair is the order's place in that connection's batch queue
+   * (`IDX_order_records_sales_document_batch_queue`). Written exclusively by
+   * `updateSalesDocumentBlock`, in the same statement as the reason, so the
+   * queue can never name a connection the reason has already left; never by
+   * the ingestion upsert (excluded from `toOrm` like its siblings).
+   */
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockConnectionId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockDocumentKind!: string | null;
 
   /**
    * The `sales_document_rules` row that decided this order's document kind
@@ -316,6 +400,108 @@ export class OrderRecordOrmEntity {
   shippingAddressHash!: string | null;
 
   /**
+   * How the buyer pays (#3294) - one of `PaymentMethodValues`, or `NULL` when
+   * the source reported nothing. Existing rows are `NULL` and are not
+   * back-filled (ADR-039). A plain `varchar` with no CHECK, like every other
+   * vocabulary column here: the integration harness builds schema by
+   * `synchronize`, which would not emit one, so a constraint present only in
+   * the migration would hold in production and silently not in tests; the read
+   * path coerces instead.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the
+   * analytics scalars and `shippingAddressHash` above, so an
+   * `awaiting_mapping` re-ingestion cannot null a settled value.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  paymentMethod!: string | null;
+
+  /**
+   * The buyer's checkout note (#3538), three states in one column like
+   * `buyerTaxId`: `NULL` = not asserted or not stored, `''` = asserted none,
+   * otherwise the text. Round-trip through `encodeBuyerNoteColumn` /
+   * `decodeBuyerNoteColumn`.
+   *
+   * PII-gated at persistence: free text may carry a phone number or a parcel
+   * locker and bypasses the address redaction, so under `OL_STORE_PII=false` the
+   * text is not stored. Written only on the `'ready'` path
+   * (`upsertWithLineItems`), like `paymentMethod` above.
+   */
+  @Column({ type: 'text', nullable: true })
+  buyerNote!: string | null;
+
+  /**
+   * Whether a non-empty buyer note was reported (#3538). Indexed for the
+   * `?hasBuyerNote=` list filter. NOT PII-gated - it carries no content - so it
+   * is written even when {@link buyerNote} is not stored. Ready-path only, so an `awaiting_mapping` order with a note is invisible to `?hasBuyerNote=true` until it becomes ready.
+   */
+  @Index('IDX_order_records_hasBuyerNote')
+  @Column({ type: 'boolean', default: false })
+  hasBuyerNote!: boolean;
+
+  /**
+   * When an operator first marked the buyer note read (#3538). Sole writer
+   * `markBuyerNoteRead` (fill-once, guarded on `IS NULL`); excluded from the
+   * upsert so a re-ingestion cannot un-read a note.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteReadAt!: Date | null;
+
+  /** Who marked it read; moves with `buyerNoteReadAt` in one statement. */
+  @Column({ type: 'varchar', nullable: true })
+  buyerNoteReadByUserId!: string | null;
+
+  /**
+   * When a real note text replaced a different stored one (N-22). Set only by
+   * the ingestion upsert's CASE clause; excluded from `toOrm`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteChangedAt!: Date | null;
+
+  /**
+   * Shipping / billing address country (#3538, D7), ISO-3166 alpha-2, `NULL`
+   * when the address is absent. Country is not PII and survives redaction.
+   * Ready-path only.
+   */
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  shippingCountry!: string | null;
+
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  billingCountry!: string | null;
+
+  /**
+   * Number of other earlier orders of the same resolved customer (#3538, D7),
+   * computed at ingestion; `NULL` when the order has no resolved customer.
+   * Ready-path only.
+   */
+  @Column({ type: 'integer', nullable: true })
+  buyerOrderCount!: number | null;
+
+  /**
+   * What an operator changed on the order after import (#3542, D9) - see
+   * `order-edits.types.ts`. `NULL` means never edited.
+   *
+   * Sole writer `OrderRecordRepository.applyOrderEdit`. It is named in NEITHER
+   * half of the ingestion upsert (`buildFrozenAttributionUpsert`), which is the
+   * whole mechanism: ingestion rewrites `orderSnapshot` wholesale on every poll
+   * and webhook, and a column it never names survives that. `orderSnapshot`
+   * itself therefore stays the channel original at all times.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  orderEdits!: Record<string, unknown> | null;
+
+  /**
+   * The bundle definitions frozen onto this order at ingestion (#3607, ADR-083
+   * decision 2). `NULL` = no expansion recorded (physical lines = commercial).
+   *
+   * Sole writer `OrderRecordRepository.freezeLineExpansion`, conditional on the
+   * column still being NULL. Named in NEITHER half of the ingestion upsert, so a
+   * re-poll can never replace it - which is what makes a later edit of a
+   * definition leave open orders alone.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  lineExpansion!: Record<string, unknown> | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert
@@ -385,6 +571,22 @@ export class OrderRecordOrmEntity {
    * A fact, not a state — independent of `recordStatus` / `fulfillmentState` /
    * `slaState`. Indexed because "is it packed" is an operator-facing scan axis,
    * mirroring `cancelledAt`.
+   *
+   * **This is THE single order-level packed fact (#2072).** A person (the
+   * toggle) or a WMS (`POST /orders/:id/packed`) asserts it directly. When
+   * line-grain packing exists (#2080) it is DERIVED from the lines — completing
+   * the last line sets it — so line data stays an optional detail ledger
+   * underneath this one answer and never a rival to it. Keeping one answer is
+   * what avoids an order that is "packed" and "3 of 5 packed" at once.
+   *
+   * **Authority precondition.** Nothing reads this to make a decision today, so
+   * two writers (OpenLinker's own workbench and an external WMS) cannot corrupt
+   * anything — the worst case is a stale timestamp a human can see and correct,
+   * and no OL-vs-external exclusivity mechanism is built. The moment a feature
+   * makes `packed` GATE something (a dispatch block, an automatic status
+   * transition, an SLA calculation), authority becomes load-bearing and
+   * exclusivity must be designed BEFORE that feature ships, at configuration
+   * time rather than by runtime arbitration.
    */
   @Column({ type: 'timestamptz', nullable: true })
   @Index()
@@ -473,6 +675,26 @@ export class OrderRecordOrmEntity {
   omsAttention!: AuthorityAttentionEntry[] | null;
 
   /**
+   * Per-destination payment writeback record (#3963), keyed by destination
+   * connection id: whether a payment that arrived after a shop got the order
+   * reached that shop. It is also the at-most-once claim (a per-key
+   * conditional `jsonb_set`). Sole writers `claimPaymentWriteback` /
+   * `recordPaymentWriteback` / `markPaymentWritebackHandled`; deliberately NOT
+   * round-tripped through `toOrm`, so a re-ingestion can never reset a claim.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  paymentWriteback!: Record<string, unknown> | null;
+
+  /**
+   * Denormalised "a shop still shows this order unpaid and OpenLinker gave up"
+   * flag (#3963), recomputed in the same statement as every write to
+   * `paymentWriteback`. It exists so the orders-list filter and its count use a
+   * tiny partial index instead of a jsonb scan (the #2943 pattern).
+   */
+  @Column({ type: 'boolean', default: false })
+  paymentWritebackProblem!: boolean;
+
+  /**
    * Why the fulfilment intercept HELD this order (#2396) — or NULL when it did
    * not, which is every install today.
    *
@@ -504,10 +726,11 @@ export class OrderRecordOrmEntity {
    * and then rolled back reads as "nothing recognised" rather than widening the
    * union at runtime.
    *
-   * **No index, deliberately.** #3485's `fulfillment.work.rerouteSweep` filters
-   * on it, keyset-paged by `internalOrderId`; at v1 volumes (a handful of held
-   * orders) the primary key serves that page. A partial index on the reroutable
-   * reasons is the follow-up if held-order counts grow.
+   * **Indexed since #3558**, partial on `IS NOT NULL`
+   * (`IDX_order_records_fulfillmentBlockReason`). #3485's reroute sweep could
+   * live without one, keyset-paged by `internalOrderId`, but #3558 reads held
+   * orders on every stock-change propagation, the hottest write path there is,
+   * and a sequential scan there is the #2943 cost.
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockReason!: string | null;
@@ -528,6 +751,52 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockDetail!: string | null;
+
+  /**
+   * How a fulfilment routing decision narrowed this order's destination fan-out
+   * (#2703 / #2704) — or NULL when it narrowed nothing, which is every order on
+   * every install today, since no production caller populates
+   * `OrderSyncRequest.destinationConnectionIds` yet.
+   *
+   * Distinct from `fulfillmentBlockReason` directly above, and the two are
+   * MUTUALLY EXCLUSIVE by construction: that one records that the intercept HELD
+   * the order so `OrderSyncService` was never called, this one records what
+   * happened INSIDE it. `OrderIngestionService` clears this reason on the held
+   * branch precisely so the pair can never both stand and describe one order two
+   * ways — without that clear, a stale routing reason would sit beside a fresh
+   * fulfilment block and assert "the router sent this nowhere" about an order
+   * that is in fact held.
+   *
+   * The #2100 `salesDocument*` shape otherwise: `OrderSyncService` is the sole
+   * writer, the value is level-triggered (re-decided on every run, `null`
+   * clearing it), and both columns stay outside the ingestion write set so a
+   * re-poll cannot reset them — `persistOrder` runs BEFORE the fan-out.
+   *
+   * `text` with no CHECK, matching `fulfillmentBlockReason`: the union is
+   * enforced in TypeScript and coerced on read by `isDestinationRoutingBlockReason`,
+   * so a value written by a newer release and rolled back reads as "nothing
+   * recognised" rather than widening the union at runtime.
+   *
+   * **Indexed on `IS NOT NULL`, deliberately NOT over a value list.** Unlike the
+   * two block columns above this one really is filtered and counted, so it earns
+   * an index — but a partial index over a hardcoded reason list is exactly the
+   * shape that silently went stale on `IDX_order_records_salesDocumentBlockReason`
+   * when #2248 widened that union without touching the index. A NULL predicate
+   * cannot go stale when the vocabulary widens, and is just as small: it matches
+   * only routing-narrowed orders, i.e. no rows at all on every install today.
+   */
+  @Column({ type: 'text', nullable: true })
+  destinationRoutingBlockReason!: string | null;
+
+  /**
+   * PII-free elaboration of the reason above — connection ids and counts only,
+   * built by `buildDestinationRoutingDetail`, which bounds it because the ids
+   * come from a routing decision OpenLinker does not author and the value is
+   * rendered verbatim to an operator. Free text, never filtered on, so no index
+   * — the same call as `salesDocumentBlockDetail` / `fulfillmentBlockDetail`.
+   */
+  @Column({ type: 'text', nullable: true })
+  destinationRoutingBlockDetail!: string | null;
 
   /**
    * Denormalized, diacritic-folded free-text search corpus (#3527) — order

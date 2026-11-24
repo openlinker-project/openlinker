@@ -23,26 +23,21 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import {
   ORDER_LIST_COLUMN_IDS,
-  ORDER_LIST_COLUMN_LABELS,
   type OrderColumnPreset,
 } from '../api/orders.types';
 import { useWorkspaceDefaultColumnPresetQuery } from '../hooks/use-order-column-presets';
 import { OrderColumnPresetManager } from './order-column-preset-manager';
-import { ORDER_COLUMNS_PANEL_COPY } from '../lib/order-export.copy';
+import { useMessages } from '../../../shared/i18n';
 
 /** `DataTable`'s own card/table switch — the band where columns stop meaning anything. */
 const CARD_VIEW_QUERY = '(max-width: 767.98px)';
 
-const LIST_AVAILABLE_COLUMNS = ORDER_LIST_COLUMN_IDS.map((id) => ({
-  id,
-  label: ORDER_LIST_COLUMN_LABELS[id],
-}));
 
 /** Per-viewer only — the CURRENTLY showing column arrangement, not a preset reference. */
 const VISIBLE_COLUMNS_STORAGE_KEY = 'ol.orders-list.visible-columns.v1';
@@ -91,6 +86,12 @@ export function OrderColumnVisibilityControl({
   visibleColumnIds,
   onVisibleColumnIdsChange,
 }: OrderColumnVisibilityControlProps): ReactElement | null {
+  const orders = useMessages('orders');
+  const copy = orders.orderColumnsPanel;
+  const listAvailableColumns = useMemo(
+    () => ORDER_LIST_COLUMN_IDS.map((id) => ({ id, label: orders.listColumns[id] })),
+    [orders]
+  );
   const [open, setOpen] = useState(false);
   const isCardView = useMediaQuery(CARD_VIEW_QUERY);
   const workspaceDefaultQuery = useWorkspaceDefaultColumnPresetQuery();
@@ -118,17 +119,17 @@ export function OrderColumnVisibilityControl({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button tone="ghost" className="button--sm" data-testid="orders-columns-trigger">
-          {ORDER_COLUMNS_PANEL_COPY.trigger}
+          {copy.trigger}
         </Button>
       </PopoverTrigger>
       <PopoverContent
         className="columns-panel"
         align="end"
-        aria-label={ORDER_COLUMNS_PANEL_COPY.panelLabel}
+        aria-label={copy.panelLabel}
         data-testid="orders-columns-popover"
       >
         <OrderColumnPresetManager
-          availableColumns={LIST_AVAILABLE_COLUMNS}
+          availableColumns={listAvailableColumns}
           columns={visibleColumnIds}
           onColumnsChange={handleColumnsChange}
         />

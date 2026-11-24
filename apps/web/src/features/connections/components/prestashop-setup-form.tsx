@@ -13,7 +13,7 @@
  * invalid fields. Abandon-prevention triggers a native confirm dialog
  * when the form is dirty and the tab is closed.
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -42,15 +42,24 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
+// Analytics step names, kept in English so events stay comparable across languages.
 // "Verify credentials" rather than "Test connection": the PrestaShop `/test`
 // endpoint is only reachable after the connection is saved, so this step is a
 // human-review of the entered URL + masked key, not a live probe.
-const STEP_LABELS = [
+const STEP_EVENT_IDS = [
   'Credentials',
   'Verify credentials',
   'Capabilities',
   'Review & connect',
+] as const;
+
+// ISO 4217 codes offered as the connection default; their names live in copy.
+const CURRENCY_CODES = [
+  'PLN', 'EUR', 'USD', 'GBP', 'CZK', 'HUF', 'RON', 'SEK', 'NOK', 'DKK', 'CHF',
 ] as const;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<PrestashopSetupFormValues>>> = [
@@ -66,6 +75,15 @@ function maskKey(key: string): string {
 }
 
 export function PrestashopSetupForm(): ReactElement {
+  const copy = useMessages('connections').prestashopSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const platform = usePlatform('prestashop')?.displayName ?? copy.platformFallback;
+  const STEP_LABELS = [
+    copy.steps.credentials,
+    copy.steps.verify,
+    copy.steps.capabilities,
+    copy.steps.review,
+  ];
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -104,8 +122,8 @@ export function PrestashopSetupForm(): ReactElement {
     (CORE_CAPABILITY_VALUES as readonly string[]).includes(capability),
   );
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : []
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : []
   );
 
   async function goNext(): Promise<void> {
@@ -117,7 +135,7 @@ export function PrestashopSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'prestashop',
-      step: STEP_LABELS[stepIndex],
+      step: STEP_EVENT_IDS[stepIndex],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -126,14 +144,26 @@ export function PrestashopSetupForm(): ReactElement {
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
+  // A submit before the last step is Enter in a field, or the click that
+  // advanced to the last step landing on the Create button that replaced Next.
+  // Either way it means "Next", never "Create" (the review step must be seen).
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (stepIndex < STEP_LABELS.length - 1) {
+      event.preventDefault();
+      void goNext();
+      return;
+    }
+    void onSubmit(event);
+  }
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `PrestaShop connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { platform, name: created.name }),
       });
       void navigate('/connections');
     } catch {
@@ -150,43 +180,45 @@ export function PrestashopSetupForm(): ReactElement {
       }
       summary={<PrestashopSetupSummary values={values} stepIndex={stepIndex} />}
     >
-      <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+      <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
+        <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}
         {createConnection.error ? (
-          <Alert tone="error" title="Unable to create connection">
-            {createConnection.error.message}
+          <Alert tone="error" title={copy.createError}>
+            {describeApiError(createConnection.error, 'connections')}
           </Alert>
         ) : null}
 
         {stepIndex === 0 ? (
           <>
-            <Alert tone="info" title="Before you start">
-              In your PrestaShop admin, enable Webservice under{' '}
-              <strong>Advanced Parameters → Webservice</strong> and generate a key with the required
-              resources enabled.
+            <Alert tone="info" title={copy.beforeYouStart.title}>
+              {renderRich(
+                copy.beforeYouStart.body,
+                { strong: (text) => <strong>{text}</strong> },
+                { platform },
+              )}
             </Alert>
 
             <FormField
-              label="Connection name"
+              label={copy.fields.name.label}
               name="name"
               error={form.formState.errors.name?.message}
             >
               <Input
                 {...form.register('name')}
-                placeholder="Main PrestaShop Store"
+                placeholder={interpolate(copy.fields.name.placeholder, { platform })}
                 invalid={Boolean(form.formState.errors.name)}
               />
             </FormField>
 
             <FormField
-              label="Shop URL"
+              label={copy.fields.baseUrl.label}
               name="baseUrl"
               error={form.formState.errors.baseUrl?.message}
-              description="The public URL of the PrestaShop storefront (no trailing path)."
+              description={interpolate(copy.fields.baseUrl.description, { platform })}
             >
               <Input
                 {...form.register('baseUrl')}
@@ -197,10 +229,10 @@ export function PrestashopSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Storefront URL (optional)"
+              label={copy.fields.storefrontBaseUrl.label}
               name="storefrontBaseUrl"
               error={form.formState.errors.storefrontBaseUrl?.message}
-              description="Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same — defaults to Shop URL."
+              description={copy.fields.storefrontBaseUrl.description}
             >
               <Input
                 {...form.register('storefrontBaseUrl')}
@@ -211,26 +243,26 @@ export function PrestashopSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Webservice key"
+              label={copy.fields.webserviceKey.label}
               name="webserviceKey"
               error={form.formState.errors.webserviceKey?.message}
-              description="Generated in PrestaShop admin under Advanced Parameters → Webservice."
+              description={interpolate(copy.fields.webserviceKey.description, { platform })}
             >
               <Input
                 {...form.register('webserviceKey')}
                 className="mono-text"
                 type="password"
                 autoComplete="off"
-                placeholder="e.g. ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+                placeholder={copy.fields.webserviceKey.placeholder}
                 invalid={Boolean(form.formState.errors.webserviceKey)}
               />
             </FormField>
 
             <FormField
-              label="Shop ID (optional)"
+              label={copy.fields.shopId.label}
               name="shopId"
               error={form.formState.errors.shopId?.message}
-              description="Only needed for multi-shop PrestaShop installations."
+              description={interpolate(copy.fields.shopId.description, { platform })}
             >
               <Input
                 {...form.register('shopId')}
@@ -241,27 +273,24 @@ export function PrestashopSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Default currency (optional)"
+              label={copy.fields.currency.label}
               name="currency"
               error={form.formState.errors.currency?.message}
-              description="ISO 4217 code applied to every product synced from this connection. Leave blank and OpenLinker asks the shop for its default currency instead; products stay without a currency if the shop has none set."
+              description={copy.fields.currency.description}
             >
               <Select
                 {...form.register('currency')}
                 invalid={Boolean(form.formState.errors.currency)}
               >
-                <option value="">— not set —</option>
-                <option value="PLN">PLN — Polish Złoty</option>
-                <option value="EUR">EUR — Euro</option>
-                <option value="USD">USD — US Dollar</option>
-                <option value="GBP">GBP — British Pound</option>
-                <option value="CZK">CZK — Czech Koruna</option>
-                <option value="HUF">HUF — Hungarian Forint</option>
-                <option value="RON">RON — Romanian Leu</option>
-                <option value="SEK">SEK — Swedish Krona</option>
-                <option value="NOK">NOK — Norwegian Krone</option>
-                <option value="DKK">DKK — Danish Krone</option>
-                <option value="CHF">CHF — Swiss Franc</option>
+                <option value="">{copy.fields.currency.notSet}</option>
+                {CURRENCY_CODES.map((code) => (
+                  <option key={code} value={code}>
+                    {interpolate(copy.fields.currency.option, {
+                      code,
+                      name: copy.currencies[code],
+                    })}
+                  </option>
+                ))}
               </Select>
             </FormField>
           </>
@@ -269,33 +298,31 @@ export function PrestashopSetupForm(): ReactElement {
 
         {stepIndex === 1 ? (
           <div className="wizard-test-result">
-            <Alert tone="info" title="Verify the credentials">
-              OpenLinker will use the values below to reach your PrestaShop admin. Make sure the
-              shop URL resolves and the webservice key is active before you continue. After the
-              connection is saved you can run a live test from the connection detail page.
+            <Alert tone="info" title={copy.verify.title}>
+              {interpolate(copy.verify.body, { platform })}
             </Alert>
             <dl className="wizard-review-list">
-              <dt>Shop URL</dt>
+              <dt>{copy.fields.baseUrl.label}</dt>
               <dd className="mono-text">{values.baseUrl || '—'}</dd>
               {values.storefrontBaseUrl ? (
                 <>
-                  <dt>Storefront URL</dt>
+                  <dt>{copy.review.storefrontUrl}</dt>
                   <dd className="mono-text">{values.storefrontBaseUrl}</dd>
                 </>
               ) : null}
-              <dt>Webservice key</dt>
+              <dt>{copy.fields.webserviceKey.label}</dt>
               <dd className="mono-text">
                 {values.webserviceKey ? maskKey(values.webserviceKey) : '—'}
               </dd>
               {values.shopId ? (
                 <>
-                  <dt>Shop ID</dt>
+                  <dt>{copy.review.shopId}</dt>
                   <dd className="mono-text">{values.shopId}</dd>
                 </>
               ) : null}
               {values.currency ? (
                 <>
-                  <dt>Default currency</dt>
+                  <dt>{copy.review.currency}</dt>
                   <dd className="mono-text">{values.currency}</dd>
                 </>
               ) : null}
@@ -305,11 +332,8 @@ export function PrestashopSetupForm(): ReactElement {
 
         {stepIndex === 2 ? (
           <fieldset className="capability-fieldset">
-            <legend className="capability-fieldset__legend">Capabilities</legend>
-            <p className="muted-text capability-fieldset__help">
-              Pick which roles this connection should fulfil. You can change this later on the
-              connection&rsquo;s detail page.
-            </p>
+            <legend className="capability-fieldset__legend">{copy.capabilities.legend}</legend>
+            <p className="muted-text capability-fieldset__help">{copy.capabilities.help}</p>
             <ul className="capability-list">
               {supportedCapabilities.map((capability) => {
                 const id = `new-cap-${capability}`;
@@ -336,37 +360,37 @@ export function PrestashopSetupForm(): ReactElement {
 
         {stepIndex === 3 ? (
           <dl className="wizard-review-list">
-            <dt>Name</dt>
+            <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
-            <dt>Shop URL</dt>
+            <dt>{copy.fields.baseUrl.label}</dt>
             <dd className="mono-text">{values.baseUrl || '—'}</dd>
             {values.storefrontBaseUrl ? (
               <>
-                <dt>Storefront URL</dt>
+                <dt>{copy.review.storefrontUrl}</dt>
                 <dd className="mono-text">{values.storefrontBaseUrl}</dd>
               </>
             ) : null}
-            <dt>Webservice key</dt>
+            <dt>{copy.fields.webserviceKey.label}</dt>
             <dd className="mono-text">
               {values.webserviceKey ? maskKey(values.webserviceKey) : '—'}
             </dd>
             {values.shopId ? (
               <>
-                <dt>Shop ID</dt>
+                <dt>{copy.review.shopId}</dt>
                 <dd className="mono-text">{values.shopId}</dd>
               </>
             ) : null}
             {values.currency ? (
               <>
-                <dt>Default currency</dt>
+                <dt>{copy.review.currency}</dt>
                 <dd className="mono-text">{values.currency}</dd>
               </>
             ) : null}
-            <dt>Capabilities</dt>
+            <dt>{copy.capabilities.legend}</dt>
             <dd>
               {(values.enabledCapabilities ?? []).length > 0
                 ? (values.enabledCapabilities ?? []).join(', ')
-                : 'None selected'}
+                : copy.review.noneSelected}
             </dd>
           </dl>
         ) : null}
@@ -375,18 +399,18 @@ export function PrestashopSetupForm(): ReactElement {
           <div className="wizard-actions__group">
             {stepIndex > 0 ? (
               <Button tone="secondary" type="button" onClick={goBack}>
-                Back
+                {setupCopy.back}
               </Button>
             ) : null}
           </div>
           <div className="wizard-actions__group">
             {stepIndex < STEP_LABELS.length - 1 ? (
-              <Button type="button" onClick={() => void goNext()}>
-                Next
+              <Button key="next" type="button" onClick={() => void goNext()}>
+                {setupCopy.next}
               </Button>
             ) : (
-              <Button type="submit" disabled={createConnection.isPending}>
-                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+              <Button key="submit" type="submit" disabled={createConnection.isPending}>
+                {createConnection.isPending ? copy.creating : copy.create}
               </Button>
             )}
           </div>

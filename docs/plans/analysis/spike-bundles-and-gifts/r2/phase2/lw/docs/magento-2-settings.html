@@ -1,0 +1,239 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/magento-2-settings"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Magento 2: Configure channel settings</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Magento 2: Configure channel settings';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link><div class="doc-container">
+  <h1 id="h1__1163759382" data-has-heading-anchor="true">
+    Magento 2: How to Configure<a href="/articles/documentation/magento-2-settings/a/h1__1163759382" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h1__1163759382&#39;,this);"></a></h1>
+  <p>
+    <span>Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with Magento 2. This guide will help you configure your Magento 2 channel to ensure Linnworks is doing what is required.</span>
+  </p>
+  <p>
+    <span>Once the channel is added, click the <i>pen&nbsp;<span class="fa fa-pencil">&nbsp;</span>&nbsp;</i>icon in the channel integration screen for the required Magento 2 integration.</span>
+  </p>
+  <p>
+    <span><img src="/resources/Storage/documentation/Screenshots/Channels/ChannelConfig.png" alt="Channel Config" class="leftAlone" loading="lazy"/></span>
+  </p>
+  <h3 id="h4_739406941" style="" data-has-heading-anchor="true">
+    <span>Available for the configuration settings</span>
+  <a href="/articles/documentation/magento-2-settings/a/h4_739406941" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h4_739406941&#39;,this);"></a></h3>
+  <h4 style="" id="h4_767759945" data-has-heading-anchor="true">
+    <span>Account</span>
+  <a href="/articles/documentation/magento-2-settings/a/h4_767759945" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h4_767759945&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <b>Enabled:</b>&nbsp;<span>Tick this option to allow communication between Linnworks and Magento 2. Without this ticked, no information will be sent to the channel or received from it. Once</span><span>&nbsp;enabled, Linnworks will download orders from Magento 2 that have the status of <i>processing</i> on Magento 2.</span></li><li><b>Site URL:&nbsp;</b>&nbsp;<span>The domain of the Magento 2 site that is integrated.</span>
+    </li>
+    <li>
+      <b>API URL:</b>&nbsp;<span>The URL of where the API is - set as /rest/default/V1/ as standard.</span>
+    </li>
+    <li>
+      <b>Consumer Key:</b>&nbsp;&nbsp;<span>This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend.</span>
+    </li>
+    <li>
+      <b>Consumer Secret:&nbsp;</b>&nbsp;&nbsp;<span>This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend.</span>
+    </li>
+    <li>
+      <b>Access Token:&nbsp;</b>&nbsp;&nbsp;<span>This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend.</span>
+    </li>
+    <li>
+      <b>Access Token Secret:</b><strong>&nbsp;</strong><span>This is part of the API credentials obtained from Magento after creating a new integration on the Magento 2 backend.</span>
+    </li>
+    <li>
+      <b>Work with Multi store:&nbsp;</b>Allows downloading orders per each Magento Multistore individually. Multi-stores are treated as locations in Linnworks. Multi stores are mapped to Linnworks locations, and orders are downloaded into these locations.
+    </li>
+  </ul>
+  <div class="alert-warning">
+    <strong><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</strong>&nbsp;If <i>Work with Multi store</i>&nbsp;is <u>enabled</u>, <i>Work with specific Multi-store</i>&nbsp;and <i>Store site ID</i>&nbsp;must remain <u>disabled</u>.
+  </div>
+  <ul>
+    <li>
+      <b>Work with specific Multi-store:</b>&nbsp;Allows downloading orders from one of your Multi stores. The multistore site ID is specified in the field below.
+    </li>
+    <li>
+      <b>Store site ID:</b>&nbsp;Orders will be downloaded from a store with this site ID.</li>
+    <li><b>Test:</b><strong>&nbsp;</strong>Click&nbsp;to confirm the supplied credentials work correctly, allowing communication between Magento 2 and Linnworks.&nbsp;If the main settings such as consumer key or API endpoint change, you can reset your channel with the new details by clicking the <i>Test</i> button and following the re-integration wizard.</li>
+    <li>
+      <strong>Reauthorize:&nbsp;</strong>T<span>his&nbsp;</span><span>button will trigger the reauthorization of your tokens if required.</span>
+    </li>
+  </ul>
+  <h4 style="" id="h4__784112042" data-has-heading-anchor="true">
+    Order<a href="/articles/documentation/magento-2-settings/a/h4__784112042" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h4__784112042&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <strong>Dispatch notes:</strong>&nbsp;After processing orders in Linnworks, a dispatch notification, tracking number, and the selected shipping vendor will be submitted to the channel. This is then compared to a list of couriers on the channel and displayed if it matches a courier. If it does not match, then <i>Custom</i> is displayed on the order. If no tracking number is available, nothing is submitted. When the option is disabled, no dispatch information will be submitted to Magento.
+    </li>
+  </ul>
+  <div class="alert-warning">
+    <strong><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:&nbsp;</strong>The orders' status will only be marked as shipped if the version is 2.1.3 or higher.
+  </div>
+  <ul>
+    <li>
+      <strong>Order sync date [UTC]:</strong>&nbsp;T<span>his shows the date and time when Linnworks last synchronized with the channel.</span>
+    </li>
+    <li class="control-group">
+      <strong>High volume orders:</strong>&nbsp;&nbsp;<span>Tick this option if the channel deals with a high volume of orders, in the thousands, per day. This will then force orders to download in batches once an hour. This reduces the load on the server.</span>
+    </li>
+  </ul>
+  <div class="alert-warning">
+    <strong><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</strong>&nbsp;If this option is used, orders that are deleted from Linnworks will not be redownloaded due to the way in which Linnworks will be looking for valid orders to download.
+  </div>
+  <ul>
+    <li class="control-group">
+      <strong>Use base currency:&nbsp;</strong>&nbsp;&nbsp;<span>This will force Linnworks to make use of the default store currency and prices as set in Magento 2 using the parameters in the downloaded order XML that are prefixed with <i>Base</i>.</span>
+    </li>
+    
+    
+    <li class="control-group"><span></span>
+    <strong>Use order state:</strong><strong>&nbsp;</strong>&nbsp;<span>By&nbsp;</span><span>default, Linnworks downloads orders based on the status of the order {pending, processing} on Magento. By ticking this option, Linnworks will instead only download them based on state {new, processing} as defined on Magento.</span>
+      <ul>
+    <li class="control-group">
+      Order&nbsp;<span>State is an attribute internal to Magento. It differs from order status, but it can be mapped in the Magento settings.</span>
+        </li>
+    
+    
+    <li class="control-group">
+        Several statuses can be mapped to one state. For example, an order's state of payment_review could be mapped to the status of payment_review and fraud.</li>
+    
+    </ul>
+  </li>
+    
+    <li class="control-group">
+      <strong>Download pending orders:&nbsp;</strong>&nbsp;&nbsp;<span>Ticking this option will force Linnworks to download orders with <i>pending</i> status on Magento. If the&nbsp;</span><i><span>Use order state</span></i><span>&nbsp;setting is enabled, Linnworks will instead download orders where the state is set to <i>new</i> on Magento.</span>
+    </li>
+    <li class="control-group">
+      <strong>Pending order from date:</strong><strong>&nbsp;</strong>&nbsp;<span>Pending orders will be downloaded starting from the date you selected in this setting.</span>
+    </li>
+    <li class="control-group">
+    <b>Pending canceled from date: </b>Linnworks will sync canceled orders from the date selected here.</li>
+    <li class="control-group">
+      <strong>Payment methods to download pending orders:&nbsp;</strong>&nbsp;&nbsp;<span>This allows for customization of when pending orders will be downloaded.</span>
+      <ul>
+        <li>
+          For instance, if a customer was paying on the collection, but the order needed to be picked and packed in advance, then the payment method "cashondelivery", which by default is mapped as a pending order on Magento 2, could be set to download in Linnworks.
+        </li>
+      </ul>
+    </li>
+    <li class="control-group">
+      <strong>Download custom/configurable item options:</strong>&nbsp;Enable to download custom/configurable item options. If unticked, Linnworks will not check for custom/configurable item options.</li>
+    <li class="control-group"><span style="font-weight: normal;"><b>Ignore bundle child items</b></span><b>:</b> Use this option to ignore bundle child items during order download. Should only be enabled if the bundle parent has a linked SKU to a composite parent in Linnworks with the correct and <span style="font-weight: normal;"><b>exactly matching</b></span> child items. When disabled, bundle child and parent items will be downloaded as separate items.</li>
+    <li class="control-group"><span style="font-weight: normal;"><b>Ignore bundle parent items</b></span><b>:</b> Use this option to ignore bundle parent items during order download. This option should be used e.g. when the parent SKU is a virtual parent with a generated SKU.<br/><div class="alert-warning"><span style="font-weight: normal;"><b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</b></span>&nbsp;<i>Ignore Bundle Parent Items</i> and <i>Ignore Bundle Child Items</i> cannot be enabled simultaneously. Only one setting can be used at a time. However, both options can be disabled, whether needed.</div></li>
+    <li class="control-group">
+      <strong>Use Magento tax settings:&nbsp;</strong>&nbsp;&nbsp;<span>When enabled, Linnworks will use the tax percentage directly from the Magento order data when it is downloaded to Linnworks. If the option is not enabled Linnworks will back calculate tax based on the stock item tax or country tax as defined in Linnworks.</span>
+    </li>
+    <li class="control-group">
+      <span><strong>Coupon control</strong></span><b>:</b> This option is added to comply with&nbsp;<i>Only process an order if all items are linked</i> setting from&nbsp;Settings &gt; General Settings &gt; Order Settings &gt; Error Prevention. If the&nbsp;<i>Only process an order if all items are linked</i> setting is enabled, select how Linnworks should treat coupons in the order:<ul>
+        <li class="control-group">
+          <span><strong>Line item</strong></span><b>:&nbsp;</b>&nbsp;
+          <span>Show Coupon details as an order line item.</span>
+        </li>
+        <li class="control-group">
+          <span><strong>Order note</strong></span><b>:&nbsp;</b>Sho<span>w Coupon details as Additional Info.</span>
+        </li>
+        <li class="control-group">
+          <span><strong>Ignore</strong></span><b>:</b>&nbsp;Do not save<span>&nbsp;Coupon details.</span>
+        </li>
+      </ul>
+    </li>
+    <li class="control-group">
+      <strong>Cancellation notes:</strong>&nbsp;When enabled, Linnworks will send order cancellation notes to your sales channel once the order is partially or fully canceled (only unpaid orders can be canceled).</li>
+    <li class="control-group">
+      <strong>Refund notes:</strong> When e<span>nabled,&nbsp;</span>Linnworks will send order refund notes to your sales channel once the order is partially or fully refunded.</li>
+    <li class="control-group">
+      <strong>Return notes:</strong>&nbsp;When enabled,&nbsp;Linnworks will send order return notes to your sales channel once the order is partially or fully returned.</li>
+    <li class="control-group">
+      <strong>Magento email notification on despatch:</strong>&nbsp;Enabling this<span>&nbsp;option will instruct Magento 2 to email the customer when the order is processed in Linnworks.</span>
+    </li>
+    <li class="control-group">
+      <strong>Raise invoice after despatch:</strong>&nbsp;When enabled,<span>&nbsp;o</span><span>nce the order is complete on Magento 2, Linnworks will try to raise an invoice. This will trigger any payment capture actions on your payment gateway.</span>
+    </li>
+    <li class="control-group">
+      <strong>Capture invoice after raise:</strong>&nbsp;This option<span>&nbsp;relates to using pre-authorized payments/orders.</span>
+    </li>
+    <li class="control-group">
+      <strong>Invoice prefix: </strong>This is the prefix given to invoices from this channel. The prefix is assigned when the channel is first integrated and can not be changed.
+    </li>
+  </ul>
+  <h4 style="" id="h4_51037994" data-has-heading-anchor="true">
+    Inventory<a href="/articles/documentation/magento-2-settings/a/h4_51037994" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h4_51037994&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <strong>Update inventory: </strong>Allow Linnworks to submit changes in stock levels to Magento 2. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the <i><a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a></i> screen accessed from the&nbsp;<i><a href="/articles/documentation/channel-integration-screen" onclick="return n(&#39;!documentation/channel-integration-screen&#39;,this);">Channel Integration</a></i> screen.
+    </li>
+    <li>
+      <strong>Max listed:&nbsp;</strong>This sp<span>ecifies the maximum level sent to the channel.&nbsp;</span>
+      For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">Max Listed</a></i>&nbsp;guide.</li>
+    <li>
+      <strong>Stock percentage:</strong>&nbsp;This will send a percentage of the currently available stock level to the sales channel. For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">Stock Percentage</a></i>&nbsp;guide.</li>
+    <li>
+      <strong>End when:</strong>&nbsp;This en<span>ables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.&nbsp;</span>
+    For more details, go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">End When</a></i>&nbsp;guide.</li>
+    <li>
+      <strong>Do not mark as out-of-stock:</strong> Enabling this option will not mark SKUs with 0 available quantities as out-of-stock.
+    </li>
+  </ul>
+  <h4 style="" id="h4__733860040" data-has-heading-anchor="true">
+    Inventory - Price Change<a href="/articles/documentation/magento-2-settings/a/h4__733860040" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h4__733860040&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <strong>Price change:</strong> Price Change is designed to automate updating the sales channel once a Linnworks stock item has had its listing price updated and saved. For more details, go to the <i><a href="/articles/documentation/channels-price-change" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a></i> guide.
+    </li>
+  </ul>
+  <h4 style="" id="h4__1184546515" data-has-heading-anchor="true">
+    Listings<a href="/articles/documentation/magento-2-settings/a/h4__1184546515" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h4__1184546515&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <strong><b>Auto-link by SKU:</b></strong>&nbsp;If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during&nbsp;<u>order download</u>&nbsp;or the&nbsp;<u>mapping sync</u>&nbsp;(runs ~every 12 hours). Once linked,&nbsp;<a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a>&nbsp;is triggered. You can check&nbsp;<a href="/articles/documentation/channels-inventory-mapping/a/h4_1759825364" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1759825364&#39;,this);">this guide</a>&nbsp;for full details on how this feature works.<br/></li>
+    
+    <li><strong>Listing download in progress:</strong>&nbsp;This tick&nbsp;<span>box will tick itself if a Listing Update has begun.</span>
+    </li>
+    <li>
+      <strong>Listing download start time:&nbsp;</strong>This will s<span>how the date and time of when the update has begun.</span>
+    </li>
+    <li>
+      <strong>Last listing download completion time: </strong>The time when the last listing download was completed (launched via the <i>Download listings</i> button).
+    </li>
+    <li>
+      <strong>Listing download estimated completion:</strong>&nbsp;This will give y <span>ou an estimate of when the listings download will be complete – the time can vary depending on server speeds and the number of listings.</span>
+    </li>
+    <li>
+      <strong>Download listings:</strong>&nbsp;Click this button to force Linnworks to request an update from the channel for your active listings.</li>
+    
+  </ul><h4 id="h4_15828802" data-has-heading-anchor="true">
+    Next steps:
+  <a href="/articles/documentation/magento-2-settings/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/magento-2-settings/a/h4_15828802&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a></li>
+    
+    <li><a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);"></a><a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a></li>
+    <li>
+      <a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a></li>
+    <li><a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);"></a><a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a></li>
+    <li><a href="/articles/documentation/listing-creation-steps" onclick="return n(&#39;!documentation/listing-creation-steps&#39;,this);">Listing creation steps</a><a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);"><br/></a></li></ul>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

@@ -1,8 +1,8 @@
 /**
  * Pack orders in OpenLinker — the onboarding wizard and its status page (#3457)
  *
- * Four steps (product master, packers, what changes, turn on), then a status
- * page. Implements the `data-state` / `data-source` vocabulary and the
+ * Eight steps (product master, sales documents, packers, shipping, what
+ * changes, automations, who decides, turn on), then a status page. Implements the `data-state` / `data-source` vocabulary and the
  * `data-testid` values of `docs/plans/mockups/oms-onboarding-wizard.html`.
  *
  * ## The page resolves the platform; this feature never compares one (D19)
@@ -17,7 +17,9 @@
  *
  * Where the operator is comes from the server on every load: step 1 is done
  * when all its writes are in place, packing is on when the server's own
- * `sourcing` row says so. Nothing is kept in local storage. The loader waits
+ * `sourcing` row says so. Nothing is kept in local storage. The one exception
+ * is the step itself, kept in the URL (`?step=shipping`) so an operator who
+ * leaves to connect a carrier comes back to the step they left (#3958). The loader waits
  * for those facts before mounting the flow, so the initial position is
  * computed once from settled data rather than jumping as queries resolve.
  *
@@ -26,8 +28,8 @@
  *
  * @module features/oms-onboarding/components
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
 import { formatRelativeTime } from '../../../shared/format/format-relative-time';
@@ -46,9 +48,12 @@ import { useFulfillmentSnapshotQuery } from '../hooks/use-fulfillment-snapshot-q
 import { useMainLocationQuery } from '../hooks/use-main-location-query';
 import { useSetSetupStepSkippedMutation } from '../hooks/use-set-setup-step-skipped-mutation';
 import { useSetupSteps } from '../hooks/use-setup-steps';
+import { useWizardSteps } from '../hooks/use-wizard-steps';
 import { SetupStepKeys, type SetupStepKey } from '../lib/setup-steps';
+import { useSetAutoDispatchMutation, type SetAutoDispatchInput } from '../hooks/use-set-auto-dispatch-mutation';
 import { useSetPackingMutation } from '../hooks/use-set-packing-mutation';
 import { useStockLocatedProgress } from '../hooks/use-stock-located-progress';
+import { readAutoDispatch } from '../lib/config-merge';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import { FIRST_ORDER_POLL_MS, STATUS_POLL_MS } from '../lib/oms-onboarding.constants';
 import {
@@ -63,15 +68,27 @@ import {
   SETUP_STEP_NUMBERS,
   TOTAL_STEPS,
   TURN_ON_STEP,
+  WIZARD_STEP_PARAM,
   WIZARD_STEPS,
+  wizardStepFromKey,
+  wizardStepKey,
   type OnboardingView,
   type SourcingStanding,
 } from '../lib/onboarding-state';
 import { selectProductMasters } from '../lib/product-masters';
+import {
+  selectCarriers,
+  selectOrderSources,
+  summariseShippingCoverage,
+  type ShippingCoverageMap,
+  type SourceShippingCoverage,
+} from '../lib/shipping-coverage';
 import { FirstOrderPanel } from './first-order-panel';
 import { PackingStatus } from './packing-status';
+import { ShippingCoverageProbes } from './shipping-coverage-probe';
 import { StepPackers } from './step-packers';
 import { StepSalesDocuments } from './step-sales-documents';
+import { StepShipping } from './step-shipping';
 import { StepSetupPage } from './step-setup-page';
 import { StepProductMaster } from './step-product-master';
 import { StepTurnOn } from './step-turn-on';
@@ -164,6 +181,7 @@ interface OnboardingFlowProps extends OmsOnboardingProps {
 }
 
 function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
+  const wizardSteps = useWizardSteps();
   const { packingConnection, mainLocation, standing, packers } = props;
 
   const { eligible: masters, partial } = useMemo(
@@ -179,7 +197,10 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
   const paused = isPackingPaused(packingConnection, live);
   const conflicting = findConflictingMasters(masters, mainLocation);
 
-  const [position] = useState(() => initialPosition(live, paused, step1Done));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [position] = useState(() =>
+    initialPosition(live, paused, step1Done, wizardStepFromKey(searchParams.get(WIZARD_STEP_PARAM)))
+  );
   const [view, setView] = useState<OnboardingView>(position.view);
   const [step, setStep] = useState(position.step);
   const [maxReached, setMaxReached] = useState(position.step);
@@ -201,6 +222,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
 
   const confirm = useConfirmProductMasterMutation();
   const setPacking = useSetPackingMutation();
+  const setAutoDispatch = useSetAutoDispatchMutation();
   const setStepSkipped = useSetSetupStepSkippedMutation();
   // Admin-only: the document-routing read behind one of the steps is.
   const setup = useSetupSteps(canWrite, packingConnection, props.connections);
@@ -221,6 +243,54 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
     if (view === 'waiting' && arrivedTask !== null) setView('first');
   }, [view, arrivedTask]);
 
+  // Replace, not push: moving between steps is not navigation the browser's
+  // Back should replay, and leaving the wizard drops the parameter so a later
+  // visit lands where the server says the setup is.
+  useEffect(() => {
+    const wanted = view === 'wizard' ? wizardStepKey(step) : null;
+    if (searchParams.get(WIZARD_STEP_PARAM) === wanted) return;
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        if (wanted === null) next.delete(WIZARD_STEP_PARAM);
+        else next.set(WIZARD_STEP_PARAM, wanted);
+        return next;
+      },
+      { replace: true }
+    );
+  }, [view, step, searchParams, setSearchParams]);
+
+  const orderSources = useMemo(
+    () => selectOrderSources(props.connections, packingConnection?.id ?? null),
+    [props.connections, packingConnection?.id]
+  );
+  const orderSourceIds = useMemo(() => orderSources.map((source) => source.id), [orderSources]);
+  const hasCarrier = selectCarriers(props.connections).length > 0;
+  const activeConnectionIds = useMemo(
+    () => new Set(props.connections.filter((connection) => connection.status === 'active').map((c) => c.id)),
+    [props.connections]
+  );
+  const [shippingCoverage, setShippingCoverage] = useState<ShippingCoverageMap>({});
+  const reportCoverage = useCallback((sourceId: string, next: SourceShippingCoverage): void => {
+    setShippingCoverage((previous) => {
+      const current = previous[sourceId];
+      if (
+        current !== undefined &&
+        current.status === next.status &&
+        current.withCarrier === next.withCarrier &&
+        current.total === next.total
+      ) {
+        return previous;
+      }
+      return { ...previous, [sourceId]: next };
+    });
+  }, []);
+  const shippingTotals = summariseShippingCoverage(orderSourceIds, shippingCoverage);
+  const savedAutoDispatch = readAutoDispatch(packingConnection?.config);
+  // Done from what is saved, not from a visit: a carrier chosen on a
+  // connection's mapping page, or labels set up before, already answers it.
+  const shippingDone = shippingTotals.withCarrier > 0 || savedAutoDispatch !== null;
+
   const masterNames = joinNames(masters);
   const offMasterNames = masters.length > 1 ? COPY.yourProductMasters : masterNames;
   const packerNames = packers.length > 0 ? packers.map((packer) => packer.username).join(', ') : null;
@@ -234,6 +304,11 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
     setVisited((previous) => new Set(previous).add(next));
     setMaxReached((reached) => Math.max(reached, next));
     setView('wizard');
+  };
+
+  const saveAutoDispatch = (input: SetAutoDispatchInput): void => {
+    setAutoDispatch.reset();
+    setAutoDispatch.mutate(input, { onSuccess: () => completeStep(WIZARD_STEPS.shipping) });
   };
 
   const completeStep = (done: number): void => {
@@ -293,6 +368,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
       completedSteps.add(step - 1);
     }
   }
+  if (shippingDone) completedSteps.add(WIZARD_STEPS.shipping - 1);
   for (const key of SetupStepKeys) {
     const state = setup?.states[key];
     // Both, one step at a time: the decision is made AND the operator has
@@ -305,16 +381,20 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
       stepperPlacement="side"
       stepper={
         <SetupStepper
-          steps={COPY.steps.map((s) => s.title)}
+          steps={wizardSteps.map((s) => s.title)}
           currentStep={step - 1}
           completedSteps={completedSteps}
           // Packing that is already on lets the operator move between the setup
           // steps; "Turn it on" itself is behind them.
-          maxReachedStep={live ? SETUP_STEP_NUMBERS.whoDecides - 1 : maxReached - 1}
+          maxReachedStep={
+            live
+              ? SETUP_STEP_NUMBERS.whoDecides - 1
+              : Math.max(maxReached, step1Done && shippingDone ? WIZARD_STEPS.shipping : 0) - 1
+          }
           onSelectStep={(index) => goToStep(index + 1)}
           testId="wizard-stepper"
           orientation="vertical"
-          stepMeta={COPY.steps.map((s) => s.meta)}
+          stepMeta={wizardSteps.map((s) => s.meta)}
         />
       }
     >
@@ -363,13 +443,34 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           onBack={() => goToStep(WIZARD_STEPS.salesDocuments)}
           onContinue={() => completeStep(WIZARD_STEPS.packers)}
         />
+      ) : step === WIZARD_STEPS.shipping ? (
+        <StepShipping
+          sources={orderSources}
+          hasCarrier={hasCarrier}
+          coverage={shippingCoverage}
+          saved={savedAutoDispatch}
+          canWrite={canWrite && packingConnection !== null}
+          demoReadOnly={write.demoReadOnly}
+          saving={setAutoDispatch.isPending}
+          saveError={setAutoDispatch.error}
+          onBack={() => goToStep(WIZARD_STEPS.packers)}
+          onContinue={() => completeStep(WIZARD_STEPS.shipping)}
+          onSave={(settings) => {
+            if (packingConnection === null) return;
+            saveAutoDispatch({ kind: 'save', packingConnectionId: packingConnection.id, settings });
+          }}
+          onTurnOff={() => {
+            if (packingConnection === null) return;
+            saveAutoDispatch({ kind: 'setEnabled', packingConnectionId: packingConnection.id, enabled: false });
+          }}
+        />
       ) : step === WIZARD_STEPS.whatChanges ? (
         <StepWhatChanges
           masterCount={masters.length}
           masterNames={masterNames}
           acknowledged={acknowledged}
           onAcknowledge={setAcknowledged}
-          onBack={() => goToStep(WIZARD_STEPS.packers)}
+          onBack={() => goToStep(WIZARD_STEPS.shipping)}
           onContinue={() => completeStep(WIZARD_STEPS.whatChanges)}
         />
       ) : step >= WIZARD_STEPS.automations && step < TURN_ON_STEP ? (
@@ -471,6 +572,29 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           setStopOpen(true);
         }}
         onStartAgain={() => turnOn('status')}
+        shipping={
+          isAdmin
+            ? {
+                totals: shippingTotals,
+                autoDispatchOn: savedAutoDispatch?.enabled === true,
+                busy: setAutoDispatch.isPending,
+                error: setAutoDispatch.error,
+                onChange: (): void => {
+                  setAutoDispatch.reset();
+                  goToStep(WIZARD_STEPS.shipping);
+                },
+                onStop: async (): Promise<void> => {
+                  if (packingConnection === null) return;
+                  setAutoDispatch.reset();
+                  await setAutoDispatch.mutateAsync({
+                    kind: 'setEnabled',
+                    packingConnectionId: packingConnection.id,
+                    enabled: false,
+                  });
+                },
+              }
+            : null
+        }
         onContinueSetup={() => {
           const next = setup?.left[0];
           goToStep(next === undefined ? SETUP_STEP_NUMBERS.salesDocuments : SETUP_STEP_NUMBERS[next]);
@@ -495,6 +619,15 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
         data-state={dataState}
         data-source={resolveDataSource(masters)}
       >
+        {/* Admin-only reads (the routing rules are), and only once the
+            packing connection exists: before step 1 nothing can be routed. */}
+        {isAdmin && packingConnection !== null ? (
+          <ShippingCoverageProbes
+            sourceConnectionIds={orderSourceIds}
+            activeConnectionIds={activeConnectionIds}
+            onReport={reportCoverage}
+          />
+        ) : null}
         {body}
       </div>
     </Shell>

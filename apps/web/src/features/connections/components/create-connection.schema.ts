@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('createConnectionSchema');
 
 /**
  * `platformType` is an opaque string post-#578 — membership is enforced at
@@ -7,7 +10,7 @@ import type { CreateConnectionInput } from '../api/connections.types';
  * is non-empty; an unknown platform falls through to a clear runtime error
  * from `usePlatform()` consumers or the BE registry.
  */
-export const platformTypeFormSchema = z.string().trim().min(1, 'Platform type is required');
+export const platformTypeFormSchema = z.string().trim().min(1, msg('platformTypeRequired'));
 
 /**
  * Build the create-connection schema.
@@ -31,7 +34,7 @@ export function buildCreateConnectionSchema(options?: { requiresCredentials?: bo
       configText: z
         .string()
         .trim()
-        .min(2, 'Configuration JSON is required')
+        .min(2, msg('configRequired'))
         .refine((value) => {
           try {
             JSON.parse(value);
@@ -39,7 +42,7 @@ export function buildCreateConnectionSchema(options?: { requiresCredentials?: bo
           } catch {
             return false;
           }
-        }, 'Configuration must be valid JSON'),
+        }, msg('configInvalid')),
       // Either an existing `db:` reference OR a raw credentials JSON payload
       // (encrypted server-side). Exactly one must be supplied — enforced in the
       // cross-field refine below so platforms without a guided wizard (e.g.
@@ -50,7 +53,7 @@ export function buildCreateConnectionSchema(options?: { requiresCredentials?: bo
         .optional()
         .refine(
           (value) => value === undefined || value.length === 0 || value.startsWith('db:'),
-          'Credentials reference must start with "db:" — raw keys are no longer accepted'
+          msg('credentialsRefPrefix')
         ),
       credentialsJson: z
         .string()
@@ -64,9 +67,9 @@ export function buildCreateConnectionSchema(options?: { requiresCredentials?: bo
           } catch {
             return false;
           }
-        }, 'Credentials must be a valid JSON object'),
+        }, msg('credentialsJsonInvalid')),
       enabledCapabilities: z.string().trim().optional(),
-      name: z.string().trim().min(1, 'Connection name is required'),
+      name: z.string().trim().min(1, msg('nameRequired')),
       platformType: platformTypeFormSchema,
     })
     .refine(
@@ -80,8 +83,7 @@ export function buildCreateConnectionSchema(options?: { requiresCredentials?: bo
         return hasRef !== hasJson;
       },
       {
-        message:
-          'Provide exactly one of: a `db:` credentials reference OR a raw credentials JSON object',
+        ...msg('credentialsExactlyOne'),
         path: ['credentialsRef'],
       }
     );

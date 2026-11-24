@@ -33,11 +33,15 @@ directly.
   credentials and granted scopes are correct. Sandbox documents DO eventually
   reach `CONFIRMED` (see above); what the sandbox cannot prove is a specific
   physical printer being reachable.
-- **`Idempotency-Key` must be a vendor-safe token.** The adapter sends the
-  derived `documentToken` (a UUID-shaped hash of `connectionId` +
-  `idempotencyKey`), never core's raw key — the vendor rejects anything outside
-  `/^[0-9A-Za-z_-]+$/`. If you are extending this adapter, do not change this
-  back to the raw key.
+- **`Idempotency-Key` must be a vendor-safe token, and must not be the document
+  token.** The adapter sends a UUID derived from the `documentToken` plus a digest
+  of the exact body (`deriveRequestIdempotencyKey`), never core's raw key - the
+  vendor rejects anything outside `/^[0-9A-Za-z_-]+$/`. It was once the
+  `documentToken` itself, and because the vendor remembers a key even for a
+  request it refused, every corrected retry after a refusal was answered `422`
+  ("key used with different data") and the record went in doubt for good. The
+  exactly-once guard is the `documentToken` in the body, which stays stable per
+  sale. If you are extending this adapter, change neither back.
 - **No webhook ingress in v1.** The vendor can push a confirmed status by
   webhook, but this adapter relies entirely on the synchronous poll +
   `locateByQuery` reconcile path. A "Register receipt" that returns quickly with
@@ -45,14 +49,16 @@ directly.
   troubleshoot yet.
 - **The `POST /documents` retry-on-5xx/network safety assumes the vendor's
   `Idempotency-Key` dedup window outlives our own retry span.** The adapter
-  sends the same derived `documentToken` as the header on every retried
-  attempt (pinned by a unit test), and the vendor is documented to guarantee
+  sends the same derived header on every retried attempt (the same body, so the
+  same key; pinned by a unit test), and the vendor is documented to guarantee
   that repeating a key with the same body never mints a second document — but
   that guarantee is only as good as how long the vendor actually remembers the
-  key. Our own retry span is small (a handful of seconds across the transport's
-  bounded backoff), so this is safe against any dedup window measured in
-  minutes or longer. If the vendor's dedup window ever turns out to be shorter
-  than that, a retry could mint a second document; nothing in this codebase
+  key. The body's `documentToken`, which the vendor never lets hold a second
+  document, is the backstop either way. Our own retry span is small (a handful
+  of seconds across the transport's bounded backoff), so this is safe against
+  any dedup window measured in minutes or longer. If the vendor's dedup window
+  ever turns out to be shorter than that AND the token guard did not hold, a
+  retry could mint a second document; nothing in this codebase
   currently verifies the vendor's window length against our own retry span.
 - **An invoice request needs BOTH tokens, or the vendor rejects it (`errorCode: 41`,
   `"documentToken" missing required peer "transactionToken"`).** A receipt request

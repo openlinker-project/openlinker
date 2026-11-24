@@ -93,7 +93,19 @@ export interface WooCommerceOrderCreateRequest {
 }
 
 export interface WooCommerceOrderUpdateRequest {
-  status: string;
+  status?: string;
+  /**
+   * Marks the order paid (#3963). WC runs `payment_complete()`: it stamps
+   * `date_paid`, moves a pending order to processing and, like any move into
+   * processing, reduces stock it had not reduced yet.
+   */
+  set_paid?: boolean;
+}
+
+/** `POST /orders/{id}/notes` body (#3963). `customer_note: false` keeps it private. */
+export interface WooCommerceOrderNoteRequest {
+  note: string;
+  customer_note: boolean;
 }
 
 export interface WooCommerceOrderResponse {
@@ -104,12 +116,26 @@ export interface WooCommerceOrderResponse {
   date_completed_gmt?: string;
   /** GMT timestamp of the order's last modification — `deliveredAt` fallback. */
   date_modified_gmt?: string;
+  /** GMT timestamp WC stamps when the order is paid; `null` while unpaid (#3963). */
+  date_paid_gmt?: string | null;
   /**
    * The order's booked total, as a decimal string (WC REST convention).
    * Read back after create to reconcile against `order.totals.total` (#3470)
    * — never written by this adapter.
    */
   total?: string;
+  /**
+   * The booked line items, read back after create only for their item meta:
+   * WooCommerce stamps `_reduced_stock` on each line it took out of stock, which
+   * is how the adapter answers `OrderCreateStockEffect` for the order it created.
+   */
+  line_items?: WooCommerceOrderLineItemResponse[];
+}
+
+/** One booked line of a WooCommerce order response - only what the adapter reads. */
+export interface WooCommerceOrderLineItemResponse {
+  id?: number;
+  meta_data?: Array<{ key?: string; value?: unknown }>;
 }
 
 // ─── Customer shapes ──────────────────────────────────────────────────────────

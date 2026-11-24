@@ -63,11 +63,12 @@ import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
  * That last point is not specific to `Unsynced`, and it bites hardest on the two
  * tabs the redesign creates for the go-fix-this workflow.
  * `OfferMappingRepositoryPort.countByConnectionAndVariants` - the read behind
- * `BulkListingSubmitService.filterAlreadyListed` - excludes ONLY `ended`, so an
- * `Invalid` or `Draft` row counts as already-listed just like an `Active` one.
- * An operator who opens Invalid, selects their rejected offers and hits "Create
- * offer" gets them silently skipped, or a 400 if that was the whole selection.
- * Only `Ended` is re-listable. Changing the duplicate guard is out of scope for
+ * `BulkListingSubmitService.filterAlreadyListed` - excludes `ended`, and an
+ * `inactive` offer whose creation OpenLinker recorded as refused by the
+ * marketplace (E2E-25). Every other `Invalid` or `Draft` row counts as
+ * already-listed just like an `Active` one. An operator who opens Invalid,
+ * selects such rejected offers and hits "Create offer" gets them silently
+ * skipped, or a 400 if that was the whole selection. Changing the duplicate guard is out of scope for
  * #2026; this docblock and the response DTO's per-bucket descriptions exist so
  * the UI copy built on them does not imply otherwise.
  *

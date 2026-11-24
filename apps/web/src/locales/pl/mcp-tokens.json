@@ -1,0 +1,97 @@
+{
+  "mcpTokenCreateForm": {
+    "expiryDescription": "Wymagane. Najwyżej {max} dni.",
+    "expiryLabel": "Wygasa za (dni)",
+    "nameLabel": "Nazwa",
+    "namePlaceholder": "np. Claude Desktop - laptop",
+    "scopeDescription": "Tokeny tylko do odczytu nie mogą wykonywać zapisów. Zapis obejmuje odczyt.",
+    "scopeLabel": "Zakres",
+    "scopeRead": "Tylko odczyt (mcp:read)",
+    "scopeWrite": "Odczyt i zapis (mcp:write)",
+    "submit": "Utwórz token",
+    "submitting": "Tworzenie…",
+    "validation": {
+      "maxDays": "Najwyżej {max} dni",
+      "minDays": "Co najmniej 1 dzień",
+      "nameRequired": "Nazwa jest wymagana",
+      "nameTooLong": "Nazwa może mieć najwyżej 100 znaków",
+      "wholeDays": "Podaj pełną liczbę dni"
+    }
+  },
+  "mcpTokenList": {
+    "boundTo": "Powiązany z {resource}",
+    "columns": {
+      "actions": "Akcje",
+      "expires": "Wygasa",
+      "lastUsed": "Ostatnio użyty",
+      "name": "Nazwa",
+      "owner": "Właściciel",
+      "scopes": "Zakresy",
+      "status": "Status"
+    },
+    "confirmDescription": "„{name}” (właściciel {owner}) przestanie działać natychmiast. Każdy klient MCP skonfigurowany z tym tokenem zacznie mieć błędy uwierzytelniania. Tej operacji nie można cofnąć.",
+    "confirmLabel": "Unieważnij",
+    "confirmTitle": "Unieważnić ten token?",
+    "emptyMessage": "Utwórz token, aby klient MCP mógł uwierzytelnić się w tej instancji OpenLinker.",
+    "emptyTitle": "Brak tokenów MCP",
+    "never": "Nigdy",
+    "revoke": "Unieważnij",
+    "status": {
+      "active": "Aktywny",
+      "expired": "Wygasły",
+      "revoked": "Unieważniony",
+      "wrongResource": "Niewłaściwy zasób"
+    },
+    "wrongResourceWarning": {
+      "few": "{n} tokeny są powiązane z innym adresem URL zasobu MCP niż ten, który obsługuje obecnie to wdrożenie. Będą kończyć się samym błędem 401, dopóki nie zostaną utworzone ponownie - zwykle oznacza to, że adres URL zasobu MCP wdrożenia zmienił się po ich utworzeniu.",
+      "many": "{n} tokenów jest powiązanych z innym adresem URL zasobu MCP niż ten, który obsługuje obecnie to wdrożenie. Będą kończyć się samym błędem 401, dopóki nie zostaną utworzone ponownie - zwykle oznacza to, że adres URL zasobu MCP wdrożenia zmienił się po ich utworzeniu.",
+      "one": "1 token jest powiązany z innym adresem URL zasobu MCP niż ten, który obsługuje obecnie to wdrożenie. Będzie kończyć się samym błędem 401, dopóki nie zostanie utworzony ponownie - zwykle oznacza to, że adres URL zasobu MCP wdrożenia zmienił się po jego utworzeniu.",
+      "other": "{n} tokenu jest powiązanych z innym adresem URL zasobu MCP niż ten, który obsługuje obecnie to wdrożenie. Będą kończyć się samym błędem 401, dopóki nie zostaną utworzone ponownie - zwykle oznacza to, że adres URL zasobu MCP wdrożenia zmienił się po ich utworzeniu."
+    }
+  },
+  "mcpTokenRevealDialog": {
+    "copied": "Skopiowano",
+    "copy": "Kopiuj",
+    "copyFailed": "Kopiowanie nie powiodło się - zaznacz wartość powyżej i skopiuj ją ręcznie przed zamknięciem.",
+    "description": "Skopiuj ten token teraz. Nie da się go wyświetlić ponownie.",
+    "done": "Gotowe",
+    "pasteHint": "Wklej go do konfiguracji klienta MCP jako nagłówek <code>{header}</code>.",
+    "title": "Utworzono token - {name}",
+    "tokenLabel": "Token",
+    "warning": "To jedyny moment, w którym ta wartość jest wyświetlana. OpenLinker przechowuje tylko jej skrót - jeśli ją zgubisz, unieważnij token i utwórz nowy."
+  },
+  "mcpTokensPage": {
+    "adminOnlyDescription": "Dostęp tylko dla administratorów.",
+    "adminRequiredMessage": "Ta strona zarządza danymi logowania agentów - wymaga sesji administratora.",
+    "adminRequiredTitle": "Wymagana rola administratora",
+    "backLabel": "Ustawienia",
+    "description": "Osobiste tokeny dostępu, które pozwalają klientowi MCP (Claude Desktop, agent, …) uwierzytelnić się w tej instancji OpenLinker.",
+    "eyebrow": "Ustawienia",
+    "title": "Tokeny MCP"
+  },
+  "mcpTokensPanel": {
+    "adminOnly": "Tylko administratorzy",
+    "createEyebrow": "Utwórz",
+    "createTitle": "Nowy token MCP",
+    "existingEyebrow": "Istniejące",
+    "existingTitle": "Tokeny MCP",
+    "loadErrorTitle": "Nie udało się wczytać tokenów",
+    "loadingMessage": "Pobieranie tokenów MCP…",
+    "loadingTitle": "Wczytywanie tokenów",
+    "revokeErrorTitle": "Nie udało się unieważnić",
+    "revokedToastDescription": "Każdy klient MCP, który go używa, przestanie się uwierzytelniać.",
+    "revokedToastTitle": "Token unieważniony"
+  },
+  "mcpTokensTile": {
+    "activeTokens": "Aktywne tokeny",
+    "adminOnly": "Tylko administratorzy",
+    "description": "Osobiste tokeny dostępu, które pozwalają klientowi MCP uwierzytelnić się w tej instancji OpenLinker.",
+    "eyebrow": "Agenci",
+    "manage": "Zarządzaj tokenami",
+    "title": "Tokeny MCP"
+  },
+  "toolStaleness": {
+    "availabilityNote": "To, jakie narzędzia widzi klient, zależy od tego, które połączenia są włączone i co obsługują. Klienci zapamiętują tę listę - po włączeniu lub wyłączeniu połączenia połącz klienta ponownie, aby zobaczyć zmianę.",
+    "connectionChangeHint": "Narzędzia MCP odpowiadają tym funkcjom - już połączony agent musi połączyć się ponownie, aby zobaczyć zmianę."
+  }
+}

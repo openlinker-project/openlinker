@@ -47,6 +47,8 @@ export interface BenchWork {
    * them. May be empty: every line cancelled to zero, or a parcel with none.
    */
   items: BenchWorkItem[];
+  /** Units of this parcel that are gifts (#3935). 0 from an API that predates it. */
+  giftUnits?: number;
   /** Units to confirm against the box. Never a readiness claim. */
   unitsToVerify: number;
   /** `packable` | `held` | `cancelled`, or an unrecognised value from a newer API. */
@@ -73,6 +75,13 @@ export interface BenchWork {
    * `groupBenchWork`.
    */
   completedAt: string | null;
+  /**
+   * Whether the order has a buyer note (#3538, D12). A boolean only: the rail
+   * says a note exists and the text is read through the parcel view.
+   */
+  hasBuyerNote: boolean;
+  /** When THIS parcel's buyer note was first acknowledged at the bench, or `null`. */
+  buyerNoteAcknowledgedAt: string | null;
 }
 
 /** Whether packing work can reach this bench at all. */

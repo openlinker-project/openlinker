@@ -133,18 +133,59 @@ describe('classifyReturnCorrectionLines (#2374)', () => {
       expect(result.noMatchReason).toBe('quantity-exceeds-invoiced');
     });
 
-    it('should report ambiguous-invoice-line when the id resolves to more than one snapshot line', () => {
-      const [result] = classifyReturnCorrectionLines(
-        [line({ resolvedOrderLineId: 'order-item-1' })],
+    it('should treat document lines sharing one orderLineId as one logical line and credit the 1-unit remainder part first (E-45 split)', () => {
+      const results = classifyReturnCorrectionLines(
+        [line({ resolvedOrderLineId: 'order-item-1', quantityDisposed: 2 })],
         [
-          snapshotLine({ orderLineId: 'order-item-1' }),
-          snapshotLine({ orderLineId: 'order-item-1' }),
+          snapshotLine({ quantity: 2, orderLineId: 'order-item-1' }),
+          snapshotLine({ quantity: 1, unitPriceGross: 56.93, orderLineId: 'order-item-1' }),
         ]
       );
 
-      expect(result.status).toBe('no-match');
+      expect(results.map((r) => [r.selectedOriginalLineNumber, r.quantityDisposed, r.newQuantity])).toEqual([
+        [2, 1, 0],
+        [1, 1, 1],
+      ]);
+      expect(results.every((r) => r.status === 'matched' && r.returnLineId === 'line-1')).toBe(true);
+    });
+
+    it('should match by name across split parts sharing one orderLineId and credit the remainder part first when the return has no resolved id (E-45 split, by name)', () => {
+      const results = classifyReturnCorrectionLines(
+        [line({ resolvedOrderLineId: null, quantityDisposed: 2 })],
+        [
+          snapshotLine({ quantity: 2, orderLineId: 'order-item-1' }),
+          snapshotLine({ quantity: 1, orderLineId: 'order-item-1' }),
+        ]
+      );
+
+      expect(results.map((r) => [r.selectedOriginalLineNumber, r.quantityDisposed, r.newQuantity])).toEqual([
+        [2, 1, 0],
+        [1, 1, 1],
+      ]);
+    });
+
+    it('should stay ambiguous by name when same-name candidates carry different orderLineIds (E-45 split, by name)', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line()],
+        [
+          snapshotLine({ orderLineId: 'order-item-1' }),
+          snapshotLine({ orderLineId: 'order-item-2' }),
+        ]
+      );
+
       expect(result.noMatchReason).toBe('ambiguous-invoice-line');
-      expect(result.candidates).toHaveLength(2);
+    });
+
+    it('should report quantity-exceeds-invoiced when the split parts together invoiced fewer units than returned (E-45 split)', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line({ resolvedOrderLineId: 'order-item-1', quantityDisposed: 4 })],
+        [
+          snapshotLine({ quantity: 2, orderLineId: 'order-item-1' }),
+          snapshotLine({ quantity: 1, orderLineId: 'order-item-1' }),
+        ]
+      );
+
+      expect(result.noMatchReason).toBe('quantity-exceeds-invoiced');
     });
 
     it('should fall through to by-name matching when resolvedOrderLineId matches no snapshot line', () => {
@@ -397,4 +438,57 @@ describe('describeCorrectionNoMatchReason (#2374)', () => {
       expect(copy.toLowerCase()).not.toMatch(/ksef|nip|faktura|vat|kor/);
     }
   );
+});
+
+describe('classifyReturnCorrectionLines - a set presented as its components', () => {
+  // Set line `set` of 2 units: component a (2 per set) at 23, component b (1 per set) at 8.
+  const componentLines = (): CorrectionSnapshotLine[] => [
+    snapshotLine({ name: 'Soap', quantity: 4, taxRate: '23', orderLineId: 'set~c:a', bundleSetQuantity: 2 }),
+    snapshotLine({ name: 'Book', quantity: 2, taxRate: '8', orderLineId: 'set~c:b', bundleSetQuantity: 2 }),
+  ];
+
+  it('should credit EVERY component line when a whole set comes back', () => {
+    const results = classifyReturnCorrectionLines(
+      [line({ name: 'Gift set', quantityDisposed: 1, resolvedOrderLineId: 'set' })],
+      componentLines()
+    );
+
+    expect(results.map((r) => [r.componentVariantId, r.selectedOriginalLineNumber, r.newQuantity])).toEqual([
+      ['a', 1, 2],
+      ['b', 2, 1],
+    ]);
+    expect(results.every((r) => r.status === 'matched')).toBe(true);
+  });
+
+  it('should credit only the returned component line for a component returned on its own', () => {
+    const results = classifyReturnCorrectionLines(
+      [
+        line({
+          name: 'Gift set',
+          quantityDisposed: 0,
+          resolvedOrderLineId: 'set',
+          partialComponents: [{ variantId: 'b', bundleUnits: 1 }],
+        }),
+      ],
+      componentLines()
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      componentVariantId: 'b',
+      selectedOriginalLineNumber: 2,
+      newQuantity: 1,
+      status: 'matched',
+    });
+  });
+
+  it('should not guess when a component line does not say how many set units it covers', () => {
+    const [result] = classifyReturnCorrectionLines(
+      [line({ name: 'Gift set', quantityDisposed: 1, resolvedOrderLineId: 'set' })],
+      [snapshotLine({ name: 'Soap', quantity: 4, orderLineId: 'set~c:a' })]
+    );
+
+    expect(result.status).toBe('no-match');
+    expect(result.noMatchReason).toBe('ambiguous-invoice-line');
+  });
 });

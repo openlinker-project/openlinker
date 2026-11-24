@@ -1,6 +1,8 @@
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import {
   mapShoperOrderStatus,
   mapShoperOrderToIncoming,
+  mapShoperPaymentMethod,
   mapShoperPaymentStatus,
   mapShoperPickupPoint,
   shopLocalToIso,
@@ -11,6 +13,9 @@ import {
   buildLineRow,
   buildOrderRow,
 } from '../../adapters/order-source/__tests__/shoper-order-source-test-data';
+
+import { SHOPER_BUNDLE_PARENT_LINE } from './shoper-bundle-order.fixture';
+import { SHOPER_GIFT_APP_LINE, SHOPER_PAID_LINE_BESIDE_GIFT } from './shoper-gift-order.fixture';
 
 const status = (type: number, ...labels: string[]): { type: number; labels: string[] } => ({ type, labels });
 
@@ -81,6 +86,29 @@ describe('mapShoperOrderStatus', () => {
 
   it('should read every language label of a terminal status', () => {
     expect(mapShoperOrderStatus(status(4, 'canceled order', 'zwrócone'))).toBe('refunded');
+  });
+});
+
+describe('mapShoperPaymentMethod (#3294)', () => {
+  it('should map the COD flag to cash on delivery', () => {
+    expect(mapShoperPaymentMethod(buildOrderRow({ is_cash_on_delivery: true }))).toBe(
+      'cash_on_delivery',
+    );
+  });
+
+  it.each([[false], [undefined]])('should report unknown when the COD flag is %p', (flag) => {
+    expect(mapShoperPaymentMethod(buildOrderRow({ is_cash_on_delivery: flag }))).toBe('unknown');
+  });
+
+  it('should still name the method when a terminal status hides the payment status', () => {
+    const incoming = mapShoperOrderToIncoming(
+      buildOrderRow({ is_cash_on_delivery: true }),
+      LINES,
+      { ...CTX, status: status(4, 'anulowane') },
+    );
+
+    expect(incoming).not.toHaveProperty('paymentStatus');
+    expect(incoming.paymentMethod).toBe('cash_on_delivery');
   });
 });
 
@@ -258,6 +286,30 @@ describe('mapShoperOrderToIncoming', () => {
     expect(prepaid).not.toHaveProperty('codToCollect');
   });
 
+  it('should report cash on delivery as the method and nothing else as evidence (#3294)', () => {
+    const cod = mapShoperOrderToIncoming(
+      buildOrderRow({ is_cash_on_delivery: true, is_paid: false, paid: '0.00' }),
+      LINES,
+      CTX,
+    );
+    const prepaid = mapShoperOrderToIncoming(buildOrderRow(), LINES, CTX);
+
+    expect(cod.paymentMethod).toBe('cash_on_delivery');
+    // `false` is not evidence of "prepaid": Shoper also leaves it false for a
+    // bank transfer or cash at pickup, so the honest answer is unknown.
+    expect(prepaid.paymentMethod).toBe('unknown');
+    expect(checkPaymentFactsConsistency(cod)).toEqual([]);
+    expect(checkPaymentFactsConsistency(prepaid)).toEqual([]);
+  });
+
+  it("should carry the shop's own payment id verbatim, the key a payment mapping is looked up by", () => {
+    expect(mapShoperOrderToIncoming(buildOrderRow({ payment_id: '4' }), LINES, CTX).sourcePaymentMethod).toBe('4');
+    expect(mapShoperOrderToIncoming(buildOrderRow({ payment_id: 7 }), LINES, CTX).sourcePaymentMethod).toBe('7');
+    expect(mapShoperOrderToIncoming(buildOrderRow({ payment_id: null }), LINES, CTX)).not.toHaveProperty(
+      'sourcePaymentMethod',
+    );
+  });
+
   it('should drop a guest/blank customer id and an address with no street and no city', () => {
     const incoming = mapShoperOrderToIncoming(
       buildOrderRow({ user_id: '0', delivery_address: { street1: '', city: '' } }),
@@ -306,5 +358,74 @@ describe('mapShoperOrderToIncoming - pickup point', () => {
     const incoming = mapShoperOrderToIncoming(buildOrderRow({ pickup_point: '' }), LINES, CTX);
 
     expect(incoming).not.toHaveProperty('pickupPoint');
+  });
+});
+
+describe('mapShoperOrderToIncoming bundles (#3932)', () => {
+  const order = buildOrderRow({ order_id: '5', sum: '479.88', paid: '0.00', shipping_cost: '0.00' });
+
+  it('should map a bundle as one line: the parent, priced for the whole set', () => {
+    const incoming = mapShoperOrderToIncoming(order, [SHOPER_BUNDLE_PARENT_LINE], CTX);
+
+    expect(incoming.items).toHaveLength(1);
+    expect(incoming.items[0]).toMatchObject({
+      id: '15',
+      quantity: 1,
+      price: 479.88,
+      sku: '489B-4528A',
+    });
+  });
+
+  it('should not turn the zero-priced component rows into lines or into tax', () => {
+    const incoming = mapShoperOrderToIncoming(order, [SHOPER_BUNDLE_PARENT_LINE], CTX);
+
+    const componentSkus = (SHOPER_BUNDLE_PARENT_LINE.children ?? []).map((child) => child.code);
+    expect(componentSkus).toHaveLength(4);
+    expect(incoming.items.map((item) => item.sku)).not.toEqual(expect.arrayContaining(componentSkus));
+    // 479.88 gross at 23%: the components add nothing.
+    expect(incoming.totals.tax).toBe(89.73);
+  });
+});
+
+describe('mapShoperOrderToIncoming gift app lines (#3937)', () => {
+  const map = (lines: Parameters<typeof mapShoperOrderToIncoming>[1]): ReturnType<typeof mapShoperOrderToIncoming>['items'] =>
+    mapShoperOrderToIncoming(buildOrderRow({ order_id: '9', sum: '69.01' }), lines, CTX).items;
+
+  it('should mark the line carrying the gift app option as a channel gift and leave the paid line alone', () => {
+    const items = map([SHOPER_GIFT_APP_LINE, SHOPER_PAID_LINE_BESIDE_GIFT]);
+
+    expect(items[0]).toMatchObject({ id: '24', price: 0.01, gift: { source: 'channel' } });
+    expect(items[1].gift).toBeUndefined();
+  });
+
+  it('should not mark a cheap line without the option, since the price alone proves nothing', () => {
+    const [item] = map([{ ...SHOPER_GIFT_APP_LINE, option: '' }]);
+
+    expect(item.price).toBe(0.01);
+    expect(item.gift).toBeUndefined();
+  });
+
+  it.each([
+    ['another option that merely contains the words', 'Pakowanie na produkt gratisowy: tak'],
+    ['a different option', 'Rozmiar: M'],
+    ['no option at all', null],
+    ['the option present but unticked', 'Produkt gratisowy: nie'],
+    ['a value that merely contains the word', 'Produkt gratisowy: nie, tak?'],
+  ])('should not mark a line with %s', (_name, option) => {
+    expect(map([{ ...SHOPER_GIFT_APP_LINE, option }])[0].gift).toBeUndefined();
+  });
+
+  it('should find the gift option among several chosen options, in any case', () => {
+    const [item] = map([{ ...SHOPER_GIFT_APP_LINE, option: 'Rozmiar: M, PRODUKT GRATISOWY: tak' }]);
+
+    expect(item.gift).toEqual({ source: 'channel' });
+  });
+
+  it('should keep a comma inside another option value from hiding the gift option', () => {
+    const [item] = map([
+      { ...SHOPER_GIFT_APP_LINE, option: 'Opis: dluga, z przecinkiem, Produkt gratisowy: Tak' },
+    ]);
+
+    expect(item.gift).toEqual({ source: 'channel' });
   });
 });

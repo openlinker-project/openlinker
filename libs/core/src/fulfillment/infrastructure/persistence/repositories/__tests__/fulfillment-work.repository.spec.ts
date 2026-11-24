@@ -192,6 +192,43 @@ describe('FulfillmentWorkRepository', () => {
     });
   });
 
+  describe('acknowledgeBuyerNote (#3538)', () => {
+    it('should stamp the instant and the actor in one fill-once statement', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      const at = new Date();
+      await expect(repo.acknowledgeBuyerNote('w1', at, 'user-1')).resolves.toBe(true);
+      expect(argsOf(qb.andWhere as Mock)).toContain('"buyerNoteAcknowledgedAt" IS NULL');
+      expect(firstArgOf<Record<string, unknown>>(qb.set as Mock)).toEqual({
+        buyerNoteAcknowledgedAt: at,
+        buyerNoteAcknowledgedByUserId: 'user-1',
+      });
+    });
+
+    it('should report not-applied for a second acknowledgement, without erroring', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.acknowledgeBuyerNote('w1', new Date(), 'user-2')).resolves.toBe(false);
+    });
+
+    it('should NOT bump version - a display-only fact', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.acknowledgeBuyerNote('w1', new Date(), 'user-1');
+
+      expect(firstArgOf<Record<string, unknown>>(qb.set as Mock)).not.toHaveProperty('version');
+    });
+  });
+
   describe('markInvoicePrinted / markLabelPrinted (pack-bench completion)', () => {
     it('should stamp invoicePrintedAt on the first call', async () => {
       const qb = updateQueryBuilder({ affected: 1 });

@@ -16,7 +16,7 @@
  * @module apps/web/src/features/returns/components
  */
 import type { ReactElement } from 'react';
-import { RETURNS_SOURCE_STATUS_COPY } from '../lib/returns-list.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 interface ReturnSourceStatusProps {
   rawStatus: string | null;
@@ -37,20 +37,21 @@ export function ReturnSourceStatus({
   rawStatus,
   sourceName = null,
 }: ReturnSourceStatusProps): ReactElement {
+  const copy = useMessages('returns').list.sourceStatus;
   if (rawStatus === null || rawStatus === '') {
     return (
-      <span className="text-muted" title={RETURNS_SOURCE_STATUS_COPY.notReportedHint}>
-        {RETURNS_SOURCE_STATUS_COPY.notReported}
+      <span className="text-muted" title={copy.notReportedHint}>
+        {copy.notReported}
       </span>
     );
   }
 
   const prefix =
-    sourceName !== null && sourceName !== '' ? sourceName : RETURNS_SOURCE_STATUS_COPY.prefix;
+    sourceName !== null && sourceName !== '' ? sourceName : copy.prefix;
 
   return (
-    <span className="mono-text" title={RETURNS_SOURCE_STATUS_COPY.attribution}>
-      {prefix}: {rawStatus}
+    <span className="mono-text" title={copy.attribution}>
+      {interpolate(copy.value, { prefix, status: rawStatus })}
     </span>
   );
 }

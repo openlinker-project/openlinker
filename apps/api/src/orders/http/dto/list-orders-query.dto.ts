@@ -15,6 +15,7 @@ import {
   Max,
   IsDateString,
   IsBoolean,
+  IsIn,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -41,6 +42,10 @@ import {
   OrderLifecyclePhaseValues,
   type OrderLifecyclePhase,
 } from '@openlinker/core/order-lifecycle';
+import {
+  AuthorityAttentionReasonValues,
+  type AuthorityAttentionReason,
+} from '@openlinker/core/fulfillment-authority';
 import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
 export class ListOrdersQueryDto extends PaginatedReadQueryDto {
@@ -92,7 +97,7 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     enum: OrderHealthValues,
     description:
-      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch',
+      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch. An order OpenLinker handles itself (#3482) is `synced` once it has shipped and `awaiting_dispatch` while still on the pack bench.',
   })
   @IsOptional()
   @IsEnum(OrderHealthValues)
@@ -181,6 +186,52 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
+      'Destination-routing filter (#2703/#2704): true keeps only orders whose routing decision ' +
+      'narrowed the destination fan-out in an ATTENTION-WORTHY way, false keeps only the rest, ' +
+      'omitted does not filter. Attention-worthy EXCLUDES "routed-to-no-destination" (a working ' +
+      'router deciding an order goes nowhere is a decision, not a fault) and ' +
+      '"no-destination-configured" (#3959, a shop with nothing to copy its orders to), so true ' +
+      'does not return those and false does. Same subset the destinationRoutingBlocked count ' +
+      'reports, so the two always agree. An INDEPENDENT axis that composes with `health`: such ' +
+      'an order is usually also needs_attention, so folding them would hide one behind the other.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  destinationRoutingBlocked?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Waiting-in-OpenLinker filter (#3482): true keeps only orders OpenLinker holds as waiting ' +
+      '(out of stock, no shipping address, routing error - #3485), false keeps only the rest, ' +
+      'omitted does not filter. Same subset the waitingInOpenLinker count reports. An INDEPENDENT ' +
+      'axis that composes with `health`, never a health bucket.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as `salesDocumentBlocked`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  waitingInOpenLinker?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'On-pack-bench filter (#3482): true keeps only orders with a live pack-bench work whose box ' +
+      'is not shut yet (To pack or Packing), false keeps only the rest, omitted does not filter. ' +
+      'Same subset the onPackBench count reports. Not `packed` (#2997), which reads packedAt.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  onPackBench?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
       'Cancellation filter (#1984, exposed on this route by #2306): true keeps only cancelled ' +
       'orders, false excludes them, omitted does not filter. Maps directly to ' +
       '`cancelledAt IS [NOT] NULL` — the repository already honoured this field, it simply had ' +
@@ -250,6 +301,74 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @IsBoolean()
   attention?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"With a gift" filter (#3940): true keeps only orders that carry a gift line (from the ' +
+      'channel, a cart rule, an OpenLinker gift rule or an operator), false only the rest, ' +
+      'omitted does not filter. ANDed with `health`, not a health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  withGift?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"With a bundle" filter (#3935): true keeps only orders that carry a bundle line, false only the ' +
+      'rest, omitted does not filter. ANDed with `health`, not a health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  withBundle?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Gift not added" filter (#3935): true keeps only orders where a promotion could not give its gift ' +
+      'and nobody has handled it, false only the rest, omitted does not filter. ANDed with `health`.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  giftNotAdded?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Shop rejected the gift" filter (#3935): true keeps only orders with a gift line whose destination ' +
+      'sync failed, false only the rest, omitted does not filter. ANDed with `health`.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  giftShopRejected?: boolean;
+
+  @ApiPropertyOptional({
+    enum: AuthorityAttentionReasonValues,
+    name: 'attentionReason',
+    description:
+      'Keep only orders carrying an attention entry with exactly this reason (#3961). ' +
+      '`source-change-unapplied` lists the orders the shop changed after packing started that wait for a decision.',
+  })
+  @IsOptional()
+  @IsIn(AuthorityAttentionReasonValues)
+  attentionReason?: AuthorityAttentionReason;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Orders where a shop still shows the order unpaid and OpenLinker gave up sending the payment ' +
+      '(#3963). Composes with `health` like `attention`. true keeps only those, false keeps the ' +
+      'rest, omitted does not filter.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  paymentNotSent?: boolean;
+
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()
   @Type(() => Number)
@@ -270,9 +389,22 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   packed?: boolean;
 
   @ApiPropertyOptional({
+    type: Boolean,
     description:
-      'Free-text search (#3527/#3528): order number, buyer name, buyer email, any line SKU, ' +
-      'or a shipment tracking number. Matched against a denormalized, diacritic-folded ' +
+      '"Has a buyer note" filter (#3538): true keeps only orders whose source reported a non-empty buyer note ' +
+      'and are ready to work on (record status ready), false only those without one (including those whose note state is unknown), omitted does not filter. ' +
+      'Maps to the indexed `hasBuyerNote` column, so it needs no snapshot expansion and is written even under ' +
+      '`OL_STORE_PII=false`. ANDed with every other axis.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  hasBuyerNote?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-text search (#3527/#3528/#4229): order number, buyer name, buyer email, any line SKU, ' +
+      'a shipment tracking number, or an OpenLinker order id (`ol_order_*`, substring). Matched against a denormalized, diacritic-folded ' +
       '`searchText` column via a GIN trigram index; a valid tracking number additionally ' +
       'widens the match to the order(s) that shipment belongs to. A blank or ' +
       'diacritic/punctuation-only query behaves as "don\'t filter".',

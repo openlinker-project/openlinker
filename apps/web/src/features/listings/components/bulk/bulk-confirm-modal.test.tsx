@@ -118,6 +118,36 @@ describe('BulkConfirmModal', () => {
     expect(screen.queryByText(/not listed:/i)).not.toBeInTheDocument();
   });
 
+  // #3851: every selected variant already on the destination used to read
+  // "List 0 of 1 selected variants?" with a live Create button that did nothing.
+  it('should refuse and say why when every selected variant is already listed', () => {
+    const { onConfirm } = renderModal({ offerCount: 0, productCount: 0, alreadyListedCount: 1 });
+
+    expect(
+      screen.getByRole('heading', { name: 'No offers to create on My Allegro' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /list 0 of/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/the selected variant cannot be listed: 1 already on my allegro\./i),
+    ).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: /create offers/i });
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByText('Publish immediately')).not.toBeInTheDocument();
+    expect(screen.queryByText(/idempotency protected/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+  });
+
+  it('should name every reason when no variant can be listed', () => {
+    renderModal({ offerCount: 0, productCount: 0, excludedCount: 2, blockedCount: 1 });
+
+    expect(
+      screen.getByText(/none of the 3 selected variants can be listed/i),
+    ).toHaveTextContent('1 still needs attention and 2 switched off');
+    expect(screen.getByRole('button', { name: /create offers/i })).toBeDisabled();
+  });
+
   it('shows the mixed-publish warning when a listing has publish + draft variants', () => {
     renderModal({ mixedPublishWarning: true });
     expect(

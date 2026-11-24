@@ -37,6 +37,7 @@ import {
   type StreamConsumerClient,
   type StreamEntry,
 } from '@openlinker/shared/redis';
+import { JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN } from './sync-worker.tokens';
 
 @Injectable()
 export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
@@ -66,7 +67,12 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
   private restartTimer: NodeJS.Timeout | null = null;
 
   constructor(
-    @Inject('REDIS_CLIENT')
+    // Its own connection, never the shared 'REDIS_CLIENT': the blocking read
+    // below would hold that connection for BLOCK_MS at a time and every limiter,
+    // lock and cache call queued behind it would time out (see the token).
+    // Recovery and XACK run on this client too - they are sequential with the
+    // read, so they never wait behind it.
+    @Inject(JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN)
     private readonly redisClient: RedisClientType,
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
     private readonly jobRepository: SyncJobRepositoryPort,
@@ -102,6 +108,17 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.stopConsumptionLoop();
+    // The client is this consumer's own (unlike the shared 'REDIS_CLIENT',
+    // which RedisConfigModule owns), so nothing else would close it.
+    if (this.redisClient.isOpen) {
+      try {
+        await this.redisClient.quit();
+      } catch (error) {
+        this.logger.warn(
+          `Failed to quit the job-intake Redis client: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
   }
 
   /**

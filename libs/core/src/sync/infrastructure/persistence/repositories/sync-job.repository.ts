@@ -47,6 +47,7 @@ import {
   JobTypeValues,
   SyncJobRetentionStatusValues,
 } from '../../../domain/types/sync-job.types';
+import { HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE } from '../../../domain/types/sync-job-lane.types';
 
 @Injectable()
 export class SyncJobRepository implements SyncJobRepositoryPort {
@@ -167,8 +168,19 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         where += ` AND "jobType" = ANY($${params.length})`;
       }
       if (input.excludedScopes && input.excludedScopes.length > 0) {
+        // The scope expression mirrors `resolveJobScope` exactly, built from the
+        // table (#3986): hook-sync job types are scoped by (connection, class
+        // suffix), everything else by connection. A divergence would silently
+        // stop excluding saturated scopes.
+        const whens: string[] = [];
+        for (const entry of HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE) {
+          params.push(entry.jobType, entry.suffix);
+          whens.push(
+            `WHEN "jobType" = $${params.length - 1} THEN "connectionId"::text || $${params.length}::text`
+          );
+        }
         params.push(input.excludedScopes);
-        where += ` AND "connectionId" != ALL($${params.length})`;
+        where += ` AND (CASE ${whens.join(' ')} ELSE "connectionId"::text END) != ALL($${params.length})`;
       }
       params.push(input.limit);
 
@@ -212,6 +224,47 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       const updated = await manager.find(SyncJobOrmEntity, {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
         where: ids.map((id: string) => ({ id })),
+      });
+      return updated.map((e: SyncJobOrmEntity) => this.toDomain(e));
+    });
+  }
+
+  async claimQueuedPeers(input: {
+    jobType: JobType;
+    connectionId: string;
+    limit: number;
+    workerId: string;
+    excludeJobId: string;
+  }): Promise<SyncJob[]> {
+    if (input.limit < 1) {
+      return [];
+    }
+    return this.dataSource.transaction(async (manager: EntityManager) => {
+      const now = new Date();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- typeorm raw-query result is untyped; only ids are read
+      const rows: { id: string }[] = await manager.query(
+        `
+        SELECT id FROM sync_jobs
+        WHERE status = 'queued' AND "nextRunAt" <= $1
+          AND "jobType" = $2 AND "connectionId" = $3 AND id != $4
+        ORDER BY "nextRunAt" ASC
+        LIMIT $5
+        FOR UPDATE SKIP LOCKED
+        `,
+        [now, input.jobType, input.connectionId, input.excludeJobId, input.limit]
+      );
+      if (rows.length === 0) {
+        return [];
+      }
+      const ids = rows.map((r) => r.id);
+      await manager
+        .createQueryBuilder()
+        .update(SyncJobOrmEntity)
+        .set({ status: 'running', lockedAt: now, lockedBy: input.workerId })
+        .where('id IN (:...ids)', { ids })
+        .execute();
+      const updated = await manager.find(SyncJobOrmEntity, {
+        where: ids.map((id) => ({ id })),
       });
       return updated.map((e: SyncJobOrmEntity) => this.toDomain(e));
     });
@@ -466,6 +519,24 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       take: limit,
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  async findLatestByConnectionsAndJobTypes(
+    connectionIds: readonly string[],
+    jobTypes: readonly JobType[]
+  ): Promise<SyncJob[]> {
+    if (connectionIds.length === 0 || jobTypes.length === 0) return [];
+    const entities = await this.repository
+      .createQueryBuilder('j')
+      .distinctOn(['j.connectionId', 'j.jobType'])
+      .where('j.connectionId IN (:...connectionIds)', { connectionIds: [...connectionIds] })
+      .andWhere('j.jobType IN (:...jobTypes)', { jobTypes: [...jobTypes] })
+      .orderBy('j.connectionId', 'ASC')
+      .addOrderBy('j.jobType', 'ASC')
+      .addOrderBy('j.updatedAt', 'DESC')
+      .addOrderBy('j.id', 'DESC')
+      .getMany();
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async findLastSucceededByConnectionAndJobType(

@@ -42,7 +42,9 @@ function view(overrides: Partial<SalesDocumentView> = {}): SalesDocumentView {
     blockReason: null,
     unresolvedReason: null,
     blockDetail: null,
+    blockParams: null,
     otherRecords: [],
+    afterIssueAttention: null,
     matchedRule: null,
     ...overrides,
   };

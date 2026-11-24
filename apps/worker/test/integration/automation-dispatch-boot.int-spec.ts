@@ -29,9 +29,9 @@
  * that cannot fail, and it is what #2711 removed.
  *
  * **What this spec deliberately does NOT assert**: that every executor's
- * delegate token resolves. `MAILER_TOKEN` is bound only in `apps/api`, so such
- * an assertion would FAIL on correct behaviour. The worker's missing mailer is
- * an operator-facing `failed` step, covered by the executor unit specs.
+ * delegate token resolves: several delegates are bound by role-specific modules
+ * and a role that is off legitimately lacks them. An unresolved delegate is an
+ * operator-facing `failed` step, covered by the executor unit specs.
  *
  * @module apps/worker/test/integration
  */

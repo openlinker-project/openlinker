@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/domain/ports
  */
+import type { LineExpansion } from '@openlinker/core/products';
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { OrderLineItemDraft } from '../order-analytics-projection';
 import type {
@@ -24,6 +25,7 @@ import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../types/destination-routing-block.types';
 import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
@@ -33,7 +35,9 @@ import type {
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { DeliveryCountryFact } from '../types/delivery-country-facts.types';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type { ApplyOrderEditInput } from '../types/order-edits.types';
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
@@ -43,10 +47,21 @@ import type {
   CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
+import type { PaymentWritebackEntry } from '../types/payment-writeback.types';
 import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
 } from '../types/order-search-text-reindex.types';
+
+/** Filter of {@link OrderRecordRepositoryPort.findHeldByReasonCode}. */
+export interface HeldOrdersFilter {
+  /** The bracketless reason code stored as `[code]` inside `mappingFailureReason`. */
+  reasonCode: string;
+  /** Only orders with a raw line sold as exactly this many units. */
+  packQuantity?: number;
+  /** Only orders with a raw line referencing one of these offers on the order's source connection. */
+  offerRefs?: readonly { connectionId: string; externalId: string }[];
+}
 
 /**
  * A held order and when its CURRENT hold began (#3485 review). The age bounds
@@ -60,6 +75,14 @@ export interface HeldOrderRef {
 }
 
 export interface OrderRecordRepositoryPort {
+  /**
+   * Orders created since `since` whose search text matches any of the given
+   * terms (#3962: "N orders since deletion" on the product page). Same
+   * normalisation and match as the orders list search, so the count equals
+   * what the list shows for the same SKU search.
+   */
+  countOrdersMatchingSearchSince(terms: readonly string[], since: Date): Promise<number>;
+
   /**
    * Find order record by internal order ID
    */
@@ -122,6 +145,18 @@ export interface OrderRecordRepositoryPort {
   countOrdersByRoutingCountrySince(since: Date): Promise<{ country: string; orderCount: number }[]>;
 
   /**
+   * Per-delivery-country facts for ONE source connection over a window (#3907,
+   * ADR-082 decision 8): order count, line VAT rates seen, most frequent
+   * currency, and the latest `ready` order as an anonymous example.
+   *
+   * Reads the same delivery-country expression routing evaluates on, scoped by
+   * `sourceConnectionId`, most orders first, capped at 20 countries. A bounded
+   * number of queries (counts, rates, examples), never one per country beyond
+   * the single example fetch. Returns no buyer data.
+   */
+  getDeliveryCountryFacts(sourceConnectionId: string, since: Date): Promise<DeliveryCountryFact[]>;
+
+  /**
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key.
    *
@@ -132,7 +167,8 @@ export interface OrderRecordRepositoryPort {
    * {@link markCancelled}), the three `salesDocument*` columns (#2100,
    * {@link updateSalesDocumentBlock}) and the six FX snapshot columns (#2124,
    * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) and the two packed
-   * columns (#2287, {@link markPacked} / {@link clearPacked}) - are NOT part of
+   * columns (#2287, {@link markPacked} / {@link clearPacked}) and the
+   * operator-edit overlay `orderEdits` (#3542, {@link applyOrderEdit}) - are NOT part of
    * the write set, so a re-ingestion of the same order cannot reset them. The
    * returned record therefore reports all of them as empty (`[]` / `null`)
    * whatever the row holds; re-read via {@link findById} when their live value
@@ -182,6 +218,19 @@ export interface OrderRecordRepositoryPort {
     status: OrderRecord['syncStatus'][0],
     attempt: SyncAttempt
   ): Promise<void>;
+
+  /**
+   * One keyset page of the orders held with a given reason code (#3520), filtered
+   * in SQL: `recordStatus = 'awaiting_mapping'`, the `[code]` marker in
+   * `mappingFailureReason`, and optionally a raw line with this pack quantity /
+   * one of these offer refs. Ordered by `internalOrderId` and resumed with
+   * `afterId`, so a page the caller's own re-drives are about to shrink cannot
+   * step over a row (an advancing offset would).
+   */
+  findHeldByReasonCode(
+    filter: HeldOrdersFilter,
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]>;
 
   /**
    * Find order records with filters and pagination
@@ -512,11 +561,54 @@ export interface OrderRecordRepositoryPort {
    * throws) so it can't fail the shipment operation.
    *
    * Sole writer of the column - {@link upsert} deliberately omits it (#2101).
+   *
+   * Answers `true` only for the ONE write that moved the order from a
+   * not-shipped state into `dispatched` / `delivered` (#3554), so the
+   * `order.shipped` automation trigger fires once per transition however many
+   * shipment recomputes race. The guard is a conditional UPDATE, never a read.
    */
   updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
+  ): Promise<boolean>;
+
+  /**
+   * Claim the one-time `order.shipped` announcement (#3554). A single guarded
+   * UPDATE on `shippedNotifiedAt IS NULL` AND a shipped `fulfillmentState`, so
+   * of any number of racing callers exactly one gets `true`, and an order that
+   * is not shipped (or no longer exists) gets `false`.
+   */
+  claimShippedNotification(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Claim the payment writeback for ONE destination (#3963). A single guarded
+   * UPDATE that moves the entry to `sending` only when it is absent,
+   * `awaiting`, `retrying`, or a `sending` claim older than `staleBefore`
+   * (a crashed attempt). Of any number of racing callers for the same
+   * (order, destination) exactly one gets `true`.
+   */
+  claimPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    staleBefore: Date
+  ): Promise<boolean>;
+
+  /**
+   * Overwrite ONE destination's writeback entry (#3963), leaving every other
+   * destination's entry untouched, and recompute `paymentWritebackProblem` in
+   * the same statement.
+   */
+  recordPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    entry: PaymentWritebackEntry
   ): Promise<void>;
+
+  /**
+   * Mark every problem entry on these orders as `handled` (#3963) - the
+   * operator dealt with it in the shop. Returns how many orders changed.
+   */
+  markPaymentWritebackHandled(internalOrderIds: readonly string[]): Promise<number>;
 
   /**
    * Push the honest item-resolution-failure state onto the order record
@@ -542,8 +634,11 @@ export interface OrderRecordRepositoryPort {
    * No-op (no throw) when the order row doesn't exist yet — mirrors
    * {@link updateFulfillmentState}'s residual-race tolerance (#1160: a cancel
    * event racing ahead of the order's own create/sync job).
+   *
+   * @returns true only when THIS call made the transition (the column was NULL),
+   * so a caller that must act once per cancellation can gate on it.
    */
-  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean>;
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this
@@ -595,6 +690,28 @@ export interface OrderRecordRepositoryPort {
   ): Promise<void>;
 
   /**
+   * Persist how a routing decision narrowed this order's destination fan-out
+   * (#2703 / #2704), or clear it.
+   *
+   * Level-triggered like {@link updateFulfillmentBlock}: `OrderSyncService`
+   * re-decides on every run and writes the answer INCLUDING `null`, which is the
+   * only thing that clears a stale reason. Outside the ingestion write set, so a
+   * re-poll cannot reset it.
+   *
+   * Deliberately SEPARATE from {@link updateFulfillmentBlock} rather than folded
+   * into it: that column records the intercept HOLDING the order so
+   * `OrderSyncService` was never called, this one records what happened INSIDE
+   * it. They are mutually exclusive per run, and `OrderIngestionService` clears
+   * this one on the held branch to keep them so.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
+  ): Promise<void>;
+
+  /**
    * #3485 — one keyset page of internal order ids whose fulfilment block is one
    * of `reasons`, ascending by `internalOrderId`, starting strictly after
    * `afterOrderId` (`null` = from the start).
@@ -609,6 +726,23 @@ export interface OrderRecordRepositoryPort {
     reasons: readonly FulfillmentBlockReason[],
     page: { readonly afterOrderId: string | null; readonly limit: number }
   ): Promise<HeldOrderRef[]>;
+
+  /**
+   * #3558 — ids of orders held with one of `reasons` whose line items include
+   * `variantId`, ascending by `internalOrderId`, at most `limit`.
+   *
+   * Answers "which held orders is THIS stock change about" for the stock-change
+   * re-route. Served by `order_line_items.orderRecordId` (indexed) after a filter
+   * on the variant, never by a scan of the snapshot jsonb. Only `ready` records
+   * have line items (`awaiting_mapping` snapshots reference external ids), which
+   * is the right set: an order that cannot name its variants is not waiting on
+   * one.
+   */
+  listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]>;
 
   /**
    * #3455 — record why the ingestion intercept deliberately did NOT route the
@@ -729,6 +863,29 @@ export interface OrderRecordRepositoryPort {
   ): Promise<boolean>;
 
   /**
+   * Mark this order's buyer note read (#3538) - writes `buyerNoteReadAt` +
+   * `buyerNoteReadByUserId` and nothing else, guarded on `buyerNoteReadAt IS
+   * NULL` so the FIRST mark wins and a replay is a no-op. `true` when this call
+   * wrote, `false` for an already-read order or an absent row (never throws;
+   * the caller re-reads to tell them apart, as with {@link markPacked}).
+   */
+  markBuyerNoteRead(
+    internalOrderId: string,
+    readAt: Date,
+    readByUserId: string
+  ): Promise<boolean>;
+
+  /**
+   * Count the OTHER orders `customerId` placed before `before` (#3538, D7),
+   * excluding `excludeInternalOrderId`. Backs the derived `buyerOrderCount`.
+   */
+  countEarlierOrdersForCustomer(
+    customerId: string,
+    excludeInternalOrderId: string,
+    before: Date
+  ): Promise<number>;
+
+  /**
    * Clear this order's packed fact (#2287) — nulls `packedAt` +
    * `packedByUserId` together, guarded on `packedAt IS NOT NULL` so unmarking
    * an already-unpacked order affects no row and does not bump `updatedAt`.
@@ -738,6 +895,35 @@ export interface OrderRecordRepositoryPort {
    * {@link markPacked}.
    */
   clearPacked(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Merge one operator edit into the order's overlay (#3542). The sole writer of
+   * `orderEdits`; `orderSnapshot` stays the channel original.
+   *
+   * Returns the re-read record, or `null` when nothing was written: no such
+   * order, the order is not `ready`, or `expectedRev` is stale. The caller
+   * re-reads to tell which.
+   */
+  applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
+
+  /**
+   * Freeze the order's bundle expansion once (#3607, ADR-083 decision 2). The
+   * sole writer of `lineExpansion`: a conditional write that only lands while
+   * the column is still NULL, and returns whatever is stored (the argument when
+   * this call wrote it, the earlier value otherwise).
+   */
+  freezeLineExpansion(internalOrderId: string, expansion: LineExpansion): Promise<LineExpansion>;
+
+  /**
+   * How many OPEN orders were frozen against each version of one bundle (#3624).
+   * Open = not cancelled and nothing shipped yet. Orders without a frozen
+   * expansion, or without this bundle in it, are not counted. One aggregate
+   * read; the answer is a list of `{version, count}` so the caller can tell the
+   * current version from the older ones.
+   */
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]>;
 
   /**
    * Record that the source amended this order after ingestion (#2283) — writes

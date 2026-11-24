@@ -36,10 +36,11 @@ export interface EparagonyRequestOptions {
   /**
    * Marks a write safe to re-issue on a `5xx`/network failure.
    *
-   * For this vendor a document create IS safe to re-issue, because OL sends its
-   * own registration key as the vendor's `Idempotency-Key` and the vendor
-   * guarantees that repeating a key with the same body cannot mint a second
-   * document (and so cannot mint a second fiscal registration). That guarantee
+   * For this vendor a document create IS safe to re-issue, because a re-issue
+   * sends the same body under the same derived `Idempotency-Key`, which the
+   * vendor replays rather than re-executes - and the body's `documentToken`
+   * cannot hold a second document regardless (and so cannot mint a second
+   * fiscal registration). That guarantee
    * is the ONLY reason this flag is ever set on a `POST`; a write without an
    * idempotency key must leave it unset and fail fast.
    */

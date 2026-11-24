@@ -47,19 +47,27 @@ export { Chip } from './chip';
 export type { ChipProps, ChipTone } from './chip';
 export { FilterToggleButton } from './filter-toggle-button';
 export type { FilterToggleButtonProps } from './filter-toggle-button';
-export { FilterPanel, FilterPanelFooter, FilterGroup, FilterField, FilterRange } from './filter-panel';
+export {
+  FilterPanel,
+  FilterPanelFooter,
+  FilterGroup,
+  FilterField,
+  FilterRange,
+} from './filter-panel';
 export type { FilterPanelProps, FilterGroupProps, FilterFieldProps } from './filter-panel';
 export { FilterCheck, FilterChecks } from './filter-check';
 export type { FilterCheckProps, FilterCheckTone } from './filter-check';
 export { ActiveFilterChips } from './active-filter-chips';
 export type { ActiveFilterChip, ActiveFilterChipsProps } from './active-filter-chips';
 export { FilterSheet, FilterSection } from './filter-sheet';
+export { SidePanel } from './side-panel';
+export type { SidePanelProps } from './side-panel';
 export type { FilterSheetProps, FilterSectionProps } from './filter-sheet';
 export { QuickFilters, QuickFiltersLabel, QuickFiltersSeparator } from './quick-filters';
 export type { QuickFiltersProps } from './quick-filters';
 
 // ── Form composition ───────────────────────────────────────────────
-export { FormField } from './form-field';
+export { FormField, useFormFieldControl, type FormFieldControlProps } from './form-field';
 export { FieldError } from './field-error';
 export { FormErrorSummary } from './form-error-summary';
 
@@ -96,7 +104,12 @@ export { DetailSection } from './detail-section';
 export type { DetailSectionProps, DetailSectionTone } from './detail-section';
 
 // ── Sales documents (#2535) ────────────────────────────────────────
-export { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './document-kind-glyph';
+export {
+  DocumentKindGlyph,
+  DOCUMENT_KIND_LABEL,
+  NO_DOCUMENT_LABEL,
+  useDocumentKindLabels,
+} from './document-kind-glyph';
 export type { DocumentKind, DocumentKindGlyphProps } from './document-kind-glyph';
 export { DocumentHeadline } from './document-headline';
 export type { DocumentHeadlineProps, DocumentHeadlineTone } from './document-headline';
@@ -137,3 +150,26 @@ export { deriveRichTextProfile, byteLength, exceedsDescriptionCap } from './rich
 export type { RichTextProfile } from './rich-text-profiles';
 export type { DescriptionFormat, DescriptionRewrite, RichTextMark } from './rich-text.types';
 export { MASTER_DESCRIPTION_FORMAT } from './rich-text.types';
+
+// ── QR verification code (#1579) ────────────────────────────
+export { QrCode } from './qr-code';
+export type { QrCodeErrorCorrectionLevel } from './qr-code';
+export { LanguageFlag } from './language-flag';
+export { MotionProvider } from './motion-provider';
+
+// ── Switch primitives (#4029) ───────────────────────────────
+export { PeekButton } from './peek-button';
+export type { PeekButtonProps } from './peek-button';
+export { MotionPopover, useAnchoredPopover, anchoredPosition } from './motion-popover';
+export type { MotionPopoverProps, AnchoredPopover, PopoverPlacement } from './motion-popover';
+export { OptionList } from './option-list';
+export type { OptionListItem, OptionListProps } from './option-list';
+export { DescribedSelect } from './described-select';
+export type { DescribedSelectOption, DescribedSelectProps } from './described-select';
+export { SegmentedSwitch } from './segmented-switch';
+export type {
+  SegmentedSwitchLabels,
+  SegmentedSwitchOption,
+  SegmentedSwitchProps,
+} from './segmented-switch';
+export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';

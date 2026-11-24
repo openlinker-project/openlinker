@@ -18,7 +18,7 @@ import type { RouteCrumbHandle } from '../nav-registry.types';
  */
 export const connectionPricingSyncRoute: RouteObject = {
   path: 'connections/:connectionId/pricing-sync',
-  handle: { crumb: { group: 'Platform', title: 'Connection' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', page: 'connection' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { ConnectionPricingSyncPage } = await import(
       '../../pages/connections/connection-pricing-sync-page'

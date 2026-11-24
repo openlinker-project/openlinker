@@ -1,0 +1,277 @@
+{
+  "omsConnection": {
+    "off": "Wył.",
+    "on": "Wł."
+  },
+  "routingDryRun": {
+    "banner": "Test - nic nie zostanie zapisane",
+    "bannerDetail": "Test nigdy nie tworzy zadań, nie rezerwuje towaru ani nie kontaktuje się z przewoźnikiem. Korzysta z tego samego mechanizmu co prawdziwe kierowanie.",
+    "basketAddLine": "Dodaj pozycję",
+    "basketCountry": "Kraj",
+    "basketDelivery": "Metoda dostawy",
+    "basketPostcode": "Kod pocztowy",
+    "basketQuantity": "Ilość",
+    "basketRemoveLine": "Usuń pozycję",
+    "basketSku": "Identyfikator wariantu",
+    "compareChanged": {
+      "few": "{n} pozycje zmieniłyby lokalizację",
+      "many": "{n} pozycji zmieniłoby lokalizację",
+      "one": "{n} pozycja zmieniłaby lokalizację",
+      "other": "{n} pozycji zmieniłoby lokalizację"
+    },
+    "compareDraft": "Szkic",
+    "compareHeading": "Szkic a zapisane reguły",
+    "compareNoChange": "Szkic przypisuje każdą pozycję dokładnie tam, gdzie zapisane reguły.",
+    "compareSaved": "Zapisane",
+    "compareToggle": "Porównaj z moim szkicem",
+    "errorNothingChanged": "Nic nie zostało zmienione.",
+    "errorRetry": "Spróbuj ponownie",
+    "errorTitle": "Nie udało się dokończyć testu",
+    "explanationEmpty": "Żadna reguła nie została uruchomiona, więc nic nie odfiltrowano ani nie uszeregowano.",
+    "explanationHeading": "Dlaczego",
+    "explanationRemoved": "usunięto {count}",
+    "modeBasket": "Zbuduj koszyk",
+    "modeOrder": "Testuj na zamówieniu",
+    "orderSearchEmpty": "Brak pasujących zamówień.",
+    "orderSearchError": "Nie udało się teraz wyszukać zamówień.",
+    "orderSearchHint": "Przeszukuje wszystkie połączenia.",
+    "orderSearchLabel": "Znajdź zamówienie",
+    "orderSearchPlaceholder": "Numer zamówienia lub kupujący",
+    "placement": "{location} × {quantity}",
+    "resolutions": {
+      "refund": "zwrot pieniędzy",
+      "return": "zwrot"
+    },
+    "resultInputHeading": "Co widziały reguły",
+    "resultInputNote": "Tylko kraj, kod pocztowy, pozycje i metoda dostawy. Dane kupującego nie trafiają do reguł.",
+    "resultLinesHeading": "Skąd zostałaby wysłana każda pozycja",
+    "resultRoutable": "Każdą pozycję można skądś wysłać",
+    "resultRoutableSplit": "Zamówienie jest podzielone między lokalizacje. To oczekiwane, a nie błąd.",
+    "resultUnfulfillable": "Części sztuk nie można skądś wysłać",
+    "resultUnfulfillableNote": "Sztuki bez lokalizacji można rozliczyć tylko zwrotem pieniędzy albo zwrotem, nigdy częściowym anulowaniem.",
+    "runTest": "Uruchom test",
+    "running": "Testowanie…",
+    "skipReasons": {
+      "mirrored-before-routing": "Zostało utworzone w systemie głównym produktów, zanim włączono kierowanie.",
+      "own-shop-order": "Pochodzi z Twojego sklepu, który już je obsługuje.",
+      "shipped-by-other-system": "Inny system otrzymał polecenie jego wysyłki."
+    },
+    "skippedNote": "Poniższy wynik pokazuje tylko, dokąd skierowałyby je reguły, gdyby zostały uruchomione.",
+    "skippedTitle": "Rzeczywiste kierowanie nie obsłużyłoby tego zamówienia",
+    "skippedUnknown": "OpenLinker zapisuje powód, którego ten ekran nie opisuje.",
+    "title": "Testuj reguły wyboru lokalizacji",
+    "unfulfillableLine": "{quantity} × {resolution} - {reason}",
+    "unplaced": "nieprzypisane"
+  },
+  "sourcingRule": {
+    "afterActionHints": {
+      "line-split": "Różne produkty mogą być wysłane z różnych lokalizacji. Każdy produkt nadal wychodzi w całości z jednego miejsca.",
+      "no-split": "Całe zamówienie jest wysyłane z jednej lokalizacji - albo wcale.",
+      "quantity-split": "Nawet ilość jednego produktu można podzielić - np. 2 sztuki z jednej lokalizacji, 3 z innej."
+    },
+    "afterActions": {
+      "line-split": "Podział pozycji",
+      "no-split": "Bez podziału",
+      "quantity-split": "Podział ilości"
+    },
+    "kindHints": {
+      "filter": "Filtr - wyklucza lokalizacje, które nie mogą zrealizować zamówienia.",
+      "sort": "Sortowanie - szereguje pozostałe lokalizacje."
+    },
+    "kinds": {
+      "filter": "filtr",
+      "sort": "sortowanie"
+    },
+    "nameHints": {
+      "country-served": "Zostawia lokalizację tylko wtedy, gdy jest zarejestrowana w tym samym kraju, do którego wysyłane jest zamówienie - chodzi o to, gdzie lokalizacja fizycznie się znajduje, a nie do jakich krajów jest skonfigurowana wysyłka.",
+      "in-stock": "Wyklucza każdą lokalizację, w której brakuje co najmniej jednego produktu z tego zamówienia.",
+      "least-splits": "Preferuje jedną lokalizację, która może zrealizować całe zamówienie, aby uniknąć jego podziału.",
+      "most-complete": "Preferuje lokalizację, która może zrealizować najwięcej produktów z tego zamówienia.",
+      "nearest": "Szereguje według tego, jak blisko kod pocztowy jest adresu dostawy - nie według rzeczywistej odległości dojazdu ani wysyłki. Gdy przechowywanie danych osobowych jest wyłączone, nie ma kodu pocztowego do porównania, więc szeregowanie odbywa się tylko według kraju.",
+      "not-blocked-by-reject": "Wyklucza lokalizację, która już odrzuciła to zamówienie.",
+      "priority": "Szereguje lokalizacje w wybranej kolejności."
+    },
+    "names": {
+      "country-served": "Obsługiwany kraj",
+      "in-stock": "Na stanie",
+      "least-splits": "Najmniej podziałów",
+      "most-complete": "Najbardziej kompletna",
+      "nearest": "Najbliższa",
+      "not-blocked-by-reject": "Niezablokowana",
+      "priority": "Lista priorytetów"
+    }
+  },
+  "sourcingRuleConflict": {
+    "forbidden": "Nie masz uprawnień do zmiany reguł wyboru lokalizacji.",
+    "notFound": "Ta reguła wyboru lokalizacji już nie istnieje."
+  },
+  "sourcingRuleDeleteDialog": {
+    "cancel": "Anuluj",
+    "delete": "Usuń",
+    "deleteFailed": "Nie udało się usunąć reguły.",
+    "deletesForGood": "Spowoduje to trwałe usunięcie reguły wraz z jej historią.",
+    "deleting": "Usuwanie…",
+    "description": "Każda reguła poniżej przesunie się o jeden krok w górę.",
+    "removalLoosens": "Usunięcie tej reguły znosi jedyny limit podziału: zamówienia mogą zacząć dzielić się bardziej niż obecnie (do {ceiling}). Żadna inna aktywna reguła obecnie temu nie zapobiega. Wycofanie ma tu ten sam skutek co usunięcie, bo wycofana reguła również nie jest stosowana.",
+    "retireFailed": "Nie udało się wycofać reguły.",
+    "retireInstead": "Zamiast tego wycofaj",
+    "retireInsteadHint": "Jeśli chcesz tylko przestać z niej korzystać, wycofaj ją - pozostanie na liście, zachowa historię i może istnieć obok reguły zastępczej.",
+    "retireRetired": "Ta reguła jest już wycofana, więc nie jest stosowana. Usunięcie trwale skasuje ją wraz z historią.",
+    "retireScheduled": "Ta reguła jeszcze się nie rozpoczęła, więc nie ma czego wycofać: nie decyduje o żadnych zamówieniach, a data zakończenia przed datą rozpoczęcia zostanie odrzucona. Usuń ją albo zmień datę rozpoczęcia w edycji.",
+    "retireUnrecognised": "Tej reguły nie można wycofać, bo ta wersja OpenLinker jej już nie rozpoznaje - i tak jest pomijana. Jedynym sposobem jej usunięcia jest skasowanie.",
+    "retiring": "Wycofywanie…",
+    "title": "Usunąć „{label}”?"
+  },
+  "sourcingRuleDialog": {
+    "addSubtitle": "To będzie reguła {position} - wszystko powyżej jest sprawdzane wcześniej.",
+    "addTitle": "Dodaj regułę wyboru lokalizacji",
+    "cancel": "Anuluj",
+    "claimedOption": "{label} - już aktywna jako reguła {row}",
+    "configureSection": "Konfiguracja",
+    "countryServedWarning": "Jeśli masz jeden magazyn wysyłający do kilku krajów, ta reguła wykluczy go dla każdego zamówienia złożonego POZA krajem tego magazynu - także dla zamówień, które normalnie chętnie byś wysłał. Jest przeznaczona dla układu „jeden magazyn na kraj”, a nie „jeden magazyn obsługujący wiele krajów”.",
+    "editSubtitle": "Reguła {position} - wszystko powyżej jest sprawdzane wcześniej.",
+    "editTitle": "Edytuj regułę wyboru lokalizacji",
+    "endsOn": "Koniec (opcjonalnie)",
+    "endsOnDescription": "Ustawienie daty z przeszłości wycofuje regułę, zachowując ją w historii.",
+    "kindOptions": {
+      "filter": "Filtr - wyklucz lokalizacje",
+      "sort": "Sortowanie - uszereguj pozostałe"
+    },
+    "loosenConfirm": "Zapisz mimo to",
+    "loosenDescription": "Żadna inna aktywna reguła nie ogranicza obecnie podziału do {before}. Po zapisaniu zamówienia mogą być dzielone bardziej niż obecnie (do {after}).",
+    "loosenTitle": "Pozwolić na większy podział niż obecnie?",
+    "loosens": "Na podstawie tych ustawień ogólny podział byłby WIĘKSZY: {after} zamiast obecnego {before} - żadna inna aktywna reguła nie ogranicza go tak mocno.",
+    "nextSection": "Co dalej",
+    "noSetup": "Ta reguła nie wymaga dodatkowej konfiguracji.",
+    "picker": {
+      "add": "Dodaj lokalizację…",
+      "addLabel": "Dodaj lokalizację do listy priorytetów",
+      "inactive": "Nieaktywna",
+      "inactiveOption": "{code} · {name} (nieaktywna)",
+      "locationLabel": "{code} · {name}",
+      "moveDown": "Przesuń {label} w dół",
+      "moveUp": "Przesuń {label} w górę",
+      "noMore": "Brak kolejnych lokalizacji do dodania",
+      "remove": "Usuń {label}",
+      "staleEntry": "Dla tej pozycji nie istnieje lokalizacja - niczego nie szereguje"
+    },
+    "priorityDescription": "Lokalizacje, których tu nie dodasz, są używane na końcu, po wszystkich z tej listy.",
+    "priorityLabel": "Kolejność lokalizacji (najwyższy priorytet na górze)",
+    "ruleLabel": "Reguła",
+    "save": "Zapisz regułę",
+    "saveFailed": "Nie udało się zapisać reguły.",
+    "saving": "Zapisywanie…",
+    "splittingLabel": "Podział",
+    "startsOn": "Początek (opcjonalnie)",
+    "stricter": "Na podstawie tych ustawień ogólny podział będzie bardziej ograniczony: {after} (obecnie {before}).",
+    "triggerSection": "Co uruchamia tę regułę",
+    "typeLabel": "Typ",
+    "typeLocked": "Nie można zmienić. Typ reguły jest częścią tego, co ją identyfikuje, więc przełączenie między filtrem a sortowaniem nie jest edycją - to inna reguła. Usuń tę i dodaj nową regułę.",
+    "unchanged": "Na podstawie tych ustawień ogólny podział pozostaje bez zmian: {after}.",
+    "validation": {
+      "afterActionRequired": "Wybierz, jak bardzo można podzielić zamówienie",
+      "endBeforeStart": "Data zakończenia musi być późniejsza niż data rozpoczęcia - inaczej reguła nigdy się nie uruchomi",
+      "filterAsSort": "Ta reguła filtruje lokalizacje; nie może być użyta jako sortowanie",
+      "kindRequired": "Wybierz, czy ta reguła filtruje, czy sortuje",
+      "nameRequired": "Wybierz, co robi ta reguła",
+      "priorityEmpty": "Dodaj co najmniej jedną lokalizację - pusta lista priorytetów niczego nie szereguje",
+      "priorityNotUsed": "Ta reguła nie korzysta z kolejności lokalizacji, więc lista musi być pusta",
+      "sortAsFilter": "Ta reguła sortuje lokalizacje; nie może być użyta jako filtr"
+    }
+  },
+  "sourcingRuleLockedDialog": {
+    "close": "Zamknij",
+    "deleteRule": "Usuń regułę",
+    "description": "Ta wersja OpenLinker nie rozpoznaje tej reguły.",
+    "notUsed": "Jest zapisana, ale nie jest używana - zamówienia są kierowane tak, jakby jej nie było. Edycja sprawiłaby, że wyglądałaby na aktywną, co nie byłoby prawdą.",
+    "remedy": "Usuń ją i dodaj nową regułę. Jej typ i nazwa są zapisane dokładnie w pierwotnej postaci, więc warto je zacytować przy zgłaszaniu problemu.",
+    "title": "Nie można edytować „{label}”"
+  },
+  "sourcingRuleStatus": {
+    "hints": {
+      "active": "Ta reguła właśnie decyduje o zamówieniach.",
+      "retired": "Zachowana w historii. O niczym nie decyduje.",
+      "scheduled": "Zapisana, ale zacznie decydować o zamówieniach dopiero od daty rozpoczęcia.",
+      "unrecognised": "Ta wersja OpenLinker nie potrafi zastosować tej reguły, więc kierowanie ją pomija. Można ją usunąć, ale nie edytować."
+    },
+    "labels": {
+      "active": "Aktywna",
+      "retired": "Wycofana",
+      "scheduled": "Zaplanowana",
+      "unrecognised": "Nierozpoznana"
+    }
+  },
+  "sourcingRulesPage": {
+    "backToSettings": "Ustawienia",
+    "createLocation": "Utwórz lokalizację",
+    "createLocationAdminOnly": "Utworzenie lokalizacji magazynowej wymaga konta administratora.",
+    "createLocationErrorTitle": "Nie udało się utworzyć lokalizacji",
+    "createLocationHint": "Tworzy jedną lokalizację magazynową, MAIN. Ponowne uruchomienie niczego nie tworzy. Jest pusta, więc zanim zamówienie będzie mogło tam trafić, trzeba przypisać do niej towar, a jej kraj celowo pozostaje pusty - reguły go odczytują, a zgadnięty kraj jest gorszy niż brak kraju.",
+    "creatingLocation": "Tworzenie…",
+    "crumbGroup": "Platforma",
+    "crumbTitle": "Reguły wyboru lokalizacji",
+    "description": "Reguły działają po kolei. Filtry wykluczają lokalizacje, sortowania szeregują pozostałe.",
+    "errorMessage": "Nie udało się teraz odczytać połączeń ani lokalizacji. Nic się nie zmieniło - to problem z wczytywaniem, a nie z konfiguracją.",
+    "errorRetry": "Spróbuj ponownie",
+    "errorTitle": "Nie udało się otworzyć reguł wyboru lokalizacji",
+    "goToConnections": "Przejdź do połączeń",
+    "loadingMessage": "Odczytywanie połączeń i lokalizacji…",
+    "loadingTitle": "Otwieranie reguł wyboru lokalizacji",
+    "locationsTruncated": "Wyświetlono {shown} z {total} lokalizacji. Reguła priorytetu może szeregować tylko lokalizacje widoczne tutaj, więc lokalizacji spoza listy nie można jeszcze wybrać.",
+    "locationsTruncatedTitle": "Nie wszystkie lokalizacje są widoczne",
+    "noLocationsEyebrow": "Brak lokalizacji",
+    "noLocationsMessage": "Reguły wyboru lokalizacji wybierają spośród Twoich lokalizacji, a żadna nie jest aktywna. Utwórz lokalizację, zanim dodasz reguły - do tego czasu każda reguła szeregowałaby pusty zbiór.",
+    "noLocationsTitle": "Brak lokalizacji, do których można kierować",
+    "noOmsMessage": "Reguły wyboru lokalizacji należą do połączenia OpenLinker OMS, a takiego połączenia jeszcze nie ma. Najpierw włącz OMS; jego reguły są potem zarządzane tutaj.",
+    "noOmsTitle": "OpenLinker OMS nie jest włączony",
+    "notAvailableEyebrow": "Niedostępne tutaj",
+    "wrongConnectionMessage": "Reguły wyboru lokalizacji dotyczą tylko połączenia OpenLinker OMS - nic, co ustawisz tutaj, nie zostanie użyte. Włącz OMS, a potem zarządzaj jego regułami z poziomu tego połączenia.",
+    "wrongConnectionTitle": "To nie jest Twoje połączenie OpenLinker OMS"
+  },
+  "sourcingRulesSection": {
+    "reorderConflict": "Nie udało się zapisać nowej kolejności. {message} Lista została odświeżona.",
+    "reorderFailed": "Nie udało się zapisać nowej kolejności."
+  },
+  "sourcingRulesState": {
+    "addRule": "Dodaj regułę",
+    "dismissReorderError": "Zamknij",
+    "emptyEyebrow": "Brak reguł",
+    "emptyMessage": "Bez reguły żadna lokalizacja nie jest wykluczana ani szeregowana. Dodaj regułę, aby zawęzić, które lokalizacje się kwalifikują.",
+    "emptyTitle": "Nic jeszcze nie decyduje, skąd zamówienie jest wysyłane",
+    "errorMessage": "Nie udało się teraz odczytać reguł wyboru lokalizacji. Nic się nie zmieniło - to problem z wczytywaniem, a nie z konfiguracją.",
+    "errorRetry": "Spróbuj ponownie",
+    "errorTitle": "Nie udało się wczytać reguł wyboru lokalizacji",
+    "loadingMessage": "Odczytywanie reguł, które decydują, skąd zamówienie jest wysyłane…",
+    "loadingTitle": "Wczytywanie reguł wyboru lokalizacji"
+  },
+  "sourcingRulesTable": {
+    "actionsHeader": "Akcje",
+    "alwaysActive": "Zawsze",
+    "caption": "Reguły wyboru lokalizacji w kolejności działania",
+    "deleteRule": "Usuń {label}",
+    "editLocked": "Nie można edytować - ta reguła nie jest już rozpoznawana",
+    "editRefusedAction": "Dlaczego tej reguły nie można edytować",
+    "editRule": "Edytuj {label}",
+    "governs": "Wyznacza obecny limit podziału",
+    "moveDown": "Przesuń w dół",
+    "moveToBottom": "Przesuń na koniec",
+    "moveToTop": "Przesuń na początek",
+    "moveUp": "Przesuń w górę",
+    "ruleHeader": "Reguła",
+    "splittingHeader": "Podział",
+    "splittingHint": "Jak bardzo ta reguła pozwala podzielić zamówienie między lokalizacje.",
+    "statusHeader": "Status",
+    "stepHeader": "Krok",
+    "stepHint": "Reguły działają w tej kolejności. Zmień kolejność strzałkami.",
+    "windowFrom": "od {date}",
+    "windowFromTo": "od {from} · do {to}",
+    "windowHeader": "Okres aktywności",
+    "windowTo": "do {date}"
+  },
+  "sourcingRulesTile": {
+    "description": "Zdecyduj, które lokalizacje mogą realizować zamówienie i w jakiej kolejności są preferowane.",
+    "eyebrow": "Platforma",
+    "linkLabel": "Zarządzaj regułami lokalizacji",
+    "title": "Reguły wyboru lokalizacji"
+  }
+}

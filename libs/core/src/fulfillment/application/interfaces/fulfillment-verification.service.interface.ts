@@ -42,6 +42,8 @@ import type {
   UndoCompletionResult,
   UndoLastVerificationInput,
   UndoLastVerificationResult,
+  VoidSurplusOnLineInput,
+  VoidSurplusOnLineResult,
   VerifyUnitInput,
   VerifyUnitResult,
 } from '../../domain/types/fulfillment-verification.types';
@@ -97,6 +99,14 @@ export interface IFulfillmentVerificationService {
   ): Promise<UndoLastVerificationResult>;
 
   /**
+   * Void the active units of one line beyond `keep` (#3961), newest first, so
+   * a box the shop lowered counts only what the order now asks for. Refuses a
+   * closed parcel for the reason `voidLastVerification` does. Idempotent: a
+   * line already at or below `keep` voids nothing.
+   */
+  voidSurplusOnLine(input: VoidSurplusOnLineInput): Promise<VoidSurplusOnLineResult>;
+
+  /**
    * The whole per-unit ledger for one work, newest first (#3411) — a pure
    * passthrough of the repository read, for a "recent activity" log.
    */
@@ -115,6 +125,14 @@ export interface IFulfillmentVerificationService {
 
   /** The label sibling of `markInvoicePrinted` (pack-bench completion). Same contract. */
   markLabelPrinted(workId: string, at: Date): Promise<boolean>;
+
+  /**
+   * Record the first acknowledgement of the buyer note on this parcel (#3538).
+   * A passthrough to the repository's fill-once claim: `false` = already
+   * acknowledged (or unknown work), an ordinary outcome. Never blocks scanning
+   * and is not a parcel close.
+   */
+  acknowledgeBuyerNote(workId: string, at: Date, byUserId: string): Promise<boolean>;
 
   /**
    * Declare a parcel finished and off the bench (pack-bench completion) — a distinct,

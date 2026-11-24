@@ -18,6 +18,8 @@ function connection(overrides: Partial<Connection> = {}): Connection {
   } as Connection;
 }
 
+const RATE_LIMIT = { requestsPerMinute: 300, maxConcurrent: 4 };
+
 function setup(
   fetchImpl: jest.Mock,
   credentials: unknown = { token: TOKEN }
@@ -32,7 +34,7 @@ function setup(
   const resolver = {
     get: jest.fn().mockResolvedValue(credentials),
   } as unknown as CredentialsResolverPort;
-  return { tester: new ShoperConnectionTesterAdapter(http), resolver, http };
+  return { tester: new ShoperConnectionTesterAdapter(http, RATE_LIMIT), resolver, http };
 }
 
 function reply(status: number, body: unknown = {}): jest.Mock {
@@ -48,11 +50,25 @@ describe('ShoperConnectionTesterAdapter', () => {
     const result = await tester.test(conn, resolver);
 
     expect(result).toMatchObject({ success: true, status: 200, message: 'OK' });
-    expect(http.forConnection).toHaveBeenCalledWith(conn);
+    expect(http.forConnection).toHaveBeenCalledWith(conn, RATE_LIMIT, {
+      bucketKey: 'shoper:host:xxxxx.shoparena.pl',
+    });
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://xxxxx.shoparena.pl/webapi/rest/application-config',
       expect.anything()
     );
+  });
+
+  it('should pace against the shop bucket, normalised, when the baseUrl carries a scheme and upper case', async () => {
+    const fetchImpl = reply(200, { default_language_name: 'pl_PL' });
+    const { tester, resolver, http } = setup(fetchImpl);
+    const conn = connection({ config: { baseUrl: 'https://XXXXX.shoparena.pl' } });
+
+    await tester.test(conn, resolver);
+
+    expect(http.forConnection).toHaveBeenCalledWith(conn, RATE_LIMIT, {
+      bucketKey: 'shoper:host:xxxxx.shoparena.pl',
+    });
   });
 
   it('should explain a 401 as a rejected token', async () => {

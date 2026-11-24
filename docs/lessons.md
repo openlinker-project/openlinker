@@ -23,6 +23,283 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Check that every source actually produces the key a design is keyed on
+
+**Context**: #3520 bundles expand per order line, keyed on the line's `variantId`.
+
+**Problem**: simple products from PrestaShop and WooCommerce arrived product-level only (`internalProductId`, no `internalVariantId`), because the resolver never applied the lone-variant precedence master inventory sync already uses (#822). Bundle expansion, gift rules, reservations and the Shoper mirror all silently skipped those lines; only a live E2E run showed it.
+
+**Rule**: when a design keys on a field, verify against each source's real payload that the field is populated. Resolve a product-only ref to its lone variant in the resolver (`withLoneVariant`), once, rather than in each consumer.
+
+**Applies to**: `libs/core/src/orders/application/services/order-item-ref-resolver.service.ts`, anything keyed on a line's variant.
+
+**Source**: #3520, PR #3957
+
+## Check what an offer is MAPPED to before designing a fix that keys on its variant
+
+**Context**: #3929 held an Allegro multipack (one offer sells 3 units of one product) until the operator defined a bundle "3 x product" (#3607).
+
+**Problem**: the offer maps to the product's own variant, and a bundle is a separate variant whose component cannot be itself. So creating the bundle could never release the held order: ingestion kept asking about the offer's variant, which still had no definition. The design read well on paper and every unit test passed; only wiring the UI action end to end showed it.
+
+**Rule**: when a fix is keyed on "the variant of this line", confirm which variant the channel line resolves to before choosing the key. A multipack is now a one-click confirmation stored per (variant, pack size), frozen into the order's component list (ADR-083).
+
+**Applies to**: `libs/core/src/orders/application/services/multipack-hold.ts`, bundle definitions, any per-line hold.
+
+**Source**: #3929, #3624
+
+## Never send one receipt line name at two VAT rates - the fiscal printer locks the name for good
+
+**Context**: eparagony.pl relays receipts to a physical fiscal printer. OpenLinker sent the delivery line as `Shipping` on every receipt while its VAT rate followed the basket (23% one day, 5% the next, both on one mixed-rate receipt).
+
+**Problem**: a Polish fiscal printer binds each line name to one VAT rate and refuses a name whose rate goes up after it went down (Dz.U. 2024 poz. 1654, § 2 pkt 1 and § 40 ust. 1). The refusal surfaces as `errorCode 83`, "schodek podatkowy", and the name then stays blocked at every rate on that device - only service can clear it. Name matching is case-insensitive, trims and collapses spaces, and compares the first 40 characters. A sandbox test burns real names, so experiments must use throwaway names (`testshiping<timestamp>`).
+
+**Rule**: a receipt line whose rate can vary carries the rate in its name (`Koszt dostawy 23%`), and one receipt never names one line at two rates. See [ADR-082](./architecture/adrs/082-delivery-line-on-sales-documents.md).
+
+**Applies to**: `libs/core/src/fiscalization/**` mappers, `libs/integrations/eparagony/**`, any future fiscal-receipt adapter, e2e against a fiscal sandbox.
+
+**Source**: #3913, #3905, #3906
+
+## Mirror every write OpenLinker makes to a product master
+
+**Context**: the stock movement ledger (#3565) records why a mirrored quantity changed, from `InventoryService.setInventory`.
+
+**Problem**: the return restock (#2370) called `adjustInventory` on the master and never wrote the mirror. The change surfaced only at the next master sync, where it read as an unattributed sync delta, and marketplaces kept the old stock until then.
+
+**Rule**: when OpenLinker changes stock in a master, mirror the adapter's resulting quantity through `setInventory` with a movement context, under the position lock, the way `InventorySaleDecrementService` does. A write that skips the mirror leaves history and channels wrong until the next sync.
+
+**Applies to**: `libs/core/src/inventory`, `libs/core/src/returns`, any new caller of `InventoryMasterPort.adjustInventory`.
+
+**Source**: #3565, ADR-079.
+
+## Filter dates on the operator's local day, not the UTC day
+
+**Context**: the stock movement history filter (#3568) first sent "From"/"To" as UTC day boundaries.
+
+**Problem**: an operator in Warsaw filtering "to 26 Sep" lost every movement after 26 Sep 22:00 local.
+
+**Rule**: convert a date input to the start and end of the LOCAL calendar day before sending ISO instants.
+
+**Applies to**: `apps/web` date filters.
+
+**Source**: #3568 review.
+
+---
+
+## `order_line_items` is delete-then-reinsert: a value that must survive re-ingestion has to be carried forward inside the transaction
+
+**Context**: the per-line net cost snapshot (#3588, D27) is frozen at the first `ready` ingestion so a later cost edit never moves an earlier margin.
+
+**Problem**: `OrderRecordRepository.upsertWithLineItems` replaces an order's line rows wholesale on every re-ingestion. A column written only from the incoming draft is therefore recomputed every time, so a snapshot of "what the cost was then" silently becomes "what the cost is now" on the next poll. The line position is not a stable identity either (reorder, add, remove).
+
+**Rule**: any line-level fact that must outlive re-ingestion is read from the prior rows INSIDE the write transaction, after the `order_records` upsert (its row lock serialises concurrent re-ingestion) and before the delete, and carried across by `productId|variantId`, lowest prior lineNumber first, reused exactly as stored. A prior "not recorded" is never upgraded and a prior value is never replaced. Never swallow a failed lookup that feeds the snapshot: it would freeze "not recorded" for good.
+
+**Applies to**: `order-record.repository.ts upsertWithLineItems`, `order-line-cost-snapshot.ts`, any future denormalised column on `order_line_items`.
+
+**Source**: #3588 (epic #3516)
+
+---
+
+## An Allegro offer that reads INACTIVE with no errors may still be processing - the reason lives on the create operation
+
+**Context**: an inline-product `POST /sale/product-offers` with `publication.status: ACTIVE` is
+answered `202` with a `Location` naming `/sale/product-offers/{offerId}/operations/{operationId}`.
+
+**Problem**: the offer resource reads `INACTIVE` with an EMPTY `validation.errors` both while Allegro
+is still processing (live: about 75 s) and after it refused the product (live:
+`GtinNotExistsInGtinParameter` for an EAN unknown to GS1). The creation poller read the first
+INACTIVE at +5 s and settled the record on a bare "draft" - the operator had nothing to fix.
+
+**Rule**: remember the operation id from the create's `Location` and read the operation before
+trusting an INACTIVE-without-errors offer. `202` + `operation.status: IN_PROGRESS` means still
+processing; a failed operation answers `4xx` with the usual `{ errors: [...] }` envelope, which is
+the reason. When no operation is on record, `productSet[].product.publication.status: REMOVED` is
+the only trace left - say so rather than reporting a clean draft.
+
+**Applies to**: `libs/integrations/allegro/src/infrastructure/adapters/allegro-offer-manager.adapter.ts`
+(`createOffer`, `getOfferStatus`).
+
+**Source**: E2E-11, live Allegro sandbox probe 2026-10-26.
+
+---
+
+## A request idempotency key the vendor remembers must not be the sale's document key
+
+**Context**: the eparagony adapters sent the sale's deterministic `documentToken` as the vendor
+`Idempotency-Key` header, and core keeps one idempotency key per order across retries.
+
+**Problem**: the vendor remembers a key even for a request it REFUSED. A refusal caused by data
+or config (live: a wrong seller tax number, `400` code 41) burned the key, so the corrected retry
+under the same key was answered `422` "key used with different data", stored in doubt, and the
+sale was stuck with Retry locked - fixing the cause could never succeed on that record.
+
+**Rule**: keep the per-sale exactly-once key (the document token the vendor refuses to hold
+twice) separate from the per-REQUEST replay key (header derived from that token plus the exact
+body). A `422` replay refusal proves an earlier request, not an earlier document: settle it by
+reading the token's status, and report `rejected` only on the vendor's positive "no such
+document" answer.
+
+**Applies to**: `libs/integrations/eparagony/src/infrastructure/http/eparagony-document-create.ts`,
+`document-token.policy.ts`, any adapter that sends a provider idempotency header.
+
+**Source**: live sandbox run on ol-demo-fresh, 2026-10-26.
+
+---
+
+## A button disabled while a mutation is pending does not stop a double click - latch synchronously, and make the server honour the key
+
+**Context**: the bulk offer wizard's confirm dialog disabled "Create offers" on
+`mutation.isPending` and told the operator a double submit returns the existing batch.
+
+**Problem**: both halves of that promise were missing. `isPending` disables the button only after a
+re-render, and a double click delivers its second click before that render, so `handleSubmit` ran
+twice. It minted a fresh idempotency key on every call, so the two requests carried different
+keys - and the server never read `x-idempotency-key` at all. Two batches, two Allegro offers per
+variant (Allegro does not deduplicate product-offer creates).
+
+**Rule**: guard a submit handler with a synchronous `useRef` latch set before the first `await`,
+never with render state alone. Mint a per-attempt key only after the latch, so one double click
+cannot mint two. When a UI promises server-side idempotency, check the controller actually reads
+the header and that a unique index (not a read-then-insert) enforces it under a race; a copy line
+is not an implementation.
+
+**Applies to**: `apps/web/src/features/listings/components/bulk/bulk-wizard.tsx`,
+`BulkListingSubmitService`, any submit path that creates marketplace objects.
+
+**Source**: live double-click reproduction on the Shoper/Allegro e2e run, 2026-10-26.
+
+---
+
+## A wait that sits in front of a request must honour that request's own cancellation
+
+**Context**: `HttpTransportFactory` waits for a rate-limit slot before calling `fetch`.
+Plugin HTTP clients (Shoper, Erli, eparagony, ...) arm their request timeout before they call
+the transport.
+
+**Problem**: the wait honoured only the ambient context signal, never `init.signal`. Under eight
+concurrent operator requests on a busy Shoper bucket, the 15 s request timers fired while the
+requests were still queued; each one then claimed a slot anyway and failed at 0 ms on its
+already-aborted signal - 27 such failures, each a wasted slot and an HTTP 500 reading "Shoper
+request timed out after 15000ms" for a request that never left OpenLinker.
+
+**Rule**: any gate a request queues behind (limiter, lock, semaphore) takes the request's own
+signal as well as the context one, releases immediately if the request was cancelled at the
+moment of the grant, and never calls the network on a cancelled request. Surface the outcome
+as "busy, nothing was sent" (503 + `Retry-After`), not as a server error.
+
+**Applies to**: `libs/shared/src/http/http-transport-factory.ts`, any future outbound gate,
+`apps/api/src/common/filters/rate-limit-busy.filter.ts`.
+
+**Source**: Shoper integration live test, 2026-10-26 (ADR-038).
+
+---
+
+## Never issue a blocking Redis command on a client other code shares
+
+**Context**: the cross-process rate limiter (`RedisRateLimiterAdapter`, ADR-038 #2015)
+runs on the global `'REDIS_CLIENT'`. In the worker, `JobIntakeConsumer` ran its
+`XREADGROUP ... BLOCK 5000` loop on that same client.
+
+**Problem**: a blocking command holds its node-redis connection until it returns, and every
+command issued on that client queues behind it. The limiter bounds each Redis call at 1 s, so
+in the worker its calls timed out behind the read and fell back to per-process limiting -
+26 fallbacks and 51 "still degraded" warnings in one 40-minute live run, worker only. The
+"shared per-shop bucket" was silently not shared: api and worker requests to the same shop
+landed 1 ms apart while each process on its own never went below 198 ms (300/min). Nothing
+failed, the warnings looked like a Redis blip, and unit specs mock the client so they could
+not see it. A sibling consumer's comment had even recorded that intake "already blocks" on the
+shared client without anyone treating that as a defect.
+
+**Rule**: a consumer that issues `XREADGROUP BLOCK`, `BLPOP`/`BRPOP` or any other blocking
+command gets its own dedicated client (a token + factory beside the consumer, quit on module
+destroy), and every non-blocking command on that stream may run on it too. Shared clients
+(`'REDIS_CLIENT'`, the limiter, locks, cache) carry non-blocking commands only. When a
+degraded-mode fallback fires in one process but not another, suspect the connection before
+suspecting Redis.
+
+**Applies to**: `apps/worker/src/sync/job-intake.consumer.ts`,
+`apps/worker/src/events/master-deletion-to-job.handler.ts`, any new Redis Streams consumer,
+`libs/shared/src/rate-limit/redis-rate-limiter.adapter.ts`.
+
+**Source**: Shoper integration live test, 2026-10-26 (ADR-038, ADR-049).
+
+---
+
+## A destination status read-back must check whether OL itself caused the status it reads
+
+**Context**: branch-1 status sync (`FulfillmentStatusSyncService`) projects a destination
+shop's order status onto a shipment row and relays a shop-initiated cancel to the source
+(#1170).
+
+**Problem**: when the SOURCE cancelled an order, ingestion recorded `cancelledAt` and relayed
+the cancel to the destination (Shoper, PrestaShop, WooCommerce). The next status poll read
+that cancel back as if the shop had cancelled on its own: it minted a `cancelled` shipment
+row for an order that never had a parcel (rollup `failed`, UI "Dispatch failed") and relayed
+`cancelled` back to the source that authored it. Each half of the loop looked correct in its
+own spec; only a live round trip showed the echo.
+
+**Rule**: any read-back that turns a destination fact into OL state or into a relay must ask
+whether that fact is OL's own write coming back (ADR-017, ADR-027 self-echo suppression).
+For cancellation the test is `OrderRecord.isCancelled` - the source already knows, so the
+destination's cancel carries nothing new. Cover it with a case that seeds an OL-cancelled
+order, not only a shop-initiated one.
+
+**Applies to**: `libs/core/src/shipping/application/services/fulfillment-status-sync.service.ts`,
+any status read-back paired with an outbound relay.
+
+**Source**: Shoper integration live test, 2026-10-26.
+
+---
+
+## Never let an adapter's caught error read as the channel saying no
+
+**Context**: the operator order cancel (#3540) relays the cancel to the
+originating channel. The relay catches whatever the adapter throws and reports
+`outcome: 'rejected'`, the same value a genuine channel refusal carries (C-28,
+B-16).
+
+**Problem**: a timeout, a 5xx or a dropped connection is not a refusal. The
+channel never answered, and may have applied the write before the connection
+died. Treating it as `rejected` made the cancel flow abandon the change row, so a
+later retry looked like a fresh request against a cancel the channel had
+possibly already taken. Transient and definitive failures were indistinguishable
+at the one place that had to tell them apart.
+
+**Rule**: a layer that swallows an error into a result type must keep the fact
+that it was an error. Add an explicit flag (`adapterThrew`) rather than a new
+outcome value that existing callers would mishandle, document that absent means
+"the adapter answered", and make the caller that must tell "declined" from "we do
+not know" branch on it. Leave the change open on the unknown case, never discard
+it.
+
+**Applies to**: `OrderLifecycleRelayService`, `OrderCancellationService`, and any
+adapter-result mapper that converts a throw into a business outcome.
+
+**Source**: #3540
+
+## Take the lock before the READ of a read-then-write money guard
+
+**Context**: the refund ceiling (#3289) compares a refund against
+`order total - already refunded` and then writes a `RefundRecord`. The returns
+confirm flow read the ceiling context, moved the money state and wrote the
+record in three steps; the first version locked only the final write.
+
+**Problem**: a lock around the write alone does not serialize the guard. Two
+concurrent refunds both read the same "already refunded" sum before either
+writes, both pass the ceiling, and the order is refunded twice over. The guard
+looked correct in every sequential spec and the double-refund appeared only
+under concurrency.
+
+**Rule**: when a guard reads state and a later write changes that same state,
+the per-order lock must be held from before the read until after the write
+(`runUnderOrderRefundLock`, with `orderLockHeld` passed down so the inner write
+does not re-acquire a non-re-entrant lock). Add an overlapping-call spec; a
+sequential one passes against no lock at all.
+
+**Applies to**: `OrderRefundService`, `ReturnRefundService`,
+`return-writes.controller.ts` confirm flow, and any future money ceiling.
+
+**Source**: #3289
+
 ## Never route a one-field change through a full-upsert port
 
 **Context**: price-change propagation to a WooCommerce shop (#3144) reused
@@ -1411,12 +1688,12 @@ than a double-check, since nothing downstream will do it for you.
 
 **Partly graduated (#2674)**: the stylesheet half of this lesson is now a gate.
 `scripts/check-css-structure.mjs` runs under `pnpm lint` (chained into `check:invariants`) and fails
-on an unclosed block, a stray `}`, an unclosed comment or an unterminated string in any `.css` /
-`.scss` / `.sass` / `.less` file, reporting `file:line:column`. Two things it deliberately does not
-do, so the manual habit above still matters everywhere else: it does not parse **YAML or JSON
-fixtures**, and it does not check **parenthesis balance** (a dropped `)` in `@media (min-width: 700px {`
-leaves braces balanced and still kills the block - deferred as #2677). The seam re-read remains the rule for every
-artefact the gate does not cover.
+on an unclosed block, a stray `}`, an unclosed `(`, a stray `)`, an unclosed comment or an
+unterminated string in any `.css` / `.scss` / `.sass` / `.less` file, reporting `file:line:column`.
+Parenthesis balance was added by #2677: a dropped `)` in `@media (min-width: 700px {` leaves braces
+balanced and still kills the block. One thing it deliberately does not do, so the manual habit above
+still matters everywhere else: it does not parse **YAML or JSON fixtures**. The seam re-read remains
+the rule for every artefact the gate does not cover.
 
 **Applies to**: any merge or rebase touching an append-heavy file — a stylesheet, a barrel, a job-type
 union, a DI provider list, a long positional constructor. Sharpest when several parallel bodies of
@@ -2629,3 +2906,64 @@ touch is re-sent - "does not crash" does not cover "does not delete".
 mock them.
 
 **Source**: #3729
+
+## Write the channel snapshot, never the effective one, once an overlay exists
+
+**Context**: operator edits to an order (#3542) are an overlay merged over the
+channel's `orderSnapshot` when a record is read, because ingestion rewrites the
+snapshot wholesale on every poll. `OrderRecord.orderSnapshot` is therefore the
+EFFECTIVE (edited) view.
+
+**Problem**: any code that reads `record.orderSnapshot`, changes it and writes
+it back - or diffs it against the channel - now treats the operator's edit as
+the channel's own words. The source-amendment diff would report every edit as a
+source amendment on the next poll, and a read-modify-write would persist the
+edit into the channel original, where re-ingestion could no longer tell them
+apart. A reader cannot see the difference: both views have the same shape.
+
+**Rule**: read `record.channelSnapshot` for anything about what the channel
+reported or charged (amendment diff, FX, analytics) and for anything WRITTEN
+back to the `orderSnapshot` column; `toOrm` must map `channelSnapshot`. Keep a
+spec that `toOrm`/`upsert` writes the channel snapshot even when `orderEdits` is
+non-empty. Do not add `orderEdits` to an ingestion statement: a column the
+statement never names is what survives it.
+
+**Applies to**: `libs/core/src/orders` repositories, services and any worker
+handler that touches `order_records.orderSnapshot`.
+
+**Source**: #3542
+
+
+## Read the affected count of a raw UPDATE from `result[1]`, never `rows.length`
+
+**Context**: an order edit that lost its row (#3542, case E-66) was reported as
+confirmed. The repository issued a raw `UPDATE ... WHERE` through TypeORM's
+`query()` and decided success from the returned array's length.
+
+**Problem**: on TypeORM 0.3.17 with the Postgres driver, `query()` returns
+`[rows, rowCount]` for `UPDATE` and `DELETE`, but plain rows for
+`INSERT ... RETURNING`. So `rows.length` on an `UPDATE` result is always 2,
+whether zero or a hundred rows matched, and the "did it apply" check could
+never be false.
+
+**Rule**: for a raw `UPDATE` / `DELETE`, read the affected count from
+`result[1]`. Keep the `INSERT ... RETURNING` idiom (`raw.length > 0`) for
+inserts only. Pin it with a spec whose mock returns the real driver shape,
+including the zero-row case.
+
+**Applies to**: raw `query()` calls in `libs/core/**/infrastructure/**`
+repositories.
+
+**Source**: #3542, fixed in 20362a600.
+
+## Keep the API's keep-alive longer than the browser's, or a reused socket fails with no response
+
+**Context**: `/orders`, `/products` and `/listings` on a local stack, the browser on the Windows host and the API in Docker under WSL2. Firefox logged "Cross-Origin Request Blocked … CORS request did not succeed. Status code: (null)" when switching pages after a pause.
+
+**Problem**: it is not a CORS header problem. "Did not succeed" with a null status means the request got no response at all. Node's `http.Server` closes an idle keep-alive socket after 5 s, while a browser keeps one for reuse much longer. A request sent on a socket the server just closed fails at the transport level, and Firefox files every such cross-origin failure under CORS. It did not reproduce from a headless browser inside WSL, so the transport hop is part of it. Cancelling superseded queries is not a fix: an aborted cross-origin request produces the same console line.
+
+**Rule**: set `server.keepAliveTimeout` above the browser's idle window (65 s) and `headersTimeout` above that, in `apps/api/src/main.ts`. Before chasing CORS config, check the status: a real CORS refusal has one, a transport failure has none.
+
+**Applies to**: `apps/api/src/main.ts`, any reverse proxy in front of the API, CORS bug reports.
+
+**Source**: #4058

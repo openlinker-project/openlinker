@@ -83,6 +83,21 @@ describe('PickupPointController', () => {
 
       await expect(controller.search(makeQuery())).rejects.toBeInstanceOf(BadGatewayException);
     });
+
+    it('should send a stable code and never the provider text on a failed search (#3865)', async () => {
+      lookup.search.mockRejectedValue(new Error('ShipX 500: no points near Rynek 1'));
+
+      const error = (await controller
+        .search(makeQuery())
+        .catch((e: unknown) => e)) as BadGatewayException;
+
+      expect(error.getResponse()).toEqual({
+        statusCode: 502,
+        code: 'PICKUP_POINT_SEARCH_FAILED',
+        message: 'Shipping provider rejected the points lookup',
+        params: { connectionId: '33333333-3333-4333-8333-333333333333' },
+      });
+    });
   });
 
   describe('getCached', () => {

@@ -32,6 +32,9 @@ import { OrderPickupPointTypeValues } from './types/order.types';
 import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unavailable.error';
 import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 import { isTaxRateSource } from '@openlinker/core/products';
+import { isPaymentMethod } from './types/payment-method.types';
+import { readLineGift } from './types/incoming-order.types';
+import { isPaymentStatus } from './types/payment-status.types';
 
 /**
  * The placeholder `redactAddress` writes for a PII-redacted field. Imported
@@ -124,6 +127,24 @@ export function orderFromReadySnapshot(
   // the mapper fix.
   if (typeof snapshot.customerEmail === 'string') {
     order.customerEmail = snapshot.customerEmail;
+  }
+  // #3294: without this every invoice path that rehydrates an order (auto-issue,
+  // manual, bulk, correction) composed its command with no payment method, so
+  // the form of payment never reached the provider. Present-only, and an
+  // unrecognised stored value reads as absent rather than being passed on.
+  const paymentMethod = isPaymentMethod(snapshot.paymentMethod)
+    ? snapshot.paymentMethod
+    : record.paymentMethod;
+  if (paymentMethod !== null && paymentMethod !== undefined) {
+    order.paymentMethod = paymentMethod;
+  }
+  // #3583: a batch run rebuilds each queued order from its snapshot and asks
+  // the auto-issue gate again, which issues a batched order only when it is
+  // paid. Dropping the status made every queued order read as "not paid yet",
+  // so the run issued nothing and cleared the queue. Present-only, and an
+  // unrecognised stored value reads as absent.
+  if (isPaymentStatus(snapshot.paymentStatus)) {
+    order.paymentStatus = snapshot.paymentStatus;
   }
   if (billingAddress) {
     order.billingAddress = billingAddress;
@@ -274,6 +295,18 @@ function readItems(value: unknown): OrderItem[] {
     if (typeof item.unitPriceGross === 'number' && Number.isFinite(item.unitPriceGross)) {
       orderItem.unitPriceGross = item.unitPriceGross;
     }
+    // #3929 - same allowlist trap: a multipack size lost on read would let the
+    // hold re-check treat the line as one unit and let it through. Only a
+    // finite value above zero is a pack size.
+    const gift = readLineGift(item.gift);
+    if (gift) orderItem.gift = gift;
+    if (
+      typeof item.packQuantity === 'number' &&
+      Number.isFinite(item.packQuantity) &&
+      item.packQuantity > 0
+    ) {
+      orderItem.packQuantity = item.packQuantity;
+    }
     return orderItem;
   });
 }
@@ -300,6 +333,9 @@ function readTotals(value: unknown): OrderTotals {
   }
   if (typeof raw.shippingGross === 'number' && Number.isFinite(raw.shippingGross)) {
     totals.shippingGross = raw.shippingGross;
+  }
+  if (typeof raw.shippingTaxRate === 'string' && raw.shippingTaxRate.trim() !== '') {
+    totals.shippingTaxRate = raw.shippingTaxRate.trim();
   }
   if (typeof raw.discountTotal === 'number' && Number.isFinite(raw.discountTotal)) {
     totals.discountTotal = raw.discountTotal;

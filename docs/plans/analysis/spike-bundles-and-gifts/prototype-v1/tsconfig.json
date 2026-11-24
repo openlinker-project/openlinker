@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "lib": ["ES2023", "DOM", "DOM.Iterable"], "module": "ESNext", "moduleResolution": "Bundler",
+    "jsx": "react-jsx", "strict": true, "skipLibCheck": true, "noEmit": true, "resolveJsonModule": true, "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "typeRoots": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/node_modules/@types"],
+    "types": [],
+    "paths": {
+      "@web/*": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/src/*"],
+      "react": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/node_modules/@types/react"],
+      "react/*": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/node_modules/@types/react/*"],
+      "react-dom/*": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/node_modules/@types/react-dom/*"],
+      "react-router-dom": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/node_modules/react-router-dom"],
+      "@tanstack/react-query": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/node_modules/@tanstack/react-query"],
+      "vite/client": ["/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/node_modules/vite/client"]
+    }
+  },
+  "include": ["src", "env.d.ts", "/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/zestawy-gratisy-rekonesans-c15354/apps/web/src/build-time"]
+}

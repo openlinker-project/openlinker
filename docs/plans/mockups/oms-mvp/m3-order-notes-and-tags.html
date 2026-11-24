@@ -654,26 +654,28 @@
       </table>
     </div>
 
-    <div class="bulk-action-bar" role="region" aria-label="3 orders selected" id="bulk-bar">
+    <div class="bulk-action-bar" role="region" aria-label="3 orders selected" id="bulk-bar" data-testid="orders-bulk-bar">
       <div class="bulk-action-bar__count"><strong class="bulk-action-bar__num tabular" aria-live="polite" id="bulk-count">3</strong><span class="bulk-action-bar__label">selected</span></div>
-      <div class="bulk-action-bar__hint">Dispatch: max 50 per source</div>
+      <div class="bulk-action-bar__hint" data-testid="orders-bulk-hint">Dispatch: max 50 per source</div>
       <div class="bulk-action-bar__actions">
         <button type="button" class="button button--ghost">Clear</button>
         <span class="mk-anchor">
-          <button type="button" class="button button--secondary" data-toggle="bulk-menu" aria-haspopup="menu" aria-expanded="true">Tags ▾ <span class="mk-pin">12</span></button>
-          <div class="dropdown-menu__content bulk-menu" id="bulk-menu" role="menu" aria-label="Tags for selected orders">
+          <button type="button" class="button button--secondary" data-toggle="bulk-menu" aria-haspopup="menu" aria-expanded="true" data-testid="orders-bulk-tags">Tags ▾ <span class="mk-pin">12</span></button>
+          <div class="dropdown-menu__content bulk-menu" id="bulk-menu" role="menu" aria-label="Tags for selected orders" data-testid="orders-bulk-tags-menu">
             <div class="dropdown-menu__label">Add tag to <span data-selcount>3</span> orders</div>
-            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="VIP" data-color="violet"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="bulk-menu__hint">1 of 3 has it</span></div>
-            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="Fragile" data-color="amber"><span class="order-tag order-tag--sm" data-tag-color="amber"><span class="order-tag__dot"></span>Fragile</span></div>
-            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="Free gift" data-color="green"><span class="order-tag order-tag--sm" data-tag-color="green"><span class="order-tag__dot"></span>Free gift</span><span class="bulk-menu__hint">1 of 3 has it</span></div>
-            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="B2B" data-color="blue"><span class="order-tag order-tag--sm" data-tag-color="blue"><span class="order-tag__dot"></span>B2B</span></div>
-            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="Gift wrap" data-color="pink"><span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span>Gift wrap</span><span class="bulk-menu__hint">1 of 3 has it</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-testid="orders-bulk-tag-apply" data-apply="VIP" data-color="violet"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="bulk-menu__hint" data-testid="orders-bulk-tag-has-it">1 of 3 has it</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-testid="orders-bulk-tag-apply" data-apply="Fragile" data-color="amber"><span class="order-tag order-tag--sm" data-tag-color="amber"><span class="order-tag__dot"></span>Fragile</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-testid="orders-bulk-tag-apply" data-apply="Free gift" data-color="green"><span class="order-tag order-tag--sm" data-tag-color="green"><span class="order-tag__dot"></span>Free gift</span><span class="bulk-menu__hint" data-testid="orders-bulk-tag-has-it">1 of 3 has it</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-testid="orders-bulk-tag-apply" data-apply="B2B" data-color="blue"><span class="order-tag order-tag--sm" data-tag-color="blue"><span class="order-tag__dot"></span>B2B</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-testid="orders-bulk-tag-apply" data-apply="Gift wrap" data-color="pink"><span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span>Gift wrap</span><span class="bulk-menu__hint" data-testid="orders-bulk-tag-has-it">1 of 3 has it</span></div>
             <div class="dropdown-menu__separator" role="separator"></div>
-            <div class="dropdown-menu__item" role="menuitem" tabindex="0">Remove a tag from 3 orders…</div>
-            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-goto="tags">Manage tags</div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-testid="orders-bulk-tag-remove-open">Remove a tag from 3 orders…</div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-goto="tags" data-testid="orders-bulk-tag-manage">Manage tags</div>
           </div>
         </span>
-        <button type="button" class="button button--primary">Dispatch 3</button>
+        <button type="button" class="button button--secondary" data-testid="orders-bulk-read">Mark message read</button>
+        <button type="button" class="button button--danger" data-testid="orders-bulk-cancel">Cancel 3</button>
+        <button type="button" class="button button--primary" data-testid="orders-bulk-dispatch">Dispatch 3</button>
       </div>
     </div>
   </section>

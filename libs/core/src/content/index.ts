@@ -18,10 +18,12 @@ export * from './domain/exceptions/channel-adapter-lacks-field-updater.exception
 export * from './domain/exceptions/empty-after-description-format.exception';
 export * from './domain/exceptions/no-linked-offers.exception';
 export * from './domain/exceptions/no-product-master-adapter.exception';
+export * from './domain/exceptions/ambiguous-product-master.exception';
 export * from './domain/exceptions/content-publish-missing-version.exception';
 export * from './application/services/content-draft.service.interface';
 export * from './application/services/content-state-reader.service.interface';
 export * from './application/services/content-suggestion.service.interface';
+export * from './application/services/product-master-resolver.service.interface';
 export { ContentSuggestionService } from './application/services/content-suggestion.service';
 export * from './application/types/content-draft.types';
 export * from './application/types/content-state.types';

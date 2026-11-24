@@ -37,7 +37,7 @@
  * @module apps/api/src/integrations/application/services
  * @implements {IConnectionPricingSyncService}
  */
-import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   type Connection,
   type ConnectionConfig,
@@ -58,6 +58,7 @@ import {
   CONNECTION_SERVICE_TOKEN,
   type IConnectionService,
 } from '../interfaces/connection.service.interface';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
 import type { IConnectionPricingSyncService } from '../interfaces/connection-pricing-sync.service.interface';
 import type {
   ConnectionAsSourceEntry,
@@ -112,9 +113,12 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
     const lockKey = `pricing:sync:${connectionId}`;
     const token = await this.lock.acquire(lockKey, PRICING_SYNC_LOCK_TTL_MS);
     if (!token) {
-      throw new ConflictException(
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'PRICING_SYNC_UPDATE_IN_PROGRESS',
         "Another update to this connection's pricing & sync settings is already in progress. " +
-          'Try again in a moment.'
+          'Try again in a moment.',
+        { connectionId }
       );
     }
 
@@ -125,9 +129,12 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
         input.expectedUpdatedAt !== undefined &&
         connection.updatedAt.toISOString() !== input.expectedUpdatedAt
       ) {
-        throw new ConflictException(
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'PRICING_SYNC_STALE',
           "This connection's pricing & sync settings were changed elsewhere since this page was " +
-            'loaded. Reload and re-apply your changes.'
+            'loaded. Reload and re-apply your changes.',
+          { connectionId }
         );
       }
 
@@ -224,12 +231,15 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
       metadata.supportedCapabilities.includes(capability)
     );
     if (!isViableDestination) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'PRICING_RULE_DESTINATION_UNSUPPORTED',
         `Connection ${connection.id} (adapter ${metadata.adapterKey}) cannot receive a pricing ` +
           'rule: its adapter supports neither OfferManager nor ProductPublisher, so ADR-072 ' +
           'decision 2 reserves the default rule + per-source overrides to a viable destination ' +
           'connection. Configure pricing on the destination connection that publishes this ' +
-          'catalog instead.'
+          'catalog instead.',
+        { connectionId: connection.id, adapterKey: metadata.adapterKey }
       );
     }
   }

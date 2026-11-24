@@ -16,6 +16,7 @@ import type {
   OrderDispatchWindow,
   PriceTaxTreatment,
 } from './order.types';
+import type { PaymentMethod } from './payment-method.types';
 import type { PaymentStatus } from './payment-status.types';
 import type { CodToCollect } from './cod-to-collect.types';
 
@@ -39,6 +40,16 @@ export interface IncomingOrder {
    * renders a link only when present.
    */
   externalUrl?: string;
+
+  /**
+   * Internal OpenLinker order id this order was CREATED FROM, when the source
+   * platform recorded it at creation (OpenLinker stamps it on every order it
+   * pushes into a destination). Its presence proves the order is an echo of
+   * one OpenLinker itself created, which the destination-echo guard otherwise
+   * infers from an external-id mapping - a mapping that does not exist yet
+   * while the creating sync is still in flight (#4091 echo race).
+   */
+  createdFromInternalOrderId?: string;
 
   /**
    * Status as provided/mapped by adapter.
@@ -89,8 +100,39 @@ export interface IncomingOrder {
    * the Smart! program.
    */
   deliverySmart?: boolean;
+  /**
+   * The source asserts that IT (the marketplace) ships this order itself, e.g.
+   * Allegro One Fulfillment (#3636). Three-state like `buyerTaxId` (#2599):
+   * `true` is a positive statement; ABSENT means "not asserted" and must never
+   * be read as "the seller ships" - a source that cannot tell leaves it unset.
+   * Typed `true` on purpose: there is no `false` a source needs to send, so a
+   * source that cannot tell leaves the field unset.
+   */
+  fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * How the buyer pays (#3294), mapped onto the closed neutral vocabulary by the
+   * source adapter. Absent when the source did not report it; an adapter that
+   * cannot map its native value with evidence reports `'unknown'` - never a
+   * guess. Orthogonal to `paymentStatus`.
+   */
+  paymentMethod?: PaymentMethod;
+  /**
+   * The buyer's checkout message to the seller (#3538). Three states, like
+   * `buyerTaxId` (#2599): a string is the note verbatim, `null` means the
+   * source asserted the buyer left none, absent means the adapter could not
+   * read the field - never "no note". Coerce a raw source value with
+   * `readSourceBuyerNote`. Free text, so it is PII-gated at persistence.
+   */
+  buyerNote?: string | null;
+  /**
+   * The source's own payment-method id (#3474), e.g. Allegro `payment.type`.
+   * Opaque: the same vocabulary `SourceOptionsReader.listPaymentMethods`
+   * returns, used only as the key of an operator-configured payment mapping.
+   * Absent when the source did not report one.
+   */
+  sourcePaymentMethod?: string;
 
   /**
    * Marketplace-sourced cash-on-delivery collect amount (#1435). Set by the
@@ -126,6 +168,85 @@ export interface IncomingOrder {
    * Optional metadata for observability/debugging.
    */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Who decided a line is a gift (bundles/gifts epics, ports-v1 "Type additions").
+ * Closed so analytics can group by it; `channel` means the marketplace itself
+ * flagged the line, not that OpenLinker inferred it.
+ */
+export const GiftSourceValues = ['channel', 'cart-rule', 'ol-rule', 'operator'] as const;
+export type GiftSource = (typeof GiftSourceValues)[number];
+
+/**
+ * Marks an order line as a gift. Presence is the whole claim; absence means an
+ * ordinary line.
+ */
+export interface LineGift {
+  source: GiftSource;
+  /** Promotion / cart rule id when known; display and analytics only. */
+  ruleRef?: string;
+  /**
+   * How a sales document shows THIS gift (#3938, gifts spec section 8.3 level 1).
+   * Absent means "as in settings": the connection, then the OpenLinker default,
+   * decide. Carried only; the three-level resolver lives with the document
+   * mappers.
+   */
+  documentForm?: GiftDocumentForm;
+  /**
+   * The gross unit price, per gift unit in the order's currency, a
+   * `custom-price` gift shows at on a document. A decimal string: positive, at
+   * most two decimals. Present only together with `documentForm: 'custom-price'`.
+   */
+  documentUnitPrice?: string;
+}
+
+/** The gift forms on a document (gifts spec section 8.2). */
+export const GiftDocumentFormValues = [
+  'technical-cent',
+  'custom-price',
+  'priced-in',
+  'show-zero',
+  'omit',
+] as const;
+export type GiftDocumentForm = (typeof GiftDocumentFormValues)[number];
+
+export function isGiftDocumentForm(value: unknown): value is GiftDocumentForm {
+  return typeof value === 'string' && (GiftDocumentFormValues as readonly string[]).includes(value);
+}
+
+/**
+ * A `custom-price` amount: positive decimal string, at most two decimals.
+ * Same rule as `isGiftUnitPriceAmount` in sales-documents, restated here
+ * because this vocabulary file imports no sibling context.
+ */
+export function isGiftDocumentUnitPrice(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+(\.\d{1,2})?$/.test(value) && Number(value) > 0;
+}
+
+/**
+ * Narrows an untyped value (a persisted snapshot, a plugin payload) into a
+ * {@link LineGift}. Returns `undefined` rather than guessing for any shape or
+ * source this build does not recognise, so an unknown value reads as "ordinary
+ * line" instead of a fabricated gift.
+ */
+export function readLineGift(value: unknown): LineGift | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (!(GiftSourceValues as readonly unknown[]).includes(raw.source)) return undefined;
+  const gift: LineGift = { source: raw.source as GiftSource };
+  if (typeof raw.ruleRef === 'string') gift.ruleRef = raw.ruleRef;
+  // An unrecognised form reads as absent ("as in settings"), never as a guess.
+  // A `custom-price` without a usable amount cannot be applied: absent too.
+  if (isGiftDocumentForm(raw.documentForm)) {
+    if (raw.documentForm !== 'custom-price') {
+      gift.documentForm = raw.documentForm;
+    } else if (isGiftDocumentUnitPrice(raw.documentUnitPrice)) {
+      gift.documentForm = raw.documentForm;
+      gift.documentUnitPrice = raw.documentUnitPrice;
+    }
+  }
+  return gift;
 }
 
 export interface IncomingOrderItem {
@@ -188,6 +309,16 @@ export interface IncomingOrderItem {
 
   /** ISO 3166-1 alpha-2 the channel resolved its rate against. Provenance only. */
   taxRateCountry?: string;
+
+  /** Present when the line is a gift. Absent means an ordinary line. */
+  gift?: LineGift;
+
+  /**
+   * Units of the mapped variant per sold unit (e.g. an Allegro multipack).
+   * Absent means 1. A value above 1 on a variant with no bundle definition
+   * holds the order, since reserving or shipping one unit would under-deliver.
+   */
+  packQuantity?: number;
 }
 
 /**
@@ -227,6 +358,15 @@ export interface IncomingOrderTotals {
    * {@link OrderTotals.shippingGross}.
    */
   shippingGross?: number;
+
+  /**
+   * The VAT rate the SOURCE charged on delivery, as a percent-as-string code
+   * (`'23'`, `'8'`, `'0'`; ADR-063 vocabulary). Absent means the source did not
+   * report exactly one rate - never `0`. Carried, never computed (ADR-063): it
+   * only lets a document state the delivery rate when the basket's items carry
+   * none, and an operator `fixed` delivery rate always wins over it.
+   */
+  shippingTaxRate?: string;
 }
 
 export interface IncomingOrderAddress {

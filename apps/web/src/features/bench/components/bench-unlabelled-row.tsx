@@ -19,7 +19,7 @@ import type { ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchUnlabelledParcel } from '../api/bench-parcel.types';
-import { benchWorkCopy } from '../lib/bench-work.copy';
+import { useMessages } from '../../../shared/i18n';
 
 export interface BenchUnlabelledRowProps {
   readonly parcel: BenchUnlabelledParcel;
@@ -30,17 +30,18 @@ export function BenchUnlabelledRow({
   parcel,
   onOpenParcel,
 }: BenchUnlabelledRowProps): ReactElement {
+  const copy = useMessages('bench').work.tabs;
   const body = (
     <>
       <div className="bench-rail-row__identity">
         <span className="bench-rail-row__reference">{parcel.orderReference}</span>
         <span className="bench-rail-row__meta">
-          {benchWorkCopy.tabs.nothingLeftHere}
+          {copy.nothingLeftHere}
           {parcel.carrier === null ? null : <> · {parcel.carrier}</>}
         </span>
       </div>
       <StatusBadge tone="error" withDot compact>
-        {benchWorkCopy.tabs.unlabelledBadge}
+        {copy.unlabelledBadge}
       </StatusBadge>
     </>
   );

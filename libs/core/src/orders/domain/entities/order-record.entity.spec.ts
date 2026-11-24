@@ -44,6 +44,28 @@ describe('OrderRecord.paymentStatus', () => {
   });
 });
 
+describe('OrderRecord.status (#1596)', () => {
+  it.each(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])(
+    'returns the recognised order status %s from the snapshot',
+    (status) => {
+      expect(makeRecord({ status }).status).toBe(status);
+    },
+  );
+
+  it('returns undefined when the snapshot has no status key', () => {
+    expect(makeRecord({}).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is an unrecognised string', () => {
+    expect(makeRecord({ status: 'archived' }).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is a non-string value', () => {
+    expect(makeRecord({ status: 42 }).status).toBeUndefined();
+    expect(makeRecord({ status: null }).status).toBeUndefined();
+  });
+});
+
 describe('OrderRecord.codToCollect (#1435)', () => {
   it('returns the sourced amount when the snapshot carries a well-formed pair', () => {
     expect(makeRecord({ codToCollect: { amount: '510.94', currency: 'PLN' } }).codToCollect).toEqual({
@@ -218,5 +240,140 @@ describe('OrderRecord.isCancelled (#1984)', () => {
 
   it('returns true when cancelledAt is set', () => {
     expect(makeRecordWithCancelledAt(new Date('2026-08-01T00:00:00Z')).isCancelled).toBe(true);
+  });
+});
+
+describe('OrderRecord.buyerName (#3553)', () => {
+  it('should read the billing name first', () => {
+    const record = makeRecord({
+      billingAddress: { firstName: 'Jan', lastName: 'Kowalski' },
+      shippingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+    });
+
+    expect(record.buyerName).toBe('Jan Kowalski');
+  });
+
+  it('should fall back to the shipping name when billing has none', () => {
+    const record = makeRecord({
+      billingAddress: { city: 'Warsaw' },
+      shippingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+    });
+
+    expect(record.buyerName).toBe('Anna Nowak');
+  });
+
+  it('should be undefined under hash-only mode, never the redaction marker', () => {
+    const record = makeRecord({
+      billingAddress: { address1: '[REDACTED]', city: '[REDACTED]', country: 'PL' },
+      shippingAddress: { firstName: '[REDACTED]', lastName: '[REDACTED]' },
+    });
+
+    expect(record.buyerName).toBeUndefined();
+  });
+
+  it('should be undefined when the snapshot carries no address', () => {
+    expect(makeRecord({}).buyerName).toBeUndefined();
+  });
+});
+
+describe('OrderRecord.orderNumber (#3554)', () => {
+  it("should read the channel's order number from the snapshot", () => {
+    expect(makeRecord({ orderNumber: ' XKBKNABJK ' }).orderNumber).toBe('XKBKNABJK');
+  });
+
+  it('should be undefined when the source reported no number', () => {
+    expect(makeRecord({}).orderNumber).toBeUndefined();
+    expect(makeRecord({ orderNumber: '' }).orderNumber).toBeUndefined();
+  });
+});
+
+describe('OrderRecord.physicalItems / componentLineIdsOf (#3607)', () => {
+  const snapshotItems = [
+    { id: 'l1', productId: 'p-set', variantId: 'v-set', quantity: 2, price: 30 },
+    { id: 'l2', productId: 'p-x', variantId: 'v-x', quantity: 1, price: 5 },
+  ];
+  const expansion = {
+    v: 1 as const,
+    definitions: [
+      {
+        variantId: 'v-set',
+        version: 3,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 2 },
+          { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+        ],
+      },
+    ],
+  };
+
+  it('should equal the commercial list when no expansion was recorded', () => {
+    const record = makeRecord({ items: snapshotItems });
+    expect(record.physicalItems.map((i) => i.id)).toEqual(['l1', 'l2']);
+    expect(record.componentLineIdsOf('l1')).toEqual(['l1']);
+    expect(record.componentsOfLine('l1')).toEqual([]);
+  });
+
+  it('should expand the frozen bundle line and keep the others', () => {
+    const record = Object.assign(makeRecord({ items: snapshotItems }), { lineExpansion: expansion });
+    expect(record.physicalItems.map((i) => [i.id, i.productId, i.quantity])).toEqual([
+      ['l1~c:v-a', 'p-a', 4],
+      ['l1~c:v-b', 'p-b', 2],
+      ['l2', 'p-x', 1],
+    ]);
+    expect(record.orderItems.map((i) => i.id)).toEqual(['l1', 'l2']);
+    expect(record.componentLineIdsOf('l1')).toEqual(['l1~c:v-a', 'l1~c:v-b']);
+    expect(record.componentLineIdsOf('l2')).toEqual(['l2']);
+    expect(record.componentsOfLine('l1')).toEqual([
+      { componentLineId: 'l1~c:v-a', perUnit: 2 },
+      { componentLineId: 'l1~c:v-b', perUnit: 1 },
+    ]);
+  });
+
+  it('should still report the components of a bundle line the operator edited to 0 (#3520)', () => {
+    const channel = { items: snapshotItems };
+    const effective = { items: snapshotItems.filter((i) => i.id !== 'l1') };
+    const record = Object.assign(makeRecord(effective), {
+      lineExpansion: expansion,
+    }) as OrderRecord;
+    Object.defineProperty(record, 'channelSnapshotRaw', { value: channel });
+    expect(record.orderItems.map((i) => i.id)).toEqual(['l2']);
+    expect(record.componentsOfLine('l1')).toEqual([
+      { componentLineId: 'l1~c:v-a', perUnit: 2 },
+      { componentLineId: 'l1~c:v-b', perUnit: 1 },
+    ]);
+  });
+
+  it('should describe a bundle line with its frozen components and version (#3624)', () => {
+    const record = Object.assign(makeRecord({ items: snapshotItems }), { lineExpansion: expansion });
+    expect(record.bundleLines).toEqual([
+      {
+        lineId: 'l1',
+        bundleVariantId: 'v-set',
+        version: 3,
+        components: [
+          { lineId: 'l1~c:v-a', variantId: 'v-a', productId: 'p-a', quantity: 4, perUnit: 2 },
+          { lineId: 'l1~c:v-b', variantId: 'v-b', productId: 'p-b', quantity: 2, perUnit: 1 },
+        ],
+      },
+    ]);
+  });
+
+  it('should have no bundle lines without an expansion (#3624)', () => {
+    expect(makeRecord({ items: snapshotItems }).bundleLines).toEqual([]);
+  });
+});
+
+describe('OrderRecord.rawMultipackLines (#3624)', () => {
+  it('should read the unresolved lines sold as several units of one product', () => {
+    const record = makeRecord({
+      items: [
+        { id: 'a', name: 'Kawa x3', packQuantity: 3, productRef: { type: 'offer', externalId: 'O-1' } },
+        { id: 'b', packQuantity: 1, productRef: { type: 'offer', externalId: 'O-2' } },
+        { id: 'c', productRef: { type: 'offer', externalId: 'O-3' } },
+      ],
+    });
+    expect(record.rawMultipackLines).toEqual([
+      { itemId: 'a', name: 'Kawa x3', packQuantity: 3, productRef: { type: 'offer', externalId: 'O-1' } },
+    ]);
   });
 });

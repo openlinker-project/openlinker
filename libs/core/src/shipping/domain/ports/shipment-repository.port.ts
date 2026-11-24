@@ -44,6 +44,16 @@ export interface ShipmentRepositoryPort {
    */
   findMany(filters: ShipmentFilters, pagination: ShipmentPagination): Promise<PaginatedShipments>;
 
+  /**
+   * How many shipments match the filters (#4043) - the same predicate
+   * `findMany` applies, so a summary count always equals the list total for
+   * the same filters.
+   */
+  count(filters: ShipmentFilters): Promise<number>;
+
+  /** Every shipping-provider connection id that owns at least one shipment (#4043). */
+  listConnectionIds(): Promise<string[]>;
+
   findById(id: string): Promise<Shipment | null>;
 
   /**
@@ -241,8 +251,9 @@ export interface ShipmentRepositoryPort {
    * rather than writing it beside adds NO new failure mode - the release was
    * already an un-caught `await` on both failure paths - while making the
    * accounting structurally complete. Both callers are failure paths in
-   * `ShipmentStatusSyncService.relayWaybillToParticipants`; there is no third
-   * caller that could count a non-failure.
+   * `relayWaybillUnderClaim` (`waybill-relay.ts`, shared by the carrier poll and
+   * the source-side fulfilment read-back); there is no third caller that could
+   * count a non-failure.
    *
    * `failure` is REQUIRED, not optional. An optional argument would be a silent
    * decline: a caller that omitted it would release the claim and record

@@ -61,6 +61,7 @@ import { OfferBuilderValidationException } from '../../domain/exceptions/offer-b
 import { OfferCreationInvariantException } from '../../domain/exceptions/offer-creation-invariant.exception';
 import { OfferCreationRecordNotFoundException } from '../../domain/exceptions/offer-creation-record-not-found.exception';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
+import { OfferMappingRepositoryPort } from '../../domain/ports/offer-mapping-repository.port';
 import {
   OFFER_CREATION_JOB_DEAD_ERROR_CODE,
   type OfferCreationError,
@@ -72,6 +73,7 @@ import type {
 import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
 } from '../../listings.tokens';
@@ -102,7 +104,9 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
-    private readonly taxRateJournal: ITaxRateJournalService
+    private readonly taxRateJournal: ITaxRateJournalService,
+    @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
+    private readonly offerMappings: OfferMappingRepositoryPort
   ) {}
 
   async executeCreation(input: ExecuteOfferCreationInput): Promise<ExecuteOfferCreationResult> {
@@ -232,6 +236,12 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     // attempt would make a later channel disagreement unattributable.
     await this.journalWrittenTaxRate(input, command, observedAt);
 
+    // E2E-25 - the variant may have been listed again because its previous
+    // offer was refused by the marketplace at creation and is dead. Drop that
+    // offer's mapping now that a replacement exists, so stock and price writes
+    // target the new offer only.
+    await this.retireDeadOfferMappings(input, result.externalOfferId);
+
     if (finalRecord.status === 'validating') {
       try {
         await this.offerStatusPoll.scheduleFirstPoll({
@@ -282,6 +292,63 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       );
     }
     return abandoned;
+  }
+
+  /**
+   * Retire the variant's mappings to offers the marketplace refused at
+   * creation (E2E-25).
+   *
+   * Such an offer stays `inactive` on the marketplace for good - Allegro will
+   * neither end nor delete it - and the duplicate guard already lets its
+   * variant be listed again. Once that happens the variant has two Offer
+   * mappings on the connection, and every reader resolving a variant's offers
+   * (`getExternalIds`: inventory propagation, price changes, field updates,
+   * the stale-offer pause) would keep writing to the dead one beside the new
+   * one. Deleting the dead mapping here fixes all of them at once, instead of
+   * teaching each reader the predicate.
+   *
+   * Only after a replacement offer exists: until then the dead offer is the
+   * variant's only trace on the channel, and the listings page keeps showing
+   * it. The creation record keeps the dead offer id and its refusal reason.
+   * The offer itself is left on the marketplace - the operator removes it in
+   * the seller panel.
+   *
+   * **Never throws.** The new offer already exists and `loadOrCreateRecord`
+   * carries no terminal-state guard, so a throw here would let a retry call
+   * `createOffer` again - a duplicate live offer. A mapping left behind only
+   * costs extra writes to a dead offer.
+   */
+  private async retireDeadOfferMappings(
+    input: ExecuteOfferCreationInput,
+    newExternalOfferId: string
+  ): Promise<void> {
+    try {
+      const deadOfferIds = await this.offerMappings.findDeadFailedCreationOfferIds(
+        input.connectionId,
+        input.internalVariantId
+      );
+      for (const deadOfferId of deadOfferIds) {
+        if (deadOfferId === newExternalOfferId) continue;
+        await this.identifierMapping.deleteMapping(
+          CORE_ENTITY_TYPE.Offer,
+          deadOfferId,
+          input.connectionId
+        );
+        this.logger.log(
+          `Retired the mapping to offer ${deadOfferId}, refused by the marketplace at creation, ` +
+            `after offer ${newExternalOfferId} replaced it. The dead offer still exists on the ` +
+            `marketplace and must be removed in the seller panel. ` +
+            `variantId=${input.internalVariantId} connectionId=${input.connectionId}`
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Offer ${newExternalOfferId} created, but retiring the variant's dead offer mappings failed - ` +
+          `stock and price writes may still reach the dead offer. ` +
+          `variantId=${input.internalVariantId} connectionId=${input.connectionId} ` +
+          `error=${(err as Error).message}`
+      );
+    }
   }
 
   /**

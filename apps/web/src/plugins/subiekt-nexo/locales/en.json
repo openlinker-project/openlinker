@@ -1,0 +1,107 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "Sfera bridge",
+      "description": "Issue invoices in Subiekt nexo through the OpenLinker Sfera bridge running on your Windows machine."
+    }
+  },
+  "subiektCapabilityDescriptors": {
+    "regulatoryTransmissionTracking": {
+      "help": "Surface the bridge-reported regulatory transmission (KSeF) status on orders for this connection.",
+      "label": "Show KSeF status badge"
+    }
+  },
+  "subiektCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "Stored securely on the server. Rotate to replace the bridge token without restarting the API.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "label": "Bridge token",
+    "newTokenPlaceholder": "New bridge token",
+    "rotate": "Rotate bridge token",
+    "rotating": "Rotating...",
+    "save": "Save new token",
+    "toast": {
+      "description": "The new bridge token is now in use.",
+      "title": "Credentials rotated"
+    }
+  },
+  "subiektInvoiceCorrectionFlow": {
+    "addLine": "+ Add line",
+    "cancel": "Cancel",
+    "col": {
+      "lp": "Lp",
+      "newPrice": "New gross",
+      "newQty": "New qty",
+      "remove": "Remove"
+    },
+    "correcting": "Correcting <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "Correction failed",
+    "issued": "Correction issued",
+    "issuedBody": "The correcting document was sent to Subiekt.",
+    "issuedOn": "Issued <strong>{date}</strong>",
+    "ksefRef": "KSeF <strong>{reference}</strong>",
+    "lineNum": "Line number {n}",
+    "linesRequired": "At least one line with a line number is required.",
+    "newPrice": "New gross, line {n}",
+    "newQty": "New qty, line {n}",
+    "note": "A correcting invoice (faktura korygująca) can adjust quantity and/or price per line - e.g. a returned unit or a post-sale price reduction. Subiekt transmits the correction to KSeF; OpenLinker tracks the status.",
+    "providerTag": "Subiekt · slot",
+    "removeLine": "Remove line {n}",
+    "submit": "Issue correction",
+    "submitting": "Issuing…",
+    "title": "Issue correction"
+  },
+  "subiektInvoiceDetailSection": {
+    "downloadPdf": "Download PDF",
+    "ksefNumber": "KSeF number",
+    "ksefStatus": "KSeF status",
+    "note": "Subiekt sent this to KSeF itself - OpenLinker reads the status, it doesn't transmit.",
+    "pdf": "Invoice PDF",
+    "pending": "Pending",
+    "readFrom": "read from Subiekt",
+    "title": "Regulatory status"
+  },
+  "subiektSetupRoute": {
+    "crumb": "Connect Subiekt nexo"
+  },
+  "subiektStructuredSection": {
+    "bridgeUrl": {
+      "label": "Bridge URL"
+    },
+    "cashRegister": {
+      "error": "Couldn't check Subiekt for cash registers - invoices will use the default register.",
+      "help": "Invoices are always issued from the Centrala branch - the bridge does not support switching Oddział.",
+      "idFallback": "#{id}",
+      "label": "Cash register (Stanowisko Kasowe)",
+      "loading": "Checking Subiekt for cash registers…",
+      "optionWithSymbol": "{name} ({symbol})",
+      "unset": "Default (Subiekt decides)"
+    },
+    "payment": {
+      "account": {
+        "empty": "No bank account is configured in Subiekt, so Transfer invoices will use whatever form Subiekt applies by default. Add an account under Konfiguracja systemu → Rachunki bankowe, then reload this page.",
+        "error": "Couldn't check Subiekt for bank accounts - invoices will use whatever was last saved.",
+        "label": "Bank account for Transfer invoices",
+        "loading": "Checking Subiekt for bank accounts…",
+        "multiPayerWarning": "This Subiekt install has more than one płatnik. OpenLinker cannot yet confirm which płatnik an invoice is issued under, so the account picked here is not guaranteed to match the issuing payer.",
+        "option": "{bankName} - {accountNumber}",
+        "optionDefault": "{bankName} - {accountNumber} (default in Subiekt)",
+        "ownerFallback": "Podmiot {id}",
+        "placeholder": "Select a bank account…"
+      },
+      "method": {
+        "cash": "Cash",
+        "help": "Sent on every issued invoice. Leave unset to let Subiekt apply its own default; pick Transfer only when the seller has a bank account configured in Subiekt.",
+        "label": "Default payment method",
+        "transfer": "Transfer",
+        "unset": "Not set (Subiekt default)"
+      },
+      "summary": "Payment method for invoice:"
+    },
+    "triggerModel": {
+      "label": "Invoice trigger",
+      "unset": "Not set"
+    }
+  }
+}

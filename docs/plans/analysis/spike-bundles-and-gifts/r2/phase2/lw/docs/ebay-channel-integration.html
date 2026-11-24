@@ -1,0 +1,423 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/ebay-channel-integration"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>eBay channel integration</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='eBay channel integration';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1_1757326147" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+eBay Channel Integration
+<a href="/articles/documentation/ebay-channel-integration/a/h1_1757326147" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-channel-integration/a/h1_1757326147&#39;,this);"></a></h1>
+<div class="row">
+  
+  <div class="main-intro">
+    eBay integration allows you to connect to your <font color="#ff0000"><span style="color: #333333; text-decoration-color: initial;">eBay</span></font>&nbsp;seller account via API.
+    <br/>
+    <br/>
+    <div class="CHBoxShowMore">
+      <div class="showMoreLabel nonPrintable" style="margin-top: 10px; margin-bottom: 10px; cursor: pointer; display:table" onclick="toggleBox(this)">
+        [+] <a id="supportedAMZ" href="javascript:void(0)" target="_top">List of supported&nbsp;eBay Marketplaces.
+        </a>
+          </div>
+          <div class="hideLabel Article_hiddenBlock nonPrintable" style="margin-top: 10px; margin-bottom: 10px; cursor: pointer; display:table" onclick="toggleBox(this)">
+            [-]
+            <a href="javascript:void(0)" target="_top">
+              Click to hide the list
+            </a>
+          </div>
+          <div class="showMoreContent Article_hiddenBlock" style="padding-left: 20px">
+            <p>
+            </p>
+            <ul class="grid">
+              <li>
+                Australia	
+              </li>
+              <li>
+                AU	
+              </li>
+              <li>
+                <a href="https://www.ebay.com.au/" target="_blank">ebay.com.au</a>	
+              </li>
+              <li>
+                Austria	
+              </li>
+              <li>
+                AT	
+              </li>
+              <li>
+                <a href="https://www.ebay.at/" target="_blank">ebay.at</a>	
+              </li>
+              <li>
+                Belgium_Dutch	
+              </li>
+              <li>
+                BENL	
+              </li>
+              <li>
+                <a href="https://www.ebay.be/" target="_blank">ebay.be</a>	
+              </li>
+              <li>
+                Belgium_French	
+              </li>
+              <li>
+                BEFR	
+              </li>
+              <li>
+                <a href="https://www.ebay.be/" target="_blank">ebay.be</a>	
+              </li>
+              <li>
+                Canada	
+              </li>
+              <li>
+                CA	
+              </li>
+              <li>
+                <a href="https://www.ebay.ca/" target="_blank">ebay.ca</a>	
+              </li>
+              <li>
+                CanadaFrench	
+              </li>
+              <li>
+                CAFR	
+              </li>
+              <li>
+                <a href="https://www.ebay.ca/" target="_blank">ebay.ca</a>	
+              </li>
+              <li>
+                eBayMotors	
+              </li>
+              <li>
+                Part of US site	
+              </li>
+              <li>
+              </li>
+              <li>
+                France	
+              </li>
+              <li>
+                FR	
+              </li>
+              <li>
+                <a href="https://www.ebay.fr/" target="_blank">ebay.fr</a>	
+              </li>
+              <li>
+                Germany	
+              </li>
+              <li>
+                DE	
+              </li>
+              <li>
+                <a href="https://www.ebay.de/" target="_blank">ebay.de</a>	
+              </li>
+              <li>
+                HongKong	
+              </li>
+              <li>
+                HK	
+              </li>
+              <li>
+                <a href="https://www.ebay.com.hk/" target="_blank">ebay.com.hk</a>	
+              </li>
+              <li>
+                India	
+              </li>
+              <li>
+                IN	
+              </li>
+              <li>
+                <a href="https://sellglobal.ebay.in/seller-center/" target="_blank">ebay.in</a>	
+              </li>
+              <li>
+                Ireland	
+              </li>
+              <li>
+                IE	
+              </li>
+              <li>
+                <a href="https://www.ebay.ie/" target="_blank">ebay.ie</a>	
+              </li>
+              <li>
+                Italy	
+              </li>
+              <li>
+                IT	
+              </li>
+              <li>
+                <a href="https://www.ebay.it/" target="_blank">ebay.it</a>	
+              </li>
+              <li>
+                Malaysia	
+              </li>
+              <li>
+                MY	
+              </li>
+              <li>
+                <a href="https://www.ebay.com.my/" target="_blank">ebay.com.my</a>	
+              </li>
+              <li>
+                Netherlands	
+              </li>
+              <li>
+                NL	
+              </li>
+              <li>
+                <a href="https://www.ebay.nl/" target="_blank">ebay.nl</a>	
+              </li>
+              <li>
+                Philippines	
+              </li>
+              <li>
+                PH	
+              </li>
+              <li>
+                <a href="https://www.ebay.ph/" target="_blank">ebay.ph</a>	
+              </li>
+              <li>
+                Poland	
+              </li>
+              <li>
+                PL	
+              </li>
+              <li>
+                <a href="https://www.ebay.pl/" target="_blank">ebay.pl</a>	
+              </li>
+              <li>
+                Singapore	
+              </li>
+              <li>
+                SG	
+              </li>
+              <li>
+                <a href="https://www.ebay.com.sg/" target="_blank">ebay.com.sg</a>	
+              </li>
+              <li>
+                Spain	
+              </li>
+              <li>
+                SP	
+              </li>
+              <li>
+                <a href="https://www.ebay.es/" target="_blank">ebay.sp</a>	
+              </li>
+              <li>
+                Switzerland	
+              </li>
+              <li>
+                CH	
+              </li>
+              <li>
+                <a href="https://www.ebay.ch/" target="_blank">ebay.ch</a>	
+              </li>
+              <li>
+                UK	
+              </li>
+              <li>
+                UK	
+              </li>
+              <li>
+                <a href="https://www.ebay.co.uk/" target="_blank">ebay.co.uk</a>	
+              </li>
+              <li>
+                USA	
+              </li>
+              <li>
+                US	
+              </li>
+              <li>
+                <a href="https://www.ebay.com/" target="_top">ebay.com</a>	
+              </li>
+            </ul>
+          </div>
+    </div>
+    
+    
+    
+  </div>
+  <div class="main-logo">
+    <img class="main-logo" src="/resources/Storage/documentation/Logos/eBay.png" data-id="27930" data-shortcode="image" style="" alt="" data-ch-thumbnail-mode="none"/>
+  </div>
+</div>
+
+
+<div class="alert-success">
+  <span class="fa fa-info-circle icon-background-blue"></span>&nbsp;eBay channel integration is a <b>Linnworks Direct&nbsp;</b>integration - developed, maintained and supported by Linnworks.
+</div>
+
+
+
+
+
+<h3 id="h4__751493465" style="" data-has-heading-anchor="true">
+  Supported features
+<a href="/articles/documentation/ebay-channel-integration/a/h4__751493465" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-channel-integration/a/h4__751493465&#39;,this);"></a></h3>
+<table class="table-striped">
+  <tbody>
+    <tr>
+      <td>
+        <a href="/articles/documentation/channels-inventory-updates" target="_blank" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">Inventory Updates</a>
+        <br/>
+      </td>
+      <td>
+        Linnworks can automatically send changes in stock levels to the channel.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/articles/documentation/channels-order-download" target="_blank" onclick="return n(&#39;!documentation/channels-order-download&#39;,this);">Order Download</a>
+        <br/>
+      </td>
+      <td>
+        Channel orders can be automatically downloaded into Linnworks.
+        <br/>
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-tax" target="_blank" onclick="return n(&#39;!documentation/channels-tax&#39;,this);">Channel Tax</a>
+  </td>
+  <td>
+    Tax information and settings displayed on orders in Linnworks are provided by the channel during order download.
+  </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-inventory-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a>
+      </td>
+      <td>
+        Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+        <br/>
+        Additionally, eBay integration enables striking off listings and canceling pending relists. <a href="/articles/documentation/ebay-strike-off-cancel-pending-relist" onclick="return n(&#39;!documentation/ebay-strike-off-cancel-pending-relist&#39;,this);">See more here.</a>
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/listing-creation-steps/a/lm_createlistings" target="_blank" onclick="return n(&#39;!documentation/listing-creation-steps/a/lm_createlistings&#39;,this);">Listing Creation</a>
+      </td>
+      <td>
+        New listings on the channel can be created via Linnworks. A full guide on the eBay listing tool is <a href="/articles/documentation/ebay-configurator" onclick="return n(&#39;!documentation/ebay-configurator&#39;,this);">here</a>.
+        <br/>
+        eBay also supports re-creating existing listings in Linnworks via the <i><a href="/articles/documentation/extract-inventory" target="_blank" onclick="return n(&#39;!documentation/extract-inventory&#39;,this);">Extract Inventory</a></i> tool.&nbsp;
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-location-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+      </td>
+      <td>
+        Orders can be downloaded and inventory updates sent from specific locations.
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-order-cancellation" target="_blank" onclick="return n(&#39;!documentation/channels-order-cancellation&#39;,this);">Order Cancellation</a>
+      </td>
+      <td>
+        Orders can be canceled on the channel via Linnworks.
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-order-despatch" target="_blank" onclick="return n(&#39;!documentation/channels-order-despatch&#39;,this);">Order Despatch</a>
+      </td>
+      <td>
+        Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+      </td>
+    </tr>
+    
+    
+    <tr>
+      <td>
+        <a href="/articles/documentation/channels-order-refunds" target="_blank" onclick="return n(&#39;!documentation/channels-order-refunds&#39;,this);">Order Refunds</a>
+      </td>
+      <td>
+        Orders can be refunded on the channel via Linnworks.
+      </td>
+    </tr>
+    
+    
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-payment-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a>
+      </td>
+      <td>
+        Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the selection on the channel.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <a href="/articles/documentation/channels-price-change" target="_blank" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a>
+      </td>
+      <td>
+        Prices on channel listings can be automatically updated via Linnworks.
+      </td>
+    </tr>
+    <tr>
+      <td width="20%">
+        <a href="/articles/documentation/channels-shipping-mapping" target="_blank" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a>
+      </td>
+      <td>
+        Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the selection on the channel.
+      </td>
+    </tr>
+      </tbody>
+</table>
+<div class="row">
+  <div class="col-md-6">
+    <h4 id="h4_15828802" data-has-heading-anchor="true">
+      Next steps:
+    <a href="/articles/documentation/ebay-channel-integration/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-channel-integration/a/h4_15828802&#39;,this);"></a></h4>
+    <ul>
+      <li>
+        <a href="/articles/documentation/ebay-add-new" onclick="return n(&#39;!documentation/ebay-add-new&#39;,this);">Add New</a>
+      </li>
+      <li>
+        <a href="/articles/documentation/ebay-settings" onclick="return n(&#39;!documentation/ebay-settings&#39;,this);">Settings</a>
+      </li>
+    </ul>
+  </div>
+  <div class="col-md-6">
+    <h4 style="" id="h4_234702287" data-has-heading-anchor="true">
+      Additional information:
+    <a href="/articles/documentation/ebay-channel-integration/a/h4_234702287" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/ebay-channel-integration/a/h4_234702287&#39;,this);"></a></h4>
+    <ul>
+      <li>
+        <a href="/articles/documentation/ebay-fulfillment" onclick="return n(&#39;!documentation/ebay-fulfillment&#39;,this);">eBay Fulfillment</a>
+      </li>
+      
+      <li>
+        <a href="/articles/documentation/ebay-strike-off-cancel-pending-relist" onclick="return n(&#39;!documentation/ebay-strike-off-cancel-pending-relist&#39;,this);">eBay strike-off &amp; cancel pending relist</a>
+      </li>
+      
+      <li>
+        <a href="/articles/documentation/ebay-strike-off-cancel-pending-relist" onclick="return n(&#39;!documentation/ebay-strike-off-cancel-pending-relist&#39;,this);"></a><a href="/articles/documentation/ebay-global-shipping" onclick="return n(&#39;!documentation/ebay-global-shipping&#39;,this);">eBay Global Shipping Programme</a>
+      </li>
+      
+      <li>
+        <a href="/articles/documentation/ebay-global-shipping" onclick="return n(&#39;!documentation/ebay-global-shipping&#39;,this);"></a><a href="/articles/documentation/ebay-click-collect" onclick="return n(&#39;!documentation/ebay-click-collect&#39;,this);">eBay Click &amp; Collect</a>
+      </li>
+    </ul>
+  </div>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

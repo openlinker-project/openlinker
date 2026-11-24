@@ -25,16 +25,8 @@
 import type { ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { HOLD_REASON_COPY, holdReasonLabel, isHoldReason } from '../lib/order-hold.types';
-
-/**
- * Hint for a reason this build does not recognise.
- *
- * The order IS held — a newer backend simply named a reason this bundle predates
- * — so the badge says the true, useful half and declines to invent the rest.
- */
-const UNRECOGNISED_HINT =
-  'This order is held for a reason this version of OpenLinker does not recognise. Open the order to see it.';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { holdReasonHint, holdReasonLabel } from '../lib/order-hold.types';
 
 interface OrderHoldBadgeProps {
   /** The row/detail `activeHoldReason`; unknown or absent renders nothing. */
@@ -44,6 +36,7 @@ interface OrderHoldBadgeProps {
 }
 
 export function OrderHoldBadge({ reason, compact = false }: OrderHoldBadgeProps): ReactElement | null {
+  const copy = useMessages('orders').holds;
   // Absence is the ONLY thing that renders nothing. An unrecognised reason used
   // to render nothing too, which made a held order look unheld — it survived
   // only because `deriveOrderLifecyclePhase` keys `held` off the same field, an
@@ -51,19 +44,21 @@ export function OrderHoldBadge({ reason, compact = false }: OrderHoldBadgeProps)
   // The timeline made the opposite call and said so; this now matches it.
   if (reason === null || reason === undefined || reason === '') return null;
 
+  // An unrecognised reason gets the generic hint: the order IS held - a newer
+  // backend simply named a reason this bundle predates - so the badge says the
+  // true, useful half and declines to invent the rest.
   const label = holdReasonLabel(reason);
-  const hint = isHoldReason(reason) ? HOLD_REASON_COPY[reason].hint : UNRECOGNISED_HINT;
-  const copy = { label, hint };
+  const hint = holdReasonHint(reason);
 
   return (
     // `StatusBadge` takes no `title`, so the hint rides on a wrapper — and it is
     // written out for a screen reader too, because WHY an order is held is the
     // load-bearing half of this badge rather than a hover nicety.
-    <span className="order-hold-badge" title={copy.hint}>
+    <span className="order-hold-badge" title={hint}>
       <StatusBadge tone="warning" withDot compact={compact}>
-        {`On hold — ${copy.label}`}
+        {interpolate(copy.onHold, { reason: label })}
       </StatusBadge>
-      <span className="sr-only">{` — ${copy.hint}`}</span>
+      <span className="sr-only">{` - ${hint}`}</span>
     </span>
   );
 }

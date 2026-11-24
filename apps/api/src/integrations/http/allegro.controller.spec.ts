@@ -196,6 +196,55 @@ describe('AllegroController', () => {
         })
       );
     });
+
+    it('seeds deliveryOnDocuments into initialConfig for a new connection', async () => {
+      const deliveryOnDocuments = {
+        countries: { PL: { name: 'Koszt dostawy', rate: 'goods', freeDelivery: 'omit', rateFormat: 'plain' } },
+        default: { name: 'Shipping', rate: 'goods', freeDelivery: 'omit', rateFormat: 'plain' },
+      };
+      oauthService.generateAuthorizationUrl.mockResolvedValue({ authorizationUrl: 'u', state: 's' });
+
+      await controller.connect({
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: 'https://example.com/callback',
+        deliveryOnDocuments,
+      });
+
+      expect(oauthService.generateAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialConfig: { environment: 'sandbox', deliveryOnDocuments },
+        })
+      );
+    });
+
+    it('drops deliveryOnDocuments when re-authenticating so config is untouched', async () => {
+      oauthService.generateAuthorizationUrl.mockResolvedValue({ authorizationUrl: 'u', state: 's' });
+
+      await controller.connect({
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: 'https://example.com/callback',
+        connectionId: 'conn-existing',
+        deliveryOnDocuments: { default: { name: 'Shipping', rate: 'goods', freeDelivery: 'omit', rateFormat: 'plain' } },
+      });
+
+      expect(oauthService.generateAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ initialConfig: { environment: 'sandbox' } })
+      );
+    });
+
+    it('rejects an invalid deliveryOnDocuments before starting OAuth', async () => {
+      await expect(
+        controller.connect({
+          clientId: 'c',
+          clientSecret: 's',
+          redirectUri: 'https://example.com/callback',
+          deliveryOnDocuments: { countries: { POL: {} } },
+        })
+      ).rejects.toThrow(BadRequestException);
+      expect(oauthService.generateAuthorizationUrl).not.toHaveBeenCalled();
+    });
   });
 
   describe('callback', () => {

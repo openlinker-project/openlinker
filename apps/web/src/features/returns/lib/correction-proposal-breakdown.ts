@@ -82,7 +82,10 @@ export function lineCredit(line: ReturnCorrectionProposalLine): number {
   // candidate are resolved by different parts of the matcher, so a mismatch
   // between them would otherwise produce a NEGATIVE credit that silently
   // reduces the headline instead of crediting nothing.
-  return Math.max(0, Math.round(deltaQty * candidate.unitPriceGross * 100) / 100);
+  const quantityCredit = Math.max(0, Math.round(deltaQty * candidate.unitPriceGross * 100) / 100);
+  // Components that came back one by one (#3933) credit an AMOUNT on the same
+  // line: the set stays one invoice line, so its quantity is not reduced.
+  return Math.round((quantityCredit + (line.componentCredit?.amountGross ?? 0)) * 100) / 100;
 }
 
 export function computeCorrectionProposalBreakdown(

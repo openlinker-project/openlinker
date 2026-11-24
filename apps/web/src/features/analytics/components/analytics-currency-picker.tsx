@@ -9,6 +9,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Select } from '../../../shared/ui';
 import { DISPLAY_CURRENCY_OPTIONS } from '../lib/display-currency.lib';
 
@@ -36,13 +37,14 @@ export function AnalyticsCurrencyPicker({
   displayCurrency,
   onChange,
 }: AnalyticsCurrencyPickerProps): ReactElement {
+  const copy = useMessages('analytics').analyticsCurrencyPicker;
   const options = DISPLAY_CURRENCY_OPTIONS.filter((code) => code !== reportingCurrency);
 
   return (
     <label className="analytics-toolbar__field">
-      <span className="sr-only">Display currency</span>
+      <span className="sr-only">{copy.label}</span>
       <Select
-        aria-label="Display currency"
+        aria-label={copy.label}
         value={displayCurrency ?? NATIVE_VALUE}
         onChange={(event) => {
           const value = event.target.value;
@@ -50,11 +52,13 @@ export function AnalyticsCurrencyPicker({
         }}
       >
         <option value={NATIVE_VALUE}>
-          {reportingCurrency ? `No conversion · ${reportingCurrency}` : 'Reporting currency'}
+          {reportingCurrency
+            ? interpolate(copy.noConversion, { currency: reportingCurrency })
+            : copy.reportingCurrency}
         </option>
         {options.map((code) => (
           <option key={code} value={code}>
-            Convert to {code}
+            {interpolate(copy.convertTo, { currency: code })}
           </option>
         ))}
       </Select>

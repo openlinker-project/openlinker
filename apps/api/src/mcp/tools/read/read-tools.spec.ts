@@ -210,7 +210,7 @@ describe('get_availability tool', () => {
       ),
     getAvailabilityByVariantIds: (ids: readonly string[]) =>
       Promise.resolve(
-        ids.map((productVariantId) => ({ productVariantId, totalAvailable: 3, locationCount: 1 }))
+        ids.map((productVariantId) => ({ productVariantId, totalAvailable: 3, locationCount: 1, positionCount: 1 }))
       ),
   } as unknown as IInventoryQueryService;
 
@@ -239,7 +239,9 @@ describe('get_availability tool', () => {
     );
 
     expect(payloadOf(result)).toEqual({
-      variants: [{ variantId: 'ol_variant_1', totalAvailable: 3, locationCount: 1 }],
+      variants: [
+        { variantId: 'ol_variant_1', totalAvailable: 3, locationCount: 1, positionCount: 1 },
+      ],
     });
   });
 
@@ -275,6 +277,8 @@ describe('get_order tool', () => {
       syncStatus: [],
       fulfillmentState: null,
       paymentStatus: 'paid',
+      // A plain-object fixture has no getters, so the folded value is stated.
+      paymentMethodOrUnknown: 'cash_on_delivery',
       dispatchByAt: null,
       createdAt: new Date('2026-07-01T10:00:00.000Z'),
       updatedAt: new Date('2026-07-02T10:00:00.000Z'),
@@ -307,6 +311,8 @@ describe('get_order tool', () => {
         orderNumber: 'A-1',
         status: 'NEW',
         paymentStatus: 'paid',
+        // #3294 - a closed vocabulary with no buyer data, so it is projected.
+        paymentMethod: 'cash_on_delivery',
         totals: { grandTotal: 42 },
       })
     );

@@ -13,6 +13,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { ShoperSetupForm } from './shoper-setup-form';
+import { getMessages } from '../../../shared/i18n';
 
 vi.mock('../../demo', () => ({ captureDemoEvent: vi.fn() }));
 
@@ -92,6 +93,38 @@ describe('ShoperSetupForm', () => {
     expect(screen.getByText(/ProductMaster, InventoryMaster, OrderSource/)).toBeInTheDocument();
   });
 
+  it('should show the review step instead of creating when the form is submitted before the last step', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Shoper' });
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+    await fillShopStep();
+    await fillTokenStep();
+
+    const form = screen.getByRole('button', { name: 'Next' }).closest('form');
+    if (!form) throw new Error('wizard form not found');
+    fireEvent.submit(form);
+
+    expect(await screen.findByRole('button', { name: 'Create connection' })).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('should advance one step and create nothing when Enter is pressed in the token field', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Shoper' });
+    renderWithProviders(<ShoperSetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+    await fillShopStep();
+    fireEvent.change(screen.getByLabelText('API token'), { target: { value: 'tok_123456' } });
+
+    const form = screen.getByLabelText('API token').closest('form');
+    if (!form) throw new Error('wizard form not found');
+    fireEvent.submit(form);
+
+    expect(await screen.findByRole('group', { name: 'Capabilities' })).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('submits the create payload with the chosen capabilities', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Shoper' });
     renderWithProviders(<ShoperSetupForm />, {
@@ -127,7 +160,7 @@ describe('ShoperSetupForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
 
     expect(await screen.findByText('Unable to create connection')).toBeInTheDocument();
-    expect(screen.getByText(/must use https/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('points to the order defaults only when the shop will receive orders', async () => {

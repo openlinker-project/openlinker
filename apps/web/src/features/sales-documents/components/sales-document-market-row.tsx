@@ -35,12 +35,13 @@ import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import {
   describeSalesDocumentMarketOutcome,
   type SalesDocumentMarketOutcomeCopy,
-} from '../lib/sales-document-market-outcome-copy';
+} from '../lib/sales-document-market-outcome';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 import type { SalesDocumentMarketRow as MarketRowData } from '../api/sales-document-markets.types';
+import { interpolate, useMessages, usePlural, type PluralFn } from '../../../shared/i18n';
 
-function countryLabel(country: string): string {
-  return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? '★ Rest of world' : country;
+function countryLabel(country: string, restOfWorld: string): string {
+  return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? restOfWorld : country;
 }
 
 function toneFor(copy: SalesDocumentMarketOutcomeCopy): StatusBadgeTone {
@@ -55,9 +56,6 @@ function toneFor(copy: SalesDocumentMarketOutcomeCopy): StatusBadgeTone {
 // configure a market" had to learn three labels for one button. The
 // "Starter setup available" caption already says a template exists; the
 // button itself now always says the one thing it always does.
-function actionLabel(): string {
-  return 'Configure';
-}
 
 // #2806 — plain-sentence meta copy, replacing the mono "PL · 0 rules · 3
 // orders in the last 30 days" fragment with prose an operator can read
@@ -65,20 +63,21 @@ function actionLabel(): string {
 function describeMarketMeta(
   row: MarketRowData,
   isDetectedOnly: boolean,
+  copy: MarketRowCopy,
+  plural: PluralFn,
   windowDays?: number,
 ): string {
-  const ruleClause = row.ruleCount === 1 ? '1 rule configured' : `${row.ruleCount} rules configured`;
+  const ruleClause = plural(row.ruleCount, copy.rulesConfigured);
   if (!isDetectedOnly) return ruleClause;
+  const orderCount = row.orderCount ?? 0;
   const orderClause =
-    row.orderCount === 1
-      ? windowDays !== undefined
-        ? `1 order in the last ${windowDays} days`
-        : '1 order'
-      : windowDays !== undefined
-        ? `${row.orderCount} orders in the last ${windowDays} days`
-        : `${row.orderCount} orders`;
-  return `${orderClause}, ${ruleClause}`;
+    windowDays !== undefined
+      ? plural(orderCount, copy.ordersInWindow, { days: windowDays })
+      : plural(orderCount, copy.orders);
+  return interpolate(copy.meta, { orders: orderClause, rules: ruleClause });
 }
+
+type MarketRowCopy = ReturnType<typeof useMessages<'sales-documents'>>['salesDocumentMarketRow'];
 
 export interface SalesDocumentMarketRowProps {
   row: MarketRowData;
@@ -101,6 +100,8 @@ export function SalesDocumentMarketRow({
   windowDays,
 }: SalesDocumentMarketRowProps): ReactElement {
   const copy = describeSalesDocumentMarketOutcome(row.outcome);
+  const rowCopy = useMessages('sales-documents').salesDocumentMarketRow;
+  const plural = usePlural();
   const isDetectedOnly = row.orderCount !== null;
 
   return (
@@ -122,13 +123,13 @@ export function SalesDocumentMarketRow({
           className={`sales-document-market-row__dot sales-document-market-row__dot--${toneFor(copy)}`}
           aria-hidden="true"
         />
-        <span className="sr-only">{copy.needsDecision ? 'Needs attention' : 'Set up'}</span>
+        <span className="sr-only">{copy.needsDecision ? rowCopy.needsAttention : rowCopy.setUp}</span>
       </div>
 
       <div className="sales-document-market-row__identity">
-        <span className="sales-document-market-row__name">{countryLabel(row.country)}</span>
+        <span className="sales-document-market-row__name">{countryLabel(row.country, rowCopy.restOfWorld)}</span>
         <span className="sales-document-market-row__meta muted-text">
-          {describeMarketMeta(row, isDetectedOnly, windowDays)}
+          {describeMarketMeta(row, isDetectedOnly, rowCopy, plural, windowDays)}
         </span>
       </div>
 
@@ -139,8 +140,9 @@ export function SalesDocumentMarketRow({
         </div>
         {copy.needsDecision && copy.reasonShort ? (
           <span className="sales-document-market-row__reason muted-text">
-            {copy.reasonShort}
-            {row.hasTemplate ? ' · Starter setup available' : ''}
+            {row.hasTemplate
+              ? interpolate(rowCopy.reasonWithTemplate, { reason: copy.reasonShort })
+              : copy.reasonShort}
           </span>
         ) : null}
       </div>
@@ -152,7 +154,7 @@ export function SalesDocumentMarketRow({
           disabled={disabled}
           onClick={() => onSelect(row.country)}
         >
-          {actionLabel()}
+          {rowCopy.configure}
         </Button>
       </div>
     </li>

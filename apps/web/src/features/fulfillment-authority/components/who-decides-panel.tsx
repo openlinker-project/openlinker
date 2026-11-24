@@ -47,7 +47,7 @@ import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { ApiError } from '../../../shared/api/api-error';
 import { useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
@@ -60,7 +60,7 @@ import {
   PRESET_CARD_COPY,
   QUESTION_ORDER,
   WHO_DECIDES_PAGE_COPY,
-} from '../lib/who-decides.copy';
+} from '../lib/who-decides-text';
 import { AttentionSection } from './attention-section';
 import {
   WhoDecidesPresetConfirm,
@@ -286,7 +286,7 @@ export function WhoDecidesPanel(): ReactElement {
         ) : null}
 
         {write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <button
               className="button button--primary who-decides__apply"
               type="button"

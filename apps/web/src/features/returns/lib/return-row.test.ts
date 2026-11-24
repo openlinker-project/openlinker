@@ -166,7 +166,7 @@ describe('stage presentation (#2377)', () => {
   });
 
   it('should use the spec labels verbatim', () => {
-    expect(RETURN_STAGE_LABELS.received_awaiting_disposition).toBe('Received — awaiting disposition');
+    expect(RETURN_STAGE_LABELS.received_awaiting_disposition).toBe('Received - awaiting disposition');
     expect(RETURN_STAGE_LABELS.awaiting_parcel).toBe('Awaiting parcel');
   });
 });

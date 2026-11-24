@@ -12,6 +12,9 @@
 import { z } from 'zod';
 import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
 import { hasCapabilityConflict } from '../lib/capability-metadata';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('woocommerceSetupSchema');
 
 export const WOOCOMMERCE_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
@@ -35,23 +38,23 @@ export const WOOCOMMERCE_FALLBACK_CAPABILITIES: CoreCapability[] = [
 const isHttps = (value: string): boolean => value.startsWith('https://');
 
 export const woocommerceSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
+  name: z.string().trim().min(1, msg('nameRequired')),
   siteUrl: z
     .string()
     .trim()
-    .min(1, 'Site URL is required')
-    .url('Site URL must be a valid URL (e.g. https://shop.example.com)')
-    .refine(isHttps, 'Site URL must use HTTPS'),
+    .min(1, msg('siteUrlRequired'))
+    .url(msg('siteUrlInvalid'))
+    .refine(isHttps, msg('siteUrlHttps')),
   consumerKey: z
     .string()
     .trim()
-    .min(1, 'Consumer key is required')
-    .refine((v) => v.startsWith('ck_'), 'Consumer key must start with ck_'),
+    .min(1, msg('consumerKeyRequired'))
+    .refine((v) => v.startsWith('ck_'), msg('consumerKeyPrefix')),
   consumerSecret: z
     .string()
     .trim()
-    .min(1, 'Consumer secret is required')
-    .refine((v) => v.startsWith('cs_'), 'Consumer secret must start with cs_'),
+    .min(1, msg('consumerSecretRequired'))
+    .refine((v) => v.startsWith('cs_'), msg('consumerSecretPrefix')),
   enabledCapabilities: z
     .array(z.enum(CORE_CAPABILITY_VALUES))
     .default(WOOCOMMERCE_FALLBACK_CAPABILITIES)
@@ -59,7 +62,7 @@ export const woocommerceSetupSchema = z.object({
     // 400, so the payload must never carry both.
     .refine(
       (capabilities) => !hasCapabilityConflict(capabilities),
-      'InventoryMaster and OfferManager cannot both be enabled on the same connection.',
+      msg('capabilityConflict'),
     ),
 });
 

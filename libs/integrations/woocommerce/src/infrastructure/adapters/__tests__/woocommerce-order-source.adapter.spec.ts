@@ -6,6 +6,7 @@ import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-re
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import type { WooCommerceOrder } from '../order-source/woocommerce-order.types';
 
 const makeConnection = (overrides: Partial<Connection> = {}): Connection =>
@@ -395,6 +396,59 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: '55' });
     });
 
+    it.each([
+      ['a text', '  Ring twice ', 'Ring twice'],
+      ['the empty string core sends for none', '', null],
+      ['an HTML-escaped text with a line break (N-26)', 'Tom &amp; Jerry<br>door 5', 'Tom & Jerry\ndoor 5'],
+    ])('should report the buyer note from customer_note: %s (#3538)', async (_label, note, expected) => {
+      const order = makeOrder({ customer_note: note });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.buyerNote).toBe(expected);
+    });
+
+    it('should leave the buyer note unknown when the payload omits customer_note (#3538)', async () => {
+      const order = makeOrder({});
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.buyerNote).toBeUndefined();
+      expect('buyerNote' in result).toBe(false);
+    });
+
+    it.each([
+      ['cod', 'processing', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
+      ['cod', 'on-hold', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
+      ['bacs', 'on-hold', 'bank_transfer', undefined, undefined],
+      ['przelewy24', 'processing', 'unknown', 'paid', undefined],
+      [undefined, 'processing', 'unknown', 'paid', undefined],
+      ['cod', 'cancelled', 'cash_on_delivery', undefined, undefined],
+    ])(
+      'should report method, status and COD amount together for gateway %s in status %s (#3294)',
+      async (payment_method, status, expectedMethod, expectedStatus, expectedCod) => {
+        const order = makeOrder({ status, payment_method });
+        const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+        const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+        const result = await adapter.getOrder({ externalOrderId: '1' });
+
+        expect(result.paymentMethod).toBe(expectedMethod);
+        expect(result.paymentStatus).toBe(expectedStatus);
+        // The collect amount is the gross `total` (tax and fees included), and
+        // exists only while the order is reported cod. Everything else - paid,
+        // unreported, dead - must carry none, or a label would pre-fill it.
+        expect(result.codToCollect).toEqual(expectedCod);
+        // The core-COD order is the one that used to read as paid and lose its
+        // COD amount on the label; the facts must never disagree again.
+        expect(checkPaymentFactsConsistency(result)).toEqual([]);
+      },
+    );
+
     it('should map shipping.methodName from the shipping line method_title so the delivery-method label populates (#1776)', async () => {
       const order = makeOrder({
         shipping_lines: [{ id: 1, method_id: 'flat_rate', method_title: 'Flat Rate', total: '5.00' }],
@@ -516,6 +570,43 @@ describe('WooCommerceOrderSourceAdapter', () => {
       const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
 
       await expect(adapter.getOrder({ externalOrderId: '1' })).rejects.toBe(serverError);
+    });
+
+    describe('delivery VAT rate from tax_lines (#3910)', () => {
+      const readRate = async (taxLines: unknown): Promise<string | undefined> => {
+        const order = makeOrder({ tax_lines: taxLines } as never);
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+        return result.totals.shippingTaxRate;
+      };
+
+      it('should carry the single rate that taxed shipping', async () => {
+        await expect(
+          readRate([
+            { rate_id: 1, rate_percent: 23, shipping_tax_total: '2.30' },
+            { rate_id: 2, rate_percent: 8, shipping_tax_total: '0.00' },
+          ]),
+        ).resolves.toBe('23');
+      });
+
+      it('should report unknown when several rates taxed shipping', async () => {
+        await expect(
+          readRate([
+            { rate_id: 1, rate_percent: 23, shipping_tax_total: '1.00' },
+            { rate_id: 2, rate_percent: 8, shipping_tax_total: '0.50' },
+          ]),
+        ).resolves.toBeUndefined();
+      });
+
+      it('should report unknown when no tax line carries shipping tax', async () => {
+        await expect(
+          readRate([{ rate_id: 1, rate_percent: 23, shipping_tax_total: '0.00' }]),
+        ).resolves.toBeUndefined();
+        await expect(readRate(undefined)).resolves.toBeUndefined();
+      });
     });
 
     describe('gross amounts WooCommerce reports as components (#3365)', () => {

@@ -28,15 +28,16 @@
  */
 import { useState, type ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { RefundConfirmationForm, describeRefundReason } from '../../orders';
-import { RETURN_MONEY_COPY } from '../lib/return-money.copy';
-import { RETURN_RECEIVE_COPY } from '../lib/return-custody.copy';
-import { describeRefundError } from '../lib/refund-error';
+import { RefundConfirmationForm, describeRefundReason, useRefundSentToShopify } from '../../orders';
+import { describeRefundError, readRefundCeilingExceeded } from '../lib/refund-error';
+import type { RefundCeilingExceededDetails } from '../lib/refund-error';
+import { BundleRefundHint } from './bundle-refund-hint';
 import { useConfirmReturnRefundMutation } from '../hooks/use-return-custody-mutations';
 import type { ReturnDetail } from '../api/returns.types';
 
@@ -46,32 +47,40 @@ interface ReturnMoneyPanelProps {
 }
 
 export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps): ReactElement {
+  const returnsCopy = useMessages('returns');
+  const moneyCopy = returnsCopy.money.panel;
+  const ceilingCopy = returnsCopy.money.refundCeiling;
   const { showToast } = useToast();
   const confirmRefund = useConfirmReturnRefundMutation(detail.id);
+  const sentToShopify = useRefundSentToShopify(detail.sourceConnectionId);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ceiling, setCeiling] = useState<RefundCeilingExceededDetails | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const isOrphan = detail.bucket === 'orphan';
 
   return (
     <section className="returns-money-panel" id="money">
-      <h2 className="section-title">{RETURN_MONEY_COPY.sectionTitle}</h2>
+      <h2 className="section-title">{moneyCopy.sectionTitle}</h2>
 
       {detail.refunds.length === 0 ? (
-        <p className="text-muted">{RETURN_MONEY_COPY.none}</p>
+        <p className="text-muted">{moneyCopy.none}</p>
       ) : (
         <KeyValueList
           items={detail.refunds.map((refund) => ({
             id: refund.id,
-            label: `${refund.amount} ${refund.currency}`,
+            label: interpolate(returnsCopy.timeline.refundAmount, { amount: refund.amount, currency: refund.currency }),
             value: (
               <span>
-                {describeRefundReason(refund.reason)}
-                {' — '}
                 {/* The honesty device, rendered. */}
-                {refund.executedBy === 'operator_out_of_band'
-                  ? RETURN_MONEY_COPY.executedOutOfBand
-                  : RETURN_MONEY_COPY.executedOther}
+                {interpolate(moneyCopy.refundLine, {
+                  reason: describeRefundReason(refund.reason),
+                  executedBy:
+                    refund.executedBy === 'operator_out_of_band'
+                      ? moneyCopy.executedOutOfBand
+                      : moneyCopy.executedOther,
+                })}
               </span>
             ),
           }))}
@@ -79,34 +88,54 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
       )}
 
       {/* Stated up front rather than discovered by submitting into a 409. */}
-      {isOrphan ? <Alert tone="warning">{RETURN_MONEY_COPY.orphanBlocked}</Alert> : null}
+      {isOrphan ? <Alert tone="warning">{moneyCopy.orphanBlocked}</Alert> : null}
 
       {writeAccess.visible && !isOrphan ? (
-        <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURN_RECEIVE_COPY.readOnly}>
+        <ReadOnlyLock active={writeAccess.demoReadOnly} message={returnsCopy.custody.receive.readOnly}>
           {open ? (
             <RefundConfirmationForm
               currency={detail.orderCurrency}
+              sentToShopify={sentToShopify}
+              renderAmountSuggestion={(apply) => (
+                <BundleRefundHint
+                  currency={detail.orderCurrency}
+                  onUse={apply}
+                  returnId={detail.id}
+                />
+              )}
               error={error}
               onCancel={() => {
                 setOpen(false);
                 setError(null);
+                setCeiling(null);
+                setAcknowledged(false);
               }}
               onSubmit={(input) => {
                 setError(null);
                 confirmRefund.mutate(
-                  { ...input, currency: detail.orderCurrency ?? '' },
+                  {
+                    ...input,
+                    currency: detail.orderCurrency ?? '',
+                    ...(acknowledged ? { acknowledgeAboveCeiling: true } : {}),
+                  },
                   {
                     onSuccess: (result) => {
                       setOpen(false);
+                      setCeiling(null);
+                      setAcknowledged(false);
                       // Two different facts, reported as two.
                       showToast(
                         result.refundRecordWritten
-                          ? { tone: 'success', description: RETURN_MONEY_COPY.success }
-                          : { tone: 'warning', description: RETURN_MONEY_COPY.recordNotWritten }
+                          ? { tone: 'success', description: moneyCopy.success }
+                          : { tone: 'warning', description: moneyCopy.recordNotWritten }
                       );
                     },
-                    onError: (mutationError) =>
-                      setError(describeRefundError(mutationError)),
+                    onError: (mutationError) => {
+                      const exceeded = readRefundCeilingExceeded(mutationError);
+                      setCeiling(exceeded);
+                      // The callout replaces the generic line; it names the figures.
+                      setError(exceeded === null ? describeRefundError(mutationError) : null);
+                    },
                   }
                 );
               }}
@@ -114,9 +143,23 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
             />
           ) : (
             <Button onClick={() => setOpen(true)} type="button">
-              {RETURN_MONEY_COPY.action}
+              {moneyCopy.action}
             </Button>
           )}
+          {open && ceiling !== null ? (
+            <Alert tone="warning" title={ceilingCopy.title}>
+              <p>{interpolate(ceilingCopy.figures, { ...ceiling })}</p>
+              <label>
+                <input
+                  checked={acknowledged}
+                  onChange={(event) => setAcknowledged(event.target.checked)}
+                  type="checkbox"
+                />{' '}
+                {ceilingCopy.acknowledge}
+              </label>
+              <p className="text-muted">{ceilingCopy.acknowledgeHint}</p>
+            </Alert>
+          ) : null}
         </ReadOnlyLock>
       ) : null}
     </section>

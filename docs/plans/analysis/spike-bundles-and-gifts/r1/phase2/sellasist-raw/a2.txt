@@ -1,0 +1,473 @@
+##### Automatyczna synchronizacja cen produktów w zestawie | https://sellasist.pl/pomoc/automatyczna-synchronizacja-cen-produktow-w-zestawie/ | modified 2024-12-06
+#### 
+ Automatyczna synchronizacja cen dla Zestawów produktów w Sellasist 
+ Funkcja automatycznej synchronizacji cen dla produktów w zestawie to narzędzie, które znacząco ułatwi zarządzanie asortymentem w Sellasist oszczędzając cenny czas.
+Nową funkcjonalność znajdziesz w zakładce Asortyment -> Zestawy, edytując konkretny zestaw. Po przejściu do widoku edycji, w zakładce Produkty, w kolumnie „Cena produktu w zestawie” znajduje się checkbox „Auto. Synchronizacja„.
+[IMG:]
+ #### 
+ Jak włączyć funkcję automatycznej synchronizacji cen dla zestawów? Włączanie automatycznej synchronizacji: 
+ 1. Przejdź do Asortyment -> Zestawy i wybierz zestaw do edycji.
+2. W zakładce Produkty zaznacz checkbox „Auto. Synchronizacja” przy odpowiednich produktach w kolumnie „Cena produktu w zestawie„.
+3. Kliknij Zapisz, aby aktywować funkcję automatycznej synchronizacji.
+[IMG:]
+ #### 
+ Aktualizacja cen w zestawie: 
+- Gdy zmienisz cenę na karcie produktu (Asortyment -> Produkty -> edycja wybranego produktu -> Informacje podstawowe) i zapiszesz nowe ustawienia, cena w zestawie automatycznie się zaktualizuje.
+- Zmiana ceny produktu na karcie produktu spowoduje, że cena w zestawie oraz suma wszystkich produktów w zestawie również się zmieni na aktualną.
+Przykład: 
+[IMG:]
+zmieniamy cenę na podaną w zrzucie ekranu:
+[IMG:]
+Po zapisaniu ustawień i przejściu do edycji zestawu, cena produktu oraz suma zestawu zostanie uaktualniona. 
+Dodatkowo informacja o zmianie ceny produktu jest widoczna w logach czynności. 
+[IMG:] 
+ #### 
+ Ważne uwagi: 
+- Aby synchronizacja działała poprawnie, należy zmieniać cenę konkretnego produktu w polu „Cena sprzedaży brutto” na karcie produktu (Asortyment -> Produkty -> edycja wybranego produktu -> Informacje podstawowe).
+- Zmiana ceny produktu w kolumnie „Cena produktu w zestawie” (Asortyment -> Zestawy -> Produkty w zestawie) nie zaktualizuje ceny w karcie produktu. 
+- Funkcja automatycznej synchronizacji nie dotyczy zestawów dynamicznych.
+Dzięki automatycznej synchronizacji cen, nie musisz ręcznie aktualizować cen produktów oraz sumy dla każdego zestawu. Zmiana ceny na karcie produktu automatycznie odzwierciedli się w zestawie. Dzięki temu zawsze masz pewność, że ceny są spójne i aktualne.
+POWIĄZANE ARTYKUŁY: 
+Zestawy Produktów w Panelu Sellingo i Sellasist
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Zestawy dynamiczne | https://sellasist.pl/pomoc/zestawy-dynamiczne-2/ | modified 2026-10-11
+Zestaw dynamiczny to specjalny rodzaj oferty sprzedażowej, który pozwala klientom na spersonalizowanie zakupionych produktów poprzez wybór z różnych dostępnych opcji lub wariantów składających się na ten zestaw. Oznacza to, że klient ma możliwość dostosowania zakupionego zestawu do własnych preferencji, co jest szczególnie przydatne w przypadku produktów oferowanych w różnych wersjach, kolorach, rozmiarach lub innych wariantach.
+Zestawy dynamiczne zwiększają atrakcyjność oferowanych produktów oraz pomagają wyróżnić się na tle konkurencji poprzez oferowanie indywidualnych rozwiązań dla potrzeb klienta.
+Klienci doceniają możliwość dostosowania produktów do własnych potrzeb, co z kolei może przyczynić się do -zwiększenia satysfakcji z zakupów.
+ #### 
+ Jak dodać zestaw dynamiczny w panelu Sellasist? 
+ W panelu Sellasist mamy dwa sposoby tworzenia zestawów dynamicznych, które zależą od typu produktów, które chcesz do nich dołączyć:
+ #### 
+ I. Metoda: Dodawanie produktu bez wariantów 
+ Gdy chcesz stworzyć zestaw dynamiczny produktów w Sellasist, gdzie produkty nie mają wariantów: Jako przykład, stworzymy zestaw spodni damskich w różnych kolorach.
+1. Z zakładki Asortyment -> Zestawy.
+2. Kliknij Dodaj zestaw produktowy.
+Tutaj zaczniesz tworzyć swój nowy zestaw, np. „Spodnie damskie Ola„.
+3. Następnie należy dodać odpowiednie produkty do zestawu. Kliknij Dodaj produkt
+[IMG:]
+Najpierw dodaje „Spodnie damskie Ola czarne„. Po dodaniu kliknij w kolumnie Akcje symbol „+”, aby dodać kolejny produkt do zestawu dynamicznego.
+[IMG:]
+Następnie dodaj „Spodnie damskie Ola kolor malinowy„. Ponownie kliknij „+” aby dodać jeszcze jeden produkt do zestawu.
+[IMG:]
+Na końcu dodajemy „Spodnie damskie Ola kolor niebieski„.
+4.Kliknij Zapisz.
+Po dodaniu wszystkich wariantów kolorów, zapisz swój zestaw.
+„Spodnie damskie Ola” są dostępne w trzech kolorach jako jeden zestaw.
+[IMG:]
+ #### 
+ Dodatkowe informacje: 
+- Przekształcanie produktu w zestaw:
+Jeśli masz już produkt w systemie i chcesz go przekształcić w zestaw, przejdź do Asortyment -> Produkty, znajdź produkt i wybierz opcję „edytuj produkt”.
+W edycji produktu znajdziesz opcję „przekształć w zestaw„, co pozwoli Ci dodać do tego produktu inne warianty czy dodatkowe produkty.
+[IMG:]
+ #### 
+ II. Metoda: Dodawanie produktu z wariantami 
+ W tej metodzie tworzymy zestaw dynamiczny z produktami mającymi warianty w Sellasist.
+Tworzenie zestawu dynamicznego z produktami, które mają różne warianty (np. rozmiary), pozwala klientom na dostosowanie zamówienia do swoich potrzeb. Oto jak możesz stworzyć np. „Zestaw jesienny” składający się z szala i kurtki, gdzie dla kurtki klient ma możliwość wyboru odpowiedniego rozmiaru.
+1. Przejdź do Asortyment -> Zestawy.
+2. Kliknij Dodaj zestaw produktowy.
+3. Dodaj nowy zestaw, nazywając go np. „Zestaw jesienny”.
+4. Następnie dodaj odpowiednie składowe zestawu:
+Przejdź do zakładki „Produkty” i dodaj poszczególne elementy zestawu:
+Jako pierwszy produkt dodajemy np. „Szal jesienny”. Jest to element stały w zestawie, bez opcji wyboru.
+5. Następnie dodaj drugi produkt, czyli kurtkę. Kliknij Dodaj produkt. Ponieważ kurtka ma różne rozmiary (warianty), pojawi się okno z możliwością wyboru wariantu.
+Uwaga!Aby przekształcić zestaw statyczny w dynamiczny, prosimy o pozostawienie co najmniej jednej cechy wariantu bez wyboru. Możesz oczywiście wybrać jedną cechę (w tym przypadku Kolor lub Rozmiar) – klient będzie miał wtedy ograniczony wybór co do jednej cechy. 
+*Jeżeli wybierzesz oba parametry (Kolor i Rozmiar) nie będzie to zestaw dynamiczny.
+[IMG:]
+6. Po dodaniu obu produktów powstał nasz przykładowy zestaw dynamiczny „Zestaw jesienny”, w którym szal jest produktem stałym, a przy kurtce klient może wybrać odpowiedni rozmiar/kolor.
+[IMG:]
+6. Kliknij Zapisz.
+W ten sposób masz już utworzone zestawy dynamiczne, które teraz możesz np. wystawić na Allegro.
+Uwaga! Zestawy dynamiczne umieszczamy na platformie Allegro jako standardową ofertę, a nie jako zestaw Allegro. 
+Więcej informacji o Zestawach Allegro i różnicach między ofertami podstawowymi a zestawami na tej platformie znajdziesz tutaj 
+[IMG:]
+ #### 
+ Proces zakupu i konfiguracja zestawu przez klienta 
+Dla ofert Allegro:
+1. Produkt jest wystawiony jako oferta Allegro.
+[IMG:]
+2. Następnie klient dokonuje zakupu naszego zestawu dynamicznego np. „Spodnie damskie Ola”. 
+3. Po zakupie klient automatycznie dostaje powiadomienie e-mail lub sms (w zależności od ustawień konta), zawierające link do strony wyboru. Strona służy do personalizacji wyboru odpowiedniego wariantu produktu.
+4. Klient klika w link zawarty w wiadomości, aby przejść do strony personalizacji na Sellasist.
+5. Klient personalizuje swój zakup. Na stronie znajdą się dostępne opcje dla Twojego zestawu dynamicznego. Dla naszego przykładu to 3 różne kolory:
+Przykład 1
+[IMG:]
+Przykład 2
+[IMG:]
+6. Klient potwierdza swój wybór:
+[IMG:]
+[IMG:]
+Pamiętaj! Strona personalizacji jest zoptymalizowana pod kątem urządzeń mobilnych, więc Twoi klienci mogą łatwo dokonywać wyborów na swoich smartfonach czy tabletach.
+Rekomendujemy korzystanie z powiadomień SMS, jeśli preferujesz szybkie i wygodne dokonywanie wyboru na urządzeniu mobilnym.
+Powiadomienia ustawisz w Administracja -> Powiadomienia.
+więcej Jak i gdzie edytować powiadomienia i statusy zamówień?
+ #### 
+ Dodatkowe informacje: 
+- Dla zestawu dynamicznego, który składa się np. z 5 produktów można wybrać dowolną konfigurację w zależności od dostępności poszczególnych produktów wchodzących w skład zestawu:
+[IMG:]
+- Do czasu, kiedy klient nie dokona wyboru w edycji zamówienia widnieje informacja ‘Klient nie wybrał jeszcze produktu z grupy produktów zestawu”
+Przykład 1
+[IMG:]
+Po dokonaniu wyboru przez klienta ta informacja zostanie automatycznie zaktualizowana:
+[IMG:]
+Przykład 2
+[IMG:]
+Dodatkowo, masz tu możliwość ręcznego dostosowania wyboru w przypadku nie wybrania tego przez klienta.
+[IMG:]
+- Link do personalizacji zamówienia znajdziesz również w logach zamówienia:
+[IMG:]
+ #### 
+ STAN MAGAZYNOWY: 
+- Stan magazynowy zestawu dynamicznego zależy od dostępności każdego składnika wchodzącego w jego skład. Kiedy klient składa zamówienie, wybiera poszczególne elementy zestawu, co bezpośrednio wpływa na dostępność pozostałych kombinacji.
+Dla naszego zestawu „Spodnie damskie Ola”, który składa się z 1 pary spodni, klient może wybrać spodnie w jednym z trzech dostępnych kolorów: czarnym, niebieskim czy malinowym. Każdy kolor spodni jest dostępny w ilości 100 sztuk na magazynie, co oznacza, że możemy zaoferować łącznie 100 zestawów „Spodni damskich Ola”
+Sytuacja zmienia się, gdy zdecydujemy, że zestaw będzie zawierał 4 pary spodni. Klient ma teraz możliwość skomponowania zestawu z połączenia dowolnych kolorów, o ile łączna ilość spodni w zestawie wynosi 4. Przykładowo, klient może wybrać wszystkie spodnie w jednym kolorze lub stworzyć mieszany zestaw różnokolorowych spodni. W przypadku, gdy mamy na magazynie 100 szt. czarnych spodni, 100 szt. malinowych oraz 99 szt. niebieskich, maksymalna ilość możliwych do utworzenia zestawów wynosi 24. Dzieje się tak, ponieważ liczba dostępnych zestawów jest ograniczona przez najmniejszy dostępny stan magazynowy jednego ze składników – w tym przypadku niebieskich spodni.
+[IMG:]
+[IMG:]
+- Stan magazynowy produktów jest aktualizowany w systemie dopiero po dokonaniu wyboru przez klienta.
+Uwaga: Jeśli klient nie wybierze produktu lub wariantu z zestawu dynamicznego, zestaw nie zostanie prawidłowo rozbity na produkty składowe w zamówieniu, a ich stany magazynowe nie zostaną zaktualizowane.
+Dla pozostałych marketplaców (innych niż Allegro)
+Automatyczne powiadomienia dla klienta z wyborem określonego wariantu dla zestawu dynamicznego są domyślnie ustawione tylko dla ofert Allegro.
+Dla zamówień z innych marketplace niż Allegro musisz ustawić takie powiadomienie samodzielnie w swoim panelu administracyjnym.
+Możesz to ustawić w prosty sposób, dzięki funkcjom automatyzacji w Twoim systemie Sellasist.
+ #### 
+ Jak ustawić automatyczne powiadomienie z linkiem do wyboru odpowiedniego modelu/parametru produktu w zestawie dynamicznym? 
+ 1. W pierwszej kolejności warto utworzyć nowy status zamówienia o nazwie np. „Zamówienia z zestawem dynamicznym„. Pozwoli Ci to w prosty sposób wyfiltrować zamówienia, które zawierają zestaw dynamiczny i będziesz mógł łatwiej monitorować i zarządzać takimi zamówieniami.
+2. Przejdź do Administracja -> Statusy zamówień i dla grupy Nowe utwórz status zamówienia np. „Zamówienia z zestawem dynamicznym„.
+Więcej: Czym są Statusy Zamówień?
+[IMG:]
+3. Następnie stwórz akcję automatyczną, która będzie segregować nowe zamówienia i wyłapywać zamówienia, które zawierają Zestawy dynamiczne.
+4. W zakładce Administracja -> Automatyzacja -> Akcje dla zamówień.
+5. Na górze strony znajdziesz karty: Dziennik zdarzeń, Akcje dla asortymentu, Akcje dla zamówień.
+W Dzienniku zdarzeń znajdziesz wszystkie wykonane akcje.
+Możesz tu przeglądać raporty z ostatniego miesiąca i ręcznie uruchamiać akcje.
+Przejdź do sekcji Akcje dla zamówień -> Dodaj akcję automatyczną.
+[IMG:]
+6. Uzupełnij nazwę akcji
+ #### 
+ Uwaga! 
+ Jeżeli chcesz dodać nową akcję w Sellasist możesz wybrać między automatycznym uruchamianiem akcji po spełnieniu określonych warunków lub ręcznym aktywowaniem ich za pomocą przycisków (więcej o przyciskach: TUTAJ).
+Możesz również użyć obu sposobów uruchamiania akcji jednocześnie. Dzięki temu będziesz miał np. możliwość ponownego wykonania akcji, gdy automatyczna próba zakończy się niepowodzeniem.
+[IMG:]
+Dla uruchamiania samoczynnego:
+7. Ustaw opóźnienie jej wykonania w minutach.
+Opóźnienie określa czas, przez jaki wszystkie warunki muszą być spełnione, by akcja została wykonana. Dzięki temu można, np. sprawić, by produkty z zerowym stanem magazynowym zostały wyłączone dopiero wtedy, gdy ten stan utrzymuje się przez 5 dni. Jeżeli użyjesz opóźnienia nie może być ono niższe niż 5 minut.
+Ustaw tryb działania akcji.
+Masz do wyboru: tryb ciągły lub wybrane dni i godziny.
+Wybrane dni i godziny: w tym trybie akcje będą wykonywane tylko w wybranych dniach i godzinach. Zdarzenia, które miałyby się wykonać poza nimi będą wstrzymywane i realizowane dopiero w wybranym czasie. Jeśli nie podasz godzin działania, akcja będzie mogła być wykonywana całą dobę.
+Dzięki odpowiedniej konfiguracji możesz sprawić, by np. zamówienia trafiały do realizacji tylko w godzinach pracy Twojego magazynu.
+[IMG:]
+8. Kliknij Dodaj warunek. Wybierz z listy Zestaw dynamiczny i kliknij Dodaj warunek.
+[IMG:]
+9. Uzupełnij kryteria warunku:
+Data złożenia – Możesz wybrać datę złożenia zamówienia, aby zastosować warunek do zamówień złożonych w określonym okresie.
+Pamiętaj! Data jest ustawiana na czas tworzenia danej nowej akcji, tak aby nowa akcja była skierowana dla nowo wpływających zamówień. Jeżeli ustawisz datę wstecz, system sprawdzi wszystkie zamówienia z tego okresu i zastosuje do nich wybrany efekt akcji, co może być problematyczne dla zamówień już zrealizowanych.
+Zestaw dynamiczny: wybierz znajduje się w warunku
+[IMG:]
+*Możesz tu również dodać jeszcze jeden warunek „Źródło zamówienia”. Dzięki temu możesz wyfiltrować sobie poszczególne zamówienia zawierające zestaw dynamiczny według preferowanych źródeł, z którego pochodzą Twoje zamówienia.
+Więcej na temat warunku dla zamówień „Źródło zamówienia” – ŹRÓDŁO ZAMÓWIENIA – warunek automatyzacji dla zamówień
+10. Następnie kliknij Dodaj efekt „Zmień status” i wybierz nowo utworzony status „Zamówienia z zestawem dynamicznym”
+[IMG:]
+11. Kliknij Zapisz.
+12. Następnie dodaj Nową akcję automatyczną dla zamówień 
+13. Wybierz warunek „Status zamówienia” i ustaw status „Zamówienia z zestawem dynamicznym”
+[IMG:]
+14. Kliknij Dodaj efekt, wybierz „Wyślij powiadomienie” i kliknij Dodaj efekt.
+15. Z listy powiadomień wybierz powiadomienie „Wybierz wariant” i zaznacz, aby było wysyłane na adres klienta.
+[IMG:]
+Powiadomienie „Wybierz wariant” możesz ustawić w Administracja ->Powiadomienia -> sekcja Powiadomienia informacyjne
+Możesz tu również ustawić powiadomieni
+
+##### Zestawy dynamiczne | https://sellasist.pl/pomoc/zestawy-dynamiczne/ | modified 2024-10-01
+Zestaw dynamiczny to specjalny rodzaj oferty sprzedażowej, który pozwala klientom na spersonalizowanie zakupionych produktów poprzez wybór z różnych dostępnych opcji lub wariantów składających się na ten zestaw. Oznacza to, że klient ma możliwość dostosowania zakupionego zestawu do własnych preferencji, co jest szczególnie przydatne w przypadku produktów oferowanych w różnych wersjach, kolorach, rozmiarach lub innych wariantach.
+Zestawy dynamiczne zwiększają atrakcyjność oferowanych produktów oraz pomagają wyróżnić się na  tle konkurencji poprzez oferowanie indywidualnych rozwiązań dla potrzeb klienta. 
+Klienci doceniają możliwość dostosowania produktów do własnych potrzeb, co z kolei może przyczynić się do -zwiększenia satysfakcji z zakupów.
+ #### 
+ Jak dodać zestaw dynamiczny w panelu Sellasist? 
+ W panelu Sellasist mamy dwa sposoby tworzenia zestawów dynamicznych, które zależą od typu produktów, które chcesz do nich dołączyć:
+ #### 
+ I. Metoda: Dodawanie produktu bez wariantów 
+ Gdy chcesz stworzyć zestaw dynamiczny produktów w Sellasist, gdzie produkty nie mają wariantów: Jako przykład, stworzymy zestaw spodni damskich w różnych kolorach.
+1. Z zakładki Asortyment -> Zestawy.
+2. Kliknij Dodaj zestaw produktowy. 
+Tutaj zaczniesz tworzyć swój nowy zestaw, np. „Spodnie damskie Ola„.
+3. Następnie należy dodać odpowiednie produkty do zestawu. Kliknij Dodaj produkt
+[IMG:]
+Najpierw dodaje „Spodnie damskie Ola czarne„. Po dodaniu kliknij w kolumnie Akcje symbol „+”, aby dodać kolejny produkt do zestawu dynamicznego.
+[IMG:]
+Następnie dodaj „Spodnie damskie Ola kolor malinowy„. Ponownie kliknij „+” aby dodać jeszcze jeden produkt do zestawu.
+[IMG:]
+Na końcu dodajemy „Spodnie damskie Ola kolor niebieski„.
+4.Kliknij Zapisz.
+Po dodaniu wszystkich wariantów kolorów, zapisz swój zestaw. 
+„Spodnie damskie Ola” są dostępne w trzech kolorach jako jeden zestaw.
+[IMG:]
+ #### 
+ Dodatkowe informacje: 
+- Przekształcanie produktu w zestaw:
+Jeśli masz już produkt w systemie i chcesz go przekształcić w zestaw, przejdź do Asortyment -> Produkty, znajdź produkt i wybierz opcję „edytuj produkt”.
+W edycji produktu znajdziesz opcję „przekształć w zestaw„, co pozwoli Ci dodać do tego produktu inne warianty czy dodatkowe produkty.
+[IMG:]
+ #### 
+ II. Metoda: Dodawanie produktu z wariantami 
+ W tej metodzie tworzymy zestaw dynamiczny z produktami mającymi warianty w Sellasist.
+Tworzenie zestawu dynamicznego z produktami, które mają różne warianty (np. rozmiary), pozwala klientom na dostosowanie zamówienia do swoich potrzeb. Oto jak możesz stworzyć np. „Zestaw jesienny” składający się z szala i kurtki, gdzie dla kurtki klient ma możliwość wyboru odpowiedniego rozmiaru.
+1. Przejdź do Asortyment -> Zestawy.
+2. Kliknij Dodaj zestaw produktowy.
+3. Dodaj nowy zestaw, nazywając go np. „Zestaw jesienny”.
+4. Następnie dodaj odpowiednie składowe zestawu:
+Przejdź do zakładki „Produkty” i dodaj poszczególne elementy zestawu:
+Jako pierwszy produkt dodajemy np. „Szal jesienny”. Jest to element stały w zestawie, bez opcji wyboru.
+5. Następnie dodaj drugi produkt, czyli kurtkę. Kliknij Dodaj produkt. Ponieważ kurtka ma różne rozmiary (warianty), pojawi się okno z możliwością wyboru wariantu.
+Uwaga! Aby przekształcić zestaw statyczny w dynamiczny, prosimy o pozostawienie co najmniej jednej cechy wariantu bez wyboru. Możesz oczywiście wybrać jedną cechę (w tym przypadku Kolor lub Rozmiar) – klient będzie miał wtedy ograniczony wybór co do jednej cechy. 
+*Jeżeli wybierzesz oba parametry (Kolor i Rozmiar) nie będzie to zestaw dynamiczny.
+[IMG:]
+6. Po dodaniu obu produktów powstał nasz przykładowy zestaw dynamiczny „Zestaw jesienny”, w którym szal jest produktem stałym, a przy kurtce klient może wybrać odpowiedni rozmiar/kolor.
+[IMG:]
+6. Kliknij Zapisz. 
+W ten sposób masz już utworzone zestawy dynamiczne, które teraz możesz np. wystawić na Allegro. 
+Uwaga! Zestawy dynamiczne umieszczamy na platformie Allegro jako standardową ofertę, a nie jako zestaw Allegro. 
+Więcej informacji o Zestawach Allegro i różnicach między ofertami podstawowymi a zestawami na tej platformie znajdziesz tutaj   
+[IMG:]
+ #### 
+ Proces zakupu i konfiguracja zestawu przez klienta 
+Dla ofert Allegro:
+1. Produkt jest wystawiony jako oferta Allegro. 
+[IMG:]
+2. Następnie klient dokonuje zakupu naszego zestawu dynamicznego np. „Spodnie damskie Ola”. 
+3. Po zakupie klient automatycznie dostaje powiadomienie e-mail lub sms (w zależności od ustawień konta), zawierające link do strony wyboru. Strona służy do personalizacji wyboru odpowiedniego wariantu produktu. 
+4. Klient klika w link zawarty w wiadomości, aby przejść do strony personalizacji na Sellasist. 
+5. Klient personalizuje swój zakup. Na stronie znajdą się dostępne opcje dla Twojego zestawu dynamicznego. Dla naszego przykładu to 3 różne kolory: 
+Przykład 1
+[IMG:]
+Przykład 2
+[IMG:]
+6. Klient potwierdza swój wybór:
+[IMG:]
+[IMG:]
+Pamiętaj! Strona personalizacji jest zoptymalizowana pod kątem urządzeń mobilnych, więc Twoi klienci mogą łatwo dokonywać wyborów na swoich smartfonach czy tabletach.
+Rekomendujemy korzystanie z powiadomień SMS, jeśli preferujesz szybkie i wygodne dokonywanie wyboru na urządzeniu mobilnym.
+Powiadomienia ustawisz w Administracja -> Powiadomienia.
+więcej Jak i gdzie edytować powiadomienia i statusy zamówień?
+ #### 
+ Dodatkowe informacje: 
+- Do czasu, kiedy klient nie dokona wyboru w edycji zamówienia widnieje informacja ‘Klient nie wybrał jeszcze produktu z grupy produktów zestawu” 
+Przykład 1
+[IMG:]
+Po dokonaniu wyboru przez klienta ta informacja zostanie automatycznie zaktualizowana: 
+[IMG:]
+Przykład 2
+[IMG:]
+Dodatkowo, masz tu możliwość ręcznego dostosowania wyboru w przypadku nie wybrania tego przez klienta. 
+[IMG:]
+- Link do personalizacji zamówienia znajdziesz również w logach zamówienia: 
+[IMG:]
+ #### 
+ STAN MAGAZYNOWY: 
+- Stan magazynowy zestawu dynamicznego zależy od dostępności każdego składnika wchodzącego w jego skład. Kiedy klient składa zamówienie, wybiera poszczególne elementy zestawu, co bezpośrednio wpływa na dostępność pozostałych kombinacji.
+Dla naszego zestawu „Spodnie damskie Ola”, który składa się z 1 pary spodni, klient może wybrać spodnie w jednym z trzech dostępnych kolorów: czarnym, niebieskim czy malinowym. Każdy kolor spodni jest dostępny w ilości 100 sztuk na magazynie, co oznacza, że możemy zaoferować łącznie 100 zestawów „Spodni damskich Ola”
+Sytuacja zmienia się, gdy zdecydujemy, że zestaw będzie zawierał 4 pary spodni. Klient ma teraz możliwość skomponowania zestawu z połączenia dowolnych kolorów, o ile łączna ilość spodni w zestawie wynosi 4. Przykładowo, klient może wybrać wszystkie spodnie w jednym kolorze lub stworzyć mieszany zestaw różnokolorowych spodni. W przypadku, gdy mamy na magazynie 100 szt. czarnych spodni, 100 szt. malinowych oraz 99 szt. niebieskich, maksymalna ilość możliwych do utworzenia zestawów wynosi 24. Dzieje się tak, ponieważ liczba dostępnych zestawów jest ograniczona przez najmniejszy dostępny stan magazynowy jednego ze składników – w tym przypadku niebieskich spodni. 
+[IMG:]
+[IMG:]
+- Stan magazynowy produktów jest aktualizowany w systemie dopiero po dokonaniu wyboru przez klienta.  
+Dla pozostałych marketplaców (innych niż Allegro)
+Automatyczne powiadomienia dla klienta z wyborem określonego wariantu dla zestawu dynamicznego są domyślnie ustawione tylko dla ofert Allegro.
+Dla zamówień z innych marketplace niż Allegro musisz ustawić takie powiadomienie samodzielnie w swoim panelu administracyjnym. 
+Możesz to ustawić w prosty sposób, dzięki funkcjom automatyzacji w Twoim systemie Sellasist.
+ #### 
+ Jak ustawić automatyczne powiadomienie z linkiem do wyboru odpowiedniego modelu/parametru produktu w zestawie dynamicznym? 
+ 1. W pierwszej kolejności warto utworzyć nowy status zamówienia o nazwie np. „Zamówienia z zestawem dynamicznym„. Pozwoli Ci to w prosty sposób wyfiltrować zamówienia, które zawierają zestaw dynamiczny i będziesz mógł łatwiej monitorować i zarządzać takimi zamówieniami.
+2. Przejdź do Administracja -> Statusy zamówień i dla grupy Nowe utwórz status zamówienia np. „Zamówienia z zestawem dynamicznym„.
+Więcej: Czym są Statusy Zamówień?
+[IMG:]
+3. Następnie stwórz akcję automatyczną, która będzie segregować nowe zamówienia i wyłapywać zamówienia, które zawierają Zestawy dynamiczne. 
+4. W zakładce Administracja -> Automatyzacja -> Akcje dla zamówień.
+5. Na górze strony znajdziesz karty: Dziennik zdarzeń, Akcje dla asortymentu, Akcje dla zamówień.
+W Dzienniku zdarzeń znajdziesz wszystkie wykonane akcje.
+Możesz tu przeglądać raporty z ostatniego miesiąca i ręcznie uruchamiać akcje.
+Przejdź do sekcji Akcje dla zamówień i kliknij Dodaj akcję automatyczną.
+[IMG:]
+6. Uzupełnij nazwę akcji 
+ #### 
+ Uwaga! 
+ Jeżeli chcesz dodać nową akcję w Sellasist  możesz wybrać między automatycznym uruchamianiem akcji po spełnieniu określonych warunków lub ręcznym aktywowaniem ich za pomocą przycisków (więcej o przyciskach: TUTAJ).
+Możesz również użyć obu sposobów uruchamiania akcji jednocześnie. Dzięki temu będziesz miał np. możliwość ponownego wykonania akcji, gdy automatyczna próba zakończy się niepowodzeniem.
+[IMG:]
+Dla uruchamiania samoczynnego:
+7. Ustaw opóźnienie jej wykonania w minutach.
+Opóźnienie określa czas, przez jaki wszystkie warunki muszą być spełnione, by akcja została wykonana. Dzięki temu można, np. sprawić, by produkty z zerowym stanem magazynowym zostały wyłączone dopiero wtedy, gdy ten stan utrzymuje się przez 5 dni. Jeżeli użyjesz opóźnienia nie może być ono niższe niż 5 minut. 
+Ustaw tryb działania akcji.
+Masz do wyboru: tryb ciągły lub wybrane dni i godziny. 
+Wybrane dni i godziny: w tym trybie akcje będą wykonywane tylko w wybranych dniach i godzinach. Zdarzenia, które miałyby się wykonać poza nimi będą wstrzymywane i realizowane dopiero w wybranym czasie. Jeśli nie podasz godzin działania, akcja będzie mogła być wykonywana całą dobę.
+Dzięki odpowiedniej konfiguracji możesz sprawić, by np. zamówienia trafiały do realizacji tylko w godzinach pracy Twojego magazynu.
+[IMG:]
+8.  Kliknij Dodaj warunek. Wybierz z listy Zestaw dynamiczny i kliknij Dodaj warunek.
+[IMG:]
+9. Uzupełnij kryteria warunku: 
+Data złożenia – Możesz wybrać datę złożenia zamówienia, aby zastosować warunek do zamówień złożonych w określonym okresie.
+Pamiętaj! Data jest ustawiana na czas tworzenia danej nowej akcji, tak aby nowa akcja była skierowana dla nowo wpływających zamówień. Jeżeli ustawisz datę wstecz, system sprawdzi wszystkie zamówienia z tego okresu i zastosuje do nich wybrany efekt akcji, co może być problematyczne dla zamówień już zrealizowanych.
+Zestaw dynamiczny: wybierz znajduje się w warunku
+[IMG:]
+*Możesz tu również dodać jeszcze jeden warunek „Źródło zamówienia”. Dzięki temu możesz wyfiltrować sobie poszczególne zamówienia zawierające zestaw dynamiczny według preferowanych źródeł, z którego pochodzą Twoje zamówienia.  
+Więcej na temat warunku dla zamówień „Źródło zamówienia” – ŹRÓDŁO ZAMÓWIENIA – warunek automatyzacji dla zamówień
+10. Następnie kliknij Dodaj efekt „Zmień status” i wybierz nowo utworzony status „Zamówienia z zestawem dynamicznym”
+[IMG:]
+11. Kliknij Zapisz. 
+12. Następnie dodaj Nową akcję automatyczną dla zamówień 
+13. Wybierz warunek „Status zamówienia” i ustaw status „Zamówienia z zestawem dynamicznym”
+[IMG:]
+14. Kliknij Dodaj efekt, wybierz „Wyślij powiadomienie” i kliknij Dodaj efekt.
+15. Z listy powiadomień wybierz powiadomienie „Wybierz wariant” i zaznacz, aby było wysyłane na adres klienta. 
+[IMG:]
+Powiadomienie „Wybierz wariant” możesz ustawić w Administracja ->Powiadomienia -> sekcja Powiadomienia informacyjne
+Możesz tu również ustawić powiadomienia SMS
+[IMG:]
+ #### 
+ Powiązane artykuły 
+Czym są Statusy Zamówień?
+ŹRÓDŁO ZAMÓWIENIA – warunek automatyzacji dla zamówień
+Zestawy Produktów w Panelu Sellingo i Sellasist
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### ZESTAW DYNAMICZNY – warunek automatyzacji dla zamówień | https://sellasist.pl/pomoc/zestaw-dynamiczny-warunek-automatyzacji-dla-zamowien-2/ | modified 2024-10-24
+Przeczytaj więcej o zestawach: Zestawy dynamiczne
+Jeżeli klient złoży zamówienie, składające się z zestawu dynamicznego możesz ustawić tak warunki, aby zostały one przypisane do np. odpowiedniego statusu zamówienia np. status „Zamówienie zawiera zestaw dynamiczny”, dla takiego statusu utworzysz następnie w prosty sposób Powiadomienie „Wybierz wariant” zawierające link do strony z wyborem odpowiedniego produktu.
+ #### 
+ Jak skonfigurować warunek Zestaw dynamiczny w akcjach automatycznych dla zamówień? 
+ 1. W pierwszej kolejności warto utworzyć nowy status zamówienia o nazwie np. „Zamówienia z zestawem dynamicznym„. Pozwoli Ci to w prosty sposób wyfiltrować zamówienia, które zawierają zestaw dynamiczny i będziesz mógł łatwiej monitorować i zarządzać takimi zamówieniami.
+2. Przejdź do Administracja -> Statusy zamówień i dla grupy Nowe utwórz status zamówienia np. „Zamówienia z zestawem dynamicznym„.
+Więcej: Czym są Statusy Zamówień?
+[IMG:]
+3. Następnie stwórz akcję automatyczną, która będzie segregować nowe zamówienia i wyłapywać zamówienia, które zawierają Zestawy dynamiczne.
+4. W zakładce Administracja -> Automatyzacja i przejdź do sekcji Akcje dla zamówień.
+5. Na górze strony znajdziesz karty: Dziennik zdarzeń, Akcje dla asortymentu, Akcje dla zamówień.
+W Dzienniku zdarzeń znajdziesz wszystkie wykonane akcje.
+Możesz tu przeglądać raporty z ostatniego miesiąca i ręcznie uruchamiać akcje.
+Przejdź do sekcji Akcje dla zamówień i kliknij Dodaj akcję automatyczną.
+[IMG:]
+6. Uzupełnij nazwę akcji
+ #### 
+ Uwaga! 
+ Jeżeli chcesz dodać nową akcję w Sellasist możesz wybrać między automatycznym uruchamianiem akcji po spełnieniu określonych warunków lub ręcznym aktywowaniem ich za pomocą przycisków (więcej o przyciskach: TUTAJ).
+Możesz również użyć obu sposobów uruchamiania akcji jednocześnie. Dzięki temu będziesz miał np. możliwość ponownego wykonania akcji, gdy automatyczna próba zakończy się niepowodzeniem.
+[IMG:]
+Dla uruchamiania samoczynnego:
+7. Ustaw opóźnienie jej wykonania w minutach.
+Opóźnienie określa czas, przez jaki wszystkie warunki muszą być spełnione, by akcja została wykonana. Dzięki temu można, np. sprawić, by produkty z zerowym stanem magazynowym zostały wyłączone dopiero wtedy, gdy ten stan utrzymuje się przez 5 dni. Jeżeli użyjesz opóźnienia nie może być ono niższe niż 1 minuta.
+Ustaw tryb działania akcji.
+Masz do wyboru: tryb ciągły lub wybrane dni i godziny.
+Wybrane dni i godziny: w tym trybie akcje będą wykonywane tylko w wybranych dniach i godzinach. Zdarzenia, które miałyby się wykonać poza nimi będą wstrzymywane i realizowane dopiero w wybranym czasie. Jeśli nie podasz godzin działania, akcja będzie mogła być wykonywana całą dobę.
+Dzięki odpowiedniej konfiguracji możesz sprawić, by np. zamówienia trafiały do realizacji tylko w godzinach pracy Twojego magazynu.
+[IMG:]
+8. Kliknij Dodaj warunek. Wybierz z listy Zestaw dynamiczny i kliknij Dodaj warunek.
+[IMG:]
+9. Uzupełnij kryteria warunku:
+Data złożenia – Możesz wybrać datę złożenia zamówienia, aby zastosować warunek do zamówień złożonych w określonym okresie.
+Pamiętaj! Data jest ustawiana na czas tworzenia danej nowej akcji, tak aby nowa akcja była skierowana dla nowo wpływających zamówień. Jeżeli ustawisz datę wstecz, system sprawdzi wszystkie zamówienia z tego okresu i zastosuje do nich wybrany efekt akcji, co może być problematyczne dla zamówień już zrealizowanych.
+Zestaw dynamiczny: wybierz znajduje się w warunku
+[IMG:]
+*Możesz tu również dodać jeszcze jeden warunek „Źródło zamówienia”. Dzięki temu możesz wyfiltrować sobie poszczególne zamówienia zawierające zestaw dynamiczny według preferowanych źródeł, z którego pochodzą Twoje zamówienia.
+Więcej na temat warunku dla zamówień „Źródło zamówienia” – ŹRÓDŁO ZAMÓWIENIA – warunek automatyzacji dla zamówień
+10. Następnie kliknij Dodaj efekt „Zmień status” i wybierz nowo utworzony status „Zamówienia z zestawem dynamicznym”
+[IMG:]
+11. Kliknij Zapisz.
+Dodatkowo, dla twojej wygody oraz oszczędności Twojego czasu masz możliwość tworzenia kopii utworzonych już wcześniej akcji.
+Aby utworzyć kopię danej akcji przejdź do Administracja -> Automatyzacja -> edycja wybranej akcji automatycznej, którą chcesz skopiować. Klikając Zapisz jako nowy – utworzysz jej kopię. 
+POWIĄZANE ARTYKUŁY: 
+Zestawy dynamiczne
+WARIANT PRODUKT W ZESTAWIE DYNAMICZNYM – warunek automatyzacji dla zamówień
+Czym jest Automatyzacja? Jak działa Automatyzacja?
+Jak ustawić Automatyzację? 
+Akcje dla asortymentu: Lista warunków i efektów dla automatyzacji – omówienie wraz z zastosowaniem
+POLE DODATKOWE PRODUKTU – warunek automatyzacji akcji dla zamówień
+ZMODYFIKUJ POLE DODATKOWE – efekt w automatyzacji dla zamówień
+DANE PRODUKTU – warunek akcji automatycznej dla zamówień
+DANE KLIENTA – warunek akcji automatycznej dla zamówień
+WARTOŚĆ ZAMÓWIENIA – warunek automatyzacji dla zamówień
+LICZBA POZYCJI W ZAMÓWIENIU – warunek akcji automatycznej dla zamówień
+DANE ADRESOWE WYSYŁKI – warunek automatyzacji dla zamówień
+METODA PŁATNOŚCI – warunek automatyzacji dla zamówień
+ZMIEŃ STAWKĘ VAT w zależności od kraju wysyłki – efekt w automatyzacji dla zamówień
+DANE ADRESOWE DOKUMENTU SPRZEDAŻY – warunek automatyzacji dla zamówień
+LOKALIZACJA MAGAZYNOWA – warunek automatyzacji dla zamówień
+WYMIARY OPAKOWANIA PRODUKTU – warunek automatyzacji dla zamówień
+POLA DANYCH W ZAMÓWIONYCH PRODUKTACH – warunek akcji automatycznej dla zamówień
+POLA DODATKOWE – warunek automatyzacji akcji dla asortymentu
+SPRAWDŹ PRODUKT – warunek automatyzacji dla asortymentu
+BLISKI TERMIN WAŻNOŚCI – warunek automatyzacji dla asortymentu
+PRZETERMINOWANY – warunek automatyzacji dla asortymentu
+WMS STAN MAGAZYNOWY NA PÓŁCE – warunek automatyzacji dla asortymentu
+LOKALIZACJA MAGAZYNOWA – warunek automatyzacji dla produktów
+LOKALIZACJA – warunek automatyzacji dla asortymentu
+STAN MAGAZYNOWY – warunek automatyzacji dla asortymentu i zamówień
+ID PRODUKTU – warunek automatyzacji dla asortymentu
+DOKUMENT SPRZEDAŻY W DODATKOWYM POLU – warunek automatyzacji dla zamówień
+ALARM MAGAZYNOWY– warunek automatyzacji dla asortymentu
+USŁUGI DODATKOWE W ALLEGRO – warunek automatyzacji dla zamówień
+WYSTAW DOKUMENT SPRZEDAŻY – efekt automatyzacji dla zamówień
+KATEGORIA GŁÓWNA – warunek automatyzacji dla asortymentu
+ZMIEŃ KATEGORIĘ DODATKOWĄ – efekt automatyzacji dla asortymentu
+WYŚLIJ POWIADOMIENIE TYPU FAKTURA LUB PARAGON – efekt automatyzacji dla zamówień
+LOKALIZACJA – warunek automatyzacji dla zamówień
+Przyciski w Automatyzacji – Aktywatory
+CENA SPRZEDAŻY OFERT ZEWNĘTRZNYCH – warunek automatyzacji dla asortymentu
+DOSTĘPNY OD – warunek automatyzacji dla asortymentu
+SZABLON WYSYŁKI – warunek automatyzacji dla asortymentu
+UZUPEŁNIONE SZCZEGÓŁY – warunek automatyzacji dla asortymentu
+ŁĄCZNY STAN U DOSTAWCÓW – warunek automatyzacji dla asortymentu
+DATA ZŁOŻENIA – warunek akcji automatycznej dla zamówień
+DOKUMENT- warunek akcji automatycznej dla zamówień
+STATUS DOKUMENTU SPRZEDAŻY – warunek akcji automatycznej dla zamówień
+LICZBA PACZEK (WEDŁUG ALLEGRO) – warunek akcji automatycznej dla zamówień
+LIST PRZEWOZOWY- warunek akcji automatycznej dla zamówień
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### WARIANT/PRODUKT W ZESTAWIE DYNAMICZNYM – warunek automatyzacji dla zamówień | https://sellasist.pl/pomoc/wariantprodukt-w-zestawie-dynamicznym-warunek-automatyzacji-dla-zamowien/ | modified 2024-02-13
+Jak skonfigurować warunek automatyzacji Wariant/Produkt w zestawie dynamicznym w akcjach dla zamówień?
+1. W zakładce Administracja kliknij Automatyzacja  i przejdź do sekcji Akcje dla zamówień.
+[IMG:]
+2. Na górze strony znajdziesz karty: Dziennik zdarzeń, Akcje dla asortymentu, Akcje dla zamówień.
+W Dzienniku zdarzeń znajdziesz wszystkie wykonane akcje.
+Możesz tu przeglądać raporty z ostatniego miesiąca i ręcznie uruchamiać akcje.
+Przejdź do sekcji Akcje dla zamówień i kliknij Dodaj akcję automatyczną.
+[IMG:]
+3. Uzupełnij nazwę akcji 
+ #### 
+ Uwaga! 
+ Jeżeli chcesz dodać nową akcję w Sellasist  możesz wybrać między automatycznym uruchamianiem akcji po spełnieniu określonych warunków lub ręcznym aktywowaniem ich za pomocą przycisków (więcej o przyciskach: TUTAJ).
+Możesz również użyć obu sposobów uruchamiania akcji jednocześnie. Dzięki temu będziesz miał np. możliwość ponownego wykonania akcji, gdy automatyczna próba zakończy się niepowodzeniem.
+[IMG:]
+Dla uruchamiania samoczynnego:
+4. ustaw opóźnienie jej wykonania w minutach.
+Opóźnienie określa czas, przez jaki wszystkie warunki muszą być spełnione, by akcja została wykonana. Dzięki temu można, np. sprawić, by produkty z zerowym stanem magazynowym zostały wyłączone dopiero wtedy, gdy ten stan utrzymuje się przez 5 dni. Jeżeli użyjesz opóźnienia nie może być ono niższe niż 5 minut. 
+Ustaw tryb działania akcji.
+Masz do wyboru: tryb ciągły lub wybrane dni i godziny. 
+Wybrane dni i godziny: w tym trybie akcje będą wykonywane tylko w wybranych dniach i godzinach. Zdarzenia, które miałyby się wykonać poza nimi będą wstrzymywane i realizowane dopiero w wybranym czasie. Jeśli nie podasz godzin działania, akcja będzie mogła być wykonywana całą dobę.
+Dzięki odpowiedniej konfiguracji możesz sprawić, by np. zamówienia trafiały do realizacji tylko w godzinach pracy Twojego magazynu.
+[IMG:]
+5. Kliknij Dodaj warunek. 
+Wybierz warunek: Wariant/Produkt w zestawie dynamicznym
+Kliknij Dodaj warunek. 
+6.  Możesz wybrać datę złożenia zamówienia, aby zastosować warunek do zamówień złożonych w określonym okresie.
+Pamiętaj! Data jest ustawiana na czas tworzenia danej nowej akcji, tak aby nowa akcja była skierowana dla nowo wpływających zamówień. Jeżeli ustawisz datę wstecz, system sprawdzi wszystkie zamówienia z tego okresu i zastosuje do nich wybrany efekt akcji, co może być problematyczne dla zamówień już zrealizowanych.  
+[IMG:]
+7. Wybierz odpowiednią opcję z listy: 
+8. Kliknij Dodaj efekt i wybierz z listy preferowany efekt np. Wygenerowanie listu przewozowego z wybraną metodą wysyłki i szablonem. Uzupełnij ustawienia efektu. 
+np. 
+7. Kliknij Zapisz.
+Dodatkowo, dla twojej wygody oraz oszczędności Twojego czasu masz możliwość tworzenia kopii utworzonych już wcześniej akcji.
+Aby utworzyć kopię danej akcji przejdź do Administracja -> Automatyzacja -> edycja wybranej akcji automatycznej, którą chcesz skopiować. Klikając Zapisz jako nowy – utworzysz jej kopię. 
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+

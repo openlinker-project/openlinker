@@ -17,9 +17,12 @@
  */
 import type { ReactElement } from 'react';
 
+import { useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import type { ShipmentStatus } from '../../shipments';
 
-const STAGE_LABELS = ['Label ready', 'Dispatched', 'In transit', 'Delivered'] as const;
+type RailCopy = ResolvedCopy<Messages['orders']>['shipmentLifecycleRail'];
+
+const STAGE_KEYS = ['labelReady', 'dispatched', 'inTransit', 'delivered'] as const;
 
 /**
  * The stage index each status halts / lives at. A halt node must never leave an
@@ -59,12 +62,13 @@ interface ShipmentLifecycleRailProps {
   status: ShipmentStatus;
 }
 
-function buildStages(status: ShipmentStatus): RailStage[] {
+function buildStages(status: ShipmentStatus, copy: RailCopy): RailStage[] {
   const current = STAGE_INDEX[status];
   const halted = status === 'failed' || status === 'cancelled';
-  const haltLabel = status === 'failed' ? 'Label failed' : 'Cancelled';
+  const haltLabel = status === 'failed' ? copy.labelFailed : copy.cancelled;
 
-  return STAGE_LABELS.map((label, index): RailStage => {
+  return STAGE_KEYS.map((key, index): RailStage => {
+    const label = copy.stages[key];
     if (index < current) {
       return { label, state: 'done', live: false };
     }
@@ -87,7 +91,8 @@ const STATE_MODIFIER: Record<StageState, string> = {
 };
 
 export function ShipmentLifecycleRail({ status }: ShipmentLifecycleRailProps): ReactElement {
-  const stages = buildStages(status);
+  const copy = useMessages('orders').shipmentLifecycleRail;
+  const stages = buildStages(status, copy);
   const delivered = status === 'delivered';
 
   const rootClasses = [
@@ -99,7 +104,7 @@ export function ShipmentLifecycleRail({ status }: ShipmentLifecycleRailProps): R
     .join(' ');
 
   return (
-    <ol className={rootClasses} aria-label="Shipment lifecycle">
+    <ol className={rootClasses} aria-label={copy.aria}>
       {stages.map((stage, index) => {
         const doneModifier =
           stage.state === 'done' || (delivered && stage.state === 'current')

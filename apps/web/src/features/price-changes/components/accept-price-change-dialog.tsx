@@ -35,7 +35,8 @@ import { Button } from '../../../shared/ui/button';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
 import type { PriceChangeItem } from '../api/price-changes.types';
-import { ruleSentenceFor } from '../lib/price-change-copy';
+import { ruleSentenceFor } from '../lib/price-rule-labels';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 
 interface AcceptPriceChangeDialogProps {
   item: PriceChangeItem | null;
@@ -52,6 +53,7 @@ export function AcceptPriceChangeDialog({
 }: AcceptPriceChangeDialogProps): ReactElement {
   const [optInAutomatic, setOptInAutomatic] = useState(false);
   const isAdmin = useIsAdmin();
+  const copy = useMessages('price-changes').acceptPriceChangeDialog;
   const open = item !== null;
 
   return (
@@ -63,15 +65,19 @@ export function AcceptPriceChangeDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Publish new price</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         {item ? (
           <>
             <DialogDescription>
-              {item.productName} on {item.destinationLabel} — from {item.sourceLabel}
+              {interpolate(copy.description, {
+                product: item.productName,
+                destination: item.destinationLabel,
+                source: item.sourceLabel,
+              })}
             </DialogDescription>
             <div className="price-hero">
               <div className="price-hero__block">
-                <div className="price-hero__label">Live now</div>
+                <div className="price-hero__label">{copy.liveNow}</div>
                 <div className="price-hero__value price-hero__value--old">
                   {item.computedOldAmount === null
                     ? '—'
@@ -82,21 +88,24 @@ export function AcceptPriceChangeDialog({
                 →
               </div>
               <div className="price-hero__block">
-                <div className="price-hero__label">Will publish</div>
+                <div className="price-hero__label">{copy.willPublish}</div>
                 <div className="price-hero__value price-hero__value--new">
                   {formatAmount(item.computedNewAmount, item.destinationCurrency ?? undefined)}
                 </div>
               </div>
             </div>
             <p className="rule-note">
-              {ruleSentenceFor(item.ruleSummary)} That comes to{' '}
-              <b>
-                {formatAmount(
-                  item.manualPriceOverride ?? item.computedNewAmount,
-                  item.destinationCurrency ?? undefined,
-                )}
-              </b>
-              , VAT included.
+              {renderRich(
+                copy.ruleNote,
+                { b: (text) => <b>{text}</b> },
+                {
+                  rule: ruleSentenceFor(item.ruleSummary),
+                  amount: formatAmount(
+                    item.manualPriceOverride ?? item.computedNewAmount,
+                    item.destinationCurrency ?? undefined,
+                  ),
+                },
+              )}
             </p>
             {isAdmin ? (
               <label className="opt-in-check">
@@ -107,27 +116,24 @@ export function AcceptPriceChangeDialog({
                 />
                 <span>
                   <span className="opt-in-check__title">
-                    Also set {item.sourceLabel} → {item.destinationLabel} to Automatic
+                    {interpolate(copy.optInTitle, {
+                      source: item.sourceLabel,
+                      destination: item.destinationLabel,
+                    })}
                   </span>
-                  <span className="opt-in-check__desc">
-                    Next time this source&apos;s price changes, it&apos;ll go straight to this
-                    connection — no review needed.
-                  </span>
+                  <span className="opt-in-check__desc">{copy.optInDescription}</span>
                 </span>
               </label>
             ) : null}
-            <p className="rule-note rule-note--muted">
-              This changes the live listing&apos;s price only — orders already placed keep the
-              price they were bought at.
-            </p>
+            <p className="rule-note rule-note--muted">{copy.ordersNote}</p>
           </>
         ) : null}
         <DialogFooter>
           <Button tone="secondary" onClick={() => onOpenChange(false)}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button disabled={isConfirming} onClick={() => onConfirm(optInAutomatic)}>
-            {isConfirming ? 'Publishing…' : 'Publish price'}
+            {isConfirming ? copy.publishing : copy.publish}
           </Button>
         </DialogFooter>
       </DialogContent>

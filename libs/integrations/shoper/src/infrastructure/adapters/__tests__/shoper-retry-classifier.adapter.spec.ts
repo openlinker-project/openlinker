@@ -74,4 +74,56 @@ describe('ShoperRetryClassifierAdapter', () => {
     expect(classifier.isNonRetryable('boom')).toBe(false);
     expect(classifier.isNonRetryable(undefined)).toBe(false);
   });
+
+  describe('penalty-free deferral', () => {
+    it('should defer a 429 by 60 s: Shoper names no wait and the limit is per shop', () => {
+      expect(classifier.getRetryDeferral(new ShoperApiError(429))).toEqual({
+        delaySeconds: 60,
+        reason: 'shop rate-limited the request (429)',
+      });
+    });
+
+    it('should defer a 503 by 300 s: a maintenance window is measured in minutes', () => {
+      expect(classifier.getRetryDeferral(new ShoperApiError(503))).toEqual({
+        delaySeconds: 300,
+        reason: 'shop unavailable (503)',
+      });
+    });
+
+    it('should keep 429 and 503 retryable, so a deferral can never turn terminal', () => {
+      expect(classifier.isNonRetryable(new ShoperApiError(429))).toBe(false);
+      expect(classifier.isNonRetryable(new ShoperApiError(503))).toBe(false);
+    });
+
+    it('should find a throttle wrapped by an adapter exception', () => {
+      const wrapped = new ShoperPartialOrderException('c', '10', 1, 2, new ShoperApiError(429));
+
+      expect(classifier.getRetryDeferral(wrapped)?.delaySeconds).toBe(60);
+    });
+
+    it('should find a throttle through a standard Error.cause chain', () => {
+      const middle = new Error('middle', { cause: new ShoperApiError(503) });
+      const wrapped = new Error('outer', { cause: middle });
+
+      expect(classifier.getRetryDeferral(wrapped)?.delaySeconds).toBe(300);
+    });
+
+    it.each([400, 404, 408, 500, 502, 504])('should not defer HTTP %i', (status) => {
+      expect(classifier.getRetryDeferral(new ShoperApiError(status))).toBeNull();
+    });
+
+    it('should not defer a network failure or an unrelated throwable', () => {
+      expect(classifier.getRetryDeferral(new ShoperNetworkError('ECONNRESET'))).toBeNull();
+      expect(classifier.getRetryDeferral(new Error('boom'))).toBeNull();
+      expect(classifier.getRetryDeferral('boom')).toBeNull();
+      expect(classifier.getRetryDeferral(undefined)).toBeNull();
+    });
+
+    it('should stop at a bounded depth instead of walking a self-referencing cause', () => {
+      const loop = new Error('loop') as Error & { cause?: unknown };
+      loop.cause = loop;
+
+      expect(classifier.getRetryDeferral(loop)).toBeNull();
+    });
+  });
 });

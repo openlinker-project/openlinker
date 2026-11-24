@@ -9,20 +9,20 @@
  * @module plugins/subiekt-gt/components
  */
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins/plugin.types';
 import {
   RegulatoryStatusBadge,
   regCardToneFor,
   type RegulatoryStatus,
 } from '../../../features/invoicing';
+import { useSubiektGtMessages } from '../messages';
 
 const NON_APPLICABLE: RegulatoryStatus = 'not-applicable';
 
 export function SubiektInvoiceDetailSection({
   invoice,
 }: InvoiceDetailSectionProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useSubiektGtMessages().subiektInvoiceDetailSection;
 
   const hasRegulatoryData = invoice.regulatoryStatus !== NON_APPLICABLE;
   const hasPdf = Boolean(invoice.pdfUrl);
@@ -33,31 +33,26 @@ export function SubiektInvoiceDetailSection({
     <section
       className={`detail-section reg-card ${regCardToneFor(invoice.regulatoryStatus)}`.trim()}
     >
-      <h2 className="detail-section__title">
-        {t('subiekt.invoice.detail.title', 'Regulatory status')}
-      </h2>
+      <h2 className="detail-section__title">{copy.title}</h2>
       <p className="text-muted" style={{ fontSize: '12px', margin: '0 0 var(--space-3)' }}>
-        {t(
-          'subiekt.invoice.detail.note',
-          "Subiekt sent this to KSeF itself — OpenLinker reads the status, it doesn't transmit.",
-        )}
+        {copy.note}
       </p>
       <dl className="invoice-panel__kv">
         {hasRegulatoryData ? (
           <>
-            <dt>{t('subiekt.invoice.detail.ksefStatus', 'KSeF status')}</dt>
+            <dt>{copy.ksefStatus}</dt>
             <dd>
               <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
               <span className="text-muted" style={{ fontSize: '11px', marginLeft: '6px' }}>
-                {t('subiekt.invoice.detail.readFrom', 'read from Subiekt')}
+                {copy.readFrom}
               </span>
             </dd>
 
-            <dt>{t('subiekt.invoice.detail.ksefNumber', 'KSeF number')}</dt>
+            <dt>{copy.ksefNumber}</dt>
             <dd className="mono-text">
               {invoice.clearanceReference ?? invoice.providerInvoiceNumber ?? (
                 <span className="text-muted">
-                  {t('subiekt.invoice.detail.pending', 'Pending')}
+                  {copy.pending}
                 </span>
               )}
             </dd>
@@ -66,7 +61,7 @@ export function SubiektInvoiceDetailSection({
 
         {hasPdf ? (
           <>
-            <dt>{t('subiekt.invoice.detail.pdf', 'Invoice PDF')}</dt>
+            <dt>{copy.pdf}</dt>
             <dd>
               <a
                 href={invoice.pdfUrl ?? ''}
@@ -74,7 +69,7 @@ export function SubiektInvoiceDetailSection({
                 rel="noopener noreferrer"
                 className="link"
               >
-                {t('subiekt.invoice.detail.downloadPdf', 'Download PDF')}
+                {copy.downloadPdf}
               </a>
             </dd>
           </>

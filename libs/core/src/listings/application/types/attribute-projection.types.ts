@@ -11,6 +11,7 @@
 import type { CategoryParameterSection } from '../../domain/types/category-parameter.types';
 import type { OfferParameter } from '../../domain/types/offer-parameter.types';
 import type { ParameterRestrictionIssue } from '../../domain/types/parameter-restriction.types';
+import type { AttributeMappingRuleKind, PlaceValueSource } from '@openlinker/core/mappings';
 
 /**
  * Projection input. `sourceConnectionId` selects the source-scoped attribute
@@ -112,4 +113,49 @@ export interface AttributeProjectionResult {
    * implementation detail.
    */
   restrictionIssues: ParameterRestrictionIssue[];
+  /**
+   * Where each produced value came from (#3995), one entry per destination
+   * parameter a rule or mapping produced a value for - INCLUDING a value the
+   * destination's dictionary then rejected (`outcome: 'rejected'`), which is
+   * otherwise invisible because it never reaches `parameters`. The offer wizard
+   * reads this to say which values the operator's rules fill and which of them
+   * the marketplace will not accept; a publish ignores it.
+   */
+  origins: ProjectedParameterOrigin[];
+}
+
+export const ProjectedParameterSourceValues = ['rule', 'mapping'] as const;
+/** `rule` = an operator-authored #1841 rule; `mapping` = the #1038 attribute mapping. */
+export type ProjectedParameterSource = (typeof ProjectedParameterSourceValues)[number];
+
+export const ProjectedParameterOutcomeValues = ['accepted', 'rejected'] as const;
+/**
+ * `accepted` = the value is in `parameters` and will be sent; `rejected` = the
+ * destination's dictionary has no such entry, so the parameter is dropped.
+ */
+export type ProjectedParameterOutcome = (typeof ProjectedParameterOutcomeValues)[number];
+
+/** The rule that produced a value - enough for an operator-facing explanation. */
+export interface ProjectedParameterRuleRef {
+  id: string;
+  kind: AttributeMappingRuleKind;
+  /** `copy-remap` only: the source attribute the value was copied from. */
+  sourceAttributeKey?: string;
+  /** `copy-remap` only: true when a value remap entry rewrote the copied value. */
+  remapped?: boolean;
+  /** `place-value` only: the product field the value was placed from. */
+  placeSource?: PlaceValueSource;
+}
+
+export interface ProjectedParameterOrigin {
+  /** The destination's parameter id (the name on the pass-through path, which has no ids). */
+  parameterId: string;
+  parameterName: string;
+  section: CategoryParameterSection;
+  source: ProjectedParameterSource;
+  /** The value the rule or mapping produced, before dictionary resolution. */
+  rawValue: string;
+  outcome: ProjectedParameterOutcome;
+  /** Present when `source === 'rule'`. */
+  rule?: ProjectedParameterRuleRef;
 }

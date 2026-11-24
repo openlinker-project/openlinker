@@ -143,7 +143,7 @@ describe('OfferProductPickerModal', () => {
       apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
     });
     expect(await screen.findByText('Product p1')).toBeInTheDocument();
-    expect(screen.getByText('1–20 of 22')).toBeInTheDocument();
+    expect(screen.getByText('1-20 of 22')).toBeInTheDocument();
   });
 
   it('selects a whole product (tri-state all) and Continue omits variantIds', async () => {

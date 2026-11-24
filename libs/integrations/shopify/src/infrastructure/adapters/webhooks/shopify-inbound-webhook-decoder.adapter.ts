@@ -1,0 +1,214 @@
+/**
+ * Shopify Inbound Webhook Decoder Adapter (#3981, ADR-021)
+ *
+ * Authenticates and decodes Shopify order, product and stock-level webhooks at the host
+ * ingress. Registered by PLATFORM TYPE, the `:provider` segment of
+ * `/webhooks/:provider/:connectionId`.
+ *
+ * AUTHENTICATION: `x-shopify-hmac-sha256 = base64(HMAC-SHA256(secret, rawBody))`,
+ * where the secret is the app's CLIENT SECRET. Shopify chooses that key, not
+ * OpenLinker, so the provisioner stores the client secret as the connection's
+ * webhook secret and the host hands it back here. Compared in constant time
+ * over the decoded digest bytes. An empty secret never verifies.
+ *
+ * REPLAY PROTECTION: `verify` returns no `timestampMs`, so the host skips its
+ * skew window. Shopify retries a failed delivery up to eight times in four
+ * hours with the original `x-shopify-triggered-at`; a window of minutes would
+ * answer a legitimate retry with 401, and repeated failures make Shopify remove
+ * the subscription. Replays are stopped by the Postgres dedup gate keyed by
+ * the event id, which combines `x-shopify-webhook-id` (Shopify's own dedup key)
+ * with a hash of the body: the HMAC covers the body but NOT that header, so an
+ * attacker replaying a captured body under a fresh id would otherwise get a
+ * second job per forged id. A genuine Shopify retry keeps both the id and the
+ * body, so it maps to the same key. A webhook is only a trigger, so a replay
+ * that got through costs one re-read.
+ *
+ * TRIGGER MODEL: the body is the whole REST resource and only its id is read.
+ * The order or product is re-read downstream (#904), so a stale or reordered
+ * delivery cannot write anything.
+ *
+ * @module libs/integrations/shopify/src/infrastructure/adapters/webhooks
+ * @implements {InboundWebhookDecoderPort}
+ */
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import type {
+  DecodeResult,
+  InboundWebhookDecoderPort,
+  WebhookVerifyResult,
+} from '@openlinker/core/integrations';
+
+import { fromShopifyGid } from '../../../domain/policies/shopify-gid.policy';
+import { packShopifyInventoryEventId } from '../../../domain/policies/shopify-inventory-event-id.policy';
+import {
+  SHOPIFY_WEBHOOK_HMAC_HEADER,
+  SHOPIFY_WEBHOOK_INVENTORY_RESOURCE,
+  SHOPIFY_WEBHOOK_ID_HEADER,
+  SHOPIFY_WEBHOOK_TOPIC_HEADER,
+  SHOPIFY_WEBHOOK_TRIGGERED_AT_HEADER,
+  shopifyWebhookResourceOf,
+} from '../../../domain/types/shopify-webhook.types';
+
+const NUMERIC_ID = /^\d+$/;
+
+/**
+ * Shopify ids can exceed `Number.MAX_SAFE_INTEGER`, which `JSON.parse` would
+ * silently round. A delete body carries no GID, only `{"id": ...}` with `id`
+ * serialised first, so the exact digits are read from the raw text instead.
+ */
+const LEADING_ID = /^\s*\{\s*"id"\s*:\s*(\d+)\s*[,}]/;
+
+export class ShopifyInboundWebhookDecoderAdapter implements InboundWebhookDecoderPort {
+  verify(input: {
+    rawBody: Buffer;
+    headers: Record<string, string>;
+    secret: string;
+    query?: Readonly<Record<string, string>>;
+  }): WebhookVerifyResult {
+    if (input.secret.length === 0) {
+      return { ok: false };
+    }
+    const provided = header(input.headers, SHOPIFY_WEBHOOK_HMAC_HEADER);
+    if (provided === undefined) {
+      return { ok: false };
+    }
+    const expected = createHmac('sha256', input.secret).update(input.rawBody).digest();
+    // Base64 decoding never throws; garbage decodes to bytes of the wrong length or value.
+    const providedBytes = Buffer.from(provided, 'base64');
+    // `timingSafeEqual` throws on a length mismatch, and a digest's length is not secret.
+    return { ok: providedBytes.length === expected.length && timingSafeEqual(providedBytes, expected) };
+  }
+
+  extractEnvelope(rawBody: Buffer, headers: Record<string, string>): DecodeResult {
+    const topic = header(headers, SHOPIFY_WEBHOOK_TOPIC_HEADER);
+    if (topic === undefined) {
+      return { action: 'reject', reason: `missing ${SHOPIFY_WEBHOOK_TOPIC_HEADER} header` };
+    }
+    const resource = shopifyWebhookResourceOf(topic);
+    if (resource === null) {
+      // Authentic, but a topic OpenLinker does not subscribe to (added by hand):
+      // 202 without a job, so it cannot become a retry storm.
+      return { action: 'ignore', reason: `not an order, product or inventory topic (${topic})` };
+    }
+
+    const text = rawBody.toString('utf8');
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return { action: 'reject', reason: 'body is not valid JSON' };
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return { action: 'reject', reason: 'body is not a JSON object' };
+    }
+
+    if (resource === SHOPIFY_WEBHOOK_INVENTORY_RESOURCE) {
+      // The body names an inventory item and a location, not a product: the
+      // pair is packed into the id and resolved to a product when the sync runs.
+      const target = inventoryTarget(body as Record<string, unknown>, text);
+      if (target === null) {
+        return { action: 'ignore', reason: 'body has no inventory item and location id' };
+      }
+      const eventType = topic.trim().toLowerCase();
+      return {
+        action: 'route',
+        envelope: {
+          eventId: eventIdOf(header(headers, SHOPIFY_WEBHOOK_ID_HEADER), eventType, rawBody),
+          eventType,
+          occurredAt: occurredAt(headers),
+          objectType: resource,
+          externalId: packShopifyInventoryEventId(target.inventoryItemId, target.locationId),
+          payload: { ...target },
+        },
+      };
+    }
+
+    const id = resourceId(body as Record<string, unknown>, text);
+    if (id === null) {
+      return { action: 'ignore', reason: `body has no ${resource} id` };
+    }
+
+    const eventType = topic.trim().toLowerCase();
+    return {
+      action: 'route',
+      envelope: {
+        eventId: eventIdOf(header(headers, SHOPIFY_WEBHOOK_ID_HEADER), eventType, rawBody),
+        eventType,
+        occurredAt: occurredAt(headers),
+        objectType: resource,
+        externalId: id,
+        payload: { id },
+      },
+    };
+  }
+}
+
+/** The numeric id, read where it is exact: the GID first, then a safe number, then the raw text. */
+function resourceId(record: Record<string, unknown>, text: string): string | null {
+  const gid = record['admin_graphql_api_id'];
+  if (typeof gid === 'string') {
+    const fromGid = fromShopifyGid(gid);
+    if (NUMERIC_ID.test(fromGid) && fromGid !== '0') {
+      return fromGid;
+    }
+  }
+  const raw = record['id'];
+  if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) {
+    return String(raw);
+  }
+  if (typeof raw === 'string' && NUMERIC_ID.test(raw.trim()) && raw.trim() !== '0') {
+    return raw.trim();
+  }
+  const leading = LEADING_ID.exec(text);
+  return leading !== null && leading[1] !== '0' ? leading[1] : null;
+}
+
+/** A positive numeric id of `key`, exact: the safe number, a numeric string, or the digits in the raw text. */
+function numericField(record: Record<string, unknown>, key: string, text: string): string | null {
+  const raw = record[key];
+  if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) {
+    return String(raw);
+  }
+  if (typeof raw === 'string' && NUMERIC_ID.test(raw.trim()) && raw.trim() !== '0') {
+    return raw.trim();
+  }
+  if (typeof raw === 'number') {
+    // Above the safe range JSON.parse has already rounded: read the digits.
+    const match = new RegExp(`"${key}"\\s*:\\s*(\\d+)`).exec(text);
+    return match !== null && match[1] !== '0' ? match[1] : null;
+  }
+  return null;
+}
+
+function inventoryTarget(
+  record: Record<string, unknown>,
+  text: string,
+): { inventoryItemId: string; locationId: string } | null {
+  const inventoryItemId = numericField(record, 'inventory_item_id', text);
+  const locationId = numericField(record, 'location_id', text);
+  return inventoryItemId === null || locationId === null ? null : { inventoryItemId, locationId };
+}
+
+/**
+ * The dedup key. With `x-shopify-webhook-id` it is that id plus a short hash of
+ * the verified body; without one, the topic plus the exact body. Either way an
+ * identical delivery maps to the same key and a different body to a different one.
+ */
+function eventIdOf(webhookId: string | undefined, eventType: string, rawBody: Buffer): string {
+  if (webhookId === undefined) {
+    return createHash('sha256').update(eventType).update(':').update(rawBody).digest('hex');
+  }
+  return `${webhookId}:${createHash('sha256').update(rawBody).digest('hex').slice(0, 16)}`;
+}
+
+function occurredAt(headers: Record<string, string>): string {
+  const triggeredAt = header(headers, SHOPIFY_WEBHOOK_TRIGGERED_AT_HEADER);
+  const parsed = triggeredAt === undefined ? Number.NaN : Date.parse(triggeredAt);
+  return Number.isNaN(parsed) ? new Date().toISOString() : new Date(parsed).toISOString();
+}
+
+function header(headers: Record<string, string>, name: string): string | undefined {
+  // Node lower-cases header names, but a caller may hand them over in any case.
+  const match = Object.entries(headers).find(([key]) => key.toLowerCase() === name);
+  const value = match?.[1];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}

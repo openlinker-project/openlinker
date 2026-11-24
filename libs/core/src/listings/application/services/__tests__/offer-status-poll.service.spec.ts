@@ -18,15 +18,18 @@ import type { ISyncJobsService } from '@openlinker/core/sync';
 
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import type { IBulkListingProgressService } from '../bulk-listing-progress.service.interface';
 import { OfferStatusPollService } from '../offer-status-poll.service';
 import type { IOfferStatusSyncService } from '../offer-status-sync.service.interface';
 
 const RECORD_ID = 'record-447';
 const EXTERNAL_OFFER_ID = '7781562863';
 const CONNECTION_ID = 'conn-allegro-1';
+const BATCH_ID = 'batch-e2e-21';
 
 function makeRecord(
   status: 'validating' | 'active' | 'draft' | 'failed' | 'pending',
+  bulkBatchId: string | null = null
 ): OfferCreationRecord {
   return new OfferCreationRecord(
     RECORD_ID,
@@ -38,6 +41,8 @@ function makeRecord(
     false,
     new Date('2026-05-01T12:00:00Z'),
     new Date('2026-05-01T12:00:00Z'),
+    null,
+    bulkBatchId
   );
 }
 
@@ -75,6 +80,7 @@ describe('OfferStatusPollService', () => {
   // mock surface per #718 review.
   let syncJobs: jest.Mocked<Pick<ISyncJobsService, 'schedule'>>;
   let statusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'recordObservedStatus'>>;
+  let bulkProgress: jest.Mocked<Pick<IBulkListingProgressService, 'reclassifyChildAsFailed'>>;
   let configService: jest.Mocked<ConfigService>;
 
   beforeEach(() => {
@@ -122,12 +128,14 @@ describe('OfferStatusPollService', () => {
     } as unknown as jest.Mocked<ConfigService>;
 
     statusSync = { recordObservedStatus: jest.fn().mockResolvedValue(undefined) };
+    bulkProgress = { reclassifyChildAsFailed: jest.fn().mockResolvedValue(null) };
 
     service = new OfferStatusPollService(
       integrations,
       records,
       syncJobs as unknown as ISyncJobsService,
       statusSync as unknown as IOfferStatusSyncService,
+      bulkProgress as unknown as IBulkListingProgressService,
       configService
     );
   });
@@ -539,6 +547,133 @@ describe('OfferStatusPollService', () => {
       // Iteration 6 delay = min(5 * 2^5, 60) = min(160, 60) = 60s
       expect(delayMs).toBeGreaterThanOrEqual(59_500);
       expect(delayMs).toBeLessThanOrEqual(60_500);
+    });
+  });
+  describe('pollOnce — bulk child reclassification (E2E-21)', () => {
+    function pollInput(pollAttempt = 1): PollOnceInput {
+      return {
+        offerCreationRecordId: RECORD_ID,
+        externalOfferId: EXTERNAL_OFFER_ID,
+        connectionId: CONNECTION_ID,
+        pollAttempt,
+      };
+    }
+
+    beforeEach(() => {
+      records.findById.mockResolvedValue(makeRecord('validating', BATCH_ID));
+    });
+
+    it('should reclassify the batch child as failed when Allegro rejects the offer after the create was counted', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({
+          publicationStatus: 'inactive',
+          validationErrors: [{ code: 'E1', message: 'Parameter missing' }],
+        })
+      );
+
+      const result = await service.pollOnce(pollInput());
+
+      expect(result.outcome).toBe('business_failure');
+      expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'failed', expect.any(Array));
+      expect(bulkProgress.reclassifyChildAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
+      // Record first, batch bookkeeping second: the record is the source of truth.
+      expect(records.updateStatus.mock.invocationCallOrder[0]).toBeLessThan(
+        bulkProgress.reclassifyChildAsFailed.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('should reclassify the batch child as failed when the poll budget runs out (POLL_TIMEOUT)', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'activating', validationErrors: [] })
+      );
+
+      await service.pollOnce(pollInput(12));
+
+      expect(records.updateStatus.mock.calls[0][2]?.[0]).toMatchObject({ code: 'POLL_TIMEOUT' });
+      expect(bulkProgress.reclassifyChildAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
+    });
+
+    it('should reclassify the batch child as failed when the forward guard times the record out', async () => {
+      await service.pollOnce(pollInput(13));
+
+      expect(bulkProgress.reclassifyChildAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
+    });
+
+    it('should reclassify the batch child as failed when the offer vanished on the marketplace', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => {
+          throw new OfferNotFoundOnMarketplaceException(EXTERNAL_OFFER_ID, CONNECTION_ID);
+        })
+      );
+
+      await service.pollOnce(pollInput());
+
+      expect(bulkProgress.reclassifyChildAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
+    });
+
+    it('should not touch the batch when the offer goes active', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'active', validationErrors: [] })
+      );
+
+      await service.pollOnce(pollInput());
+
+      expect(bulkProgress.reclassifyChildAsFailed).not.toHaveBeenCalled();
+    });
+
+    it('should not touch the batch when the offer lands as a clean draft', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'inactive', validationErrors: [] })
+      );
+
+      await service.pollOnce(pollInput());
+
+      expect(bulkProgress.reclassifyChildAsFailed).not.toHaveBeenCalled();
+    });
+
+    it('should not touch any batch when a single-offer record fails', async () => {
+      records.findById.mockResolvedValue(makeRecord('validating'));
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({
+          publicationStatus: 'inactive',
+          validationErrors: [{ code: 'E1', message: 'Parameter missing' }],
+        })
+      );
+
+      await service.pollOnce(pollInput());
+
+      expect(bulkProgress.reclassifyChildAsFailed).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a reclassification failure so the runner retries the iteration', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({
+          publicationStatus: 'inactive',
+          validationErrors: [{ code: 'E1', message: 'Parameter missing' }],
+        })
+      );
+      bulkProgress.reclassifyChildAsFailed.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(service.pollOnce(pollInput())).rejects.toThrow('db down');
+    });
+
+    it('should re-run the reclassification when a retried iteration finds the record already failed', async () => {
+      records.findById.mockResolvedValue(makeRecord('failed', BATCH_ID));
+
+      const result = await service.pollOnce(pollInput(4));
+
+      expect(result.outcome).toBe('ok');
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(records.updateStatus).not.toHaveBeenCalled();
+      expect(bulkProgress.reclassifyChildAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
+    });
+
+    it('should not reclassify when a retried iteration finds the record active', async () => {
+      records.findById.mockResolvedValue(makeRecord('active', BATCH_ID));
+
+      await service.pollOnce(pollInput(4));
+
+      expect(bulkProgress.reclassifyChildAsFailed).not.toHaveBeenCalled();
     });
   });
 });

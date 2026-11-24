@@ -10,6 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import {
   ConnectionService,
   ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
@@ -48,6 +49,8 @@ import {
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsRewriterRegistryService,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  ConnectionArchiveHookRegistryService,
+  CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
   ConnectionCredentialsRewriteException,
 } from '@openlinker/core/integrations';
 import type { ConnectionCredentialsRewriterPort } from '@openlinker/core/integrations';
@@ -80,6 +83,7 @@ describe('ConnectionService', () => {
   let configValidatorRegistry: ConnectionConfigShapeValidatorRegistryService;
   let credentialsValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
   let credentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService;
+  let archiveHookRegistry: ConnectionArchiveHookRegistryService;
   let mockHttpTransportFactory: jest.Mocked<HttpTransportFactoryPort>;
 
   const mockConnection = new Connection(
@@ -207,6 +211,7 @@ describe('ConnectionService', () => {
     // test; individual tests register a stub rewriter to exercise the
     // delegation path.
     credentialsRewriterRegistry = new ConnectionCredentialsRewriterRegistryService();
+    archiveHookRegistry = new ConnectionArchiveHookRegistryService();
 
     const mockCredentialsResolver: CredentialsResolverPort = {
       get: jest.fn(),
@@ -251,6 +256,7 @@ describe('ConnectionService', () => {
           provide: CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
           useValue: credentialsRewriterRegistry,
         },
+        { provide: CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN, useValue: archiveHookRegistry },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
         { provide: HTTP_TRANSPORT_FACTORY_TOKEN, useValue: mockHttpTransportFactory },
         { provide: LOCATION_SERVICE_TOKEN, useValue: mockLocations },
@@ -347,7 +353,10 @@ describe('ConnectionService', () => {
 
         await expect(service.create(subiektPayload)).rejects.toThrow(/must be unique/);
         expect(connectionPort.create).not.toHaveBeenCalled();
-        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+        expect(connectionPort.list).toHaveBeenCalledWith({
+          platformType: 'subiekt',
+          status: 'active',
+        });
       });
 
       it('should allow the create when no active sibling shares the bridgeBaseUrl', async () => {
@@ -379,7 +388,10 @@ describe('ConnectionService', () => {
         connectionPort.create.mockResolvedValue(mockConnection);
 
         await expect(service.create(subiektPayload)).resolves.toEqual(mockConnection);
-        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+        expect(connectionPort.list).toHaveBeenCalledWith({
+          platformType: 'subiekt',
+          status: 'active',
+        });
       });
 
       it('should skip the collision check entirely when the adapter declares no uniqueConfigKeys', async () => {
@@ -534,6 +546,125 @@ describe('ConnectionService', () => {
       expect(credentials.create).not.toHaveBeenCalled();
     });
 
+    describe('giftOnDocuments config (#3930)', () => {
+      const base = {
+        name: 'Shop',
+        platformType: 'prestashop',
+        credentials: { webserviceApiKey: 'RAW' },
+      };
+
+      it('should refuse an unknown gift form, since plugin validators ignore unknown keys', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: { baseUrl: 'https://new.com', giftOnDocuments: { form: 'hold' } },
+          })
+        ).rejects.toThrow(/giftOnDocuments/);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('deliveryOnDocuments config (#3905)', () => {
+      const base = {
+        name: 'Shop',
+        platformType: 'prestashop',
+        credentials: { webserviceApiKey: 'RAW' },
+      };
+
+      it('should list each refused field under VALIDATION_FAILED (#3864)', async () => {
+        const error = await service
+          .create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa', rate: 'fixed' } },
+            },
+          })
+          .catch((caught: unknown) => caught);
+
+        const body = (error as BadRequestException).getResponse() as Record<string, unknown>;
+        expect(body['code']).toBe('VALIDATION_FAILED');
+        expect(body['fields']).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: expect.stringMatching(/^config\.deliveryOnDocuments\.default/),
+              code: 'invalid',
+            }),
+          ])
+        );
+        expect(body['errors']).toBeDefined();
+      });
+
+      it('should refuse a delivery name that already carries a percentage', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa 23%' } },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse a fixed rate with no fixedRate', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa', rate: 'fixed' } },
+            },
+          })
+        ).rejects.toThrow(/fixedRate/);
+      });
+
+      it('should measure the name against the budget a fiscalization adapter declares', async () => {
+        integrationsService.listCapabilityAdapters.mockResolvedValueOnce([
+          {
+            connectionId: 'fiscal-1',
+            connection: mockConnection,
+            adapter: Promise.resolve({
+              registerTransaction: jest.fn(),
+              getReceiptLineNameMaxLength: () => 20,
+            }),
+            metadata: { supportedCapabilities: ['Fiscalization'] },
+          },
+        ] as never);
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              // 17 characters: inside the 36 the fallback allows, past the 16
+              // a declared 20 leaves once the ` 23%` suffix is reserved.
+              deliveryOnDocuments: { default: { name: 'Koszt dostawy kur' } },
+            },
+          })
+        ).rejects.toThrow(/at most 16 characters/);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should accept a well-formed value', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: {
+                default: { name: 'Dostawa' },
+                countries: {
+                  pl: { name: 'Koszt dostawy', rateFormat: 'labelled', rateLabel: 'VAT' },
+                },
+              },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+    });
+
     it('should reject PrestaShop credentials missing webserviceApiKey', async () => {
       await expect(
         service.create({
@@ -595,6 +726,36 @@ describe('ConnectionService', () => {
       // Narrowed to the product job (#2084): create now also runs a taxonomy
       // bootstrap, so a bare `not.toHaveBeenCalled()` would fail here even
       // though this test's subject — the ProductMaster gate — still holds.
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: 'master.product.syncAll' })
+      );
+    });
+
+    // The adapter supporting ProductMaster is not the operator choosing it: a
+    // connection created as a publish destination only must not have its shop
+    // catalogue pulled in as master data. Same gate as the recurring scheduler.
+    it('should skip the catalogue bootstrap when ProductMaster is supported but not enabled', async () => {
+      const publishOnly = new Connection(
+        'connection-123',
+        'shoper',
+        'Publish destination',
+        'active',
+        {},
+        'cred_123',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductPublisher']
+      );
+      connectionPort.create.mockResolvedValue(publishOnly);
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: publishOnly,
+        adapter: {},
+        metadata: { supportedCapabilities: ['ProductMaster', 'ProductPublisher'] },
+      } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+
+      await service.create(payload);
+
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
         expect.objectContaining({ jobType: 'master.product.syncAll' })
       );
@@ -720,7 +881,9 @@ describe('ConnectionService', () => {
         };
         expect(created.enabledCapabilities).not.toContain('OfferManager');
         expect(created.enabledCapabilities).toContain('InventoryMaster');
-        expect(created.enabledCapabilities).toContain('ProductPublisher');
+        // #3985: a shop that is also a catalog master defaults to master-only.
+        expect(created.enabledCapabilities).toContain('ProductMaster');
+        expect(created.enabledCapabilities).not.toContain('ProductPublisher');
       });
 
       it('should keep the full defaulted capability set for marketplace manifests without InventoryMaster', async () => {
@@ -913,7 +1076,86 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('config.buyerEmails validation (#3554)', () => {
+      // The channel rule reads OfferManager, which the default PrestaShop
+      // manifest mock does not advertise; a shop that also sells through
+      // OfferManager (WooCommerce's shape) needs it to be enable-able at all.
+      beforeEach(() => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'prestashop.webservice.v1',
+          platformType: 'prestashop',
+          supportedCapabilities: [
+            'ProductMaster',
+            'InventoryMaster',
+            'OrderSource',
+            'OrderProcessorManager',
+            'OfferManager',
+          ],
+        } as never);
+      });
+
+      const withEmails = (buyerEmails: unknown, enabledCapabilities?: string[]) => ({
+        ...payload,
+        ...(enabledCapabilities ? { enabledCapabilities } : {}),
+        config: { ...payload.config, buyerEmails },
+      });
+
+      it('should accept a shop enabling order-confirmed with a valid sender', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        await expect(
+          service.create(
+            withEmails(
+              {
+                enabled: true,
+                templates: { 'order-confirmed': { enabled: true, replyTo: 'help@shop.pl' } },
+              },
+              ['ProductMaster', 'OfferManager']
+            ) as never
+          )
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject order-confirmed on a marketplace connection', async () => {
+        await expect(
+          service.create(
+            withEmails({ enabled: true, templates: { 'order-confirmed': { enabled: true } } }, [
+              'OfferManager',
+            ]) as never
+          )
+        ).rejects.toThrow(/sent by a shop/);
+      });
+
+      it('should reject an unknown template and a sender with a line break', async () => {
+        await expect(
+          service.create(
+            withEmails({ enabled: true, templates: { marketing: { enabled: true } } }) as never
+          )
+        ).rejects.toThrow(/unknown template/);
+        await expect(
+          service.create(
+            withEmails({
+              enabled: true,
+              templates: { shipped: { enabled: true, fromAddress: 'a@b.pl\nBcc: x@y.pl' } },
+            }) as never
+          )
+        ).rejects.toThrow(/single email address/);
+      });
+    });
+
     describe('config.rateLimit validation (#1810)', () => {
+      it('should name the field, the rule and its bounds on a refusal (#3864)', async () => {
+        const error = await service
+          .create({ ...payload, config: { ...payload.config, rateLimit: { maxConcurrent: 99 } } })
+          .catch((caught: unknown) => caught);
+
+        expect((error as BadRequestException).getResponse()).toEqual({
+          statusCode: 400,
+          code: 'CONNECTION_CONFIG_INVALID',
+          message: 'config.rateLimit.maxConcurrent must be a number between 1 and 64',
+          params: { field: 'config.rateLimit.maxConcurrent', rule: 'range', min: 1, max: 64 },
+        });
+      });
+
       it('should accept a create with both knobs within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);
 
@@ -978,11 +1220,12 @@ describe('ConnectionService', () => {
       it('should update accepting a valid rateLimit and never default a value into stored config', async () => {
         connectionPort.get.mockResolvedValue(mockConnection);
         connectionPort.update.mockResolvedValue(mockConnection);
-        const config = { baseUrl: 'https://shop.example.com', rateLimit: { requestsPerMinute: 30 } };
+        const config = {
+          baseUrl: 'https://shop.example.com',
+          rateLimit: { requestsPerMinute: 30 },
+        };
 
-        await expect(
-          service.update('connection-123', { config })
-        ).resolves.toEqual(mockConnection);
+        await expect(service.update('connection-123', { config })).resolves.toEqual(mockConnection);
         expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
       });
 
@@ -992,6 +1235,51 @@ describe('ConnectionService', () => {
         await expect(
           service.update('connection-123', {
             config: { baseUrl: 'https://shop.example.com', rateLimit: { maxConcurrent: 0 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('config.salesDocument batch keys validation (#3582/#3583)', () => {
+      it('should accept a create with a kind-scoped trigger model and a valid schedule', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              salesDocument: {
+                triggerModels: { invoice: 'batched' },
+                batchSchedules: { invoice: { frequency: 'daily', time: '18:00' } },
+              },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject a create with an unrecognised kind-scoped trigger model', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, salesDocument: { triggerModels: { invoice: 'batch' } } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject an update with a schedule the worker would silently read differently', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: {
+              baseUrl: 'https://shop.example.com',
+              salesDocument: {
+                batchSchedules: { invoice: { frequency: 'daily', time: '6pm' } },
+              },
+            },
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
@@ -1237,6 +1525,10 @@ describe('ConnectionService', () => {
           expect(error).toBeInstanceOf(BadRequestException);
           const response = (error as BadRequestException).getResponse();
           expect(response).toMatchObject({ error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE });
+          expect(response).toMatchObject({
+            code: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+            params: { reason: 'unknown-location', locationId: 'ol_location_ghost' },
+          });
         }
       });
 
@@ -1263,7 +1555,10 @@ describe('ConnectionService', () => {
 
         await expect(
           service.update('connection-123', {
-            config: { baseUrl: 'https://shop.example.com', stockLocationOverride: 'ol_location_ghost' },
+            config: {
+              baseUrl: 'https://shop.example.com',
+              stockLocationOverride: 'ol_location_ghost',
+            },
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
@@ -1354,6 +1649,18 @@ describe('ConnectionService', () => {
       connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
       await expect(service.get('connection-123')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should name the code and the connection when it is not found (#3864)', async () => {
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
+
+      const error = await service.get('connection-123').catch((caught: unknown) => caught);
+
+      expect((error as NotFoundException).getResponse()).toMatchObject({
+        statusCode: 404,
+        code: 'CONNECTION_NOT_FOUND',
+        params: { connectionId: 'connection-123' },
+      });
     });
   });
 
@@ -1514,12 +1821,193 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('catalogue bootstrap on enable', () => {
+      const withState = (
+        status: 'active' | 'disabled',
+        enabledCapabilities: string[]
+      ): Connection =>
+        new Connection(
+          'connection-123',
+          'shoper',
+          'Test Connection',
+          status,
+          {},
+          'cred_123',
+          new Date(),
+          new Date(),
+          undefined,
+          enabledCapabilities
+        );
+
+      const syncAll = expect.objectContaining({
+        jobType: 'master.product.syncAll',
+        idempotencyKey: 'bootstrap:connection-123:product:syncAll',
+      });
+
+      beforeEach(() => {
+        integrationsService.getAdapter.mockResolvedValue({
+          connection: mockConnection,
+          adapter: {},
+          metadata: { supportedCapabilities: ['ProductMaster', 'ProductPublisher'] },
+        } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'shoper.restapi.v1',
+          platformType: 'shoper',
+          supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+        } as unknown as Awaited<ReturnType<IIntegrationsService['resolveAdapterMetadata']>>);
+      });
+
+      // Create skipped the bootstrap because ProductMaster was off then, so
+      // switching it on is the first moment the catalogue should be pulled.
+      it('should enqueue the bootstrap when ProductMaster is switched on', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', []));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductMaster']));
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductMaster'],
+        } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should enqueue the bootstrap when a master connection transitions to active', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ['ProductMaster']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductMaster']));
+
+        await service.update('connection-123', { status: 'active' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not enqueue when a publish-only connection transitions to active', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ['ProductPublisher']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductPublisher']));
+
+        await service.update('connection-123', { status: 'active' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not enqueue when ProductMaster was already enabled and nothing transitions', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductMaster']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductMaster']));
+
+        await service.update('connection-123', { name: 'Renamed' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should not enqueue when ProductMaster is switched off', async () => {
+        connectionPort.get.mockResolvedValue(
+          withState('active', ['ProductMaster', 'ProductPublisher'])
+        );
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductPublisher']));
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductPublisher'],
+        } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not fail the update when the bootstrap enqueue throws', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', []));
+        const enabled = withState('active', ['ProductMaster']);
+        connectionPort.update.mockResolvedValue(enabled);
+        jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
+
+        await expect(
+          service.update('connection-123', {
+            enabledCapabilities: ['ProductMaster'],
+          } as ConnectionUpdate)
+        ).resolves.toEqual(enabled);
+      });
+    });
+
     it('should throw NotFoundException when connection not found', async () => {
       connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
       await expect(service.update('connection-123', { name: 'Updated' })).rejects.toThrow(
         NotFoundException
       );
+    });
+
+    // #3985 - master/publisher exclusion.
+    describe('master and publisher exclusion (#3985)', () => {
+      const shopManifest = {
+        adapterKey: 'woocommerce.restapi.v3',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['ProductMaster', 'ProductPublisher', 'OrderSource'],
+      };
+
+      it('should reject create when ProductMaster and ProductPublisher are both explicitly enabled', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(shopManifest as never);
+
+        await expect(
+          service.create({
+            name: 'New Connection',
+            config: { baseUrl: 'https://new.com' },
+            credentialsRef: 'db:existing-ref',
+            platformType: 'woocommerce',
+            enabledCapabilities: ['ProductMaster', 'ProductPublisher'] as never,
+          })
+        ).rejects.toMatchObject({
+          response: { code: 'CONNECTION_MASTER_PUBLISHER_CONFLICT' },
+        });
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject update when the patch moves a connection into the combination', async () => {
+        connectionPort.get.mockResolvedValue({
+          ...mockConnection,
+          enabledCapabilities: ['ProductMaster'],
+        });
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(shopManifest as never);
+
+        await expect(
+          service.update('connection-123', {
+            enabledCapabilities: ['ProductMaster', 'ProductPublisher'] as never,
+          })
+        ).rejects.toMatchObject({
+          response: { code: 'CONNECTION_MASTER_PUBLISHER_CONFLICT' },
+        });
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should allow an update that keeps an already-conflicting connection as it was', async () => {
+        const legacy = {
+          ...mockConnection,
+          enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+        };
+        connectionPort.get.mockResolvedValue(legacy);
+        connectionPort.update.mockResolvedValue(legacy);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(shopManifest as never);
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductMaster', 'ProductPublisher', 'OrderSource'] as never,
+        });
+
+        expect(connectionPort.update).toHaveBeenCalled();
+      });
+
+      it('should warn once per process when a read returns a connection holding both', async () => {
+        const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        const legacy = {
+          ...mockConnection,
+          enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+        };
+        connectionPort.get.mockResolvedValue(legacy);
+
+        await service.get('connection-123');
+        await service.get('connection-123');
+
+        const hits = warnSpy.mock.calls.filter(([message]) =>
+          String(message).includes('holds ProductMaster and ProductPublisher')
+        );
+        expect(hits).toHaveLength(1);
+        expect(String(hits[0][0])).toContain('connection-123');
+        warnSpy.mockRestore();
+      });
     });
 
     // #1498 — write-back authority guard on the update path.
@@ -2020,6 +2508,28 @@ describe('ConnectionService', () => {
         ).rejects.toThrow(BadRequestException);
         expect(credentials.update).not.toHaveBeenCalled();
       });
+
+      it('should send the rewriter refusal as PROVIDER_REJECTED with its words apart (#3864)', async () => {
+        const refusal = new ConnectionCredentialsRewriteException(
+          'Stub',
+          'source connection is invalid'
+        );
+        credentialsRewriterRegistry.register('prestashop.webservice.v1', {
+          rewrite: jest.fn().mockRejectedValue(refusal),
+        });
+
+        const error = await service
+          .updateCredentials('connection-123', { webserviceApiKey: 'NEW' })
+          .catch((caught: unknown) => caught);
+
+        expect((error as BadRequestException).getResponse()).toEqual({
+          statusCode: 400,
+          code: 'PROVIDER_REJECTED',
+          message: refusal.message,
+          params: { provider: 'prestashop.webservice.v1' },
+          providerMessage: refusal.message,
+        });
+      });
     });
   });
 
@@ -2218,9 +2728,9 @@ describe('ConnectionService', () => {
         locations.countActiveLocations.mockResolvedValue(1);
         connectionPort.create.mockResolvedValue(mockConnection);
 
-        await expect(
-          service.create(claiming({ sourcingAuthority: true }))
-        ).resolves.toEqual(mockConnection);
+        await expect(service.create(claiming({ sourcingAuthority: true }))).resolves.toEqual(
+          mockConnection
+        );
       });
 
       it('should not read the location count at all when nothing claims routing', async () => {
@@ -2281,17 +2791,14 @@ describe('ConnectionService', () => {
         locations.countActiveLocations.mockResolvedValue(0);
         connectionPort.create.mockResolvedValue(mockConnection);
 
-        await expect(
-          service.create(claiming(config as Record<string, unknown>))
-        ).resolves.toEqual(mockConnection);
+        await expect(service.create(claiming(config as Record<string, unknown>))).resolves.toEqual(
+          mockConnection
+        );
       });
     });
   });
   describe('archive / restore (#3657)', () => {
-    const withState = (
-      status: Connection['status'],
-      credentialsRef: string
-    ): Connection =>
+    const withState = (status: Connection['status'], credentialsRef: string): Connection =>
       new Connection(
         'connection-123',
         'prestashop',
@@ -2381,6 +2888,30 @@ describe('ConnectionService', () => {
         expect(result.status).toBe('archived');
       });
 
+      it('should call the plugin archive hook with the archived connection (#3974)', async () => {
+        const archived = withState('archived', '');
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.update.mockResolvedValue(archived);
+        const onArchived = jest.fn().mockResolvedValue(undefined);
+        archiveHookRegistry.register('prestashop.webservice.v1', { onArchived });
+
+        await service.archive('connection-123');
+
+        expect(onArchived).toHaveBeenCalledWith(archived);
+      });
+
+      it('should still archive when the plugin archive hook fails (#3974)', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+        archiveHookRegistry.register('prestashop.webservice.v1', {
+          onArchived: jest.fn().mockRejectedValue(new Error('cache down')),
+        });
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
+      });
+
       it('should remove the credential before archiving the row when both are written', async () => {
         const order: string[] = [];
         connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
@@ -2426,9 +2957,7 @@ describe('ConnectionService', () => {
         async (status) => {
           connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
 
-          await expect(service.archive('connection-123')).rejects.toBeInstanceOf(
-            ConflictException
-          );
+          await expect(service.archive('connection-123')).rejects.toBeInstanceOf(ConflictException);
           expect(credentials.delete).not.toHaveBeenCalled();
           expect(connectionPort.update).not.toHaveBeenCalled();
         }
@@ -2483,9 +3012,7 @@ describe('ConnectionService', () => {
         async (status) => {
           connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
 
-          await expect(service.restore('connection-123')).rejects.toBeInstanceOf(
-            ConflictException
-          );
+          await expect(service.restore('connection-123')).rejects.toBeInstanceOf(ConflictException);
           expect(connectionPort.update).not.toHaveBeenCalled();
         }
       );
@@ -2504,9 +3031,9 @@ describe('ConnectionService', () => {
       it('should refuse any status change on an archived connection', async () => {
         connectionPort.get.mockResolvedValue(withState('archived', ''));
 
-        await expect(
-          service.update('connection-123', { status: 'active' })
-        ).rejects.toBeInstanceOf(ConflictException);
+        await expect(service.update('connection-123', { status: 'active' })).rejects.toBeInstanceOf(
+          ConflictException
+        );
         expect(connectionPort.update).not.toHaveBeenCalled();
       });
 
@@ -2578,6 +3105,69 @@ describe('ConnectionService', () => {
         ).rejects.toBeInstanceOf(BadRequestException);
         expect(credentials.create).not.toHaveBeenCalled();
       });
+    });
+  });
+  describe('findSharedRateLimitBucketWarnings (#1594)', () => {
+    function ksefConnection(
+      id: string,
+      name: string,
+      nip: string | undefined,
+      adapterKey = 'ksef.publicapi.v2',
+      status: 'active' | 'disabled' = 'active'
+    ): Connection {
+      return new Connection(
+        id,
+        'ksef',
+        name,
+        status,
+        nip ? { env: 'test', seller: { nip } } : { env: 'test' },
+        'cred_x',
+        new Date(),
+        new Date(),
+        adapterKey,
+        ['Invoicing']
+      );
+    }
+
+    it('returns no warning when the connection carries no seller tax id', async () => {
+      const conn = ksefConnection('c1', 'A', undefined);
+      const warnings = await service.findSharedRateLimitBucketWarnings(conn);
+      expect(warnings).toEqual([]);
+      expect(connectionPort.list).not.toHaveBeenCalled();
+    });
+
+    it('warns when another active connection shares adapter + seller tax id', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      const sibling = ksefConnection('c2', 'Channel B', '1234567890');
+      connectionPort.list.mockResolvedValue([subject, sibling]);
+
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+
+      expect(connectionPort.list).toHaveBeenCalledWith({ status: 'active' });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('Channel B');
+      expect(warnings[0]).toContain('1234567890');
+    });
+
+    it('does not warn about itself', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      connectionPort.list.mockResolvedValue([subject]);
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+      expect(warnings).toEqual([]);
+    });
+
+    it('does not warn when the shared NIP is on a different adapter', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890', 'ksef.publicapi.v2');
+      const other = ksefConnection('c2', 'Infakt B', '1234567890', 'infakt.accounting.v1');
+      connectionPort.list.mockResolvedValue([subject, other]);
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+      expect(warnings).toEqual([]);
+    });
+
+    it('is advisory: a list failure yields no warning rather than throwing', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      connectionPort.list.mockRejectedValue(new Error('db down'));
+      await expect(service.findSharedRateLimitBucketWarnings(subject)).resolves.toEqual([]);
     });
   });
 });

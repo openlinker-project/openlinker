@@ -36,19 +36,14 @@ import {
 } from '../../../shared/ui/dialog';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { OrderLineMatchBanner } from './order-line-match-banner';
 import { ReturnLinesTable } from './return-lines-table';
 import { ReturnReceiveForm } from './return-receive-form';
 import { ReturnDisposeForm } from './return-dispose-form';
 import { ReturnNotReturnedAction } from './return-not-returned-action';
 import { ReturnRestockBlockedNotice } from './return-restock-blocked-notice';
 import { describeCustodyError } from '../lib/custody-error';
-import { RETURN_RESTOCK_ATTESTED_COPY } from '../lib/restock-blocked.copy';
-import { RETURN_LINES_COPY } from '../lib/return-detail.copy';
-import {
-  RETURN_DISPOSE_COPY,
-  RETURN_RECEIVE_COPY,
-  RETURN_NOT_RETURNED_COPY,
-} from '../lib/return-custody.copy';
+import { useMessages } from '../../../shared/i18n';
 import { outstandingToDispose, outstandingToReceive } from '../lib/return-line-quantities';
 import {
   useDisposeReturnLineMutation,
@@ -96,6 +91,9 @@ export function ReturnCustodyPanel({
   sessionUserId = null,
 }: ReturnCustodyPanelProps): ReactElement {
   const { showToast } = useToast();
+  const messages = useMessages('returns');
+  const receiveCopy = messages.custody.receive;
+  const disposeCopy = messages.custody.dispose;
 
   const receive = useReceiveReturnLineMutation(detail.id);
   const dispose = useDisposeReturnLineMutation(detail.id);
@@ -157,7 +155,7 @@ export function ReturnCustodyPanel({
     receive.mutate(
       { lineId: line.id, input },
       {
-        onSuccess: () => showToast({ tone: 'success', description: RETURN_RECEIVE_COPY.success }),
+        onSuccess: () => showToast({ tone: 'success', description: receiveCopy.success }),
         onError: (error) => setError(line.id, describeCustodyError(error)),
         onSettled: () => setPendingLineId(null),
       }
@@ -166,7 +164,12 @@ export function ReturnCustodyPanel({
 
   const runDispose = (
     line: ReturnLine,
-    input: { quantity: number; disposition: 'restock' | 'scrap'; note?: string }
+    input: {
+      quantity: number;
+      disposition: 'restock' | 'scrap';
+      note?: string;
+      returnedVariantIds?: string[];
+    }
   ): void => {
     setError(line.id, null);
     setPendingLineId(line.id);
@@ -181,8 +184,8 @@ export function ReturnCustodyPanel({
           // no window in which the two can disagree.
           showToast(
             result.restockBlocked === null
-              ? { tone: 'success', description: RETURN_DISPOSE_COPY.success }
-              : { tone: 'error', description: RETURN_DISPOSE_COPY.restockBlockedToast }
+              ? { tone: 'success', description: disposeCopy.success }
+              : { tone: 'error', description: disposeCopy.restockBlockedToast }
           );
         },
         onError: (error) => setError(line.id, describeCustodyError(error)),
@@ -198,7 +201,7 @@ export function ReturnCustodyPanel({
       { lineId: line.id, input },
       {
         onSuccess: () =>
-          showToast({ tone: 'success', description: RETURN_NOT_RETURNED_COPY.success }),
+          showToast({ tone: 'success', description: messages.custody.notReturned.success }),
         onError: (error) => setError(line.id, describeCustodyError(error)),
         onSettled: () => setPendingLineId(null),
       }
@@ -212,7 +215,7 @@ export function ReturnCustodyPanel({
       { lineId: line.id, input: {} },
       {
         onSuccess: () =>
-          showToast({ tone: 'success', description: RETURN_RESTOCK_ATTESTED_COPY.toast }),
+          showToast({ tone: 'success', description: messages.restockAttested.toast }),
         onError: (error) => setError(line.id, describeCustodyError(error)),
         onSettled: () => setPendingLineId(null),
       }
@@ -258,8 +261,8 @@ export function ReturnCustodyPanel({
 
     showToast(
       failed === 0
-        ? { tone: 'success', description: RETURN_RECEIVE_COPY.bulkSuccess }
-        : { tone: 'error', description: RETURN_RECEIVE_COPY.bulkPartial }
+        ? { tone: 'success', description: receiveCopy.bulkSuccess }
+        : { tone: 'error', description: receiveCopy.bulkPartial }
     );
   };
 
@@ -272,8 +275,17 @@ export function ReturnCustodyPanel({
     const error = errorByLine[line.id] ?? null;
 
     return (
-      <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURN_RECEIVE_COPY.readOnly}>
+      <ReadOnlyLock active={writeAccess.demoReadOnly} message={receiveCopy.readOnly}>
         <div className="return-custody-detail">
+          {/* Only an attributed return has an order to match against (#3933). */}
+          {!isOrphan ? (
+            <OrderLineMatchBanner
+              canWrite={writeAccess.canWrite}
+              currency={detail.orderCurrency}
+              line={line}
+              returnId={detail.id}
+            />
+          ) : null}
 
           {canReceive && canDispose ? (
             <div className="return-custody-detail__switch">
@@ -282,14 +294,14 @@ export function ReturnCustodyPanel({
                 type="button"
                 tone={mode === 'receive' ? 'primary' : 'secondary'}
               >
-                {RETURN_RECEIVE_COPY.action}
+                {receiveCopy.action}
               </Button>
               <Button
                 onClick={() => setModeByLine((current) => ({ ...current, [line.id]: 'dispose' }))}
                 type="button"
                 tone={mode === 'dispose' ? 'primary' : 'secondary'}
               >
-                {RETURN_DISPOSE_COPY.action}
+                {disposeCopy.action}
               </Button>
             </div>
           ) : null}
@@ -310,6 +322,7 @@ export function ReturnCustodyPanel({
               isOrphan={isOrphan}
               line={line}
               restockBlocked={restockBlockedLineIds.has(line.id)}
+              bundleScope={{ returnId: detail.id, currency: detail.orderCurrency }}
               onCancel={() => setError(line.id, null)}
               onSubmit={(input) => runDispose(line, input)}
               pending={dispose.isPending && pendingLineId === line.id}
@@ -324,7 +337,7 @@ export function ReturnCustodyPanel({
           ) : null}
 
           {!canReceive && !canDispose ? (
-            <p className="text-muted">{RETURN_DISPOSE_COPY.nothingToDispose}</p>
+            <p className="text-muted">{disposeCopy.nothingToDispose}</p>
           ) : null}
 
           <ReturnNotReturnedAction
@@ -340,10 +353,10 @@ export function ReturnCustodyPanel({
   return (
     <section className="return-custody-panel" id="custody">
       {writeAccess.visible && outstandingLines.length > 0 ? (
-        <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURN_RECEIVE_COPY.bulkAction}>
+        <ReadOnlyLock active={writeAccess.demoReadOnly} message={receiveCopy.bulkAction}>
           <div className="return-custody-panel__bulk">
             <Button onClick={() => setBulkOpen(true)} tone="secondary" type="button">
-              {RETURN_RECEIVE_COPY.bulkAction}
+              {receiveCopy.bulkAction}
             </Button>
           </div>
         </ReadOnlyLock>
@@ -358,7 +371,7 @@ export function ReturnCustodyPanel({
       {linesWithCustodyNotices.map(({ line, blocks, attestations }) => (
         <div className="returns-restock-notice" key={line.id}>
           <p className="returns-restock-notice__line text-muted">
-            {line.name ?? line.sku ?? RETURN_LINES_COPY.unnamedItem}
+            {line.name ?? line.sku ?? messages.detail.lines.unnamedItem}
           </p>
           <ReturnRestockBlockedNotice
             attestations={attestations}
@@ -385,18 +398,18 @@ export function ReturnCustodyPanel({
 
       <Dialog onOpenChange={setBulkOpen} open={bulkOpen}>
         <DialogContent>
-          <DialogTitle>{RETURN_RECEIVE_COPY.bulkConfirmTitle}</DialogTitle>
-          <DialogDescription>{RETURN_RECEIVE_COPY.bulkConfirmBody}</DialogDescription>
+          <DialogTitle>{receiveCopy.bulkConfirmTitle}</DialogTitle>
+          <DialogDescription>{receiveCopy.bulkConfirmBody}</DialogDescription>
           <DialogFooter>
             <Button
               disabled={receive.isPending}
               onClick={() => void runBulkReceive()}
               type="button"
             >
-              {receive.isPending ? RETURN_RECEIVE_COPY.pending : RETURN_RECEIVE_COPY.bulkConfirm}
+              {receive.isPending ? receiveCopy.pending : receiveCopy.bulkConfirm}
             </Button>
             <Button onClick={() => setBulkOpen(false)} tone="secondary" type="button">
-              {RETURN_RECEIVE_COPY.bulkCancel}
+              {receiveCopy.bulkCancel}
             </Button>
           </DialogFooter>
         </DialogContent>

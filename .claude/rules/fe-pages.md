@@ -224,6 +224,7 @@ showToast({ tone: 'error', description: 'Something went wrong.' });
 - Default auto-dismiss: 4 seconds
 - Use for transient feedback (success confirmations, background task completions)
 - Do NOT use for errors that need user action — use `Alert` or `ErrorState` instead
+- Exception: a long form may pair a toast with the persistent `Alert` when the `Alert` is out of view at the point of action (e.g. a Save button far below it); the toast never replaces the `Alert`
 
 ## Feature Module Structure
 

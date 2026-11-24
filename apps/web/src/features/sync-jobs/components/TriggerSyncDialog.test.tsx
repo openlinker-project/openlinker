@@ -16,6 +16,8 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { TriggerSyncDialog } from './TriggerSyncDialog';
 
 // jsdom does not implement showModal/close — stub them on HTMLDialogElement
@@ -360,7 +362,7 @@ describe('TriggerSyncDialog', () => {
       const onOpenChange = vi.fn();
       const mockApi = createMockApiClient({
         syncJobs: {
-          enqueue: vi.fn().mockRejectedValue(new Error('Connection refused')),
+          enqueue: vi.fn().mockRejectedValue(new ApiError('Connection refused', 503, null)),
         },
       });
       renderWithProviders(
@@ -371,7 +373,7 @@ describe('TriggerSyncDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
 
       await waitFor(() => {
-        expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
+        expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
       });
 
       expect(onOpenChange).not.toHaveBeenCalledWith(false);
@@ -413,7 +415,7 @@ describe('TriggerSyncDialog', () => {
     it('should reuse the same idempotency key across retries after a failed submit', async () => {
       const enqueue = vi
         .fn()
-        .mockRejectedValueOnce(new Error('Connection refused'))
+        .mockRejectedValueOnce(new ApiError('Connection refused', 503, null))
         .mockResolvedValueOnce({ jobId: 'job_retry', status: 'queued' });
       const mockApi = createMockApiClient({ syncJobs: { enqueue } });
       renderWithProviders(
@@ -424,7 +426,7 @@ describe('TriggerSyncDialog', () => {
       // First click — rejects
       fireEvent.click(screen.getByRole('button', { name: /trigger/i }));
       await waitFor(() => {
-        expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
+        expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
       });
 
       // Second click — succeeds (operator retries)

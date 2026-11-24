@@ -44,6 +44,7 @@ export const tokens = {
   // ── Layout heights (#2227) ──────────────────────────────────────
   // The two pinned strips at the top of the shell.
   'shell-topbar-height': 'var(--shell-topbar-height)',
+  'layout-max-width': 'var(--layout-max-width)',
   'demo-banner-height': 'var(--demo-banner-height)',
 
   // ── Radii ───────────────────────────────────────────────────────
@@ -180,6 +181,10 @@ export const tokens = {
   'status-disabled-soft': 'var(--status-disabled-soft)',
   'status-disabled-border': 'var(--status-disabled-border)',
   'status-disabled-fg': 'var(--status-disabled-fg)',
+
+  // ── Login stage (#4029) ─────────────────────────────────────────
+  'login-brand-word': 'var(--login-brand-word)',
+  'login-backdrop-opacity': 'var(--login-backdrop-opacity)',
 } as const satisfies Record<string, `var(--${string})`>;
 
 /**

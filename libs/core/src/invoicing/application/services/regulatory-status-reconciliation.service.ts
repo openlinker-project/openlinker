@@ -88,6 +88,7 @@ export class RegulatoryStatusReconciliationService
       skippedTerminal: 0,
       readErrors: 0,
       total: 0,
+      clearedInvoiceIds: [],
     };
 
     // Resolve the per-connection Invoicing adapter. The reader is a runtime
@@ -170,6 +171,15 @@ export class RegulatoryStatusReconciliationService
 
         await this.repo.updateOutcome(record.id, patch);
         result.updated += 1;
+        // The loop only reads non-terminal records, so a terminal patch here is a
+        // transition. `rejected` is terminal too but never has a document.
+        if (
+          patch.regulatoryStatus !== undefined &&
+          patch.regulatoryStatus !== 'rejected' &&
+          isTerminalRegulatoryStatus(patch.regulatoryStatus)
+        ) {
+          result.clearedInvoiceIds.push(record.id);
+        }
       }
 
       // A short (or empty) page means the frontier is drained — stop. A full
@@ -212,6 +222,15 @@ export class RegulatoryStatusReconciliationService
     // null (a later read that returns null must not wipe an earlier reference).
     if (read.clearanceReference != null && read.clearanceReference !== record.clearanceReference) {
       patch.clearanceReference = read.clearanceReference;
+    }
+
+    // (8f #1582) clearanceDetail is the operator-facing rejection diagnostic.
+    // Refresh it when a rejected read carries a new one. Key OMITTED otherwise
+    // so an unrelated read never rewrites it. (A record only ever CARRIES a
+    // detail once rejected, which is terminal and never re-polled here, so
+    // clearing is owned by `applyRegulatoryClearance` on the resend path.)
+    if (read.clearanceDetail != null && read.clearanceDetail !== record.clearanceDetail) {
+      patch.clearanceDetail = read.clearanceDetail;
     }
 
     return patch;

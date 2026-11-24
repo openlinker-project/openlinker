@@ -35,7 +35,13 @@ import type {
   IncomingOrderAddress,
   OrderPickupPoint,
 } from '@openlinker/core/orders';
-import { readSourceBuyerTaxId } from '@openlinker/core/orders';
+import {
+  PAYMENT_STATUS,
+  readSourceBuyerNote,
+  decodeHtmlNoteText,
+  readSourceBuyerTaxId,
+  toCodToCollect,
+} from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import type {
   PrestashopAddress,
@@ -49,15 +55,25 @@ import type {
   PrestashopOrder,
   PrestashopOrderRow,
 } from '../mappers/prestashop.mapper.interface';
+import {
+  derivePrestashopPaymentMethod,
+  withCashOnDeliveryPaymentStatus,
+} from '../mappers/prestashop-payment-method';
 import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderStateSnapshot } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop-order-currency.resolver';
 import { PrestashopOrderFeedCapabilityCache } from '../provisioners/prestashop-order-feed-capability.cache';
 import {
   PrestashopApiException,
+  PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
+import {
+  sourceRowIdOfLineId,
+  type PrestashopGiftCartRule,
+} from '../mappers/prestashop-gift-split';
 import type { PrestashopOrderFeedCursor } from '../../domain/types/prestashop-order-feed-cursor.types';
 import {
   formatOrderFeedCursor,
@@ -531,7 +547,22 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     }
 
     const orderRows = await this.fetchOrderRows(externalOrderId);
-    const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
+    const giftCartRules = await this.fetchGiftCartRules(prestashopOrder);
+    // Resolved before mapping because the gift split rounds in the order's own
+    // minor unit; the unresolvable-currency refusal it can raise is the same one
+    // the later position of this read raised, so nothing new can fail here.
+    const currency = await this.orderCurrencyResolver.resolveOrderCurrencyIso({
+      connectionId: this.connection.id,
+      client: this.httpClient,
+      idCurrency: prestashopOrder.id_currency,
+      orderRef: String(prestashopOrder.reference ?? '') || externalOrderId,
+    });
+    const mapped = this.orderMapper.mapOrder(
+      prestashopOrder,
+      orderRows,
+      giftCartRules,
+      minorUnitExponentFor(currency)
+    );
 
     // The mapper cannot answer this (#2607): what `current_state` means is a row
     // on the shop's own state table. An id this shop does not have reads
@@ -546,21 +577,18 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     // a warehouse release, and never moved stock, with nothing anywhere saying
     // why. An unknown state id stays `undefined` rather than claiming
     // `'awaiting'`: a missing row is not evidence about somebody's money.
-    const paymentStatus = orderStates.paymentStatusOf(prestashopOrder.current_state) ?? undefined;
+    const stateStatus = orderStates.paymentStatusOf(prestashopOrder.current_state) ?? undefined;
+    // How the buyer pays (#3294), from the order's payment module. Only the two
+    // modules PrestaShop ships are evidence; any other is `unknown`.
+    const paymentMethod = derivePrestashopPaymentMethod(prestashopOrder);
+    // The state row is silent about an unpaid order; for a core COD module that
+    // silence would leave the courier label with no COD amount, so it is filled
+    // - and only it, never a state that already says paid.
+    const paymentStatus = withCashOnDeliveryPaymentStatus(stateStatus, paymentMethod, status);
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
-    // Resolved BEFORE the hydration reads below, and awaited rather than raced
-    // alongside them, because this is the one step that can REFUSE the order
-    // (#2277): a shop whose currency is unresolvable should cost one read, not
-    // a full hydration, and a rejected promise held across those awaits would
-    // be an unhandled rejection on every other failure path. The read is cached
-    // per (connection, id_currency), so the added round-trip amortises away.
-    const currency = await this.orderCurrencyResolver.resolveOrderCurrencyIso({
-      connectionId: this.connection.id,
-      client: this.httpClient,
-      idCurrency: prestashopOrder.id_currency,
-      orderRef: mapped.orderNumber || externalOrderId,
-    });
+    // The currency was resolved above, before the gift split, for the same
+    // reason it must precede the hydration reads: it can refuse the order (#2277).
 
     // Started before the pickup-point / address awaits so the extra customer
     // read overlaps them rather than lengthening the hydration chain (#1928).
@@ -585,7 +613,9 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       billingAddress;
 
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
-      const row = orderRows[index];
+      // By row id, not position: a split gift line sits beside its source row.
+      const sourceRowId = sourceRowIdOfLineId(item.id);
+      const row = orderRows.find((candidate) => String(candidate.id) === sourceRowId) ?? orderRows[index];
       const externalId =
         row?.product_attribute_id && String(row.product_attribute_id) !== '0'
           ? String(row.product_attribute_id)
@@ -609,6 +639,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         // the field here would silently un-do the mapper's read - which is
         // exactly how it went missing for as long as it did.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        ...(item.gift !== undefined ? { gift: item.gift } : {}),
       };
     });
 
@@ -625,11 +656,29 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const placedAtIso =
       typeof prestashopOrder.date_add === 'string' ? prestashopOrder.date_add : undefined;
 
+    const codToCollect =
+      paymentStatus === PAYMENT_STATUS.Cod
+        ? toCodToCollect(mapped.totals.total, currency)
+        : undefined;
+
+    // Read last, after everything the order cannot do without: it is the one
+    // optional hydration, and an unreadable thread resource must not cost the
+    // order its other fields.
+    const buyerNote = await this.fetchBuyerNote(externalOrderId, placedAtIso);
+
     return {
       externalOrderId,
       orderNumber: mapped.orderNumber,
       status,
       ...(paymentStatus !== undefined && { paymentStatus }),
+      paymentMethod,
+      // Checkout message (#3538): `undefined` = the shop's thread resource could
+      // not be read (unknown), `null` = read and the buyer wrote nothing.
+      ...(buyerNote !== undefined && { buyerNote }),
+      // The courier collects the whole order on delivery: nothing is paid in
+      // advance on a COD order and PrestaShop states no separate amount, so it
+      // is the order's gross total. Only while the order is reported `cod`.
+      ...(codToCollect === undefined ? {} : { codToCollect }),
       customerExternalId:
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
       customerEmail: await customerEmailPromise,
@@ -791,6 +840,175 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   }
 
   /**
+   * The buyer's checkout message (#3538): the first buyer-authored message of the
+   * order's `customer_threads`.
+   *
+   * PrestaShop stores the checkout message as a `customer_message` on a
+   * `customer_thread` pointing at the order, and the same thread also carries
+   * staff replies, so only rows with `id_employee = 0` are the buyer's words.
+   * That filter is applied by the shop (and re-checked here); a staff reply must
+   * never reach the packer as if the buyer had said it.
+   *
+   * Three outcomes, never conflated: a resource the webservice key may not read
+   * is `undefined` (unknown, never "no note" - an unread field asserts nothing),
+   * a readable resource with no thread or no buyer message is `null`, and
+   * otherwise the text. Any other failure (5xx, timeout, network) is ALSO
+   * unknown: a note read must never block order ingestion, since a shop whose
+   * thread endpoint is broken would otherwise never deliver the order at all.
+   * An unknown read never wipes a stored note and the next sync re-reads.
+   *
+   * ONLY the earliest buyer-authored message is the checkout note: PrestaShop
+   * stores it as the first customer message of the order's thread, and later
+   * buyer messages ("where is my parcel?") are deliberately ignored - #3538
+   * covers the checkout note, not the order thread.
+   *
+   * Two requests per order at most: threads by `id_order`, then every message of
+   * those threads in one pipe-joined OR read.
+   */
+  private async fetchBuyerNote(
+    orderId: string | number,
+    orderDateAdd?: string
+  ): Promise<string | null | undefined> {
+    try {
+      const threads = await readAllPrestashopResourcePages<PrestashopCustomerThread>(
+        this.httpClient,
+        'customer_threads',
+        { custom: { id_order: orderId } },
+        { connectionId: this.connection.id, detail: `id_order=${String(orderId)}` }
+      );
+      if (!Array.isArray(threads)) {
+        return undefined;
+      }
+      const threadIds = threads.map((thread) => String(thread.id)).filter((id) => id !== '');
+      if (threadIds.length === 0) {
+        return null;
+      }
+      const messages = await readAllPrestashopResourcePages<PrestashopCustomerMessage>(
+        this.httpClient,
+        'customer_messages',
+        { custom: { id_customer_thread: threadIds, id_employee: 0 } },
+        { connectionId: this.connection.id, detail: `id_order=${String(orderId)}` }
+      );
+      if (!Array.isArray(messages)) {
+        return undefined;
+      }
+      const [first] = messages
+        .filter((message) => Number(message.id_employee ?? 0) === 0)
+        .sort(
+          (a, b) =>
+            String(a.date_add ?? '').localeCompare(String(b.date_add ?? '')) ||
+            Number(a.id) - Number(b.id)
+        );
+      if (first === undefined) {
+        return null;
+      }
+      // B-6: a buyer who left nothing at checkout can still contact the shop
+      // later, and that message lands on the same thread. Only a message written
+      // within CHECKOUT_NOTE_WINDOW_MS of the order's own `date_add` is the
+      // checkout note; anything later is a contact message, so the checkout
+      // note is asserted none. When the order's date cannot be read the two
+      // cannot be told apart and the earliest message stays the answer.
+      if (!isWithinCheckoutWindow(first.date_add, orderDateAdd)) {
+        return null;
+      }
+      return readSourceBuyerNote(decodeHtmlNoteText(first.message ?? '')) ?? null;
+    } catch (error) {
+      if (isThreadResourceInaccessible(error)) {
+        this.logger.warn(
+          `PrestaShop customer threads are not readable on connection ${this.connection.id}; ` +
+            `buyer note for order ${String(orderId)} stays unknown: ${(error as Error).message}`
+        );
+        return undefined;
+      }
+      this.logger.warn(
+        `PrestaShop buyer note read failed on connection ${this.connection.id}; ` +
+          `note for order ${String(orderId)} stays unknown so the order still imports: ${(error as Error).message}`
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * The cart rules applied to this order that hand out a free product (#3937).
+   *
+   * Skipped without a request when the order reports no discount: a gift rule
+   * always books one, so an ordinary order pays nothing extra for this. Best
+   * effort by design, unlike the order lines: a key without `order_cart_rules`
+   * / `cart_rules` permission only means the gift stays merged into its line
+   * (today's behaviour), and refusing the whole order for that would turn a
+   * missing optional grant into a blocked sale.
+   */
+  private async fetchGiftCartRules(order: PrestashopOrder): Promise<PrestashopGiftCartRule[]> {
+    const discount = Number(order.total_discounts_tax_incl ?? 0);
+    if (!Number.isFinite(discount) || discount <= 0) {
+      return [];
+    }
+    try {
+      const applied = await readAllPrestashopResourcePages<{
+        id_cart_rule?: string | number;
+        value?: string | number;
+        free_shipping?: string | number | boolean;
+      }>(
+        this.httpClient,
+        'order_cart_rules',
+        { custom: { id_order: order.id } },
+        {
+          connectionId: this.connection.id,
+          detail: `id_order=${String(order.id)}`,
+        }
+      );
+      // Order-time facts (what the buyer was actually credited) come from
+      // `order_cart_rules`; only the gift product id has no order-time home and
+      // is read from the live rule, one rule at a time, so a rule deleted after
+      // its campaign costs only its own split instead of every rule's.
+      const byId = new Map<string, { value?: number; freeShipping: boolean }>();
+      for (const row of applied) {
+        const id = String(row.id_cart_rule ?? '');
+        if (id === '' || id === '0' || byId.has(id)) continue;
+        const value = Number(row.value);
+        byId.set(id, {
+          ...(row.value !== undefined && row.value !== '' && Number.isFinite(value) ? { value } : {}),
+          freeShipping: String(row.free_shipping ?? '0') === '1' || row.free_shipping === true,
+        });
+      }
+      const shippingGross = Number(order.total_shipping_tax_incl);
+      const rules: PrestashopGiftCartRule[] = [];
+      for (const [id, booked] of byId) {
+        try {
+          const rule = await this.httpClient.getResource<{
+            gift_product?: string | number;
+            gift_product_attribute?: string | number;
+          }>('cart_rules', id);
+          const giftProduct = String(rule.gift_product ?? '0');
+          if (giftProduct !== '' && giftProduct !== '0') {
+            rules.push({
+              idCartRule: id,
+              giftProductId: giftProduct,
+              giftProductAttributeId: String(rule.gift_product_attribute ?? '0'),
+              ...(booked.value !== undefined ? { valueTaxIncl: booked.value } : {}),
+              freeShipping: booked.freeShipping,
+              ...(Number.isFinite(shippingGross) ? { shippingGross } : {}),
+            });
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Cart rule ${id} of PrestaShop order ${String(order.id)} could not be read on connection ` +
+              `${this.connection.id}; a gift it handed out stays merged into its product line: ` +
+              `${(error as Error).message}`
+          );
+        }
+      }
+      return rules;
+    } catch (error) {
+      this.logger.warn(
+        `Gift cart rules of PrestaShop order ${String(order.id)} could not be read on connection ` +
+          `${this.connection.id}; any gift stays merged into its product line: ${(error as Error).message}`
+      );
+      return [];
+    }
+  }
+
+  /**
    * The order's lines.
    *
    * **Nothing here is caught.** An order with no lines mirrors as an order with
@@ -820,4 +1038,63 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       }
     );
   }
+}
+
+/**
+ * How long after the order's `date_add` a buyer message still counts as the
+ * checkout note. PrestaShop writes the order and its checkout message in the
+ * same request, so they land seconds apart; ten minutes tolerates clock and
+ * transaction skew while staying far short of a genuine follow-up message.
+ */
+const CHECKOUT_NOTE_WINDOW_MS = 10 * 60 * 1000;
+
+function parseShopTimestamp(value: string | undefined): number | undefined {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+  // Both stamps come from the same shop in its own timezone; reading both as
+  // UTC keeps their difference exact whatever that timezone is.
+  const parsed = Date.parse(`${value.trim().replace(' ', 'T')}Z`);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function isWithinCheckoutWindow(messageDateAdd: string | undefined, orderDateAdd: string | undefined): boolean {
+  const orderAt = parseShopTimestamp(orderDateAdd);
+  if (orderAt === undefined) {
+    return true;
+  }
+  const messageAt = parseShopTimestamp(messageDateAdd);
+  return messageAt !== undefined && messageAt <= orderAt + CHECKOUT_NOTE_WINDOW_MS;
+}
+
+/** The slice of a `customer_threads` row this adapter reads. */
+interface PrestashopCustomerThread {
+  id: string | number;
+  id_order?: string | number;
+}
+
+/** The slice of a `customer_messages` row this adapter reads. */
+interface PrestashopCustomerMessage {
+  id: string | number;
+  id_customer_thread?: string | number;
+  /** `0` / empty for a message written by the buyer, an employee id otherwise. */
+  id_employee?: string | number | null;
+  message?: string;
+  date_add?: string;
+}
+
+/**
+ * Is this failure "the webservice key may not read the thread resources"?
+ * PrestaShop answers a resource a key has no permission for with 401 (surfaced
+ * as an authentication exception) or 403; a shop without the resource answers
+ * 404. All three mean "cannot say", not "no note".
+ */
+function isThreadResourceInaccessible(error: unknown): boolean {
+  if (error instanceof PrestashopAuthenticationException) {
+    return true;
+  }
+  if (error instanceof PrestashopResourceNotFoundException) {
+    return true;
+  }
+  return error instanceof PrestashopApiException && error.statusCode === 403;
 }

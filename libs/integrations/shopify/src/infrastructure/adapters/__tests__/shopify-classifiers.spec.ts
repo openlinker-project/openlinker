@@ -1,0 +1,148 @@
+import { ContendedWriteError } from '@openlinker/core/sync';
+
+import { ShopifyApiError } from '../../../domain/exceptions/shopify-api.error';
+import { ShopifyConfigException } from '../../../domain/exceptions/shopify-config.exception';
+import { ShopifyGraphqlError } from '../../../domain/exceptions/shopify-graphql.error';
+import { ShopifyOrderTooLargeException } from '../../../domain/exceptions/shopify-order-too-large.exception';
+import { ShopifyNetworkError } from '../../../domain/exceptions/shopify-network.error';
+import { ShopifyStockWriteRefusedException } from '../../../domain/exceptions/shopify-stock-write-refused.exception';
+import { ShopifyUserErrorsException } from '../../../domain/exceptions/shopify-user-errors.exception';
+import { ShopifyAuthFailureClassifierAdapter } from '../shopify-auth-failure-classifier.adapter';
+import { ShopifyRetryClassifierAdapter } from '../shopify-retry-classifier.adapter';
+
+const throttled = new ShopifyGraphqlError(['THROTTLED'], ['Throttled']);
+const orderCap = new ShopifyUserErrorsException('orderCreate', [{ message: 'Too many attempts. Please try again later.' }]);
+const staleStock = new ShopifyUserErrorsException('inventorySetQuantities', [
+  { message: 'stale', code: 'CHANGE_FROM_QUANTITY_STALE' },
+]);
+const grant = (code: string, status = 400): ShopifyApiError =>
+  new ShopifyApiError(status, `{"error":"${code}"}`, 'token-endpoint', code);
+
+const invalidRequest = (description: string): ShopifyApiError =>
+  new ShopifyApiError(
+    400,
+    JSON.stringify({ error: 'invalid_request', error_description: description }),
+    'token-endpoint',
+    'invalid_request',
+  );
+
+describe('ShopifyRetryClassifierAdapter', () => {
+  const classifier = new ShopifyRetryClassifierAdapter();
+
+  it.each([
+    ['THROTTLED', throttled, 30],
+    ['the orderCreate cap (L-X1)', orderCap, 65],
+    ['HTTP 429', new ShopifyApiError(429), 60],
+    ['HTTP 503', new ShopifyApiError(503), 300],
+  ])('should defer %s without spending an attempt', (_label, cause, seconds) => {
+    expect(classifier.isNonRetryable(cause)).toBe(false);
+    expect(classifier.getRetryDeferral(cause)).toMatchObject({ delaySeconds: seconds });
+  });
+
+  it('should honour the Retry-After a 429 or 503 carried, bounded', () => {
+    expect(classifier.getRetryDeferral(new ShopifyApiError(429, '', 'admin-api', null, 7))).toMatchObject({
+      delaySeconds: 7,
+    });
+    expect(classifier.getRetryDeferral(new ShopifyApiError(503, '', 'admin-api', null, 100000))).toMatchObject({
+      delaySeconds: 600,
+    });
+  });
+
+  it.each([
+    ['a field removed by an API version change', new ShopifyGraphqlError(['undefinedField'], ['no such field'])],
+    ['a missing variable', new ShopifyGraphqlError(['variableMissing'], ['missing'])],
+    ['an inactive shop', new ShopifyGraphqlError(['SHOP_INACTIVE'], ['frozen'])],
+  ])('should treat %s as terminal', (_label, cause) => {
+    expect(classifier.isNonRetryable(cause)).toBe(true);
+  });
+
+  it('should not treat a user error that only mentions changeFromQuantity as a stale compare-and-set', () => {
+    const malformed = new ShopifyUserErrorsException('inventorySetQuantities', [
+      { message: 'changeFromQuantity must be an integer' },
+    ]);
+    expect(malformed.isStaleCompareAndSet()).toBe(false);
+    expect(classifier.isNonRetryable(malformed)).toBe(true);
+  });
+
+  it('should leave a contended OAuth refresh to the runner\'s penalty-free deferral', () => {
+    const contended = new ContendedWriteError('another process is refreshing', 'c1');
+    expect(classifier.isNonRetryable(contended)).toBe(false);
+    expect(new ShopifyAuthFailureClassifierAdapter().isCredentialRejected(contended)).toBe(false);
+  });
+
+  it('should find a throttle wrapped as the cause of another error', () => {
+    const wrapped = Object.assign(new Error('job failed'), { cause: throttled });
+    expect(classifier.getRetryDeferral(wrapped)).toMatchObject({ delaySeconds: 30 });
+  });
+
+  it('should find a terminal Shopify error wrapped as the cause of another error', () => {
+    const wrapped = Object.assign(new Error('adapter failed'), {
+      cause: new ShopifyGraphqlError(['ACCESS_DENIED'], ['denied']),
+    });
+    expect(classifier.isNonRetryable(wrapped)).toBe(true);
+  });
+
+  it('should treat a RangeError as terminal only when it is the failure itself', () => {
+    expect(classifier.isNonRetryable(new RangeError('bad cursor'))).toBe(true);
+    // The registry asks every classifier about every platform's jobs, so a
+    // RangeError buried in another plugin's error chain must not kill that job.
+    const otherPluginFailure = Object.assign(new Error('allegro job failed'), {
+      cause: new RangeError('Invalid time value'),
+    });
+    expect(classifier.isNonRetryable(otherPluginFailure)).toBe(false);
+  });
+
+  it('should let the outermost Shopify error decide when two are chained', () => {
+    const retryableOuter = Object.assign(new ShopifyApiError(500), {
+      cause: new ShopifyConfigException('c', 'bad'),
+    });
+    expect(classifier.isNonRetryable(retryableOuter)).toBe(false);
+  });
+
+  it.each([
+    ['a stale compare-and-set on a stock write (G05)', staleStock],
+    ['a network error (G07)', new ShopifyNetworkError('socket hang up')],
+    ['a 500', new ShopifyApiError(500)],
+  ])('should retry %s normally', (_label, cause) => {
+    expect(classifier.isNonRetryable(cause)).toBe(false);
+    expect(classifier.getRetryDeferral(cause)).toBeNull();
+  });
+
+  it.each([
+    ['a config exception', new ShopifyConfigException('c', 'bad')],
+    ['a refused stock write (untracked stock)', new ShopifyStockWriteRefusedException('5', 'c1', 'does not track stock')],
+    ['a missing scope', new ShopifyGraphqlError(['ACCESS_DENIED'], ['denied'])],
+    ['another user error', new ShopifyUserErrorsException('productSet', [{ message: 'Title is invalid' }])],
+    ['an order too large to ingest whole', new ShopifyOrderTooLargeException('9', 'lines', 'c1')],
+    ['a refused token request', grant('invalid_client')],
+    ['a 404', new ShopifyApiError(404)],
+  ])('should treat %s as terminal', (_label, cause) => {
+    expect(classifier.isNonRetryable(cause)).toBe(true);
+  });
+});
+
+describe('ShopifyAuthFailureClassifierAdapter', () => {
+  const classifier = new ShopifyAuthFailureClassifierAdapter();
+
+  it.each([
+    ['a 401 from the Admin API (revoked token)', new ShopifyApiError(401)],
+    ['the invalid-token GraphQL error', new ShopifyGraphqlError([''], ['Invalid API key or access token'])],
+    ['a wrong client id or secret (G03)', grant('application_cannot_be_found')],
+    ['a spent OAuth refresh token', grant('invalid_grant')],
+    ['an unauthorized client', grant('unauthorized_client')],
+    ['a wrong client secret answered as invalid_request (F11)', invalidRequest('Missing or invalid client secret')],
+  ])('should flag %s for re-auth', (_label, cause) => {
+    expect(classifier.isCredentialRejected(cause)).toBe(true);
+  });
+
+  it.each([
+    ['an app not installed on the store', grant('app_not_installed')],
+    ['a store in another organization', grant('shop_not_permitted')],
+    ['a missing scope', new ShopifyGraphqlError(['ACCESS_DENIED'], ['denied'])],
+    ['a throttle', throttled],
+    ['an invalid_request that does not name the client secret', invalidRequest('Missing grant_type')],
+    ['a 503 from the token endpoint', new ShopifyApiError(503, 'unavailable', 'token-endpoint')],
+  ])('should not flag %s: the credentials are valid', (_label, cause) => {
+    expect(classifier.isCredentialRejected(cause)).toBe(false);
+  });
+});

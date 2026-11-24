@@ -85,3 +85,44 @@ export interface PaginatedShipments {
   /** Total rows matching the filters, ignoring pagination. */
   total: number;
 }
+
+/**
+ * One shared cause among failed shipments (#4043): the same connection and the
+ * same exact provider code, or - when the code is coarse or absent - the same
+ * code plus the same normalised carrier message. `sampleReason` is one
+ * member's raw message, for display; the caller redacts it for a viewer.
+ */
+export interface ShipmentFailedCauseGroup {
+  connectionId: string;
+  /** Internal grouping key; not meant for display. */
+  cause: string;
+  providerCode: string | null;
+  sampleReason: string;
+  count: number;
+}
+
+/**
+ * The shipments list's counts (#4043). Each axis is counted with every other
+ * filter applied and its own axis removed (the orders summary rule), so a tab
+ * or option shows what choosing it would return.
+ */
+export interface ShipmentSummary {
+  /** Every shipment matching the filters, status removed. */
+  total: number;
+  byStatus: Record<ShipmentStatus, number>;
+  byProcessor: { omp: number; carrier: number };
+  byMethod: Record<ShippingMethod, number>;
+  /** Count per shipping-provider connection id, connection filter removed. */
+  byConnection: Record<string, number>;
+  /** Shipments whose tracking never reached the channel (relay failing past the alert threshold). */
+  waybillRelayStuck: number;
+  /** Labels still to buy: drafts and generated shipments that are not marketplace-fulfilled. */
+  toSend: number;
+  /** Up to five shared causes among failed shipments, across all pages, largest first. */
+  failedCauseGroups: ShipmentFailedCauseGroup[];
+}
+
+export interface ShipmentSummaryOptions {
+  /** Failure count at which a waybill relay counts as stuck (resolved at the HTTP boundary). */
+  waybillRelayStuckFloor: number;
+}

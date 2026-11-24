@@ -27,6 +27,7 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
+import { formatPlural, getLocale, getMessages } from '../../../shared/i18n';
 
 export function usesBuyerTaxIdCondition(rule: SalesDocumentRule): boolean {
   return rule.conditions.some((condition) => condition.field === 'buyerHasTaxId');
@@ -37,5 +38,5 @@ export function countRulesUsingBuyerTaxId(rules: readonly SalesDocumentRule[]): 
 }
 
 export function describeBuyerTaxIdRuleCount(count: number): string {
-  return count === 1 ? "1 rule reads the buyer's tax ID" : `${count} rules read the buyer's tax ID`;
+  return formatPlural(count, getMessages('sales-documents').taxIdCoverage.ruleCount, getLocale());
 }

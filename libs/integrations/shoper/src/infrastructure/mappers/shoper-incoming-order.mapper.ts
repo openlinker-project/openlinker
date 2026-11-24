@@ -20,9 +20,15 @@ import type {
   IncomingOrderItem,
   IncomingOrderItemRef,
   OrderPickupPoint,
+  PaymentMethod,
   PaymentStatus,
 } from '@openlinker/core/orders';
-import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
+import {
+  PAYMENT_METHOD,
+  PAYMENT_STATUS,
+  readSourceBuyerTaxId,
+  toCodToCollect,
+} from '@openlinker/core/orders';
 
 import type {
   ShoperOrderLineRow,
@@ -226,6 +232,19 @@ export function mapShoperPaymentStatus(
   return undefined;
 }
 
+/**
+ * How the buyer pays (#3294).
+ *
+ * Shoper names exactly one method: `is_cash_on_delivery` is set only by the
+ * "Pobranie" method. Everything else - a prepaid order, a bank transfer, cash at
+ * pickup - leaves it false, so `false` is NOT evidence of anything and the
+ * answer is `unknown`. Independent of the order's status: a terminal status
+ * hides the payment STATUS, but the method the buyer chose is still a fact.
+ */
+export function mapShoperPaymentMethod(row: ShoperOrderRow): PaymentMethod {
+  return row.is_cash_on_delivery === true ? PAYMENT_METHOD.CashOnDelivery : PAYMENT_METHOD.Unknown;
+}
+
 function mapAddress(raw: ShoperOrderSourceAddress | null | undefined): IncomingOrderAddress | undefined {
   if (raw === null || raw === undefined) {
     return undefined;
@@ -266,6 +285,50 @@ function lineRef(line: ShoperOrderLineRow): IncomingOrderItemRef {
     : { type: 'sku', externalId: code };
 }
 
+/**
+ * The checkbox option the "Produkt gratisowy w koszyku" app (Maxsote) puts on
+ * every gift line. It is the app's own option name, not a price or a guess: a
+ * line is a gift only when this option is chosen on it, so a cheap ordinary
+ * line is never marked. Folded so a differently cased or accented spelling still
+ * matches.
+ */
+const GIFT_OPTION_NAME = 'produkt gratisowy';
+/** The value the app stores when the checkbox is ticked. */
+const GIFT_OPTION_CHOSEN = 'tak';
+
+/**
+ * Whether the line's `option` string has the gift checkbox ticked.
+ *
+ * The string is `Name: value, Name: value`, and a value may itself contain commas,
+ * so it is not split on every comma: a pair starts only at a `Name:` boundary and
+ * its value runs up to the next such boundary. Both the name AND the value are
+ * folded and compared whole, so "Produkt gratisowy: nie" (the app's own unticked
+ * state) is not a gift, and neither is a value that merely contains "tak".
+ */
+function isGiftAppLine(line: ShoperOrderLineRow): boolean {
+  if (typeof line.option !== 'string') {
+    return false;
+  }
+  const pair = /(?:^|,\s*)([^:,]+):\s*([\s\S]*?)(?=,\s*[^:,]+:|$)/g;
+  for (const match of line.option.matchAll(pair)) {
+    if (
+      foldLabel(match[1].trim()) === GIFT_OPTION_NAME &&
+      foldLabel(match[2].trim()) === GIFT_OPTION_CHOSEN
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * One bundle (zestaw) is ONE line for core: the parent row, priced for the whole
+ * set. Its `children` (components, priced 0.00) are deliberately not mapped:
+ * OpenLinker expands a bundle from its own definition (ADR-083), so also sending
+ * the shop's component lines would reserve and ship every component twice. The
+ * neutral item type has no slot for "skipped" display lines, so they are dropped
+ * here rather than invented a field for.
+ */
 function mapLine(line: ShoperOrderLineRow): IncomingOrderItem {
   const gross = num(line.price) ?? 0;
   const taxRate = mapShoperTaxName(line.tax);
@@ -280,6 +343,7 @@ function mapLine(line: ShoperOrderLineRow): IncomingOrderItem {
     ...(sku === undefined ? {} : { sku }),
     ...(name === undefined ? {} : { name }),
     ...(taxRate === null ? {} : { taxRate }),
+    ...(isGiftAppLine(line) ? { gift: { source: 'channel' as const } } : {}),
   };
 }
 
@@ -324,8 +388,17 @@ export function mapShoperOrderToIncoming(
   const billingAddress = mapAddress(row.billing_address);
   const currency = ctx.currencyCode ?? '';
   const pickupPoint = mapShoperPickupPoint(row.pickup_point);
+  // The courier collects the whole order on delivery; the amount rule is shared
+  // with every other source so none of them spells "how much" differently (#3294).
+  const codToCollect =
+    row.is_cash_on_delivery === true ? toCodToCollect(total, currency) : undefined;
   const orderUrl = nonEmpty(row.order_url);
   const shippingId = nonEmpty(row.shipping_id === null || row.shipping_id === undefined ? undefined : String(row.shipping_id));
+  // The shop's own payment id, verbatim: the key an operator's payment mapping is
+  // looked up by, and the same value `listPaymentMethods` offers on the mapping page.
+  const sourcePaymentMethod = nonEmpty(
+    row.payment_id === null || row.payment_id === undefined ? undefined : String(row.payment_id),
+  );
 
   return {
     externalOrderId: String(row.order_id),
@@ -333,6 +406,8 @@ export function mapShoperOrderToIncoming(
     ...(orderUrl === undefined ? {} : { externalUrl: orderUrl }),
     status: mapShoperOrderStatus(ctx.status),
     ...(paymentStatus === undefined ? {} : { paymentStatus }),
+    paymentMethod: mapShoperPaymentMethod(row),
+    ...(sourcePaymentMethod === undefined ? {} : { sourcePaymentMethod }),
     ...(userId !== undefined && userId > 0 ? { customerExternalId: String(row.user_id) } : {}),
     ...(email === undefined ? {} : { customerEmail: email }),
     items: lines.map(mapLine),
@@ -356,9 +431,7 @@ export function mapShoperOrderToIncoming(
           },
         }),
     ...(pickupPoint === undefined ? {} : { pickupPoint }),
-    ...(row.is_cash_on_delivery === true && total > 0 && currency !== ''
-      ? { codToCollect: { amount: total.toFixed(2), currency } }
-      : {}),
+    ...(codToCollect === undefined ? {} : { codToCollect }),
     ...(placedAt === null ? {} : { placedAt }),
     createdAt,
     updatedAt,

@@ -9,6 +9,7 @@
 
 import { InventoryService } from '../inventory.service';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
+import type { InventoryMovementRepositoryPort } from '../../../domain/ports/inventory-movement-repository.port';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import type { SyncJobQueuePort } from '@openlinker/core/sync';
 
@@ -16,6 +17,7 @@ describe('InventoryService', () => {
   let service: InventoryService;
   let inventoryRepository: jest.Mocked<InventoryRepositoryPort>;
   let jobQueue: jest.Mocked<SyncJobQueuePort>;
+  let movementRepository: jest.Mocked<InventoryMovementRepositoryPort>;
 
   const createItem = (overrides?: Partial<InventoryItem>): InventoryItem => {
     const base = new InventoryItem(
@@ -48,6 +50,7 @@ describe('InventoryService', () => {
       markStaleExceptVariants: jest.fn().mockResolvedValue(0),
       markLocationlessStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
       markLocatedStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
+      markUnreportedLocationsStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<InventoryRepositoryPort>;
 
     jobQueue = {
@@ -55,7 +58,12 @@ describe('InventoryService', () => {
       enqueueBulk: jest.fn(),
     } as unknown as jest.Mocked<SyncJobQueuePort>;
 
-    service = new InventoryService(inventoryRepository, jobQueue);
+    movementRepository = {
+      append: jest.fn().mockResolvedValue(undefined),
+      attachQuantities: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<InventoryMovementRepositoryPort>;
+
+    service = new InventoryService(inventoryRepository, jobQueue, movementRepository);
   });
 
   it('enqueues inventory propagation when quantity changes', async () => {
@@ -163,6 +171,25 @@ describe('InventoryService', () => {
     await service.setInventory(input);
 
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('enqueues propagation when a previously stale row returns at the same quantity', async () => {
+    const input = createItem({
+      availableQuantity: 5,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+    const previous = createItem({
+      availableQuantity: 5,
+      isStale: true,
+      updatedAt: new Date('2026-01-01T11:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(previous);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
   // #2324 (ADR-058 decision 5) — INVERTED. A located write used to be skipped,
@@ -387,5 +414,174 @@ describe('InventoryService', () => {
         }),
       })
     );
+  });
+  describe('staleUnreportedLocationsForSource', () => {
+    const scope = { sourceConnectionId: 'connection-a', includeUnattributedProvenance: true };
+
+    it('should delegate to the repository with the provenance scope', async () => {
+      inventoryRepository.markUnreportedLocationsStaleForSource.mockResolvedValue({
+        markedCount: 1,
+        variantIds: ['v1'],
+      });
+      const reported = [{ variantKey: 'v1', locationIds: ['loc-1'] }];
+
+      const result = await service.staleUnreportedLocationsForSource('product-id', reported, scope);
+
+      expect(inventoryRepository.markUnreportedLocationsStaleForSource).toHaveBeenCalledWith(
+        'product-id',
+        reported,
+        scope
+      );
+      expect(result.markedCount).toBe(1);
+    });
+
+    it('should not touch storage when nothing was reported', async () => {
+      await service.staleUnreportedLocationsForSource('product-id', [], scope);
+
+      expect(inventoryRepository.markUnreportedLocationsStaleForSource).not.toHaveBeenCalled();
+    });
+  });
+
+  // #3565 — the stock movement ledger, written where `inventory_items` changes.
+  describe('stock movement ledger', () => {
+    const at = new Date('2026-01-01T12:00:00.000Z');
+
+    it('should append a master_sync row with the delta when the quantity changed', async () => {
+      const previous = createItem({ availableQuantity: 5 });
+      const persisted = createItem({ availableQuantity: 8, updatedAt: at, sourceConnectionId: 'conn-a' });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(previous);
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a');
+
+      expect(movementRepository.append).toHaveBeenCalledWith({
+        productId: 'product-id',
+        productVariantId: null,
+        locationId: null,
+        sourceConnectionId: 'conn-a',
+        reason: 'master_sync',
+        quantityDelta: 3,
+        quantityBefore: 5,
+        quantityAfter: 8,
+        sourceKind: 'master_sync',
+        sourceRef: null,
+        actorUserId: null,
+        syncRunId: null,
+        occurredAt: at,
+      });
+    });
+
+    it('should record the sync run that produced the change (#4062)', async () => {
+      const persisted = createItem({ availableQuantity: 7, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a', {
+        reason: 'master_sync',
+        sourceKind: 'master_sync',
+        syncRunId: 'cycle-7',
+      });
+
+      expect(movementRepository.append).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'master_sync', syncRunId: 'cycle-7', quantityDelta: 2 })
+      );
+    });
+
+    it('should not append a row when the quantity did not change', async () => {
+      const previous = createItem({ availableQuantity: 5 });
+      const persisted = createItem({ availableQuantity: 5, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(previous);
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted);
+
+      expect(movementRepository.append).not.toHaveBeenCalled();
+    });
+
+    it('should append a row with a null before-quantity when the position is new', async () => {
+      const persisted = createItem({ availableQuantity: 4, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted);
+
+      expect(movementRepository.append).toHaveBeenCalledWith(
+        expect.objectContaining({ quantityBefore: null, quantityAfter: 4, quantityDelta: 4 })
+      );
+    });
+
+    it('should carry the caller-supplied attribution onto the row', async () => {
+      const persisted = createItem({ availableQuantity: 4, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a', {
+        reason: 'sale',
+        sourceKind: 'order',
+        sourceRef: 'ol_order_1',
+      });
+
+      expect(movementRepository.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: 'sale',
+          sourceKind: 'order',
+          sourceRef: 'ol_order_1',
+          quantityDelta: -1,
+        })
+      );
+    });
+
+    it('should attach quantities to the claimed row instead of inserting one', async () => {
+      const persisted = createItem({ availableQuantity: 9, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1', quantityBefore: 5 });
+
+      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5, 9);
+      expect(movementRepository.append).not.toHaveBeenCalled();
+    });
+
+    it('should write no ledger row for a new position born with zero stock', async () => {
+      const persisted = createItem({ availableQuantity: 0, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a');
+
+      expect(movementRepository.append).not.toHaveBeenCalled();
+    });
+
+    it('should attach even when the quantity is unchanged, so the claimed row is completed', async () => {
+      const persisted = createItem({ availableQuantity: 5, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1', quantityBefore: 5 });
+
+      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5, 5);
+    });
+
+    it('should not fail the stock write nor skip propagation when the ledger write fails', async () => {
+      const persisted = createItem({ availableQuantity: 8, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+      movementRepository.append.mockRejectedValue(new Error('ledger down'));
+
+      await expect(service.setInventory(persisted)).resolves.toBe(persisted);
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not fail the stock write when attaching quantities throws', async () => {
+      const persisted = createItem({ availableQuantity: 8, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+      movementRepository.attachQuantities.mockRejectedValue(new Error('ledger down'));
+
+      await expect(
+        service.setInventory(persisted, undefined, { attachToMovementId: 'mov-1', quantityBefore: 5 })
+      ).resolves.toBe(persisted);
+    });
   });
 });

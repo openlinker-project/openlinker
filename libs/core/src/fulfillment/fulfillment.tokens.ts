@@ -91,6 +91,15 @@ export const FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN = Symbol(
 );
 
 /**
+ * The #3629 sale-decrement reconcile read. Its consumer is the WORKER's
+ * `inventory.saleDecrement.reconcileSweep` handler, which performs the enqueue
+ * this context may not.
+ */
+export const FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN = Symbol(
+  'IFulfillmentSaleDecrementReconcileService'
+);
+
+/**
  * The #2728 dispatch-relay reconcile read. Its consumer is the WORKER's
  * `fulfillment.work.relaySweep` handler, which composes it with the `orders`
  * relay this context may not inject.
@@ -98,3 +107,18 @@ export const FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN = Symbol(
 export const FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN = Symbol(
   'IFulfillmentRelayReconcileService'
 );
+
+/**
+ * The #2731 stranded-routing-decision reaper. Consumed by the WORKER's
+ * `fulfillment.routing.reapSweep` handler and by the read-only routing-decision
+ * endpoint in `apps/api`; neither reaches the decision repository port.
+ */
+export const ROUTING_DECISION_REAPER_SERVICE_TOKEN = Symbol('IRoutingDecisionReaperService');
+
+/** Operator order cancel (#3540). `FulfillmentOrderCancellationService` binds here. */
+export const FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN = Symbol(
+  'IFulfillmentOrderCancellationService'
+);
+
+/** Operator order edit (#3542). `FulfillmentOrderEditService` binds here. */
+export const FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN = Symbol('IFulfillmentOrderEditService');

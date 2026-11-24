@@ -28,6 +28,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { codedErrorBody } from '../errors/coded-http.exception';
 import {
   ConnectionDisabledException,
   ConnectionInUseException,
@@ -44,23 +45,37 @@ export class ConnectionExceptionFilter implements ExceptionFilter {
   catch(exception: ConnectionException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     if (exception instanceof ConnectionInUseException) {
-      response.status(HttpStatus.CONFLICT).json({
-        statusCode: HttpStatus.CONFLICT,
-        error: exception.name,
-        message: exception.message,
-        reason: exception.reason,
-        referrers: exception.referrers,
-      });
+      response.status(HttpStatus.CONFLICT).json(
+        codedErrorBody(
+          HttpStatus.CONFLICT,
+          'CONNECTION_IN_USE',
+          exception.message,
+          { connectionId: exception.connectionId, reason: exception.reason },
+          { error: exception.name, reason: exception.reason, referrers: exception.referrers }
+        )
+      );
       return;
     }
-    const statusCode =
-      exception instanceof ConnectionDisabledException
-        ? HttpStatus.CONFLICT
-        : HttpStatus.NOT_FOUND;
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-    });
+    if (exception instanceof ConnectionDisabledException) {
+      response.status(HttpStatus.CONFLICT).json(
+        codedErrorBody(
+          HttpStatus.CONFLICT,
+          'CONNECTION_DISABLED',
+          exception.message,
+          { connectionId: exception.connectionId, status: exception.status },
+          { error: exception.name }
+        )
+      );
+      return;
+    }
+    response.status(HttpStatus.NOT_FOUND).json(
+      codedErrorBody(
+        HttpStatus.NOT_FOUND,
+        'CONNECTION_NOT_FOUND',
+        exception.message,
+        { connectionId: exception.connectionId },
+        { error: exception.name }
+      )
+    );
   }
 }

@@ -70,6 +70,13 @@ export class AnalyticsSettingsResponseDto {
   netGrossBasis!: NetGrossBasis;
 
   @ApiProperty({
+    type: Boolean,
+    description:
+      'Whether the UI shows margin and the missing-cost reminders (#3588, G11-F). Display-only; the cost snapshot is written regardless.',
+  })
+  trackMargin!: boolean;
+
+  @ApiProperty({
     type: String,
     nullable: true,
     description: 'When the settings row was last written. `null` when no row exists yet.',
@@ -96,6 +103,7 @@ export class AnalyticsSettingsResponseDto {
     dto.rateBasis = input.view.rateBasis;
     dto.includeBackfilledTaxRatesInNetSales = input.view.includeBackfilledTaxRatesInNetSales;
     dto.netGrossBasis = input.view.netGrossBasis;
+    dto.trackMargin = input.view.trackMargin;
     dto.updatedAt = input.view.updatedAt ? input.view.updatedAt.toISOString() : null;
     dto.updatedByUserId = input.view.updatedByUserId;
     return dto;

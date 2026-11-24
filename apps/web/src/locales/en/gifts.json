@@ -1,0 +1,222 @@
+{
+  "addDialog": {
+    "added": "Gift added",
+    "addedBody": "The gift is on the order and its stock is held.",
+    "cancel": "Cancel",
+    "changeProduct": "Change",
+    "closedBody": "A gift can be added until the parcel is closed. Mark the order as not packed first, or add the gift to the next order.",
+    "closedTitle": "The parcel is already closed",
+    "customPriceLabel": "Gift price on the document",
+    "description": "The gift is added to this order only. It is held in stock like any other line.",
+    "documentTitle": "A sales document is already issued",
+    "documentWarning": "The document will not show this gift. The gift is still added to the order.",
+    "notOnPickList": "The gift is on the order, but this order is already with the packers: tell them about the gift.",
+    "notReadyBody": "Its products are not matched yet. Fix the product mapping, then add the gift.",
+    "notReadyTitle": "The order has not finished importing",
+    "onDocument": "On the document",
+    "product": "Gift product",
+    "productPlaceholder": "Type a product name or SKU",
+    "quantity": "Quantity",
+    "reason": "Added by hand. It shows on the order as a gift from you.",
+    "submit": "Add gift",
+    "title": "Add a gift to order {order}"
+  },
+  "attention": {
+    "addAnother": "Add by hand",
+    "decisionSaved": "Decision saved",
+    "openRule": "Open the promotion",
+    "readFailed": "The reason a gift is missing could not be read.",
+    "reasons": {
+      "below-threshold": {
+        "body": "The order does not reach what the promotion asks for, so no gift was added.",
+        "title": "{rule}: below the threshold"
+      },
+      "customer-limit": {
+        "body": "The per-customer limit is reached. The customer is the one OpenLinker recognises, not the channel buyer id.",
+        "title": "{rule}: this customer already got their gift"
+      },
+      "customer-unknown": {
+        "body": "The per-customer limit could not be checked, so no gift was added.",
+        "title": "{rule}: the customer is not known"
+      },
+      "failed": {
+        "body": "Something went wrong while adding it. You can add the gift by hand, or open the promotion and the run history.",
+        "title": "{rule}: the gift could not be added"
+      },
+      "limit-reached": {
+        "body": "No gift was added. Open the promotion to raise the limit and resume it.",
+        "title": "{rule}: the piece limit is used up"
+      },
+      "other": {
+        "body": "The promotion did not add its gift to this order. Open it for the details.",
+        "title": "{rule}: no gift was added"
+      },
+      "out-of-stock": {
+        "body": "The order goes on without the gift. You can add another gift by hand. The promotion resumes on its own when the product is back.",
+        "title": "{rule}: the gift is out of stock"
+      },
+      "stock-unknown": {
+        "body": "The gift was not added, because an unknown number is never read as zero. Check the stock and add the gift by hand if needed.",
+        "title": "{rule}: the stock of the gift is not known"
+      },
+      "superseded": {
+        "body": "An earlier promotion that does not combine with others already gave its gift, so this one did not.",
+        "title": "{rule}: an earlier promotion applied"
+      }
+    },
+    "seePromotion": "See the promotion",
+    "shopRejected": {
+      "body": "The order carries a gift line and the shop refused the order. Fix the cause in the sync status below, or take the gift off the order and retry.",
+      "title": "The shop did not accept the order with the gift"
+    },
+    "skip": "Skip the gift",
+    "skipFailed": "The decision could not be saved"
+  },
+  "cost": {
+    "failed": "Costs you: the purchase cost could not be read",
+    "loading": "Costs you: checking the purchase cost",
+    "otherCurrency": "Costs you: the purchase cost is recorded in another currency ({currency})"
+  },
+  "filter": {
+    "bundleCheck": "With a bundle",
+    "bundleChipLabel": "Bundle",
+    "bundleChipValue": "Included",
+    "bundleRowIcon": "Includes a bundle",
+    "check": "With a gift",
+    "chipLabel": "Gift",
+    "chipValue": "Included",
+    "chipValueYes": "Yes",
+    "notAddedCheck": "Gift not added",
+    "notAddedChipLabel": "Gift not added",
+    "quick": "With a gift",
+    "rowIcon": "Includes a gift",
+    "shopRejectedCheck": "Shop rejected the gift",
+    "shopRejectedChipLabel": "Shop rejected the gift"
+  },
+  "guide": {
+    "footer": "Press ? on this page to open the guide, Esc closes.",
+    "kicker": "Guide",
+    "variants": {
+      "bench": {
+        "button": "How to pack bundles and gifts",
+        "intro": "What you see on a parcel that holds a bundle or a gift.",
+        "sections": {
+          "s1": {
+            "p1": "A bundle is split into the products you put in the box. You scan each one on its own. The \"Bundle: ...\" header shows how many components are already in the parcel.",
+            "p2": "A gift is an ordinary unit to scan, only marked. It covers a gift from a bundle and a gift from a promotion or added by hand. No prices or costs are shown here.",
+            "p3": "If a bundle component has no code to scan, the parcel closes only after a manual confirmation. Do not ship a bundle in parts.",
+            "tag": "physical units",
+            "title": "Bundle in the parcel"
+          },
+          "s2": {
+            "p1": "When you verify the last unit the parcel closes by itself, with no button. If it closed by mistake, reopen it and the units reset.",
+            "tag": "by itself",
+            "title": "Closing the parcel"
+          }
+        },
+        "title": "Packing bundles and gifts"
+      },
+      "detail": {
+        "button": "How gifts and bundles work",
+        "intro": "How to read lines that cost the customer nothing or belong to a bundle, and what to do when a gift is missing.",
+        "sections": {
+          "s1": {
+            "p1": "A bundle is one line at the bundle price. Below it you see its components marked \"in the bundle price\". The packer gets the composition from the day of the order, so later changes to the bundle do not touch this order.",
+            "p2": "A 0.00 line. Click the tag to see where the gift came from, who pays for it and how it shows on the sales document.",
+            "p3": "A promotion in OpenLinker (with a link), a shop cart rule, a gift app in the shop or added by hand by an operator. You fund each one: the customer pays 0.00 and the cost shows at purchase price.",
+            "tag": "bundle and gift",
+            "title": "Order lines"
+          },
+          "s2": {
+            "p1": "The order goes on without the gift. The decision is saved and the notice goes away. The promotion does not try again.",
+            "p2": "You can give another gift instead of the missing one. It works until the parcel is closed.",
+            "tag": "2 decisions",
+            "title": "When a gift is missing"
+          },
+          "s3": {
+            "p1": "The gift form is a tax decision. The most specific setting wins: the gift itself, then the sales channel, then the OpenLinker default. Every gift shows where its form came from. Own price shows the gift at a price you choose and takes that amount off the most expensive paid line, so the total does not change.",
+            "tag": "form",
+            "title": "Gift on the document"
+          }
+        },
+        "title": "Gifts and bundles in an order"
+      },
+      "list": {
+        "button": "How gifts and bundles work",
+        "intro": "How OpenLinker shows goods the customer did not pay for separately on the orders list, and what to do about them.",
+        "sections": {
+          "s1": {
+            "p1": "The order has a 0.00 line. A promotion, a shop cart rule or an operator added it. The \"With a gift\" filter shows only these orders.",
+            "p2": "One order line is made of several products. The peek shows them under the bundle, marked \"in the bundle price\". A gift inside a bundle is marked separately.",
+            "p3": "A promotion was meant to add a gift but could not, for example because it is out of stock. The order goes on without it. Open it to skip the gift or add one by hand.",
+            "tag": "two icons",
+            "title": "Row marks"
+          },
+          "s2": {
+            "p1": "The button beside the filters turns this filter on with one click. The same one is under Filters, in Exceptions.",
+            "p2": "The numbers above the table are orders where something needs you: gift not added, shop rejected the gift, deadline passed.",
+            "tag": "one click",
+            "title": "Filters"
+          }
+        },
+        "title": "Gifts and bundles in orders"
+      },
+      "returns": {
+        "button": "How bundle returns work",
+        "intro": "Returning one component of a bundle, and the decision about a gift the customer does not send back.",
+        "sections": {
+          "s1": {
+            "p1": "Tick the components that really came back. Only they go back to stock. The bundle stays one invoice line, and the refund hint follows the Allegro formula: paid minus what stays with the customer at full price. Nothing is filled in by itself.",
+            "p2": "If a component has no price or cost, it is not known what the returned part is worth. We block a partial return and say which component is missing something. You can always accept the whole bundle.",
+            "tag": "one component",
+            "title": "Bundle on return"
+          },
+          "s2": {
+            "p1": "OpenLinker never deducts a gift by itself. Until you choose, the gift is \"not decided yet\". Deducting is a hint beside the refund amount, nothing is entered for you. Do it only when the offer terms say so.",
+            "tag": "your decision",
+            "title": "Gift on return"
+          }
+        },
+        "title": "Returns of bundles and gifts"
+      },
+      "stock": {
+        "button": "How gift movements work",
+        "intro": "A gift takes stock like any line, but has its own type so you can see how many were given away.",
+        "sections": {
+          "s1": {
+            "p1": "When a gift lands in an order its stock is reserved. Until the order leaves, the stock in the master system does not change.",
+            "p2": "When the parcel is shipped, the reservation becomes a stock change.",
+            "p3": "A cancelled order or one the shop refused releases the gift reservation. The stock returns to the pool.",
+            "tag": "reservation and use",
+            "title": "Type \"Gift\""
+          },
+          "s2": {
+            "p1": "The movement peek shows the order and, if a promotion gave the gift, a link to it. A gift added by hand shows who added it.",
+            "tag": "link to the order",
+            "title": "Where a gift comes from"
+          }
+        },
+        "title": "Stock movements with gifts"
+      }
+    }
+  },
+  "order": {
+    "add": "Add gift",
+    "costUnknown": "Cost not recorded",
+    "costsYou": "Costs you {cost}",
+    "customerPays": "Customer pays {price}",
+    "decidedBy": "Where it comes from",
+    "onDocument": "On the document",
+    "readOnly": "Only admins and operators can add a gift.",
+    "readOnlyNotice": "You can see everything, but \"Add gift\" is switched off.",
+    "source": {
+      "cartRule": "A cart rule of the shop gave it. You pay for it.",
+      "channel": "Marked as a gift by the sales channel. You pay for it.",
+      "operator": "Added by hand by an operator. You pay for it.",
+      "rule": "A gift promotion in OpenLinker added it. You pay for it."
+    },
+    "tag": "Gift",
+    "tagLabel": "Gift: show where it comes from",
+    "whoPays": "Who pays"
+  }
+}

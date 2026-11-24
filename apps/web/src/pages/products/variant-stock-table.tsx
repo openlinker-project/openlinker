@@ -2,12 +2,15 @@
  * Variant Stock Table (#1752)
  *
  * Full-width variants table for the product-detail Overview tab, rebuilt in the
- * products-cockpit row language: per-variant stock (available / reserved) with
- * an IN STOCK badge, per-channel coverage pills, a "+ Create offer" CTA on
- * listing gaps, master variant price, and an expandable per-variant drawer that
- * shows rich per-listing detail (status, price, quantity, offer-id link,
- * category, marketplace URL) fetched lazily on expand. Below 640px the table
- * folds into stacked accordion cards.
+ * products-cockpit row language: how much each variant can sell (#3569), per-channel
+ * coverage pills, a "+ Create offer" CTA on listing gaps, master variant price, and
+ * an expandable per-variant drawer that shows the stock behind the number and rich
+ * per-listing detail (status, price, quantity, offer-id link, category,
+ * marketplace URL) fetched lazily on expand. Below 640px the table folds into
+ * stacked accordion cards.
+ *
+ * Stock arrives as a ready-made model from the page, built from the one stock
+ * view it already reads - this table runs no request of its own for it.
  *
  * @module apps/web/src/pages/products
  */
@@ -19,23 +22,38 @@ import { useListingsQuery } from '../../features/listings/hooks/use-listings-que
 import { useListingMarketplaceOfferQuery } from '../../features/listings/hooks/use-listing-marketplace-offer-query';
 import { useCategoryPathQuery } from '../../features/listings/hooks/use-category-path-query';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
+import {
+  StockCell,
+  StockMetaCells,
+  StockNarrative,
+  VariantIdValue,
+  type ProductStockModel,
+  type StockRowModel,
+} from '../../features/inventory';
+import type { StockViewChannel } from '../../features/inventory';
 import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
-import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import { formatTaxRate } from '../../shared/format/format-tax-rate';
+import { VariantCostCell, VariantCostSection } from './variant-cost';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { usePlatforms } from '../../shared/plugins';
 import { findPlatformDisplayName, resolvePlatformLabel } from '../../features/mappings';
+import { VariantThumbnail } from '../../features/products';
 import {
-  deriveStockStatus,
-  STOCK_STATUS_BADGE_TONE,
-  STOCK_STATUS_LABEL,
-} from '../../features/products';
+  getMessages,
+  interpolate,
+  labelFor,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Formatters,
+} from '../../shared/i18n';
+
+type VariantStockTableCopy = ReturnType<typeof useMessages<'products'>>['variantStockTable'];
 
 interface VariantStockTableProps {
   variants: ProductVariant[];
-  stockByVariant: Map<string, InventoryItem>;
   /** Product currency, used to format the master variant price. */
   currency: string | null;
   /**
@@ -58,11 +76,16 @@ interface VariantStockTableProps {
   /** Opens the create-offer flow for this product (picker or wizard). */
   onCreateOffers: () => void;
   onListingsCount: (variantId: string, count: number) => void;
+  /** Per-variant stock figures; without it the Stock column is empty. */
+  stock?: ProductStockModel | null;
+  /** Display name of the product's source connection, for the photo-source line. */
+  sourceName?: string | null;
 }
 
 const MOBILE_QUERY = '(max-width: 639.98px)';
 
 export function VariantStockTable(props: VariantStockTableProps): ReactElement {
+  const copy = useMessages('products').variantStockTable;
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   if (isMobile) {
@@ -72,12 +95,17 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
           <VariantStockCard
             key={variant.id}
             variant={variant}
-            stock={props.stockByVariant.get(variant.id)}
             currency={props.currency}
+            taxRate={{
+              productTaxRate: props.productTaxRate ?? null,
+              productTaxRateUnknownReason: props.productTaxRateUnknownReason ?? null,
+            }}
             connections={props.connections}
             canCreateOffers={props.canCreateOffers}
             onCreateOffers={props.onCreateOffers}
             onListingsCount={props.onListingsCount}
+            stock={props.stock ?? null}
+            sourceName={props.sourceName ?? null}
           />
         ))}
       </div>
@@ -87,15 +115,17 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
   return (
     <div className="data-table__container variant-stock-table__container">
       <table className="data-table variant-stock-table">
-        <caption className="sr-only">Product variants, stock levels, and marketplace listings</caption>
+        <caption className="sr-only">{copy.table.caption}</caption>
         <thead>
           <tr>
             <th aria-hidden="true"></th>
-            <th>Variant</th>
-            <th>Tax rate</th>
-            <th>Stock</th>
-            <th>Listings</th>
-            <th className="data-table__cell--right">Price</th>
+            <th>{copy.table.columns.photo}</th>
+            <th>{copy.table.columns.variant}</th>
+            <th>{copy.table.columns.taxRate}</th>
+            <th>{copy.table.columns.stock}</th>
+            <th>{copy.table.columns.listings}</th>
+            <th>{copy.table.columns.cost}</th>
+            <th className="data-table__cell--right">{copy.table.columns.price}</th>
           </tr>
         </thead>
         <tbody>
@@ -105,12 +135,13 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
               variant={variant}
               productTaxRate={props.productTaxRate ?? null}
               productTaxRateUnknownReason={props.productTaxRateUnknownReason ?? null}
-              stock={props.stockByVariant.get(variant.id)}
               currency={props.currency}
               connections={props.connections}
               canCreateOffers={props.canCreateOffers}
               onCreateOffers={props.onCreateOffers}
               onListingsCount={props.onListingsCount}
+              stock={props.stock ?? null}
+              sourceName={props.sourceName ?? null}
             />
           ))}
         </tbody>
@@ -121,18 +152,28 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
-function formatPrice(price: number | null, currency: string | null): ReactNode {
+function formatPrice(
+  price: number | null,
+  currency: string | null,
+  copy: VariantStockTableCopy,
+  format: Formatters,
+): ReactNode {
   if (price === null) {
     return <span className="text-muted">—</span>;
   }
   if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+    return format.money(price, currency);
   }
   return (
-    <span className="text-muted" title="Currency unknown">
-      {price.toFixed(2)}
+    <span className="text-muted" title={copy.currencyUnknown}>
+      {format.number(price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </span>
   );
+}
+
+/** Marketplace-native offer status in words; an unrecognised value is shown as sent. */
+function offerStatusLabel(status: string, copy: VariantStockTableCopy): string {
+  return labelFor(copy.offerStatus, status.trim().toLowerCase(), status);
 }
 
 /**
@@ -145,6 +186,79 @@ function statusTone(status: string): StatusBadgeTone {
   if (normalised === 'ACTIVE' || normalised === 'BIDDING') return 'success';
   if (normalised === 'ENDED' || normalised === 'INACTIVE') return 'warning';
   return 'neutral';
+}
+
+function variantSlug(variant: ProductVariant): string {
+  return (variant.sku ?? variant.id).toLowerCase();
+}
+
+/**
+ * The variant's resolved pictures (#3587): its own, else the product's. The API
+ * resolves the list; `imagesFromProduct` says which it was, so a borrowed
+ * picture is dimmed and labelled instead of passing as the variant's own.
+ */
+function VariantPhotoCell({ variant }: { variant: ProductVariant }): ReactElement {
+  return (
+    <VariantThumbnail
+      src={variant.imageUrls?.[0]}
+      name={variantHeadline(variant)}
+      size="sm"
+      dimmed={variant.imagesFromProduct === true}
+    />
+  );
+}
+
+function VariantPhotosSection({
+  variant,
+  sourceName,
+}: {
+  variant: ProductVariant;
+  sourceName?: string | null;
+}): ReactElement | null {
+  const copy = useMessages('products').variantStockTable.photos;
+  const format = useFormat();
+  const urls = variant.imageUrls ?? [];
+  const fromProduct = variant.imagesFromProduct === true;
+  const slug = variantSlug(variant);
+  return (
+    <div className="variant-drawer__photos">
+      <div className="variant-drawer__label">{copy.title}</div>
+      <div className="variant-photo-source">
+        <StatusBadge tone={fromProduct || urls.length === 0 ? 'neutral' : 'success'} withDot compact>
+          {urls.length === 0
+            ? copy.badge.none
+            : fromProduct
+              ? copy.badge.fromProduct
+              : interpolate(copy.badge.own, { n: format.number(urls.length) })}
+        </StatusBadge>
+        <span className="variant-drawer__meta-muted" data-testid="variant-photo-source">
+          {urls.length === 0
+            ? copy.source.none
+            : fromProduct
+              ? sourceName
+                ? interpolate(copy.source.fromProductNamed, { source: sourceName })
+                : copy.source.fromProduct
+              : sourceName
+                ? interpolate(copy.source.ownNamed, { source: sourceName })
+                : copy.source.own}
+        </span>
+      </div>
+      {urls.length > 0 ? (
+        <div className="variant-photo-strip" data-testid={`variant-photo-strip-${slug}`}>
+          {urls.map((url, index) => (
+            <VariantThumbnail
+              key={url}
+              src={url}
+              name={variantHeadline(variant)}
+              size="lg"
+              dimmed={fromProduct}
+              testId={`variant-photo-${slug}-${index}`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function variantHasAttributes(variant: ProductVariant): boolean {
@@ -164,22 +278,14 @@ function variantHeadline(variant: ProductVariant): string {
 }
 
 function variantMetaLine(variant: ProductVariant): string | null {
+  const copy = getMessages('products').variantStockTable.meta;
   const hasAttrs = variantHasAttributes(variant);
   const parts = [
     // SKU appears on the meta line only when attributes took the headline.
-    hasAttrs && variant.sku ? `SKU ${variant.sku}` : null,
-    variant.ean ? `EAN ${variant.ean}` : null,
+    hasAttrs && variant.sku ? interpolate(copy.sku, { sku: variant.sku }) : null,
+    variant.ean ? interpolate(copy.ean, { ean: variant.ean }) : null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;
-}
-
-function stockValueClass(availableQuantity: number): string {
-  const status = deriveStockStatus(availableQuantity);
-  if (status === 'out-of-stock' || status === 'oversold') {
-    return 'variant-stock-table__stock-value stock-cell--error';
-  }
-  if (status === 'low-stock') return 'variant-stock-table__stock-value stock-cell--warning';
-  return 'variant-stock-table__stock-value';
 }
 
 /** One TanStack Query per variant for its listings, plus the count callback. */
@@ -218,6 +324,7 @@ function VariantCoverage({
   canCreateOffers: boolean;
   onCreateOffers: () => void;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable;
   const platforms = usePlatforms();
   const listedConnectionIds = new Set(listings.map((l) => l.connectionId));
   const platformLabel = (platformType: string): string =>
@@ -265,7 +372,7 @@ function VariantCoverage({
       ))}
       {canCreateOffers && hasGap ? (
         <button type="button" className="products-row-cta" onClick={onCreateOffers}>
-          + Create offer
+          {copy.createOffer}
         </button>
       ) : null}
     </div>
@@ -287,6 +394,7 @@ function DrawerChannelLink({
   listing: OfferMapping;
   enabled: boolean;
 }): ReactElement | null {
+  const copy = useMessages('products').variantStockTable;
   const platforms = usePlatforms();
   const isOffer = listing.entityType === 'Offer';
   const offerQuery = useListingMarketplaceOfferQuery(listing.id, { enabled: enabled && isOffer });
@@ -302,27 +410,38 @@ function DrawerChannelLink({
       rel="noreferrer"
     >
       <span className="variant-drawer__dot" aria-hidden="true"></span>
-      Open on {label} <span className="variant-drawer__arrow" aria-hidden="true">↗</span>
+      {interpolate(copy.openOn, { platform: label })} <span className="variant-drawer__arrow" aria-hidden="true">↗</span>
     </a>
   );
 }
 
 /** Attribute chips + variant identity metadata grid, above the listings block. */
+/**
+ * The product-level tax facts a variant inherits. Passed only where the
+ * surrounding view has no "Tax rate" column of its own (the single-variant
+ * panel and the mobile card); the desktop table shows it per row already.
+ */
+interface InheritedTaxRate {
+  productTaxRate: string | null;
+  productTaxRateUnknownReason: TaxRateUnknownReason | null;
+}
+
 function VariantMetaGrid({
   variant,
-  available,
-  reserved,
+  taxRate,
+  stockRow,
 }: {
   variant: ProductVariant;
-  available: number;
-  reserved: number;
+  taxRate?: InheritedTaxRate;
+  stockRow?: StockRowModel;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable.metaGrid;
   const hasAttrs = variantHasAttributes(variant);
   return (
     <div className="variant-drawer__meta">
       {hasAttrs ? (
         <div className="variant-drawer__meta-cell">
-          <span className="variant-drawer__meta-label">Attributes</span>
+          <span className="variant-drawer__meta-label">{copy.attributes}</span>
           <span className="attr-chips">
             {Object.entries(variant.attributes as Record<string, string>).map(([key, value]) => (
               <span key={key} className="attr-chip">
@@ -333,25 +452,29 @@ function VariantMetaGrid({
           </span>
         </div>
       ) : null}
+      {stockRow ? <StockMetaCells row={stockRow} /> : null}
       <div className="variant-drawer__meta-cell">
-        <span className="variant-drawer__meta-label">Variant ID</span>
-        <span className="variant-drawer__meta-value variant-drawer__meta-value--wrap mono-text">
-          {variant.id}
-        </span>
-      </div>
-      <div className="variant-drawer__meta-cell">
-        <span className="variant-drawer__meta-label">EAN / GTIN</span>
+        <span className="variant-drawer__meta-label">{copy.ean}</span>
         <span className="variant-drawer__meta-value mono-text">
           {variant.ean ?? variant.gtin ?? '—'}
         </span>
       </div>
       <div className="variant-drawer__meta-cell">
-        <span className="variant-drawer__meta-label">Stock</span>
-        <span className="variant-drawer__meta-value mono-text tabular">
-          {available}
-          <span className="variant-drawer__meta-muted"> / res {reserved}</span>
+        <span className="variant-drawer__meta-label">{copy.variantId}</span>
+        <span className="variant-drawer__meta-value">
+          <VariantIdValue id={variant.id} />
         </span>
       </div>
+      {taxRate ? (
+        <div className="variant-drawer__meta-cell">
+          <span className="variant-drawer__meta-label">{copy.taxRate}</span>
+          <VariantTaxRateCell
+            variant={variant}
+            productTaxRate={taxRate.productTaxRate}
+            productTaxRateUnknownReason={taxRate.productTaxRateUnknownReason}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -363,7 +486,10 @@ function ListingsSummary({
 }: {
   listings: OfferMapping[];
   connections: readonly Connection[];
-}): ReactElement {
+}): ReactElement | null {
+  const copy = useMessages('products').variantStockTable;
+  const format = useFormat();
+  const plural = usePlural();
   const platforms = usePlatforms();
   const platformLabel = (platformType: string): string =>
     resolvePlatformLabel(platforms, platformType);
@@ -373,17 +499,12 @@ function ListingsSummary({
     new Set(gapConnections.map((c) => platformLabel(c.platformType))),
   );
 
+  if (gapConnections.length === 0) return null;
   return (
     <div className="listings-summary">
-      <span>{listings.length} listed</span>
-      {gapConnections.length > 0 ? (
-        <>
-          <span className="lmeta__sep" aria-hidden="true">·</span>
-          <span>{gapConnections.length} gap</span>
-          <span className="lmeta__sep" aria-hidden="true">·</span>
-          <span>{gapChannels.join(', ')}</span>
-        </>
-      ) : null}
+      <span>{plural(gapConnections.length, copy.gapCount, { n: format.number(gapConnections.length) })}</span>
+      <span className="lmeta__sep" aria-hidden="true">·</span>
+      <span>{format.list(gapChannels, 'unit')}</span>
     </div>
   );
 }
@@ -395,25 +516,34 @@ function ListingsSummary({
  */
 function VariantDetailBody({
   variant,
-  available,
-  reserved,
   connections,
   listings,
   total,
   isLoading,
   isError,
   open,
+  taxRate,
+  stock,
+  sourceName,
+  currency,
 }: {
   variant: ProductVariant;
-  available: number;
-  reserved: number;
+  sourceName?: string | null;
+  currency?: string | null;
   connections: readonly Connection[];
   listings: OfferMapping[];
   total: number;
   isLoading: boolean;
   isError: boolean;
   open: boolean;
+  taxRate?: InheritedTaxRate;
+  stock?: ProductStockModel | null;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable;
+  const format = useFormat();
+  const stockRow = stock?.rows.get(variant.id);
+  const showsChannelFigures =
+    stockRow !== undefined && stockRow.stock !== null && (stockRow.state === 'ok' || stockRow.state === 'unknown' || stockRow.state === 'staled');
   return (
     <>
       {listings.length > 0 ? (
@@ -424,27 +554,59 @@ function VariantDetailBody({
         </div>
       ) : null}
 
-      <VariantMetaGrid variant={variant} available={available} reserved={reserved} />
+      <VariantPhotosSection variant={variant} sourceName={sourceName} />
+
+      <VariantCostSection variant={variant} productCurrency={currency ?? null} sourceName={sourceName} />
+
+      {stockRow && stock ? <StockNarrative row={stockRow} stock={stock} /> : null}
+      {stockRow && stock && showsChannelFigures && stock.channelsStatus !== 'ok' ? (
+        <p className="variant-listing-card__note" data-testid={`stock-channels-partial-${stockRow.key}`}>
+          {stock.channelsStatus === 'partial'
+            ? copy.channelsPartial
+            : copy.channelsFailed}
+        </p>
+      ) : null}
+
+      <VariantMetaGrid variant={variant} taxRate={taxRate} stockRow={stockRow} />
 
       <div className="variant-drawer__listings">
-        <div className="variant-drawer__label">Listings{total > 0 ? ` (${total})` : ''}</div>
+        <div className="variant-drawer__label">
+          {total > 0
+            ? interpolate(copy.listings.headingWithCount, { n: format.number(total) })
+            : copy.listings.heading}
+        </div>
         {isLoading ? (
-          <p className="variant-listing-card__note">Loading listings…</p>
+          <p className="variant-listing-card__note">{copy.listings.loading}</p>
         ) : isError ? (
-          <p className="variant-listing-card__note">Couldn&rsquo;t load listings.</p>
+          <p className="variant-listing-card__note">{copy.listings.loadError}</p>
         ) : (
           <>
             <ListingsSummary listings={listings} connections={connections} />
             {listings.length === 0 ? (
               <p className="variant-listing-card__note">
-                No marketplace listings reference this variant yet.
+                {copy.listings.empty}
               </p>
             ) : (
-              <div className="variant-listing-cards">
-                {listings.map((listing) => (
-                  <ListingDetailCard key={listing.id} listing={listing} enabled={open} />
-                ))}
-              </div>
+              <>
+                <div
+                  className="variant-listing-cards"
+                  data-testid={stockRow ? `stock-channels-${stockRow.key}` : undefined}
+                >
+                  {listings.map((listing) => (
+                    <ListingDetailCard
+                      key={listing.id}
+                      listing={listing}
+                      enabled={open}
+                      stockRow={showsChannelFigures ? stockRow : undefined}
+                    />
+                  ))}
+                </div>
+                {showsChannelFigures ? (
+                  <p className="variant-drawer__note">
+                    {copy.listings.legend}
+                  </p>
+                ) : null}
+              </>
             )}
           </>
         )}
@@ -460,40 +622,94 @@ function VariantDetailBody({
  */
 export function VariantDetailPanel({
   variant,
-  stock,
+  productTaxRate,
+  productTaxRateUnknownReason,
   connections,
   onListingsCount,
+  stock = null,
+  sourceName,
+  currency,
 }: {
   variant: ProductVariant;
-  stock: InventoryItem | undefined;
+  sourceName?: string | null;
+  currency?: string | null;
+  productTaxRate: string | null;
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   connections: readonly Connection[];
   onListingsCount: (variantId: string, count: number) => void;
+  stock?: ProductStockModel | null;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable;
   const { listings, total, isLoading, isError } = useVariantListings(variant, onListingsCount);
+  const stockRow = stock?.rows.get(variant.id);
   return (
-    <div className="variant-drawer variant-drawer--flush">
+    <div
+      className="variant-drawer variant-drawer--flush"
+      data-testid={stockRow ? `stock-variant-row-${stockRow.key}` : undefined}
+    >
+      {stockRow ? (
+        <div className="variant-drawer__stockline">
+          <StockCell row={stockRow} />
+        </div>
+      ) : null}
+      <div className="variant-drawer__label">{copy.table.columns.cost}</div>
+      <VariantCostCell variant={variant} />
       <VariantDetailBody
+        stock={stock}
         variant={variant}
-        available={stock?.availableQuantity ?? 0}
-        reserved={stock?.reservedQuantity ?? 0}
         connections={connections}
         listings={listings}
         total={total}
         isLoading={isLoading}
         isError={isError}
         open
+        sourceName={sourceName}
+        currency={currency ?? null}
+        taxRate={{
+          productTaxRate,
+          productTaxRateUnknownReason: productTaxRateUnknownReason ?? null,
+        }}
       />
     </div>
   );
 }
 
+/** What OpenLinker sends one channel, in words: the number and why it is not the full count. */
+function describeSends(
+  row: StockRowModel,
+  channel: StockViewChannel,
+  copy: VariantStockTableCopy,
+  format: Formatters,
+): string {
+  const sends = channel.willPublish.quantity;
+  if (row.state === 'unknown' || sends === null) return copy.sends.paused;
+  const toSell = row.stock?.availableToPromise ?? null;
+  const buffer = channel.rule?.stockSafetyBuffer ?? 0;
+  const threshold = channel.rule?.stockZeroThreshold ?? 0;
+  if (toSell !== null && toSell > 0 && sends === 0 && threshold > 0) {
+    return interpolate(copy.sends.belowThreshold, { threshold: format.number(threshold) });
+  }
+  if (toSell !== null && sends < toSell && buffer > 0) {
+    return interpolate(copy.sends.withBuffer, {
+      n: format.number(sends),
+      buffer: format.number(toSell - sends),
+    });
+  }
+  return interpolate(copy.sends.plain, { n: format.number(sends) });
+}
+
 function ListingDetailCard({
   listing,
   enabled,
+  stockRow,
 }: {
   listing: OfferMapping;
   enabled: boolean;
+  /** Present when the stock figures for this variant are known and may be shown. */
+  stockRow?: StockRowModel;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable;
+  const format = useFormat();
   const platforms = usePlatforms();
   const isOffer = listing.entityType === 'Offer';
   // Rich marketplace state is fetched lazily — only when the row is open and
@@ -518,26 +734,51 @@ function ListingDetailCard({
   // separator so we never emit a leading / trailing / double separator.
   const metaItems: ReactNode[] = [
     <span key="offer" className="variant-listing-meta">
-      Offer <Link to={`/listings/${listing.id}`}>{listing.externalId} ↗</Link>
+      {copy.card.offer} <Link to={`/listings/${listing.id}`}>{listing.externalId} ↗</Link>
     </span>,
   ];
+  const channel = stockRow?.stock?.channels.find((c) => c.connectionId === listing.connectionId);
+  if (stockRow && channel) {
+    metaItems.push(
+      <span key="sends" className="variant-listing-meta" data-testid={`stock-channel-sends-${stockRow.key}-${channel.platformType}-${listing.externalId}`}>
+        {describeSends(stockRow, channel, copy, format)}
+      </span>,
+    );
+  }
   if (offer) {
     metaItems.push(
       <span key="qty" className="variant-listing-meta">
-        <b>Qty</b> {offer.availableQuantity}
+        <b>{copy.card.qty}</b> {format.number(offer.availableQuantity)}
+      </span>,
+    );
+  }
+  if (stockRow && channel) {
+    metaItems.push(
+      <span key="check" className="variant-listing-meta">
+        {channel.channelShows.quantity !== null ? (
+          <>
+            {copy.card.lastCheck}{' '}
+            {channel.channelShows.observedAt ? (
+              <TimeDisplay iso={channel.channelShows.observedAt} format="time" />
+            ) : null}
+            : {format.number(channel.channelShows.quantity)}
+          </>
+        ) : (
+          copy.card.notChecked
+        )}
       </span>,
     );
   }
   if (offer?.category) {
     metaItems.push(
       <span key="category" className="variant-listing-meta">
-        <b>Category</b> {categoryBreadcrumb ?? offer.category.name ?? offer.category.id}
+        <b>{copy.card.category}</b> {categoryBreadcrumb ?? offer.category.name ?? offer.category.id}
       </span>,
     );
   }
   metaItems.push(
     <span key="updated" className="variant-listing-meta">
-      <b>Offer updated</b> <TimeDisplay iso={listing.updatedAt} />
+      <b>{copy.card.offerUpdated}</b> <TimeDisplay iso={listing.updatedAt} />
     </span>,
   );
 
@@ -554,7 +795,10 @@ function ListingDetailCard({
   });
 
   return (
-    <div className="variant-listing-card">
+    <div
+      className="variant-listing-card"
+      data-testid={stockRow && channel ? `stock-channel-${stockRow.key}-${channel.platformType}-${listing.externalId}` : undefined}
+    >
       <div className="variant-listing-card__top">
         <span className="variant-listing-card__left">
           <span className="channel-pill" data-channel={listing.platformType}>
@@ -563,7 +807,7 @@ function ListingDetailCard({
           <ConnectionEntityLabel connectionId={listing.connectionId} showId={false} />
           {offer ? (
             <StatusBadge tone={statusTone(offer.status)} compact>
-              {offer.status}
+              {offerStatusLabel(offer.status, copy)}
             </StatusBadge>
           ) : null}
         </span>
@@ -575,7 +819,7 @@ function ListingDetailCard({
       </div>
       <div className="variant-listing-card__meta">{metaWithSeparators}</div>
       {enabled && offerQuery.isLoading ? (
-        <p className="variant-listing-card__note">Loading live marketplace data…</p>
+        <p className="variant-listing-card__note">{copy.card.loadingLive}</p>
       ) : null}
     </div>
   );
@@ -587,46 +831,52 @@ function VariantStockRow({
   variant,
   productTaxRate,
   productTaxRateUnknownReason,
-  stock,
   currency,
   connections,
   canCreateOffers,
   onCreateOffers,
   onListingsCount,
+  stock,
+  sourceName,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
-  stock: InventoryItem | undefined;
   currency: string | null;
   connections: readonly Connection[];
   canCreateOffers: boolean;
   onCreateOffers: () => void;
   onListingsCount: (variantId: string, count: number) => void;
+  stock: ProductStockModel | null;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable;
+  const format = useFormat();
   const [isOpen, setOpen] = useState(false);
+  const stockRow = stock?.rows.get(variant.id);
   const { listings, total, isLoading, isError } = useVariantListings(variant, onListingsCount);
 
-  const available = stock?.availableQuantity ?? 0;
-  const reserved = stock?.reservedQuantity ?? 0;
-  const status = deriveStockStatus(available);
   const meta = variantMetaLine(variant);
 
   return (
     <>
-      <tr className={isOpen ? 'is-open' : undefined}>
+      <tr className={isOpen ? 'is-open' : undefined} data-testid={`variant-row-${variantSlug(variant)}`}>
         <td className="variant-stock-table__expand-cell">
           <button
             type="button"
             className="variant-stock-table__expand-btn"
             aria-expanded={isOpen}
-            aria-label={`Toggle listings for ${variant.sku ?? variant.id}`}
+            aria-label={interpolate(copy.toggleDetails, { variant: variant.sku ?? variant.id })}
+            data-testid={stockRow ? `stock-variant-toggle-${stockRow.key}` : undefined}
             onClick={() => setOpen((prev) => !prev)}
           >
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 2l4 4-4 4" />
             </svg>
           </button>
+        </td>
+        <td>
+          <VariantPhotoCell variant={variant} />
         </td>
         <td>
           <div className="variant-stock-table__name">
@@ -641,16 +891,9 @@ function VariantStockRow({
             productTaxRateUnknownReason={productTaxRateUnknownReason}
           />
         </td>
-        <td>
-          <span className="variant-stock-table__stock">
-            <span>
-              <span className={stockValueClass(available)}>{available}</span>
-              <span className="variant-stock-table__stock-reserved">/ res {reserved}</span>
-            </span>
-            <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-              {STOCK_STATUS_LABEL[status]}
-            </StatusBadge>
-          </span>
+        {/* The stock cell carries the stock test id: the row's own id is the variant's (#3587). */}
+        <td data-testid={stockRow ? `stock-variant-row-${stockRow.key}` : undefined}>
+          {stockRow ? <StockCell row={stockRow} /> : <span className="text-muted">—</span>}
         </td>
         <td>
           <VariantCoverage
@@ -660,25 +903,29 @@ function VariantStockRow({
             onCreateOffers={onCreateOffers}
           />
         </td>
+        <td>
+          <VariantCostCell variant={variant} />
+        </td>
         <td className="data-table__cell--right variant-stock-table__price">
-          {formatPrice(variant.price, currency)}
+          {formatPrice(variant.price, currency, copy, format)}
         </td>
       </tr>
       <tr className={`variant-stock-table__expand-row${isOpen ? ' is-open' : ''}`}>
-        <td colSpan={5}>
+        <td colSpan={8}>
           <div className="variant-stock-table__expand-content">
             <div className="variant-stock-table__expand-content-inner">
               <div className="variant-drawer">
                 <VariantDetailBody
                   variant={variant}
-                  available={available}
-                  reserved={reserved}
                   connections={connections}
                   listings={listings}
                   total={total}
                   isLoading={isLoading}
                   isError={isError}
                   open={isOpen}
+                  stock={stock}
+                  sourceName={sourceName}
+                  currency={currency}
                 />
               </div>
             </div>
@@ -693,46 +940,52 @@ function VariantStockRow({
 
 function VariantStockCard({
   variant,
-  stock,
   currency,
+  taxRate,
   connections,
   canCreateOffers,
   onCreateOffers,
   onListingsCount,
+  stock,
+  sourceName,
 }: {
   variant: ProductVariant;
-  stock: InventoryItem | undefined;
+  sourceName?: string | null;
   currency: string | null;
+  taxRate: InheritedTaxRate;
   connections: readonly Connection[];
   canCreateOffers: boolean;
   onCreateOffers: () => void;
   onListingsCount: (variantId: string, count: number) => void;
+  stock: ProductStockModel | null;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable;
+  const format = useFormat();
   const [isOpen, setOpen] = useState(false);
+  const stockRow = stock?.rows.get(variant.id);
   const { listings, total, isLoading, isError } = useVariantListings(variant, onListingsCount);
 
-  const available = stock?.availableQuantity ?? 0;
-  const reserved = stock?.reservedQuantity ?? 0;
-  const status = deriveStockStatus(available);
   const meta = variantMetaLine(variant);
 
   return (
-    <div className="variant-card">
+    <div
+      className="variant-card"
+      data-testid={stockRow ? `stock-variant-row-${stockRow.key}` : `variant-row-${variantSlug(variant)}`}
+    >
       <button
         type="button"
         className="variant-card__header"
         aria-expanded={isOpen}
-        aria-label={`Toggle details for ${variant.sku ?? variant.id}`}
+        aria-label={interpolate(copy.toggleDetails, { variant: variant.sku ?? variant.id })}
+        data-testid={stockRow ? `stock-variant-toggle-${stockRow.key}` : undefined}
         onClick={() => setOpen((prev) => !prev)}
       >
+        <VariantPhotoCell variant={variant} />
         <span className="variant-stock-table__name">
           <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
           {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
         </span>
         <span className="variant-card__aside">
-          <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-            {STOCK_STATUS_LABEL[status]}
-          </StatusBadge>
           <span className="variant-card__disclosure" aria-hidden="true">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 2l4 4-4 4" />
@@ -740,21 +993,26 @@ function VariantStockCard({
           </span>
         </span>
       </button>
+      {stockRow ? (
+        <div className="variant-card__stock">
+          <StockCell row={stockRow} />
+        </div>
+      ) : null}
       {isOpen ? (
         <div className="variant-card__body">
           <div className="variant-card__grid">
             <span className="variant-card__cell">
-              <span className="variant-card__cell-label">Available</span>
-              <span className="variant-card__cell-value">
-                {available} / res {reserved}
-              </span>
+              <span className="variant-card__cell-label">{copy.table.columns.price}</span>
+              <span className="variant-card__cell-value">{formatPrice(variant.price, currency, copy, format)}</span>
             </span>
             <span className="variant-card__cell">
-              <span className="variant-card__cell-label">Price</span>
-              <span className="variant-card__cell-value">{formatPrice(variant.price, currency)}</span>
+              <span className="variant-card__cell-label">{copy.table.columns.cost}</span>
+              <span className="variant-card__cell-value">
+                <VariantCostCell variant={variant} />
+              </span>
             </span>
             <span className="variant-card__cell variant-card__cell--full">
-              <span className="variant-card__cell-label">Listings</span>
+              <span className="variant-card__cell-label">{copy.table.columns.listings}</span>
               <VariantCoverage
                 listings={listings}
                 connections={connections}
@@ -766,14 +1024,16 @@ function VariantStockCard({
           <div className="variant-drawer">
             <VariantDetailBody
               variant={variant}
-              available={available}
-              reserved={reserved}
               connections={connections}
               listings={listings}
               total={total}
               isLoading={isLoading}
               isError={isError}
               open={isOpen}
+              taxRate={taxRate}
+              stock={stock}
+              sourceName={sourceName}
+              currency={currency}
             />
           </div>
         </div>
@@ -803,11 +1063,12 @@ function VariantTaxRateCell({
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
 }): ReactElement {
+  const copy = useMessages('products').variantStockTable.taxRate;
   if (variant.taxRate) {
     return (
       <span className="variant-stock-table__name">
         <span className="mono-text">{formatTaxRate(variant.taxRate)}</span>
-        <span className="variant-stock-table__meta">variant override</span>
+        <span className="variant-stock-table__meta">{copy.override}</span>
       </span>
     );
   }
@@ -815,14 +1076,14 @@ function VariantTaxRateCell({
     return (
       <span className="variant-stock-table__name">
         <span className="mono-text">{formatTaxRate(productTaxRate)}</span>
-        <span className="variant-stock-table__meta">inherited from the product</span>
+        <span className="variant-stock-table__meta">{copy.inherited}</span>
       </span>
     );
   }
   return (
     <span className="variant-stock-table__name">
       <StatusBadge tone="error" withDot compact>
-        No tax rate
+        {copy.none}
       </StatusBadge>
       <span className="variant-stock-table__meta">
         {taxRateUnknownReasonCaption(productTaxRateUnknownReason)}
@@ -838,13 +1099,14 @@ function VariantTaxRateCell({
  * different fixes: add a rate versus resolve which of several is right.
  */
 function taxRateUnknownReasonCaption(reason: TaxRateUnknownReason | null | undefined): string {
+  const copy = getMessages('products').variantStockTable.taxRate;
   switch (reason) {
     case 'ambiguous':
-      return 'product has several candidate rates - resolve which one is right in the shop';
+      return copy.ambiguous;
     case 'unreadable':
-      return 'product has none either';
+      return copy.productHasNone;
     case 'not-configured':
     default:
-      return 'product has none either';
+      return copy.productHasNone;
   }
 }

@@ -12,6 +12,7 @@
  * @module libs/core/src/fiscalization
  */
 export * from './domain/types/fiscalization.types';
+export * from './domain/types/fiscal-provider-failure-details.types';
 // The exactly-once key format and the accepted-request shape (#2525).
 export * from './domain/types/fiscal-registration-request.types';
 // Where one order's registration is, as a poll reads it (#2526).
@@ -20,6 +21,8 @@ export * from './domain/entities/fiscal-registration-record.entity';
 export * from './domain/ports/fiscalization.port';
 // Re-exports both `FiscalRegistrationLocator` and `isFiscalRegistrationLocator`.
 export * from './domain/ports/capabilities/fiscal-registration-locator.capability';
+// The line-name budget an adapter declares, so core holds no regime number (#3914).
+export * from './domain/ports/capabilities/receipt-line-name-budget.capability';
 export * from './domain/ports/fiscal-registration-record-repository.port';
 export * from './domain/exceptions/duplicate-fiscal-registration-record.exception';
 export * from './domain/exceptions/fiscal-registration-record-not-found.exception';
@@ -32,6 +35,8 @@ export * from './domain/exceptions/missing-tax-rate.exception';
 export * from './domain/exceptions/order-already-registered.exception';
 export * from './domain/exceptions/order-already-has-invoice.exception';
 export * from './domain/exceptions/fiscal-registration-contended.exception';
+export * from './domain/exceptions/fiscal-registration-not-restartable.exception';
+export * from './domain/exceptions/fiscal-registration-attempt-closed.exception';
 export { InvalidFiscalLineError } from './application/mappers/errors/invalid-fiscal-line.error';
 export { UnsupportedFiscalPriceTreatmentError } from './application/mappers/errors/unsupported-fiscal-price-treatment.error';
 export {

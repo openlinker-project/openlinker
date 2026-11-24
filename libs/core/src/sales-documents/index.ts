@@ -54,6 +54,8 @@ export * from './domain/types/sales-document-dry-run.types';
 export * from './domain/types/sales-document-country-summary.types';
 export * from './domain/types/sales-document-market-discovery.types';
 export * from './domain/types/sales-document-view.types';
+export * from './domain/types/batch-schedule.types';
+export * from './domain/types/document-attempt.types';
 export * from './domain/ports/capabilities/self-routing-document-kind.capability';
 export * from './domain/domain-services/resolve-sales-document-routing';
 export * from './domain/domain-services/evaluate-sales-document-rules';
@@ -79,12 +81,14 @@ export * from './sales-documents.tokens';
 // #2252). Lives here because BOTH document contexts consume it and a fiscal
 // receipt is not an invoice - the same reason the reason vocabularies do.
 export * from './domain/types/shipping-tax-split.types';
+export * from './domain/types/discount-rounding.types';
 export * from './domain/types/line-total-mismatch.types';
 // The per-line tax-rate enforcement switch and the pre-rollout era marker
 // (#2245 review, ADR-063 § Consequences). Here for the same reason the shipping
 // split is: both document contexts and both channel adapters need one answer,
 // and this leaf imports nothing so any of them can value-import it.
 export * from './domain/types/tax-rate-enforcement.types';
+export * from './domain/types/live-order-issuance-gate.types';
 // The readable in-flight signal (#2521, ADR-042 amendment #2502 decision 2).
 // Here for the same reason the two vocabularies above are: a per-order surface
 // covering both kinds must not branch on which context answered, and a fiscal
@@ -97,3 +101,41 @@ export * from './domain/types/sales-document-in-flight.types';
 // nothing so both can value-import it without either owning the other's
 // wording.
 export * from './domain/types/gross-price-eligibility.types';
+// The delivery line on a sales document: per-country name, tax-rate mode and the
+// rate suffix a receipt name carries (#3905, ADR-082). Import-free, here for the
+// same reason the shipping split is.
+export * from './domain/types/delivery-line.types';
+export * from './domain/types/gift-lines.types';
+export * from './domain/exceptions/invalid-gift-document-form.error';
+export type {
+  GiftDocumentFormSetting,
+  ISalesDocumentSettingsService,
+} from './application/interfaces/sales-document-settings.service.interface';
+export * from './domain/types/bundle-document-lines.types';
+export * from './domain/ports/capabilities/zero-value-line.capability';
+
+// #3550 - manual "send this document to the buyer": the shared vocabulary, the
+// timeline record and the service that writes and reads it.
+export {
+  DocumentEmailFailureReasonValues,
+  DocumentEmailOutcomeValues,
+  DocumentEmailSentViaValues,
+  isDocumentEmailFailureReason,
+  normaliseDocumentEmailRecipient,
+  scrubEmailAddresses,
+} from './domain/types/document-email.types';
+export type {
+  DocumentEmailFailureReason,
+  DocumentEmailOutcome,
+  DocumentEmailSentVia,
+} from './domain/types/document-email.types';
+export { DocumentEmailDelivery } from './domain/entities/document-email-delivery.entity';
+export type { RecordDocumentEmailDeliveryInput } from './domain/ports/document-email-delivery-repository.port';
+export type { IDocumentEmailDeliveryService } from './application/interfaces/document-email-delivery.service.interface';
+
+// "An originating sales document was issued" (#3554).
+export type {
+  SalesDocumentIssuedEvent,
+  SalesDocumentIssuedListenerPort,
+} from './domain/ports/sales-document-issued-listener.port';
+export { notifySalesDocumentIssued } from './application/services/notify-sales-document-issued';

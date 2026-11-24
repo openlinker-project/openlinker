@@ -14,9 +14,14 @@ import { Injectable, Inject } from '@nestjs/common';
 import type { IInventoryService } from './inventory.service.interface';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type { PruneStaleVariantsResult, ProvenanceScope } from '../../domain/types/inventory.types';
+import type { PruneStaleVariantsResult, ProvenanceScope, ReportedLocationSet } from '../../domain/types/inventory.types';
 import { Logger } from '@openlinker/shared/logging';
-import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import { InventoryMovementRepositoryPort } from '../../domain/ports/inventory-movement-repository.port';
+import {
+  isInventoryMovementAttachment,
+  type InventoryMovementContext,
+} from '../../domain/types/inventory-movement.types';
+import { INVENTORY_MOVEMENT_REPOSITORY_TOKEN, INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
 
 /**
@@ -42,10 +47,16 @@ export class InventoryService implements IInventoryService {
     @Inject(INVENTORY_REPOSITORY_TOKEN)
     private readonly inventoryRepository: InventoryRepositoryPort,
     @Inject(SYNC_JOB_QUEUE_TOKEN)
-    private readonly jobQueue: SyncJobQueuePort
+    private readonly jobQueue: SyncJobQueuePort,
+    @Inject(INVENTORY_MOVEMENT_REPOSITORY_TOKEN)
+    private readonly movementRepository: InventoryMovementRepositoryPort
   ) {}
 
-  async setInventory(item: InventoryItem, sourceConnectionId?: string): Promise<InventoryItem> {
+  async setInventory(
+    item: InventoryItem,
+    sourceConnectionId?: string,
+    movement?: InventoryMovementContext
+  ): Promise<InventoryItem> {
     this.logger.debug(
       `Setting inventory for product: ${item.productId}, variant: ${item.productVariantId ?? 'base'}, location: ${item.locationId ?? 'default'}`
     );
@@ -67,6 +78,8 @@ export class InventoryService implements IInventoryService {
     const upserted = await this.inventoryRepository.upsert(item);
     this.logger.debug(`Inventory set: ${upserted.id}`);
 
+    await this.recordMovement(previous, upserted, sourceConnectionId, movement);
+
     // ADR-058 decision (5), #2324 - BREAKING. The located-write skip that stood
     // here is retired: propagation is variant-keyed and LOCATION-BLIND, because
     // the downstream handler re-reads the variant's aggregate across every live
@@ -81,7 +94,16 @@ export class InventoryService implements IInventoryService {
     // change contributes nothing new to the sum, and suppressing it costs
     // nothing. Making this guard aggregate-aware would put an N+1 read on the
     // hottest write path in the system.
-    if (previous && previous.availableQuantity === upserted.availableQuantity) {
+    //
+    // A previously STALE row coming back is a transition even at an identical
+    // quantity: the stale pause (#1689) zeroed the offers while this row kept
+    // its stock, so skipping here would leave every offer at 0 until the
+    // master's stock happened to change.
+    if (
+      previous &&
+      !previous.isStale &&
+      previous.availableQuantity === upserted.availableQuantity
+    ) {
       this.logger.debug(
         `inventory_write_propagation_skipped_no_change product=${upserted.productId} variant=${upserted.productVariantId ?? 'base'} quantity=${upserted.availableQuantity}`
       );
@@ -122,6 +144,68 @@ export class InventoryService implements IInventoryService {
     }
 
     return upserted;
+  }
+
+  /**
+   * Append the stock movement ledger row for this write (#3565).
+   *
+   * A row exists only when `availableQuantity` actually changed or the position
+   * is new - the same no-change notion the propagation guard below uses, so the
+   * ledger holds one row per real change, never one per sync. Best-effort by
+   * design: the stock write is the fact, the history is OpenLinker's account of
+   * it, and a ledger fault must never fail (or retry) a stock write.
+   *
+   * An `attachToMovementId` context completes a row the caller already claimed
+   * (the manual correction's `pending` row) instead of inserting a second one.
+   */
+  private async recordMovement(
+    previous: InventoryItem | null,
+    upserted: InventoryItem,
+    sourceConnectionId: string | undefined,
+    movement: InventoryMovementContext | undefined
+  ): Promise<void> {
+    try {
+      const before = previous?.availableQuantity ?? null;
+      if (movement !== undefined && isInventoryMovementAttachment(movement)) {
+        const attached = await this.movementRepository.attachQuantities(
+          movement.attachToMovementId,
+          movement.quantityBefore,
+          upserted.availableQuantity
+        );
+        if (!attached) {
+          this.logger.warn(
+            `inventory_movement_attach_skipped movement=${movement.attachToMovementId} product=${upserted.productId}`
+          );
+        }
+        return;
+      }
+      if (previous !== null && previous.availableQuantity === upserted.availableQuantity) {
+        return;
+      }
+      // A brand-new position born empty changed nothing: no "+0" row.
+      if (previous === null && upserted.availableQuantity === 0) {
+        return;
+      }
+      await this.movementRepository.append({
+        productId: upserted.productId,
+        productVariantId: upserted.productVariantId,
+        locationId: upserted.locationId,
+        sourceConnectionId: upserted.sourceConnectionId ?? sourceConnectionId ?? null,
+        reason: movement?.reason ?? 'master_sync',
+        quantityDelta: upserted.availableQuantity - (before ?? 0),
+        quantityBefore: before,
+        quantityAfter: upserted.availableQuantity,
+        sourceKind: movement?.sourceKind ?? 'master_sync',
+        sourceRef: movement?.sourceRef ?? null,
+        actorUserId: movement?.actorUserId ?? null,
+        syncRunId: movement?.syncRunId ?? null,
+        occurredAt: upserted.updatedAt,
+      });
+    } catch (error) {
+      this.logger.error(
+        `inventory_movement_write_failed product=${upserted.productId} variant=${upserted.productVariantId ?? 'base'} reason=${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   async getInventory(
@@ -196,6 +280,27 @@ export class InventoryService implements IInventoryService {
       // repair in the log beside it (#3206).
       this.logger.warn(
         `inventory_located_position_staled_by_pooled_write product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} pooled=${pooledVariantKeys.length} source=${scope.sourceConnectionId}`
+      );
+    }
+    return result;
+  }
+
+  async staleUnreportedLocationsForSource(
+    productId: string,
+    reported: readonly ReportedLocationSet[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    if (reported.length === 0) {
+      return { markedCount: 0, variantIds: [] };
+    }
+    const result = await this.inventoryRepository.markUnreportedLocationsStaleForSource(
+      productId,
+      reported,
+      scope
+    );
+    if (result.markedCount > 0) {
+      this.logger.warn(
+        `inventory_unreported_location_staled product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} source=${scope.sourceConnectionId}`
       );
     }
     return result;

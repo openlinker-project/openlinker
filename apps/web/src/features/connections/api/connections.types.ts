@@ -143,6 +143,16 @@ export interface Connection {
    * field working without a mass edit.
    */
   defaultRateLimit?: ConnectionRateLimit | null;
+  /**
+   * Config values the adapter declared safe for every role (DEF-02), e.g. the
+   * KSeF environment, readable where `config` is hidden from non-admins.
+   */
+  publicConfig?: Record<string, string | number | boolean>;
+  /**
+   * Advisory notices on a create/update response (#1594, DEF-21), e.g. a
+   * second connection on the same seller tax number sharing a rate limit.
+   */
+  warnings?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -188,11 +198,32 @@ export interface RecentJobSummary {
   lastError: string | null;
 }
 
+/**
+ * Mirror of core's `ConnectionTestOutcomeValues` (#3866; apps/web cannot import
+ * core, #591), held identical by `scripts/check-stored-reason-code-mirror.mjs`.
+ */
+export const ConnectionTestOutcomeValues = [
+  'ok',
+  'unauthorized',
+  'unreachable',
+  'timeout',
+  'not-found',
+  'misconfigured',
+  'unexpected-status',
+  'unsupported',
+  'failed',
+] as const;
+
+export type ConnectionTestOutcome = (typeof ConnectionTestOutcomeValues)[number];
+
 export interface ConnectionTestResult {
   success: boolean;
   status?: number;
+  /** The tester's own English detail; shown only under the not-translated label. */
   message: string;
   latencyMs: number;
+  /** What the test found (#3866). Optional for an API that predates it. */
+  outcome?: ConnectionTestOutcome;
 }
 
 /**
@@ -319,6 +350,12 @@ export interface RateLimitStatus {
   lastAcquiredAt?: string | null;
   /** Absent when no adapter reported one — never render a fabricated value. */
   resolveConcurrency?: ResolveConcurrencyCeiling;
+  /**
+   * The server's answer to "is this limit shared with other connections to
+   * the same remote?" (ADR-038 § Amendment). Read, never inferred from
+   * `platformType`; absent reads as not shared.
+   */
+  sharedBucket?: boolean;
 }
 
 /**

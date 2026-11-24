@@ -61,12 +61,23 @@ describe('MasterInventorySyncBatchHandler', () => {
     );
 
     expect(masterInventorySync.syncFromMasterByExternalIds).toHaveBeenCalledTimes(1);
-    expect(masterInventorySync.syncFromMasterByExternalIds).toHaveBeenCalledWith('conn-1', [
-      '1',
-      '2',
-      '3',
-    ]);
+    // A batch queued before #4062 carries no run id, so the job names the run.
+    expect(masterInventorySync.syncFromMasterByExternalIds).toHaveBeenCalledWith(
+      'conn-1',
+      ['1', '2', '3'],
+      { syncRunId: 'batch-job-1' }
+    );
     expect(result).toEqual({ outcome: 'ok' });
+  });
+
+  it('should record the sweep cycle as the run when the payload carries one', async () => {
+    await handler.execute(
+      createJob({ schemaVersion: 1, externalIds: ['1'], syncRunId: 'cycle-7' })
+    );
+
+    expect(masterInventorySync.syncFromMasterByExternalIds).toHaveBeenCalledWith('conn-1', ['1'], {
+      syncRunId: 'cycle-7',
+    });
   });
 
   it('should re-enqueue a failed product as a per-product job, not fail the page', async () => {

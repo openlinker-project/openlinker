@@ -20,5 +20,6 @@ export interface IWooCommerceProductMapper {
   mapVariation(
     variation: WooCommerceProductVariation,
     productId: string,
+    parentImages?: readonly string[] | null
   ): Omit<ProductVariant, 'id'>;
 }

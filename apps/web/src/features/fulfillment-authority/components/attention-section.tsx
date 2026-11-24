@@ -46,7 +46,7 @@ import {
   ATTENTION_BADGE_COPY,
   ATTENTION_SECTION_COPY,
   ATTENTION_UNKNOWN_COPY,
-} from '../lib/attention-reason.copy';
+} from '../lib/attention-reason-text';
 import { toAttentionEntryView } from '../lib/attention-entry';
 import type { AuthorityAttention, AuthorityAttentionItem } from '../api/who-decides.types';
 

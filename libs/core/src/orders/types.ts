@@ -67,6 +67,14 @@ export {
   PAYMENT_STATUS,
 } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
+// Type-only (#3294): a runtime export here needs a registered reason and a concrete
+// consumer in `scripts/check-types-sub-barrels.mjs`; add the values when invoicing
+// actually value-imports them.
+export type { PaymentMethod } from './domain/types/payment-method.types';
+// Type-only (#3929): the bundles/gifts work in a sibling context names a gift line
+// without reaching the main barrel, which re-exports `OrdersModule`. The value list
+// stays on the main barrel until a consumer needs it here.
+export type { LineGift, GiftSource, GiftDocumentForm } from './domain/types/incoming-order.types';
 export type { Order } from './domain/types/order.types';
 export { OrderStatusValues } from './domain/types/order.types';
 export type { OrderStatus } from './domain/types/order.types';

@@ -34,6 +34,7 @@ import {
   type SyncLockPort,
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import { ORDER_CANCELLED_HOLD_RELEASE_NOTE } from '../../domain/types/order-cancel.types';
 import type { OrderHold } from '../../domain/entities/order-hold.entity';
 import { HoldReleaseNotPermittedError } from '../../domain/exceptions/hold-release-not-permitted.error';
 import { HoldReleaseNoteRequiredError } from '../../domain/exceptions/hold-release-note-required.error';
@@ -191,6 +192,20 @@ export class OrderHoldService implements IOrderHoldService {
     note: string | null
   ): void {
     const placedByService = hold.placedByService;
+
+    if (request.releasedBy.kind === 'system') {
+      // The system actor exists for ONE act: closing a hold because the order
+      // was cancelled. Without the cancel note a caller could release any hold
+      // as an anonymous actor, which is the unattributable release §6.4 prices.
+      if (note !== ORDER_CANCELLED_HOLD_RELEASE_NOTE) {
+        throw new HoldReleaseNotPermittedError(
+          hold.id,
+          placedByService,
+          `system:${request.releasedBy.cause}`
+        );
+      }
+      return;
+    }
 
     if (request.releasedBy.kind === 'service') {
       if (

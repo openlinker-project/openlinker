@@ -30,7 +30,7 @@ describe('CurrencyCoverageDialog', () => {
     );
 
     expect(await screen.findByText('Analytics coverage')).toBeInTheDocument();
-    expect(screen.getByText(/No orders have been stamped yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No orders have a reporting figure yet/)).toBeInTheDocument();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
@@ -43,7 +43,7 @@ describe('CurrencyCoverageDialog', () => {
 
     expect(await screen.findByText('Orders with a reporting figure')).toBeInTheDocument();
     expect(screen.getByText('42')).toBeInTheDocument();
-    expect(screen.queryByText(/stamped in/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recorded in/)).not.toBeInTheDocument();
     expect(screen.queryByText('More than one reporting-currency era')).not.toBeInTheDocument();
   });
 
@@ -57,9 +57,9 @@ describe('CurrencyCoverageDialog', () => {
     };
     renderWithProviders(<CurrencyCoverageDialog open view={view} onClose={vi.fn()} />);
 
-    expect(await screen.findByText('5231')).toBeInTheDocument();
-    expect(screen.getByText('— stamped in PLN')).toBeInTheDocument();
-    expect(screen.getByText('— stamped in EUR')).toBeInTheDocument();
+    expect(await screen.findByText('5,231')).toBeInTheDocument();
+    expect(screen.getByText('Recorded in PLN')).toBeInTheDocument();
+    expect(screen.getByText('Recorded in EUR')).toBeInTheDocument();
     expect(screen.getByText('More than one reporting-currency era')).toBeInTheDocument();
   });
 

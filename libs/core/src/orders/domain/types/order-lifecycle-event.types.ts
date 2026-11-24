@@ -38,12 +38,22 @@ import type { DispatchCarrierHint } from './dispatch-carrier-hint.types';
  * the same thing for its `'picked'` event): the natural future caller is
  * #2400's fulfilment-progress ingestion the day it needs to relay picking
  * status outward, which is a decision for that slice, not this one.
+ *
+ * `'paid'` (#3963) tells a destination shop that an order it holds as unpaid
+ * has since been paid at the source. It is a payment fact, not a fulfilment
+ * one, so it never reuses `'in-progress'`: on PrestaShop that event maps to a
+ * paid order state, and firing it for a cash-on-delivery order would book money
+ * nobody received. Core decides WHETHER to send it (cash on delivery,
+ * cancellation, refunds, created-paid) in `payment-writeback.types.ts`; the
+ * adapter only decides HOW its platform expresses paid, and declines a state it
+ * must not move backwards from.
  */
 export const OrderLifecycleEventTypeValues = [
   'dispatched',
   'cancelled',
   'delivered',
   'in-progress',
+  'paid',
 ] as const;
 export type OrderLifecycleEventType = (typeof OrderLifecycleEventTypeValues)[number];
 
@@ -94,6 +104,17 @@ export type OrderLifecycleEvent =
   | {
       type: 'in-progress';
       externalOrderId: string;
+    }
+  | {
+      type: 'paid';
+      externalOrderId: string;
+      /** Amount the buyer paid at the source, in `currency`. Used for the shop note and payment record. */
+      amount: number;
+      currency: string;
+      /** The source's own payment instant, when known - never OL's clock (#2336). */
+      paidAt?: Date;
+      /** Display name of the channel the money was paid on, e.g. "Allegro". For an operator-readable note. */
+      paidOn: string;
     };
 
 /**
@@ -107,8 +128,30 @@ export type OrderLifecycleEvent =
 export const OrderWritebackOutcomeValues = ['applied', 'unsupported', 'rejected'] as const;
 export type OrderWritebackOutcome = (typeof OrderWritebackOutcomeValues)[number];
 
+/**
+ * How much of an `applied` writeback actually reached the participant (#3540).
+ *
+ * - `channel`    - the participant's own system now carries the fact (the
+ *   ordinary meaning of `applied`, and what an absent value means).
+ * - `stock-only` - OpenLinker did the compensating work it could (a stock
+ *   restore) but the participant has no confirmed verb to record the event
+ *   itself, so the channel still shows the order as live. Erli's `cancelled` is
+ *   the one case today. A caller that tells an operator "the channel was
+ *   notified" must read this, not just `outcome`.
+ */
+export const OrderWritebackScopeValues = ['channel', 'stock-only'] as const;
+export type OrderWritebackScope = (typeof OrderWritebackScopeValues)[number];
+
 export interface OrderWritebackResult {
   outcome: OrderWritebackOutcome;
   /** Operator-readable reason — required for `unsupported` / `rejected`. */
   detail?: string;
+  /** Reach of an `applied` outcome; absent means `channel`. See {@link OrderWritebackScope}. */
+  scope?: OrderWritebackScope;
+  /**
+   * `rejected` only: the failure was transport-level (timeout, 5xx, reset), so the
+   * participant never answered and may have applied the write. Lets an adapter that
+   * catches its own errors give the relay the same signal a thrown error does.
+   */
+  transient?: boolean;
 }

@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { prestashopPlugin } from './index';
+import { publicApiBaseUrl } from '../../shared/config/public-api-base-url';
 
 describe('prestashopPlugin', () => {
   describe('identity', () => {
@@ -60,8 +61,8 @@ describe('prestashopPlugin', () => {
       expect(prestashopPlugin.platform?.requiresExternalAuthRedirect).toBeUndefined();
     });
 
-    it('returns window.location.origin from getCallbackUrlDefault under jsdom', () => {
-      expect(prestashopPlugin.platform?.getCallbackUrlDefault?.()).toBe(window.location.origin);
+    it('should pre-fill the callback URL with the API address, not the page origin', () => {
+      expect(prestashopPlugin.platform?.getCallbackUrlDefault?.()).toBe(publicApiBaseUrl());
     });
 
     it('does NOT contribute a content-publish error extractor (Allegro-specific)', () => {

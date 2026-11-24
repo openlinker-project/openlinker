@@ -22,7 +22,9 @@ describe('CoverageGapReadService', () => {
       countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
+      findDeadFailedCreationOfferIds: jest.fn(),
       countByLifecycle: jest.fn(),
+      countAttention: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn(),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),
@@ -31,6 +33,7 @@ describe('CoverageGapReadService', () => {
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),
+      findStaleMappedProductIds: jest.fn().mockResolvedValue([]),
     };
     integrationsService = {
       getAdapter: jest.fn(),

@@ -162,6 +162,8 @@ describe('ShipmentDispatchService', () => {
     resolveLinkForOrder: jest.Mock;
     listBlockingRejectionConnectionIds: jest.Mock;
     findWorkById: jest.Mock;
+    summarizeWorkForOrders: jest.Mock;
+    listBuyerNoteAcknowledgements: jest.Mock;
   };
   let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock };
   let service: ShipmentDispatchService;
@@ -170,6 +172,8 @@ describe('ShipmentDispatchService', () => {
     repository = {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      listConnectionIds: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),
@@ -224,10 +228,14 @@ describe('ShipmentDispatchService', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markDestinationRoutingBlock: jest.fn(),
       markFulfillmentRoutingSkip: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      listOrderIdsHeldForVariant: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
@@ -237,11 +245,18 @@ describe('ShipmentDispatchService', () => {
       markOmsAttention: jest.fn(),
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
+      getDeliveryCountryFacts: jest.fn(),
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
+      notifyShippedIfPending: jest.fn(),
+      freezeLineExpansion: jest.fn(),
+      countOpenOrdersByBundleVersion: jest.fn(),
+      countOrdersForSkusSince: jest.fn(),
     };
-    const fulfillmentProjection = { recompute: jest.fn() };
+    const fulfillmentProjection = { recompute: jest.fn(), announceShippedWithoutTracking: jest.fn() };
     // Unheld by default (#2339): as with the lock below, every pre-existing test
     // asserts the dispatch path itself, so the hold gate must not change their
     // behaviour.
@@ -264,6 +279,8 @@ describe('ShipmentDispatchService', () => {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
       findWorkById: jest.fn().mockResolvedValue(null),
+      summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
+      listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
     };
     // #3365: every successful label buy enqueues the dispatch notification, so
     // the queue is present on every pre-existing test. Resolving by default
@@ -724,6 +741,35 @@ describe('ShipmentDispatchService', () => {
       await service.dispatch(makeInput({ cod }));
 
       expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    // An order that says nothing about how it is paid (an unrecognised plugin
+    // gateway, say) must never pre-fill a COD amount from the order record, even
+    // if one were present on the snapshot: only an order REPORTED cash-on-delivery
+    // may supply it (#3294). The operator's own figure stays authoritative.
+    it('should not take a COD amount from the order when its payment status is unreported (#3294)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(
+        makeOrderRecord(undefined, { amount: '510.94', currency: 'PLN' }),
+      );
+
+      const cod = { amount: '39.99', currency: 'PLN' };
+      await service.dispatch(makeInput({ cod }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    it('should send no COD at all when the order is unreported and the caller supplies none (#3294)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(
+        makeOrderRecord(undefined, { amount: '510.94', currency: 'PLN' }),
+      );
+
+      await service.dispatch(makeInput());
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: undefined }),
+      );
     });
 
     it('should forward cod as undefined when the caller omits it', async () => {

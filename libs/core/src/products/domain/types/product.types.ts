@@ -10,6 +10,9 @@
 import type { Product } from '../entities/product.entity';
 import type { ProductVariant } from '../entities/product-variant.entity';
 
+export const ProductBundleFilterValues = ['only', 'exclude'] as const;
+export type ProductBundleFilter = (typeof ProductBundleFilterValues)[number];
+
 /**
  * Product filters
  *
@@ -66,6 +69,10 @@ export interface ProductCreate {
   price: number;
   currency?: string;
   weight?: number;
+  /** Barcode, when the caller has one. */
+  ean?: string;
+  /** The rate the gross `price` includes, as a percent code (ADR-063): `'23'`, `'0'`, `'zw'`. */
+  taxRate?: string;
   [key: string]: unknown;
 }
 
@@ -114,6 +121,24 @@ export interface VariantPhysicalDimensionsFill {
   readonly heightMm?: number | null;
 }
 
+/**
+ * An operator-entered net unit cost (#3588): the pair is indivisible - a cost
+ * without a currency (or the reverse) is never representable.
+ */
+export interface VariantCost {
+  /** Decimal string, e.g. "12.5000" or "0.00". */
+  readonly netUnitCost: string;
+  /** ISO 4217 code, upper case. */
+  readonly currency: string;
+}
+
+/** Outcome of a bulk fill-when-NULL cost write (#3588). */
+export interface VariantCostFillResult {
+  readonly filled: string[];
+  readonly skippedAlreadySet: string[];
+  readonly notFound: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Read API types (used by repository ports and application services)
 // ---------------------------------------------------------------------------
@@ -121,9 +146,11 @@ export interface VariantPhysicalDimensionsFill {
 /**
  * Product stock-bucket filter values (#1720 - products catalog cockpit).
  *
- * Buckets are derived from the product's total available stock summed across
- * its inventory rows: `out` = 0 (including products with no inventory rows),
- * `low` = 0 < total <= LOW_STOCK_THRESHOLD, `oversold` = total < 0.
+ * `out` / `low` are derived from the product's available to promise (#3621, G-5):
+ * per variant `max(0, Σ available[live positions] - Σ published holds)`, summed,
+ * so they agree with the list badge. `out` = 0 (including variants with no
+ * positions), `low` = 0 < ATP <= LOW_STOCK_THRESHOLD; a product with no variants
+ * is in neither. `oversold` stays on the master total (< 0): ATP is clamped at 0.
  */
 export const ProductStockFilterValues = ['out', 'low', 'oversold'] as const;
 export type ProductStockFilter = (typeof ProductStockFilterValues)[number];
@@ -206,6 +233,21 @@ export interface ProductListFilters {
    * with zero variants is also kept (staleness is not what that means).
    */
   hideFullyStale?: boolean;
+
+  /**
+   * Narrow by bundle-ness (#3624). `only` keeps products with a variant that has a
+   * CURRENT bundle definition; `exclude` keeps the rest. A retired definition does not
+   * count as a bundle. Absent applies no filter.
+   */
+  bundleFilter?: ProductBundleFilter;
+
+  /**
+   * Exactly this product (#4026 follow-up). Lets a surface open a product's
+   * peek by id - an order line, a deep link - with the same list-shaped row
+   * (stock aggregates, listings coverage) the products page renders, which the
+   * single-product detail read does not carry.
+   */
+  productId?: string;
 }
 
 /**

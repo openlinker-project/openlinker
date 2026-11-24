@@ -68,6 +68,9 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       .withUsername('woocommerce')
       .withUserPassword('woocommerce')
       .withLabels(ciRunIdLabels())
+      // Native AIO off, for the reason given in prestashop-container.helper.ts
+      // (host-wide AIO pool exhausted on the self-hosted runner, #3918).
+      .withCommand(['--innodb-use-native-aio=0'])
       .start();
 
     console.log('[WC] MySQL ready. Starting WordPress+WooCommerce (warm: ~2min, cold: ~5min)...');

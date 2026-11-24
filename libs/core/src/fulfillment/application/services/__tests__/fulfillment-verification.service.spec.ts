@@ -49,6 +49,8 @@ const work = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
   packedByService: null,
   invoicePrintedAt: null,
   labelPrintedAt: null,
+  buyerNoteAcknowledgedAt: null,
+  buyerNoteAcknowledgedByUserId: null,
   completedAt: null,
   completedByUserId: null,
   lines: [line()],
@@ -70,9 +72,11 @@ interface Harness {
       | 'claimParcelClose'
       | 'reopenParcel'
       | 'findLatestActiveVerification'
+      | 'findLatestActiveVerificationForLine'
       | 'voidVerificationById'
       | 'markInvoicePrinted'
       | 'markLabelPrinted'
+      | 'acknowledgeBuyerNote'
       | 'claimCompletion'
       | 'undoCompletion'
     >
@@ -91,6 +95,8 @@ function harness(options: {
   /** pack-bench completion */
   invoicePrinted?: boolean;
   labelPrinted?: boolean;
+  /** #3538 */
+  acknowledged?: boolean;
   completed?: boolean;
   /** #3340 follow-up */
   undone?: boolean;
@@ -111,9 +117,13 @@ function harness(options: {
     findLatestActiveVerification: jest
       .fn()
       .mockResolvedValue(options.latestActive === undefined ? null : options.latestActive),
+    findLatestActiveVerificationForLine: jest
+      .fn()
+      .mockResolvedValue(options.latestActive === undefined ? null : options.latestActive),
     voidVerificationById: jest.fn().mockResolvedValue(options.voided ?? true),
     markInvoicePrinted: jest.fn().mockResolvedValue(options.invoicePrinted ?? true),
     markLabelPrinted: jest.fn().mockResolvedValue(options.labelPrinted ?? true),
+    acknowledgeBuyerNote: jest.fn().mockResolvedValue(options.acknowledged ?? true),
     claimCompletion: jest.fn().mockResolvedValue(options.completed ?? true),
     undoCompletion: jest.fn().mockResolvedValue(options.undone ?? true),
   } as unknown as Harness['repo'];
@@ -446,6 +456,67 @@ describe('FulfillmentVerificationService (#2418)', () => {
     });
   });
 
+  describe('#3961 - void the extra units of one line', () => {
+    it('voids that line\'s units beyond keep, newest first, and only that line', async () => {
+      const { service, repo } = harness({
+        latestActive: { id: 'verification-7', workLineId: 'line-1' },
+        counts: [
+          [{ workLineId: 'line-1', verifiedQuantity: 2 }],
+          [{ workLineId: 'line-1', verifiedQuantity: 1 }],
+        ],
+      });
+
+      const result = await service.voidSurplusOnLine({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'voided', voided: 1 });
+      expect(repo.findLatestActiveVerificationForLine).toHaveBeenCalledWith(
+        'work-1',
+        'line-1',
+        expect.anything()
+      );
+      expect(repo.findLatestActiveVerification).not.toHaveBeenCalled();
+      expect(repo.voidVerificationById).toHaveBeenCalledTimes(1);
+    });
+
+    it('voids nothing when the line is already at or below keep', async () => {
+      const { service, repo } = harness({
+        counts: [[{ workLineId: 'line-1', verifiedQuantity: 1 }]],
+      });
+
+      const result = await service.voidSurplusOnLine({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'voided', voided: 0 });
+      expect(repo.voidVerificationById).not.toHaveBeenCalled();
+    });
+
+    it('refuses a closed parcel rather than reopening it as a side effect', async () => {
+      const { service, repo } = harness({
+        work: work({ parcelClosedAt: new Date() }),
+        counts: [[{ workLineId: 'line-1', verifiedQuantity: 2 }]],
+      });
+
+      const result = await service.voidSurplusOnLine({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        keep: 1,
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'parcel-closed' });
+      expect(repo.voidVerificationById).not.toHaveBeenCalled();
+    });
+  });
+
   describe('#3405 — undo the most recent scan', () => {
     it('voids the latest active row and reports its line', async () => {
       const { service, repo } = harness({
@@ -531,6 +602,24 @@ describe('FulfillmentVerificationService (#2418)', () => {
 
       await expect(service.markLabelPrinted('work-1', at)).resolves.toBe(true);
       expect(repo.markLabelPrinted).toHaveBeenCalledWith('work-1', at);
+    });
+  });
+
+  describe('acknowledgeBuyerNote (#3538)', () => {
+    it('passes the instant and the actor through for a first acknowledgement', async () => {
+      const { service, repo } = harness({ acknowledged: true });
+      const at = new Date();
+
+      await expect(service.acknowledgeBuyerNote('work-1', at, 'user-1')).resolves.toBe(true);
+      expect(repo.acknowledgeBuyerNote).toHaveBeenCalledWith('work-1', at, 'user-1');
+    });
+
+    it('passes through `false` for a repeat, without throwing', async () => {
+      const { service } = harness({ acknowledged: false });
+
+      await expect(service.acknowledgeBuyerNote('work-1', new Date(), 'user-2')).resolves.toBe(
+        false
+      );
     });
   });
 

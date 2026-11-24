@@ -11,10 +11,11 @@
  *
  * @module features/auth/components
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useChangePasswordMutation } from '../hooks/use-change-password-mutation';
 import { useSession } from '../../../shared/auth/use-session';
 import { Alert } from '../../../shared/ui/alert';
@@ -22,8 +23,9 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { useMessages } from '../../../shared/i18n';
 import {
-  changePasswordFormSchema,
+  createChangePasswordFormSchema,
   type ChangePasswordFormValues,
 } from './change-password-form.schema';
 
@@ -40,15 +42,18 @@ const DEFAULT_VALUES: ChangePasswordFormValues = {
 
 export function ChangePasswordForm({ nextPath }: ChangePasswordFormProps): ReactElement {
   const mutation = useChangePasswordMutation();
+  const auth = useMessages('auth');
+  const copy = auth.changePassword;
+  const schema = useMemo(() => createChangePasswordFormSchema(auth.validation), [auth]);
   const { clearSession } = useSession();
   const navigate = useNavigate();
   const form = useForm<ChangePasswordFormValues>({
     defaultValues: DEFAULT_VALUES,
-    resolver: zodResolver(changePasswordFormSchema),
+    resolver: zodResolver(schema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   const handleSignOut = async (): Promise<void> => {
@@ -71,18 +76,18 @@ export function ChangePasswordForm({ nextPath }: ChangePasswordFormProps): React
 
   return (
     <form className="form-card guest-form" noValidate onSubmit={(event) => void onSubmit(event)}>
-      <Alert tone="info" title="Choose your own password">
-        Your account was created with a one-time password. Set your own before you continue.
+      <Alert tone="info" title={copy.introTitle}>
+        {copy.intro}
       </Alert>
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {mutation.error ? (
-        <Alert tone="error" title="Password not changed">
-          {mutation.error.message}
+        <Alert tone="error" title={copy.failed}>
+          {describeApiError(mutation.error, 'auth')}
         </Alert>
       ) : null}
 
       <FormField
-        label="One-time password"
+        label={copy.currentPassword}
         name="currentPassword"
         error={form.formState.errors.currentPassword?.message}
       >
@@ -95,7 +100,7 @@ export function ChangePasswordForm({ nextPath }: ChangePasswordFormProps): React
       </FormField>
 
       <FormField
-        label="New password"
+        label={copy.newPassword}
         name="newPassword"
         error={form.formState.errors.newPassword?.message}
       >
@@ -108,7 +113,7 @@ export function ChangePasswordForm({ nextPath }: ChangePasswordFormProps): React
       </FormField>
 
       <FormField
-        label="Confirm new password"
+        label={copy.confirmPassword}
         name="confirmPassword"
         error={form.formState.errors.confirmPassword?.message}
       >
@@ -122,10 +127,10 @@ export function ChangePasswordForm({ nextPath }: ChangePasswordFormProps): React
 
       <div className="form-actions">
         <Button className="guest-form__submit" type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Updating...' : 'Set my password'}
+          {mutation.isPending ? copy.submitting : copy.submit}
         </Button>
         <Button type="button" tone="secondary" onClick={() => void handleSignOut()}>
-          Sign out
+          {copy.signOut}
         </Button>
       </div>
     </form>

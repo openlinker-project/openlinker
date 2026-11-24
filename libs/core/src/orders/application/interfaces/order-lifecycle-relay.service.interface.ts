@@ -14,6 +14,7 @@
 import type {
   OrderLifecycleEvent,
   OrderWritebackOutcome,
+  OrderWritebackScope,
 } from '../../domain/types/order-lifecycle-event.types';
 
 /**
@@ -60,6 +61,16 @@ export interface OrderLifecycleRelayInput {
    * parcel shipped.
    */
   authoredByConnectionId?: string;
+  /**
+   * Restrict the fan-out to these participant connections (#3540). Absent means
+   * every participant not excluded above - today's behaviour, unchanged.
+   *
+   * Applied AFTER the exclusions, so it can only narrow. It exists so an
+   * operator-initiated cancel can tell the SOURCE first, learn whether the
+   * channel accepted, and only then tell the remaining participants; with the
+   * exclusion set alone it would have to enumerate every other connection.
+   */
+  onlyConnectionIds?: readonly string[];
   event: OrderLifecycleRelayEvent;
 }
 
@@ -95,6 +106,8 @@ export interface OrderLifecycleRelayTargetResult {
   connectionId: string;
   outcome: OrderWritebackOutcome;
   detail?: string;
+  /** Echoed from the adapter's result (#3540); absent means the channel carries the fact. */
+  scope?: OrderWritebackScope;
   /**
    * Set on EVERY `unsupported` outcome (#3526) — populated by the RELAY, never
    * the adapter, since `OrderWritebackResult` carries no reason field of its
@@ -112,6 +125,18 @@ export interface OrderLifecycleRelayTargetResult {
    * never as transient.
    */
   unsupportedReason?: OrderWritebackUnsupportedReason;
+  /**
+   * True when the adapter THREW instead of returning a result (B-16, #3540).
+   *
+   * A thrown error (timeout, 5xx, connection reset) is reported as
+   * `outcome: 'rejected'` for every pre-existing caller, and that meaning is
+   * unchanged. But it is NOT a refusal: the channel never said no, and may have
+   * applied the write before the connection dropped. A caller that must tell "the
+   * channel declined" from "we do not know" (the operator cancel) reads this flag;
+   * a caller that ignores it behaves exactly as before. Absent means the adapter
+   * returned an answer.
+   */
+  adapterThrew?: boolean;
 }
 
 export interface OrderLifecycleRelayResult {

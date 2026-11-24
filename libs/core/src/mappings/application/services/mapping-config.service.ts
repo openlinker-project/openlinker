@@ -24,6 +24,7 @@ import type {
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
+  CategoryMappingReassignResult,
   OrderStateMappingInput,
   AttributeMappingInput,
 } from '../../domain/types/mapping.types';
@@ -32,6 +33,7 @@ import { StatusMappingRepositoryPort } from '../../domain/ports/status-mapping-r
 import { CarrierMappingRepositoryPort } from '../../domain/ports/carrier-mapping-repository.port';
 import { PaymentMappingRepositoryPort } from '../../domain/ports/payment-mapping-repository.port';
 import { CategoryMappingRepositoryPort } from '../../domain/ports/category-mapping-repository.port';
+import { CategoryMappingReassignSameConnectionException } from '../../domain/exceptions/category-mapping-reassign-same-connection.exception';
 import { OrderStateMappingRepositoryPort } from '../../domain/ports/order-state-mapping-repository.port';
 import { AttributeMappingRepositoryPort } from '../../domain/ports/attribute-mapping-repository.port';
 import { AttributeMappingRuleRepositoryPort } from '../../domain/ports/attribute-mapping-rule-repository.port';
@@ -115,6 +117,16 @@ export class MappingConfigService implements IMappingConfigService {
     return match?.prestashopCarrierId ?? null;
   }
 
+  async resolvePaymentMapping(
+    connectionId: string,
+    sourcePaymentMethod: string
+  ): Promise<string | null> {
+    // `connectionId` is the SOURCE connection (#3474), like resolveCarrierMapping.
+    const mappings = await this.paymentRepo.findByConnectionId(connectionId);
+    const match = mappings.find((m) => m.allegroPaymentProvider === sourcePaymentMethod);
+    return match?.prestashopPaymentModule ?? null;
+  }
+
   getOrderStateMappings(connectionId: string): Promise<OrderStateMapping[]> {
     return this.orderStateRepo.findByConnectionId(connectionId);
   }
@@ -137,8 +149,11 @@ export class MappingConfigService implements IMappingConfigService {
     return match?.externalStateId ?? null;
   }
 
-  getCategoryMappings(destinationConnectionId: string): Promise<CategoryMapping[]> {
-    return this.categoryRepo.findByDestinationConnection(destinationConnectionId);
+  getCategoryMappings(
+    destinationConnectionId: string,
+    sourceConnectionId?: string
+  ): Promise<CategoryMapping[]> {
+    return this.categoryRepo.findByDestinationConnection(destinationConnectionId, sourceConnectionId);
   }
 
   upsertCategoryMapping(
@@ -148,8 +163,29 @@ export class MappingConfigService implements IMappingConfigService {
     return this.categoryRepo.upsertMapping(destinationConnectionId, input);
   }
 
-  deleteCategoryMapping(destinationConnectionId: string, sourceCategoryId: string): Promise<void> {
-    return this.categoryRepo.deleteMapping(destinationConnectionId, sourceCategoryId);
+  deleteCategoryMapping(
+    destinationConnectionId: string,
+    sourceCategoryId: string,
+    sourceConnectionId?: string
+  ): Promise<void> {
+    return this.categoryRepo.deleteMapping(
+      destinationConnectionId,
+      sourceCategoryId,
+      sourceConnectionId
+    );
+  }
+
+  async reassignCategoryMappings(
+    fromDestinationConnectionId: string,
+    toDestinationConnectionId: string
+  ): Promise<CategoryMappingReassignResult> {
+    if (fromDestinationConnectionId === toDestinationConnectionId) {
+      throw new CategoryMappingReassignSameConnectionException(fromDestinationConnectionId);
+    }
+    return this.categoryRepo.reassignDestination(
+      fromDestinationConnectionId,
+      toDestinationConnectionId
+    );
   }
 
   async resolveDestinationCategory(
@@ -161,7 +197,8 @@ export class MappingConfigService implements IMappingConfigService {
     //    connection overrides any borrowed reuse.
     const direct = await this.categoryRepo.findBySourceCategory(
       destinationConnectionId,
-      sourceCategoryId
+      sourceCategoryId,
+      opts?.sourceConnectionId ?? null
     );
     if (direct) {
       return direct.destinationCategoryId;

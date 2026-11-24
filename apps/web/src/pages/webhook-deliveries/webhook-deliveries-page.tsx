@@ -1,5 +1,6 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -19,6 +20,11 @@ import {
   type WebhookDeliveryStatus,
   type WebhookDeliverySummary,
 } from '../../features/webhook-deliveries/api/webhook-deliveries.types';
+import { webhookDeliveryStatusLabel } from '../../features/webhook-deliveries/lib/webhook-delivery-status-label';
+import { webhookDlqCodeLabel } from '../../features/webhook-deliveries/lib/webhook-dlq-code-label';
+import { interpolate, useMessages, type Messages } from '../../shared/i18n';
+
+type DeliveriesPageCopy = Messages['webhook-deliveries']['webhookDeliveriesPage'];
 
 const PAGE_SIZE = 20;
 
@@ -38,68 +44,78 @@ function statusTone(status: WebhookDeliveryStatus): 'success' | 'error' | 'warni
   }
 }
 
-const COLUMNS: DataTableColumn<WebhookDeliverySummary>[] = [
-  {
-    id: 'status',
-    header: 'Status',
-    cell: (d) => <StatusBadge tone={statusTone(d.status)}>{d.status}</StatusBadge>,
-    accessor: (d) => d.status,
-    sortable: true,
-  },
-  {
-    id: 'provider',
-    header: 'Provider',
-    cell: (d) => (
-      <span className="mono-text" title={d.provider}>
-        {d.provider}
-      </span>
-    ),
-    accessor: (d) => d.provider,
-    sortable: true,
-  },
-  {
-    id: 'eventType',
-    header: 'Event type',
-    cell: (d) => (
-      <span className="mono-text" title={d.eventType ?? undefined}>
-        {d.eventType ?? '—'}
-      </span>
-    ),
-    hideBelow: 768,
-  },
-  {
-    id: 'connectionId',
-    header: 'Connection',
-    cell: (d) => (
-      <ConnectionEntityLabel connectionId={d.connectionId} linkToDetail={false} showId />
-    ),
-    hideBelow: 1024,
-  },
-  {
-    id: 'reason',
-    header: 'Reason',
-    cell: (d) => {
-      const reason = d.rejectionReason ?? d.dlqReason;
-      if (!reason) return <span className="text-muted">—</span>;
-      return (
-        <span className="mono-text" title={reason}>
-          {reason.length > 60 ? `${reason.slice(0, 60)}…` : reason}
-        </span>
-      );
+function buildColumns(
+  copy: DeliveriesPageCopy['columns'],
+): DataTableColumn<WebhookDeliverySummary>[] {
+  return [
+    {
+      id: 'status',
+      header: copy.status,
+      cell: (d) => (
+        <StatusBadge tone={statusTone(d.status)}>{webhookDeliveryStatusLabel(d.status)}</StatusBadge>
+      ),
+      accessor: (d) => d.status,
+      sortable: true,
     },
-    hideBelow: 1024,
-  },
-  {
-    id: 'receivedAt',
-    header: 'Received',
-    cell: (d) => <TimeDisplay iso={d.receivedAt} />,
-    accessor: (d) => d.receivedAt,
-    sortable: true,
-  },
-];
+    {
+      id: 'provider',
+      header: copy.provider,
+      cell: (d) => (
+        <span className="mono-text" title={d.provider}>
+          {d.provider}
+        </span>
+      ),
+      accessor: (d) => d.provider,
+      sortable: true,
+    },
+    {
+      id: 'eventType',
+      header: copy.eventType,
+      cell: (d) => (
+        <span className="mono-text" title={d.eventType ?? undefined}>
+          {d.eventType ?? '—'}
+        </span>
+      ),
+      hideBelow: 768,
+    },
+    {
+      id: 'connectionId',
+      header: copy.connection,
+      cell: (d) => (
+        <ConnectionEntityLabel connectionId={d.connectionId} linkToDetail={false} showId />
+      ),
+      hideBelow: 1024,
+    },
+    {
+      id: 'reason',
+      header: copy.reason,
+      cell: (d) => {
+        const dlqLabel = d.rejectionReason ? null : webhookDlqCodeLabel(d.dlqCode);
+        if (dlqLabel) return <span title={d.dlqReason ?? undefined}>{dlqLabel}</span>;
+        const reason = d.rejectionReason ?? d.dlqReason;
+        if (!reason) return <span className="text-muted">—</span>;
+        return (
+          <span className="mono-text" title={reason}>
+            {reason.length > 60 ? `${reason.slice(0, 60)}…` : reason}
+          </span>
+        );
+      },
+      hideBelow: 1024,
+    },
+    {
+      id: 'receivedAt',
+      header: copy.received,
+      cell: (d) => <TimeDisplay iso={d.receivedAt} />,
+      accessor: (d) => d.receivedAt,
+      sortable: true,
+    },
+  ];
+}
 
 export function WebhookDeliveriesPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const copy = useMessages('webhook-deliveries').webhookDeliveriesPage;
+  const columns = useMemo(() => buildColumns(copy.columns), [copy]);
   const { sort, setSort } = useTableSort([{ id: 'receivedAt', desc: true }]);
 
   const provider = searchParams.get('provider') ?? undefined;
@@ -137,37 +153,37 @@ export function WebhookDeliveriesPage(): ReactElement {
 
   return (
     <PageLayout
-      eyebrow="Diagnostics"
-      title="Webhook Deliveries"
-      description="Inbound webhook visibility — signature, dedup, publish, and downstream job linkage."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       <div className="toolbar">
         <Select
-          aria-label="Filter by status"
+          aria-label={copy.filters.status}
           value={status ?? ''}
           onChange={(e) => { setFilter('status', e.target.value); }}
         >
-          <option value="">All statuses</option>
+          <option value="">{copy.filters.allStatuses}</option>
           {WEBHOOK_DELIVERY_STATUS_VALUES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {webhookDeliveryStatusLabel(s)}
             </option>
           ))}
         </Select>
 
         <Input
-          aria-label="Filter by provider"
-          placeholder="Provider (e.g. prestashop)"
+          aria-label={copy.filters.provider}
+          placeholder={copy.filters.providerPlaceholder}
           value={provider ?? ''}
           onChange={(e) => { setFilter('provider', e.target.value); }}
         />
 
         <Select
-          aria-label="Filter by connection"
+          aria-label={copy.filters.connection}
           value={connectionId ?? ''}
           onChange={(e) => { setFilter('connectionId', e.target.value); }}
         >
-          <option value="">All connections</option>
+          <option value="">{copy.filters.allConnections}</option>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -177,28 +193,28 @@ export function WebhookDeliveriesPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={COLUMNS} />
+        <DataTableSkeleton columns={columns} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load webhook deliveries"
-          message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          title={copy.errorTitle}
+          message={describeApiError(query.error, 'webhook-deliveries')}
+          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No deliveries found"
+          title={copy.empty.title}
           message={
             provider || connectionId || status
-              ? 'No deliveries match the current filters. Try clearing some filters.'
-              : 'No webhook deliveries have been recorded yet.'
+              ? copy.empty.filtered
+              : copy.empty.none
           }
         />
       ) : (
         <>
           <DataTable
-            caption="Webhook deliveries"
-            columns={COLUMNS}
+            caption={copy.caption}
+            columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(d) => d.id}
             rowHref={(d) => d.id}
@@ -207,20 +223,28 @@ export function WebhookDeliveriesPage(): ReactElement {
             cardView={{
               title: (d) => d.provider,
               subtitle: (d) => d.eventType ?? '—',
-              meta: (d) => <StatusBadge tone={statusTone(d.status)} compact>{d.status}</StatusBadge>,
+              meta: (d) => (
+                <StatusBadge tone={statusTone(d.status)} compact>
+                  {webhookDeliveryStatusLabel(d.status)}
+                </StatusBadge>
+              ),
             }}
           />
 
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+              {interpolate(copy.pagination.range, {
+                from: offset + 1,
+                to: Math.min(offset + PAGE_SIZE, total),
+                total,
+              })}
             </span>
             <div className="pagination__actions">
               <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
-                Previous
+                {copy.pagination.previous}
               </Button>
               <Button disabled={!hasNext} onClick={() => { setOffset(offset + PAGE_SIZE); }}>
-                Next
+                {copy.pagination.next}
               </Button>
             </div>
           </div>

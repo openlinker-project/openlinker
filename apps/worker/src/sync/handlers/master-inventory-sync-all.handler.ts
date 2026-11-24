@@ -206,6 +206,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
       payload: {
         schemaVersion: 1,
         externalIds: [...externalIds],
+        syncRunId: cycleId,
       },
       // Keyed on the CYCLE and on the batch's FIRST id, exactly as the product
       // sweep is: a resuming tick is a different job, so a job-scoped key would

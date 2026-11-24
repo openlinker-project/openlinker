@@ -10,7 +10,7 @@
  * @module libs/core/src/listings/application/interfaces
  */
 
-import type { CreateOfferCommand } from '@openlinker/core/listings';
+import type { CreateOfferCommand, OfferProductSetComponent } from '@openlinker/core/listings';
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
 
 export interface IOfferBuilderService {
@@ -28,4 +28,15 @@ export interface IOfferBuilderService {
    * - Cannot resolve price/currency → `OfferBuilderValidationException` (`price.currency`, `REQUIRED`)
    */
   buildCreateOfferCommand(input: BuildCreateOfferCommandInput): Promise<CreateOfferCommand>;
+
+  /**
+   * The product-set components a bundle variant would publish with (#3520), or
+   * `undefined` when the variant is not a bundle. The same resolution the
+   * publish path runs, exposed so the wizard can preview it read-only.
+   */
+  resolveBundleComponents(input: {
+    connectionId: string;
+    internalVariantId: string;
+    categoryId?: string;
+  }): Promise<OfferProductSetComponent[] | undefined>;
 }

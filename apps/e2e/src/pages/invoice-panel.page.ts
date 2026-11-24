@@ -39,13 +39,70 @@ export class InvoicePanel {
    */
   async selectConnection(connectionName: string): Promise<void> {
     // The panel renders a skeleton until the connections query settles, so the
-    // picker's absence is only meaningful once loading has finished.
-    await expect(this.page.locator('.order-invoice-panel')).toBeVisible();
-    await expect(this.page.locator('.order-invoice-panel--loading')).toHaveCount(0);
+    // picker's absence is only meaningful once loading has finished. The panel
+    // was renamed from `.order-invoice-panel` (#2160); the old selector matched
+    // nothing, so this method failed on every stack.
+    await expect(this.panel).toBeVisible();
+    await expect(this.page.locator('.sales-document-panel--loading')).toHaveCount(0);
+    // The picker lives inside the manual-override disclosure and only exists
+    // while no document has been issued; an issued invoice is locked to its
+    // own connection, so there is nothing to pick.
     if ((await this.connectionPicker.count()) === 0) {
       return;
     }
+    await this.openManualOverride();
     await this.connectionPicker.selectOption({ label: connectionName });
+  }
+
+  get panel(): Locator {
+    return this.page.getByTestId('sales-document-panel');
+  }
+
+  /** Open the "Issue or register manually instead" disclosure (#2807). */
+  async openManualOverride(): Promise<void> {
+    // The panel renders one disclosure per document kind it could issue; the
+    // invoice one is the one with the invoice picker / Issue invoice button.
+    const disclosure = this.page
+      .getByTestId('sales-document-why-connection')
+      // A CSS locator, not a role query: the button sits inside a closed
+      // <details> and is therefore hidden from the accessibility tree.
+      .filter({ has: this.page.locator('.sales-document-panel__actions--issue') })
+      .first();
+    if ((await disclosure.getAttribute('open')) === null) {
+      // `:scope >`: the disclosure nests a provider's own <details> (KSeF's
+      // per-invoice options), whose summary a bare `summary` would also match.
+      await disclosure.locator(':scope > summary').click();
+    }
+  }
+
+  /** The manual "Issue invoice" button inside the disclosure. */
+  get manualIssueButton(): Locator {
+    return this.page.getByRole('button', { name: 'Issue invoice' });
+  }
+
+  /** DEF-20: the KSeF per-issue options disclosure. */
+  get ksefIssueOptions(): Locator {
+    return this.page.getByTestId('ksef-issue-options');
+  }
+
+  /** DEF-26: the callout for a document whose sale changed after it was made. */
+  get afterIssueAttention(): Locator {
+    return this.page.getByTestId('sales-document-after-issue-attention');
+  }
+
+  /** The confirm-and-proceed dialog (DEF-23/26/30/31). */
+  get acknowledgeDialog(): Locator {
+    return this.page.getByRole('dialog', { name: 'Check before you continue' });
+  }
+
+  /** DEF-02/03: the KOD I verification QR inside the FA(3) preview. */
+  get verificationQr(): Locator {
+    return this.page.locator('.ksef-fa3-view__verification-qr');
+  }
+
+  /** The FA(3) preview's annotations list (DEF-29). */
+  get annotationsList(): Locator {
+    return this.page.locator('.ksef-fa3-view__annotations');
   }
 
   /** "View" action for the FA(3) document (KSeF invoice detail section). */

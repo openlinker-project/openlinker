@@ -30,6 +30,8 @@ describe('CapabilityNotSupportedFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.BAD_REQUEST,
+      code: 'CAPABILITY_NOT_SUPPORTED',
+      params: { adapterKey: 'prestashop.webservice.v1', capability: 'OfferManager' },
       error: 'CapabilityNotSupportedException',
       message: expect.stringContaining('does not support capability: OfferManager'),
     });
@@ -48,6 +50,12 @@ describe('CapabilityNotSupportedFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.BAD_REQUEST,
+      code: 'CAPABILITY_NOT_ENABLED',
+      params: {
+        connectionId: 'conn-1',
+        adapterKey: 'prestashop.webservice.v1',
+        capability: 'OfferManager',
+      },
       error: 'CapabilityNotEnabledException',
       message: expect.stringContaining('disabled'),
     });

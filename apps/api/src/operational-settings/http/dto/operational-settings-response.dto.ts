@@ -125,6 +125,20 @@ export class OperationalSettingsResponseDto {
   })
   syncJobDeadRetentionDays!: ResolvedNumberSettingDto;
 
+  @ApiProperty({
+    type: ResolvedNumberSettingDto,
+    description:
+      'Days a stock movement (inventory history row) is kept before the retention prune deletes it (#3565). Bounded 30-1825 days; above 730 needs `acknowledgeAboveRecommended`.',
+  })
+  inventoryMovementRetentionDays!: ResolvedNumberSettingDto;
+
+  @ApiProperty({
+    type: ResolvedNumberSettingDto,
+    description:
+      'Hours a stock observation may age before the stock view flags it stale (#3621). Bounded 1-168 hours; above 48 needs acknowledgement.',
+  })
+  stockStaleSyncThresholdHours!: ResolvedNumberSettingDto;
+
   @ApiProperty({ type: ResolvedCadenceSettingDto })
   deletionAuditCadence!: ResolvedCadenceSettingDto;
 
@@ -186,6 +200,8 @@ export class OperationalSettingsResponseDto {
     dto.deletionAuditBudget = { ...view.deletionAuditBudget };
     dto.syncJobRetentionDays = { ...view.syncJobRetentionDays };
     dto.syncJobDeadRetentionDays = { ...view.syncJobDeadRetentionDays };
+    dto.inventoryMovementRetentionDays = { ...view.inventoryMovementRetentionDays };
+    dto.stockStaleSyncThresholdHours = { ...view.stockStaleSyncThresholdHours };
     dto.deletionAuditCadence = { ...view.deletionAuditCadence };
     dto.catalogueSweepCadence = { ...view.catalogueSweepCadence };
     dto.inventorySweepCadence = { ...view.inventorySweepCadence };

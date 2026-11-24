@@ -8,8 +8,16 @@
  * alone would print **Open** across a task that is suspended — which is the
  * single most misleading thing this panel could say, since explaining why work
  * is stopped is the reason it exists. So the held badge leads, and the raw
- * orchestration status is demoted to a secondary label rather than dropped
+ * orchestration status follows it as its own badge rather than being dropped
  * (an operator still needs to see `scheduled` vs `in_progress` under a hold).
+ *
+ * ## The status lives in ONE badge (#3763)
+ *
+ * There is no State row: a badge plus a row repeated the same word. A task
+ * packers cannot see (stuck before acceptance, or not accepted) turns that
+ * badge amber and names why, the amber edge marks the card the way a hold
+ * does, and the explanation sits underneath as a quieter note. Acceptance
+ * says nothing when it is not news.
  *
  * ## The hold's actor is not rendered, because it is not projected
  *
@@ -59,6 +67,7 @@ import type { LiHTMLAttributes, ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
 import { usePermission } from '../../../shared/auth/use-permission';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { distinguishingAttributeKeys, narrowAttributes } from '../../../shared/lib/variant-attributes';
 import { shortenId } from '../../../shared/ui/entity-label';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -67,11 +76,12 @@ import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
+import { fulfillmentStatusLabel } from '../lib/fulfillment-task-labels';
 import {
-  FULFILLMENT_EXPEDITED_BADGE,
-  fulfillmentRequestStatusLabel,
-  fulfillmentStatusLabel,
-} from '../lib/fulfillment-task.copy';
+  describeTaskAcceptance,
+  needsAttention,
+  taskStatusText,
+} from '../lib/fulfillment-task-acceptance';
 import { fulfillmentWorkDetailPath } from '../lib/fulfillment-filters';
 
 export interface FulfillmentTaskCardProps {
@@ -87,37 +97,57 @@ export function FulfillmentTaskCard({
   actions,
   rootProps,
 }: FulfillmentTaskCardProps): ReactElement {
+  const messages = useMessages('fulfillment');
+  const copy = messages.fulfillmentTaskCard;
+  const acceptanceCopy = messages.taskAcceptance;
+  const lineCopy = messages.workDetail.lines;
+  const factCopy = messages.workDetail.facts;
+  const where = messages.ownPackBenchName;
   const held = task.activeHolds.length > 0;
   const canOpenDetail = usePermission('fulfillment:read');
   const showLocation = useHasMultipleLocations();
   const distinguishing = distinguishingAttributeKeys(
     task.lines.map((line) => ({ attributes: line.attributes ?? null }))
   );
+  const acceptance = describeTaskAcceptance(
+    {
+      requestStatus: task.requestStatus,
+      createdAt: task.createdAt,
+      assigned: task.assignedConnectionId !== null,
+    },
+    new Date()
+  );
+  const attention = needsAttention(acceptance);
+  const pending = acceptance.kind === 'pending';
 
   return (
     <li
       {...rootProps}
       className={['fulfilment-task', rootProps?.className].filter(Boolean).join(' ')}
       data-held={held ? 'true' : 'false'}
+      data-attention={attention ? 'true' : 'false'}
     >
       <div className="fulfilment-task__head">
         <div className="fulfilment-task__badges">
-          {held ? (
-            task.activeHolds.map((hold) => (
-              <StatusBadge key={hold.id} tone="warning" withDot compact>
-                {`On hold — ${holdReasonLabel(hold.reason)}`}
-              </StatusBadge>
-            ))
-          ) : (
-            <StatusBadge tone="info" compact>
-              {fulfillmentStatusLabel(task.status)}
+          {task.activeHolds.map((hold) => (
+            <StatusBadge key={hold.id} tone="warning" withDot compact>
+              {interpolate(copy.onHoldBadge, { reason: holdReasonLabel(hold.reason) })}
             </StatusBadge>
-          )}
+          ))}
+          <StatusBadge tone={attention ? 'warning' : 'info'} withDot={attention} compact>
+            {taskStatusText(
+              fulfillmentStatusLabel(task.status),
+              task.status,
+              acceptance,
+              where,
+              true
+            )}
+          </StatusBadge>
           {/* After the hold/state badge, never before it — the badge above
               leads. Display only; see the module docblock. */}
           {(task.expeditedAt ?? null) !== null ? (
             <StatusBadge tone="warning" withDot compact>
-              {FULFILLMENT_EXPEDITED_BADGE}
+              {messages.expeditedBadge}
             </StatusBadge>
           ) : null}
         </div>
@@ -139,46 +169,45 @@ export function FulfillmentTaskCard({
         )}
       </div>
 
-      {held ? (
-        <ul className="fulfilment-task__holds">
+      {held || attention || pending ? (
+        <ul className="fulfilment-task__holds fulfilment-task__notes">
+          {pending ? <li>{interpolate(acceptanceCopy.pendingNote, { where })}</li> : null}
+          {attention ? (
+            <li>
+              {acceptance.kind === 'refused'
+                ? acceptanceCopy.refusedNote
+                : acceptanceCopy.stuckNote}{' '}
+              <TimeDisplay iso={task.createdAt} format="relative" />
+            </li>
+          ) : null}
           {task.activeHolds.map((hold) => (
-            <li key={hold.id} className="text-muted">
-              {holdReasonLabel(hold.reason)} · since{' '}
+            <li key={hold.id}>
+              {interpolate(copy.holdSince, { reason: holdReasonLabel(hold.reason) })}{' '}
               <TimeDisplay iso={hold.placedAt} format="relative" />
-              {hold.note ? ` — ${hold.note}` : ''}
+              {hold.note ? ` ${interpolate(copy.holdNote, { note: hold.note })}` : ''}
             </li>
           ))}
         </ul>
       ) : null}
 
       <dl className="fulfilment-task__facts">
-        {/* Rendered even when a hold leads, so the underlying state is never
-            hidden by the hold badge — "held" and "scheduled" are both true. */}
-        <div>
-          <dt>State</dt>
-          <dd>{fulfillmentStatusLabel(task.status)}</dd>
-        </div>
-        <div>
-          <dt>Handshake</dt>
-          <dd>{fulfillmentRequestStatusLabel(task.requestStatus)}</dd>
-        </div>
         {/* Named, never an internal id (#3096): the location only where there
             is more than one to tell apart, the delivery as its carrier name. */}
         {showLocation && task.locationName ? (
           <div>
-            <dt>Location</dt>
+            <dt>{factCopy.location}</dt>
             <dd>{task.locationName}</dd>
           </div>
         ) : null}
         {task.carrierName ? (
           <div>
-            <dt>Delivery</dt>
+            <dt>{factCopy.delivery}</dt>
             <dd>{task.carrierName}</dd>
           </div>
         ) : null}
         {task.externalWorkId ? (
           <div>
-            <dt>External reference</dt>
+            <dt>{factCopy.externalReference}</dt>
             <dd className="mono-text">{task.externalWorkId}</dd>
           </div>
         ) : null}
@@ -196,18 +225,17 @@ export function FulfillmentTaskCard({
                 />
                 <span className="fulfilment-task__count">
                   {line.fulfilledQuantity} / {line.totalQuantity}
-                  {line.cancelledQuantity > 0 ? ` (${line.cancelledQuantity} cancelled)` : ''}
+                  {line.cancelledQuantity > 0
+                    ? ` ${interpolate(lineCopy.cancelledSuffix, { cancelled: line.cancelledQuantity })}`
+                    : ''}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="fulfilment-task__note text-muted">
-            Picked counts are reported by whoever is working the task and can be a little behind
-            what you see here.
-          </p>
+          <p className="fulfilment-task__note text-muted">{lineCopy.caveat}</p>
         </>
       ) : (
-        <p className="text-muted">This fulfilment task covers no lines.</p>
+        <p className="text-muted">{lineCopy.empty}</p>
       )}
 
       {actions}

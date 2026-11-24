@@ -101,7 +101,12 @@ const MARKER_CONVENTION_STARTS_AT = 48;
 const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/invoicing/domain/types/invoice-trigger.types.ts',
-    { helper: 'parseTriggerModel', key: 'config.invoicing.triggerModel' },
+    // #3582 widened this knob rather than adding one: the same trigger model,
+    // now per document kind, with the legacy key as its fallback.
+    {
+      helper: 'parseTriggerModel',
+      key: 'config.invoicing.triggerModel + config.salesDocument.triggerModels[kind]',
+    },
   ],
   [
     'libs/core/src/identifier-mapping/domain/types/stock-safety-buffer.types.ts',
@@ -118,6 +123,11 @@ const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/identifier-mapping/domain/types/auto-dispatch.types.ts',
     { helper: 'readAutoDispatchConfig', key: 'config.autoDispatch' },
+  ],
+  [
+    // #3554: per-connection buyer-email opt-in (D6 of epic #3510).
+    'libs/core/src/identifier-mapping/domain/types/buyer-emails-config.types.ts',
+    { helper: 'readBuyerEmailsConfig', key: 'config.buyerEmails' },
   ],
   [
     'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
@@ -154,6 +164,23 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/listings/domain/types/price-change-block.types.ts',
     { helper: 'readConnectionCurrency', key: 'config.currency' },
   ],
+  [
+    'libs/core/src/sales-documents/domain/types/delivery-line.types.ts',
+    { helper: 'readDeliveryOnDocuments', key: 'config.deliveryOnDocuments' },
+  ],
+  [
+    'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
+    { helper: 'readGiftConnectionForm', key: 'config.giftOnDocuments' },
+  ],
+  [
+    'libs/core/src/sales-documents/domain/types/batch-schedule.types.ts',
+    { helper: 'readBatchSchedule', key: 'config.salesDocument.batchSchedules[kind]' },
+  ],
+  [
+    // #3963: "when the buyer pays later" - mark the destination order paid, or leave it.
+    'libs/core/src/identifier-mapping/domain/types/payment-writeback-config.types.ts',
+    { helper: 'readPaymentWritebackConfig', key: 'config.paymentWriteback' },
+  ],
 ]);
 
 /**
@@ -161,21 +188,6 @@ const KNOWN_CONFIG_KNOBS = new Map([
  * An entry here must say why it is not a knob.
  */
 const NON_KNOBS = new Map([
-  [
-    'libs/core/src/invoicing/domain/types/invoicing-primary.types.ts',
-    // SUPERSEDED, not a second knob. #2161 (ADR-041 decision 4) moved the live
-    // read of `config.invoicing.isPrimary` into `readSalesDocumentRouting`,
-    // registered above — its own docblock says it reads "the EXACT shape #2047
-    // already writes (decision 4 fixes that shape, it does not introduce a
-    // second one)". `parseIsPrimaryInvoicing` has no production caller left
-    // (only its definition and the `@openlinker/core/invoicing` barrel
-    // re-export), so counting it would report five knobs where four keys are
-    // actually coerced, and would trip KNOB_THRESHOLD on a helper nothing
-    // calls. Deleting it — and `selectPrimaryInvoicingConnection` beside it,
-    // likewise superseded by `resolveSalesDocumentRouting` — is a public-barrel
-    // change that belongs in its own reviewed PR, tracked separately.
-    'superseded by readSalesDocumentRouting (#2161); dead export pending removal',
-  ],
   [
     'libs/core/src/fulfillment-authority/domain/types/authority-attention-reason.types.ts',
     // NOT a per-connection config knob, despite matching both halves of the
@@ -391,7 +403,54 @@ const NON_KNOBS = new Map([
 // per-connection knobs in JSONB is the accretion #1032's rules model is meant to
 // replace, and that is still true - it is simply not something a review fix may
 // take on. The number is raised by one so the next knob asks again.
-const KNOB_THRESHOLD = 12;
+//
+// #3905 (ADR-082): raised from 12 to 13 for the twelfth knob,
+// `config.deliveryOnDocuments` - how the delivery line is named and taxed on
+// receipts and invoices, per buyer country, on the order-source connection.
+// Registered rather than excused, because it is exactly the counted shape. It
+// is per connection because one Allegro connection sells into several
+// countries and the operator names delivery per channel and per carrier; an
+// install-wide setting could not express that. It is also the first knob that
+// is itself a small rules table (a row per country plus a default), which is
+// the shape #1032's shared model would generalise - a useful data point for
+// #2169 rather than a reason to build that model inside this slice. The number
+// is raised by one so the next knob asks again.
+//
+// #3554 raised it to 13 for `config.buyerEmails`. Decision D6 (epic #3510) makes
+// buyer emails an opt-in PER CONNECTION by design - a marketplace may send only
+// transactional emails, a shop also its order confirmation - so an install-wide
+// setting would be the wrong scope, and the automation rules that carry the
+// email text cannot hold the opt-in either (a rule has no connection axis). The
+// #1032 question still stands; it is again raised by one so the next knob asks.
+//
+// Both landed together, so the threshold is 14: one more for each knob.
+//
+// #3930 (ADR-083) raised it to 15 for `config.giftOnDocuments` - how a gift line
+// appears on receipts and invoices (omit, show at 0.00, priced in, internal
+// record). It sits beside `config.deliveryOnDocuments` on the order-source
+// connection for the same reason: the operator decides it per sales channel,
+// and the document provider's own declaration (`ZeroValueLineSupport`) narrows
+// which forms are offered. The #1032 question still stands; raised by one so the
+// next knob asks again.
+//
+// #3963 raised it to 15 for `config.paymentWriteback` - whether a payment that
+// arrives after a shop got the order is marked paid there, and which shop state
+// "paid" lands on. Per connection by nature: it is a fact about ONE destination
+// shop (PrestaShop models paid as a state the operator may have renamed,
+// WooCommerce does not), so an install-wide setting could not name the state.
+// Registered rather than excused; the #1032 question still stands, and the
+// number is raised by one so the next knob asks again.
+//
+// Two knobs landed on separate branches and met here: the gift-line form
+// (#3930) and the batch schedule (#3583), so the registry holds 16 and the
+// threshold is raised to 17: one more for each knob, on the same grounds as
+// their predecessors (a pure-rules file in a leaf, no persistence, consolidation
+// still owned by #2169). The next knob asks again.
+//
+// #3941 narrows the gift-line knob rather than adding one: the key stays, but it
+// is now an optional per-connection OVERRIDE of the OpenLinker-wide default held
+// in the `sales_document_settings` singleton (absent = inherit).
+const KNOB_THRESHOLD = 17;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
@@ -413,6 +472,9 @@ const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
 const NON_RUNGS = new Set([
   'product-tax-rate-reader.capability.ts',
   'bulk-product-reader.capability.ts',
+  // Reads a bundle's composition; says nothing about master freshness (#3932).
+  'bundle-reader.capability.ts',
+  'product-creator.capability.ts',
 ]);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */

@@ -130,6 +130,16 @@ export interface ExtendReservationExpiryInput extends ReservationKey {
   readonly expiresAt: Date;
 }
 
+/** A live hold with the variant of the position it sits on (#3621). */
+export interface HeldReservationForVariant {
+  readonly productVariantId: string;
+  readonly orderRecordId: string;
+  readonly quantity: number;
+  readonly atpEffect: ReservationAtpEffect;
+  readonly expiresAt: Date;
+  readonly createdAt: Date;
+}
+
 export const ReservationPositionUnavailableReasonValues = ['missing', 'stale'] as const;
 
 export type ReservationPositionUnavailableReason =

@@ -16,6 +16,7 @@ import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
 import { analyticsIndexRoute, analyticsLegacyRedirectRoute } from './analytics.route';
+import { giftReportRoute } from './gift-report.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
@@ -28,7 +29,9 @@ import { customersRoute } from './customers.route';
 import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
 import { inventoryLocationsRoute } from './inventory-locations.route';
+import { inventoryMovementsRoute } from './inventory-movements.route';
 import { orderTagsSettingsRoute } from './order-tags-settings.route';
+import { buyerEmailsRoute, buyerEmailEditorRoute } from './buyer-emails.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
@@ -46,10 +49,13 @@ import {
   promptTemplatesLegacyListRedirectRoute,
 } from './prompt-templates-legacy-redirects.route';
 import { automationsRoute } from './automations.route';
+import { promotionsRoute } from './promotions.route';
 import { returnsRoute } from './returns.route';
 import { assignPackingWorkLegacyRedirectRoute, fulfillmentRoute } from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
+import { loginPageSettingsRoute } from './login-page-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
+import { salesDocumentBatchRoute } from './sales-document-batch.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
 import { omsOnboardingRoute } from './oms-onboarding.route';
 import { whoDecidesRoute } from './who-decides.route';
@@ -68,11 +74,13 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
   return [
     analyticsIndexRoute,
     analyticsLegacyRedirectRoute,
+    giftReportRoute,
     insightsRoute,
     ordersRoute,
     productsRoute,
     cursorsRoute,
     duplicatePositionsRoute,
+    inventoryMovementsRoute,
     customersRoute,
     listingsRoute,
     shipmentsRoute,
@@ -80,11 +88,14 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     fulfillmentRoute,
     assignPackingWorkLegacyRedirectRoute,
     automationsRoute,
+    promotionsRoute,
     invoicesRoute,
     salesDocumentsListRoute,
     connectionsRoute,
     ...(omsRoutingUiEnabled ? [inventoryLocationsRoute] : []),
     orderTagsSettingsRoute,
+    buyerEmailsRoute,
+    buyerEmailEditorRoute,
     adaptersRoute,
     newConnectionRoute,
     advancedNewConnectionRoute,
@@ -97,7 +108,9 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     webhookDeliveriesRoute,
     settingsRoute,
     operationalSettingsRoute,
+    loginPageSettingsRoute,
     salesDocumentsRoute,
+    salesDocumentBatchRoute,
     ...(omsRoutingUiEnabled ? [sourcingRulesRoute] : []),
     omsOnboardingRoute,
     whoDecidesRoute,

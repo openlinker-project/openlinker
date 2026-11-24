@@ -17,7 +17,9 @@
  */
 import type { DatedTimelineEvent, TimelineEvent } from '../../orders';
 import type { ReturnTimelineEntry } from '../api/returns.types';
-import { RETURN_TIMELINE_COPY as COPY } from './return-timeline.copy';
+import { formatPlural, getLocale, getMessages, interpolate } from '../../../shared/i18n';
+
+type TimelineCopy = ReturnType<typeof getMessages<'returns'>>['timeline'];
 
 /**
  * Who to attribute an entry to — or nobody.
@@ -43,15 +45,21 @@ import { RETURN_TIMELINE_COPY as COPY } from './return-timeline.copy';
  * way, and the dangerous asymmetry is a safe title beside a confident wrong
  * actor.
  */
-const REFUND_EXECUTED_BY_COPY: Record<string, string> = {
-  refund_executor: COPY.byOpenLinker,
-  operator_out_of_band: COPY.byOperator,
-};
+function refundExecutedByCopy(COPY: TimelineCopy): Record<string, string> {
+  return {
+    refund_executor: COPY.byOpenLinker,
+    operator_out_of_band: COPY.byOperator,
+  };
+}
 
-function resolveBy(entry: ReturnTimelineEntry, sessionUserId: string | null): string | undefined {
+function resolveBy(
+  COPY: TimelineCopy,
+  entry: ReturnTimelineEntry,
+  sessionUserId: string | null
+): string | undefined {
   if (entry.source === 'refund') {
     if (entry.refundExecutedBy === null) return undefined;
-    return REFUND_EXECUTED_BY_COPY[entry.refundExecutedBy];
+    return refundExecutedByCopy(COPY)[entry.refundExecutedBy];
   }
 
   if (entry.source === 'record_status') {
@@ -62,7 +70,7 @@ function resolveBy(entry: ReturnTimelineEntry, sessionUserId: string | null): st
     // persists who performed it. A kind ALLOW-LIST would fail closed to the
     // source claim, so the next actor-bearing column would credit an operator's
     // act to the channel — the confident false attribution
-    // `REFUND_EXECUTED_BY_COPY` exists to prevent. Presence fails safe.
+    // `refundExecutedByCopy` exists to prevent. Presence fails safe.
     if (entry.actorUserId !== null) {
       return entry.actorUserId === sessionUserId ? COPY.byYou : COPY.byAnotherOperator;
     }
@@ -74,7 +82,7 @@ function resolveBy(entry: ReturnTimelineEntry, sessionUserId: string | null): st
   return entry.actorUserId === sessionUserId ? COPY.byYou : COPY.byAnotherOperator;
 }
 
-function resolveTitle(entry: ReturnTimelineEntry): string {
+function resolveTitle(COPY: TimelineCopy, entry: ReturnTimelineEntry): string {
   switch (entry.kind) {
     case 'opened':
       return COPY.opened;
@@ -98,7 +106,7 @@ function resolveTitle(entry: ReturnTimelineEntry): string {
       return COPY.refund_confirmed;
     default:
       // Rendered, never dropped.
-      return COPY.unknownKind(entry.kind);
+      return interpolate(COPY.unknownKind, { kind: entry.kind });
   }
 }
 
@@ -109,20 +117,20 @@ function resolveTone(entry: ReturnTimelineEntry): TimelineEvent['tone'] {
   return 'default';
 }
 
-function resolveDescription(entry: ReturnTimelineEntry): string | undefined {
+function resolveDescription(COPY: TimelineCopy, entry: ReturnTimelineEntry): string | undefined {
   const parts: string[] = [];
 
   if (entry.externalReturnId !== null) {
-    parts.push(COPY.returnReference(entry.externalReturnId));
+    parts.push(interpolate(COPY.returnReference, { externalReturnId: entry.externalReturnId }));
   }
   if (entry.quantity !== null) {
-    parts.push(COPY.quantityUnits(entry.quantity));
+    parts.push(formatPlural(entry.quantity, COPY.quantityUnits, getLocale()));
   }
   if (entry.disposition !== null) {
-    parts.push(COPY.disposedAs(entry.disposition));
+    parts.push(interpolate(COPY.disposedAs, { disposition: entry.disposition }));
   }
   if (entry.amount !== null && entry.currency !== null) {
-    parts.push(COPY.refundAmount(entry.amount, entry.currency));
+    parts.push(interpolate(COPY.refundAmount, { amount: entry.amount, currency: entry.currency }));
   }
   if (entry.source === 'refund') {
     parts.push(
@@ -144,12 +152,13 @@ export function mapReturnEventsToTimeline(
   entries: ReturnTimelineEntry[],
   sessionUserId: string | null
 ): DatedTimelineEvent[] {
+  const COPY = getMessages('returns').timeline;
   return entries.map((entry) => ({
     id: `return:${entry.id}`,
     timestamp: entry.occurredAt,
-    title: resolveTitle(entry),
-    by: resolveBy(entry, sessionUserId),
-    description: resolveDescription(entry),
+    title: resolveTitle(COPY, entry),
+    by: resolveBy(COPY, entry, sessionUserId),
+    description: resolveDescription(COPY, entry),
     tone: resolveTone(entry),
   }));
 }

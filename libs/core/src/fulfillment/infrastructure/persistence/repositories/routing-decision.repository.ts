@@ -27,6 +27,7 @@ import { FulfillmentPersistenceError } from '../../../domain/exceptions/fulfillm
 import { RoutingDecisionAlreadyLiveError } from '../../../domain/exceptions/routing-decision-already-live.error';
 import type {
   ClaimRoutingIntentInput,
+  ListStrandedLiveDecisionsInput,
   RoutingDecisionRepositoryPort,
   TerminaliseRoutingDecisionInput,
 } from '../../../domain/ports/routing-decision-repository.port';
@@ -135,6 +136,36 @@ export class RoutingDecisionRepository implements RoutingDecisionRepositoryPort 
       return row ? this.toDomain(row) : null;
     } catch (error) {
       throw new FulfillmentPersistenceError('findById', error);
+    }
+  }
+
+  async listStrandedLive(input: ListStrandedLiveDecisionsInput): Promise<RoutingDecision[]> {
+    try {
+      // The live set is small by construction (one row per order being routed
+      // right now), and the partial live index keeps the scan on it.
+      const rows = await this.decisions
+        .createQueryBuilder('decision')
+        .where(`decision."state" = 'live'`)
+        .andWhere('decision."createdAt" < :createdBefore', { createdBefore: input.createdBefore })
+        .orderBy('decision."createdAt"', 'ASC')
+        .addOrderBy('decision."id"', 'ASC')
+        .limit(input.limit)
+        .getMany();
+      return rows.map((row) => this.toDomain(row));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listStrandedLive', error);
+    }
+  }
+
+  async findLatestByOrderId(orderId: string): Promise<RoutingDecision | null> {
+    try {
+      const row = await this.decisions.findOne({
+        where: { orderId },
+        order: { createdAt: 'DESC', id: 'DESC' },
+      });
+      return row ? this.toDomain(row) : null;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('findLatestByOrderId', error);
     }
   }
 

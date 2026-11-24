@@ -1,0 +1,42 @@
+=== multi-box-items | Multi-box items
+ 
+ Multi-box items 
+ Postage Definition: Parts (multi-box items) 
+ Some items, such as large furniture, require several packages. For example, you may be selling beds that consist of a headboard, mattress, footboard, headboard legs, footboard legs, etc. When ordered, a bed is a single item, but you need several packages to deliver it to the buyer, and each package needs its shipping label.
+ The Multi-Box Items feature allows you to set the number of packages required to ship a single item. You also can set the weights, dimensions, and packaging type for each of the packages.
+ How to set up parts for multi-box items manually:
+In the My Inventory screen, click on the item to open the Product Details pop-up window.
+Switch to the Postage Definition tab.
+In the Parts section, click    Add New  
+ Add name. For example, headboard, footboard, mattress, etc.
+ Add dimensions. 
+ Select packaging type. 
+ Once all parts are added, click Save .
+ Select a part and click the  D elete  button to remove it.
+ When printing orders with multi-box items, there will be multiple labels printed for each item part present in Postage Definition . 
+ Adding parts in bulk
+ You can use the drag&drop import functionality to add item parts in bulk. To do that:
+ Prepare a CSV file. 
+ Drag and drop the file into the My Inventory screen. 
+ Select the Stock Item Box import type in the Import Files screen and click Next 
+ Complete File Mapping .
+ See below available for mapping fields. All obligatory fields are marked as   .
+   SKU : The SKU (item number) of an item as seen in My Inventory . 
+   Box Name : The name of the box. For example, headboard. 
+   Width : The width of the item's part. 
+   Height : The height of the item's part. 
+   Weight : The weight of the item's part.  
+   Depth : The depth of the item's part.
+   Package Group Name : Linnworks packaging group . 
+   Package Typ e : Linnworks packaging type .
+ Barcode : The barcode of an item.
+ Delete : Use this column to delete item parts using drag&drop. See below for more details on how to delete item parts in bulk.
+ Click Import and check the  Progress section for information on the import status.
+ Deleting parts in bulk
+ You can use the same drag&drop import to delete item parts in bulk. For that, you will need to: 
+ Step 1 : Prepare a CSV file that contains the following columns:
+ SKU : The SKU you would like to delete parts from.
+ Box name : The name of the box to be deleted.
+ Delete : In this column, add the value TRUE.
+ Step 2 : Complete the same steps for importing the parts as described above.
+ 

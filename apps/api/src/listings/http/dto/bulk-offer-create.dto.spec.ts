@@ -112,6 +112,21 @@ describe('BulkOfferCreateRequestDto map-value validation (#1741)', () => {
     expect(errs).toContain('validateRecordValues');
   });
 
+  // #3851: the wizard says when a single-variant stock was read from master, so
+  // the field must survive `forbidNonWhitelisted` or every such request is a 400.
+  it('accepts a per-variant stockFromMaster flag and rejects a non-boolean one', async () => {
+    expect(
+      await constraintKeysFor(
+        baseRequest({ perVariantOverrides: { ol_variant_a: { stock: 0, stockFromMaster: true } } })
+      )
+    ).toEqual([]);
+    expect(
+      await constraintKeysFor(
+        baseRequest({ perVariantOverrides: { ol_variant_a: { stockFromMaster: 'yes' } } })
+      )
+    ).toContain('validateRecordValues');
+  });
+
   it('rejects a null override value rather than treating it as an empty instance', async () => {
     const errs = await constraintKeysFor(
       baseRequest({

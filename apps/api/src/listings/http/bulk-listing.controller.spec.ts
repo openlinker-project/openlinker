@@ -27,6 +27,7 @@ import {
   BulkListingBatch,
   BulkListingBatchNotFoundException,
   BulkRetryMissingSnapshotException,
+  DuplicateBulkBatchIdempotencyKeyError,
   EmptyBulkSubmissionException,
   NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
@@ -101,6 +102,7 @@ describe('BulkListingController', () => {
         skippedAlreadyListedCount: 0,
         skippedAvailabilityUnknownCount: 0,
         skippedInvalidEanCount: 0,
+        deduplicated: false,
       });
       expect(bulkSubmit.submit).toHaveBeenCalledWith({
         connectionId: dto.connectionId,
@@ -113,6 +115,88 @@ describe('BulkListingController', () => {
           generateDescription: true,
           descriptionTone: 'concise',
         },
+      });
+    });
+
+    describe('x-idempotency-key', () => {
+      const dto: BulkOfferCreateRequestDto = {
+        connectionId: '00000000-0000-4000-8000-000000000000',
+        productIds: ['v-a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+      };
+
+      beforeEach(() => {
+        bulkSubmit.submit.mockResolvedValue({
+          batchId: 'b-1',
+          jobIds: ['job-1'],
+          skippedAlreadyListedCount: 0,
+          skippedAvailabilityUnknownCount: 0,
+          skippedInvalidEanCount: 0,
+        });
+      });
+
+      it('should pass the header through to the service input', async () => {
+        await controller.submit(dto, adminUser, 'key-1');
+
+        expect(bulkSubmit.submit).toHaveBeenCalledWith(
+          expect.objectContaining({ idempotencyKey: 'key-1' })
+        );
+      });
+
+      it('should trim surrounding whitespace from the header', async () => {
+        await controller.submit(dto, adminUser, '  key-1  ');
+
+        expect(bulkSubmit.submit).toHaveBeenCalledWith(
+          expect.objectContaining({ idempotencyKey: 'key-1' })
+        );
+      });
+
+      it.each([undefined, '', '   '])(
+        'should leave the key out of the input when the header is %p',
+        async (header) => {
+          await controller.submit(dto, adminUser, header);
+
+          expect(bulkSubmit.submit.mock.calls[0][0]).not.toHaveProperty('idempotencyKey');
+        }
+      );
+
+      it('should reject an over-long header with 400 and never call the service', async () => {
+        await expect(controller.submit(dto, adminUser, 'k'.repeat(201))).rejects.toBeInstanceOf(
+          BadRequestException
+        );
+        expect(bulkSubmit.submit).not.toHaveBeenCalled();
+      });
+
+      it('should report a deduplicated submit as such', async () => {
+        bulkSubmit.submit.mockResolvedValue({
+          batchId: 'b-earlier',
+          jobIds: [],
+          skippedAlreadyListedCount: 0,
+          skippedAvailabilityUnknownCount: 0,
+          skippedInvalidEanCount: 0,
+          deduplicated: true,
+        });
+
+        const response = await controller.submit(dto, adminUser, 'key-1');
+
+        expect(response).toEqual({
+          batchId: 'b-earlier',
+          jobIds: [],
+          skippedAlreadyListedCount: 0,
+          skippedAvailabilityUnknownCount: 0,
+          skippedInvalidEanCount: 0,
+          deduplicated: true,
+        });
+      });
+
+      it('should map an unresolved idempotency race to 409', async () => {
+        bulkSubmit.submit.mockRejectedValue(
+          new DuplicateBulkBatchIdempotencyKeyError(dto.connectionId, 'key-1')
+        );
+
+        await expect(controller.submit(dto, adminUser, 'key-1')).rejects.toBeInstanceOf(
+          ConflictException
+        );
       });
     });
 
@@ -176,6 +260,13 @@ describe('BulkListingController', () => {
       // duplicate-guard modal on a real selection must not be told they
       // selected nothing.
       await expect(submitPromise).rejects.toThrow(/already listed/);
+      await expect(submitPromise).rejects.toMatchObject({
+        response: {
+          statusCode: 400,
+          code: 'BULK_VARIANTS_ALREADY_LISTED',
+          params: { skippedCount: 3 },
+        },
+      });
     });
 
     it('propagates other exceptions unchanged (Nest filters map them to the documented codes)', async () => {
@@ -229,6 +320,13 @@ describe('BulkListingController', () => {
           createdAt: new Date('2026-05-17T10:01:00Z'),
           updatedAt: new Date('2026-05-17T10:03:00Z'),
           errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
+          request: {
+            schemaVersion: 1,
+            internalVariantId: 'v-b',
+            stock: 1,
+            publishImmediately: true,
+            overrides: { title: 'Edited title', categoryId: 'cat-9' },
+          },
         } as unknown as OfferCreationRecord,
       ];
       bulkSubmit.getBatch.mockResolvedValue({
@@ -268,6 +366,13 @@ describe('BulkListingController', () => {
             updatedAt: '2026-05-17T10:03:00.000Z',
             errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
             productId: null,
+            request: {
+              schemaVersion: 1,
+              internalVariantId: 'v-b',
+              stock: 1,
+              publishImmediately: true,
+              overrides: { title: 'Edited title', categoryId: 'cat-9' },
+            },
           },
         ],
       });
@@ -338,6 +443,12 @@ describe('BulkListingController', () => {
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(InternalServerErrorException);
       expect((error as Error).message).toContain(recordId);
+      expect((error as InternalServerErrorException).getResponse()).toMatchObject({
+        statusCode: 500,
+        code: 'BULK_RETRY_SNAPSHOT_MISSING',
+        params: { recordId, batchId: BATCH_ID },
+      });
+
     });
   });
 });

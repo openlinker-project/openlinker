@@ -44,7 +44,7 @@ import {
   navRoleOf,
   sessionNeedsOmsRouting,
 } from './nav-registry';
-import type { LiveNavGroup } from './nav-registry.types';
+import { useMessages } from '../shared/i18n';
 
 // ── Recents ──────────────────────────────────────────────────────────
 
@@ -186,6 +186,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
   );
   const syncJobsQuery = useSyncJobsQuery(undefined, { limit: 20 });
   const demoMode = useDemoMode();
+  const copy = useMessages('app');
   const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
   // Same `requiresOms` gate as the sidebar (#3505) — and the same cached read.
   const omsRouting = useOmsRoutingState({
@@ -196,9 +197,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
 
   const navItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = [];
-    for (const group of BASE_NAV_GROUPS) {
-      if (group.kind !== 'live') continue;
-      const liveGroup = group as LiveNavGroup;
+    for (const liveGroup of BASE_NAV_GROUPS) {
       // In demo mode the admin areas are locked in the sidebar for non-admins —
       // keep them out of the command palette too, so ⌘K can't bypass the lock.
       // Admins keep full access in every mode (#1379).
@@ -221,16 +220,17 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
         if (!isOmsNavItemVisible(item, omsRouting)) {
           continue;
         }
+        const label = copy.pages[item.page];
         if (
           searchTerm.length === 0 ||
-          item.label.toLowerCase().includes(searchTerm) ||
+          label.toLowerCase().includes(searchTerm) ||
           item.to.toLowerCase().includes(searchTerm)
         ) {
           items.push({
             id: 'nav:' + item.to,
-            label: item.label,
+            label,
             description: item.to,
-            onSelect: () => handleSelect({ id: 'nav:' + item.to, label: item.label, to: item.to }),
+            onSelect: () => handleSelect({ id: 'nav:' + item.to, label, to: item.to }),
           });
         }
       }
@@ -245,6 +245,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
     session.user?.permissions,
     session.user?.role,
     omsRouting,
+    copy,
   ]);
 
   // ── Connection source ─────────────────────────────────────────────
@@ -362,16 +363,16 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
 
   const groups = useMemo<PaletteGroup[]>(() => {
     const out: PaletteGroup[] = [];
-    if (recentItems.length > 0) out.push({ key: 'recents', heading: 'Recent', items: recentItems });
-    if (navItems.length > 0) out.push({ key: 'nav', heading: 'Navigation', items: navItems });
+    if (recentItems.length > 0) out.push({ key: 'recents', heading: copy.palette.recent, items: recentItems });
+    if (navItems.length > 0) out.push({ key: 'nav', heading: copy.palette.navigation, items: navItems });
     if (connectionItems.length > 0)
-      out.push({ key: 'connections', heading: 'Connections', items: connectionItems });
-    if (orderItems.length > 0) out.push({ key: 'orders', heading: 'Orders', items: orderItems });
+      out.push({ key: 'connections', heading: copy.palette.connections, items: connectionItems });
+    if (orderItems.length > 0) out.push({ key: 'orders', heading: copy.palette.orders, items: orderItems });
     if (productItems.length > 0)
-      out.push({ key: 'products', heading: 'Products', items: productItems });
-    if (syncJobItems.length > 0) out.push({ key: 'jobs', heading: 'Jobs', items: syncJobItems });
+      out.push({ key: 'products', heading: copy.palette.products, items: productItems });
+    if (syncJobItems.length > 0) out.push({ key: 'jobs', heading: copy.palette.jobs, items: syncJobItems });
     return out;
-  }, [recentItems, navItems, connectionItems, orderItems, productItems, syncJobItems]);
+  }, [recentItems, navItems, connectionItems, orderItems, productItems, syncJobItems, copy]);
 
   const isLoading =
     connectionsQuery.isLoading ||

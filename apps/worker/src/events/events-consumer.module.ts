@@ -23,9 +23,10 @@ import { MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN } from './events.tokens';
   providers: [
     MasterDeletionToJobHandler,
     {
-      // Dedicated client for the blocking xReadGroup loop — must not share
-      // with the worker's shared 'REDIS_CLIENT' (JobIntakeConsumer already
-      // blocks on it; two XREADGROUP loops cannot share one connection).
+      // Dedicated client for the blocking xReadGroup loop - must not share
+      // the worker's 'REDIS_CLIENT': a blocking read holds the connection and
+      // every other command on it (the rate limiter, locks, cache) would wait
+      // behind it. JobIntakeConsumer has its own client for the same reason.
       provide: MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN,
       useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
         const client = createClient({

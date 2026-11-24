@@ -24,7 +24,6 @@
  * @module apps/api/src/operational-settings/http
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -44,6 +43,7 @@ import {
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { OperationalSettingsResponseDto } from './dto/operational-settings-response.dto';
 import { UpdateOperationalSettingsDto } from './dto/update-operational-settings.dto';
 
@@ -99,6 +99,8 @@ export class OperationalSettingsController {
           deletionAuditCadence: dto.deletionAuditCadence,
           syncJobRetentionDays: dto.syncJobRetentionDays,
           syncJobDeadRetentionDays: dto.syncJobDeadRetentionDays,
+          inventoryMovementRetentionDays: dto.inventoryMovementRetentionDays,
+          stockStaleSyncThresholdHours: dto.stockStaleSyncThresholdHours,
           acknowledgeAboveRecommended: dto.acknowledgeAboveRecommended,
         },
         user?.id ?? null
@@ -111,7 +113,11 @@ export class OperationalSettingsController {
       return await fn();
     } catch (error) {
       if (error instanceof InvalidOperationalSettingError) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'OPERATIONAL_SETTING_INVALID', error.message, {
+          field: error.field,
+          ...(error.rule !== undefined ? { rule: error.rule } : {}),
+          ...(error.limit !== undefined ? { limit: error.limit } : {}),
+        });
       }
       throw error;
     }

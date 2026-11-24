@@ -13,6 +13,8 @@ import { createMockApiClient, renderWithProviders } from '../../../test/test-uti
 import { NewPromptTemplateDialog } from './new-prompt-template-dialog';
 import type { PromptTemplate } from '../api/prompt-templates.types';
 import type * as ReactRouterDom from 'react-router-dom';
+import { getMessages } from '../../../shared/i18n';
+import { ApiError } from '../../../shared/api/api-error';
 
 const navigateMock = vi.fn();
 
@@ -130,7 +132,7 @@ describe('NewPromptTemplateDialog', () => {
   });
 
   it('shows an inline alert when the API rejects (e.g. duplicate key)', async () => {
-    const create = vi.fn().mockRejectedValue(new Error('Key already exists'));
+    const create = vi.fn().mockRejectedValue(new ApiError('Key already exists', 409, null));
     const client = createMockApiClient({ promptTemplates: { create } });
     renderWithProviders(
       <NewPromptTemplateDialog open={true} onOpenChange={vi.fn()} />,
@@ -141,7 +143,7 @@ describe('NewPromptTemplateDialog', () => {
     fireEvent.change(screen.getByLabelText(/user prompt template/i), { target: { value: 'user' } });
     fireEvent.click(screen.getByRole('button', { name: /create draft/i }));
 
-    expect(await screen.findByText(/key already exists/i)).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status['409'])).toBeInTheDocument();
   });
 
   it('lists every registered plugin in the channel select (#580)', () => {

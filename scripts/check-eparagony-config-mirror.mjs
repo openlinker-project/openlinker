@@ -30,7 +30,14 @@
  *   - `statusPollTimeoutMs` is ONE config key read by TWO adapters (receipts
  *     and, once the sibling PR lands, invoicing), each with its own default -
  *     a description naming only one is a false claim about the other lane
- *     (#3192 review, I3 / #3268 review, I1).
+ *     (#3192 review, I3 / #3268 review, I1);
+ *   - the seller-readiness summary on the connection form STATES which seller
+ *     fields an invoice and a correction need ("every invoice is refused",
+ *     "incomplete for corrections"). Its required-field sets are compared with
+ *     the refusals in `composeInvoiceDocument` / `composeCorrectiveInvoiceDocument`,
+ *     so an adapter that tightens a rule cannot leave the form reporting a
+ *     connection as complete, and one that relaxes it cannot leave the form
+ *     stricter than the gate (#2240, #3771 review).
  *
  * Both sides are parsed TEXTUALLY so this stays a zero-dependency
  * `check:invariants` step like its siblings. Run with `--self-check` to
@@ -64,7 +71,10 @@ const CORE_TAX_ENFORCEMENT =
   'libs/core/src/sales-documents/domain/types/tax-rate-enforcement.types.ts';
 const FRONTEND = 'apps/web/src/plugins/eparagony/eparagony-config.types.ts';
 const FRONTEND_COPY = 'apps/web/src/plugins/eparagony/components/eparagony-tax-fallback-copy.ts';
-const FRONTEND_WIZARD = 'apps/web/src/features/connections/components/eparagony-setup.schema.ts';
+const FRONTEND_WIZARD = 'apps/web/src/plugins/eparagony/components/eparagony-setup.schema.ts';
+const BACKEND_INVOICE_MAPPER =
+  'libs/integrations/eparagony/src/infrastructure/adapters/eparagony-invoice.mapper.ts';
+const FRONTEND_SELLER = 'apps/web/src/plugins/eparagony/eparagony-seller.ts';
 
 /**
  * Blank line/block comments to equal-length whitespace, preserving every
@@ -139,6 +149,35 @@ export function parseStringConst(source, name) {
   return match ? match[1] : null;
 }
 
+/**
+ * The `config.<field>` names a top-level mapper function REFUSES without -
+ * every `const x = readSomething(config.x); if (x === null) { throw ... }`
+ * inside its body. The body runs from the declaration to the first `}` at
+ * column 0, which is how every top-level function in that file closes.
+ *
+ * Returns the names sorted (the order the mapper checks them in is not part
+ * of the rule), or `null` when the function or every refusal is missing, so a
+ * renamed function or a reworded check reads as drift, never as "no rule".
+ */
+export function parseRequiredConfigFields(source, functionName) {
+  const blanked = blankComments(source);
+  const start = blanked.search(new RegExp(`\\bfunction\\s+${functionName}\\s*\\(`));
+  if (start === -1) return null;
+  const end = blanked.indexOf('\n}', start);
+  const body = blanked.slice(start, end === -1 ? undefined : end);
+  const fields = [
+    ...body.matchAll(
+      /const\s+(\w+)\s*=\s*\w+\(\s*config\.(\w+)\s*\);\s*if\s*\(\s*\1\s*===\s*null\s*\)\s*\{\s*throw\b/g,
+    ),
+  ].map((m) => m[2]);
+  return fields.length > 0 ? [...new Set(fields)].sort() : null;
+}
+
+/** Sort a parsed list for a set comparison, keeping `null` as a parse failure. */
+function sorted(list) {
+  return list === null ? null : [...list].sort();
+}
+
 /** Compare two strings, reporting a readable difference. */
 export function diffStrings(label, backend, frontend) {
   if (backend === null) return `${label}: could not be parsed from the backend source`;
@@ -199,6 +238,9 @@ async function run() {
       ].map((path) => readFile(join(ROOT, path), 'utf8')),
     );
   const invoicingAdapter = await readFileIfExists(BACKEND_INVOICING_ADAPTER);
+  const [invoiceMapper, frontendSeller] = await Promise.all(
+    [BACKEND_INVOICE_MAPPER, FRONTEND_SELLER].map((path) => readFile(join(ROOT, path), 'utf8')),
+  );
 
   const failures = [
     diffLists(
@@ -241,6 +283,16 @@ async function run() {
       parseStringArrayConst(types, 'EparagonyEnvironmentValues'),
       parseStringArrayConst(frontendWizard, 'EparagonyEnvironmentValues')
     ),
+    diffLists(
+      'Seller fields an invoice requires',
+      parseRequiredConfigFields(invoiceMapper, 'composeInvoiceDocument'),
+      sorted(parseStringArrayConst(frontendSeller, 'INVOICE_REQUIRED_SELLER_FIELDS'))
+    ),
+    diffLists(
+      'Seller fields a correction requires',
+      parseRequiredConfigFields(invoiceMapper, 'composeCorrectiveInvoiceDocument'),
+      sorted(parseStringArrayConst(frontendSeller, 'CORRECTION_REQUIRED_SELLER_FIELDS'))
+    ),
     // #3192 review I3 / #3268 review I1: `statusPollTimeoutMs` is one config
     // key governing two adapters with two different defaults. Only checked
     // once the invoicing lane exists on this branch - see
@@ -263,9 +315,11 @@ async function run() {
     if (invoicingAdapter !== null) console.error(`            ${BACKEND_INVOICING_ADAPTER}`);
     console.error(`            ${BACKEND_MAPPER}`);
     console.error(`            ${CORE_TAX_ENFORCEMENT}`);
+    console.error(`            ${BACKEND_INVOICE_MAPPER}`);
     console.error(`  frontend: ${FRONTEND}`);
     console.error(`            ${FRONTEND_COPY}`);
     console.error(`            ${FRONTEND_WIZARD}`);
+    console.error(`            ${FRONTEND_SELLER}`);
     process.exit(1);
   }
 }
@@ -275,6 +329,44 @@ function selfCheck() {
   const expect = (condition, message) => {
     if (!condition) problems.push(message);
   };
+
+  const mapperSample = `export function composeA(input) {
+  const tin = readNonEmpty(config.merchantTIN);
+  if (tin === null) {
+    // a comment between the check and the throw
+    throw new Err('x');
+  }
+  const optional = readNonEmpty(config.merchantName);
+  if (optional !== null) {
+    metadata.merchantName = optional;
+  }
+}
+
+export function composeB(input) {
+  const tin = readNonEmpty(config.merchantTIN);
+  if (tin === null) {
+    throw new Err('x');
+  }
+  const addr = readSellerEntityAddress(config.merchantAddress);
+  if (addr === null) {
+    throw new Err('y');
+  }
+}
+`;
+  expect(
+    JSON.stringify(parseRequiredConfigFields(mapperSample, 'composeA')) ===
+      JSON.stringify(['merchantTIN']),
+    'parseRequiredConfigFields should read only refusals, not optional reads, and stop at the function end'
+  );
+  expect(
+    JSON.stringify(parseRequiredConfigFields(mapperSample, 'composeB')) ===
+      JSON.stringify(['merchantAddress', 'merchantTIN']),
+    'parseRequiredConfigFields should read every refusal in the body, sorted'
+  );
+  expect(
+    parseRequiredConfigFields(mapperSample, 'composeMissing') === null,
+    'parseRequiredConfigFields should return null for an absent function'
+  );
 
   const sample = `export const Vals = ['A', "B", 'C'] as const;`;
   expect(

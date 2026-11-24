@@ -9,7 +9,7 @@
  * `ReturnMoneyPanel` beside the custody controls and, before this file
  * existed, reused `describeCustodyError` for its own mutation error — which
  * has no entry for any of `ReturnRefundBlockReasonValues`, so every refund
- * refusal fell through to `RETURN_CUSTODY_ERROR_COPY.conflict`: *"This line
+ * refusal fell through to `returns.custody.error.conflict`: *"This line
  * has changed since the page loaded. Reload and try again."* That sentence is
  * wrong here in a way that matters — `already-attempted` is a PERMANENT
  * business refusal (every line already carries a refund), not a stale-row
@@ -25,14 +25,31 @@
  *
  * `ReturnRefundContendedError` (the optimistic-concurrency sibling, also a
  * 409) carries no `reason` field — a genuine stale-row race, for which
- * `RETURN_REFUND_ERROR_COPY.conflict`'s reload-and-retry wording is correct.
+ * `returns.money.refundError.conflict`'s reload-and-retry wording is correct.
  * This function's `null` fallback renders exactly that.
  *
  * @module apps/web/src/features/returns/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import { RETURN_REFUND_ERROR_COPY } from './return-money.copy';
-import type { ReturnRefundBlockReason } from './return-money.copy';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { getMessages } from '../../../shared/i18n';
+
+/**
+ * The closed reason `ReturnRefundBlockedError` carries (#2371, ADR-056),
+ * mirrored from `libs/core/src/returns/domain/exceptions/return-refund-blocked.error.ts`.
+ * Kept as a plain string union rather than importing the core package - the
+ * browser bundle cannot import `@openlinker/core` (#591).
+ */
+export const ReturnRefundBlockReasonValues = [
+  'no-lines',
+  'already-attempted',
+  'outstanding-in-doubt',
+] as const;
+export type ReturnRefundBlockReason = (typeof ReturnRefundBlockReasonValues)[number];
+
+function isRefundBlockReason(value: string): value is ReturnRefundBlockReason {
+  return (ReturnRefundBlockReasonValues as readonly string[]).includes(value);
+}
 
 /**
  * The refusal code, read from the 409 body.
@@ -46,9 +63,7 @@ export function readRefundBlockReason(error: unknown): ReturnRefundBlockReason |
   const details: unknown = error.details;
   if (typeof details !== 'object' || details === null || !('reason' in details)) return null;
   const reason: unknown = (details as { reason: unknown }).reason;
-  return typeof reason === 'string' && reason in RETURN_REFUND_ERROR_COPY.byReason
-    ? (reason as ReturnRefundBlockReason)
-    : null;
+  return typeof reason === 'string' && isRefundBlockReason(reason) ? reason : null;
 }
 
 /**
@@ -75,30 +90,56 @@ function hasRefundBlockReasonField(error: unknown): boolean {
 
 /** One sentence describing why the refund confirmation did not go through. */
 export function describeRefundError(error: unknown): string {
+  const copy = getMessages('returns').money.refundError;
   if (!(error instanceof ApiError)) {
-    return error instanceof Error && error.message.length > 0
-      ? error.message
-      : RETURN_REFUND_ERROR_COPY.generic;
+    return describeApiError(error, 'returns');
   }
 
   if (error.status === 404) {
-    return RETURN_REFUND_ERROR_COPY.notFound;
+    return copy.notFound;
   }
 
   if (error.status === 409) {
     const reason = readRefundBlockReason(error);
-    if (reason !== null) return RETURN_REFUND_ERROR_COPY.byReason[reason];
+    if (reason !== null) return copy.byReason[reason];
     // No `reason` at all → the genuine contended-row race. A `reason` this
     // build does not recognise → an unnamed permanent refusal, which must
     // NOT render as a stale-row race it is not.
     return hasRefundBlockReasonField(error)
-      ? RETURN_REFUND_ERROR_COPY.generic
-      : RETURN_REFUND_ERROR_COPY.conflict;
+      ? copy.generic
+      : copy.conflict;
   }
 
   if (error.status === 403) {
-    return RETURN_REFUND_ERROR_COPY.forbidden;
+    return copy.forbidden;
   }
 
-  return error.message.length > 0 ? error.message : RETURN_REFUND_ERROR_COPY.generic;
+  return describeApiError(error, 'returns');
+}
+
+/** The figures a 409 `refund_ceiling_exceeded` body carries (#3289). */
+export interface RefundCeilingExceededDetails {
+  ceiling: string;
+  alreadyRefunded: string;
+  requested: string;
+  currency: string;
+}
+
+/** `null` unless the error is the ceiling refusal, so other 409s keep their own copy. */
+export function readRefundCeilingExceeded(error: unknown): RefundCeilingExceededDetails | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const d: unknown = error.details;
+  if (typeof d !== 'object' || d === null) return null;
+  const body = d as Record<string, unknown>;
+  if (body.code !== 'refund_ceiling_exceeded') return null;
+  const { ceiling, alreadyRefunded, requested, currency } = body;
+  if (
+    typeof ceiling !== 'string' ||
+    typeof alreadyRefunded !== 'string' ||
+    typeof requested !== 'string' ||
+    typeof currency !== 'string'
+  ) {
+    return null;
+  }
+  return { ceiling, alreadyRefunded, requested, currency };
 }

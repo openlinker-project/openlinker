@@ -421,6 +421,14 @@ describe('ksefConnectionConfig.readConfigToForm — hydration', () => {
       paymentSkontoConditions: 'text',
       paymentSkontoAmount: '2%',
       invoiceDefaultLineUnit: '',
+      // Absent from this config, so they hydrate empty like every other field.
+      ksefAllowCrossBorder: '',
+      annCashAccounting: '',
+      annSelfBilling: '',
+      annMarginScheme: '',
+      annMarginKind: '',
+      annExemptionKind: '',
+      annExemptionText: '',
     });
   });
 

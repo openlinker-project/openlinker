@@ -29,12 +29,14 @@ import {
 } from '@openlinker/core/sync';
 import type {
   IOrderProvisioningResumeService,
+  MultipackReleaseResult,
   OrderProvisioningResumeResult,
 } from '../interfaces/order-provisioning-resume.service.interface';
-import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { isWithheldOnHoldError } from '../../domain/types/order-hold.types';
+import { MULTIPACK_WITHOUT_BUNDLE_REASON_CODE } from './multipack-hold';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
@@ -59,6 +61,68 @@ export class OrderProvisioningResumeService
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService
   ) {}
+
+  async resumeMultipackHeldOrders(scope: {
+    variantId: string;
+    packQuantity?: number;
+  }): Promise<MultipackReleaseResult> {
+    const result: MultipackReleaseResult = {
+      held: 0,
+      enqueued: 0,
+      notResumed: 0,
+      truncated: false,
+      scanFailed: false,
+    };
+    const pageSize = 100;
+    const maxPages = 50;
+    try {
+      // The offers that resolve to this variant, so the SQL read selects only
+      // the orders that can possibly be held for it (no full scan).
+      const offerRefs = (
+        await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, scope.variantId)
+      ).map((mapping) => ({ connectionId: mapping.connectionId, externalId: mapping.externalId }));
+      let afterId: string | null = null;
+      for (let page = 0; page < maxPages; page += 1) {
+        // Keyset, not offset: re-driving an order does not clear its hold until
+        // ingestion runs, but the set still moves under us, and an offset over
+        // a moving set steps over rows.
+        const items = await this.orderRecordRepository.findHeldByReasonCode(
+          {
+            reasonCode: MULTIPACK_WITHOUT_BUNDLE_REASON_CODE,
+            offerRefs,
+            ...(scope.packQuantity === undefined ? {} : { packQuantity: scope.packQuantity }),
+          },
+          { afterId, limit: pageSize }
+        );
+        for (const order of items) {
+          result.held += 1;
+          const outcome = await this.resume(order.internalOrderId);
+          if (outcome.status === 'enqueued') {
+            result.enqueued += 1;
+          } else {
+            result.notResumed += 1;
+          }
+        }
+        if (items.length < pageSize) {
+          return result;
+        }
+        afterId = items[items.length - 1].internalOrderId;
+      }
+      result.truncated = true;
+      this.logger.warn(
+        `Multipack release for variant ${scope.variantId} stopped at its budget of ` +
+          `${String(maxPages * pageSize)} orders; the rest stay held`
+      );
+    } catch (error) {
+      result.scanFailed = true;
+      this.logger.error(
+        `Multipack release scan failed after ${String(result.held)} held orders: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+    return result;
+  }
 
   async resume(
     internalOrderId: string

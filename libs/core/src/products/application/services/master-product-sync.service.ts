@@ -40,6 +40,7 @@ import {
   type MasterDeletionEventPayload,
 } from '../../domain/types/master-deletion-events.types';
 import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-normalization';
+import { normalizeVariantImages } from '../../domain/utils/variant-images';
 import type {
   IMasterProductSyncService,
   MasterProductBatchSyncFailure,
@@ -172,6 +173,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         failures.push({
           externalId,
           message: error instanceof Error ? error.message : String(error),
+          error,
         });
       }
     }
@@ -197,6 +199,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         failures.push({
           externalId,
           message: error instanceof Error ? error.message : String(error),
+          error,
         });
       }
     }
@@ -956,6 +959,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       attributes: variant.attributes ?? null,
       ean: normalizeToEan13(variant.ean ?? null),
       gtin: normalizeBarcode(variant.gtin ?? null),
+      images: normalizeVariantImages(variant.images),
     };
   }
 }

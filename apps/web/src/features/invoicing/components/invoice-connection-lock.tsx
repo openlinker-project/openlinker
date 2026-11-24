@@ -10,11 +10,17 @@
  * slightly different in each state, but it is ONE rule: a record exists, so the
  * connection is settled.
  *
+ * #3766 - a SETTLED document (issued, connection still live) renders no box at
+ * all: the headline above the slot already names the connection, so the box
+ * only repeated it. What is left is the "Why this document?" disclosure, which
+ * the panel places last in the slot. Every other state keeps the box, because
+ * there the hint is operational status the operator needs to see.
+ *
  * @module apps/web/src/features/invoicing/components
  */
 import type { ReactElement } from 'react';
 
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { InvoiceDisplayStatus } from './invoice-status-badge';
 
 export interface InvoiceConnectionLockProps {
@@ -28,56 +34,29 @@ export interface InvoiceConnectionLockProps {
   isStale: boolean;
 }
 
-type Translate = (key: string, fallback: string) => string;
+type LockCopy = ReturnType<typeof useMessages<'invoicing'>>['invoice']['lock'];
 
-function resolveEyebrow(status: InvoiceDisplayStatus, t: Translate): string {
-  if (status === 'pending' || status === 'issuing') {
-    return t('invoice.lock.issuingOn', 'Issuing on');
-  }
-  if (status === 'failed') {
-    return t('invoice.lock.retryGoesTo', 'Retry goes to');
-  }
-  if (status === 'in-doubt') {
-    return t('invoice.lock.stillAssignedTo', 'Still assigned to');
-  }
-  return t('invoice.lock.issuedBy', 'Issued by');
+function resolveEyebrow(status: InvoiceDisplayStatus, copy: LockCopy): string {
+  if (status === 'pending' || status === 'issuing') return copy.issuingOn;
+  if (status === 'failed') return copy.retryGoesTo;
+  if (status === 'in-doubt') return copy.stillAssignedTo;
+  return copy.issuedBy;
 }
 
-function resolveHint(status: InvoiceDisplayStatus, isStale: boolean, t: Translate): string {
-  if (isStale) {
-    return t(
-      'invoice.lock.hintStale',
-      'This connection is no longer active, so corrections and resends are unavailable here. The invoice itself stands.',
-    );
-  }
-  if (status === 'pending') {
-    return t(
-      'invoice.lock.hintPending',
-      'Already committed to this connection. The document number appears here when the provider responds.',
-    );
-  }
-  if (status === 'issuing') {
-    return t(
-      'invoice.lock.hintIssuing',
-      'An attempt is running and holds this invoice. A second attempt cannot start until it finishes or releases.',
-    );
-  }
-  if (status === 'failed') {
-    return t(
-      'invoice.lock.hintFailed',
-      'Retrying keeps the same connection, so the numbering series stays continuous.',
-    );
-  }
-  if (status === 'in-doubt') {
-    return t(
-      'invoice.lock.hintInDoubt',
-      'No provider change and no one-click retry while the outcome is unknown.',
-    );
-  }
-  return t(
-    'invoice.lock.hintIssued',
-    'This order is invoiced here. Every further action on it - correction, resend, email, mark paid - goes to this connection.',
-  );
+function resolveHint(
+  status: InvoiceDisplayStatus,
+  isStale: boolean,
+  connectionName: string,
+  copy: LockCopy,
+): string {
+  if (isStale) return copy.hintStale;
+  if (status === 'pending') return copy.hintPending;
+  if (status === 'issuing') return copy.hintIssuing;
+  if (status === 'failed') return copy.hintFailed;
+  if (status === 'in-doubt') return copy.hintInDoubt;
+  // #3766 - also carries the one-document rule the removed "This order already
+  // has a document" alert used to state, so the rule stays one click away.
+  return interpolate(copy.hintIssued, { connection: connectionName });
 }
 
 /** Glyph + stripe tone follow the lifecycle: settled, in-flight, or unusable. */
@@ -97,9 +76,10 @@ export function InvoiceConnectionLock({
   tag,
   isStale,
 }: InvoiceConnectionLockProps): ReactElement {
-  const { t } = useTranslation();
+  const messages = useMessages('invoicing');
+  const copy = messages.invoice.lock;
   const glyph = status === 'failed' && !isStale ? '↻' : '🔒';
-  const hint = resolveHint(status, isStale, t);
+  const hint = resolveHint(status, isStale, connectionName, copy);
   // #2807 review — the mockup keeps the routing/lock rationale for a SETTLED
   // document behind a collapsed "Why this document?" disclosure (secondary,
   // sitting beside the correction/override actions), not as an always-visible
@@ -108,6 +88,15 @@ export function InvoiceConnectionLock({
   // (a running attempt, a failed retry's numbering note, an in-doubt caution,
   // a stale connection's limitation) — those stay visible.
   const isSettled = !isStale && status !== 'pending' && status !== 'issuing' && status !== 'failed' && status !== 'in-doubt';
+
+  if (isSettled) {
+    return (
+      <details className="sales-document-panel__routing-disclosure" data-testid="invoice-why-this-document">
+        <summary>{messages.salesDocument.panel.whyThisDocument}</summary>
+        <p className="panel-copy">{hint}</p>
+      </details>
+    );
+  }
 
   return (
     <div
@@ -118,19 +107,12 @@ export function InvoiceConnectionLock({
       <span className="invoice-connection-lock__glyph" aria-hidden="true">
         {glyph}
       </span>
-      <span className="invoice-connection-lock__eyebrow">{resolveEyebrow(status, t)}</span>
+      <span className="invoice-connection-lock__eyebrow">{resolveEyebrow(status, copy)}</span>
       <span className="invoice-connection-lock__value">
-        {connectionName}
+        <span className="invoice-connection-lock__name">{connectionName}</span>
         <span className="invoice-connection-lock__tag mono-text">{tag}</span>
       </span>
-      {isSettled ? (
-        <details className="sales-document-panel__routing-disclosure invoice-connection-lock__why">
-          <summary>{t('salesDocument.panel.whyThisDocument', 'Why this document?')}</summary>
-          <span className="invoice-connection-lock__hint">{hint}</span>
-        </details>
-      ) : (
-        <span className="invoice-connection-lock__hint">{hint}</span>
-      )}
+      <span className="invoice-connection-lock__hint">{hint}</span>
     </div>
   );
 }

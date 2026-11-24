@@ -1,3 +1,79 @@
+/**
+ * Syntax restrictions for every `apps/web/src` file. Named so the `shared/ui`
+ * i18n override can extend the list instead of replacing it: a later override's
+ * `no-restricted-syntax` replaces an earlier one wholesale, which would silently
+ * drop the ADR-046 and #702 bans there.
+ */
+const HARDCODED_JSX_CHILD_MESSAGE =
+  'Hardcoded user-facing text in a JSX child. Read it from the feature copy file (`*.copy.ts`, English and Polish) - see docs/frontend-architecture.md, Internationalization.';
+
+// #3867: an API error reaches the operator through describeApiError, which
+// picks the copy by the error's code in the active language (ADR-081). The
+// server's own `message` is English developer text and is never rendered.
+// Applied to source files outside shared/api (tests and the resolver itself
+// read `.message` legitimately).
+const API_ERROR_MESSAGE_RENDER =
+  'Render an API error with describeApiError(error, namespace) from shared/api/describe-api-error (ADR-081, #3867), never its English `.message`. Form field errors, copy objects and non-API errors are allowed; any other legitimate read needs an eslint-disable with its reason.';
+const API_ERROR_MESSAGE_SYNTAX = [
+  {
+    // query.error.message / mutation.error.message - but not a form field's
+    // fieldState.error.message or a copy object's `error.message` section.
+    selector:
+      "MemberExpression[property.name='message'][object.type='MemberExpression'][object.property.name='error']:not([object.object.name=/^fieldState$|[Cc]opy$|COPY$|^messages$/]):not([object.object.object.name=/[Cc]opy$|COPY$/])",
+    message: API_ERROR_MESSAGE_RENDER,
+  },
+  {
+    // error.message / err.message / saveError.message ... A form's
+    // fieldError / fieldErrors entries are validation copy, not API errors.
+    selector: "MemberExpression[property.name='message'][object.name=/^(err|error|cause)$|^(?!field)\\w+Error$/]",
+    message: API_ERROR_MESSAGE_RENDER,
+  },
+];
+
+const WEB_RESTRICTED_SYNTAX = [
+  {
+    selector: "Identifier[name='WebPlugin']",
+    message:
+      '`WebPlugin` was unified into `OpenLinkerPlugin` (#702). Import `OpenLinkerPlugin` from `shared/plugins`.',
+  },
+  {
+    selector: "Identifier[name='PlatformPlugin']",
+    message:
+      '`PlatformPlugin` was unified into `OpenLinkerPlugin` (#702). For the runtime view returned by `usePlatform()`, import `Platform` from `shared/plugins`.',
+  },
+  {
+    selector: "Identifier[name='IN_TREE_PLUGINS']",
+    message:
+      '`IN_TREE_PLUGINS` was merged into the single `plugins` array (#702). Import `plugins` from `apps/web/src/plugins`.',
+  },
+  {
+    // ADR-046: `shared/ui/rich-text-view.tsx` is the ONLY sanctioned
+    // `dangerouslySetInnerHTML` in the app - it sanitizes with DOMPurify
+    // first and carries the reasoning. Anywhere else, render through
+    // `<RichTextView>` instead of re-deriving the safety argument.
+    // `eslint-plugin-react` is not installed, so this is expressed as a
+    // syntax restriction rather than `react/no-danger`.
+    selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+    message:
+      'dangerouslySetInnerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx), which sanitizes with DOMPurify - see ADR-046.',
+  },
+  {
+    // The same hole, reached without JSX. A selector that only matches
+    // the JSX attribute leaves `el.innerHTML = untrusted` and
+    // `insertAdjacentHTML` completely unrestricted, which is the more
+    // likely shape in an imperative helper or a test utility.
+    selector:
+      "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]",
+    message:
+      'Assigning innerHTML/outerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) - see ADR-046.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+    message:
+      'insertAdjacentHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) - see ADR-046.',
+  },
+];
+
 module.exports = {
   parser: '@typescript-eslint/parser',
   parserOptions: {
@@ -44,7 +120,7 @@ module.exports = {
     // Syntax expected by the rule: `// eslint-disable-next-line rule -- reason`.
     // Pairs with `no-aggregating-enable` so blanket re-enables can't sneak
     // around the per-directive justification. `no-unused-disable` is
-    // intentionally NOT enabled here — that cleanup is a separate sweep.
+    // intentionally NOT enabled here - that cleanup is a separate sweep.
     'eslint-comments/require-description': ['error', { ignore: [] }],
     'eslint-comments/no-aggregating-enable': 'error',
     // Discourage deep relative imports - prefer path aliases for cross-layer/cross-package imports
@@ -156,6 +232,8 @@ module.exports = {
       //   - `InvoiceRecord` — `invoiceDetailSection` / `invoiceCorrectionFlow` slot props (#1240)
       //   - `CorrectionSuggestedLine` — `InvoiceCorrectionFlowProps.suggestedLines`, the
       //     return page's pre-fill for the shared `CorrectionLineGrid` (#3090)
+      //   - `IssueInvoiceOptions` — `InvoiceIssueOptionsProps.value` (DEF-20), the
+      //     per-issue options a provider plugin collects and the host sends.
       // Each is a deliberate pinhole. Hoisting all of them into `shared/types/`
       // would invert the dependency direction and inflate `shared/` with
       // feature-private surface — keeping the exemption narrow + explicit
@@ -169,9 +247,9 @@ module.exports = {
               {
                 group: ['**/features/**', '**/pages/**', '**/app/**'],
                 importNamePattern:
-                  '^(?!Connection$|EditConnectionFormValues$|GroupRoleGate$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$|CorrectionSuggestedLine$).+',
+                  '^(?!Connection$|EditConnectionFormValues$|GroupRoleGate$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$|CorrectionSuggestedLine$|IssueInvoiceOptions$).+',
                 message:
-                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, GroupRoleGate, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord, CorrectionSuggestedLine) from features/app. All other feature/app imports remain banned.',
+                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, GroupRoleGate, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord, CorrectionSuggestedLine, IssueInvoiceOptions) from features/app. All other feature/app imports remain banned.',
               },
             ],
           },
@@ -247,6 +325,11 @@ module.exports = {
                   '**/bench/components/**',
                   '**/bench/lib/**',
                   '**/bench/types/**',
+                  '**/login-page-settings/api/**',
+                  '**/login-page-settings/hooks/**',
+                  '**/login-page-settings/components/**',
+                  '**/login-page-settings/lib/**',
+                  '**/login-page-settings/types/**',
                   // Added in #1938 review, when `features/demo` reached into
                   // `../../auth/hooks/`. Enumerated in full like every other
                   // slug; note that `pages/auth/*` and `app/api/api-client.ts`
@@ -545,6 +628,11 @@ module.exports = {
                   '**/bench/components/**',
                   '**/bench/lib/**',
                   '**/bench/types/**',
+                  '**/login-page-settings/api/**',
+                  '**/login-page-settings/hooks/**',
+                  '**/login-page-settings/components/**',
+                  '**/login-page-settings/lib/**',
+                  '**/login-page-settings/types/**',
                   // #1938 review — `features/auth` gained a barrel; a new slug
                   // goes into BOTH pattern groups per
                   // docs/frontend-architecture.md § Feature Public Surface,
@@ -742,6 +830,7 @@ module.exports = {
         'libs/integrations/subiekt-nexo/**/*.ts',
         'libs/integrations/woocommerce/**/*.ts',
         'libs/integrations/shoper/**/*.ts',
+        'libs/integrations/shopify/**/*.ts',
         // #2390 / ADR-055: `libs/oms` ships no HTTP client by design — the
         // OL-OMS answers from OpenLinker's own tables. Banned here (and
         // scanned by scripts/check-outbound-http.mjs) so that stays enforced.
@@ -821,48 +910,23 @@ module.exports = {
       rules: {
         'no-restricted-syntax': [
           'error',
-          {
-            selector: "Identifier[name='WebPlugin']",
-            message:
-              '`WebPlugin` was unified into `OpenLinkerPlugin` (#702). Import `OpenLinkerPlugin` from `shared/plugins`.',
-          },
-          {
-            selector: "Identifier[name='PlatformPlugin']",
-            message:
-              '`PlatformPlugin` was unified into `OpenLinkerPlugin` (#702). For the runtime view returned by `usePlatform()`, import `Platform` from `shared/plugins`.',
-          },
-          {
-            selector: "Identifier[name='IN_TREE_PLUGINS']",
-            message:
-              '`IN_TREE_PLUGINS` was merged into the single `plugins` array (#702). Import `plugins` from `apps/web/src/plugins`.',
-          },
-          {
-            // ADR-046: `shared/ui/rich-text-view.tsx` is the ONLY sanctioned
-            // `dangerouslySetInnerHTML` in the app - it sanitizes with DOMPurify
-            // first and carries the reasoning. Anywhere else, render through
-            // `<RichTextView>` instead of re-deriving the safety argument.
-            // `eslint-plugin-react` is not installed, so this is expressed as a
-            // syntax restriction rather than `react/no-danger`.
-            selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
-            message:
-              'dangerouslySetInnerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx), which sanitizes with DOMPurify — see ADR-046.',
-          },
-          {
-            // The same hole, reached without JSX. A selector that only matches
-            // the JSX attribute leaves `el.innerHTML = untrusted` and
-            // `insertAdjacentHTML` completely unrestricted, which is the more
-            // likely shape in an imperative helper or a test utility.
-            selector:
-              "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]",
-            message:
-              'Assigning innerHTML/outerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
-          },
-          {
-            selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
-            message:
-              'insertAdjacentHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
-          },
+          ...WEB_RESTRICTED_SYNTAX,
         ],
+      },
+    },
+    {
+      // #3867: see API_ERROR_MESSAGE_SYNTAX. Repeats WEB_RESTRICTED_SYNTAX
+      // because an override replaces the rule's whole option list.
+      files: [
+        'apps/web/src/features/**/*.{ts,tsx}',
+        'apps/web/src/pages/**/*.{ts,tsx}',
+        'apps/web/src/plugins/**/*.{ts,tsx}',
+        'apps/web/src/app/**/*.{ts,tsx}',
+        'apps/web/src/shared/ui/**/*.{ts,tsx}',
+      ],
+      excludedFiles: ['**/*.test.{ts,tsx}', '**/test/**'],
+      rules: {
+        'no-restricted-syntax': ['error', ...WEB_RESTRICTED_SYNTAX, ...API_ERROR_MESSAGE_SYNTAX],
       },
     },
 
@@ -957,6 +1021,76 @@ module.exports = {
                   'Backend apps must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths. The package.json wildcards were dropped in #591; deep aliases now fail at Node runtime. Symbol DI tokens are re-exported from the top-level barrel (#595).',
               },
             ],
+          },
+        ],
+      },
+    },
+    {
+      // No hardcoded user-facing text (ADR-081, #3859). Every word an operator
+      // reads comes from a locale file in English and Polish. On for every
+      // folder since #3891: a new screen cannot add hardcoded text.
+      files: [
+        'apps/web/src/app/**/*.tsx',
+        'apps/web/src/features/**/*.tsx',
+        'apps/web/src/pages/**/*.tsx',
+        'apps/web/src/plugins/**/*.tsx',
+        'apps/web/src/shared/**/*.tsx',
+      ],
+      // `pages/dev-ui` is the hidden design-system route (`/dev/ui`): its text
+      // describes components to developers and is never shown to an operator.
+      excludedFiles: ['**/*.test.tsx', '**/*.copy.ts', 'apps/web/src/pages/dev-ui/**'],
+      plugins: ['i18next'],
+      rules: {
+        'i18next/no-literal-string': [
+          'error',
+          {
+            // Text children only for now: attribute text (aria-label, title,
+            // placeholder) is checked once the extraction PRs have moved it,
+            // by switching this to `jsx-only` with an attribute list.
+            mode: 'jsx-text-only',
+            words: {
+              // `exclude` replaces the plugin's defaults, so the first four
+              // entries restore them; the rest are glyphs and keyboard hints.
+              exclude: [
+                '[0-9!-/:-@[-`{-~]+',
+                '[A-Z_-]+',
+                '^&(?:[a-zA-Z]+|#[0-9]+|#x[0-9a-fA-F]+);$',
+                /^\p{Emoji}+$/u,
+                '⌘K',
+                // \u2014 is the em dash glyph used as an empty-value marker.
+                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒☰▸▾⤓‹●+]+',
+                'esc',
+              ],
+            },
+          },
+        ],
+        // `jsx-text-only` skips a string whose parent is not the JSX element
+        // itself, so these three child shapes need their own selectors: a
+        // string, a template or a ternary branch with letters in it, written
+        // straight into JSX children. Attribute and variable text is still not
+        // covered (see docs/frontend-architecture.md, Guardrails).
+        'no-restricted-syntax': [
+          'error',
+          ...WEB_RESTRICTED_SYNTAX,
+          ...API_ERROR_MESSAGE_SYNTAX,
+          {
+            selector: "JSXElement > JSXExpressionContainer > Literal[value=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
+          },
+          {
+            selector:
+              "JSXElement > JSXExpressionContainer > TemplateLiteral > TemplateElement[value.raw=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
+          },
+          {
+            selector:
+              "JSXElement > JSXExpressionContainer > ConditionalExpression > Literal[value=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
+          },
+          {
+            selector:
+              "JSXElement > JSXExpressionContainer > LogicalExpression > Literal[value=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
           },
         ],
       },

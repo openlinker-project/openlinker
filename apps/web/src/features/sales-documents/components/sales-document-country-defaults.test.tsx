@@ -2,7 +2,7 @@
  * SalesDocumentCountryDefaults Tests (#3177)
  *
  * Covers the acceptance criteria: the two-select shape collapsed into ONE
- * control whose options are "Nothing — hold the order" or any single
+ * control whose options are "Nothing - hold the order" or any single
  * connection carrying a role (`config.salesDocument.documentKind`), and the
  * readback line states the consequence in plain language for both states.
  */
@@ -42,7 +42,7 @@ const FISCALIZATION_CONNECTION: Connection = {
 };
 
 describe('SalesDocumentCountryDefaults', () => {
-  it('should render "Nothing — hold the order" and state the held consequence when no default is set', async () => {
+  it('should render "Nothing - hold the order" and state the held consequence when no default is set', async () => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([INVOICING_CONNECTION, FISCALIZATION_CONNECTION]) },
       salesDocumentRules: { listCountryDefaults: vi.fn().mockResolvedValue([]) },
@@ -56,7 +56,7 @@ describe('SalesDocumentCountryDefaults', () => {
     await waitFor(() => {
       expect(screen.getByTestId('country-default')).toHaveValue('');
     });
-    // "Nothing — hold the order" renders BOTH as the selected option's own
+    // "Nothing - hold the order" renders BOTH as the selected option's own
     // label and, verbatim, inside the hint paragraph below the select — so
     // asserting on the select's value (above) is the unambiguous check;
     // `getByText` for that exact phrase would match both.
@@ -134,7 +134,7 @@ describe('SalesDocumentCountryDefaults', () => {
     });
   });
 
-  it('should delete the existing default when "Nothing — hold the order" is chosen', async () => {
+  it('should delete the existing default when "Nothing - hold the order" is chosen', async () => {
     const deleteCountryDefault = vi.fn().mockResolvedValue(undefined);
     const defaults: SalesDocumentCountryDefault[] = [
       { id: 'd1', country: 'PL', documentKind: 'invoice', connectionId: 'conn_invoicing' },

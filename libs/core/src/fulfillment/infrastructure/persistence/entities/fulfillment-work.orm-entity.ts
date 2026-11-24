@@ -106,6 +106,8 @@ import {
 // forever — a defect that only appears under load. Created here although #2399
 // owns the sweep: an index is cheap now and a second migration is not.
 @Index('IDX_fulfillment_works_request_status', ['requestStatus', 'updatedAt'])
+// Drives the sale-decrement reconcile sweep's lookback window + oldest-first order (#3629).
+@Index('IDX_fulfillment_works_created_at', ['createdAt', 'id'])
 // #2400's inbound-progress correlation read, deferred to #2399 because the
 // writer owns the shape (see the `externalWorkId` column docblock for the
 // per-connection-vs-intrinsic reasoning). Keyed `(assignedConnectionId,
@@ -451,6 +453,19 @@ export class FulfillmentWorkOrmEntity {
    */
   @Column({ type: 'timestamptz', nullable: true })
   labelPrintedAt!: Date | null;
+
+  /**
+   * When this parcel's buyer note was FIRST acknowledged at the bench (#3538,
+   * D12), or `null`. Fill-in-when-NULL - `acknowledgeBuyerNote` writes it
+   * `WHERE "buyerNoteAcknowledgedAt" IS NULL` together with the actor - and, like
+   * `invoicePrintedAt`, DOES NOT bump `version`: display-only, gates nothing.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteAcknowledgedAt!: Date | null;
+
+  /** Who acknowledged it; no FK, like every user-id reference on this table. */
+  @Column({ type: 'varchar', nullable: true })
+  buyerNoteAcknowledgedByUserId!: string | null;
 
   /**
    * When an operator declared this parcel finished and off the bench (pack-bench completion)

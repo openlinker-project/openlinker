@@ -73,6 +73,8 @@ import { CurrencyMismatchException } from '../../domain/exceptions/currency-mism
 import { InvalidOverrideKeyException } from '../../domain/exceptions/invalid-override-key.exception';
 import { ExpandedOfferCeilingExceededException } from '../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
+import { MasterStockNotSyncedException } from '../../domain/exceptions/master-stock-not-synced.exception';
+import { DuplicateBulkBatchIdempotencyKeyError } from '../../domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 import {
   BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -128,6 +130,27 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   async submit(input: BulkListingSubmitInput): Promise<BulkListingSubmitResult> {
     if (input.productIds.length === 0) {
       throw new EmptyBulkSubmissionException();
+    }
+
+    // Idempotent replay: a key that already names a batch on this connection
+    // answers with that batch before any adapter call or expansion, so a
+    // double submit costs one indexed read and can never enqueue a second set
+    // of offer creates (Allegro does not deduplicate product-offer creates).
+    // The payload is deliberately not compared with the original: the key is
+    // the client's statement that this is the same submission.
+    const idempotencyKey = input.idempotencyKey;
+    if (idempotencyKey) {
+      const existing = await this.bulkBatchRepository.findByIdempotencyKey(
+        input.connectionId,
+        idempotencyKey
+      );
+      if (existing) {
+        this.logger.log(
+          `Bulk submit deduplicated: idempotency key already names batch ${existing.id} ` +
+            `(connection=${input.connectionId})`
+        );
+        return deduplicatedResult(existing.id);
+      }
     }
 
     // 0. Validate the override-map key shapes + per-row currency and strip any
@@ -224,8 +247,10 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       afterAlreadyListed,
       variantsById
     );
-    const masterStock = await this.resolveMasterStock(
-      listableJobs.filter((job) => job.useMasterStock).map((job) => job.variantId)
+    const { masterStock, unpositioned } = await this.resolveMasterStock(
+      listableJobs
+        .filter((job) => job.useMasterStock || job.stockFromMaster === true)
+        .map((job) => job.variantId)
     );
 
     // #2323 — a master-stock job whose availability came back UNKNOWN is
@@ -234,13 +259,30 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // "no stock": listing it would either publish a guessed number or (via the
     // old `?? 0`) create a permanently-draft 0-stock offer the operator never
     // asked for. Excluding is the only answer that asserts nothing false.
-    const unknownAvailability = listableJobs.filter(
-      (job) => job.useMasterStock && !masterStock.has(job.variantId)
-    );
+    //
+    // #3851 - a single-variant job whose stock the client took from master
+    // (`stockFromMaster`) is held to the same rule, and additionally to having
+    // an inventory position at all: the zero-filled answer for a variant the
+    // stock sync has not reached yet is a 0 nobody observed, and the client's
+    // figure for it was that same 0. An expanded sibling is held to the same
+    // rule: a sibling with no position is a 0 nobody observed, whereas a
+    // sibling WITH a position reporting 0 is a known zero and still lists at 0
+    // (#1741). The frontend blocks the unpositioned case too
+    // (`siblingStockBlockers`); this is the server-side backing for it.
+    const isUnknownStock = (job: ExpandedVariantJob): boolean => {
+      if (job.useMasterStock) {
+        return !masterStock.has(job.variantId) || unpositioned.has(job.variantId);
+      }
+      if (job.stockFromMaster === true) {
+        return !masterStock.has(job.variantId) || unpositioned.has(job.variantId);
+      }
+      return false;
+    };
+    const unknownAvailability = listableJobs.filter(isUnknownStock);
     const jobs =
       unknownAvailability.length === 0
         ? listableJobs
-        : listableJobs.filter((job) => !job.useMasterStock || masterStock.has(job.variantId));
+        : listableJobs.filter((job) => !isUnknownStock(job));
     if (unknownAvailability.length > 0) {
       this.logger.warn(
         `bulk_listing_variant_excluded_availability_unknown connection=${input.connectionId} ` +
@@ -248,10 +290,17 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           `not be resolved for these variants; they were left out of the batch rather than ` +
           `published at a guessed quantity`
       );
-      // Every job excluded means the whole read failed, which is transient.
-      // Reporting an empty submission would blame the operator's selection for
-      // an infrastructure outage and invite them to re-pick the same variants.
+      // Every job excluded on an unresolved read means the read failed, which
+      // is transient. Reporting an empty submission would blame the operator's
+      // selection for an infrastructure outage and invite them to re-pick the
+      // same variants. A variant with no position is different: no retry
+      // changes it until the stock sync runs, so that is named instead.
       if (jobs.length === 0) {
+        // Only when EVERY excluded job is unpositioned: one transient read
+        // failure among them must not be reported as "not synced".
+        if (unknownAvailability.every((job) => unpositioned.has(job.variantId))) {
+          throw new MasterStockNotSyncedException(unknownAvailability.length);
+        }
         throw new AvailabilityUnknownError(input.connectionId, unknownAvailability[0].variantId);
       }
     }
@@ -261,12 +310,38 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     //    stored as the unstructured persistence projection of the typed
     //    `BulkSharedConfig` shape so future schema iterations don't require
     //    a migration.
-    const batch = await this.bulkBatchRepository.create({
-      connectionId: input.connectionId,
-      initiatedBy: input.initiatedBy,
-      totalCount: jobs.length,
-      sharedConfig: input.sharedConfig as unknown as Record<string, unknown>,
-    });
+    //    The key is written with the row, BEFORE anything is enqueued: the
+    //    partial unique index is what resolves two submits racing past the
+    //    replay check above, and it can only do that if the loser fails here,
+    //    while it still has nothing on the stream.
+    let batch: BulkListingBatch;
+    try {
+      batch = await this.bulkBatchRepository.create({
+        connectionId: input.connectionId,
+        initiatedBy: input.initiatedBy,
+        totalCount: jobs.length,
+        sharedConfig: input.sharedConfig as unknown as Record<string, unknown>,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+      });
+    } catch (error) {
+      if (idempotencyKey && error instanceof DuplicateBulkBatchIdempotencyKeyError) {
+        const winner = await this.bulkBatchRepository.findByIdempotencyKey(
+          input.connectionId,
+          idempotencyKey
+        );
+        if (winner) {
+          this.logger.log(
+            `Bulk submit lost the idempotency race to batch ${winner.id} ` +
+              `(connection=${input.connectionId}); returning it and enqueueing nothing`
+          );
+          return deduplicatedResult(winner.id);
+        }
+        // The winner released its key between our failed insert and this read
+        // (it enqueued nothing and gave the key back). Nothing was persisted
+        // for this call; the error tells the client to retry.
+      }
+      throw error;
+    }
 
     this.logger.log(
       `Bulk batch ${batch.id} persisted (connection=${input.connectionId}, ` +
@@ -334,6 +409,13 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           await this.bulkBatchRepository.updateStatus(batch.id, nextStatus);
         } else {
           await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
+          // Nothing reached the stream, so a retry under the same key cannot
+          // duplicate anything. Keeping the key would answer that retry with
+          // this dead, empty batch and a 202, i.e. report success for a submit
+          // that did nothing; releasing it lets the retry run for real.
+          if (idempotencyKey) {
+            await this.bulkBatchRepository.clearIdempotencyKey(batch.id);
+          }
         }
       } catch (reconcileError) {
         this.logger.error(
@@ -400,6 +482,9 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * snapshot says `ended`, so a variant whose offer is over can be listed again
    * (#1934/F2). Previously the query had no status predicate at all despite
    * this docstring, which made an ended offer block its variant permanently.
+   * It likewise excludes an `inactive` offer whose creation the marketplace
+   * refused (E2E-25) - that offer can never sell, and the "Fix this one" path
+   * must be able to list the variant again.
    *
    * One batched count query rather than
    * a per-variant fan-out; a variant with `count > 0` is skipped with a warning
@@ -550,7 +635,15 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           );
           continue;
         }
-        jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
+        jobs.push({
+          variantId: selectedId,
+          selectedId,
+          useMasterStock: false,
+          clearProductCard: false,
+          ...(input.perVariantOverrides?.[selectedId]?.stockFromMaster === true
+            ? { stockFromMaster: true }
+            : {}),
+        });
         variantsById.set(selectedId, selectedVariant);
         continue;
       }
@@ -760,17 +853,29 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * backfilled from `totalAvailable`, which would publish the un-reserved
    * quantity and oversell by exactly the outstanding holds. The caller excludes
    * such variants from the batch rather than listing them at a guessed number.
+   *
+   * `unpositioned` names the variants with no live inventory position (#3851):
+   * the read zero-fills them as a known 0, which is right for propagation, so
+   * it stays in the map; a publishing caller that must tell "the master says 0"
+   * from "the stock sync has not reached it" reads this set.
    */
-  private async resolveMasterStock(variantIds: string[]): Promise<Map<string, number>> {
-    if (variantIds.length === 0) return new Map();
+  private async resolveMasterStock(
+    variantIds: string[]
+  ): Promise<{ masterStock: Map<string, number>; unpositioned: Set<string> }> {
+    if (variantIds.length === 0) return { masterStock: new Map(), unpositioned: new Set() };
     const rows = await this.inventoryQuery.getAvailabilityByVariantIds(variantIds);
-    return new Map(
-      rows
-        .filter((row): row is typeof row & { availableToPromise: number } =>
-          row.availableToPromise !== null
-        )
-        .map((row) => [row.productVariantId, row.availableToPromise])
-    );
+    return {
+      masterStock: new Map(
+        rows
+          .filter((row): row is typeof row & { availableToPromise: number } =>
+            row.availableToPromise !== null
+          )
+          .map((row) => [row.productVariantId, row.availableToPromise])
+      ),
+      unpositioned: new Set(
+        rows.filter((row) => row.positionCount === 0).map((row) => row.productVariantId)
+      ),
+    };
   }
 
   /**
@@ -928,6 +1033,23 @@ function stripVariantCategoryId(
   const rest: CreateOfferOverrides = { ...overrides };
   delete rest.categoryId;
   return rest;
+}
+
+/**
+ * The answer to a submit whose idempotency key already names a batch. It
+ * reports only what THIS call did, which is nothing: no job ids and no skips.
+ * The original submit's counts were never persisted, so replaying them would
+ * mean inventing them.
+ */
+function deduplicatedResult(batchId: string): BulkListingSubmitResult {
+  return {
+    batchId,
+    jobIds: [],
+    skippedAlreadyListedCount: 0,
+    skippedAvailabilityUnknownCount: 0,
+    skippedInvalidEanCount: 0,
+    deduplicated: true,
+  };
 }
 
 /**

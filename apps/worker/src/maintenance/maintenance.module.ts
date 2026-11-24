@@ -11,7 +11,9 @@
  * built to support; since the #3534 recovery pass, the `order_exports`
  * file-retention sweep; and since #3507 G03-14 the `order_records.searchText`
  * reindex that takes buyer personal data out of the search index once
- * `OL_STORE_PII` is off.
+ * `OL_STORE_PII` is off; and since #3565 the `inventory_movements` ledger
+ * retention sweep (`CoreOrdersModule` already pulls `InventoryModule` into this
+ * role, so importing it directly adds no providers).
  *
  * @module apps/worker/src/maintenance
  */
@@ -19,16 +21,19 @@ import { Module } from '@nestjs/common';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
 import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
+import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { StuckJobRecoveryService } from './stuck-job-recovery.service';
 import { OrderExportRetentionService } from './order-export-retention.service';
 import { OrderSearchTextReindexSweepService } from './order-search-text-reindex-sweep.service';
 import { SyncJobRetentionService } from './sync-job-retention.service';
+import { InventoryMovementRetentionService } from './inventory-movement-retention.service';
 
 @Module({
-  imports: [CoreSyncModule, CoreOrdersModule, OperationalSettingsModule],
+  imports: [CoreSyncModule, CoreOrdersModule, OperationalSettingsModule, CoreInventoryModule],
   providers: [
     StuckJobRecoveryService,
     SyncJobRetentionService,
+    InventoryMovementRetentionService,
     OrderExportRetentionService,
     OrderSearchTextReindexSweepService,
   ],

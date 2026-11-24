@@ -11,10 +11,16 @@
 import {
   WooCommerceOrderProcessorAdapter,
   isValidEmail,
+  wooCommerceOrderReducedStock,
 } from '../woocommerce-order-processor.adapter';
 import { toPositiveInt } from '../../../utils/woocommerce-utils';
 import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from '../woocommerce-order.types';
-import { isOrderStatusWriteback, isDestinationOptionsReader } from '@openlinker/core/orders';
+import {
+  isOrderStatusWriteback,
+  isDestinationOptionsReader,
+  isOrderCreateStockEffect,
+  lowersStockOnOrderCreate,
+} from '@openlinker/core/orders';
 import { WC_ORDER_STATUS_LABELS } from '../woocommerce-options.types';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
@@ -32,6 +38,7 @@ import type { SyncLockPort } from '@openlinker/core/sync';
 import { WooCommerceCustomerProvisioner } from '../../../provisioners/woocommerce-customer-provisioner';
 import { WooCommerceAddressProvisioner } from '../../../provisioners/woocommerce-address-provisioner';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceNetworkException } from '../../../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { WooCommerceOrderProcessingException } from '../../../../domain/exceptions/woocommerce-order-processing.exception';
 import { WooCommerceOrderCreateAmbiguousException } from '../../../../domain/exceptions/woocommerce-order-create-ambiguous.exception';
@@ -572,6 +579,95 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     await adapter.createOrder(makeOrder({ totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' } }));
     const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
     expect((payload as Record<string, unknown>).shipping_lines).toBeUndefined();
+  });
+
+  // ── payment gateway on the order (#3294) ──
+
+  async function sentGateway(
+    order: OrderCreate,
+    resolvePaymentMapping?: jest.Mock,
+  ): Promise<{ id: unknown; title: unknown }> {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const syncLock = makeSyncLock();
+    const adapter = new WooCommerceOrderProcessorAdapter(
+      httpClient,
+      identifierMapping,
+      mockConnection,
+      new WooCommerceCustomerProvisioner(syncLock),
+      new WooCommerceAddressProvisioner(syncLock),
+      makeProjectionRepo(),
+      resolvePaymentMapping
+        ? ({
+            resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+            resolvePaymentMapping,
+          } as unknown as IMappingConfigService)
+        : undefined,
+    );
+    await adapter.createOrder(order);
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const body = payload as Record<string, unknown>;
+    return { id: body.payment_method, title: body.payment_method_title };
+  }
+
+  it.each([
+    ['cash_on_delivery', 'cod', 'Cash on delivery'],
+    ['bank_transfer', 'bacs', 'Direct bank transfer'],
+  ] as const)('should record the core gateway for a %s order', async (paymentMethod, id, title) => {
+    expect(await sentGateway(makeOrder({ paymentMethod }))).toEqual({ id, title });
+  });
+
+  it.each([['online'], ['unknown'], [undefined]] as const)(
+    'should keep "other" / "External" for the method %s',
+    async (paymentMethod) => {
+      expect(await sentGateway(makeOrder({ paymentMethod }))).toEqual({
+        id: 'other',
+        title: 'External',
+      });
+    },
+  );
+
+  it('should let the operator payment mapping win over the neutral method', async () => {
+    const resolve = jest.fn().mockResolvedValue('stripe');
+    const gateway = await sentGateway(
+      makeOrder({
+        paymentMethod: 'cash_on_delivery',
+        sourcePaymentMethod: 'ONLINE',
+        source: { connectionId: 'src-1' },
+      }),
+      resolve,
+    );
+    expect(gateway).toEqual({ id: 'stripe', title: 'stripe' });
+    expect(resolve).toHaveBeenCalledWith('src-1', 'ONLINE');
+  });
+
+  it('should fall back to the neutral gateway when the mapping has no row or throws', async () => {
+    const order = makeOrder({
+      paymentMethod: 'bank_transfer',
+      sourcePaymentMethod: 'X',
+      source: { connectionId: 'src-1' },
+    });
+    expect(await sentGateway(order, jest.fn().mockResolvedValue(null))).toEqual({
+      id: 'bacs',
+      title: 'Direct bank transfer',
+    });
+    expect(await sentGateway(order, jest.fn().mockRejectedValue(new Error('db')))).toEqual({
+      id: 'bacs',
+      title: 'Direct bank transfer',
+    });
+  });
+
+  it('should not mark a COD order paid because of its gateway', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder({ paymentMethod: 'cash_on_delivery', paymentStatus: 'cod' }));
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    expect((payload as Record<string, unknown>).set_paid).toBeUndefined();
   });
 
   // ── set_paid gating (#2600 / #3471 — keyed on paymentStatus, never status alone) ──
@@ -1604,5 +1700,161 @@ describe('WooCommerceOrderProcessorAdapter — DestinationOptionsReader', () => 
 
       expect(options).toEqual([]);
     });
+  });
+});
+
+// ─── OrderCreateStockEffect ──────────────────────────────────────────────────
+
+describe('wooCommerceOrderReducedStock', () => {
+  const reduced = (qty: unknown): { meta_data: Array<{ key: string; value: unknown }> } => ({ meta_data: [{ key: '_reduced_stock', value: qty }] });
+
+  it('should answer true when every line carries a positive _reduced_stock', () => {
+    expect(wooCommerceOrderReducedStock([reduced('2'), reduced(1)])).toBe(true);
+  });
+
+  it('should answer false when one line was not taken out of stock', () => {
+    expect(wooCommerceOrderReducedStock([reduced('2'), { meta_data: [] }])).toBe(false);
+  });
+
+  it('should answer false when the marker is zero or unreadable', () => {
+    expect(wooCommerceOrderReducedStock([reduced('0')])).toBe(false);
+    expect(wooCommerceOrderReducedStock([reduced('abc')])).toBe(false);
+  });
+
+  it('should answer false when the response carries no lines', () => {
+    expect(wooCommerceOrderReducedStock(undefined)).toBe(false);
+    expect(wooCommerceOrderReducedStock([])).toBe(false);
+  });
+});
+
+describe('WooCommerceOrderProcessorAdapter - OrderCreateStockEffect', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  async function createWith(response: Record<string, unknown>): Promise<WooCommerceOrderProcessorAdapter> {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 99, number: 'WC-99', ...response });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder());
+    return adapter;
+  }
+
+  it('should be detected by the isOrderCreateStockEffect guard', () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(isOrderCreateStockEffect(adapter)).toBe(true);
+  });
+
+  it('should answer true when the created order reduced stock on every line', async () => {
+    const adapter = await createWith({
+      line_items: [{ id: 1, meta_data: [{ key: '_reduced_stock', value: '1' }] }],
+    });
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(true);
+  });
+
+  it('should answer false when the created order reduced nothing (e.g. a pending order or stock management off)', async () => {
+    const adapter = await createWith({ line_items: [{ id: 1, meta_data: [] }] });
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+
+  it('should answer false when the response does not say (no line items read back)', async () => {
+    const adapter = await createWith({});
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+
+  it('should answer false when this instance created no order (a skipped create)', async () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+
+  it('should not keep an earlier answer when a later create fails', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValueOnce({
+      id: 99,
+      number: 'WC-99',
+      line_items: [{ id: 1, meta_data: [{ key: '_reduced_stock', value: '1' }] }],
+    });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder());
+
+    httpClient.post.mockRejectedValueOnce(new Error('boom'));
+    await expect(adapter.createOrder(makeOrder())).rejects.toThrow();
+
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+});
+
+// #3963 - a payment that arrived after the shop got the order unpaid.
+describe('WooCommerceOrderProcessorAdapter — write paid (#3963)', () => {
+  const paid = {
+    type: 'paid' as const,
+    externalOrderId: '55',
+    amount: 389,
+    currency: 'PLN',
+    paidOn: 'Allegro',
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should set_paid and leave a private note for an unpaid pending order', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'pending', date_paid_gmt: null });
+    httpClient.put.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result).toEqual({ outcome: 'applied' });
+    expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55', { set_paid: true });
+    expect(httpClient.post).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55/notes', {
+      note: 'Marked paid by OpenLinker. Allegro payment 389.00 PLN.',
+      customer_note: false,
+    });
+  });
+
+  it('should report applied without a write when WC already shows the order paid', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'processing', date_paid_gmt: '2026-11-04T13:07:00' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result).toEqual({ outcome: 'applied', detail: 'already paid in the shop' });
+    expect(httpClient.put).not.toHaveBeenCalled();
+  });
+
+  it.each(['cancelled', 'refunded', 'failed'])('should refuse an order that is already %s', async (status) => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status, date_paid_gmt: null });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result.outcome).toBe('rejected');
+    expect(result.transient).toBeUndefined();
+    expect(httpClient.put).not.toHaveBeenCalled();
+  });
+
+  it('should still report applied when only the note fails', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'pending', date_paid_gmt: null });
+    httpClient.put.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.post.mockRejectedValue(new Error('notes disabled'));
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    await expect(adapter.write(paid)).resolves.toEqual({ outcome: 'applied' });
+  });
+
+  it('should report a network failure as transient', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockRejectedValue(new WooCommerceNetworkException('WooCommerce request timed out'));
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write(paid);
+
+    expect(result).toEqual(expect.objectContaining({ outcome: 'rejected', transient: true }));
   });
 });

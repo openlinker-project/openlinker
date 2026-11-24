@@ -402,6 +402,23 @@ describe('ProductSalesTable', () => {
     expect(getTopProducts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'units' }));
   });
 
+  it('should read the ranking from the URL so a shared link and the CSV export agree', async () => {
+    const getTopProducts = vi.fn().mockResolvedValue(result([row()]));
+    const apiClient = createMockApiClient({
+      analytics: { getTopProducts },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
+      apiClient,
+      route: '/analytics?productSort=units',
+    });
+    await screen.findByText('Widget A');
+
+    expect(getTopProducts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'units' }));
+    expect(screen.getByRole('radio', { name: 'By units' })).toBeChecked();
+  });
+
   it('renders an empty value for a product with no SKU', async () => {
     const apiClient = createMockApiClient({
       analytics: {
@@ -775,7 +792,7 @@ describe('ProductSalesTable', () => {
 
       const p2Notes = p2Row!.querySelectorAll('.excl-note');
       expect(p2Notes).toHaveLength(1);
-      expect(p2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+      expect(p2Notes[0]).toHaveTextContent('1 order has no tax rate at all');
     });
 
     it('should annotate a product for every cross-referenceable category it has an excluded order in', async () => {

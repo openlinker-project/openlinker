@@ -41,7 +41,7 @@
  * ## This file carries no user-visible string literal
  *
  * `scripts/check-ui-vocabulary.mjs` does not scan `apps/web/src/pages` at all.
- * Every sentence comes from `FULFILLMENT_WORK_DETAIL_COPY`.
+ * Every sentence comes from the `fulfillment.workDetail` copy.
  *
  * ## The action wiring reuses the shared runner (#3257/#3101)
  *
@@ -57,7 +57,6 @@ import type { ReactElement } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 
 import {
-  FULFILLMENT_WORK_DETAIL_COPY,
   FulfillmentAccessDenied,
   FulfillmentTaskActionDialog,
   FulfillmentTaskActions,
@@ -80,22 +79,22 @@ import { DetailSection } from '../../shared/ui/detail-section';
 import { shortenId } from '../../shared/ui/entity-label';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
-
-const COPY = FULFILLMENT_WORK_DETAIL_COPY;
+import { getMessages, interpolate, useMessages } from '../../shared/i18n';
 
 export function FulfillmentWorkDetailPage(): ReactElement {
+  const copy = useMessages('fulfillment').workDetail;
   const [searchParams] = useSearchParams();
   const backTo = {
     to: fulfillmentWorklistPath(searchParams),
-    label: COPY.backToWorklist,
+    label: copy.backToWorklist,
   };
 
   return (
     <AccessGate
       require="fulfillment:read"
       fallback={
-        <PageLayout eyebrow={COPY.eyebrow} title={COPY.titleFallback} backTo={backTo}>
-          <FulfillmentAccessDenied copy={COPY.states.denied} />
+        <PageLayout eyebrow={copy.eyebrow} title={copy.titleFallback} backTo={backTo}>
+          <FulfillmentAccessDenied copy={copy.states.denied} />
         </PageLayout>
       }
     >
@@ -107,7 +106,7 @@ export function FulfillmentWorkDetailPage(): ReactElement {
 /** The order's reference when it has one; the shortened internal id otherwise. */
 function orderTitle(task: FulfillmentTask): string {
   const reference = task.orderReference ? formatOrderRef(task.orderReference) : shortenId(task.orderId);
-  return `${COPY.orderTitlePrefix} ${reference}`;
+  return interpolate(getMessages('fulfillment').workDetail.orderTitle, { reference });
 }
 
 function FulfillmentWorkDetail({
@@ -115,6 +114,7 @@ function FulfillmentWorkDetail({
 }: {
   backTo: { to: string; label: string };
 }): ReactElement {
+  const copy = useMessages('fulfillment').workDetail;
   const { workId = '' } = useParams<{ workId: string }>();
   const query = useFulfillmentWorkQuery(workId);
   const demoMode = useDemoMode();
@@ -127,7 +127,7 @@ function FulfillmentWorkDetail({
 
   if (query.isPending) {
     return (
-      <PageLayout eyebrow={COPY.eyebrow} title={COPY.titleFallback} backTo={backTo}>
+      <PageLayout eyebrow={copy.eyebrow} title={copy.titleFallback} backTo={backTo}>
         <FulfillmentWorkDetailSkeleton />
       </PageLayout>
     );
@@ -139,29 +139,29 @@ function FulfillmentWorkDetail({
 
     return (
       <PageLayout
-        eyebrow={COPY.eyebrow}
-        title={isNotFound ? COPY.states.notFound.title : COPY.titleFallback}
+        eyebrow={copy.eyebrow}
+        title={isNotFound ? copy.states.notFound.title : copy.titleFallback}
         backTo={backTo}
       >
         {isDenied ? (
-          <FulfillmentAccessDenied copy={COPY.states.denied} />
+          <FulfillmentAccessDenied copy={copy.states.denied} />
         ) : isNotFound ? (
           <EmptyState
             liveRegion="off"
-            title={COPY.states.notFound.title}
-            message={COPY.states.notFound.message}
+            title={copy.states.notFound.title}
+            message={copy.states.notFound.message}
           />
         ) : (
           <ErrorState
-            title={COPY.states.error.title}
-            message={COPY.states.error.message}
+            title={copy.states.error.title}
+            message={copy.states.error.message}
             action={
               <Button
                 onClick={() => {
                   void query.refetch();
                 }}
               >
-                {COPY.states.error.retry}
+                {copy.states.error.retry}
               </Button>
             }
           />
@@ -177,9 +177,9 @@ function FulfillmentWorkDetail({
     <DetailSection
       tone="actions"
       className="fulfilment-work-detail__actions-card fulfilment-work-detail__slot--actions"
-      aria-label={COPY.sections.actions}
+      aria-label={copy.sections.actions}
     >
-      <span className="fulfilment-work-detail__actions-label">{COPY.sections.actions}</span>
+      <span className="fulfilment-work-detail__actions-label">{copy.sections.actions}</span>
       <div
         className="fulfilment-work-detail__actions"
         // The REGION, not the button: this page renders one task, so while an
@@ -212,7 +212,7 @@ function FulfillmentWorkDetail({
             length test would tell a read-only viewer this task is finished
             when what is true is that they cannot act on it. */}
         {write.visible && task.supportedActions.length === 0 ? (
-          <p className="fulfilment-work-detail__actions-empty">{COPY.actions.nothingLeft}</p>
+          <p className="fulfilment-work-detail__actions-empty">{copy.actions.nothingLeft}</p>
         ) : null}
       </div>
     </DetailSection>
@@ -220,12 +220,12 @@ function FulfillmentWorkDetail({
 
   return (
     <PageLayout
-      eyebrow={COPY.eyebrow}
+      eyebrow={copy.eyebrow}
       title={orderTitle(task)}
       backTo={backTo}
       actions={
         <Link className="button button--secondary" to={`/orders/${encodeURIComponent(task.orderId)}`}>
-          {COPY.openOrder}
+          {copy.openOrder}
         </Link>
       }
     >

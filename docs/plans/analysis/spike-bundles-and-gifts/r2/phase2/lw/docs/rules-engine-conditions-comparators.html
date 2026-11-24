@@ -1,0 +1,836 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/rules-engine-conditions-comparators"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Rules Engine Conditions and Comparators</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Rules Engine Conditions and Comparators';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+  <h1 id="h1_1647278328" data-has-heading-anchor="true">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>Rules Engine: Conditions and Comparators
+  <a href="/articles/documentation/rules-engine-conditions-comparators/a/h1_1647278328" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/h1_1647278328&#39;,this);"></a></h1>
+  <p>
+    <i>Rules Engine </i>provides different conditions that can be used to evaluate orders. This page gives an overview of all available conditions with a description of each.
+  </p>
+  <h2 id="h2_851995787" data-has-heading-anchor="true">
+    Rules Engine conditions
+  <a href="/articles/documentation/rules-engine-conditions-comparators/a/h2_851995787" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/h2_851995787&#39;,this);"></a></h2>
+  <p>
+    In the sections below, all possible conditions that can be evaluated by a rule are given. Note that some conditions may be too restrictive to be useful in more than one or two specific situations. For example, using a condition based on the first line of the shipping address would probably not be a very constructive use of a rule. Whereas basing a rule on conditions such as Country, Shipping Cost, or Source would more likely be beneficial.
+  </p>
+  <h4 id="h4_168065668" data-has-heading-anchor="true">
+    Order Level
+  <a href="/articles/documentation/rules-engine-conditions-comparators/a/h4_168065668" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/h4_168065668&#39;,this);"></a></h4>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th style="width: 190px;" class="">
+          <font color="#808080">Condition</font>
+        </th>
+        <th style="width: 645px;" class="">
+          <font color="#808080">Description</font>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Address line 1</b></span>
+        </td>
+        <td style="width: 645px;">
+          Address line 1 of the order shipping address.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Address line 2</b></span>
+        </td>
+        <td style="width: 645px;">
+          Address line 2 of the order shipping address.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Address line 3</b></span>
+        </td>
+        <td style="width: 645px;">
+          Address line 3 of the order shipping address.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Company</b></span>
+        </td>
+        <td style="width: 645px;">
+          Company name used from the shipping address.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Delivery end day</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only.&nbsp; The end day of the scheduled delivery.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Delivery end hour</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only.&nbsp; Last hour of the scheduled delivery in a format of 0 to 23.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Delivery end minute</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only.&nbsp; Last-minute of the scheduled delivery in a format of 0 to 59.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Delivery start day</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only.&nbsp; First day of the scheduled delivery.&nbsp;
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Delivery start hour</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only.&nbsp; The first hour of the scheduled delivery is in a format of 0 to 23.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Delivery start minute</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only.&nbsp; The first minute of the scheduled delivery is in a format of 0 to 59.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Despatch by day</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only. The last day of the scheduled delivery.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Despatch by hour</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only. The last hour of the scheduled delivery is in a format of 0 to 23.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Despatch by minute</b></span>
+        </td>
+        <td style="width: 645px;">
+          Used for <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery" target="_top">Amazon Scheduled Delivery</a> only. The last-minute of the scheduled delivery in a format of 0 to 59.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>E-mail address</b></span>
+        </td>
+        <td style="width: 645px;">
+          Email used for dispatching purposes.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Identifier</b></span>
+        </td>
+        <td style="width: 645px;">
+          A custom identifier created in <i>Settings &gt; General Settings &gt; Order Settings</i>.
+        </td>
+      </tr>
+      <tr><td style="width: 190px;"><b>Is merged</b><br/></td><td style="width: 645px;">This condition can be used to identify orders that were created by merging two or more orders.&nbsp;See <a href="/articles/documentation/adding-items-services-merged-split-resend-orders" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders&#39;,this);">this guide</a> for examples of how and when it can be used in the <i>Rules Engine</i>.<br/></td></tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Location</b></span>
+        </td>
+        <td style="width: 645px;">
+          &nbsp;<span>The name of the Linnworks location, where an order is downloaded.</span>
+        </td>
+      </tr>
+      <tr><td style="width: 190px;"><b>Order created by split</b><br/></td><td style="width: 645px;">This condition can be used to identify child orders that were created as a result of splitting a parent order.&nbsp;See <a href="/articles/documentation/adding-items-services-merged-split-resend-orders" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders&#39;,this);">this guide</a> for examples of how and when it can be used in the <i>Rules Engine</i>.<br/></td></tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Order currency</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the currency used on order or set in the channel config for that sales channel.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Order folder</b></span>
+        </td>
+        <td style="width: 645px;">
+          The folder that the order has been assigned to.
+        </td>
+      </tr>
+      <tr><td style="width: 190px;"><b>Order has been split</b><br/></td><td style="width: 645px;">This condition can be used to identify parent orders that have been split into one or more child orders.&nbsp;See <a href="/articles/documentation/adding-items-services-merged-split-resend-orders" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders&#39;,this);">this guide</a> for examples of how and when it can be used in the <i>Rules Engine</i>.<br/></td></tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Order note</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is a list of notes appended to an order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Order note count</b></span>
+        </td>
+        <td style="width: 645px;">
+          The number of notes on the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Order tag</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the order tag that has been assigned to the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Packaging group</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the name of the packaging group that has been assigned to the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Packaging type</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the specific packaging chosen for the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Packaging weight</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the weight of the packaging used for the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Postal Code</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the shipping postcode or ZIP code entered on the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Postal service name</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the Linnworks Postal Service that has been assigned to the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Postal service vendor</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the name of the courier associated with the Linnworks Postal Service that has been assigned to the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Received day</b></span>
+        </td>
+        <td>The weekday on which the order was placed on the sales channel.</td></tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Received hour</b></span>
+        </td>
+        <td>The date and time at which the order was placed on the sales channel.</td></tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Received minute</b></span>
+        </td>
+        <td>The date and time at which the order was placed on the sales channel.</td></tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Region</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the region, such as county or state, used when the order is despatched.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Shipping cost</b></span>
+        </td>
+        <td style="width: 645px;">
+          The shipping cost, as downloaded from the channel.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Shipping country</b></span>
+        </td>
+        <td style="width: 645px;">
+          Country of the address used for shipping purposes.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Source</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the channel the order has been downloaded or imported from. Orders placed within Linnworks will display as DIRECT.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Split package count</b></span>
+        </td>
+        <td style="width: 645px;">
+          Amount of separate packets that should be shipped for the same order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Status</b></span>
+        </td>
+        <td style="width: 645px;">
+          Here, you can select one of the statuses below:
+          <br/>
+          <ul class="regular-list">
+            <li>
+              Other</li>
+            <li>Paid
+            </li>
+            <li>Return
+            </li>
+            <li>Pending
+            </li>
+            <li>Resend
+            </li>
+          </ul>
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Subsource</b></span>
+        </td>
+        <td style="width: 645px;">
+          The SubSource shows the specific integration the order was downloaded from.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Subtotal</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the sum of all the line costs for the order, exclusive of tax.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Total charge</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the total cost of the order including tax and postage.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Total depth</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the total depth of the order taken from order dimensions.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Total height</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the total height of the order taken from order dimensions.
+        </td>
+      </tr>
+      <tr style="height: 34px;">
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Total item weight</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the total weight of all the order items in the order, excluding packaging.
+        </td>
+      </tr>
+      <tr style="height: 34px;">
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Total weight</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the total weight of the order, including packaging.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Total width</b></span>
+        </td>
+        <td style="width: 645px;">
+          This is the total width of the order taken from order dimensions.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 190px;">
+          <span style="font-weight: normal;"><b>Town</b></span>
+        </td>
+        <td style="width: 645px;">
+          Town of the address used when the order is despatched.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <h4 id="h4_1922086939" data-has-heading-anchor="true">
+    Item level
+  <a href="/articles/documentation/rules-engine-conditions-comparators/a/h4_1922086939" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/h4_1922086939&#39;,this);"></a></h4>
+  <p>
+    When a rule condition is based on the item level and the order contains multiple items, the action associated with the rule will still execute based on at least one of the items matching a rule requirement. If the order could potentially match multiple conditions within the same rule&nbsp;it will prioritize based on the first rule that is matched. The rules are checked in order from the top of the screen to the bottom.
+  </p>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th style="width: 193px;">
+          <font color="#808080">Condition</font>
+        </th>
+        <th style="width: 642px;">
+          <font color="#808080">Description</font>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="height: 35px;">
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Category</b></span>
+        </td>
+        <td style="width: 642px;">This is the Linnworks category that is assigned to the Linnworks inventory item.
+        </td>
+      </tr>
+      <tr style="height: 34px;">
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Channel SKU</b></span>
+        </td>
+        <td style="width: 642px;">
+          This is the SKU used on the sales channel for this order item, which may differ from the standard Linnworks Item Number.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Default postal service</b></span>
+        </td>
+        <td style="width: 642px;">
+          The preferred postal service for the Linnworks inventory item.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Extended property value</b></span>
+        </td>
+        <td style="width: 642px;">
+          The extended property name should be specified and then the rule is based on the value. 
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Has composites</b></span>
+        </td>
+        <td style="width: 642px;">
+          This can either be True or False, based on whether the item is a composite parent.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Has unlinked items</b></span>
+        </td>
+        <td style="width: 642px;">
+          This can either be True or False, based on whether the order items have all been mapped to a Linnworks stock item.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Item count</b></span>
+        </td>
+        <td style="width: 642px;">
+          This is the number of items that are on order, multiplied by the quantities of those items ordered.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Item count (no children)</b></span>
+        </td>
+        <td style="width: 642px;">
+          This is the number of order items, not including the child items of composites, multiplied by the quantity of the items ordered.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Item count (no parents)</b></span>
+        </td>
+        <td style="width: 642px;">
+          This is the number of items, not including composite parents, that have been ordered, multiplied by the number of items ordered.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Item title</b></span>
+        </td>
+        <td style="width: 642px;">
+          The title for the Linnworks inventory item (found on the <i>General </i>tab).
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Line count (no children)</b></span>
+        </td>
+        <td style="width: 642px;">
+          This is the number of unique items ordered, not including children of composite items.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Line count (no parents)</b></span>
+        </td>
+        <td style="width: 642px;">
+          This is the number of unique items ordered, not including parents of composite items.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Line count (total)</b></span>
+        </td>
+        <td style="width: 642px;">
+          This is the total number of unique&nbsp;items ordered, including both parent and child items.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Max depth</b></span>
+        </td>
+        <td style="width: 642px;">
+          This will compare with the largest Item Depth value from all the stock items linked to items within the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Max height</b></span>
+        </td>
+        <td style="width: 642px;">
+          This will compare with the largest Item Height value from all the stock items linked to items within the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Max weight</b></span>
+        </td>
+        <td style="width: 642px;">
+          This will compare with the largest Item Weight value from all the stock items linked to items within the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>Max width</b></span>
+        </td>
+        <td style="width: 642px;">
+          This will compare with the largest Item Width value from all the stock items linked to items within the order.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 193px;">
+          <span style="font-weight: normal;"><b>SKU</b></span>
+        </td>
+        <td style="width: 642px;">
+          The SKU / Item number for the Linnworks inventory item.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <h4 id="example" data-has-heading-anchor="true">An example of using Extended Property as a comparator<a href="/articles/documentation/rules-engine-conditions-comparators/a/example" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/example&#39;,this);"></a></h4>
+  <p>
+    Let's say you have a number of stock items that are fragile and need special attention when it comes to dispatching to ensure a suitable shipping service is used. If there is an extended property on one of the linked stock items with a type <i><span style="font-weight: normal;">Attribute</span></i>, named <i><span style="font-weight: normal;">Fragile</span></i>, which has a value of <span style="font-weight: normal;">TRUE</span>, it would be possible to add the following rule:</p>
+  <ol>
+    <li>
+      Open the screen by going to <i>Orders &gt; Rules Engine</i>.<br/>
+    </li>
+    <li>
+      Either create a new rule or edit an existing rule.
+      <br/>
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RE_AddNewEdit.png" alt="" style="width: 803.99px; height: 125.057px;" loading="lazy"/>
+      <br/>
+    </li>
+    <li>
+      Click <span style="font-weight: normal;"><span class="btn-white"><span class="fa fa-plus">&nbsp;</span>Add New</span><i><br/>
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RE_AddNew.png" alt="" loading="lazy"/>
+      <br/>
+      </i></span>
+    </li>
+    <li>
+      Name the condition.
+      <br/>
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RE_Condition.png" alt="" style="width: 508.603px; height: 287.99px;" loading="lazy"/>
+      <br/>
+    </li>
+    <li>
+      Select <span style="font-weight: normal;"><i>Extended property value</i> as a comparator.<i>
+      <br/>
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RE_EPvalue.png" alt="" style="width: 569.41px; height: 506.99px;" loading="lazy"/>
+      <br/>
+      </i></span>
+    </li>
+    <li>
+      Type the name of the extended property and either select the correct name from the dropdown or click the&nbsp;<span class="fa fa-save">&nbsp;</span>&nbsp;icon.
+      <br/>
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/RulesEngine/ER_EPselect.png" alt="" style="width: 575.642px; height: 397.966px;" loading="lazy"/>
+      <br/>
+    </li>
+    <li>
+      Select the appropriate condition.&nbsp;In this ca<span style="font-weight: normal;">se, <i>equals</i>.</span>
+    </li>
+    <li>
+      Enter the appropriate property value.&nbsp;In this case,&nbsp;<span style="font-weight: normal;">TRUE<i>. </i>And save the condition.
+      <br/>
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/RulesEngine/ER_EPsave.png" alt="" style="width: 568.976px; height: 393.36px;" loading="lazy"/>&nbsp;</span>
+    </li>
+  </ol>
+  <p>
+    It is then possible to add an action such as<i><span style="font-weight: normal;"> Assign to a folder</span></i>&nbsp;so that the order will stand out from other orders in your Linnworks system<strong>&nbsp;</strong>or use the action&nbsp;<i><span style="font-weight: normal;">Assign postal service</span></i> so that the order automatically will be sent using an appropriate service.
+  </p>
+  <h2 id="h2_2019834298" data-has-heading-anchor="true">
+    List of comparators<a href="/articles/documentation/rules-engine-conditions-comparators/a/h2_2019834298" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/h2_2019834298&#39;,this);"></a></h2>
+  <p>Below is a list of comparators that can be used when designing rules. The upper table is for use with single conditions, such as FruitType = banana. The second table is for where multiple comparisons need to be made, such as FruitType = Apple or Banana or Strawberry. The multiple comparators are functionally identical to their single comparison equivalents.&nbsp;</p><h4 id="h4_305926823" data-has-heading-anchor="true">
+    Single comparison<a href="/articles/documentation/rules-engine-conditions-comparators/a/h4_305926823" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/h4_305926823&#39;,this);"></a></h4>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th style="width: 176px;">
+          <font color="#808080">Single comparator</font>
+        </th>
+        <th style="width: 659px;">
+          <font color="#808080">Description</font>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>equals</b></span>
+        </td>
+        <td style="width: 659px;">
+          Used to select values that match the given constraint.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>does not equal</b></span>
+        </td>
+        <td style="width: 659px;">
+          Used to select values that do not match the given constraint.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>starts with</b></span>
+        </td>
+        <td style="width: 659px;">
+          This makes a text comparison where the value has to begin with the given constraint.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>does not start with</b></span>
+        </td>
+        <td style="width: 659px;">
+          This makes a text comparison where the value must not begin with the given constraint.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>ends with</b></span>
+        </td>
+        <td style="width: 659px;">
+          This makes a text comparison where the last characters of the value must match the given constraint characters.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>does not end with</b></span>
+        </td>
+        <td style="width: 659px;">
+          This makes a text comparison where the last characters of the value must match the given constraint characters.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>contains</b></span>
+        </td>
+        <td style="width: 659px;">
+          This makes a text comparison where the value must have the constraining string incorporated within it.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>does not contain</b></span>
+        </td>
+        <td style="width: 659px;">
+          This makes a text comparison where the value must not have the constraining string incorporated within it.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>matches (regex)</b></span>
+        </td>
+        <td style="width: 659px;">
+          This allows you to have a constraint written in regex that must evaluate to be true.
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 176px;">
+          <span style="font-weight: normal;"><b>does not match (regex)</b></span>
+        </td>
+        <td style="width: 659px;">
+          This allows you to have a constraint written in regex that must evaluate to be false.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <h4 id="h4_2081676488" data-has-heading-anchor="true">
+    Multiple comparisons
+  <a href="/articles/documentation/rules-engine-conditions-comparators/a/h4_2081676488" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators/a/h4_2081676488&#39;,this);"></a></h4>
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th style="width: 247px;">
+          <font color="#808080">Multiple comparators</font>
+        </th>
+        <th style="width: 588px;">
+          <font color="#808080">Description</font>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="width: 247px;">
+          <span style="font-weight: normal;"><b>matches one of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of equals.</span></td>
+      </tr>
+      <tr>
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>doesn't match any of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of&nbsp;does not equal.</span></td>
+      </tr>
+      <tr>
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>starts with one of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of starts with.</span></td>
+      </tr>
+      <tr>
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>does not start with any of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of&nbsp;does not start with.</span></td>
+      </tr>
+      <tr style="height: 34px;">
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>ends with one of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of ends with.
+        </span></td>
+      </tr>
+      <tr style="height: 34px;">
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>does not end with any of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of does not end with.</span></td>
+      </tr>
+      <tr>
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>contains one of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of contains.</span></td>
+      </tr>
+      <tr>
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>does not contain any of</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of does not contain.</span></td>
+      </tr>
+      <tr>
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>matches one of (regex)</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of matches (regex).</span></td>
+      </tr>
+      <tr>
+        <td style="width: 247px;"><span style="font-weight: normal;">
+          <b>doesn't match any of (regex)</b>
+        </span></td>
+        <td style="width: 588px;"><span style="font-weight: normal;">
+          Multiple equivalents of does not match (regex).</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    For additional info about the&nbsp;<i>Rules Engine</i> logic, check our guide <a href="https://help.linnworks.com/support/solutions/articles/7000039317-rules-engine-logic" target="_blank">here</a>.
+  </p>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

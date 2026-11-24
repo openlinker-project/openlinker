@@ -33,11 +33,16 @@ import {
   AUTOMATION_CONDITION_FIELD_VALUES,
   AUTOMATION_ACTION_VALUES,
 } from '../api/automation.types';
+import type { Messages, ResolvedCopy } from '../../../shared/i18n';
+
+/** The validation messages, read from `automation.composerSchema`. */
+export type AutomationComposerSchemaCopy = ResolvedCopy<Messages['automation']['composerSchema']>;
 
 /** Shape only — see the module docblock. */
 const AMOUNT_SHAPE = /^\d+(\.\d{1,2})?$/;
 
-export const automationConditionDraftSchema = z
+export function createAutomationConditionDraftSchema(copy: AutomationComposerSchemaCopy) {
+  return z
   .object({
     field: z.enum(AUTOMATION_CONDITION_FIELD_VALUES),
     value: z.string(),
@@ -53,7 +58,7 @@ export const automationConditionDraftSchema = z
           code: 'custom',
           input: draft.amount,
           path: ['amount'],
-          message: 'Enter an amount like 2000 or 2000.50.',
+          message: copy.amountShape,
         });
       }
       if (draft.currency.trim().length !== 3) {
@@ -61,7 +66,7 @@ export const automationConditionDraftSchema = z
           code: 'custom',
           input: draft.currency,
           path: ['currency'],
-          message: 'Enter a three-letter currency code, like PLN.',
+          message: copy.currencyShape,
         });
       }
       return;
@@ -71,12 +76,14 @@ export const automationConditionDraftSchema = z
         code: 'custom',
         input: draft.value,
         path: ['value'],
-        message: 'Pick a value for this condition.',
+        message: copy.valueRequired,
       });
     }
   });
+}
 
-export const automationActionDraftSchema = z
+export function createAutomationActionDraftSchema(copy: AutomationComposerSchemaCopy) {
+  return z
   .object({
     action: z.enum(AUTOMATION_ACTION_VALUES),
     carrierId: z.string(),
@@ -98,23 +105,23 @@ export const automationActionDraftSchema = z
 
     switch (draft.action) {
       case 'dispatch-shipment':
-        require('carrierId', draft.carrierId, 'Pick the carrier account to buy from.');
+        require('carrierId', draft.carrierId, copy.carrierRequired);
         return;
       case 'send-email':
         if (draft.recipientKind === 'address') {
-          require('address', draft.address, 'Enter the address to send to.');
+          require('address', draft.address, copy.addressRequired);
         }
         // `subject` is deliberately NOT required: the narrower accepts an empty
         // string, and a subject-less email is a real (if odd) choice. `body` is
         // required because the narrower rejects an empty one.
-        require('body', draft.body, 'Write the message to send.');
+        require('body', draft.body, copy.bodyRequired);
         return;
       case 'place-hold':
-        require('holdReason', draft.holdReason, 'Pick why the order is being held.');
+        require('holdReason', draft.holdReason, copy.holdReasonRequired);
         return;
       case 'release-hold':
         // Required, mirroring the manual release (spec §5.3b A6).
-        require('note', draft.note, 'Say why the hold is being lifted.');
+        require('note', draft.note, copy.noteRequired);
         return;
       case 'issue-sales-document':
       case 'relay-status-to-source':
@@ -126,24 +133,32 @@ export const automationActionDraftSchema = z
       }
     }
   });
+}
 
-export const automationComposerSchema = z.object({
-  name: z.string().trim().min(1, 'Give this automation a name.').max(200),
-  trigger: z.string().min(1, 'Pick the event to watch for.'),
-  triggerConfigValue: z.string(),
-  conditions: z.array(automationConditionDraftSchema),
-  actions: z
-    .array(automationActionDraftSchema)
-    .min(1, 'Add at least one step — an automation with no steps does nothing.'),
-  isActive: z.boolean(),
-  moneyAcknowledged: z.boolean(),
-  effectiveFrom: z.string().min(1, 'Pick the day this starts applying.'),
-  effectiveTo: z.string(),
-});
+/**
+ * The composer's resolver schema. Built from copy, so the component creates it
+ * with `useMemo(() => createAutomationComposerSchema(copy), [copy])` and the
+ * messages follow the active language.
+ */
+export function createAutomationComposerSchema(copy: AutomationComposerSchemaCopy) {
+  return z.object({
+    name: z.string().trim().min(1, copy.nameRequired).max(200),
+    trigger: z.string().min(1, copy.triggerRequired),
+    triggerConfigValue: z.string(),
+    conditions: z.array(createAutomationConditionDraftSchema(copy)),
+    actions: z.array(createAutomationActionDraftSchema(copy)).min(1, copy.actionsRequired),
+    isActive: z.boolean(),
+    moneyAcknowledged: z.boolean(),
+    effectiveFrom: z.string().min(1, copy.effectiveFromRequired),
+    effectiveTo: z.string(),
+  });
+}
 
-export type AutomationComposerValues = z.infer<typeof automationComposerSchema>;
-export type AutomationConditionDraft = z.infer<typeof automationConditionDraftSchema>;
-export type AutomationActionDraft = z.infer<typeof automationActionDraftSchema>;
+export type AutomationComposerValues = z.infer<ReturnType<typeof createAutomationComposerSchema>>;
+export type AutomationConditionDraft = z.infer<
+  ReturnType<typeof createAutomationConditionDraftSchema>
+>;
+export type AutomationActionDraft = z.infer<ReturnType<typeof createAutomationActionDraftSchema>>;
 
 export function newConditionDraft(): AutomationConditionDraft {
   return { field: 'sourceConnection', value: '', op: 'gte', amount: '', currency: 'PLN' };

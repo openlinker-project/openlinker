@@ -105,6 +105,32 @@ describe('EparagonyInvoiceCorrectionFlow', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('warns once when the reason is empty, then lets the operator submit without one (DEF-32)', async () => {
+    const issueCorrection = vi.fn().mockResolvedValue(makeInvoice({ id: 'ol_invoice_noreason' }));
+    renderWithProviders(
+      <EparagonyInvoiceCorrectionFlow
+        invoice={makeInvoice()}
+        connection={eparagonyConnection}
+        onClose={vi.fn()}
+        onCorrectionIssued={vi.fn()}
+      />,
+      { apiClient: createMockApiClient({ invoicing: { issueCorrection } }) },
+    );
+
+    const lineInput = await screen.findByLabelText(/Line number 1/i);
+    fireEvent.change(lineInput, { target: { value: '1' } });
+    const qtyInput = await screen.findByLabelText(/New qty, line 1/i);
+    fireEvent.change(qtyInput, { target: { value: '0' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
+
+    expect(await screen.findByText(/submit again to issue the correction without one/i)).toBeTruthy();
+    expect(issueCorrection).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
+    await waitFor(() => expect(issueCorrection).toHaveBeenCalledOnce());
+    expect(issueCorrection.mock.calls[0][1].reason).toBeUndefined();
+  });
+
   it('submits issueCorrection with reason and line data on form submit', async () => {
     const correctionInvoice = makeInvoice({ id: 'ol_invoice_correction' });
     const issueCorrection = vi.fn().mockResolvedValue(correctionInvoice);
@@ -170,6 +196,9 @@ describe('EparagonyInvoiceCorrectionFlow', () => {
     const qtyInputs = await screen.findAllByLabelText(/New qty, line/i);
     fireEvent.change(qtyInputs[0], { target: { value: '3' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {

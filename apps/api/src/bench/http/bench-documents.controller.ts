@@ -55,16 +55,7 @@
  *
  * @module apps/api/src/bench/http
  */
-import {
-  ConflictException,
-  Controller,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Res,
-  StreamableFile,
-} from '@nestjs/common';
+import { Controller, Get, Inject, Param, Res, StreamableFile, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
 import {
   ApiBearerAuth,
@@ -121,6 +112,8 @@ import {
   BenchReceiptLinkResponseDto,
   BenchUnlabelledParcelListResponseDto,
 } from './dto/bench-documents-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { benchInvoiceNotPrintable, benchParcelNotFound } from './bench-errors';
 
 // The invoice and receipt Content-Type is adapter-declared, ultimately a
 // provider's own value. Only types a browser displays without executing
@@ -209,7 +202,12 @@ export class BenchDocumentsController {
     const work = await this.resolveWork(workId);
     const record = await this.invoices.getLatestIssuedInvoiceForOrder(work.orderId);
     if (record === null) {
-      throw new NotFoundException('No issued invoice for this parcel’s order');
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'BENCH_INVOICE_NOT_ISSUED',
+        'No issued invoice for this parcel’s order',
+        { workId }
+      );
     }
 
     // The degrade path the READ already has (#2905 review). `canRenderDocument`
@@ -229,9 +227,7 @@ export class BenchDocumentsController {
         `bench_invoice_adapter_unresolved workId=${workId} connectionId=${record.connectionId}: ` +
           `${error instanceof Error ? error.message : String(error)}`
       );
-      throw new ConflictException(
-        'This invoice has no printable version. Send the box without it.'
-      );
+      throw benchInvoiceNotPrintable(workId);
     }
     if (
       record.regulatoryStatus !== 'accepted' ||
@@ -250,9 +246,7 @@ export class BenchDocumentsController {
       // Deliberately NOT falling back to the `source` document: that is
       // machine-readable XML, and handing a packer XML to fold into a box is
       // worse than telling them there is nothing to print.
-      throw new ConflictException(
-        'This invoice has no printable version. Send the box without it.'
-      );
+      throw benchInvoiceNotPrintable(workId);
     }
 
     // Defence in depth: an adapter that declares no kind hint but still refuses
@@ -262,9 +256,7 @@ export class BenchDocumentsController {
       document = await adapter.getRegulatoryDocument(record, 'rendered');
     } catch (error) {
       if (error instanceof UnsupportedRegulatoryDocumentKindError) {
-        throw new ConflictException(
-          'This invoice has no printable version. Send the box without it.'
-        );
+        throw benchInvoiceNotPrintable(workId);
       }
       throw error;
     }
@@ -313,7 +305,12 @@ export class BenchDocumentsController {
     // cannot be walked to another order's receipt.
     const artefact = await this.salesDocuments.getReceiptHandoverArtefact(work.orderId);
     if (artefact === null) {
-      throw new NotFoundException('No receipt to open for this parcel');
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'BENCH_RECEIPT_NOT_FOUND',
+        'No receipt to open for this parcel',
+        { workId }
+      );
     }
 
     if (artefact.medium === 'link') {
@@ -357,7 +354,14 @@ export class BenchDocumentsController {
     // `shipmentId`, never the carrier's own rejection prose.
     const view = await this.documents.getDocuments(work, false);
     if (view.label.state !== 'ready') {
-      throw new NotFoundException('No label for this parcel');
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'BENCH_LABEL_NOT_READY',
+        'No label for this parcel',
+        {
+          workId,
+        }
+      );
     }
 
     let document: Awaited<ReturnType<IShipmentLabelService['fetchLabel']>>;
@@ -368,7 +372,12 @@ export class BenchDocumentsController {
         `bench_label_fetch_failed workId=${workId} shipmentId=${view.label.shipmentId}: ` +
           `${error instanceof Error ? error.message : String(error)}`
       );
-      throw new ConflictException('This label could not be retrieved. Check with dispatch.');
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'BENCH_LABEL_UNAVAILABLE',
+        'This label could not be retrieved. Check with dispatch.',
+        { workId }
+      );
     }
 
     // Stamped AFTER the bytes are already in hand, in its OWN try/catch
@@ -422,7 +431,7 @@ export class BenchDocumentsController {
         error instanceof FulfillmentWorkNotFoundError ||
         error instanceof BenchParcelNotAtThisBenchError
       ) {
-        throw new NotFoundException('No such parcel at this bench');
+        throw benchParcelNotFound();
       }
       throw error;
     }

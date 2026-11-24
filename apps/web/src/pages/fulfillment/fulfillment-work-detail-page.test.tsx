@@ -24,18 +24,20 @@ import {
   renderWithProviders,
 } from '../../test/test-utils';
 import {
-  FULFILLMENT_ACTION_COPY,
-  FULFILLMENT_WORK_DETAIL_COPY,
   fulfillmentActionLabel,
   type FulfillmentTask,
 } from '../../features/fulfillment';
 import { holdReasonLabel } from '../../features/orders';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages, interpolate } from '../../shared/i18n';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 
 afterEach(cleanup);
 
-const COPY = FULFILLMENT_WORK_DETAIL_COPY;
+const COPY = getMessages('fulfillment').workDetail;
+const FULFILLMENT_ACTION_COPY = getMessages('fulfillment').action as Readonly<
+  Record<string, { readonly label: string; readonly hint: string }>
+>;
 
 const getMock = (): GetMock => vi.fn<(workId: string) => Promise<FulfillmentTask>>();
 const WORK_ID = 'ol_work_1';
@@ -268,18 +270,19 @@ describe('FulfillmentWorkDetailPage', () => {
   });
 
   describe('the hero', () => {
-    it('should join BOTH axis labels in the headline, because neither carries the other', async () => {
+    it('should show the bare state in the headline for an accepted task (#3763)', async () => {
       renderPage();
 
       const hero = await findHero();
-      expect(within(hero).getByText('In progress · Accepted')).toBeInTheDocument();
+      expect(within(hero).getByText('In progress')).toBeInTheDocument();
+      expect(within(hero).queryByText(/Accepted/)).not.toBeInTheDocument();
     });
 
     it('should render the derived sentence when the build can say one', async () => {
       renderPage();
 
       expect(
-        await screen.findByText(COPY.summary.inProgress(COPY.summary.executorFallback))
+        await screen.findByText(interpolate(COPY.summary.inProgress, { subject: COPY.summary.executorFallback }))
       ).toBeInTheDocument();
     });
   });

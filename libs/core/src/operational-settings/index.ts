@@ -23,13 +23,17 @@ export {
   OPERATIONAL_SETTING_KEYS,
   OPERATIONAL_SETTING_SOURCES,
   checkOperationalSettingBound,
+  findOperationalSettingBoundBreach,
+  OperationalSettingRuleValues,
   exceedsAdapterPageSize,
   readOperationalSettingEnv,
   resolveOperationalSetting,
 } from './domain/types/operational-settings.types';
 export type {
   OperationalSettingBound,
+  OperationalSettingBoundBreach,
   OperationalSettingKey,
+  OperationalSettingRule,
   OperationalSettingSource,
   OperationalSettingsInput,
   OperationalSettingsView,

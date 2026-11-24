@@ -7,6 +7,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { MappingConfigService } from '../mapping-config.service';
+import { CategoryMappingReassignSameConnectionException } from '../../../domain/exceptions/category-mapping-reassign-same-connection.exception';
 import {
   STATUS_MAPPING_REPOSITORY_TOKEN,
   CARRIER_MAPPING_REPOSITORY_TOKEN,
@@ -62,6 +63,7 @@ describe('MappingConfigService', () => {
       findBySourceCategoryByProvenance: jest.fn(),
       upsertMapping: jest.fn(),
       deleteMapping: jest.fn(),
+      reassignDestination: jest.fn(),
     };
     orderStateRepo = {
       findByConnectionId: jest.fn(),
@@ -285,6 +287,38 @@ describe('MappingConfigService', () => {
     });
   });
 
+  describe('resolvePaymentMapping (#3474)', () => {
+    it('should return prestashopPaymentModule when the source payment type matches', async () => {
+      paymentRepo.findByConnectionId.mockResolvedValue([
+        new PaymentMapping('id-1', CONNECTION_ID, 'ONLINE', 'payu'),
+        new PaymentMapping('id-2', CONNECTION_ID, 'CASH_ON_DELIVERY', 'ps_cashondelivery'),
+      ]);
+
+      const result = await service.resolvePaymentMapping(CONNECTION_ID, 'CASH_ON_DELIVERY');
+
+      expect(result).toBe('ps_cashondelivery');
+      expect(paymentRepo.findByConnectionId).toHaveBeenCalledWith(CONNECTION_ID);
+    });
+
+    it('should return null when no mapping matches the source payment type', async () => {
+      paymentRepo.findByConnectionId.mockResolvedValue([
+        new PaymentMapping('id-1', CONNECTION_ID, 'ONLINE', 'payu'),
+      ]);
+
+      const result = await service.resolvePaymentMapping(CONNECTION_ID, 'WALLET');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when the connection has no payment mappings configured', async () => {
+      paymentRepo.findByConnectionId.mockResolvedValue([]);
+
+      const result = await service.resolvePaymentMapping(CONNECTION_ID, 'ONLINE');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('upsertPaymentMappings', () => {
     it('should delegate to replaceForConnection', async () => {
       const input = [{ allegroPaymentProvider: 'BLIK', prestashopPaymentModule: 'payu' }];
@@ -318,7 +352,12 @@ describe('MappingConfigService', () => {
 
       const result = await service.getCategoryMappings(CONNECTION_ID);
 
-      expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(CONNECTION_ID);
+      // No source scope given: the repository must receive it as absent, which lists every
+      // source store's mappings for this marketplace (#3993).
+      expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        undefined
+      );
       expect(result).toEqual(mappings);
     });
   });
@@ -356,7 +395,7 @@ describe('MappingConfigService', () => {
 
       await service.deleteCategoryMapping(CONNECTION_ID, '5');
 
-      expect(categoryRepo.deleteMapping).toHaveBeenCalledWith(CONNECTION_ID, '5');
+      expect(categoryRepo.deleteMapping).toHaveBeenCalledWith(CONNECTION_ID, '5', undefined);
     });
   });
 
@@ -385,6 +424,40 @@ describe('MappingConfigService', () => {
       const result = await service.resolveDestinationCategory(CONNECTION_ID, '999');
 
       expect(result).toBeNull();
+    });
+
+    it('should scope the destination-keyed lookup to the source store when one is given (#3993)', async () => {
+      categoryRepo.findBySourceCategory.mockResolvedValue(null);
+
+      await service.resolveDestinationCategory(CONNECTION_ID, '3', { sourceConnectionId: 'src-1' });
+
+      expect(categoryRepo.findBySourceCategory).toHaveBeenCalledWith(CONNECTION_ID, '3', 'src-1');
+    });
+
+    it('should pass the source scope through when listing and deleting category mappings (#3993)', async () => {
+      categoryRepo.findByDestinationConnection.mockResolvedValue([]);
+
+      await service.getCategoryMappings(CONNECTION_ID, 'src-1');
+      await service.deleteCategoryMapping(CONNECTION_ID, '3', 'src-1');
+
+      expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(CONNECTION_ID, 'src-1');
+      expect(categoryRepo.deleteMapping).toHaveBeenCalledWith(CONNECTION_ID, '3', 'src-1');
+    });
+
+    it('should refuse to reassign a connection onto itself without touching the repository (#3993)', async () => {
+      await expect(service.reassignCategoryMappings(CONNECTION_ID, CONNECTION_ID)).rejects.toBeInstanceOf(
+        CategoryMappingReassignSameConnectionException
+      );
+      expect(categoryRepo.reassignDestination).not.toHaveBeenCalled();
+    });
+
+    it('should move mappings from one connection to another when reassigning (#3993)', async () => {
+      categoryRepo.reassignDestination.mockResolvedValue({ moved: 2, keptSourceCategoryIds: ['3'] });
+
+      const result = await service.reassignCategoryMappings('master-1', CONNECTION_ID);
+
+      expect(categoryRepo.reassignDestination).toHaveBeenCalledWith('master-1', CONNECTION_ID);
+      expect(result).toEqual({ moved: 2, keptSourceCategoryIds: ['3'] });
     });
 
     it('should prefer a destination-keyed mapping over the borrowed-taxonomy fallback (#1045)', async () => {

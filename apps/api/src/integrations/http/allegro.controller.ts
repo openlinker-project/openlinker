@@ -20,7 +20,6 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
-  NotFoundException,
   Inject,
   UseInterceptors,
   UploadedFile,
@@ -39,6 +38,8 @@ import {
   ApiConsumes,
   ApiBody,
 } from '@nestjs/swagger';
+import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
+import { resolveReceiptLineNameLimit } from '../application/services/resolve-receipt-line-name-limit';
 import { Public } from '../../auth/decorators/public.decorator';
 import {
   IOAuthConnectionService,
@@ -74,6 +75,11 @@ import {
 } from '@openlinker/integrations-allegro';
 import { UploadSafetyAttachmentResponseDto } from './dto/upload-safety-attachment-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import {
+  GENERIC_FIELD_CODE,
+  VALIDATION_FAILED,
+} from '../application/services/connection-shape-error-body';
 
 @ApiTags('allegro')
 @Controller('integrations/allegro')
@@ -121,6 +127,29 @@ export class AllegroController {
     state: string;
   }> {
     const environment = dto.environment || 'sandbox';
+    // Fail now, not after the operator has authorised on Allegro: the same
+    // check runs again in ConnectionService.create at callback time (#3905).
+    if (dto.deliveryOnDocuments && !dto.connectionId) {
+      const limit = await resolveReceiptLineNameLimit(this.integrationsService, this.logger);
+      const issues = validateDeliveryOnDocumentsShape(dto.deliveryOnDocuments, limit.maxLength);
+      if (issues.length > 0) {
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          VALIDATION_FAILED,
+          `Invalid deliveryOnDocuments: ${issues
+            .map((issue) => `${issue.path} ${issue.message}`)
+            .join('; ')}`,
+          undefined,
+          {
+            errors: issues,
+            fields: issues.map((issue) => ({
+              path: `deliveryOnDocuments.${issue.path}`,
+              code: GENERIC_FIELD_CODE,
+            })),
+          }
+        );
+      }
+    }
     this.logger.log(`Initiating OAuth flow for Allegro (environment: ${environment})`);
 
     // The neutral OAuthConnectionService owns the flow; the Allegro controller
@@ -141,6 +170,10 @@ export class AllegroController {
         environment,
         ...(dto.masterCatalogConnectionId
           ? { masterCatalogConnectionId: dto.masterCatalogConnectionId }
+          : {}),
+        // A reauth rotates credentials only and must not touch config (#3911).
+        ...(dto.deliveryOnDocuments && !dto.connectionId
+          ? { deliveryOnDocuments: dto.deliveryOnDocuments }
           : {}),
       },
     });
@@ -190,7 +223,11 @@ export class AllegroController {
 
     // Validate state parameter (required for CSRF protection)
     if (!query.state) {
-      throw new BadRequestException('Missing state parameter (required for CSRF protection)');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'OAUTH_STATE_MISSING',
+        'Missing state parameter (required for CSRF protection)'
+      );
     }
 
     try {
@@ -383,7 +420,12 @@ export class AllegroController {
     // for one commandId always share a connection, so this is all-or-nothing).
     const scoped = commands.filter((command) => command.connectionId === connectionId);
     if (scoped.length === 0) {
-      throw new NotFoundException(`Command not found: ${commandId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ALLEGRO_COMMAND_NOT_FOUND',
+        `Command not found: ${commandId}`,
+        { commandId, connectionId }
+      );
     }
 
     return scoped.map((command) => AllegroQuantityCommandResponseDto.fromDomain(command));
@@ -417,8 +459,11 @@ export class AllegroController {
       'OfferManager'
     );
     if (!isResponsibleProducerReader(adapter)) {
-      throw new BadRequestException(
-        `Connection ${connectionId} does not support the ResponsibleProducerReader capability`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'PROVIDER_CAPABILITY_UNSUPPORTED',
+        `Connection ${connectionId} does not support the ResponsibleProducerReader capability`,
+        { connectionId, capability: 'ResponsibleProducerReader' }
       );
     }
     return adapter.fetchResponsibleProducers();
@@ -480,8 +525,11 @@ export class AllegroController {
     // resolver before reaching the capability narrow. The guard stays here
     // for the day this surface goes capability-scoped (per #472).
     if (!isSafetyAttachmentUploader(adapter)) {
-      throw new BadRequestException(
-        `Connection ${connectionId} does not support the SafetyAttachmentUploader capability`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'PROVIDER_CAPABILITY_UNSUPPORTED',
+        `Connection ${connectionId} does not support the SafetyAttachmentUploader capability`,
+        { connectionId, capability: 'SafetyAttachmentUploader' }
       );
     }
     const result = await adapter.uploadSafetyAttachment({

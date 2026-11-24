@@ -23,6 +23,7 @@ import { MasterInventorySyncService } from '../master-inventory-sync.service';
 import type { IEntityClaimService, IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IInventoryService } from '../inventory.service.interface';
+import type { ILocationService } from '../location.service.interface';
 import type {
   InventoryMasterPort,
   Inventory as InventoryPortInterface,
@@ -48,12 +49,16 @@ describe('MasterInventorySyncService', () => {
   let entityClaims: jest.Mocked<IEntityClaimService>;
   let jobQueue: jest.Mocked<SyncJobQueuePort>;
   let masterProductSync: jest.Mocked<IMasterProductSyncService>;
+  let locationService: { resolveMasterLocation: jest.Mock };
 
   const connectionId = 'connection-123';
   const externalId = 'ext-product-9';
   const internalProductId = 'ol_product_abc';
 
   beforeEach(() => {
+    locationService = {
+      resolveMasterLocation: jest.fn().mockResolvedValue({ id: 'ol_location_provisioned' }),
+    };
     inventoryAdapter = {
       getInventory: jest.fn(),
       listInventory: jest.fn(),
@@ -93,6 +98,9 @@ describe('MasterInventorySyncService', () => {
         .fn()
         .mockResolvedValue({ markedCount: 0, variantIds: [] }),
       staleLocatedPositionsForSource: jest
+        .fn()
+        .mockResolvedValue({ markedCount: 0, variantIds: [] }),
+      staleUnreportedLocationsForSource: jest
         .fn()
         .mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<IInventoryService>;
@@ -137,11 +145,63 @@ describe('MasterInventorySyncService', () => {
       eventPublisher,
       entityClaims,
       masterProductSync,
-      jobQueue
+      jobQueue,
+      locationService as unknown as ILocationService
     );
   });
 
   describe('syncFromMasterByExternalId', () => {
+    it('should sync the product an event-target resolver names instead of the event id', async () => {
+      const resolve = jest.fn().mockResolvedValue('resolved-product');
+      Object.assign(inventoryAdapter, { resolveEventProductExternalId: resolve });
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+
+      await service.syncFromMasterByExternalId(connectionId, 'inventory-item:5:9');
+
+      expect(resolve).toHaveBeenCalledWith('inventory-item:5:9');
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        'Product',
+        'resolved-product',
+        connectionId
+      );
+    });
+
+    it('should end without reading or writing when the resolver says the event is not applicable', async () => {
+      Object.assign(inventoryAdapter, {
+        resolveEventProductExternalId: jest.fn().mockResolvedValue(null),
+      });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, 'inventory-item:5:9');
+
+      expect(result).toMatchObject({ skipped: 'event-not-applicable', itemsWritten: 0, masterDeleted: false });
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+      expect(inventoryAdapter.listInventory).not.toHaveBeenCalled();
+      expect(inventoryService.setInventory).not.toHaveBeenCalled();
+    });
+
+    it('should attribute every written position to the sync run when one is given (#4062)', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'adapter-inv-1',
+          productId: internalProductId,
+          variantId: 'var-1',
+          locationId: 'loc-1',
+          quantity: 4,
+          reserved: 0,
+          available: 4,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId, { syncRunId: 'job-9' });
+
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productVariantId: 'var-1', availableQuantity: 4 }),
+        connectionId,
+        { reason: 'master_sync', sourceKind: 'master_sync', syncRunId: 'job-9' }
+      );
+    });
+
     it('should resolve external→internal ID and set canonical inventory when the adapter returns a complete inventory record', async () => {
       const adapterInventory: InventoryPortInterface = {
         id: 'adapter-inv-1',
@@ -1238,6 +1298,83 @@ describe('MasterInventorySyncService', () => {
         internalProductId,
         ['ol_variant_a'],
         expect.anything()
+      );
+    });
+  });
+
+  describe('multi-location pruning', () => {
+    const entry = (variantId: string, ref: string, complete: boolean): InventoryPortInterface => ({
+      id: `inv-${variantId}-${ref}`,
+      productId: internalProductId,
+      variantId,
+      masterLocation: { ref, name: ref },
+      ...(complete ? { locationSetComplete: true } : {}),
+      quantity: 1,
+      reserved: 0,
+      available: 1,
+    });
+
+    it('should stale unreported locations of a variant whose set is declared complete', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { platformType: 'shopify', config: {} },
+        metadata: {},
+      } as never);
+      locationService.resolveMasterLocation.mockImplementation(({ externalRef }) =>
+        Promise.resolve({ id: `ol_location_${externalRef}` })
+      );
+      inventoryAdapter.listInventory.mockResolvedValue([
+        entry('ol_variant_a', '1', true),
+        entry('ol_variant_a', '2', true),
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleUnreportedLocationsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        [{ variantKey: 'ol_variant_a', locationIds: ['ol_location_1', 'ol_location_2'] }],
+        { sourceConnectionId: connectionId, includeUnattributedProvenance: true }
+      );
+    });
+
+    it('should not prune locations when the master did not declare the set complete', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([entry('ol_variant_a', '1', false)]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleUnreportedLocationsForSource).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('master-named locations', () => {
+    it('should resolve a master location to an OL location and write the position located', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { platformType: 'shopify', config: { stockLocationOverride: 'ol_location_main' } },
+        metadata: {},
+      } as never);
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-1',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          masterLocation: { ref: '42', name: 'Warsaw' },
+          quantity: 3,
+          reserved: 0,
+          available: 3,
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(locationService.resolveMasterLocation).toHaveBeenCalledWith({
+        connectionId,
+        platformType: 'shopify',
+        externalRef: '42',
+        name: 'Warsaw',
+      });
+      // The master's own location outranks the operator override.
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ locationId: 'ol_location_provisioned' }),
+        connectionId
       );
     });
   });

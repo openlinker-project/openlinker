@@ -8,17 +8,24 @@
  * @module apps/web/src/features/ai-provider-settings/components
  */
 import { z } from 'zod';
+import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 
 export const MIN_API_KEY_LENGTH = 8;
 export const MAX_API_KEY_LENGTH = 512;
 
-export const aiProviderSettingsFormSchema = z.object({
-  apiKey: z
-    .string()
-    .trim()
-    .min(MIN_API_KEY_LENGTH, `API key must be at least ${MIN_API_KEY_LENGTH} characters`)
-    .max(MAX_API_KEY_LENGTH, `API key is too long (max ${MAX_API_KEY_LENGTH} characters)`),
-});
+type SchemaCopy = ResolvedCopy<Messages['ai-provider-settings']>['aiProviderSettingsFormSchema'];
 
-export type AiProviderSettingsFormValues = z.input<typeof aiProviderSettingsFormSchema>;
-export type AiProviderSettingsFormSubmission = z.output<typeof aiProviderSettingsFormSchema>;
+type AiProviderSettingsFormSchema = z.ZodObject<{ apiKey: z.ZodString }>;
+
+export function createAiProviderSettingsFormSchema(copy: SchemaCopy): AiProviderSettingsFormSchema {
+  return z.object({
+    apiKey: z
+      .string()
+      .trim()
+      .min(MIN_API_KEY_LENGTH, interpolate(copy.apiKeyTooShort, { min: MIN_API_KEY_LENGTH }))
+      .max(MAX_API_KEY_LENGTH, interpolate(copy.apiKeyTooLong, { max: MAX_API_KEY_LENGTH })),
+  });
+}
+
+export type AiProviderSettingsFormValues = z.input<AiProviderSettingsFormSchema>;
+export type AiProviderSettingsFormSubmission = z.output<AiProviderSettingsFormSchema>;

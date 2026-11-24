@@ -99,8 +99,9 @@ A feature must keep its public-facing modules inside the canonical subdirectory 
 serving the `/automations` route, plural) ships its public barrel and is registered in both
 `no-restricted-imports` pattern groups for every canonical subdirectory, even though its only
 consumers today are its own pages (which may deep-import). The slug is registered up front because
-it must match the `features/automation` scan root in `scripts/check-ui-vocabulary.mjs` — a silent
-singular/plural drift between the two makes that gate skip the folder it was written to cover. The
+it must match the `features/automation` folder name. Since #2737 `scripts/check-ui-vocabulary.mjs`
+scans every `features/*` slice by discovery rather than from a list, so a singular/plural drift no
+longer makes that gate skip the folder - but the barrel slug and the folder must still agree. The
 composer (#2365) and the dry run + fired log (#2366) consume the barrel.
 
 **Cross-feature consumption example (#2411):** `fulfillment` — the work-grain
@@ -241,6 +242,12 @@ Exceptions kept intentionally eager:
 
 A parameterized test at `apps/web/src/app/routes/route-lazy.test.ts` asserts the exact lazy-route count; bump `EXPECTED_LAZY_ROUTE_COUNT` when intentionally adding or removing a lazy route.
 
+### First paint (#4029)
+
+A screen never shows a loader for a check that takes a moment: the session-check placeholders (`.guest-layout--pending`, `.shell--pending`) stay invisible for 400 ms and only then fade in, so a quick check shows the plain page background. The page that follows fades in once (`.shell--app`, `.login-stage`, 320 ms, no delay of its own). Nothing waits on purpose. A new top-level layout's loading branch takes the `--pending` class.
+
+Every page lets its content rise in: each block of the page (the outermost `.page-section`'s children) and each card of a KPI row (`.status-strip`, `.ds-grid`) rises 8 px while it fades in, 50 ms after the one before. `AppShell` re-keys its content per route (`key={location.pathname}`), so each page plays it once when it mounts, while a filter or search-param change does not. Any container can take `.reveal-stagger` to give its children the same reveal. CSS only, transform and opacity, nothing left behind when it ends, off under reduced motion.
+
 ### Breadcrumb metadata on routes (#610)
 
 Each authenticated route module declares its breadcrumb metadata inline via `route.handle` using the `RouteCrumbHandle` shape from `apps/web/src/app/nav-registry.types.ts`:
@@ -307,6 +314,9 @@ State ownership rules:
 - form state: React Hook Form
 - session state: `SessionProvider`
 - local UI state: component-local `useState` or `useReducer`
+- locale: `LocaleProvider` (persisted in `localStorage`; not session state)
+
+Locale passes the global-store test without a store: it is client-owned, app-wide, must survive route changes and is kept out of the URL on purpose. It is a single scalar context, like the theme, so it needs no general-purpose store. The "must not assume localStorage" rule below is about the session and does not apply to it.
 
 ### Server State
 
@@ -389,6 +399,17 @@ Rules:
 - server-side validation remains the source of truth
 - server validation errors should be mapped back to fields where practical
 
+`FormField` has two modes, chosen by its children:
+
+- **One control element** - cloned with `id`, `aria-describedby` and `aria-invalid`
+  automatically; the control must forward them to its native element.
+- **Anything else** (a fragment, an array, several controls on one row, a conditional that
+  can be `null`) - rendered as-is and nothing is cloned. The one control that owns the
+  label and error must spread `useFormFieldControl()` itself. Call the hook in a **child**
+  component: called in the parent that renders `<FormField>`, it reads the context above
+  itself and silently returns `{}`. In dev, a multi-child field with an `error` whose
+  children never called the hook logs a `console.warn`.
+
 ### Local UI State
 
 Use local component state for short-lived interaction state:
@@ -459,11 +480,15 @@ Four primitives cover every case, chosen by **what** is being gated, plus one ro
 | A nav entry whose audience has **no permission to gate on** | `LiveNavItem.requiresRole` (`app/nav-registry.types.ts`), applied by `isNavItemVisible` | the item is hidden — from the sidebar *and* ⌘K, which read the same function |
 | A control whose endpoint's `@Roles(...)` is strictly narrower than any permission that implies it (e.g. an admin-only route under `orders:write`) | `useIsAdmin` (`shared/auth/use-permission.ts`), **paired with** the permission, never replacing it | plain `false`, including while the session hydrates — render the affordance or nothing, never a denial |
 
+**Cost price edit is a second, deliberate exception to row two (#3588, G11-B).** Outside demo mode, row two hides a write affordance from a session that lacks the permission. The variant cost control does not: an operator or a viewer must see that a cost exists and that only an admin can change it, because margin shows them the figure either way and a missing control would read as a missing feature. So the "Edit cost" button is rendered disabled with the visible reason "Only an admin can change cost prices." (`variant-cost-readonly-reason`) and gated on `products:write`. In demo mode the same button is wrapped in `ReadOnlyLock` and shows the demo tooltip instead of that sentence. Do not copy this to other affordances: the default stays hidden.
+
 **The fourth row is the exception the first sentence now allows for, and it is narrow.** `packer` (ADR-071/#2413) holds an intentionally EMPTY `ROLE_PERMISSIONS` grant — its access is enforced route-by-route by `@Roles(...)` and nothing else — so there is no permission in existence that "a packer may open the pack bench" could be expressed as. `requiresPermission` is still the default and still correct everywhere a permission exists; reach for `requiresRole` only when none does.
 
 It does not breach the never-compare-inline rule, and the reason is worth stating because the rule's stated hazard is precisely what the typing removes: the role is declared as `readonly Role[]` **data** on the nav registry and compared in exactly one function, so a typo is a compile error rather than a silently-false expression. A hand-rolled `session.user.role === 'packer'` at a call site remains banned. Note also that this gate is one-directional — it hides an affordance and grants nothing; the API refuses the request either way.
 
 Two related gates are deliberately narrower than they look, and the type now says so (#3107 review): `LiveNavGroup.requiresRole` and `NavContribution.requiresRole` are typed `GroupRoleGate = 'admin'`, not `Role`, because both consumers test equality against `'admin'` alone. Typed as the full union they let a declaration type-check and then show the group or contribution to **everyone** — the same defect as a mistyped role, failing in the worse direction.
+
+**Exception to the second row: the stock panel's "Adjust stock" (#3569, decision G-2).** A session without `inventory:write` sees the button *disabled* with the hint "Only admins and operators can adjust stock." and a view-only notice, in every mode, not hidden. The reason is the product intent recorded in the M25 mockup and the issue's acceptance criteria: stock is readable by admin, operator and viewer (`stock-view` and `/inventory/movements` are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()`), and a viewer has to be able to see that stock can be corrected and by whom, rather than conclude the capability does not exist. It is a per-surface decision, not a new default: the stock panel gates with `usePermission` (a plain boolean) instead of `useWriteAccess`, and any other write control keeps the hide-when-missing behaviour. A role without `inventory:read` (a `packer`) is a different case: the panel gates its stock-view query on that permission, renders the master stock the page already holds with an access notice instead of "available to promise is unknown" plus Retry (a retry never fixes a role), and the stock history and `/inventory/movements` say the same with `AccessGate` / `AccessDeniedState`; the sidebar entry is hidden for those roles.
 
 **Demo mode inverts the policy between the first two rows, deliberately.** A public-demo viewer is *shown* write controls, disabled, because the point of the demo is to advertise that the capability exists (#1615). Informational content is the opposite: an explanation addressed to someone who cannot act is noise at best and misleading at worst — the MCP capabilities hint told a demo viewer to reconnect an agent it could not have, over a toggle it could not operate (#1993). So `AccessGate` does not read demo mode at all, and must not grow a prop to do so; a call site that wants the disabled-but-visible treatment is gating an affordance and belongs in row two.
 
@@ -481,6 +506,7 @@ Initial variables:
 
 - `VITE_API_BASE_URL`
 - `VITE_APP_ENV`
+- `VITE_DEFAULT_UI_LOCALE` - the language a session opens in when the operator has not chosen one and the browser asks for no language the app ships (`pl` or `en`; a blank or unsupported value counts as unset, which means `en`; see § Internationalization). Available from #3856.
 
 Rules:
 
@@ -562,26 +588,197 @@ Rules:
 
 ## Internationalization (i18n)
 
-The frontend ships a **no-op i18n seam** at `apps/web/src/shared/i18n/` (#612). The seam is the contract plugin authors bind against and the migration target for future per-feature string-migration PRs.
+*See [ADR-081](./architecture/adrs/081-frontend-owned-ui-translation.md) for the decision rationale.*
 
-**Public surface**:
+> This section describes the target state of the #3855-#3859 stack. The hooks, the provider, the `locale` prop and `VITE_DEFAULT_UI_LOCALE` exist from #3856; the formatters from #3857; the language switch and translated primitives from #3858; the lint and copy checks from #3859. Merge the stack as one unit.
 
-- `LocaleProvider` — mounted at the app root between `ThemeProvider` and `PluginRegistryProvider`. Defaults to `locale='en'` with an empty catalog.
-- `useTranslation()` — returns `{ t, locale }`. `t(key, fallback)` returns the catalog hit or the fallback. With the host's empty catalog, every call returns its `fallback` argument today.
-- `useNumberFormat(options?)` — memoised `Intl.NumberFormat` for the current locale. Replaces module-scope `new Intl.NumberFormat('en-US')` instantiations so number formatting follows locale, not en-US-pinned.
-- `getBcp47Locale(locale)` — resolves a `LocaleCode` to a BCP 47 language tag for per-row `Intl.*` options (currency, date). Single source of truth so consumers don't mirror the `'en' → 'en-US'` mapping inline (#783). A locale resolver, not a formatter — so it doesn't reopen the deferred currency/date-formatting-helper scope below.
-- `LocaleCode`, `TranslationCatalog`, `LocaleContextValue` — types.
+The app ships English and Polish. A session opens in the browser's language when the app ships it, and in English otherwise (#3890). Every user-facing word is owned by the frontend; the API never sends translated text. Everything lives behind `apps/web/src/shared/i18n/`, the only import path a component uses.
 
-**v1 scope** — explicitly **does NOT** migrate any existing English strings to `t()`. Every label, breadcrumb, button, and toast remains an inline string. The only host-side consumer is `useNumberFormat()` in `app-shell.tsx`. String migration is a per-feature follow-up issue per feature; each migration PR moves a single feature's strings to `t(key, fallback)` and ships an `en` catalog entry per key.
+`LocaleProvider` is mounted once, at the app root in `app/providers/app-providers.tsx`. Tests pin it with `<LocaleProvider locale="en">`.
 
-**Plugin authors**: ship message catalogs by wrapping (or, in the future, contributing to) the host `LocaleProvider`. Until the loader contract for plugin catalogs is finalised, plugin-local strings continue to use inline literals with `t(key, fallback)` so the fallback path keeps the UI usable.
+### Copy files
 
-**Out of scope (deferred)**:
+User-facing text lives in JSON (ADR-081). The application core keeps one file per language and **namespace**, `apps/web/src/locales/<lang>/<namespace>.json`, named after the feature folder (`orders`, `returns`; `ui` for the shared primitives, `format` for the formatters). `locales/en/index.ts` lists every core namespace and is where the `Messages` type comes from:
 
-- `setLocale` / `useLocale` / locale switcher UI — added together with the first localisation PR.
-- Persistence of locale choice (localStorage / session / API).
-- A pluggable catalog loader for plugin-shipped translations.
-- Pluralization helpers (`tn(key, count, fallback)`), interpolation, date / currency formatting helpers beyond `useNumberFormat`.
+```jsonc
+// apps/web/src/locales/en/orders.json
+{
+  "header": {
+    "needsAttention": { "one": "{n} order needs attention", "other": "{n} orders need attention" },
+    "title": "Orders"
+  }
+}
+```
+
+```jsonc
+// apps/web/src/locales/pl/orders.json
+{
+  "header": {
+    "needsAttention": {
+      "few": "{n} zamówienia wymagają uwagi",
+      "many": "{n} zamówień wymaga uwagi",
+      "one": "{n} zamówienie wymaga uwagi",
+      "other": "{n} zamówienia wymaga uwagi"
+    },
+    "title": "Zamówienia"
+  }
+}
+```
+
+A new namespace is a new `en/<namespace>.json` plus one line in `locales/en/index.ts`; its Polish file is `pl/<namespace>.json` plus one line in `locales/pl/index.check.ts`. `scripts/check-locales.mjs` fails when a file and its index disagree. Polish files load lazily, one chunk per namespace.
+
+A component reads one namespace, typed from its English file:
+
+```tsx
+const copy = useMessages('orders');
+<h1>{copy.header.title}</h1>
+```
+
+Placement:
+
+- **One namespace per feature folder**, sectioned by component: `orders.header.title`, `orders.filters.status.label`. Pages read their feature's namespace.
+- **Shared namespaces**: `ui` for the shared primitives and the rest of `shared/` (`ui.common` holds the few words every feature may use), `format` for the formatters, `app` for the shell (`app/`: sidebar, topbar, layouts, command palette, breadcrumbs). `app.sections` and `app.pages` name the app's sections and pages once; the sidebar and the breadcrumbs both read them.
+- **Text held in module-level data** (a nav registry, a route `handle`, a constant passed around as a tooltip) stores a **key** or is a **function**, never the string: a module is evaluated once, so a string would stay in the language it first loaded in. `BASE_NAV_GROUPS` stores `section` / `page` keys and a route crumb `{ group, page }`, resolved at render; `demoReadOnlyActionMessage()` reads its namespace when called. A plugin crumb with no core page passes `title` until its own extraction issue.
+- **No reaching into another namespace.** "Cancel" in orders and "Cancel" in returns are two keys; only `ui.common` is shared. Removing a feature removes one block.
+- **Plugins** keep their own namespace in their own folder, `plugins/<id>/locales/en.json` and `pl.json`, named after the plugin id, and register it with `definePluginMessages`, which returns the plugin's typed hook. Reference the result from the plugin's `messages` slot in `definePlugin` so the namespace is registered at module load, before the first language load:
+
+  ```ts
+  // plugins/allegro/messages.ts
+  import { definePluginMessages } from '../../shared/i18n';
+  import en from './locales/en.json';
+
+  export const allegroMessages = definePluginMessages('allegro', {
+    messages: en,
+    loaders: { pl: () => import('./locales/pl.json').then((m) => m.default) },
+  });
+  export const useAllegroMessages = allegroMessages.useMessages;
+  ```
+
+- **Keys are sorted** at every level. `pnpm i18n:sort` sorts every file in place and `scripts/check-locales.mjs` fails on an unsorted one, so parallel PRs add keys in different places instead of all at the end of a namespace.
+- **Character budgets** for keys in tight spots live in `locales/limits.json` as `"<namespace>:<key.path>": <max>` (a plugin: its own `locales/limits.json` as `"<key.path>": <max>`).
+- Copy not migrated yet still sits in English-only `*.copy.ts` / `-copy.ts` modules in the feature folders; each extraction PR moves its feature's modules into the namespace. `scripts/check-ui-vocabulary.mjs` scans those modules and every English translation file. The vocabulary check reads English only: the Polish counterparts of the banned words are listed in [i18n-glossary.md](./i18n-glossary.md) for review.
+
+Each namespace has exactly one home. The registry refuses a second registration of the same name, so a plugin can never replace a core namespace, and nothing is looked up across files: the only fallback is within a namespace, from the active language to English for that key only. An empty string counts as a gap. `locales/pl/index.check.ts` makes `tsc` reject a Polish shape English lacks (a key English does not have, a string where English has a section or the reverse; a plural missing `few` / `many` is not caught, because the type is partial); a plugin's Polish is checked by `scripts/check-locales.mjs` instead. A missing Polish key is not an error anywhere: it shows the English text, and `check-locales` lists it as a warning (#3891).
+
+English ships in the main bundle. Every other language is a dynamic import: `main.tsx` loads the opening language before the first paint, and `setLocale` loads a new language before it switches, so the screen never shows a blank or a raw key.
+
+An object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way. Plural forms put the count in `{n}`; every language keeps that token.
+
+### Hooks and helpers
+
+| Export | Returns | Used for |
+|---|---|---|
+| `useLocale()` | `locale`, `setLocale`, `locales`, `bcp47` | the language switch, `<html lang>`, anything that needs the language |
+| `useMessages(namespace)` | one core namespace for the active language, typed from `locales/en/<namespace>.json`, English fallback per key | every component that renders text |
+| `getMessages(namespace)` / `messagesIn(namespace, locale)` | the same outside React, for the active / a given language | zod schemas, formatters, module-level label maps |
+| `definePluginMessages(id, options)` | `{ useMessages, getMessages }` typed from the plugin's own file | a plugin's own namespace |
+| `loadMessages(locale)` | a promise that resolves once every namespace has the language | `main.tsx`; the provider calls it on a switch |
+| `usePlural()` | `plural(n, forms)` on `Intl.PluralRules` | counts |
+| `useFormat()` | `number`, `percent`, `money`, `date`, `time`, `dateTime`, `relativeTime`, `duration`, `list`, `country` | every number, amount and date shown to an operator |
+| `renderRich(text, parts, params?)` | React nodes | a link or bold word inside a translated sentence; pass `{name}` values as `params` so a tag inside server text stays text |
+| `getLocale()` | the active locale outside React | the API client's `Accept-Language` header |
+| `useActiveLocale()` / `getBcp47Locale()` | the active locale / its BCP-47 tag, without requiring a provider | read-only consumers such as shared primitives and formatters |
+| `LocaleKeyed` | wrapper | remounts the routed tree on a language change so module-level text refreshes; mounted in `app-providers.tsx` |
+| `useNumberFormat()` | a `NumberFormat` | legacy shim like `t()`; new code uses `useFormat()` |
+| `LanguageSwitch` (in `shared/ui`) | component | the switch in the sidebar footer and on signed-out pages |
+
+The switch itself is `LanguageSwitch` in `shared/ui` (it animates with Motion, so the headless-library policy puts it there), mounted in the sidebar footer and in the signed-out layouts. Shared primitives read their default labels from the `ui` namespace; outside a `LocaleProvider` the read-only hooks fall back to English instead of throwing.
+
+Plugin authors pin a language with `SupportedLocale` and never build a `LocaleContextValue` by hand. Interpolation uses `{name}` placeholders. A plural or a date is never built by string concatenation.
+
+The pre-existing `useTranslation()` / `t(key, fallback)` seam (#612) was removed in #3891, together with the `catalog` prop of `LocaleProvider`.
+
+### Choosing the language
+
+1. `?lang=pl|en` on any URL - switches and saves, then the parameter is removed from the address bar so a reload cannot overwrite a later choice (support, screenshots, Playwright). In a development build `?lang=xx` turns on the pseudo-language for the session (see Guardrails).
+2. `localStorage` - the operator's last choice.
+3. The browser - the first entry of `navigator.languages` (or `navigator.language` when the list is empty) that the app ships, matched on the primary subtag, so `pl-PL` is `pl` and `en-GB` is `en`. A language the app does not ship (`de`) is skipped, not taken as an answer. The detected language is never stored: only the switch stores, so a changed browser language shows on the next session (#3890).
+4. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`, used only when the browser asks for no shipped language. Build-time, like every `VITE_*` variable. Unset, blank or a language the app does not support all fall through to the same last resort, `en`. A mistyped value therefore never silently picks the other language.
+
+The whole order is one pure function, `resolveLocale` in `shared/i18n/resolve-locale.ts`, which takes the browser's languages as an input so it is testable without a DOM.
+
+There is no locale prefix in the URL: this is a signed-in app with no SEO need, and a link shared between colleagues must open in each reader's own language. A later step stores the choice on the user profile.
+
+### Server text
+
+An API error carries a stable `code` (and `params`, `fields`, `providerMessage`) next to an English `message` that exists only for developers and logs (#3860 to #3865). The frontend never renders that `message`: every failed request reaches the operator through `describeApiError(error, '<namespace>')` (`shared/api/describe-api-error.ts`, #3862, #3867), which picks the sentence in the active language:
+
+1. the feature's own `apiErrors.<CODE>` in its namespace, when a screen needs to say something more specific;
+2. the shared `errors.codes.<CODE>` (`locales/<lang>/errors.json`, one entry per code the API sends);
+3. the copy for the status family (`errors.status.*`: 404, 409, 5xx, network, timeout, ...) when the code is unknown or absent.
+
+It is never blank, so a caller passes no fallback string. A provider refusal (`PROVIDER_REJECTED`) shows a translated prefix plus the provider's own words verbatim, and in a development build an untranslated code reads `[untranslated:<CODE>] <message>`. Branch on `error.code` (or a typed reader over it), never on the message text. A form maps a 400's `fields` with `applyFieldErrors`.
+
+Stored or returned reasons carry a code beside their English sentence (#3866), and the frontend phrases the code:
+
+- a dead-lettered webhook delivery: `dlqCode` beside `dlqReason` (`webhook-deliveries.dlqCodes.<code>`);
+- a sales-document block: `salesDocumentBlockParams` (counts, ids, the routed connection's state, the missing tax-rate counts) beside `salesDocumentBlockDetail`, phrased by `describeSalesDocumentBlockDetail` (`orders.salesDocumentBlockDetail`);
+- an operational setting: the reason for each ceiling is the frontend's own copy per setting (`settings.operationalSettingsPage.boundReasons`), and a refused write names `params.rule` and `params.limit`;
+- a connection test: `outcome` beside `message` (`connections.testOutcome.<outcome>`, through `describeConnectionTestFailure`).
+
+The English sentence stays in the API for developers and logs. The frontend shows it only when there is no code (a row written before the code existed, a line-total mismatch, `sync_jobs.lastError`) or after the translated sentence, through `ui.apiError.technicalDetailsWith` (`Technical details (not translated): {details}`); a provider's own words the error carries only in `message` are shown the same way. A successful connection test shows no message, since its title already says it passed. The frontend copies of the code lists are held identical to core by `scripts/check-stored-reason-code-mirror.mjs`, which also fails on a code with no English copy.
+
+**Guard:** two `no-restricted-syntax` selectors (`API_ERROR_MESSAGE_SYNTAX` in `.eslintrc.js`) fail on `x.error.message` and on `error.message` / `fooError.message` in `app`, `features`, `pages`, `plugins` and `shared/ui`, outside tests. Form field errors (`fieldState.error.message`) and copy objects (`copy.error.message`) are not matched. Any other legitimate read (a non-API error, a value written to `details`) carries an `eslint-disable-next-line no-restricted-syntax -- <reason>`. `scripts/check-i18n-lint-rule.mjs` resolves the real config for a `.ts` and a `.tsx` in each covered folder and runs fixtures through it, so a later override that replaces `no-restricted-syntax` cannot silence the guard while `pnpm lint` stays green.
+
+### Product rules for copy
+
+- Brand and platform names are not translated (OpenLinker, Allegro, Erli, InPost, Paczkomat, ...).
+- English copy uses British spelling ("fulfilment"); identifiers in code keep "fulfillment". Existing US spellings in copy ("Fulfillment routing") are converted when an extraction PR moves that string into a copy file, not in a separate sweep.
+- A plain hyphen, never an em dash.
+- Copy speaks to operators: no class names, env var names, capability names or roadmap wording.
+- Copy addressed to a Polish provider (for example the InPost webhook e-mail template) is bilingual, Polish first, whatever the UI language.
+- The KSeF statement (oświadczenie) stays Polish in both languages; it is a legal text.
+- Polish terms follow [docs/i18n-glossary.md](./i18n-glossary.md).
+
+### A partly translated interface is accepted
+
+The language switch appears on every page as soon as #3858 lands, while only the shared primitives, the formatters and the shell are translated; page bodies follow feature by feature (the extraction issues). Choosing Polski therefore gives a mostly English page body for a while, and the Beta badge on the language says so. This is accepted rather than gated behind a build flag, because the fallback is per key and never blank, and a visible switch is how operators and reviewers find the gaps. Add a release-note line when the stack ships.
+
+### Tests
+
+Unit tests and Playwright run in English. `src/test/setup.ts` resets the active language to English and clears the stored choice before every test, the vitest config pins `VITE_DEFAULT_UI_LOCALE=en`, happy-dom reports `en-US` as the browser language (a test about detection stubs `navigator.languages` itself), the shared render helper pins `<LocaleProvider locale="en">`, and the e2e fixture stores `en` when nothing is stored yet. The existing text queries keep working whatever the deployment default becomes; Polish gets its own targeted tests.
+
+### Guardrails
+
+- **`scripts/check-locales.mjs`** (in `pnpm check:invariants`) finds every namespace - the top-level keys of `locales/<lang>.json` and every `plugins/<id>/locales/<lang>.json` - and checks each translation against English. It fails on a key English lacks (Polish-only plural `few` / `many` excepted), a placeholder set that differs from English (`few` / `many` compare against `other`), a budget from `limits.json` exceeded in any language, a budget naming a key English does not have, an em dash, an unsorted file, a value that is not a string or an object, a translation file without its English file, or a language not in `LANGUAGES`. It warns when Polish is more than 1.6x and 15+ characters longer than English, when a key's name appears in no source file (a heuristic for an unused key, so a warning only), and for every English key a translation lacks, core and plugins alike, an empty string counting as missing (#3891). None of the warnings changes the exit code. It fails when it finds fewer core namespaces than it expects, so a scan that finds nothing never reads as clean.
+  - `node scripts/check-locales.mjs --self-check` runs first in `check:invariants` and proves every rule above fires on a fixture.
+  - It also checks that the e2e fixture pins the same `localStorage` key the app reads.
+  - **Sorting:** `pnpm i18n:sort` (`--fix`) rewrites every unsorted file in place.
+  - **Coverage report (not a gate):** `pnpm i18n:report` (`--report`) prints, for every namespace, how many English keys each other language has translated, most missing first, then a `TOTAL` line per language; add `--missing` to list the missing key paths. A plural counts as one key (translated when its `other` form is non-empty), Polish-only `few` / `many` are never extra keys, and an empty string counts as missing. It always exits 0.
+- **`scripts/check-ui-vocabulary.mjs`** reads every `.copy.ts` / `-copy.ts` file under `features/*` and every English translation file (`locales/en/*.json` and `plugins/<id>/locales/en.json`, with a floor). Its banned words are English; the Polish counterparts live in the glossary for review.
+- **Budgets**: a key that sits in a tight spot (button, nav item, chip, table header) gets a character budget in `limits.json`.
+- **No hardcoded text**: `i18next/no-literal-string` in `.eslintrc.js` fails on JSX text outside copy files, and three `no-restricted-syntax` selectors cover the shapes it skips in JSX children: `{'text'}`, a ternary label and a template literal. It covers every `.tsx` under `app`, `features`, `pages`, `plugins` and `shared` (#3891); only tests, copy files and the developer-only `pages/dev-ui` route are excluded. `scripts/check-i18n-lint-rule.mjs` pins both lists (`EXPECTED_SCOPE`, `EXPECTED_EXCLUDED`) and proves the rule is on in each top-level folder, so narrowing either means editing the script in the same PR.
+  - **Known gap:** text in an attribute (`aria-label`, `title`, `placeholder`) or in a variable outside JSX is not caught; review covers it until the extraction PRs move it. A `jsx-only` mode was tried and rejected for now because it also flags every `tone="ghost"`-style prop (53 hits in `shared/ui` alone).
+  - **Escape hatch:** a brand name, unit or mixed-case code that trips the rule either goes in the namespace with identical `en` and `pl` values, or gets `// eslint-disable-next-line i18next/no-literal-string -- <reason>` (`eslint-comments/require-description` already demands the reason).
+  - `scripts/check-i18n-lint-rule.mjs` resolves the real config for a real `shared/ui` file and fails if the rule is off there or on for tests and copy files, if any `files` glob matches nothing, or if the sentence, `{'text'}`, ternary and template fixtures stop being reported. A typo in `files`, an empty glob or a later override can each silence the rule while `pnpm lint` stays green.
+- **Pseudo-language**: in a development build, `?lang=xx` renders English accented, bracketed and about 40% longer, and marks `<html data-pseudo-locale="true">`. It lasts for the browser session until a real language is picked. Plain English on that screen is a string that was never extracted; a broken layout is one that Polish will break too.
+- **Overflow pass**: `pnpm --filter @openlinker/e2e exec playwright test --project=setup --project=i18n` opens the daily screens in English, then in `pl` and `xx`, and fails when a button, header, badge or chip that fits in English no longer fits its text. It first proves it can catch a deliberately overflowing button. Run it against a local stack before merging a translation batch.
+
+### Adding another language
+
+Every translation lives in a namespace: one `apps/web/src/locales/<lang>/<namespace>.json` per core namespace, plus one `plugins/<id>/locales/<lang>.json` per plugin that has copy. `scripts/check-locales.mjs` finds them the same way. The engine is deliberately written for exactly the two shipped languages (ADR-081), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
+
+**Part A - the engine (once, in this order)**
+
+1. `apps/web/src/shared/i18n/i18n.types.ts`: add the code to `LocaleCodeValues`. Its order is the order the switch lists languages in, and `SupportedLocale` follows from it, so the compiler now points at every place that still has to learn the language.
+2. `apps/web/src/shared/i18n/copy.types.ts`: add a shape type for the language, deep-partial the way `PolishCopy` is (a missing key falls back to English and is reported, never a type error), with a plural type that matches its CLDR plural categories (French: `one`, `many`, `other`; look the language up in the [CLDR plural rules chart](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)), and extend `PluralForms` if a category is new. Keep the `IsPlural` convention in mind: an object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way.
+3. An `apps/web/src/locales/fr/` folder and `fr/index.check.ts` beside `pl/index.check.ts`, so `tsc` checks the shape of every `fr/<namespace>.json` you add.
+4. `apps/web/src/shared/i18n/messages.ts`: give every core namespace a loader for the language (the `import.meta.glob` of `pl/*.json` is the template). A plugin adds its own loader to its `definePluginMessages` call.
+5. `apps/web/src/shared/i18n/locale.ts`: map the code to its BCP 47 tag in `getBcp47Locale` (for example `fr` to `fr-FR`). The formatters, `Accept-Language` and `<html lang>` all read it.
+6. `apps/web/src/shared/i18n/zod-locale.ts`: choose `z.locales.fr()` for the new code in `applyZodLocale`, so Zod's default messages follow the language.
+7. `apps/web/src/shared/ui/language-switch.tsx`: add the language's native name ("Français") to `LANGUAGE_DETAILS`, with `beta: true` until its translation is complete; `LANGUAGE_OPTIONS` is derived from `LocaleCodeValues`, and the `Record` makes a missing entry a compile error. Add its flag SVG to the `switch` in `apps/web/src/shared/ui/language-flag.tsx`.
+8. `scripts/check-locales.mjs`: add the code to `LANGUAGES` (this is also what makes the report list it) and teach the placeholder comparison its plural categories (`PLURAL_KEYS`, `englishCounterpart`). Extend the `--self-check` cases to cover them.
+9. `docs/i18n-glossary.md`: add a column (or a sibling table) with the language's term for every row, and its writing rules (formality, imperative or not).
+10. ADR-081: record the decision to add the language, one line in a new amendment section.
+
+**Part B - the translations**
+
+11. Translate namespace by namespace into `fr/<namespace>.json` files (start with `format`, which holds the formatters' units and relative-time words) and into each plugin's `fr.json`, using the glossary. English stays the fallback per key, so this can land feature by feature.
+12. Translate until `pnpm check:invariants` prints no `is not translated` warning for the language (step 8 is what makes it report the gaps, core and plugins alike); `pnpm i18n:report --missing` lists the same gaps per namespace. The shape stays deep-partial, as Polish does (#3891), so a gap is never a build failure. Then remove `beta: true` from the switch (as #3901 does for Polish).
+
+Tests keep running in English (pinned in `src/test/setup.ts` and the Vitest config), so add only targeted tests for the new language, for example its plural forms and the `locale.ts` mapping. `src/test/setup.ts` loads every language once before the tests run; add the new code there.
+
+To see where each language stands, run `pnpm i18n:report` (add `--missing` to list the missing key paths): it prints, per namespace, how many English keys the language has translated, most missing first, plus a `TOTAL` line, and it picks the new language up as soon as step 8 is done.
 
 ## Components And Pages
 
@@ -710,6 +907,7 @@ No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Desig
 | `cmdk` | headless command-menu (keyboard nav, filtering, composable groups) | `shared/ui/command-palette.tsx` |
 | `@tiptap/*` | headless rich-text editing (ProseMirror schema + commands, zero visuals, no shipped CSS) | `shared/ui/rich-text-editor.tsx` |
 | `dompurify` | HTML sanitization before render | `shared/ui/rich-text-view.tsx` |
+| `motion` | animation (spring transitions, presence, reduced-motion support) | `shared/ui/language-switch.tsx`, app-wide settings in `shared/ui/motion-provider.tsx` |
 
 Rules:
 
@@ -769,6 +967,8 @@ A plugin author writes one file per plugin (`plugins/<name>/index.ts`) containin
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlatform()`, `usePlatforms()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this. The same rule bans re-introduction of the old `WebPlugin` / `PlatformPlugin` / `IN_TREE_PLUGINS` identifiers (#702).
 
+Provider **names** are held to the same boundary (#3272): `scripts/check-provider-name-boundary.mjs` (under `pnpm check:invariants`) fails the build when `eparagony`, `ksef`, `paragon` or `kasa` appears in operator-facing copy (JSX text, user-facing JSX attribute values `*-copy.ts` / `*.copy.ts` strings and translation file values) anywhere in `apps/web/src` outside `plugins/`; in `locales/pl.json` the ordinary Polish words `paragon` and `kasa` are allowed. Identifiers, comments and imports are deliberately unscanned, so a shared component may still explain in a docblock why it is neutral. Its exemption table is empty and must stay empty: an unavoidable hit means the surface is in the wrong folder (or the copy should be provider-neutral). Provider setup screens therefore live under `plugins/<name>/components/`. Hooks that call the API client stay in the feature that owns the neutral endpoint (e.g. `features/invoicing`) with a provider-neutral name, because plugins may not import `useApiClient` (see the plugin `no-restricted-imports` rule).
+
 ### `BuildContribution` slot reference
 
 Every slot is optional.
@@ -789,7 +989,7 @@ Every slot is optional. A plugin contributes only the affordances its platform a
 | `setupCard` | `PlatformSetupCard` | `PlatformPicker` (`features/connections`) | One card on `/connections/new`. Omit for advanced-only platforms. |
 | `hideFromCreateConnection` | `boolean` | `PlatformPicker`, `CreateConnectionForm` (`features/connections`) | When true, the platform is omitted from the create-connection platform list and inline form because its connection is created by a dedicated flow, not by hand (#3457: the `openlinker` OMS connection, created by the onboarding wizard's Confirm step). Independent of `setupCard`; a platform with no `setupCard` is already absent from the picker, and this flag additionally keeps it out of the inline form's platform select. |
 | `requiresExternalAuthRedirect` | `boolean` | `CreateConnectionForm` | When true, the inline create form swaps in an Alert linking to the guided wizard (today: Allegro OAuth). Named broadly so non-OAuth redirect flows can opt in. |
-| `getCallbackUrlDefault` | `() => string \| undefined` | `EditConnectionForm` | Default for the OL callback URL field when the connection has none stored. PrestaShop uses `window.location.origin`. |
+| `getCallbackUrlDefault` | `() => string \| undefined` | `EditConnectionForm` | Default for the OL callback URL field when the connection has none stored. Shoper, PrestaShop and Erli return `publicApiBaseUrl()` (`shared/config/public-api-base-url.ts`, i.e. `VITE_API_BASE_URL` without a trailing slash), never `window.location.origin`: on a split-origin deployment the page origin is the web app, which answers a webhook with 405. |
 | `StructuredConfigSection` | `ComponentType<StructuredConfigSectionProps>` | `EditConnectionForm` | Platform-specific structured-config inputs (PS: shop URL / storefront / shop ID / OL callback / fallback carrier). When absent, the form falls back to raw JSON. |
 | `connectionConfig` | `ConnectionConfigContribution` | `EditConnectionForm`, `mergeStructuredIntoConfig` | The non-render half of structured-config editing (#1330): Zod schema fragment merged into the edit-connection resolver, read-side hydration (`readConfigToForm`), and write-side partial-patch assembly (`applyToConfig`). Field names are declaration-merged into `PluginEditConnectionFields` (mirrors `PluginApiNamespaces`); `schemaShape` keys are compiler-constrained to those merged names, and cross-plugin field-name collisions throw at module load (`assertUniquePluginInvariants`) - prefix field names with the platform (e.g. `ksefEnvironment`). A platform whose `StructuredConfigSection` registers its own form fields must also contribute this bag (a synced field with neither a host merge clause nor a `schemaShape`-declared contribution entry is silently dropped; dev builds log a `console.warn` in both the missing-contribution and undeclared-field cases). KSeF is the first migrated platform; other platforms' inline fields in `edit-connection.schema.ts` migrate as follow-ups. |
 | `ExtraConfigSection` | `ComponentType<ExtraConfigSectionProps>` | `EditConnectionForm` | Extra section below the structured/raw block (Allegro: GPSR seller defaults). |

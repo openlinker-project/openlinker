@@ -1,0 +1,93 @@
+/**
+ * Routing decision status response DTO (#2731)
+ *
+ * The read-only view of an order's latest routing decision: what it waits on,
+ * how old it is, the time limit after which the reaper closes it, and what
+ * happened when it ended. There is deliberately no action field — no operator
+ * control forces, checks or abandons a decision (D4).
+ *
+ * @module apps/api/src/fulfillment/http/dto
+ */
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  RoutingDecisionAbandonReasonValues,
+  RoutingDecisionStateValues,
+  RoutingDecisionTtlSourceValues,
+  type RoutingDecisionAbandonReason,
+  type RoutingDecisionTtlSource,
+  type RoutingDecisionState,
+  type RoutingDecisionStatusView,
+} from '@openlinker/core/fulfillment';
+
+export class RoutingDecisionStatusResponseDto {
+  @ApiProperty() decisionId!: string;
+
+  @ApiProperty({ enum: RoutingDecisionStateValues })
+  state!: RoutingDecisionState;
+
+  @ApiProperty({ description: 'The connection of the router this decision was made by.' })
+  routerConnectionId!: string;
+
+  @ApiProperty() createdAt!: Date;
+
+  @ApiProperty({ description: 'Milliseconds since the decision was created.' })
+  ageMs!: number;
+
+  @ApiProperty({
+    description:
+      'How long a decision may stay `live` before the reaper closes it, in ms, resolved by ' +
+      'this API process (`OL_ROUTING_DECISION_TTL_MS`) through the same rule the reaper uses, ' +
+      'so a client never restates it. See `ttlWorkerMayDiffer`.',
+  })
+  ttlMs!: number;
+
+  @ApiProperty({
+    enum: RoutingDecisionTtlSourceValues,
+    description:
+      'Where this API process got `ttlMs`: its own environment, or the code default.',
+  })
+  ttlSource!: RoutingDecisionTtlSource;
+
+  @ApiProperty({
+    description:
+      'True while the time limit is a per-process env value: the reaper runs in the worker ' +
+      'and enforces the worker\'s value, which this API process cannot see. A client showing ' +
+      '`strandedSince` should say the limit may differ.',
+  })
+  ttlWorkerMayDiffer!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Set only for a `live` decision already past its time limit: the instant it became ' +
+      'stranded. The next reaper run closes it and routes the order again.',
+  })
+  strandedSince!: Date | null;
+
+  @ApiPropertyOptional({ nullable: true, enum: RoutingDecisionAbandonReasonValues })
+  abandonReason!: RoutingDecisionAbandonReason | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  terminalisedAt!: Date | null;
+
+  static fromView(
+    view: RoutingDecisionStatusView,
+    ttlSource: RoutingDecisionTtlSource
+  ): RoutingDecisionStatusResponseDto {
+    const dto = new RoutingDecisionStatusResponseDto();
+    dto.decisionId = view.decisionId;
+    dto.state = view.state;
+    dto.routerConnectionId = view.routerConnectionId;
+    dto.createdAt = view.createdAt;
+    dto.ageMs = view.ageMs;
+    dto.ttlMs = view.ttlMs;
+    dto.ttlSource = ttlSource;
+    // Always true until the TTL moves to a shared store (Operational Settings),
+    // which is the only rung both processes read.
+    dto.ttlWorkerMayDiffer = true;
+    dto.strandedSince = view.strandedSince;
+    dto.abandonReason = view.abandonReason;
+    dto.terminalisedAt = view.terminalisedAt;
+    return dto;
+  }
+}

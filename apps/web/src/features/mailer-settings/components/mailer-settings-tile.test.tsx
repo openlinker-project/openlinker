@@ -15,6 +15,7 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../../test/test-utils';
+import { getMessages } from '../../../shared/i18n';
 import type { MailerSettingsView } from '../api/mailer-settings.types';
 import { MailerSettingsTile } from './mailer-settings-tile';
 
@@ -72,7 +73,9 @@ describe('MailerSettingsTile', () => {
     renderWithProviders(<MailerSettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(
-      await screen.findByText(/Could not load mailer settings: Network down/),
+      await screen.findByText(
+        `${getMessages('mailer-settings').mailerSettingsTile.loadError} ${getMessages('errors').status.other}`,
+      ),
     ).toBeInTheDocument();
   });
 

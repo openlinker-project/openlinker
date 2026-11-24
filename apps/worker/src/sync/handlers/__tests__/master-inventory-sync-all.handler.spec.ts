@@ -110,6 +110,11 @@ describe('MasterInventorySyncAllHandler', () => {
     expect(firstCall.payload).toEqual(
       expect.objectContaining({ schemaVersion: 1, externalIds: ['ext-1', 'ext-2', 'ext-3'] })
     );
+    // The child carries the sweep cycle as its run id (#4062): the same cycle
+    // that scopes its idempotency key, so every page of one cycle shares it.
+    const payload = firstCall.payload as { syncRunId?: string };
+    expect(typeof payload.syncRunId).toBe('string');
+    expect(firstCall.idempotencyKey?.endsWith(`:${String(payload.syncRunId)}`)).toBe(true);
   });
 
   it('should keep the budget at the per-item default rather than raising it with the batching', async () => {

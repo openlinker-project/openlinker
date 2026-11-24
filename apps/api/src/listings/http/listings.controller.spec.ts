@@ -33,6 +33,9 @@ import {
   IdentifierMapping,
 } from '@openlinker/core/identifier-mapping';
 import {
+  ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
+  MasterCatalogConnectionNotConfiguredException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -52,6 +55,7 @@ import type {
   IOfferStatusReadService,
   IOfferStatusSyncService,
   IPublishedVariantsService,
+  IAttributeProjectionPreviewService,
   ISellerPoliciesService,
   IResponsibleProducerService,
   IDeliveryPriceListService,
@@ -83,6 +87,8 @@ describe('ListingsController', () => {
   let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
   let offerStatusRead: jest.Mocked<IOfferStatusReadService>;
+  let attributeProjectionPreview: jest.Mocked<IAttributeProjectionPreviewService>;
+  let bundleOfferPreview: { preview: jest.Mock };
   let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'refreshOne'>>;
   let publishedVariants: jest.Mocked<IPublishedVariantsService>;
 
@@ -153,7 +159,11 @@ describe('ListingsController', () => {
       countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
+      countAttention: jest
+        .fn()
+        .mockResolvedValue({ sellingDeletedProduct: 0, shopBlocked: 0, shopBlockedByConnection: [] }),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
+      findDeadFailedCreationOfferIds: jest.fn().mockResolvedValue([]),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),
@@ -211,6 +221,8 @@ describe('ListingsController', () => {
     clearTaxRate: jest.fn(),
     recordPhysicalDimensions: jest.fn(),
     fillPhysicalDimensionsIfAbsent: jest.fn(),
+    recordCost: jest.fn(),
+    fillCostIfAbsent: jest.fn(),
     };
     categoryResolution = {
       resolveCategory: jest.fn(),
@@ -227,6 +239,8 @@ describe('ListingsController', () => {
     publishedVariants = {
       getPublishedVariantIds: jest.fn(),
     };
+    attributeProjectionPreview = { preview: jest.fn() };
+    bundleOfferPreview = { preview: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -244,6 +258,11 @@ describe('ListingsController', () => {
         { provide: OFFER_STATUS_READ_SERVICE_TOKEN, useValue: offerStatusRead },
         { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
         { provide: PUBLISHED_VARIANTS_SERVICE_TOKEN, useValue: publishedVariants },
+        { provide: BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN, useValue: bundleOfferPreview },
+        {
+          provide: ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+          useValue: attributeProjectionPreview,
+        },
       ],
     }).compile();
 
@@ -352,6 +371,57 @@ describe('ListingsController', () => {
           Ended: 0,
           Unsynced: 90,
         });
+      });
+
+      it('should carry the needs-a-look counts beside the buckets (#4045)', async () => {
+        repository.findManyRows.mockResolvedValue([]);
+        repository.countAttention.mockResolvedValue({
+          sellingDeletedProduct: 2,
+          shopBlocked: 3,
+          shopBlockedByConnection: [
+            { connectionId: 'conn-1', count: 3, problems: [{ code: 'shopKyc', message: 'Verify the shop.' }] },
+          ],
+        });
+
+        const result = await controller.listOfferMappings({
+          includeLifecycleCounts: true,
+          lifecycle: 'Active',
+          shopBlocked: true,
+        });
+
+        expect(result.attentionCounts).toEqual({
+          sellingDeletedProduct: 2,
+          shopBlocked: 3,
+          shopBlockedByConnection: [
+            { connectionId: 'conn-1', count: 3, problems: [{ code: 'shopKyc', message: 'Verify the shop.' }] },
+          ],
+        });
+        // Counted like the tabs: membership filters yes, the selected tab no.
+        expect(repository.countAttention).toHaveBeenCalledWith(
+          expect.not.objectContaining({ lifecycle: expect.anything() }),
+        );
+        expect(repository.countAttention).toHaveBeenCalledWith(expect.objectContaining({ shopBlocked: true }));
+      });
+
+      it('should answer the needs-a-look counts from the count route too (#4045)', async () => {
+        const result = await controller.countOfferMappings({ includeLifecycleCounts: true });
+
+        expect(result.attentionCounts).toEqual({
+          sellingDeletedProduct: 0,
+          shopBlocked: 0,
+          shopBlockedByConnection: [],
+        });
+      });
+
+      it('should forward the two attention filters to the page (#4045)', async () => {
+        repository.findManyRows.mockResolvedValue([]);
+
+        await controller.listOfferMappings({ staleSignal: 'selling', shopBlocked: true, withTotal: false });
+
+        expect(repository.findManyRows).toHaveBeenCalledWith(
+          expect.objectContaining({ staleSignal: 'selling', shopBlocked: true }),
+          { limit: 20, offset: 0 },
+        );
       });
 
       it('should not compute lifecycleCounts, or ask findMany to skip its own total, when not requested', async () => {
@@ -1064,6 +1134,19 @@ describe('ListingsController', () => {
       );
     });
 
+    it('names the missing category by code, category and connection (#3865)', async () => {
+      const fetch = jest.fn().mockRejectedValue(new CategoryNotFoundException('999999', 'allegro'));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
+
+      await expect(controller.getCategoryParameters('conn-1', '999999')).rejects.toMatchObject({
+        response: {
+          statusCode: 404,
+          code: 'MARKETPLACE_CATEGORY_NOT_FOUND',
+          params: { categoryId: '999999', connectionId: 'conn-1' },
+        },
+      });
+    });
+
     it('propagates upstream errors that are not CategoryNotFoundException', async () => {
       const fetch = jest.fn().mockRejectedValue(new Error('upstream-503'));
       integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
@@ -1217,6 +1300,91 @@ describe('ListingsController', () => {
     });
   });
 
+  describe('previewAttributeProjection (#3995)', () => {
+    it('should pass items through and return entries keyed by variantId in input order', async () => {
+      attributeProjectionPreview.preview.mockResolvedValue({
+        entries: [
+          {
+            internalVariantId: 'v1',
+            categoryId: 'cat-1',
+            status: 'ok',
+            parameters: [{ id: 'p1', valuesIds: ['d1'], section: 'product' }],
+            unresolvedRequired: [],
+            restrictionIssues: [],
+            origins: [],
+          },
+          { internalVariantId: 'v2', categoryId: 'cat-1', status: 'failed', reason: 'variant-not-found' },
+        ],
+      });
+
+      const result = await controller.previewAttributeProjection('conn-1', {
+        items: [
+          { variantId: 'v1', categoryId: 'cat-1', ean: '5901234123457' },
+          { variantId: 'v2', categoryId: 'cat-1' },
+        ],
+      });
+
+      expect(attributeProjectionPreview.preview).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        items: [
+          { internalVariantId: 'v1', categoryId: 'cat-1', ean: '5901234123457' },
+          { internalVariantId: 'v2', categoryId: 'cat-1' },
+        ],
+      });
+      expect(result.entries.map((e) => [e.variantId, e.status])).toEqual([
+        ['v1', 'ok'],
+        ['v2', 'failed'],
+      ]);
+      expect(result.entries[0]).not.toHaveProperty('internalVariantId');
+    });
+
+    it('should answer 422 when the connection has no master catalogue', async () => {
+      attributeProjectionPreview.preview.mockRejectedValue(
+        new MasterCatalogConnectionNotConfiguredException('conn-1')
+      );
+
+      await expect(
+        controller.previewAttributeProjection('conn-1', {
+          items: [{ variantId: 'v1', categoryId: 'cat-1' }],
+        })
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+  });
+
+  describe('previewBundleOffers (#3520)', () => {
+    it('should pass items through and key entries by variantId', async () => {
+      bundleOfferPreview.preview.mockResolvedValue({
+        entries: [
+          { internalVariantId: 'b1', status: 'not-a-bundle' },
+          { internalVariantId: 'b2', status: 'failed', reason: 'preview-failed' },
+        ],
+      });
+
+      const result = await controller.previewBundleOffers('conn-1', {
+        items: [{ variantId: 'b1', categoryId: 'cat-1' }, { variantId: 'b2' }],
+      });
+
+      expect(bundleOfferPreview.preview).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        items: [{ internalVariantId: 'b1', categoryId: 'cat-1' }, { internalVariantId: 'b2' }],
+      });
+      expect(result.entries.map((e) => [e.variantId, e.status])).toEqual([
+        ['b1', 'not-a-bundle'],
+        ['b2', 'failed'],
+      ]);
+      expect(result.entries[0]).not.toHaveProperty('internalVariantId');
+    });
+
+    it('should answer 422 when the connection has no master catalogue', async () => {
+      bundleOfferPreview.preview.mockRejectedValue(
+        new MasterCatalogConnectionNotConfiguredException('conn-1')
+      );
+      await expect(
+        controller.previewBundleOffers('conn-1', { items: [{ variantId: 'b1' }] })
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+  });
+
   describe('resolveCategoriesBatch (#795)', () => {
     it('maps null EANs through and converts the service Map to a results record', async () => {
       const serviceResult = new Map<string, EanMatchResult>([
@@ -1289,7 +1457,24 @@ describe('ListingsController', () => {
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
+    it('sends PROVIDER_CAPABILITY_UNSUPPORTED naming the missing capability (#3865)', async () => {
+      categoryResolution.resolveCategoriesBatch.mockRejectedValue(
+        new AdapterCapabilityNotSupportedException('conn-1', 'EanCategoryMatcher')
+      );
+
+      await expect(
+        controller.resolveCategoriesBatch('conn-1', { items: [{ variantId: 'v1', ean: '590' }] })
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 422,
+          code: 'PROVIDER_CAPABILITY_UNSUPPORTED',
+          params: { capability: 'EanCategoryMatcher', connectionId: 'conn-1' },
+        },
+      });
+    });
+
     it('propagates non-capability errors (e.g. connection not found) untouched', async () => {
+
       categoryResolution.resolveCategoriesBatch.mockRejectedValue(
         new ConnectionNotFoundException('conn-missing')
       );
@@ -2134,6 +2319,8 @@ describe('ListingsController', () => {
         internalId: 'ol_variant_1',
         search: 'terra',
         lifecycle: 'Draft' as const,
+        staleSignal: 'selling' as const,
+        shopBlocked: true,
       };
 
       await controller.listOfferMappings({ ...query, withTotal: false, limit: 20, offset: 0 });
@@ -2158,6 +2345,8 @@ describe('ListingsController', () => {
         internalId: 'ol_variant_1',
         search: 'terra',
         lifecycle: 'Draft',
+        staleSignal: 'selling',
+        shopBlocked: true,
       });
     });
 

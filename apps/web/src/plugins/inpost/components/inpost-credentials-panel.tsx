@@ -21,8 +21,11 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useInpostMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export function InpostCredentialsPanel({ connection }: { connection: Connection }): ReactElement {
+  const copy = useInpostMessages().inpostCredentialsPanel;
   const [showRotate, setShowRotate] = useState(false);
   const [apiToken, setApiToken] = useState('');
   const rotate = useUpdateConnectionCredentialsMutation();
@@ -30,8 +33,8 @@ export function InpostCredentialsPanel({ connection }: { connection: Connection 
 
   if (!connection.credentialsBacked) {
     return (
-      <FormField label="Credentials" name="credentials">
-        <Input value="Environment variable (not editable via UI)" disabled />
+      <FormField label={copy.envBackedLabel} name="credentials">
+        <Input value={copy.envBacked} disabled />
       </FormField>
     );
   }
@@ -46,8 +49,8 @@ export function InpostCredentialsPanel({ connection }: { connection: Connection 
       });
       showToast({
         tone: 'success',
-        title: 'Credentials rotated',
-        description: 'The new ShipX API token is now in use.',
+        title: copy.toast.title,
+        description: copy.toast.description,
       });
       setApiToken('');
       setShowRotate(false);
@@ -58,18 +61,18 @@ export function InpostCredentialsPanel({ connection }: { connection: Connection 
 
   return (
     <FormField
-      label="ShipX API token"
+      label={copy.label}
       name="credentials"
-      description="ShipX Bearer token, stored securely on the server. Rotate to replace it without restarting the API."
+      description={copy.description}
     >
       {showRotate ? (
         <div className="form-grid">
-          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+          {rotate.error ? <Alert tone="error">{describeApiError(rotate.error, 'inpost')}</Alert> : null}
           <Input
             type="password"
             autoComplete="off"
             className="mono-text"
-            placeholder="New ShipX API token"
+            placeholder={copy.newTokenPlaceholder}
             value={apiToken}
             onChange={(event) => setApiToken(event.target.value)}
           />
@@ -79,7 +82,7 @@ export function InpostCredentialsPanel({ connection }: { connection: Connection 
               onClick={(event) => void onRotate(event)}
               disabled={rotate.isPending || apiToken.trim().length === 0}
             >
-              {rotate.isPending ? 'Rotating...' : 'Save new token'}
+              {rotate.isPending ? copy.rotating : copy.save}
             </Button>
             <Button
               tone="secondary"
@@ -89,13 +92,13 @@ export function InpostCredentialsPanel({ connection }: { connection: Connection 
                 setApiToken('');
               }}
             >
-              Cancel
+              {copy.cancel}
             </Button>
           </div>
         </div>
       ) : (
         <Button tone="secondary" type="button" onClick={() => setShowRotate(true)}>
-          Rotate API token
+          {copy.rotate}
         </Button>
       )}
     </FormField>

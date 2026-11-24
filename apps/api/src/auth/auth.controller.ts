@@ -16,12 +16,9 @@
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
-  HttpException,
   HttpStatus,
   Inject,
   Patch,
@@ -47,6 +44,8 @@ import {
   UserAlreadyExistsException,
   WeakPasswordException,
 } from '@openlinker/core/users';
+import { codedHttpError } from '../common/errors/coded-http.exception';
+import { tooManyRequests, unauthorized } from './auth-errors';
 import { AUTH_SERVICE_TOKEN, IAuthService } from './auth.service.interface';
 import { Public } from './decorators/public.decorator';
 import { AnyRole } from './decorators/any-role.decorator';
@@ -128,12 +127,12 @@ export class AuthController {
       user = await this.authService.validateUser(dto.username, dto.password);
     } catch (error) {
       if (error instanceof EmailNotConfirmedException) {
-        throw new ForbiddenException(error.message);
+        throw codedHttpError(HttpStatus.FORBIDDEN, 'AUTH_EMAIL_NOT_CONFIRMED', error.message);
       }
       throw error;
     }
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw unauthorized('AUTH_INVALID_CREDENTIALS', 'Invalid credentials');
     }
     const accessTokenDto = this.authService.login(user);
     const refresh = await this.refreshTokenService.issue(user.id);
@@ -181,16 +180,16 @@ export class AuthController {
       );
     } catch (error) {
       if (error instanceof RegistrationDisabledException) {
-        throw new ForbiddenException(error.message);
+        throw codedHttpError(HttpStatus.FORBIDDEN, 'REGISTRATION_DISABLED', error.message);
       }
       if (error instanceof UserAlreadyExistsException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'REGISTRATION_IDENTIFIER_TAKEN', error.message);
       }
       if (error instanceof RegistrationRateLimitedException) {
-        throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+        throw tooManyRequests('REGISTRATION_RATE_LIMITED', error.message);
       }
       if (error instanceof AnalyticsConsentRequiredException) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'ANALYTICS_CONSENT_REQUIRED', error.message);
       }
       throw error;
     }
@@ -219,7 +218,11 @@ export class AuthController {
         // endpoint. Log the specific reason server-side and return one
         // generic, non-identifying message.
         this.logger.warn(`Email confirmation failed: ${(error as Error).message}`);
-        throw new BadRequestException('This confirmation link is invalid or has expired.');
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'EMAIL_CONFIRMATION_LINK_INVALID',
+          'This confirmation link is invalid or has expired.'
+        );
       }
       throw error;
     }
@@ -247,7 +250,7 @@ export class AuthController {
       await this.emailConfirmationService.resendConfirmation(dto.email, req.ip);
     } catch (error) {
       if (error instanceof EmailConfirmationRateLimitedException) {
-        throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+        throw tooManyRequests('EMAIL_CONFIRMATION_RATE_LIMITED', error.message);
       }
       throw error;
     }
@@ -270,7 +273,7 @@ export class AuthController {
   ): Promise<LoginResponseDto> {
     const raw = readCookie(req, REFRESH_COOKIE_NAME);
     if (!raw) {
-      throw new UnauthorizedException('Missing refresh cookie');
+      throw unauthorized('AUTH_REFRESH_TOKEN_MISSING', 'Missing refresh cookie');
     }
 
     let rotated: RotatedRefreshToken;
@@ -279,7 +282,7 @@ export class AuthController {
     } catch (error) {
       if (error instanceof RefreshTokenReuseDetectedException) {
         clearAuthCookies(res);
-        throw new UnauthorizedException(error.message);
+        throw unauthorized('AUTH_REFRESH_TOKEN_REUSED', error.message);
       }
       throw error;
     }
@@ -443,11 +446,11 @@ export class AuthController {
     try {
       await this.passwordResetService.resetPassword(dto.token, dto.newPassword);
     } catch (error) {
-      if (
-        error instanceof InvalidPasswordResetTokenException ||
-        error instanceof WeakPasswordException
-      ) {
-        throw new BadRequestException(error.message);
+      if (error instanceof InvalidPasswordResetTokenException) {
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'PASSWORD_RESET_TOKEN_INVALID', error.message);
+      }
+      if (error instanceof WeakPasswordException) {
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'PASSWORD_TOO_WEAK', error.message);
       }
       throw error;
     }

@@ -55,6 +55,8 @@ export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
 export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
+export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
+export { describeConnectionTestFailure } from './lib/describe-connection-test-failure';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 export { usePickBankAccount } from './hooks/use-pick-bank-account';
@@ -66,6 +68,14 @@ export {
   INVOICE_TRIGGER_MODEL_LABELS,
 } from './types/invoice-trigger-model.types';
 export type { InvoiceTriggerModel } from './types/invoice-trigger-model.types';
+export {
+  resolveTriggerModelForKind,
+  writeTriggerModelForKind,
+} from './lib/resolve-trigger-model-for-kind';
+export type {
+  ResolvedTriggerModel,
+  TriggerModelSource,
+} from './lib/resolve-trigger-model-for-kind';
 
 // Edit-connection schema seam (#1330) — composed by the host with a platform's
 // `ConnectionConfigContribution`; exported so plugin-local tests can exercise
@@ -92,13 +102,6 @@ export {
 } from './components/subiekt-setup.schema';
 export type { SubiektProductIdentity } from './components/subiekt-setup.schema';
 
-export {
-  InfaktWebhookConfig,
-  InfaktWebhookConfigDialog,
-  activationLabel as infaktWebhookActivationLabel,
-  signatureLabel as infaktWebhookSignatureLabel,
-} from './components/infakt-webhook-config';
-
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { ConnectionCell } from './components/ConnectionCell';
 export { ConnectionFold } from './components/ConnectionFold';
@@ -117,3 +120,8 @@ export {
   isPricingDestination,
   PRICING_DESTINATION_CAPABILITIES,
 } from './lib/pricing-destination';
+
+// #3567 - the stock correction dialog previews what each channel will publish
+// with the same browser-side mirror of the publish policy the connection form
+// uses, rather than keeping a second copy of the arithmetic.
+export { applyStockSafetyBuffer } from './lib/stock-and-pricing-preview';

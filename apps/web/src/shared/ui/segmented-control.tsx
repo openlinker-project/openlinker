@@ -23,6 +23,8 @@ export interface SegmentedControlOption<T extends string> {
    * the group's tab stop, per the WAI-ARIA radio-group pattern.
    */
   disabled?: boolean;
+  /** Test id placed on the clickable option element itself. */
+  'data-testid'?: string;
 }
 
 export interface SegmentedControlProps<T extends string>
@@ -133,6 +135,7 @@ function SegmentedControlInner<T extends string>(
             }}
             type="button"
             role="radio"
+            data-testid={option['data-testid']}
             className={optionClasses}
             aria-checked={active}
             disabled={isDisabled}

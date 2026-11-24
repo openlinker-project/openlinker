@@ -168,3 +168,24 @@ describe('FulfillmentParcelClosureNotifierService (#3525)', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 });
+
+describe('FulfillmentParcelClosureNotifierService.relayRecordedClose (#3961)', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('should route a close core already recorded, without recording it again', async () => {
+    const { service, progress, router } = harness({});
+
+    await service.relayRecordedClose(WORK_ID);
+
+    expect(progress.record).not.toHaveBeenCalled();
+    expect(router.routeDispatch).toHaveBeenCalledWith(WORK_ID);
+  });
+
+  it('should never throw when the route fails, leaving the relay sweep to retry', async () => {
+    const { service } = harness({ routeDispatch: jest.fn().mockRejectedValue(new Error('down')) });
+
+    await expect(service.relayRecordedClose(WORK_ID)).resolves.toBeUndefined();
+  });
+});

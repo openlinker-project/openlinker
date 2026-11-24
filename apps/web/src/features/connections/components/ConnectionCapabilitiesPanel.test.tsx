@@ -6,11 +6,9 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
-import {
-  ConnectionCapabilitiesPanel,
-  capabilityToggleTestId,
-} from './ConnectionCapabilitiesPanel';
+import { ConnectionCapabilitiesPanel, capabilityToggleTestId } from './ConnectionCapabilitiesPanel';
 import type { Connection } from '../api/connections.types';
+import { getMessages } from '../../../shared/i18n';
 
 describe('ConnectionCapabilitiesPanel', () => {
   afterEach(cleanup);
@@ -26,6 +24,43 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByRole('checkbox', { name: /ProductMaster/ })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /OrderSource/ })).not.toBeChecked();
     expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
+  });
+
+  it('disables ProductPublisher while ProductMaster is on and explains why (#3985)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeDisabled();
+    expect(screen.getByText(/published products would be read back/)).toBeInTheDocument();
+    expect(screen.queryByTestId('capability-legacy-conflict')).not.toBeInTheDocument();
+  });
+
+  it('warns once on a connection that already holds both, and keeps both toggleable (#3985)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+      enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByTestId('capability-legacy-conflict')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: /ProductMaster/ })).toBeEnabled();
+  });
+
+  it('does not show the master/publisher warning for a legacy InventoryMaster + OfferManager pair', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['InventoryMaster', 'OfferManager'],
+      enabledCapabilities: ['InventoryMaster', 'OfferManager'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.queryByTestId('capability-legacy-conflict')).not.toBeInTheDocument();
   });
 
   it('calls update mutation with new set when a capability is toggled', async () => {
@@ -48,8 +83,8 @@ describe('ConnectionCapabilitiesPanel', () => {
         connection.id,
         expect.objectContaining({
           enabledCapabilities: expect.arrayContaining(['ProductMaster', 'OrderSource']),
-        }),
-      ),
+        })
+      )
     );
   });
 
@@ -94,7 +129,7 @@ describe('ConnectionCapabilitiesPanel', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
 
     expect(await screen.findByText(/Unable to update capabilities/)).toBeInTheDocument();
-    expect(screen.getByText('API update failed')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('shows a notice when there are no supported capabilities', () => {
@@ -130,9 +165,7 @@ describe('ConnectionCapabilitiesPanel', () => {
     renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
 
     expect(screen.getByRole('checkbox', { name: /OfferManager/ })).toBeDisabled();
-    expect(
-      screen.getByText(/Unavailable while InventoryMaster is selected/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Unavailable while InventoryMaster is selected/)).toBeInTheDocument();
     // The non-conflicting checkboxes stay operable.
     expect(screen.getByRole('checkbox', { name: /ProductMaster/ })).toBeEnabled();
   });
@@ -209,7 +242,7 @@ describe('ConnectionCapabilitiesPanel', () => {
         <ConnectionCapabilitiesPanel
           connection={{ ...dualRoleConnection, enabledCapabilities: ['Fiscalization'] }}
         />,
-        { apiClient },
+        { apiClient }
       );
 
       fireEvent.click(screen.getByTestId('capability-toggle-invoicing'));
@@ -219,8 +252,8 @@ describe('ConnectionCapabilitiesPanel', () => {
           dualRoleConnection.id,
           expect.objectContaining({
             enabledCapabilities: expect.arrayContaining(['Fiscalization', 'Invoicing']),
-          }),
-        ),
+          })
+        )
       );
     });
 
@@ -232,7 +265,7 @@ describe('ConnectionCapabilitiesPanel', () => {
       expect(note).toHaveTextContent('per country');
       expect(within(note).getByRole('link', { name: 'Sales documents routing' })).toHaveAttribute(
         'href',
-        '/settings/sales-documents',
+        '/settings/sales-documents'
       );
     });
 
@@ -242,7 +275,7 @@ describe('ConnectionCapabilitiesPanel', () => {
       renderWithProviders(
         <ConnectionCapabilitiesPanel
           connection={{ ...dualRoleConnection, enabledCapabilities: [] }}
-        />,
+        />
       );
 
       expect(screen.getByTestId('capability-routing-note')).toBeInTheDocument();
@@ -259,7 +292,7 @@ describe('ConnectionCapabilitiesPanel', () => {
             supportedCapabilities: ['Fiscalization'],
             enabledCapabilities: ['Fiscalization'],
           }}
-        />,
+        />
       );
 
       const note = screen.getByTestId('capability-routing-note');
@@ -275,11 +308,11 @@ describe('ConnectionCapabilitiesPanel', () => {
             supportedCapabilities: ['Invoicing'],
             enabledCapabilities: ['Invoicing'],
           }}
-        />,
+        />
       );
 
       expect(screen.getByTestId('capability-routing-note')).toHaveTextContent(
-        'eligible to issue invoices',
+        'eligible to issue invoices'
       );
     });
 
@@ -291,7 +324,7 @@ describe('ConnectionCapabilitiesPanel', () => {
             supportedCapabilities: ['ProductMaster', 'OrderSource'],
             enabledCapabilities: ['ProductMaster'],
           }}
-        />,
+        />
       );
 
       expect(screen.queryByTestId('capability-routing-note')).toBeNull();

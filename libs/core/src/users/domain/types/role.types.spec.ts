@@ -192,4 +192,23 @@ describe('ROLE_PERMISSIONS', () => {
       expect(ROLE_PERMISSIONS.viewer).not.toContain('orders:export');
     });
   });
+
+  describe('gifts:write (#3940)', () => {
+    it('should be held by admin and operator, but not viewer or packer', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('gifts:write');
+      expect(ROLE_PERMISSIONS.operator).toContain('gifts:write');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('gifts:write');
+      expect(ROLE_PERMISSIONS.packer).not.toContain('gifts:write');
+    });
+  });
+
+  describe('bundles:write (#3520)', () => {
+    it('should be held by admin and operator, but not viewer or packer', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('bundles:write');
+      expect(ROLE_PERMISSIONS.operator).toContain('bundles:write');
+      expect(ROLE_PERMISSIONS.operator).not.toContain('products:write');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('bundles:write');
+      expect(ROLE_PERMISSIONS.packer).not.toContain('bundles:write');
+    });
+  });
 });

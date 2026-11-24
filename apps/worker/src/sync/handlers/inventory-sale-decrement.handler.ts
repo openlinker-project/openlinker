@@ -88,7 +88,7 @@ export class InventorySaleDecrementHandler implements SyncJobHandler {
       return { outcome: 'ok' };
     }
 
-    const itemsById = new Map(record.orderItems.map((item) => [item.id, item]));
+    const itemsById = new Map(record.physicalItems.map((item) => [item.id, item]));
     const lines: SaleDecrementLineInput[] = [];
     for (const line of work.lines) {
       const quantity = line.totalQuantity - line.cancelledQuantity;
@@ -115,6 +115,10 @@ export class InventorySaleDecrementHandler implements SyncJobHandler {
         productVariantId:
           line.productVariantId === item.productId ? null : line.productVariantId,
         quantity,
+        // A bundle's gift slot is a gift too: it ships with the set but was not sold.
+        ...(item.gift !== undefined || item.giftSlot === true
+          ? { movementReason: 'gift' as const }
+          : {}),
       });
     }
 

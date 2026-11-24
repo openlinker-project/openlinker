@@ -24,6 +24,7 @@ import { SyncJobBulkRetryService } from './application/services/sync-job-bulk-re
 import { SyncJobsService } from './application/services/sync-jobs.service';
 import { SyncCursorsService } from './application/services/sync-cursors.service';
 import { ConnectionSyncStatusService } from './application/services/connection-sync-status.service';
+import { CursorOverviewService } from './application/services/cursor-overview.service';
 import {
   JOB_ENQUEUE_TOKEN,
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -38,6 +39,7 @@ import {
   SYNC_JOBS_SERVICE_TOKEN,
   SYNC_CURSORS_SERVICE_TOKEN,
   CONNECTION_SYNC_STATUS_SERVICE_TOKEN,
+  CURSOR_OVERVIEW_SERVICE_TOKEN,
 } from './sync.tokens';
 
 // Re-export tokens for convenience
@@ -155,6 +157,11 @@ export {
       provide: CONNECTION_SYNC_STATUS_SERVICE_TOKEN,
       useExisting: ConnectionSyncStatusService,
     },
+    CursorOverviewService,
+    {
+      provide: CURSOR_OVERVIEW_SERVICE_TOKEN,
+      useExisting: CursorOverviewService,
+    },
   ],
   exports: [
     JOB_ENQUEUE_TOKEN,
@@ -180,6 +187,7 @@ export {
     SYNC_JOBS_SERVICE_TOKEN,
     SYNC_CURSORS_SERVICE_TOKEN,
     CONNECTION_SYNC_STATUS_SERVICE_TOKEN,
+    CURSOR_OVERVIEW_SERVICE_TOKEN,
   ],
 })
 export class SyncModule {}

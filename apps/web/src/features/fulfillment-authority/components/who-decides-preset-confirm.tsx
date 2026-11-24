@@ -33,14 +33,14 @@ import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import type { AuthorityPresetPreview } from '../api/who-decides.types';
 import { isAuthorityAttentionReason } from '../lib/attention-reason';
-import { ATTENTION_REASON_COPY, ATTENTION_UNKNOWN_COPY } from '../lib/attention-reason.copy';
+import { ATTENTION_REASON_COPY, ATTENTION_UNKNOWN_COPY } from '../lib/attention-reason-text';
 import { buildPresetDiff } from '../lib/preset-diff';
 import type { AnswerRendering } from '../lib/who-decides-view';
 import {
   ANSWER_COPY,
   PRESET_CONFIRM_COPY,
   WHO_DECIDES_PAGE_COPY,
-} from '../lib/who-decides.copy';
+} from '../lib/who-decides-text';
 
 interface WhoDecidesPresetConfirmProps {
   preview: AuthorityPresetPreview | null | undefined;

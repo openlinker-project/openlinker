@@ -1,4 +1,8 @@
+import { createRequire } from 'node:module';
+
 import { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } from '../../../jest.esm-deps.cjs';
+
+const { resolveUnitTestWorkers } = createRequire(import.meta.url)('../../../jest.unit-workers.cjs');
 
 export default {
   testEnvironment: 'node',
@@ -39,4 +43,11 @@ export default {
   coverageDirectory: '<rootDir>/coverage',
   clearMocks: true,
   testTimeout: 30000,
+
+  // CI stability (#3918): without a cap jest spawns ~(cores-1) workers, and
+  // inside the CI container it counts the HOST's cores, not the 8 it may use.
+  // With this package running beside others under --workspace-concurrency, the
+  // uncapped packages OOM-killed jest workers (SIGKILL) in other packages.
+  maxWorkers: resolveUnitTestWorkers(),
+  workerIdleMemoryLimit: '512MB',
 };

@@ -178,7 +178,7 @@ describe('SourcingRulesTable (#3057)', () => {
     // "Cannot edit" sends both a sighted and a screen-reader operator past the
     // explanation and its remedy.
     expect(
-      screen.queryByRole('button', { name: 'Cannot edit — this rule is no longer recognised' })
+      screen.queryByRole('button', { name: 'Cannot edit - this rule is no longer recognised' })
     ).toBeNull();
     const edit = screen.getByRole('button', { name: 'Why this rule cannot be edited' });
     expect(edit).toBeEnabled();
@@ -203,7 +203,7 @@ describe('SourcingRulesTable (#3057)', () => {
 
     // Only the genuinely inert control keeps the refusal as its name.
     const edit = screen.getByRole('button', {
-      name: 'Cannot edit — this rule is no longer recognised',
+      name: 'Cannot edit - this rule is no longer recognised',
     });
     expect(edit).toBeDisabled();
     await userEvent.click(edit);

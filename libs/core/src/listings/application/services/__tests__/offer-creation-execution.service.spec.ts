@@ -39,9 +39,11 @@ import { OfferBuilderValidationException } from '../../../domain/exceptions/offe
 import { OfferCreationInvariantException } from '../../../domain/exceptions/offer-creation-invariant.exception';
 import { OfferCreationRecordNotFoundException } from '../../../domain/exceptions/offer-creation-record-not-found.exception';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
 import {
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
 } from '../../../listings.tokens';
@@ -58,7 +60,10 @@ describe('OfferCreationExecutionService', () => {
   let builder: jest.Mocked<Pick<IOfferBuilderService, 'buildCreateOfferCommand'>>;
   let records: jest.Mocked<OfferCreationRecordRepositoryPort>;
   let identifierMapping: jest.Mocked<
-    Pick<IIdentifierMappingService, 'createMapping' | 'getInternalId'>
+    Pick<IIdentifierMappingService, 'createMapping' | 'getInternalId' | 'deleteMapping'>
+  >;
+  let offerMappings: jest.Mocked<
+    Pick<OfferMappingRepositoryPort, 'findDeadFailedCreationOfferIds'>
   >;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let adapter: { createOffer: jest.Mock };
@@ -124,6 +129,10 @@ describe('OfferCreationExecutionService', () => {
       createMapping: jest.fn().mockResolvedValue(undefined),
       // Default: the winning row (when a duplicate conflict resolves) is ours.
       getInternalId: jest.fn().mockResolvedValue(VARIANT_ID),
+      deleteMapping: jest.fn().mockResolvedValue(undefined),
+    };
+    offerMappings = {
+      findDeadFailedCreationOfferIds: jest.fn().mockResolvedValue([]),
     };
     adapter = {
       createOffer: jest.fn().mockResolvedValue({
@@ -165,6 +174,7 @@ describe('OfferCreationExecutionService', () => {
         { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
         { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
         { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: taxRateJournal },
+        { provide: OFFER_MAPPING_REPOSITORY_TOKEN, useValue: offerMappings },
       ],
     }).compile();
 
@@ -921,6 +931,80 @@ describe('OfferCreationExecutionService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(taxRateJournal.record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('retiring a dead offer after a re-list (E2E-25)', () => {
+    const DEAD_OFFER_ID = 'allegro-offer-dead-7';
+
+    it('should delete the mapping to the refused offer once a replacement offer exists', async () => {
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue([DEAD_OFFER_ID]);
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(offerMappings.findDeadFailedCreationOfferIds).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        VARIANT_ID
+      );
+      expect(identifierMapping.deleteMapping).toHaveBeenCalledTimes(1);
+      expect(identifierMapping.deleteMapping).toHaveBeenCalledWith(
+        'Offer',
+        DEAD_OFFER_ID,
+        CONNECTION_ID
+      );
+      // The new mapping is written before the dead one is dropped, so the
+      // variant is never left without a mapping on the connection.
+      expect(identifierMapping.createMapping.mock.invocationCallOrder[0]).toBeLessThan(
+        identifierMapping.deleteMapping.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('should never delete the mapping of the offer it just created', async () => {
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue([
+        EXTERNAL_OFFER_ID,
+        DEAD_OFFER_ID,
+      ]);
+
+      await service.executeCreation(baseInput);
+
+      expect(identifierMapping.deleteMapping).toHaveBeenCalledTimes(1);
+      expect(identifierMapping.deleteMapping).toHaveBeenCalledWith(
+        'Offer',
+        DEAD_OFFER_ID,
+        CONNECTION_ID
+      );
+    });
+
+    it('should delete nothing when the variant has no dead offer', async () => {
+      await service.executeCreation(baseInput);
+
+      expect(identifierMapping.deleteMapping).not.toHaveBeenCalled();
+    });
+
+    it('should delete nothing when the marketplace refused the new create', async () => {
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue([DEAD_OFFER_ID]);
+      adapter.createOffer.mockRejectedValue(
+        new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
+          { code: 'GtinNotExistsInGtinParameter', message: 'Unknown GTIN' },
+        ])
+      );
+
+      await service.executeCreation(baseInput);
+
+      expect(offerMappings.findDeadFailedCreationOfferIds).not.toHaveBeenCalled();
+      expect(identifierMapping.deleteMapping).not.toHaveBeenCalled();
+    });
+
+    it('should never fail the create when retiring the dead mapping throws', async () => {
+      offerMappings.findDeadFailedCreationOfferIds.mockResolvedValue([DEAD_OFFER_ID]);
+      identifierMapping.deleteMapping.mockRejectedValue(new Error('db down'));
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(result.offerCreationRecord.externalOfferId).toBe(EXTERNAL_OFFER_ID);
+      expect(adapter.createOffer).toHaveBeenCalledTimes(1);
     });
   });
 });

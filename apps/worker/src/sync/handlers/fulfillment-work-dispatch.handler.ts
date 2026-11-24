@@ -48,6 +48,7 @@ import {
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FulfillmentWorkUnassignedError,
   buildRoutingShipTo,
+  resolveFulfillmentDispatchTimeoutMs,
   type FulfillmentExecutorPort,
   type IFulfillmentDispatchTimeoutService,
   type IFulfillmentHandshakeService,
@@ -71,7 +72,7 @@ import type {
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN, SyncJobExecutionError, type JobEnqueuePort } from '@openlinker/core/sync';
-import { getEnvBoolean } from '@openlinker/shared/config';
+import { getEnv, getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -220,7 +221,16 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
    */
   private async refreshAcceptanceAttention(orderId: string): Promise<void> {
     try {
-      const outcome = await this.timeouts.recomputeAcceptanceAttention(orderId);
+      // #3476 — the stalled-`unsubmitted` arm must be on here too: this write
+      // replaces the order's whole acceptance entry, so leaving it off would let
+      // one work's acceptance clear the flag a stuck sibling raised. The cutoff
+      // comes from the same resolution path the timeout sweep uses.
+      const timeoutMs = resolveFulfillmentDispatchTimeoutMs(
+        getEnv('OL_FULFILLMENT_DISPATCH_TIMEOUT_MS', '')
+      );
+      const outcome = await this.timeouts.recomputeAcceptanceAttention(orderId, {
+        stalledUnsubmittedBefore: new Date(Date.now() - timeoutMs),
+      });
       await this.orderRecords.markOmsAttention(orderId, 'acceptance', outcome);
     } catch (error) {
       this.logger.error(

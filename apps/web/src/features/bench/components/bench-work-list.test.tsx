@@ -44,6 +44,8 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     assignmentState: 'unassigned',
     claimable: true,
     completedAt: null,
+    hasBuyerNote: false,
+    buyerNoteAcknowledgedAt: null,
     ...over,
   };
 }
@@ -119,6 +121,28 @@ describe('BenchWorkList (#2416)', () => {
     // still a statement about what the packer will DO rather than about what
     // is on a shelf — which is the B2 rule the next test enforces.
     expect(row.textContent).toContain('6 units to scan');
+  });
+
+  it('should mention the buyer note on the rail row, and say it was read once acknowledged', async () => {
+    mount(
+      payload({
+        works: [
+          work({ workId: 'w-unread', hasBuyerNote: true }),
+          work({
+            workId: 'w-read',
+            hasBuyerNote: true,
+            buyerNoteAcknowledgedAt: '2026-09-04T09:30:00Z',
+          }),
+          work({ workId: 'w-none', hasBuyerNote: false }),
+        ],
+        total: 3,
+      })
+    );
+
+    const notes = await screen.findAllByTestId('bench-work-row-buyer-note');
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toHaveTextContent(/^Buyer note$/);
+    expect(notes[1]).toHaveTextContent('Buyer note · read');
   });
 
   it('should never state or imply that stock is picked or ready (story B2)', async () => {
@@ -527,7 +551,7 @@ describe('BenchWorkList (#2416)', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
 
       expect(
-        await screen.findByText('Someone got there first. Try again — there may be more.')
+        await screen.findByText('Someone got there first. Try again - there may be more.')
       ).toBeInTheDocument();
       expect(screen.queryByText('Nothing unassigned right now.')).not.toBeInTheDocument();
     });
@@ -559,7 +583,7 @@ describe('BenchWorkList (#2416)', () => {
         await screen.findByText('That one is already assigned to someone. Try a different one.')
       ).toBeInTheDocument();
       expect(
-        screen.queryByText('Someone got there first. Try again — there may be more.')
+        screen.queryByText('Someone got there first. Try again - there may be more.')
       ).not.toBeInTheDocument();
     });
 

@@ -56,7 +56,15 @@ function Harness({
   defaults?: Record<string, string>;
 }): ReactElement {
   const form = useForm<any>({
-    defaultValues: { shoperShippingId: '', shoperPaymentId: '', shoperStatusId: '', ...defaults },
+    defaultValues: {
+      shoperShippingId: '',
+      shoperPaymentId: '',
+      shoperStatusId: '',
+      shoperParcelShippingId: '',
+      shoperCancelledStatusId: '',
+      shoperInProgressStatusId: '',
+      ...defaults,
+    },
   });
   return (
     <ShoperOrderDefaultsSection
@@ -87,10 +95,11 @@ describe('ShoperOrderDefaultsSection', () => {
     givenOptions();
     renderWithProviders(<Harness />);
 
-    expect(screen.getAllByRole('combobox')).toHaveLength(3);
-    expect(screen.getByRole('option', { name: 'InPost Paczkomaty' })).toBeTruthy();
+    // Three order defaults, then the three writeback ids (two of them status lists).
+    expect(screen.getAllByRole('combobox')).toHaveLength(6);
+    expect(screen.getAllByRole('option', { name: 'InPost Paczkomaty' })).toHaveLength(2);
     expect(screen.getByRole('option', { name: 'Przelew tradycyjny' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'Nowe' })).toBeTruthy();
+    expect(screen.getAllByRole('option', { name: 'Nowe' })).toHaveLength(3);
   });
 
   it('should fetch only the three destination lists', () => {
@@ -144,6 +153,7 @@ describe('ShoperOrderDefaultsSection', () => {
     });
     renderWithProviders(<Harness />);
 
-    expect(screen.getByText('Could not load the list from Shoper')).toBeTruthy();
+    // Both delivery-method fields read the carriers list.
+    expect(screen.getAllByText('Could not load the list from Shoper')).toHaveLength(2);
   });
 });

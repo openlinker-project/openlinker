@@ -26,6 +26,7 @@
  * @module apps/api/test/integration
  */
 import type { QueryFailedError } from 'typeorm';
+import { ORDER_CHANGE_SERVICE_TOKEN, type IOrderChangeService } from '@openlinker/core/orders';
 import {
   getTestHarness,
   IntegrationTestHarness,
@@ -141,6 +142,23 @@ describe('Order Changes Schema Integration', () => {
 
     expect(error).toBeDefined();
     expect(error?.message).toMatch(/internalOrderId/);
+  });
+
+  it('should keep an old open correction proposal in findOpenByOrder while an old request drops out (B-17)', async () => {
+    // A correction waits on the operator and carries no TTL, so this read must
+    // agree with the operator list, which still shows it open.
+    const longAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    await query(
+      `INSERT INTO "order_changes" ("internalOrderId", "kind", "targetRef", "status", "requestedAt")
+       VALUES ($1, 'order.cancel_correction', 'correction:cancel:a:i', 'requested', $2),
+              ($1, 'order.cancel_request', 'cancel:a', 'requested', $2)`,
+      [ORDER_A, longAgo]
+    );
+    const changes = harness.getApp().get<IOrderChangeService>(ORDER_CHANGE_SERVICE_TOKEN);
+
+    const open = await changes.findOpenByOrder(ORDER_A);
+
+    expect(open.map((change) => change.kind)).toEqual(['order.cancel_correction']);
   });
 
   it('should carry exactly the ADR-044 column set', async () => {

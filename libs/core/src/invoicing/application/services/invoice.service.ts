@@ -36,12 +36,14 @@ import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization'
 // `import()` type (banned by `@typescript-eslint/consistent-type-imports`).
 import type { FISCAL_REGISTRATION_SERVICE_TOKEN as FiscalRegistrationServiceTokenType } from '@openlinker/core/fiscalization';
 
-import type { IInvoiceService } from './invoice.service.interface';
+import type { IInvoiceService, IssueInvoiceOptions } from './invoice.service.interface';
+import { invoiceRetryRootKey } from '../../domain/types/invoice-idempotency-key.types';
 import {
   InvoiceRecordRepositoryPort,
   type InvoiceRecordKeysetPage,
 } from '../../domain/ports/invoice-record-repository.port';
 import type { InvoiceRecordKeysetCursor } from '../../domain/types/invoicing.types';
+import { computeStoredDocumentHash } from '../../domain/types/stored-document-hash.types';
 import { InvoiceNumberingSeriesRepositoryPort } from '../../domain/ports/invoice-numbering-series-repository.port';
 import {
   CORRECTION_NUMBERING_DOCUMENT_TYPE,
@@ -54,6 +56,7 @@ import {
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { isCorrectionIssuer } from '../../domain/ports/capabilities/correction-issuer.capability';
+import { isBuyerIdentityCorrector } from '../../domain/ports/capabilities/buyer-identity-corrector.capability';
 import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/document-number-consumer.capability';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
@@ -68,20 +71,21 @@ import { MissingNumberingSeriesException } from '../../domain/exceptions/missing
 import { deriveCorrectionFallbackKey } from '../../domain/idempotency/correction-fallback-key';
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import {
+  isTaxRateEnforced,
+  notifySalesDocumentIssued,
+  withAttemptSuffix,
+} from '@openlinker/core/sales-documents';
 import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
-// Published so an adapter spec can pin its own pre-call refusal message against
-// the very markers this service matches on (#2103 review) — see the constant's doc.
+// One classification for the stored record and the HTTP answer (#3772).
 import {
-  CURRENCY_REJECTION_MARKERS,
-  SALE_CLASSIFICATION_REJECTION_MARKERS,
-} from '../../domain/types/invoicing.types';
+  MAX_FAILURE_REASON_LENGTH,
+  classifyInvoiceFailure,
+} from '../../domain/domain-services/invoice-failure-classification.domain-service';
 import type {
   CorrectionLine,
   GetInvoiceByOrderQuery,
-  InvoiceFailureCode,
-  InvoiceFailureMode,
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
   InvoiceRecordPagination,
@@ -91,6 +95,7 @@ import type {
   IssuedDocumentLine,
   IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
+  IssuedDocumentDates,
   IssuedLineSnapshot,
   IssueInvoiceCommand,
   IssueInvoiceResult,
@@ -113,20 +118,7 @@ const INVOICING_CAPABILITY = 'Invoicing';
  */
 const MAX_ERROR_MESSAGE_LENGTH = 500;
 
-/**
- * Max persisted length of the PII-free `failureReason` (W1). Far shorter than
- * `errorMessage` because it is a sanitized, operator-facing one-liner that is
- * SAFE to expose on the response DTO — it must never become a PII sink.
- */
-const MAX_FAILURE_REASON_LENGTH = 200;
 
-/**
- * Substrings (case-insensitive) that mark a `rejected` failure as a buyer
- * tax-identifier problem, so the FE can prompt the operator to fix the buyer
- * data. Neutral vocabulary only (no country tax-system names per ADR-026):
- * matches the generic "tax id" the adapter surfaces in its rejection reason.
- */
-const TAX_ID_REJECTION_MARKERS = ['tax id', 'tax-id', 'taxid', 'tax identifier'] as const;
 
 /**
  * Lifetime of an `issuing` CAS lease (#1200). Bounds how long a crashed
@@ -170,22 +162,6 @@ if (ISSUING_LEASE_MS <= MAX_SUPPORTED_PROVIDER_TIMEOUT_MS) {
   );
 }
 
-/**
- * Neutral shape the SVC reads STRUCTURALLY off a caught adapter throwable to
- * classify the failure mode (#1200) — it is NOT an adapter error subclass and is
- * NOT value-imported. Adapters expose a neutral `failureMode` on their thrown
- * errors; the SVC reads it duck-typed. Anything it cannot read as the terminal
- * `'rejected'` is treated as the fiscal-safe `'in-doubt'`.
- */
-interface NeutralFailureCarrier {
-  failureMode?: unknown;
-  /**
-   * Operator-readable rejection reason some adapters stamp on a TERMINAL
-   * `rejected` throwable (e.g. Subiekt's `SubiektInvoiceRejectedError.reason`).
-   * Read STRUCTURALLY (duck-typed) — core never value-imports the adapter class.
-   */
-  reason?: unknown;
-}
 
 /** Money is kept to 2 decimal places (the minor-unit precision of ISO-4217 currencies used here). */
 function round2(value: number): number {
@@ -281,7 +257,7 @@ export class InvoiceService implements IInvoiceService {
    * invariant (ADR-041 §3b), so it has no cross-connection exclusivity to
    * enforce.
    */
-  async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+  async issueInvoice(cmd: IssueInvoiceCommand, opts?: IssueInvoiceOptions): Promise<InvoiceRecord> {
     // #2248 (ADR-063 § 6): refuse before the lock and before any persisted
     // state is touched. This is the write-path half of the gate, and it is what
     // closes the MANUAL routes - `POST /invoices`, the panel button, bulk issue
@@ -305,7 +281,7 @@ export class InvoiceService implements IInvoiceService {
     }
 
     try {
-      return await this.issueLocked(cmd);
+      return await this.issueLocked(cmd, opts?.retryOf);
     } finally {
       // Best-effort release — never let a release failure mask the issuance
       // result (a real fiscal document may already exist at this point).
@@ -382,7 +358,7 @@ export class InvoiceService implements IInvoiceService {
     throw new InvoiceIssueContendedException(cmd.orderId);
   }
 
-  private async issueLocked(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+  private async issueLocked(cmd: IssueInvoiceCommand, retryOf?: string): Promise<InvoiceRecord> {
     // (0) One-invoice-per-order guard (#2047). Runs BEFORE the idempotency gate
     // and before any row is created, so a cross-connection second issuance
     // creates nothing at all. It is the backstop that survives a mis-set primary,
@@ -391,6 +367,19 @@ export class InvoiceService implements IInvoiceService {
     // tabs" case holds only BECAUSE the per-order lock above serializes the
     // guard with the create that follows it.
     await this.assertNotInvoicedElsewhere(cmd.orderId, cmd.connectionId);
+
+    // (0') #3960: an operator retry of a refused invoice starts the NEXT attempt
+    // under its own key. Decided under the per-order lock, so two retries of the
+    // same refusal cannot both start one.
+    let link: { attempt: number; previousAttemptId: string } | null = null;
+    if (retryOf !== undefined) {
+      const next = await this.resolveRetryAttempt(cmd, retryOf);
+      if (next.kind === 'resume') {
+        return this.resumeExisting(cmd, next.record);
+      }
+      cmd = { ...cmd, idempotencyKey: next.key };
+      link = { attempt: next.attempt, previousAttemptId: next.previousAttemptId };
+    }
 
     // (1) Idempotency read-gate. Only when a key is supplied (R1: keyless calls
     // are never deduplicated). An already-`issued` hit is returned verbatim — no
@@ -428,6 +417,7 @@ export class InvoiceService implements IInvoiceService {
         // (#3188). See `freezeBuyerTaxIdAtIssue` for why it can never contradict
         // the document.
         buyerTaxId: freezeBuyerTaxIdAtIssue(cmd),
+        ...(link ?? {}),
       });
     } catch (error) {
       // (5) Create-race: a concurrent same-key call won the dedup guard between
@@ -655,6 +645,47 @@ export class InvoiceService implements IInvoiceService {
    *                           only on a WIN, re-cross the boundary. A lost claim
    *                           returns the contended row WITHOUT a provider call.
    */
+  /**
+   * What an operator retry of `retryOf` works on (#3960).
+   *
+   * A refused record of this connection and order with no successor yet gets
+   * the next attempt key. One that already has a successor resumes that
+   * successor, so a double click never starts a third attempt. Anything else
+   * resumes the record as it stands, which `resumeExisting` never re-sends
+   * unless it is safe to.
+   */
+  private async resolveRetryAttempt(
+    cmd: IssueInvoiceCommand,
+    retryOf: string,
+  ): Promise<
+    | { kind: 'resume'; record: InvoiceRecord }
+    | { kind: 'next'; key: string; attempt: number; previousAttemptId: string }
+  > {
+    const refused = await this.repo.findById(retryOf);
+    if (
+      !refused ||
+      refused.connectionId !== cmd.connectionId ||
+      refused.orderId !== cmd.orderId
+    ) {
+      throw new InvoiceRecordNotFoundException(retryOf);
+    }
+    if (!refused.isReattemptableFailure) {
+      return { kind: 'resume', record: refused };
+    }
+    const successor = await this.repo.findSuccessorAttempt(refused.id);
+    if (successor) {
+      return { kind: 'resume', record: successor };
+    }
+    // One root shape for keyed and keyless chains (`invoiceRetryRootKey`).
+    const root = invoiceRetryRootKey(refused);
+    return {
+      kind: 'next',
+      key: withAttemptSuffix(root, refused.attempt + 1),
+      attempt: refused.attempt + 1,
+      previousAttemptId: refused.id,
+    };
+  }
+
   private async resumeExisting(
     cmd: IssueInvoiceCommand,
     existing: InvoiceRecord,
@@ -763,9 +794,7 @@ export class InvoiceService implements IInvoiceService {
       issueResult = await adapter.issueInvoice(cmd);
     } catch (error) {
       const sanitized = this.sanitizeError(error);
-      const failureMode = this.classifyFailure(error);
-      const failureCode = this.classifyFailureCode(error, failureMode);
-      const failureReason = this.deriveFailureReason(failureCode);
+      const { failureMode, failureCode, failureReason } = classifyInvoiceFailure(error);
       // Log the BOUNDED diagnostic + record id only — never the raw (unbounded,
       // possibly buyer-echoing) provider message to an external sink.
       this.logger.warn(
@@ -790,13 +819,16 @@ export class InvoiceService implements IInvoiceService {
       seller,
       sourceDocument,
       documentLines,
+      documentDates,
       unlinkedCatalogueLines,
       warehouseRelease,
     } =
       issueResult;
     // #2251: prefer the document's OWN per-line amounts over core's
     // recomputation, so the stored figure matches the paper to the grosz.
-    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
+    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines, {
+      saleDate: documentDates?.saleDate ?? cmd.saleDate ?? null,
+    });
     // #1297: snapshot the exact issue-command inputs (buyer/currency/lines) so a
     // later correction diffs against the lines AS ISSUED, not the order's current
     // state. Verbatim from the command — no recomputation.
@@ -804,6 +836,11 @@ export class InvoiceService implements IInvoiceService {
       buyer: cmd.buyer,
       currency: cmd.currency,
       lines: cmd.lines,
+      // DEF-07 / DEF-33: the dates as printed, so a correction keys its own
+      // date-dependent values (the exchange rate) on the same day the original did.
+      ...snapshotDates(documentDates, cmd.saleDate),
+      ...(cmd.annotations ? { annotations: cmd.annotations } : {}),
+      ...(cmd.additionalParties?.length ? { additionalParties: cmd.additionalParties } : {}),
     };
 
     const patch: InvoiceOutcomePatch = {
@@ -836,6 +873,10 @@ export class InvoiceService implements IInvoiceService {
       // `undefined` when the adapter does not surface one — leaves the column
       // null and the endpoint 409s gracefully.
       sourceDocument: sourceDocument ?? null,
+      // #3620: hashed ONCE from the very bytes persisted above, in the same
+      // write-once patch - a verification link built from it cannot describe
+      // anything but the document that was sent.
+      sourceDocumentHash: sourceDocument ? computeStoredDocumentHash(sourceDocument) : null,
       // #1297: persist the issuance-time line snapshot on the same issued patch.
       issuedLineSnapshot,
       // How many lines the adapter could not link to the provider's catalogue.
@@ -855,7 +896,20 @@ export class InvoiceService implements IInvoiceService {
       warehouseReleaseNumber:
         warehouseRelease?.outcome === 'released' ? warehouseRelease.documentNumber : null,
     };
-    return this.repo.updateOutcome(recordId, patch);
+    const updated = await this.repo.updateOutcome(recordId, patch);
+    // #3554: an originating invoice was issued - `order.document_issued`. This
+    // path never issues a correction (that is `issueCorrectionWithAdapter`), and
+    // the #2047 guard means it issues at most one originating document per order.
+    await notifySalesDocumentIssued(
+      this.moduleRef,
+      {
+        internalOrderId: updated.orderId,
+        documentKind: 'invoice',
+        issuedAt: updated.issuedAt ?? new Date(),
+      },
+      this.logger
+    );
+    return updated;
   }
 
   /**
@@ -929,6 +983,25 @@ export class InvoiceService implements IInvoiceService {
       throw new MissingNumberingSeriesException(cmd.connectionId);
     }
 
+    // #3960: a retry attempt takes over its refused predecessor's number, so
+    // the refused number is not left as a gap - but ONLY when that number
+    // provably never reached the provider (`canInheritRefusedDocumentNumber`,
+    // applied by the repository under the predecessor's row lock). A number the
+    // provider saw may be recorded there, and sending it on a second document
+    // risks a duplicate number; a gap is the recoverable choice. `null` means
+    // nothing moved (not provably unsent, no number, another series, already
+    // moved) and a fresh number is allocated.
+    if (record.previousAttemptId !== null) {
+      const inherited = await this.numberingRepo.inheritNumber({
+        fromRecordId: record.previousAttemptId,
+        toRecordId: record.id,
+        seriesId,
+      });
+      if (inherited !== null) {
+        return inherited.documentNumber;
+      }
+    }
+
     const allocation = await this.numberingRepo.allocateNumber({
       seriesId,
       recordId: record.id,
@@ -964,104 +1037,6 @@ export class InvoiceService implements IInvoiceService {
       failureReason,
       leaseExpiresAt: null,
     });
-  }
-
-  /**
-   * Classify a caught adapter throwable into the neutral {@link InvoiceFailureMode}
-   * (#1200) WITHOUT value-importing any adapter error subclass. The adapter stamps
-   * a neutral `failureMode` on the errors it throws; the SVC reads it STRUCTURALLY
-   * (duck-typed) here.
-   *
-   * Fiscal-safe default: ONLY an explicit, recognised `'rejected'` is treated as a
-   * terminal no-document failure (safe to re-attempt). EVERYTHING else — an
-   * absent/unknown/`'in-doubt'` marker, a plain `Error`, a non-error throwable —
-   * collapses to `'in-doubt'`, which the read-gate will NOT auto-re-attempt. An
-   * unclassifiable failure must never be assumed safe to re-issue.
-   */
-  private classifyFailure(error: unknown): InvoiceFailureMode {
-    const mode = (error as NeutralFailureCarrier | null)?.failureMode;
-    return mode === 'rejected' ? 'rejected' : 'in-doubt';
-  }
-
-  /**
-   * Derive the neutral, closed {@link InvoiceFailureCode} (W1) from the already-
-   * classified {@link InvoiceFailureMode} plus a STRUCTURAL read of the adapter
-   * throwable's `reason`/message — never value-importing an adapter error class.
-   *
-   *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`;
-   *     a settlement-currency rejection → `invalid-currency`; a missing
-   *     sale-classification rejection → `sale-classification-required` (all
-   *     three operator-fixable on the source order / connection config);
-   *     anything else → `provider-rejected`.
-   *   - `in-doubt` (transient/indeterminate transport): `transport-timeout`.
-   *
-   * Tax id is checked first purely for determinism — a message naming both is
-   * routed to the buyer-data fix, which is the more specific remedy.
-   *
-   * The mode is the source of truth for re-attemptability; the code is the FE-
-   * facing cause refinement. An unrecognised mode can never reach here (the only
-   * two values are exhaustively handled), so there is no need for a separate
-   * `provider-error` branch on the mode — it is the fiscal-safe code reserved for
-   * a future widening of the mode set.
-   */
-  private classifyFailureCode(
-    error: unknown,
-    failureMode: InvoiceFailureMode,
-  ): InvoiceFailureCode {
-    if (failureMode === 'in-doubt') {
-      return 'transport-timeout';
-    }
-    // failureMode === 'rejected': refine off the provider's neutral reason text.
-    const carrier = error as NeutralFailureCarrier | null;
-    const reasonText =
-      typeof carrier?.reason === 'string'
-        ? carrier.reason
-        : error instanceof Error
-          ? error.message
-          : '';
-    const haystack = reasonText.toLowerCase();
-    if (TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
-      return 'buyer-tax-id-invalid';
-    }
-    if (CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
-      return 'invalid-currency';
-    }
-    if (SALE_CLASSIFICATION_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
-      return 'sale-classification-required';
-    }
-    return 'provider-rejected';
-  }
-
-  /**
-   * Map the neutral {@link InvoiceFailureCode} to a fixed, PII-free, operator-
-   * facing one-liner safe to expose on the response DTO. Deliberately NOT derived
-   * from the (possibly buyer-echoing) provider message — a constant per code — so
-   * `failureReason` can never leak PII. Bounded for defence in depth.
-   */
-  private deriveFailureReason(failureCode: InvoiceFailureCode): string {
-    const reasons: Record<InvoiceFailureCode, string> = {
-      'buyer-tax-id-invalid': 'The buyer tax identifier was rejected as invalid.',
-      // Worded to fit an adapter PRE-CALL refusal, which is the only origin
-      // that actually reaches this code today (see InvoiceFailureCode's doc):
-      // it never claims the provider saw a request it did not. It stays
-      // accurate for a provider-side currency rejection too, should one ever
-      // route here, which is why it names the condition rather than the actor.
-      'invalid-currency':
-        'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
-      // Names the connection config field an operator can actually set — the
-      // generic 'provider-rejected' copy gives no clue this is a one-field
-      // config gap rather than a per-order problem (#3031).
-      'sale-classification-required':
-        "This connection requires a sale classification (goods vs. services) to be configured before it can issue invoices. Set the connection's `defaultSaleType` and re-issue.",
-      'provider-rejected': 'The invoicing provider rejected the request.',
-      'transport-timeout':
-        'The invoicing request timed out; the document may or may not have been created.',
-      'provider-error': 'The invoicing provider returned an unexpected error.',
-    };
-    const reason = reasons[failureCode];
-    return reason.length <= MAX_FAILURE_REASON_LENGTH
-      ? reason
-      : reason.slice(0, MAX_FAILURE_REASON_LENGTH);
   }
 
   /**
@@ -1208,7 +1183,7 @@ export class InvoiceService implements IInvoiceService {
     if (!isCorrectionIssuer(adapter)) {
       // Adapter resolved but doesn't implement CorrectionIssuer: update the row
       // to failed (in-doubt) and throw so the caller can surface the 422.
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: 'Provider does not support correction issuance.',
         failureMode: 'rejected',
@@ -1217,6 +1192,23 @@ export class InvoiceService implements IInvoiceService {
         leaseExpiresAt: null,
       });
       throw new CapabilityNotSupportedException(cmd.connectionId, 'CorrectionIssuer');
+    }
+
+    // DEF-09: a buyer override only means something if the provider puts it on
+    // the document. One that does not would issue a correction for the ORIGINAL
+    // buyer while this record's snapshot claimed the new one, so it is refused
+    // here, before anything is sent - nothing exists at the provider yet.
+    if (cmd.buyerOverride && !isBuyerIdentityCorrector(adapter)) {
+      await this.repo.updateOutcome(recordId, {
+        status: 'failed',
+        errorMessage: 'Provider cannot change the buyer on a correction.',
+        failureMode: 'rejected',
+        failureCode: 'provider-rejected',
+        failureReason:
+          'This invoicing provider cannot change the buyer on a correction. Correct the buyer in the provider directly.',
+        leaseExpiresAt: null,
+      });
+      throw new CapabilityNotSupportedException(cmd.connectionId, 'BuyerIdentityCorrector');
     }
 
     // Single issuance instant for the correction (#1692): threaded into BOTH the
@@ -1251,13 +1243,11 @@ export class InvoiceService implements IInvoiceService {
       issueResult = await adapter.issueCorrection(cmd);
     } catch (error) {
       const sanitized = this.sanitizeError(error);
-      const failureMode = this.classifyFailure(error);
-      const failureCode = this.classifyFailureCode(error, failureMode);
-      const failureReason = this.deriveFailureReason(failureCode);
+      const { failureMode, failureCode, failureReason } = classifyInvoiceFailure(error);
       this.logger.warn(
-        `Correction issuance failed for record ${pending.id} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
+        `Correction issuance failed for record ${recordId} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
       );
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: sanitized,
         failureMode,
@@ -1269,37 +1259,49 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines, documentDates } = issueResult;
+
+    // #1582: the buyer captured on the correction's own snapshot is the OVERRIDE
+    // buyer when one was supplied (a buyer-identity correction), else the original
+    // document's buyer - so a correction-of-correction diffs against the buyer as
+    // actually corrected.
+    const correctionBuyer = cmd.buyerOverride ?? cmd.originalDocument?.buyer;
 
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
     // from the caller-assembled original snapshot (`cmd.originalDocument.lines`,
     // the "before" state) with the per-line deltas applied. Only when the caller
-    // supplied `originalDocument` (order still resolvable); absent → persist null
+    // supplied `originalDocument` (order still resolvable); absent -> persist null
     // and the next correction falls back to order-derived reconstruction.
     const correctedLines = cmd.originalDocument
       ? applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines)
       : null;
     const issuedLineSnapshot: IssuedLineSnapshot | null =
-      cmd.originalDocument && correctedLines
+      cmd.originalDocument && correctedLines && correctionBuyer
         ? {
-            buyer: cmd.originalDocument.buyer,
+            buyer: correctionBuyer,
             currency: cmd.originalDocument.currency,
             lines: correctedLines,
+            // A correction does not move the sale date: it stays the original's.
+            ...snapshotDates(documentDates, cmd.originalDocument.saleDate),
+            ...(cmd.originalDocument.annotations ? { annotations: cmd.originalDocument.annotations } : {}),
+            ...(cmd.originalDocument.additionalParties?.length
+              ? { additionalParties: cmd.originalDocument.additionalParties }
+              : {}),
           }
         : null;
     // W2/W3 (#1229 follow-up): a correction's displayed content and source
-    // document were previously never persisted at all — every corrected
+    // document were previously never persisted at all - every corrected
     // invoice's "View"/"Preview" 409'd with "no source document available"
     // even when the adapter (KSeF) had built and submitted a real FA(3) XML.
     // Mirrors `issueInvoice`'s persistence exactly, built from the corrected
     // ("after") lines rather than the original ones.
     const documentContent =
-      correctedLines && cmd.originalDocument
+      correctedLines && cmd.originalDocument && correctionBuyer
         ? this.buildContent(
             {
               lines: correctedLines,
-              buyer: cmd.originalDocument.buyer,
+              buyer: correctionBuyer,
               currency: cmd.originalDocument.currency,
             },
             issued,
@@ -1308,10 +1310,11 @@ export class InvoiceService implements IInvoiceService {
             // amounts overwrite the stored ones. Without this the record would
             // keep the pre-correction figures while the paper says otherwise.
             documentLines,
+            { saleDate: documentDates?.saleDate ?? cmd.originalDocument.saleDate ?? null },
           )
         : null;
 
-    return this.repo.updateOutcome(pending.id, {
+    return this.repo.updateOutcome(recordId, {
       status: 'issued',
       providerType: issued.providerType,
       documentType: issued.documentType,
@@ -1329,6 +1332,7 @@ export class InvoiceService implements IInvoiceService {
       issuedLineSnapshot,
       documentContent,
       sourceDocument: sourceDocument ?? null,
+      sourceDocumentHash: sourceDocument ? computeStoredDocumentHash(sourceDocument) : null,
       // Carried forward from the document being corrected when the correction
       // adapter reports nothing of its own.
       //
@@ -1486,6 +1490,9 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.updateOutcome(invoiceId, {
       regulatoryStatus: result.regulatoryStatus,
       clearanceReference: result.clearanceReference ?? null,
+      // #1582: persist the authority's operator-facing rejection diagnostic (or
+      // clear a stale one when a resend moves the document off `rejected`).
+      clearanceDetail: result.clearanceDetail ?? null,
     });
   }
 
@@ -1531,6 +1538,7 @@ export class InvoiceService implements IInvoiceService {
     record: InvoiceRecord,
     seller: IssuedDocumentSeller | null,
     documentLines?: IssuedDocumentLineAmounts[],
+    dates: { saleDate: string | null } = { saleDate: null },
   ): IssuedDocumentContent {
     const reported = new Map<number, IssuedDocumentLineAmounts>(
       (documentLines ?? []).map((entry) => [entry.lineNumber, entry]),
@@ -1586,7 +1594,7 @@ export class InvoiceService implements IInvoiceService {
       totals,
       currency: cmd.currency,
       issueDate: record.issuedAt ? record.issuedAt.toISOString() : null,
-      saleDate: null,
+      saleDate: dates.saleDate,
       payment: null,
     };
   }
@@ -1635,4 +1643,24 @@ export function freezeBuyerTaxIdAtIssue(cmd: IssueInvoiceCommand): string | null
   // `''` is the asserted-none encoding and the ONLY assertion that survives a
   // document carrying no id; everything else collapses to "not asserted".
   return cmd.buyerTaxIdAssertion === '' ? '' : null;
+}
+
+/**
+ * The printed dates to keep on an {@link IssuedLineSnapshot}: what the adapter
+ * reported, else the command's own sale date. Absent fields stay absent so a
+ * snapshot never claims a date nothing printed.
+ */
+function snapshotDates(
+  documentDates: IssuedDocumentDates | undefined,
+  fallbackSaleDate: string | undefined,
+): Pick<IssuedLineSnapshot, 'issueDate' | 'saleDate'> {
+  const out: Pick<IssuedLineSnapshot, 'issueDate' | 'saleDate'> = {};
+  if (documentDates?.issueDate !== undefined) {
+    out.issueDate = documentDates.issueDate;
+  }
+  const saleDate = documentDates?.saleDate ?? fallbackSaleDate;
+  if (saleDate) {
+    out.saleDate = saleDate;
+  }
+  return out;
 }

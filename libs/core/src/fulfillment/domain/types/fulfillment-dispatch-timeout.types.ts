@@ -165,20 +165,59 @@ export function describeFulfillmentDispatchTimeout(timeoutMs: number): string {
  * input, and only a caller that FAILED to read the works may report that.
  */
 export function deriveAcceptanceAttention(
-  works: readonly FulfillmentWork[]
+  works: readonly FulfillmentWork[],
+  options: DeriveAcceptanceAttentionOptions = {}
 ): AuthorityAttentionOutcome<'acceptance'> {
-  const unaccepted = works.filter(
-    (work) => !isTerminalFulfillmentWorkStatus(work.status) && work.requestStatus === 'rejected'
-  );
+  const live = works.filter((work) => !isTerminalFulfillmentWorkStatus(work.status));
+  const rejected = live.filter((work) => work.requestStatus === 'rejected');
+  const stalled = live.filter((work) => isStalledUnsubmitted(work, options.stalledUnsubmittedBefore));
 
-  if (unaccepted.length === 0) return { kind: 'none' };
+  if (rejected.length === 0 && stalled.length === 0) return { kind: 'none' };
+
+  // A rejection is named first: it is the holder's own answer, whereas a
+  // stalled offer is OL's inference that the offer never reached anybody.
+  const subject = rejected[0] ?? stalled[0];
+  const parts: string[] = [];
+  if (rejected.length > 0) {
+    parts.push(`${String(rejected.length)} fulfilment work object(s) have no holder`);
+  }
+  if (stalled.length > 0) {
+    parts.push(`${String(stalled.length)} fulfilment work object(s) were never offered to their holder`);
+  }
 
   return {
     kind: 'blocked',
     reason: 'fulfillment-unaccepted',
-    detail: `${String(unaccepted.length)} fulfilment work object(s) have no holder`,
+    detail: parts.join('; '),
     // The work id, so a surface can name WHICH parcel of a split order is
     // stuck. Ids and counts only — never a connection name or an address.
-    subjectRef: unaccepted[0]?.id,
+    subjectRef: subject?.id,
   };
+}
+
+export interface DeriveAcceptanceAttentionOptions {
+  /**
+   * Treat an `unsubmitted` work idle since before this instant as stuck (#3476).
+   *
+   * `unsubmitted` is normal for the seconds between routing and the dispatch
+   * job, so it only counts past a cutoff. Omitted, the arm is off and the
+   * verdict is the pre-#3476 one. Every caller that can CLEAR the state must
+   * pass it, or a sibling's acceptance would clear a stuck work's flag.
+   */
+  readonly stalledUnsubmittedBefore?: Date;
+}
+
+/**
+ * Has this work sat `unsubmitted` past the cutoff (#3476)?
+ *
+ * Holder-less work is excluded: the router never mints it, and the dispatch
+ * producer skips it with its own warning, so it is not this state.
+ */
+function isStalledUnsubmitted(work: FulfillmentWork, before: Date | undefined): boolean {
+  return (
+    before !== undefined &&
+    work.requestStatus === 'unsubmitted' &&
+    work.assignedConnectionId !== null &&
+    work.updatedAt.getTime() < before.getTime()
+  );
 }
