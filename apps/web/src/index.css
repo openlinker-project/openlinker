@@ -40904,6 +40904,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-panel__tabs .segmented-control__hint { font-size: 0.6875rem; opacity: 0.85; }
 .release-panel__list {
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px 12px 12px;
   display: grid;
   gap: 10px;
@@ -43157,7 +43158,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .release-card__chevron[data-open='true'] { transform: rotate(180deg); }
 .release-card__fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 280ms var(--ease-out); }
 .release-card__fold[data-open='true'] { grid-template-rows: 1fr; }
-.release-card__fold-inner { min-height: 0; overflow: clip; overflow-clip-margin: 8px; display: grid; gap: 12px; padding-top: 0; }
+/* overflow:hidden, not clip: where clip is unsupported the folded content would still extend the scroll area. The inline padding/margin pair keeps focus rings from being cut. */
+.release-card__fold-inner { min-height: 0; overflow: hidden; display: grid; gap: 12px; padding: 0 8px; margin-inline: -8px; }
 .release-card__fold[data-open='false'] .release-card__fold-inner { visibility: hidden; transition: visibility 0s linear 280ms; }
 :is(.release-panel, .whats-new__setup) .release-card .release-card__toggle:not(.release-card__toggle--static) { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .release-card__fold, .release-card__chevron { transition: none; } }
