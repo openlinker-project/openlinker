@@ -36,6 +36,7 @@ import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 import { AmazonAuthenticationError } from '../../domain/exceptions/amazon-authentication.error';
 import { AmazonConfigException } from '../../domain/exceptions/amazon-config.exception';
 import type { AmazonSpApiClient } from '../http/amazon-spapi-client';
+import { createAmazonPacedFetch } from '../http/amazon-paced-transport';
 
 const DESTINATIONS_PATH = '/notifications/v1/destinations';
 const ORDER_CHANGE_SUBSCRIPTION_PATH = '/notifications/v1/subscriptions/ORDER_CHANGE';
@@ -67,7 +68,7 @@ export class AmazonNotificationProvisioningAdapter implements WebhookProvisionin
       const resolution = await this.factory.resolve(
         connection,
         this.credentialsResolver,
-        this.http.forConnection(connection),
+        createAmazonPacedFetch(this.http, connection),
       );
       const queue = resolution.config.notificationQueue;
       if (queue === undefined) {

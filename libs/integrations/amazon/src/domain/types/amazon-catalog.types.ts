@@ -53,6 +53,7 @@ export interface AmazonCatalogItem {
 export interface AmazonCatalogSearchResults {
   readonly numberOfResults: number;
   readonly items: readonly AmazonCatalogItem[];
+  readonly pagination?: { readonly nextToken?: string; readonly previousToken?: string };
 }
 
 /** What the publish path needs from one catalog item, in one marketplace. */

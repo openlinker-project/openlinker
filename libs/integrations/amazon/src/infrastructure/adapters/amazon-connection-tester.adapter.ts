@@ -34,6 +34,7 @@ import { AmazonAuthenticationError } from '../../domain/exceptions/amazon-authen
 import { AmazonConfigException } from '../../domain/exceptions/amazon-config.exception';
 import { AmazonNetworkError } from '../../domain/exceptions/amazon-network.error';
 import type { AmazonMarketplaceParticipationsResponse } from '../../domain/types/amazon-api.types';
+import { createAmazonPacedFetch } from '../http/amazon-paced-transport';
 
 export class AmazonConnectionTesterAdapter implements ConnectionTesterPort {
   constructor(
@@ -48,7 +49,7 @@ export class AmazonConnectionTesterAdapter implements ConnectionTesterPort {
       const resolution = await this.factory.resolve(
         connection,
         credentialsResolver,
-        this.http.forConnection(connection),
+        createAmazonPacedFetch(this.http, connection),
         this.cache,
       );
       const response = await resolution.client.get<AmazonMarketplaceParticipationsResponse>(

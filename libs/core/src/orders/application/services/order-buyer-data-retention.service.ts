@@ -119,7 +119,8 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     let redacted = 0;
     let processed = 0;
 
-    let ordersExhausted = true;
+    // Stays true unless the candidate set runs out before the per-run cap.
+    let orderBudgetSpent = true;
     while (processed < BUYER_DATA_RETENTION_MAX_ORDERS_PER_CONNECTION) {
       const candidates = await this.repository.findBuyerDataRetentionCandidates({
         sourceConnectionId,
@@ -144,7 +145,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
       }
       processed += candidates.length;
       if (candidates.length < BUYER_DATA_RETENTION_PAGE_SIZE) {
-        ordersExhausted = false;
+        orderBudgetSpent = false;
         break;
       }
     }
@@ -155,7 +156,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
       retentionDays,
       redacted,
       customersRedacted: customers.redacted,
-      budgetExhausted: ordersExhausted || customers.budgetExhausted,
+      budgetExhausted: orderBudgetSpent || customers.budgetExhausted,
     };
   }
 

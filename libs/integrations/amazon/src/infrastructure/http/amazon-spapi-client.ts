@@ -10,10 +10,10 @@
  * to the job, whose runner owns the retry ladder and defers a 429 / 503
  * penalty-free through the retry classifier. Back-off never reads
  * `x-amzn-RateLimit-Limit`: Amazon sends it only "when available" and warns
- * not to rely on it (#3741). Per-operation pacing belongs to the capability
- * adapters that know each operation's quota.
+ * not to rely on it (#3741).
  *
- * Outbound pacing is the injected `fetchImpl`'s job (`host.http.forConnection`).
+ * Outbound pacing is the injected `fetchImpl`'s job: `createAmazonPacedFetch`
+ * routes each operation group to its own bucket on `host.http`.
  * A rate-limiter rejection it throws is rethrown UNWRAPPED, so the runner can
  * requeue without spending an attempt.
  *

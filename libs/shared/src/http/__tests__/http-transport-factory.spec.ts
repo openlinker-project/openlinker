@@ -500,6 +500,29 @@ describe('HttpTransportFactory', () => {
       );
     });
 
+    it('should keep each bucket ceiling when one connection paces several operations on separate bucketKeys', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+      const factory = new HttpTransportFactory({ registry, fetchImpl });
+      const getSpy = jest.spyOn(registry, 'get');
+      const connection = { id: 'conn-1' };
+      const catalog = factory.forConnection(
+        connection,
+        { requestsPerMinute: 120, maxConcurrent: 2 },
+        { bucketKey: 'conn-1:catalog' }
+      );
+      const listings = factory.forConnection(
+        connection,
+        { requestsPerMinute: 300, maxConcurrent: 5 },
+        { bucketKey: 'conn-1:listings' }
+      );
+
+      await catalog('a');
+      await listings('b');
+
+      expect(getSpy).toHaveBeenCalledWith('conn-1:catalog', { requestsPerMinute: 120, maxConcurrent: 2 });
+      expect(getSpy).toHaveBeenCalledWith('conn-1:listings', { requestsPerMinute: 300, maxConcurrent: 5 });
+    });
+
     it('should let a connection config only tighten the shared ceiling when it sets a stricter limit', async () => {
       const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
       const factory = new HttpTransportFactory({ registry, fetchImpl });
