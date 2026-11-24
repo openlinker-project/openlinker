@@ -243,9 +243,23 @@ describe('ShopifyOrderSourceAdapter', () => {
       expect(variables).toEqual({ first: 1, reverse: true });
     });
 
-    it('should return null when the shop has no orders', async () => {
+    it('should return a nothing-older-than-now cursor when the shop has no orders', async () => {
       const query = jest.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false } } });
-      await expect(build(query).headCursor()).resolves.toBeNull();
+      const cursor = await build(query).headCursor();
+      expect(cursor).toMatch(/^v1\|\d{4}-\d{2}-\d{2}T[\d:.]+Z\|0$/);
+    });
+
+    it('should let an empty shop on "now" poll without read_all_orders instead of failing every poll', async () => {
+      const query = jest.fn().mockImplementation((document: string) =>
+        Promise.resolve(
+          document.includes('currentAppInstallation')
+            ? { currentAppInstallation: { accessScopes: [{ handle: 'read_orders' }] } }
+            : { orders: { nodes: [], pageInfo: { hasNextPage: false } } },
+        ),
+      );
+      const adapter = build(query);
+      const cursor = await adapter.headCursor();
+      await expect(adapter.listOrderFeed({ fromCursor: cursor, limit: 10 })).resolves.toMatchObject({ items: [] });
     });
 
     it('should throw when the read fails', async () => {

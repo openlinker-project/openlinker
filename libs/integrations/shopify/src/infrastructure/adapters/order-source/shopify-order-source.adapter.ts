@@ -323,7 +323,7 @@ export class ShopifyOrderSourceAdapter
 
   /**
    * Cursor of the newest order (by `updatedAt`), so a connection that starts
-   * "from now" ingests nothing older. `null` only when the shop has no orders;
+   * "from now" ingests nothing older. an empty shop gets a "now" cursor;
    * a failed read throws, because seeding from nothing would import history.
    * A head still inside the settle window is a safe seed: the feed's keyset
    * resumes strictly after it.
@@ -335,7 +335,9 @@ export class ShopifyOrderSourceAdapter
     });
     const head = data.orders.nodes[0];
     if (head === undefined) {
-      return null;
+      // An empty shop still gets a position (nothing older than now), never null: a null
+      // cursor reads as "the whole history" and would demand the read_all_orders scope.
+      return formatShopifyFeedCursor({ updatedAt: new Date().toISOString(), orderId: '0' });
     }
     return formatShopifyFeedCursor({
       updatedAt: new Date(head.updatedAt).toISOString(),
