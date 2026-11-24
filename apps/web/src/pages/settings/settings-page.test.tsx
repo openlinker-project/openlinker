@@ -70,6 +70,28 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Mailer', { selector: '.toolbar-chip' })).toBeInTheDocument();
   });
 
+  it('shows the Buyer data tile for an admin session and not for a viewer (#4289)', async () => {
+    const admin = renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    expect(await screen.findByRole('heading', { name: 'Buyer data' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage' })).toBeInTheDocument();
+    admin.unmount();
+
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Buyer data' })).not.toBeInTheDocument();
+  });
+
   it('never renders the Mailer tile for a non-admin session', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter({

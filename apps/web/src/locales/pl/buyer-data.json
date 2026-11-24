@@ -1,0 +1,190 @@
+{
+  "impact": {
+    "empty": "Nowe połączenie nie ma jeszcze zamówień. Liczby pojawią się po pierwszej synchronizacji.",
+    "erases": {
+      "few": "zamówienia stracą dane osobowe",
+      "many": "zamówień straci dane osobowe",
+      "one": "zamówienie straci dane osobowe",
+      "other": "zamówienia stracą dane osobowe"
+    },
+    "erasesWhole": {
+      "few": "zamówienia zostaną ukryte i stracą dane osobowe",
+      "many": "zamówień zostanie ukrytych i straci dane osobowe",
+      "one": "zamówienie zostanie ukryte i straci dane osobowe",
+      "other": "zamówienia zostaną ukryte i stracą dane osobowe"
+    },
+    "error": "Nie udało się wczytać liczb. Niczego nie zmieniono.",
+    "hides": {
+      "few": "zamówienia znikną z listy",
+      "many": "zamówień zniknie z listy",
+      "one": "zamówienie zniknie z listy",
+      "other": "zamówienia znikną z listy"
+    },
+    "loading": "Liczę zamówienia…",
+    "skipped": {
+      "few": "Pominięto {n} chronione zamówienia.",
+      "many": "Pominięto {n} chronionych zamówień.",
+      "one": "Pominięto {n} chronione zamówienie.",
+      "other": "Pominięto {n} chronionego zamówienia."
+    },
+    "stays": {
+      "few": "zamówienia zostają na liście",
+      "many": "zamówień zostaje na liście",
+      "one": "zamówienie zostaje na liście",
+      "other": "zamówienia zostają na liście"
+    },
+    "title": "Ile zamówień to dotyczy"
+  },
+  "journey": {
+    "address": "Adres",
+    "amount": "Kwota",
+    "buyer": "Kupujący",
+    "email": "E-mail",
+    "erased": "usunięto",
+    "erasedBuyer": "KUPUJACY-000123",
+    "exampleAddress": "ul. Lipowa 12, Warszawa",
+    "exampleBuyer": "Jan Kowalski",
+    "exampleEmail": "jan.kowalski@example.com",
+    "exampleTotal": "208,99 zł",
+    "hint": "Jedno zamówienie w kolejnych etapach. Przykład używa zmyślonych danych.",
+    "label": "Przykładowe zamówienie w kolejnych etapach",
+    "noteErasedOrder": "Zniknęło z list. Kwoty i produkty zostają w OpenLinkerze.",
+    "noteErasedPersonal": "Zostaje numer zamówienia, kwoty i produkty.",
+    "noteHidden": "Znika z listy. Dane osobowe są nadal w OpenLinkerze.",
+    "noteToday": "Tak wygląda dziś.",
+    "stateErased": "Dane osobowe usunięte",
+    "stateErasedOrder": "Ukryte, dane osobowe usunięte",
+    "stateHidden": "Ukryte",
+    "stateVisible": "Na liście",
+    "title": "Jak to będzie wyglądać",
+    "today": "Dziś"
+  },
+  "page": {
+    "adminOnly": "Tylko administrator może zmieniać zasady dla danych kupujących.",
+    "cancel": "Wróć do ustawień",
+    "columnConnection": "Połączenie",
+    "columnRules": "Dane kupujących",
+    "columnSource": "Zasady",
+    "connectionsHelp": "{own} z {total} połączeń ma własne zasady. Zmieniasz je w edycji połączenia.",
+    "connectionsTitle": "Połączenia",
+    "defaultsBody": "Stosuje je każde nowe połączenie i każde połączenie bez własnych zasad. W edycji połączenia możesz je zmienić tylko dla niego. Dotyczą tylko OpenLinkera, w sklepie i na marketplace dane zostają.",
+    "defaultsTitle": "To są ustawienia domyślne",
+    "description": "Zasady ogólne dla wszystkich połączeń. Każde połączenie może mieć własne, ustawiasz je w edycji połączenia.",
+    "edit": "Edytuj",
+    "enableDialogBody": "Od najbliższej nocy OpenLinker stosuje te zasady do zamówień. Usuniętych danych osobowych nie da się przywrócić. Wystawionych już faktur i paragonów nie zmieniamy.",
+    "enableDialogConfirm": "Włącz",
+    "enableDialogTitle": "Włączyć zasady dla danych kupujących?",
+    "enabledLabel": "Włącz zasady dla danych kupujących",
+    "enabledNeedsCheck": "Najpierw sprawdź zasady. Przełącznik odblokuje się, gdy zobaczysz, co zasady zrobią.",
+    "inherit": "Jak ogólne",
+    "loadError": "Nie udało się wczytać ustawień.",
+    "loading": "Wczytuję ustawienia…",
+    "noConnections": "Żadne połączenie nie przyjmuje jeszcze zamówień.",
+    "offBody": "Dane kupujących są przechowywane bez limitu czasu. Nic się nie zmienia, dopóki nie włączysz zasad.",
+    "offTitle": "Zasady są wyłączone",
+    "onBody": "Zasady działają każdej nocy.",
+    "onTitle": "Zasady działają",
+    "own": "Własne",
+    "save": "Zapisz zasady",
+    "saveFailed": "Nie zapisano zasad.",
+    "saved": "Zasady dla danych kupujących zapisane.",
+    "settings": "Ustawienia",
+    "title": "Dane kupujących"
+  },
+  "period": {
+    "after": {
+      "days": {
+        "few": "po {n} dniach",
+        "many": "po {n} dniach",
+        "one": "po {n} dniu",
+        "other": "po {n} dniach"
+      },
+      "months": {
+        "few": "po {n} miesiącach",
+        "many": "po {n} miesiącach",
+        "one": "po {n} miesiącu",
+        "other": "po {n} miesiącach"
+      },
+      "years": {
+        "few": "po {n} latach",
+        "many": "po {n} latach",
+        "one": "po {n} roku",
+        "other": "po {n} latach"
+      }
+    },
+    "custom": "Własny okres…",
+    "customAmount": "Liczba",
+    "customAmountPlaceholder": "np. 45",
+    "customUnit": "Jednostka",
+    "errorAmount": "Wpisz liczbę całkowitą większą od zera.",
+    "errorRange": "Wpisz 0 (nigdy) albo od 30 do 3650 dni.",
+    "unitDays": "dni",
+    "unitMonths": "miesięcy",
+    "unitYears": "lat"
+  },
+  "rules": {
+    "eraseBeforeHide": "Dane osobowe nie mogą zostać usunięte przed ukryciem zamówienia.",
+    "eraseDescription": "Liczymy od dnia złożenia zamówienia.",
+    "eraseLabel": "Kiedy usunąć dane osobowe?",
+    "eraseNever": "Nigdy, dane zostają bez limitu",
+    "hideDescription": "Zamówienie znika z listy, ale dane zostają w OpenLinkerze. Znajdziesz je w filtrze „Ukryte”.",
+    "hideLabel": "Kiedy ukryć zamówienie?",
+    "hideNever": "Nigdy, zamówienia zostają na liście",
+    "irreversibleBody": "Usuniętych danych osobowych nie da się przywrócić, a ponowna synchronizacja zamówienia ich nie odtworzy. Wystawionych już faktur i paragonów nie zmieniamy.",
+    "irreversibleTitle": "Tego nie da się cofnąć",
+    "modeDescriptionPersonal": "Imię, e-mail, telefon, NIP i adres zastępuje kod, np. KUPUJACY-000123. Kwoty i produkty zostają.",
+    "modeDescriptionWhole": "Gdy dane zostaną usunięte, zamówienie jest dodatkowo ukrywane na listach. Kwoty i produkty zostają w OpenLinkerze.",
+    "modeLabel": "Co usunąć",
+    "modePersonal": "Tylko dane osobowe",
+    "modeWhole": "Całe zamówienie",
+    "stepErase": "2",
+    "stepHide": "1",
+    "summaryEraseNever": "Dane osobowe zostają bez limitu czasu.",
+    "summaryErasePersonal": "Dane osobowe są usuwane {when}.",
+    "summaryEraseWhole": "Zamówienia są ukrywane, a dane osobowe usuwane {when}.",
+    "summaryHideNever": "Zamówienia nie są ukrywane.",
+    "summaryHideOn": "Zamówienia znikają z listy {when}.",
+    "summaryTitle": "W skrócie"
+  },
+  "section": {
+    "changeGeneral": "Zmień zasady ogólne",
+    "checkBody": "OpenLinker policzy zamówienia, które te zasady by objęły, i niczego nie zmieni.",
+    "checkDone": "Sprawdzenie gotowe: z {total} zamówień {toHide} zniknęłoby z listy, a {toErase} straciłoby dane osobowe. Niczego nie zmieniono.",
+    "checkError": "Nie udało się wykonać sprawdzenia. Niczego nie zmieniono.",
+    "checkNow": "Sprawdź teraz",
+    "checkTitle": "Sprawdzenie próbne",
+    "checking": "Sprawdzam…",
+    "enabledInherited": "Przełącznik jest ogólny, teraz: {state}.",
+    "enabledLabel": "Włącz te zasady dla tego połączenia",
+    "enabledNeedsCheck": "Najpierw sprawdź zasady. Przełącznik odblokuje się, gdy zobaczysz, co zasady zrobią.",
+    "heading": "Dane kupujących w tym połączeniu",
+    "help": "Zdecyduj, kiedy zamówienia z tego połączenia znikają z listy i kiedy usuwamy z nich dane osobowe.",
+    "inherit": "Jak ogólne",
+    "inheritedNote": "Dziedziczone z ustawień ogólnych: {summary}",
+    "own": "Ustaw własne",
+    "ownNote": "Własne zasady mają pierwszeństwo przed ogólnymi.",
+    "restore": "Wróć do zasad ogólnych",
+    "sampleLabel": "Przykładowe zamówienia (zamaskowane)",
+    "sourceLabel": "Źródło zasad",
+    "stateOff": "wyłączony",
+    "stateOn": "włączony"
+  },
+  "tile": {
+    "description": "Zdecyduj, kiedy zamówienia znikają z listy i kiedy usuwamy dane osobowe kupujących. Zasady ogólne ustawiasz tutaj, każde połączenie może mieć własne.",
+    "eyebrow": "Ochrona danych",
+    "link": "Zarządzaj",
+    "title": "Dane kupujących"
+  },
+  "wizard": {
+    "heading": "Dane kupujących",
+    "help": "Kiedy zamówienia z tego połączenia znikają z listy i kiedy usuwamy z nich dane osobowe.",
+    "inheritNote": "Nowe połączenie przejmuje zasady z Ustawień > Dane kupujących (teraz: {summary}). Możesz to zmienić teraz albo później w edycji połączenia.",
+    "inheritOption": "Użyj ustawień ogólnych (zalecane)",
+    "ownNote": "Te zasady zapisują się jako wyłączone. Włączysz je w edycji połączenia po sprawdzeniu próbnym.",
+    "ownOption": "Ustaw własne",
+    "reviewGeneral": "Ustawienia ogólne",
+    "reviewLabel": "Dane kupujących",
+    "reviewOwn": "Własne: {summary}",
+    "sourceLabel": "Źródło zasad"
+  }
+}

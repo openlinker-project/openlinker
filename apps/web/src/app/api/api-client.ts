@@ -34,9 +34,18 @@ import {
   createAnalyticsExportApi,
   type AnalyticsExportApi,
 } from '../../features/analytics/api/analytics-export.api';
-import { createGiftReportApi, type GiftReportApi } from '../../features/gift-report/api/gift-report.api';
-import { createReturnGiftsApi, type ReturnGiftsApi } from '../../features/returns/api/return-gifts.api';
-import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
+import {
+  createGiftReportApi,
+  type GiftReportApi,
+} from '../../features/gift-report/api/gift-report.api';
+import {
+  createReturnGiftsApi,
+  type ReturnGiftsApi,
+} from '../../features/returns/api/return-gifts.api';
+import {
+  createAnalyticsApi,
+  type AnalyticsApi,
+} from '../../features/analytics/api/sales-analytics.api';
 import {
   createAnalyticsCoverageApi,
   type AnalyticsCoverageApi,
@@ -135,10 +144,7 @@ import {
   createFulfillmentAuthorityApi,
   type FulfillmentAuthorityApi,
 } from '../../features/fulfillment-authority/api/who-decides.api';
-import {
-  createBenchApi,
-  type BenchApi,
-} from '../../features/bench/api/bench-work.api';
+import { createBenchApi, type BenchApi } from '../../features/bench/api/bench-work.api';
 import {
   createFulfillmentApi,
   type FulfillmentApi,
@@ -149,10 +155,20 @@ import {
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createBundlesApi, type BundlesApi } from '../../features/bundles/api/bundles.api';
 import { createGiftsApi, type GiftsApi } from '../../features/gifts/api/gifts.api';
-import { createPromotionsApi, type PromotionsApi } from '../../features/promotions/api/promotions.api';
+import {
+  createPromotionsApi,
+  type PromotionsApi,
+} from '../../features/promotions/api/promotions.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
-import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
+import {
+  createBuyerDataApi,
+  type BuyerDataApi,
+} from '../../features/buyer-data/api/buyer-data.api';
+import {
+  createBuyerEmailsApi,
+  type BuyerEmailsApi,
+} from '../../features/buyer-emails/api/buyer-emails.api';
 import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -239,7 +255,7 @@ export type ApiFileRequest = (path: string, init?: RequestInit) => Promise<ApiFi
  */
 export type ApiStreamRequest = (
   path: string,
-  init?: RequestInit,
+  init?: RequestInit
 ) => Promise<ReadableStream<Uint8Array>>;
 
 /**
@@ -290,6 +306,7 @@ export interface CoreApiClient {
   pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
+  buyerData: BuyerDataApi;
   buyerEmails: BuyerEmailsApi;
   mcpTokens: McpTokensApi;
   operationalSettings: OperationalSettingsApi;
@@ -383,7 +400,7 @@ export function createApiClient({
     path: string,
     init: RequestInit,
     accessToken: string | null,
-    signal: AbortSignal,
+    signal: AbortSignal
   ): Promise<Response> {
     return fetchFn(buildUrl(baseUrl, path), {
       ...init,
@@ -403,7 +420,7 @@ export function createApiClient({
   async function execute(
     path: string,
     init: RequestInit,
-    options: { timeout: boolean } = { timeout: true },
+    options: { timeout: boolean } = { timeout: true }
   ): Promise<Response> {
     const accessToken = await sessionAdapter.getAccessToken();
 
@@ -470,14 +487,17 @@ export function createApiClient({
     return (await readResponseBody(response)) as T;
   };
 
-  const requestBlob: ApiBlobRequest = async (path: string, init: RequestInit = {}): Promise<Blob> => {
+  const requestBlob: ApiBlobRequest = async (
+    path: string,
+    init: RequestInit = {}
+  ): Promise<Blob> => {
     const response = await execute(path, init);
     return response.blob();
   };
 
   const requestFile: ApiFileRequest = async (
     path: string,
-    init: RequestInit = {},
+    init: RequestInit = {}
   ): Promise<ApiFileResponse> => {
     const response = await execute(path, init);
     return {
@@ -488,7 +508,7 @@ export function createApiClient({
 
   const requestStream: ApiStreamRequest = async (
     path: string,
-    init: RequestInit = {},
+    init: RequestInit = {}
   ): Promise<ReadableStream<Uint8Array>> => {
     // Two different stalls need two different bounds. Once the body exists, the
     // reader's idle ceiling covers a socket that goes quiet (the backend sends a
@@ -580,6 +600,7 @@ export function createApiClient({
     sourcingRules: createSourcingRulesApi(request),
     routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
+    buyerData: createBuyerDataApi(request),
     buyerEmails: createBuyerEmailsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),

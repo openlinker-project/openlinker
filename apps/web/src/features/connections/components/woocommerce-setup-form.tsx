@@ -43,6 +43,11 @@ import { Input } from '../../../shared/ui/input';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
+import {
+  BuyerDataWizardReviewRows,
+  BuyerDataWizardStep,
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+} from '../../buyer-data';
 import { captureDemoEvent } from '../../demo';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
@@ -164,6 +169,8 @@ export function WoocommerceSetupForm(): ReactElement {
 
   const values = form.watch();
   const selectedCapabilities = values.enabledCapabilities ?? [];
+  const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
+  const takesOrders = selectedCapabilities.includes('OrderSource');
 
   return (
     <WizardLayout
@@ -294,6 +301,13 @@ export function WoocommerceSetupForm(): ReactElement {
         ) : null}
 
         {stepIndex === 3 ? (
+          <>
+          {takesOrders ? (
+            <BuyerDataWizardStep
+              value={buyerDataValue}
+              onChange={(next) => form.setValue('buyerDataRetention', next, { shouldDirty: true })}
+            />
+          ) : null}
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
@@ -305,7 +319,9 @@ export function WoocommerceSetupForm(): ReactElement {
             <dd>
               {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : copy.review.noneSelected}
             </dd>
+            {takesOrders ? <BuyerDataWizardReviewRows value={buyerDataValue} /> : null}
           </dl>
+          </>
         ) : null}
 
         <div className="wizard-actions">

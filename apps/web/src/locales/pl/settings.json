@@ -245,6 +245,7 @@
     },
     "chips": {
       "account": "Konto",
+      "buyerData": "Dane kupujących",
       "buyerEmails": "E-maile kupujących",
       "currency": "Waluta",
       "environment": "Środowisko",

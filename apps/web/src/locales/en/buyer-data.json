@@ -1,0 +1,174 @@
+{
+  "impact": {
+    "empty": "A new connection has no orders yet. Counts appear after the first sync.",
+    "erases": {
+      "one": "order loses personal data",
+      "other": "orders lose personal data"
+    },
+    "erasesWhole": {
+      "one": "order is hidden and loses personal data",
+      "other": "orders are hidden and lose personal data"
+    },
+    "error": "The counts could not be loaded. Nothing was changed.",
+    "hides": {
+      "one": "order leaves the list",
+      "other": "orders leave the list"
+    },
+    "loading": "Counting orders…",
+    "skipped": {
+      "one": "{n} protected order is skipped.",
+      "other": "{n} protected orders are skipped."
+    },
+    "stays": {
+      "one": "order stays on the list",
+      "other": "orders stay on the list"
+    },
+    "title": "How many orders this affects"
+  },
+  "journey": {
+    "address": "Address",
+    "amount": "Amount",
+    "buyer": "Buyer",
+    "email": "Email",
+    "erased": "Erased",
+    "erasedBuyer": "BUYER-000123",
+    "exampleAddress": "12 Lipowa St, Warsaw",
+    "exampleBuyer": "Jan Kowalski",
+    "exampleEmail": "jan.kowalski@example.com",
+    "exampleTotal": "208.99 PLN",
+    "hint": "One order, step by step. The example uses made-up data.",
+    "label": "Example order at each step",
+    "noteErasedOrder": "Left the lists. Amounts and products stay in OpenLinker.",
+    "noteErasedPersonal": "The order number, amounts and products stay.",
+    "noteHidden": "Left the list. Personal data is still in OpenLinker.",
+    "noteToday": "This is how it looks today.",
+    "stateErased": "Personal data erased",
+    "stateErasedOrder": "Hidden, personal data erased",
+    "stateHidden": "Hidden",
+    "stateVisible": "On the list",
+    "title": "What it will look like",
+    "today": "Today"
+  },
+  "page": {
+    "adminOnly": "Only an administrator can change the buyer data rules.",
+    "cancel": "Back to settings",
+    "columnConnection": "Connection",
+    "columnRules": "Buyer data",
+    "columnSource": "Rules",
+    "connectionsHelp": "{own} of {total} connections have their own rules. You change them in the connection edit.",
+    "connectionsTitle": "Connections",
+    "defaultsBody": "Every new connection and every connection without its own rules follows these. In a connection's edit you can change them for that connection only. They apply to OpenLinker only; the data stays in the shop and on the marketplace.",
+    "defaultsTitle": "These are default settings",
+    "description": "General rules for all connections. Each connection can have its own, set in the connection edit.",
+    "edit": "Edit",
+    "enableDialogBody": "From the next night OpenLinker applies these rules to orders. Erased personal data cannot be restored. Invoices and receipts that were already issued are not changed.",
+    "enableDialogConfirm": "Turn on",
+    "enableDialogTitle": "Turn on the buyer data rules?",
+    "enabledLabel": "Turn on the buyer data rules",
+    "enabledNeedsCheck": "Run the check first. The switch unlocks once you have seen what the rules would do.",
+    "inherit": "Same as general",
+    "loadError": "The settings could not be loaded.",
+    "loading": "Loading settings…",
+    "noConnections": "No connection takes orders yet.",
+    "offBody": "Buyer data is kept without a time limit. Nothing changes until you turn the rules on.",
+    "offTitle": "The rules are off",
+    "onBody": "The rules run every night.",
+    "onTitle": "The rules are on",
+    "own": "Own",
+    "save": "Save rules",
+    "saveFailed": "The rules were not saved.",
+    "saved": "Buyer data rules saved.",
+    "settings": "Settings",
+    "title": "Buyer data"
+  },
+  "period": {
+    "after": {
+      "days": {
+        "one": "after {n} day",
+        "other": "after {n} days"
+      },
+      "months": {
+        "one": "after {n} month",
+        "other": "after {n} months"
+      },
+      "years": {
+        "one": "after {n} year",
+        "other": "after {n} years"
+      }
+    },
+    "custom": "Custom period…",
+    "customAmount": "Number",
+    "customAmountPlaceholder": "e.g. 45",
+    "customUnit": "Unit",
+    "errorAmount": "Enter a whole number greater than zero.",
+    "errorRange": "Use 0 for never, or 30 to 3650 days.",
+    "unitDays": "days",
+    "unitMonths": "months",
+    "unitYears": "years"
+  },
+  "rules": {
+    "eraseBeforeHide": "Personal data cannot be erased before the order is hidden.",
+    "eraseDescription": "Counted from the day the order was placed.",
+    "eraseLabel": "When should personal data be erased?",
+    "eraseNever": "Never, data stays without a time limit",
+    "hideDescription": "The order leaves the list but its data stays in OpenLinker. You find it under the \"Hidden\" filter.",
+    "hideLabel": "When should an order be hidden?",
+    "hideNever": "Never, orders stay on the list",
+    "irreversibleBody": "Erased personal data cannot be restored, and syncing an order again does not bring it back. Invoices and receipts that were already issued are not changed.",
+    "irreversibleTitle": "This cannot be undone",
+    "modeDescriptionPersonal": "Name, email, phone, tax number and address are replaced with a code such as BUYER-000123. Amounts and products stay.",
+    "modeDescriptionWhole": "When the data is erased, the order is also hidden from the lists. Amounts and products stay in OpenLinker.",
+    "modeLabel": "What to erase",
+    "modePersonal": "Personal data only",
+    "modeWhole": "Whole order",
+    "stepErase": "2",
+    "stepHide": "1",
+    "summaryEraseNever": "Personal data is kept without a time limit.",
+    "summaryErasePersonal": "Personal data is erased {when}.",
+    "summaryEraseWhole": "Orders are hidden and personal data erased {when}.",
+    "summaryHideNever": "Orders are not hidden.",
+    "summaryHideOn": "Orders leave the list {when}.",
+    "summaryTitle": "In short"
+  },
+  "section": {
+    "changeGeneral": "Change the general rules",
+    "checkBody": "OpenLinker counts the orders these rules would touch and changes nothing.",
+    "checkDone": "Check done: of {total} orders, {toHide} would leave the list and {toErase} would lose personal data. Nothing was changed.",
+    "checkError": "The check could not run. Nothing was changed.",
+    "checkNow": "Check now",
+    "checkTitle": "Trial run",
+    "checking": "Checking…",
+    "enabledInherited": "The switch is the general one, currently {state}.",
+    "enabledLabel": "Turn on these rules for this connection",
+    "enabledNeedsCheck": "Run the check first. The switch unlocks once you have seen what the rules would do.",
+    "heading": "Buyer data in this connection",
+    "help": "Decide when orders from this connection leave the list and when their personal data is erased.",
+    "inherit": "Same as general",
+    "inheritedNote": "Inherited from the general settings: {summary}",
+    "own": "Set own",
+    "ownNote": "Own rules take precedence over the general ones.",
+    "restore": "Return to the general rules",
+    "sampleLabel": "Sample orders (masked)",
+    "sourceLabel": "Source of the rules",
+    "stateOff": "off",
+    "stateOn": "on"
+  },
+  "tile": {
+    "description": "Decide when orders leave the list and when buyers' personal data is erased. General rules here; each connection can have its own.",
+    "eyebrow": "Data protection",
+    "link": "Manage",
+    "title": "Buyer data"
+  },
+  "wizard": {
+    "heading": "Buyer data",
+    "help": "When orders from this connection leave the list and when their personal data is erased.",
+    "inheritNote": "A new connection takes the rules from Settings > Buyer data (now: {summary}). You can change this now or later in the connection edit.",
+    "inheritOption": "Use general settings (recommended)",
+    "ownNote": "These rules are saved switched off. Turn them on in the connection edit after a trial run.",
+    "ownOption": "Set own",
+    "reviewGeneral": "General settings",
+    "reviewLabel": "Buyer data",
+    "reviewOwn": "Own: {summary}",
+    "sourceLabel": "Source of the rules"
+  }
+}

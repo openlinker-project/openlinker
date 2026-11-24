@@ -194,6 +194,16 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
     } as ApiClient['adapters'],
+    buyerData: {
+      preview: vi.fn().mockResolvedValue({
+        toHide: 120,
+        toErase: 40,
+        total: 1000,
+        skippedProtected: 3,
+        samples: [{ orderRef: 'OL-91240', placedAt: '2024-12-01T10:00:00.000Z', maskedBuyer: 'J. K.' }],
+      }),
+      ...overrides.buyerData,
+    },
     buyerEmails: {
       listForOrder: vi.fn().mockResolvedValue([]),
       sendTest: vi.fn().mockResolvedValue(undefined),

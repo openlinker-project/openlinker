@@ -31,6 +31,7 @@ import { insightsRoute } from './insights.route';
 import { inventoryLocationsRoute } from './inventory-locations.route';
 import { inventoryMovementsRoute } from './inventory-movements.route';
 import { orderTagsSettingsRoute } from './order-tags-settings.route';
+import { buyerDataRoute } from './buyer-data.route';
 import { buyerEmailsRoute, buyerEmailEditorRoute } from './buyer-emails.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
@@ -95,6 +96,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     ...(omsRoutingUiEnabled ? [inventoryLocationsRoute] : []),
     orderTagsSettingsRoute,
     buyerEmailsRoute,
+    buyerDataRoute,
     buyerEmailEditorRoute,
     adaptersRoute,
     newConnectionRoute,

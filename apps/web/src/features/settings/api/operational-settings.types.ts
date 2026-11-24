@@ -84,6 +84,18 @@ export interface ResolvedCadenceSetting {
   workerMayDiffer?: boolean;
 }
 
+export interface ResolvedBooleanSetting {
+  value: boolean;
+  source: OperationalSettingSource;
+  workerMayDiffer?: boolean;
+}
+
+export interface ResolvedEnumSetting<T extends string> {
+  value: T;
+  source: OperationalSettingSource;
+  workerMayDiffer?: boolean;
+}
+
 /**
  * The accepted range for one knob, as the server reports it in the `bounds`
  * block. Carries `min` and `default`, which the per-value shape does not.
@@ -116,6 +128,16 @@ export interface OperationalSettingsView {
   /** Hours a stock observation may age before the stock view flags it stale (#3621). */
   stockStaleSyncThresholdHours: ResolvedNumberSetting;
   deletionAuditCadence: ResolvedCadenceSetting;
+  /**
+   * Global buyer-data defaults (#4289): the master switch, the hide and erase
+   * periods in days (`0` = never) and what an erase does. Optional on the way in,
+   * like every field a later issue added, so an API that predates them renders
+   * the page with built-in defaults.
+   */
+  buyerDataRetentionEnabled?: ResolvedBooleanSetting;
+  buyerDataHideAfterDays?: ResolvedNumberSetting;
+  buyerDataEraseAfterDays?: ResolvedNumberSetting;
+  buyerDataEraseMode?: ResolvedEnumSetting<'personal-data' | 'whole-order'>;
   /**
    * How often each sweep runs. Read-only — there is no input for either.
    *
@@ -157,6 +179,10 @@ export interface UpdateOperationalSettingsInput {
   inventoryMovementRetentionDays?: number | null;
   stockStaleSyncThresholdHours?: number | null;
   deletionAuditCadence?: string | null;
+  buyerDataRetentionEnabled?: boolean | null;
+  buyerDataHideAfterDays?: number | null;
+  buyerDataEraseAfterDays?: number | null;
+  buyerDataEraseMode?: 'personal-data' | 'whole-order' | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.
    *

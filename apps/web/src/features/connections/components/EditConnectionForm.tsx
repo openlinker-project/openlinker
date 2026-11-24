@@ -31,6 +31,7 @@ import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
 import { PaymentWritebackSection } from './payment-writeback-section';
 import { LabelPurchaseNotificationSection } from './label-purchase-notification-section';
+import { BuyerDataSection, readBuyerDataSettings } from '../../buyer-data';
 import { readNotifyOnLabelPurchase } from '../lib/label-purchase-notification';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
@@ -528,6 +529,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       paymentWriteback: readPaymentWritebackForm(connection.config),
       // "Tell the shop when a label is bought" (#4097) — carrier connections.
       notifyOnLabelPurchase: readNotifyOnLabelPurchase(connection.config),
+      // Per-connection buyer data rules (#4289) - `null` inherits the general rules.
+      buyerDataRetention: readBuyerDataSettings(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -770,6 +773,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       notifyOnLabelPurchase: form.getValues('notifyOnLabelPurchase'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #4289 - re-serialize `config.buyerDataRetention` into configText. Same shape
+  // as `syncLabelPurchaseNotificationToJson`: the section sets the value FIRST.
+  function syncBuyerDataToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      buyerDataRetention: form.getValues('buyerDataRetention'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -1092,6 +1106,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           configIsParseable={configIsParseable}
           canWrite={write.canWrite}
           syncLabelPurchaseNotificationToJson={syncLabelPurchaseNotificationToJson}
+        />
+      ) : null}
+
+      {/* #4289 - buyer data rules: read for any connection that takes orders. */}
+      {connection.enabledCapabilities.includes('OrderSource') ? (
+        <BuyerDataSection
+          connectionId={connection.id}
+          form={form}
+          configIsParseable={configIsParseable}
+          canWrite={write.canWrite}
+          syncBuyerDataToJson={syncBuyerDataToJson}
         />
       ) : null}
 

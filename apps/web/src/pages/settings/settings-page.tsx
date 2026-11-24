@@ -12,6 +12,7 @@ import { SourcingRulesTile } from '../../features/oms';
 import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
+import { BuyerDataTile } from '../../features/buyer-data';
 import { BuyerEmailsTile } from '../../features/buyer-emails';
 import { LoginPageSettingsTile } from '../../features/login-page-settings';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -45,6 +46,7 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">{copy.chips.syncPacing}</span> : null}
           {isAdmin ? <span className="toolbar-chip">{copy.chips.orderTags}</span> : null}
           {isAdmin ? <span className="toolbar-chip">{copy.chips.buyerEmails}</span> : null}
+          {isAdmin ? <span className="toolbar-chip">{copy.chips.buyerData}</span> : null}
           {isAdmin ? <span className="toolbar-chip">{loginPageCopy.title}</span> : null}
           {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
           {omsRoutingUi ? <span className="toolbar-chip">{copy.chips.inventoryLocations}</span> : null}
@@ -138,6 +140,7 @@ export function SettingsPage(): ReactElement {
         {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
         {isAdmin ? <OrderTagsSettingsTile /> : null}
         {isAdmin ? <BuyerEmailsTile /> : null}
+        {isAdmin ? <BuyerDataTile /> : null}
 
         {/* ── Login page (admin-only, #4029) ──────────────────────── */}
         {isAdmin ? <LoginPageSettingsTile /> : null}

@@ -239,6 +239,7 @@
     },
     "chips": {
       "account": "Account",
+      "buyerData": "Buyer data",
       "buyerEmails": "Buyer emails",
       "currency": "Currency",
       "environment": "Environment",

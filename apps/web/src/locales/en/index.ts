@@ -21,6 +21,7 @@ import automation from './automation.json';
 import bench from './bench.json';
 import bundleReturns from './bundle-returns.json';
 import bundles from './bundles.json';
+import buyerData from './buyer-data.json';
 import buyerEmails from './buyer-emails.json';
 import connections from './connections.json';
 import content from './content.json';
@@ -76,6 +77,7 @@ export const en = {
   bench,
   'bundle-returns': bundleReturns,
   bundles,
+  'buyer-data': buyerData,
   'buyer-emails': buyerEmails,
   connections,
   content,

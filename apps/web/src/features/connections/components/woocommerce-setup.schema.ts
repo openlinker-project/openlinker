@@ -10,7 +10,16 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
-import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import {
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  wizardBuyerDataConfig,
+  type BuyerDataWizardValue,
+} from '../../buyer-data';
+import {
+  CORE_CAPABILITY_VALUES,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../api/connections.types';
 import { hasCapabilityConflict } from '../lib/capability-metadata';
 import { schemaMessage } from '../lib/schema-message';
 
@@ -60,10 +69,9 @@ export const woocommerceSetupSchema = z.object({
     .default(WOOCOMMERCE_FALLBACK_CAPABILITIES)
     // Backstop for the UI disable-guard: the backend rejects this pair with a
     // 400, so the payload must never carry both.
-    .refine(
-      (capabilities) => !hasCapabilityConflict(capabilities),
-      msg('capabilityConflict'),
-    ),
+    .refine((capabilities) => !hasCapabilityConflict(capabilities), msg('capabilityConflict')),
+  // The answer to the "Buyer data" question (#4289); set through `setValue`.
+  buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
 });
 
 export type WoocommerceSetupFormValues = z.input<typeof woocommerceSetupSchema>;
@@ -75,17 +83,18 @@ export const WOOCOMMERCE_SETUP_DEFAULT_VALUES: WoocommerceSetupFormValues = {
   consumerKey: '',
   consumerSecret: '',
   enabledCapabilities: WOOCOMMERCE_FALLBACK_CAPABILITIES,
+  buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
 };
 
 export function toCreateConnectionInput(
-  values: WoocommerceSetupFormSubmission,
+  values: WoocommerceSetupFormSubmission
 ): CreateConnectionInput {
   return {
     name: values.name,
     platformType: 'woocommerce',
     adapterKey: WOOCOMMERCE_ADAPTER_KEY,
     credentials: { consumerKey: values.consumerKey, consumerSecret: values.consumerSecret },
-    config: { siteUrl: values.siteUrl },
+    config: { siteUrl: values.siteUrl, ...wizardBuyerDataConfig(values.buyerDataRetention) },
     enabledCapabilities: values.enabledCapabilities,
   };
 }

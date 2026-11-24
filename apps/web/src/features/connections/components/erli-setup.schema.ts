@@ -17,6 +17,11 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
+import {
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  wizardBuyerDataConfig,
+  type BuyerDataWizardValue,
+} from '../../buyer-data';
 import type { CreateConnectionInput } from '../api/connections.types';
 import {
   DEFAULT_DELIVERY_WIZARD_VALUE,
@@ -38,6 +43,8 @@ export const erliSetupSchema = z.object({
   environment: z.enum(ErliEnvironmentValues),
   // The answer to the "Sales documents" step; set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
+  // The answer to the "Buyer data" question (#4289); set through `setValue`.
+  buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
 });
 
 export type ErliSetupFormValues = z.input<typeof erliSetupSchema>;
@@ -48,11 +55,12 @@ export const ERLI_SETUP_DEFAULT_VALUES: ErliSetupFormValues = {
   apiKey: '',
   environment: 'sandbox',
   deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
+  buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
 };
 
 export function toCreateConnectionInput(
   values: ErliSetupFormSubmission,
-  suggestions: readonly DeliveryLineSuggestion[] = [],
+  suggestions: readonly DeliveryLineSuggestion[] = []
 ): CreateConnectionInput {
   return {
     name: values.name,
@@ -66,8 +74,9 @@ export function toCreateConnectionInput(
       environment: values.environment,
       deliveryOnDocuments: wizardConfig(
         values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE,
-        suggestions,
+        suggestions
       ),
+      ...wizardBuyerDataConfig(values.buyerDataRetention),
     },
     // enabledCapabilities is OMITTED on purpose: on the omitted path
     // `ConnectionService.create` defaults to the adapter manifest's supported
