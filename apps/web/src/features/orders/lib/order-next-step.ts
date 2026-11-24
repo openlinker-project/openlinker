@@ -40,31 +40,39 @@ export interface OrderNextStepInput {
   fulfillment: 'not-shipped' | 'dispatched' | 'delivered' | 'failed' | 'unavailable';
 }
 
-/** Highest priority first; the first match wins. */
-export function deriveOrderNextStep(input: OrderNextStepInput): OrderNextStep | null {
+/**
+ * Every problem the page can name, highest priority first. The first one is the
+ * Next step; the rest are the "Also" line and the "All issues" list (#4286).
+ */
+export function deriveOrderIssues(input: OrderNextStepInput): OrderNextStep[] {
+  const issues: OrderNextStep[] = [];
   if (input.failedDestinationCount > 0) {
-    return {
+    issues.push({
       kind: 'failed-destinations',
       tone: 'error',
       tab: 'technical',
       value: input.failedDestinationCount,
-    };
+    });
   }
   if (input.activeHoldLabel !== null) {
-    return { kind: 'on-hold', tone: 'warning', tab: 'packing', value: input.activeHoldLabel };
+    issues.push({ kind: 'on-hold', tone: 'warning', tab: 'packing', value: input.activeHoldLabel });
   }
   if (input.documentBlocked) {
-    return { kind: 'document-blocked', tone: 'warning', tab: 'documents' };
+    issues.push({ kind: 'document-blocked', tone: 'warning', tab: 'documents' });
   }
-  if (input.cancelled) return null;
+  if (input.cancelled) return issues;
   if (input.shipByOverdue && input.fulfillment === 'not-shipped') {
-    return { kind: 'ship-by-overdue', tone: 'error', tab: 'shipping' };
+    issues.push({ kind: 'ship-by-overdue', tone: 'error', tab: 'shipping' });
   }
   if (input.fulfillment === 'failed') {
-    return { kind: 'ready-to-ship', tone: 'warning', tab: 'shipping' };
+    issues.push({ kind: 'ready-to-ship', tone: 'warning', tab: 'shipping' });
+  } else if (input.fulfillment === 'not-shipped') {
+    issues.push({ kind: 'ready-to-ship', tone: 'info', tab: 'shipping' });
   }
-  if (input.fulfillment === 'not-shipped') {
-    return { kind: 'ready-to-ship', tone: 'info', tab: 'shipping' };
-  }
-  return null;
+  return issues;
+}
+
+/** The single most important step, or `null` when nothing needs attention. */
+export function deriveOrderNextStep(input: OrderNextStepInput): OrderNextStep | null {
+  return deriveOrderIssues(input)[0] ?? null;
 }

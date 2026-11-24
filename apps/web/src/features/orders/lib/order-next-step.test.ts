@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveOrderNextStep, type OrderNextStepInput } from './order-next-step';
+import { deriveOrderIssues, deriveOrderNextStep, type OrderNextStepInput } from './order-next-step';
 
 const quiet: OrderNextStepInput = {
   cancelled: false,
@@ -30,5 +30,9 @@ describe('deriveOrderNextStep', () => {
   });
   it('should not prompt when shipping is not available on any connection', () => {
     expect(deriveOrderNextStep({ ...quiet, fulfillment: 'unavailable' })).toBeNull();
+  });
+  it('should list every problem in priority order', () => {
+    const issues = deriveOrderIssues({ ...quiet, failedDestinationCount: 1, activeHoldLabel: 'Fraud check', shipByOverdue: true, fulfillment: 'not-shipped' });
+    expect(issues.map((i) => i.kind)).toEqual(['failed-destinations', 'on-hold', 'ship-by-overdue', 'ready-to-ship']);
   });
 });

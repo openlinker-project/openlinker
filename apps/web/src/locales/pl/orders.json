@@ -1629,6 +1629,7 @@
     "title": "Dostawa"
   },
   "orderDetailHeader": {
+    "allIssues": "Wszystkie problemy ({count})",
     "items": {
       "few": "{n} pozycje",
       "many": "{n} pozycji",
@@ -1670,6 +1671,7 @@
     "loadingMessage": "Pobieranie szczegółów zamówienia…",
     "loadingTitle": "Wczytywanie zamówienia",
     "nextStep": {
+      "also": "Dodatkowo:",
       "documentBlocked": "Dokument sprzedaży wymaga uwagi",
       "failedDestinations": {
         "few": "{n} miejsca docelowe nie przyjęły zamówienia",
@@ -1677,11 +1679,13 @@
         "one": "{n} miejsce docelowe nie przyjęło zamówienia",
         "other": "{n} miejsca docelowego nie przyjęło zamówienia"
       },
+      "hideAll": "Ukryj",
       "label": "Następny krok",
       "onHold": "Wstrzymane: {reason}",
       "open": "Otwórz: {tab}",
       "readyToShip": "Gotowe do wysyłki",
-      "shipByOverdue": "Minął termin wysyłki"
+      "shipByOverdue": "Minął termin wysyłki",
+      "showAll": "Pokaż wszystkie"
     },
     "notFound": "Nie znaleziono zamówienia",
     "parseWarnings": {
@@ -1694,6 +1698,16 @@
       "title": "Niektórych pól nie udało się odczytać - zobacz surowe dane"
     },
     "pricingTitle": "Ceny i podatek",
+    "progress": {
+      "delivered": "Dostarczone",
+      "label": "Postęp zamówienia",
+      "packed": "Spakowane",
+      "paid": "Opłacone",
+      "placed": "Złożone",
+      "sent": "Wysłane do sklepów",
+      "sentCount": "{done} z {total} wysłano",
+      "shipped": "Wysłane"
+    },
     "rawSnapshotTitle": "Surowe dane zamówienia",
     "retry": "Spróbuj ponownie",
     "retryFailedTitle": "Ponowienie nie powiodło się",
@@ -1737,6 +1751,7 @@
       "overview": "Przegląd",
       "packing": "Pakowanie",
       "returns": "Zwroty",
+      "seeMore": "Więcej",
       "shipping": "Wysyłka",
       "technical": "Dane techniczne"
     },

@@ -228,7 +228,10 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
       // Header + summary both show "Received" (the OL ingestion clock); no "Placed" anywhere.
       expect((await screen.findAllByText(/Received/)).length).toBeGreaterThan(0);
-      expect(screen.queryByText(/Placed/)).toBeNull();
+      // The progress line has its own "Placed" step; only the header's placed time must be absent.
+      expect(
+        screen.queryAllByText(/Placed/).filter((el) => !el.closest('.order-progress')),
+      ).toHaveLength(0);
     });
   });
 
@@ -280,7 +283,8 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
 
       expect(await screen.findByText('Carrier')).toBeInTheDocument();
-      expect(screen.getByText('InPost')).toBeInTheDocument();
+      // The header's delivery line names the carrier too.
+      expect(screen.getAllByText(/InPost/).length).toBeGreaterThan(0);
     });
 
     it('falls back to the snapshot delivery method name when no shipment exists', async () => {
@@ -291,9 +295,10 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
 
       expect(await screen.findByText('Carrier')).toBeInTheDocument();
-      // Appears twice: the "Method" field and the "Carrier" field's fallback
-      // to the same value (no shipment record exists for this order).
-      expect(screen.getAllByText('InPost Paczkomat').length).toBe(2);
+      // Appears three times: the "Method" field, the "Carrier" field's fallback
+      // to the same value (no shipment record exists for this order), and the
+      // header's delivery line.
+      expect(screen.getAllByText('InPost Paczkomat').length).toBe(3);
     });
 
     it('renders "-" for carrier when neither a shipment nor a delivery method is present', async () => {

@@ -1547,6 +1547,7 @@
     "title": "Delivery"
   },
   "orderDetailHeader": {
+    "allIssues": "All issues ({count})",
     "items": {
       "one": "{n} item",
       "other": "{n} items"
@@ -1582,16 +1583,19 @@
     "loadingMessage": "Fetching order details…",
     "loadingTitle": "Loading order",
     "nextStep": {
+      "also": "Also:",
       "documentBlocked": "The sales document needs attention",
       "failedDestinations": {
         "one": "{n} destination did not accept this order",
         "other": "{n} destinations did not accept this order"
       },
+      "hideAll": "Hide",
       "label": "Next step",
       "onHold": "On hold: {reason}",
       "open": "Open {tab}",
       "readyToShip": "Ready to ship",
-      "shipByOverdue": "The ship-by date has passed"
+      "shipByOverdue": "The ship-by date has passed",
+      "showAll": "Show all"
     },
     "notFound": "Order not found",
     "parseWarnings": {
@@ -1602,6 +1606,16 @@
       "title": "Some fields couldn't be parsed - see raw snapshot"
     },
     "pricingTitle": "Pricing & tax",
+    "progress": {
+      "delivered": "Delivered",
+      "label": "Order progress",
+      "packed": "Packed",
+      "paid": "Paid",
+      "placed": "Placed",
+      "sent": "Sent to shops",
+      "sentCount": "{done} of {total} sent",
+      "shipped": "Shipped"
+    },
     "rawSnapshotTitle": "Order Snapshot",
     "retry": "Retry",
     "retryFailedTitle": "Retry failed",
@@ -1645,6 +1659,7 @@
       "overview": "Overview",
       "packing": "Packing",
       "returns": "Returns",
+      "seeMore": "See more",
       "shipping": "Shipping",
       "technical": "Technical"
     },

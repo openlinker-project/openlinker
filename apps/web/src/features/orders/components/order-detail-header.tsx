@@ -43,6 +43,15 @@ interface OrderDetailHeaderProps {
   footer?: ReactNode;
   /** Colour of the card's top bar: the tone of the next step, or `ok` when there is none. */
   accent?: 'error' | 'warning' | 'info' | 'ok';
+  /** How many problems the page names; shown as "All issues (N)" beside the status. */
+  issuesCount?: number;
+  onShowIssues?: () => void;
+  /** Buyer name, shown under the title when the snapshot carries one (PII-gated upstream). */
+  buyerName?: string | null;
+  /** One line about delivery (carrier, pickup point) and the ship-by deadline. */
+  deliveryFact?: string | null;
+  shipByFact?: { label: string; tone: StatusBadgeTone } | null;
+  channelName?: string | null;
 }
 
 const HEALTH_TONE: Record<OrderHealthLevel, StatusBadgeTone> = {
@@ -72,6 +81,12 @@ export function OrderDetailHeader({
   actions,
   footer,
   accent = 'ok',
+  issuesCount = 0,
+  onShowIssues,
+  buyerName = null,
+  deliveryFact = null,
+  shipByFact = null,
+  channelName = null,
 }: OrderDetailHeaderProps): ReactElement {
   const copy = useMessages('orders').orderDetailHeader;
   const paymentLabels: Record<PaymentStatus, string> = copy.payment;
@@ -81,7 +96,11 @@ export function OrderDetailHeader({
   const healthLevel = deriveHealthLevel(rollup);
   const methodLabel = paymentMethodChipLabel(snapshot.paymentMethod, snapshot.paymentStatus);
 
-  const title = interpolate(copy.title, { number: snapshot.orderNumber ?? order.internalOrderId });
+  // A source number reads as is; an internal id or a UUID is shortened to 8 characters, the full id stays behind the copy chip.
+  const rawNumber = snapshot.orderNumber ?? order.internalOrderId;
+  const isLongId = rawNumber.length > 14;
+  const shortNumber = isLongId ? `#${rawNumber.replace(/^ol_order_/, '').slice(0, 8)}` : rawNumber;
+  const title = interpolate(copy.title, { number: shortNumber });
 
   const firstItem = snapshot.items[0];
   const itemCount = snapshot.items.length;
@@ -93,13 +112,21 @@ export function OrderDetailHeader({
       <div className="order-header__body">
       <div className="order-header__main">
       <div className="order-header__top">
-        <h1 className="order-header__title">{title}</h1>
+        <h1 className="order-header__title" title={rawNumber}>
+          {title}
+        </h1>
+        <CopyableId id={order.internalOrderId} />
         <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
           {healthLabel(healthLevel, order.handledInOpenLinker)}
         </StatusBadge>
         {/* #2310 — beside the health badge, never instead of it (ADR-059).
             Header badges are full-size, so no `compact` here. */}
         <OrderPhaseOrWaitingBadge order={order} />
+        {issuesCount > 0 && onShowIssues ? (
+          <button type="button" className="order-header__issues" onClick={onShowIssues}>
+            {interpolate(copy.allIssues, { count: issuesCount })}
+          </button>
+        ) : null}
         <OrderEditedBadge
           edited={order.editedInOpenLinker}
           needsAttention={order.editsNeedAttention}
@@ -131,8 +158,6 @@ export function OrderDetailHeader({
       ) : null}
 
       <div className="order-header__sub">
-        <CopyableId id={order.internalOrderId} />
-
         <span className="order-route">
           <span className="order-route__node">
             <span className="order-route__dot" aria-hidden="true" />
@@ -179,11 +204,26 @@ export function OrderDetailHeader({
         </span>
       </div>
 
+      {buyerName || deliveryFact || shipByFact || channelName ? (
+        <div className="order-header__facts">
+          {buyerName ? <strong>{buyerName}</strong> : null}
+          {channelName ? <span className="text-muted">{channelName}</span> : null}
+          {deliveryFact ? <span>{deliveryFact}</span> : null}
+          {shipByFact ? (
+            <StatusBadge tone={shipByFact.tone} withDot compact>
+              {shipByFact.label}
+            </StatusBadge>
+          ) : null}
+        </div>
+      ) : null}
+
       {tags}
 
       {itemCount > 0 ? (
         <div className="order-header__summary-line">
-          <ProductThumbnail name={productName ?? order.internalOrderId} src={firstItem?.imageUrl} size="sm" />
+          {firstItem?.imageUrl ? (
+            <ProductThumbnail name={productName ?? order.internalOrderId} src={firstItem.imageUrl} size="sm" />
+          ) : null}
           <strong>
             {plural(itemCount, copy.items)} · {plural(unitCount, copy.units)}
           </strong>
@@ -204,25 +244,21 @@ export function OrderDetailHeader({
               ) : null}
             </>
           ) : null}
-          {snapshot.totals ? (
-            <>
-              <span className="order-header__summary-sep">·</span>
-              <span className="mono-text tabular">
-                {format.money(snapshot.totals.total, snapshot.totals.currency)}
-              </span>
-            </>
-          ) : null}
         </div>
       ) : null}
       </div>
       <div className="order-header__aside">
         {snapshot.totals ? (
-          <strong className="order-header__total mono-text tabular">
-            {format.money(snapshot.totals.total, snapshot.totals.currency)}
+          <strong className="order-header__total tabular">
+            <span className="order-header__currency">{snapshot.totals.currency}</span>{" "}
+            {snapshot.totals.total.toFixed(2)}
           </strong>
         ) : null}
         {snapshot.paymentStatus ? (
-          <span className="order-header__paid text-muted">{paymentLabels[snapshot.paymentStatus]}</span>
+          <span className="order-header__paid text-muted">
+            {snapshot.paymentStatus === 'paid' ? <span aria-hidden="true">✓ </span> : null}
+            {paymentLabels[snapshot.paymentStatus]}
+          </span>
         ) : null}
         {actions ? <div className="order-header__actions">{actions}</div> : null}
       </div>

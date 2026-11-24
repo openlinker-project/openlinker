@@ -16,6 +16,8 @@ export interface OrderDetailTabEntry {
   label: string;
   /** Omitted when unknown or zero. */
   count?: number;
+  /** A problem lives in this tab: shows an attention dot. */
+  flag?: boolean;
 }
 
 export function OrderDetailTabList({
@@ -30,6 +32,7 @@ export function OrderDetailTabList({
       {tabs.map((tab) => (
         <TabsTrigger key={tab.id} value={tab.id} id={`order-tab-${tab.id}`}>
           {tab.label}
+          {tab.flag ? <span className="order-detail__tab-dot" role="img" aria-label="Needs attention" /> : null}
           {tab.count !== undefined && tab.count > 0 ? (
             <span className="tabs__count">{tab.count}</span>
           ) : null}

@@ -23,7 +23,9 @@ import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Tabs, TabsContent } from '../../shared/ui/tabs';
 import { OrderNextStepCard } from '../../features/orders/components/order-next-step-card';
-import { deriveOrderNextStep } from '../../features/orders/lib/order-next-step';
+import { deriveOrderIssues } from '../../features/orders/lib/order-next-step';
+import { OrderProgressLine } from '../../features/orders/components/order-progress-line';
+import { OrderHeaderMenu } from '../../features/orders/components/order-header-menu';
 import { holdReasonLabel } from '../../features/orders/lib/order-hold.types';
 import { OrderDetailTabList, type OrderDetailTabEntry } from '../../features/orders/components/order-detail-tab-list';
 import {
@@ -199,6 +201,7 @@ export function OrderDetailPage(): ReactElement {
   const demoMode = useDemoMode();
   const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
   const [giftDialogOpen, setGiftDialogOpen] = useState(false);
+  const [issuesOpen, setIssuesOpen] = useState(false);
   const [cancelOutcome, setCancelOutcome] = useState<{
     internalOrderId: string;
     result: CancelOrderResult;
@@ -616,22 +619,8 @@ export function OrderDetailPage(): ReactElement {
     },
   ];
 
-  const tabEntries: OrderDetailTabEntry[] = [
-    { id: 'overview', label: copy.tabs.overview },
-    { id: 'shipping', label: copy.tabs.shipping, count: shipmentsQuery.data?.items.length },
-    {
-      id: 'packing',
-      label: copy.tabs.packing,
-      count: (fulfilmentTasksQuery.data?.total ?? 0) + (order.activeHold ? 1 : 0),
-    },
-    { id: 'documents', label: copy.tabs.documents, count: order.salesDocument?.document ? 1 : 0 },
-    { id: 'returns', label: copy.tabs.returns },
-    { id: 'notes', label: copy.tabs.notes },
-    { id: 'history', label: copy.tabs.history },
-    { id: 'technical', label: copy.tabs.technical, count: failedDestinations.length + snapshot.parseWarnings.length },
-  ];
 
-  const nextStep = deriveOrderNextStep({
+  const issues = deriveOrderIssues({
     cancelled: snapshot.status === 'cancelled',
     failedDestinationCount: failedDestinations.length,
     activeHoldLabel: order.activeHold ? holdReasonLabel(order.activeHold.reason) : null,
@@ -644,6 +633,8 @@ export function OrderDetailPage(): ReactElement {
     shipByOverdue: shipByView?.level === 'overdue',
     fulfillment,
   });
+  const nextStep = issues[0] ?? null;
+  const issueTabs = new Set(issues.filter((i) => i.tone !== 'info').map((i) => i.tab));
   const tabLabels: Record<OrderDetailTabId, string> = {
     overview: copy.tabs.overview,
     shipping: copy.tabs.shipping,
@@ -655,9 +646,24 @@ export function OrderDetailPage(): ReactElement {
     technical: copy.tabs.technical,
   };
 
+  const tabEntries: OrderDetailTabEntry[] = [
+    { id: 'overview', label: copy.tabs.overview, flag: issueTabs.has('overview') },
+    { id: 'shipping', label: copy.tabs.shipping, count: shipmentsQuery.data?.items.length, flag: issueTabs.has('shipping') },
+    {
+      id: 'packing',
+      label: copy.tabs.packing,
+      count: (fulfilmentTasksQuery.data?.total ?? 0) + (order.activeHold ? 1 : 0),
+      flag: issueTabs.has('packing'),
+    },
+    { id: 'documents', label: copy.tabs.documents, count: order.salesDocument?.document ? 1 : 0, flag: issueTabs.has('documents') },
+    { id: 'returns', label: copy.tabs.returns },
+    { id: 'notes', label: copy.tabs.notes },
+    { id: 'history', label: copy.tabs.history },
+    { id: 'technical', label: copy.tabs.technical, count: failedDestinations.length + snapshot.parseWarnings.length, flag: issueTabs.has('technical') },
+  ];
+
   const headerActions = (
     <>
-    <GiftsGuide variant="detail" />
     <OrderConfirmRefundAction
       internalOrderId={order.internalOrderId}
       currency={snapshot.totals?.currency ?? null}
@@ -689,6 +695,8 @@ export function OrderDetailPage(): ReactElement {
       onSaved={handleOrderEdited}
       onGoTo={scrollToRemedy}
     />
+    <OrderHeaderMenu label={copy.tabs.seeMore}>
+    <GiftsGuide variant="detail" />
     <OrderAddGiftAction
       key={`gift:${order.internalOrderId}`}
       internalOrderId={order.internalOrderId}
@@ -733,6 +741,7 @@ export function OrderDetailPage(): ReactElement {
         goToAnchor('shipment');
       }}
     />
+    </OrderHeaderMenu>
     </>
   );
 
@@ -754,9 +763,25 @@ export function OrderDetailPage(): ReactElement {
         tags={<OrderTagsHeaderRow internalOrderId={internalOrderId} />}
         actions={headerActions}
         accent={nextStep ? nextStep.tone : 'ok'}
+        issuesCount={issues.length}
+        onShowIssues={() => { setIssuesOpen(true); }}
+        buyerName={
+          [snapshot.shippingAddress?.firstName, snapshot.shippingAddress?.lastName]
+            .filter(Boolean)
+            .join(' ') || null
+        }
+        channelName={cancelSourceName}
+        deliveryFact={[carrier, snapshot.pickupPoint?.name].filter(Boolean).join(', ') || null}
+        shipByFact={shipByView ? { label: shipByView.remaining, tone: SHIP_BY_TONE[shipByView.level] } : null}
         footer={
-          nextStep ? (
-            <OrderNextStepCard step={nextStep} tabLabels={tabLabels} onOpenTab={handleTabChange} />
+          issues.length > 0 ? (
+            <OrderNextStepCard
+              steps={issues}
+              tabLabels={tabLabels}
+              onOpenTab={handleTabChange}
+              expanded={issuesOpen}
+              onToggleExpanded={() => { setIssuesOpen((v) => !v); }}
+            />
           ) : null
         }
       />
@@ -897,6 +922,18 @@ export function OrderDetailPage(): ReactElement {
         <OrderDetailTabList ariaLabel={copy.tabs.ariaLabel} tabs={tabEntries} />
 
       <TabsContent value="overview" forceMount className="order-detail__tab">
+        <OrderProgressLine
+          input={{
+            placedAt: snapshot.placedAt ?? null,
+            paid: snapshot.paymentStatus === 'paid',
+            syncedCount: order.syncStatus.filter((x) => x.status === 'synced').length,
+            syncTotal: order.syncStatus.length,
+            packedAt: order.packedAt ?? null,
+            dispatched: fulfillment === 'dispatched' || fulfillment === 'delivered',
+            delivered: fulfillment === 'delivered',
+          }}
+        />
+        <div className="order-detail__flat">
         <OrderHealthSummary
           syncStatus={order.syncStatus}
           fulfillment={fulfillment}
@@ -907,8 +944,8 @@ export function OrderDetailPage(): ReactElement {
           destinationRoutingBlockReason={order.destinationRoutingBlockReason}
           handledInOpenLinker={order.handledInOpenLinker}
         />
-
-      {snapshot.items.length > 0 || snapshot.totals ? (
+        </div>
+        {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">{copy.pricingTitle}</h3>
           <OrderPricingPanel
@@ -922,7 +959,9 @@ export function OrderDetailPage(): ReactElement {
           />
         </section>
       ) : null}
-
+        <div className="order-detail__overview-grid">
+          <div className="order-detail__overview-main">
+          
           <section className="detail-section">
             <h3 className="detail-section__title">{summary.title}</h3>
             <KeyValueList items={summaryItems} />
@@ -935,7 +974,8 @@ export function OrderDetailPage(): ReactElement {
             sourceName={cancelSourceName}
             amountLabel={cancelTotalLabel}
           />
-
+          </div>
+          <div className="order-detail__overview-side">
           <OrderDeliveryPanel
             shippingAddress={snapshot.shippingAddress}
             shipping={snapshot.shipping}
@@ -955,7 +995,8 @@ export function OrderDetailPage(): ReactElement {
           />
 
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
-
+          </div>
+        </div>
       </TabsContent>
 
       <TabsContent value="shipping" forceMount className="order-detail__tab">
