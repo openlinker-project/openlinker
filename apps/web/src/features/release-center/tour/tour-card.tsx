@@ -166,7 +166,6 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
       else dispatch({ type: 'next' });
     }, 250);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a change of the target state or the step decides
   }, [state.target, state.index]);
 
   // A node the router already removed is as good as missing; measuring it parks the ring at the origin.
