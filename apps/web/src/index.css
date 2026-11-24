@@ -40502,8 +40502,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 /* Wide screens: tabs made of several independent cards flow into two balanced columns (#4286) */
 @media (min-width: 1500px) {
-  .order-detail__split[data-state='active'] { display: block; column-count: 2; column-gap: 28px; }
-  .order-detail__split[data-state='active'] > * { break-inside: avoid; margin-bottom: 28px; }
+  /* Two columns only when there is more than one card; a single card takes the full width. */
+  .order-detail__split[data-state='active']:has(> :nth-child(2):not(:empty)) { display: block; column-count: 2; column-gap: 28px; }
+  .order-detail__split[data-state='active']:has(> :nth-child(2):not(:empty)) > * { break-inside: avoid; margin-bottom: 28px; }
 }
 /* a product name that opens the product peek (#4286) */
 .order-line-item__name--link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-primary); text-align: left; cursor: pointer; }
