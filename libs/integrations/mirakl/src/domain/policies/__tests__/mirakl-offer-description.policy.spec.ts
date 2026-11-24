@@ -29,6 +29,17 @@ describe('readMiraklOfferDescription', () => {
     expect(readMiraklOfferDescription(EMPIK_CARD_STYLES)).toBeNull();
   });
 
+  it('should read CSS that Empik cut at a bare selector and an ellipsis as none', () => {
+    // How OL-TEST-HP1 actually ends on Empik staging (2026-11-24).
+    const cut = '#empilp-z p {\n\tmargin-top: 20px;\n}\n\n#empilp-z .empilp-z-s7 ....';
+
+    expect(readMiraklOfferDescription(cut)).toBeNull();
+  });
+
+  it('should keep ASCII prose that follows a braced part', () => {
+    expect(readMiraklOfferDescription('Set {3 pieces} in a box')).toBe('Set {3 pieces} in a box');
+  });
+
   it('should read a blank or absent description as none', () => {
     expect(readMiraklOfferDescription('   ')).toBeNull();
     expect(readMiraklOfferDescription(undefined)).toBeNull();
