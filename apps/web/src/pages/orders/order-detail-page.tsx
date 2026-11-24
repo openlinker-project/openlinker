@@ -299,7 +299,7 @@ export function OrderDetailPage(): ReactElement {
       if (tab && tab !== activeTab) handleTabChange(tab);
       setPendingAnchor(targetId);
     },
-    [activeTab, handleTabChange],
+    [activeTab, handleTabChange, showPackingTab],
   );
   // Scroll after the target tab has rendered, not on a fixed frame delay.
   useEffect(() => {
@@ -333,7 +333,7 @@ export function OrderDetailPage(): ReactElement {
       target.scrollIntoView({ behavior, block: 'start' });
     });
     return () => { cancelAnimationFrame(raf); };
-  }, [hasOrder, location.hash, activeTab, handleTabChange]);
+  }, [hasOrder, location.hash, activeTab, handleTabChange, showPackingTab]);
 
   const pendingDestinationId =
     retry.isPending && retry.variables ? retry.variables.destinationConnectionId : null;
