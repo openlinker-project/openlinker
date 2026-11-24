@@ -10,7 +10,9 @@
  *   Empik staging, 2026-11-23), so `images` is `null`, never an invented url;
  * - tax rate: an offer carries no VAT rate, so it stays unreported;
  * - GPSR: not on the offer, left `undefined` ("not reported"), never `null`
- *   ("asserted none").
+ *   ("asserted none");
+ * - a description that is only the card page's CSS, which some Empik cards
+ *   return instead of text (`mirakl-offer-description.policy.ts`).
  *
  * The price is the offer's gross price (ADR-077): Mirakl offer prices include
  * VAT.
@@ -18,6 +20,7 @@
  * @module libs/integrations/mirakl/src/infrastructure/adapters/catalog-master
  */
 import type { Category, Product, ProductVariant } from '@openlinker/core/products';
+import { readMiraklOfferDescription } from '../../../domain/policies/mirakl-offer-description.policy';
 import { pickMiraklBarcode } from '../../../domain/policies/mirakl-offer-reference.policy';
 import type { MiraklOffer } from '../../../domain/types/mirakl-offer.types';
 
@@ -34,7 +37,7 @@ export function mapMiraklOfferToProduct(offer: MiraklOffer, internalId: string):
     name: nonBlank(offer.product_title) ?? sku ?? internalId,
     sku,
     price: readPrice(offer.price),
-    description: nonBlank(offer.product_description),
+    description: readMiraklOfferDescription(offer.product_description),
     images: null,
     currency: nonBlank(offer.currency_iso_code),
     ...(category

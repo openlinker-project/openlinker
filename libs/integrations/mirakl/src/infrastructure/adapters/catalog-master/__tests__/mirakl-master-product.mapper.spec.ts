@@ -53,6 +53,18 @@ describe('mapMiraklOfferToProduct', () => {
     expect(product).not.toHaveProperty('gpsr');
     expect(product).not.toHaveProperty('taxRate');
   });
+
+  it('should leave out a description that is only the card page CSS', () => {
+    const product = mapMiraklOfferToProduct(
+      {
+        ...OFFER,
+        product_description: '#empilp-z {\n\tmax-width: 830px;\n}\n#empilp-z img {\n\tdisp',
+      },
+      'ol_product_1'
+    );
+
+    expect(product.description).toBeNull();
+  });
 });
 
 describe('mapMiraklOfferToVariant', () => {

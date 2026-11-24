@@ -152,7 +152,9 @@ target, #1498). Both are off on a new connection, which stays a marketplace.
 - **Products**: each offer (OF21) is a product with one variant, keyed by
   `shop_sku`: title, description, brand, EAN, gross price and category. No
   images (Mirakl gives the seller none for a catalogue card) and no VAT rate
-  (not on the offer). Writing the catalogue from OpenLinker is refused. An
+  (not on the offer). A description that is only CSS, which some Empik cards
+  return instead of text, is left out. Writing the catalogue from OpenLinker
+  is refused. An
   offer that disappears from OF21 is a product deleted at the master, so its
   listings elsewhere pause.
 - **Stock**: the offer quantity, pooled. A change from OpenLinker (a routed
@@ -184,6 +186,27 @@ target, #1498). Both are off on a new connection, which stays a marketplace.
 
 Empik's test platform is `https://stg1.marketplace.empik.com`; a staging key
 answers 401 on production.
+
+## Call frequency
+
+Mirakl documents a recommended and a maximum frequency per call (Seller API
+reference, "Call Frequency"); a call above the maximum answers 429 with
+`Retry-After`. What the plugin does against it:
+
+| Call | Mirakl maximum | Plugin |
+|---|---|---|
+| STO01 stock import | once per minute (recommended every 5) | offer writes every 5 min; master stock writes every minute, one file |
+| PRI01 price import | once per minute | with the offer writes, every 5 min |
+| OR11 orders | once per minute | every 5 min |
+| RT11 returns | every 5 minutes | every 15 min |
+| A01 account | once per day | connection test only |
+| OF21 / P31 | per page view | master sweeps: one OF21 per product |
+
+Empik staging refused a second STO01 file inside about 30 seconds. The hourly
+total per shop is not published in the reference, so no connection rate limit
+is set. A 429 that outlives the client's own retries is deferred by the
+retry classifier (Mirakl's `Retry-After`, else one minute) without spending a
+job attempt.
 
 ## Mirakl rules the adapters rely on
 
