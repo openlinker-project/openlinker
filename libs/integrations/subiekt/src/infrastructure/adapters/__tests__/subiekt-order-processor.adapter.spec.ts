@@ -911,6 +911,20 @@ describe('SubiektOrderProcessorAdapter - bundle components on the ZK (#3607)', (
     expect(lines.reduce((s, l) => s + l.wartoscBrutto, 0)).toBeCloseTo(59.9, 2);
   });
 
+  it('books the share core assigned each component instead of splitting by unit count', async () => {
+    const lines = await send({
+      ...base,
+      totals: { ...base.totals, subtotal: 90, total: 90 },
+      items: [{ ...setLine, price: 90 }],
+      physicalItems: [
+        { ...setLine, id: 'L1:a', productId: 'ol_p_mug', quantity: 1, parentLineId: 'L1', shareGross: 85.71 },
+        { ...setLine, id: 'L1:b', productId: 'ol_p_pad', quantity: 1, parentLineId: 'L1', shareGross: 4.29 },
+      ],
+    } as unknown as OrderCreate);
+
+    expect(lines.map((l) => l.wartoscBrutto)).toEqual([85.71, 4.29]);
+  });
+
   it('multiplies a multipack by its pack size and keeps the total', async () => {
     const lines = await send({
       ...base,

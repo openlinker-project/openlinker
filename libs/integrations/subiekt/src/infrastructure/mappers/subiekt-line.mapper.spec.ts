@@ -10,7 +10,11 @@
  */
 import type { InvoiceLine } from '@openlinker/core/invoicing';
 import { FractionalTaxRateNotationError, MissingTaxRateException } from '@openlinker/core/invoicing';
-import { expandStockComponents, toBridgeLines } from './subiekt-line.mapper';
+import {
+  expandStockComponents,
+  remapCorrectionLinesToExpandedDocument,
+  toBridgeLines,
+} from './subiekt-line.mapper';
 
 function line(taxRate: string): InvoiceLine {
   return { name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate };
@@ -131,5 +135,69 @@ describe('expandStockComponents (#3607)', () => {
   it('leaves a line without components untouched', () => {
     const plain = { name: 'Kubek', quantity: 2, unitPriceGross: 10, taxRate: '23', productId: 'p-mug' };
     expect(expandStockComponents([plain])).toEqual([plain]);
+  });
+});
+
+describe('expandStockComponents - core-computed shares', () => {
+  it('books the value core assigned each component, not a split by unit count', () => {
+    const out = expandStockComponents(
+      [
+        {
+          name: 'Zestaw',
+          quantity: 1,
+          unitPriceGross: 90,
+          taxRate: '23',
+          productId: 'p-set',
+          stockComponents: [
+            { productId: 'p-mug', variantId: 'v-mug', quantity: 1, name: 'Kubek', totalGross: 85.71 },
+            { productId: 'p-pad', variantId: 'v-pad', quantity: 1, name: 'Podkladka', totalGross: 4.29 },
+          ],
+        },
+      ],
+      'PLN',
+    );
+    expect(out.map((l) => l.unitPriceGross)).toEqual([85.71, 4.29]);
+  });
+});
+
+describe('remapCorrectionLinesToExpandedDocument', () => {
+  const plain = (name: string): InvoiceLine => ({ name, quantity: 1, unitPriceGross: 10, taxRate: '23', productId: name });
+  const set: InvoiceLine = {
+    name: 'Zestaw',
+    quantity: 2,
+    unitPriceGross: 50,
+    taxRate: '23',
+    productId: 'p-set',
+    stockComponents: [
+      { productId: 'p-mug', variantId: 'v-mug', quantity: 2 },
+      { productId: 'p-pad', variantId: 'v-pad', quantity: 2 },
+    ],
+  };
+
+  it('shifts the positions after a set line by the components it expanded into', () => {
+    const out = remapCorrectionLinesToExpandedDocument(
+      [{ originalLineNumber: 2, newQuantity: 0 }],
+      [set, plain('kawa')],
+    );
+    expect(out).toEqual([{ originalLineNumber: 3, newQuantity: 0 }]);
+  });
+
+  it('spreads a set quantity change over its component lines', () => {
+    const out = remapCorrectionLinesToExpandedDocument([{ originalLineNumber: 1, newQuantity: 1 }], [set, plain('kawa')]);
+    expect(out).toEqual([
+      { originalLineNumber: 1, newQuantity: 1 },
+      { originalLineNumber: 2, newQuantity: 1 },
+    ]);
+  });
+
+  it('keeps the positions when no set was expanded', () => {
+    const corrections = [{ originalLineNumber: 2, newQuantity: 0 }];
+    expect(remapCorrectionLinesToExpandedDocument(corrections, [plain('a'), plain('b')])).toEqual(corrections);
+  });
+
+  it('refuses a price correction on a set line instead of guessing a position', () => {
+    expect(() =>
+      remapCorrectionLinesToExpandedDocument([{ originalLineNumber: 1, newUnitPriceGross: 40 }], [set]),
+    ).toThrow(/set sold as its components/);
   });
 });

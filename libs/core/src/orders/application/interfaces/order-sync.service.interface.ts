@@ -46,7 +46,7 @@ export interface OrderSyncRequest {
    * destinations as `OrderCreate.physicalItems` so one that moves stock off its
    * own document can sell the components. Absent when nothing expanded.
    */
-  physicalItems?: ReadonlyArray<OrderItem & { parentLineId?: string; giftSlot?: boolean }>;
+  physicalItems?: ReadonlyArray<OrderItem & { parentLineId?: string; giftSlot?: boolean; shareGross?: number }>;
 
   /**
    * Optional routing filter — the destinations a router selected for this order

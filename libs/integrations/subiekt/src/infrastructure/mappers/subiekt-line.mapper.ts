@@ -53,7 +53,7 @@
  */
 import type { CorrectionLine, InvoiceLine } from '@openlinker/core/invoicing';
 import { MissingTaxRateException, assertPercentTaxRateNotation } from '@openlinker/core/invoicing';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced, minorUnitExponentFor } from '@openlinker/core/sales-documents';
 
 /**
  * The Polish standard rate, and the value this mapper substituted for every
@@ -62,6 +62,7 @@ import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
  * catalogue coverage is being filled in.
  */
 const DEFAULT_PL_VAT_RATE = '23';
+import { SubiektInvoiceRejectedError } from '../../domain/exceptions/subiekt-invoice-rejected.exception';
 import type { BridgeKorektaLine, BridgeLine } from '../../bridge/subiekt-bridge.types';
 
 /**
@@ -145,11 +146,17 @@ export function toBridgeKorektaLine(line: CorrectionLine): BridgeKorektaLine {
  * Sell the physical components of a bundle line instead of the bundle (#3607).
  *
  * Subiekt's document moves stock, and a set's own towar has none, so a line
- * that carries `stockComponents` is replaced by one line per component. The
- * line's gross total is divided over the paid components by unit share (a gift
- * slot is sold at 0) so the document still adds up to what the buyer paid.
+ * that carries `stockComponents` is replaced by one line per component, in the
+ * component order. Each component's value is the share OpenLinker's core split
+ * out of the paid set total (`totalGross`); only a component list without those
+ * shares - an older core - falls back to dividing the total by unit count.
  */
-export function expandStockComponents(lines: readonly InvoiceLine[]): InvoiceLine[] {
+export function expandStockComponents(
+  lines: readonly InvoiceLine[],
+  currency?: string | null,
+): InvoiceLine[] {
+  const factor = 10 ** minorUnitExponentFor(currency);
+  const round = (value: number): number => Math.round(value * factor) / factor;
   const out: InvoiceLine[] = [];
   for (const line of lines) {
     const components = line.stockComponents;
@@ -157,19 +164,22 @@ export function expandStockComponents(lines: readonly InvoiceLine[]): InvoiceLin
       out.push(line);
       continue;
     }
-    const total = Math.round(line.unitPriceGross * line.quantity * 100) / 100;
+    const total = round(line.unitPriceGross * line.quantity);
     const paid = components.filter((c) => c.giftSlot !== true);
     const paidUnits = paid.reduce((sum, c) => sum + c.quantity, 0);
+    const coreShares = components.every((c) => c.giftSlot === true || typeof c.totalGross === 'number');
     let allocated = 0;
     const lastPaid = paid[paid.length - 1];
     for (const component of components) {
       const isGift = component.giftSlot === true;
       let share = 0;
-      if (!isGift && paidUnits > 0) {
+      if (!isGift && coreShares) {
+        share = component.totalGross ?? 0;
+      } else if (!isGift && paidUnits > 0) {
         share =
           component === lastPaid
-            ? Math.round((total - allocated) * 100) / 100
-            : Math.round(((total * component.quantity) / paidUnits) * 100) / 100;
+            ? round(total - allocated)
+            : round((total * component.quantity) / paidUnits);
         allocated += share;
       }
       // A component line must not carry the set's own expansion on to the document.
@@ -183,6 +193,63 @@ export function expandStockComponents(lines: readonly InvoiceLine[]): InvoiceLin
         variantId: component.variantId,
       });
     }
+  }
+  return out;
+}
+
+/**
+ * Re-address a correction to the document Subiekt actually holds.
+ *
+ * Core numbers `originalLineNumber` against the issued snapshot, where a set is
+ * ONE line, while `expandStockComponents` put one document position per
+ * component in its place - so every position after a set shifts, and the set's
+ * own number now names a component. This maps each snapshot position onto the
+ * expanded one(s) and scales a quantity change over the components. A price
+ * change on a set line cannot be carried (the component prices are shares of
+ * one total) and is refused rather than written to a guessed position.
+ */
+export function remapCorrectionLinesToExpandedDocument(
+  corrections: readonly CorrectionLine[],
+  snapshotLines: readonly InvoiceLine[] | undefined,
+): CorrectionLine[] {
+  if (snapshotLines === undefined || snapshotLines.every((l) => !l.stockComponents?.length)) {
+    return [...corrections];
+  }
+  const startByIndex: number[] = [];
+  let next = 1;
+  for (const line of snapshotLines) {
+    startByIndex.push(next);
+    next += line.stockComponents?.length ? line.stockComponents.length : 1;
+  }
+  const out: CorrectionLine[] = [];
+  for (const correction of corrections) {
+    const index = correction.originalLineNumber - 1;
+    const line = snapshotLines[index];
+    if (line === undefined) {
+      out.push(correction);
+      continue;
+    }
+    const components = line.stockComponents;
+    if (components === undefined || components.length === 0) {
+      out.push({ ...correction, originalLineNumber: startByIndex[index] });
+      continue;
+    }
+    if (correction.newUnitPriceGross != null) {
+      throw new SubiektInvoiceRejectedError(
+        `Line ${correction.originalLineNumber} is a set sold as its components; a price correction cannot be split over them. Correct the quantity, or issue the correction by hand in Subiekt.`,
+      );
+    }
+    components.forEach((component, offset) => {
+      const scaled =
+        correction.newQuantity == null || !(line.quantity > 0)
+          ? undefined
+          : Math.round((component.quantity * correction.newQuantity) / line.quantity);
+      out.push({
+        ...correction,
+        originalLineNumber: startByIndex[index] + offset,
+        ...(scaled !== undefined ? { newQuantity: scaled } : {}),
+      });
+    });
   }
   return out;
 }

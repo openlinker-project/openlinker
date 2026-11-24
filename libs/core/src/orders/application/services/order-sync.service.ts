@@ -369,6 +369,7 @@ export class OrderSyncService implements IOrderSyncService {
               ...mapItem(item),
               ...(item.parentLineId !== undefined ? { parentLineId: item.parentLineId } : {}),
               ...(item.giftSlot === true ? { giftSlot: true } : {}),
+              ...(item.shareGross !== undefined ? { shareGross: item.shareGross } : {}),
             })),
           }
         : {}),

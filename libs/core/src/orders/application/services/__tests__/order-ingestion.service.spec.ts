@@ -93,6 +93,7 @@ describe('OrderIngestionService', () => {
   let cancellationEffects: { applyEffects: jest.Mock };
   let sourceAmendmentEffects: { reconcile: jest.Mock; accept: jest.Mock };
   let paymentWriteback: { planAfterSync: jest.Mock };
+  let bundleDocuments: { resolveForDocuments: jest.Mock };
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -253,6 +254,7 @@ describe('OrderIngestionService', () => {
       findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
       findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
     };
+    bundleDocuments = { resolveForDocuments: jest.fn().mockResolvedValue(undefined) };
     orderGifts = {
       applyGiftRules: jest
         .fn()
@@ -288,12 +290,66 @@ describe('OrderIngestionService', () => {
       orderChanges as unknown as IOrderChangeService,
       cancellationEffects as unknown as IOrderCancellationEffectsService,
       bundleDefinitions as unknown as IBundleDefinitionService,
-      { resolveForDocuments: jest.fn().mockResolvedValue(undefined) } as never,
+      bundleDocuments as never,
       sourceAmendmentEffects as unknown as IOrderSourceAmendmentEffectsService,
       paymentWriteback as unknown as IPaymentWritebackService,
       // #3938: no gift rules in these tests unless one overrides the mock.
       orderGifts as never
     );
+  });
+
+  describe('bundle shares for a destination order', () => {
+    const order = {
+      id: 'ol_order_1',
+      items: [{ id: 'set', price: 90, unitPriceGross: 90, quantity: 1 }],
+      totals: { currency: 'PLN' },
+    };
+    const physical = [
+      { id: 'set~c:mug', productId: 'p-mug', parentLineId: 'set' },
+      { id: 'set~c:pad', productId: 'p-pad', parentLineId: 'set' },
+    ];
+    const presentation = {
+      byLineId: {
+        set: [
+          { lineId: 'set~c:mug', variantId: 'v-mug', productId: 'p-mug', name: null, quantity: 1, unitPriceGross: 100 },
+          { lineId: 'set~c:pad', variantId: 'v-pad', productId: 'p-pad', name: null, quantity: 1, unitPriceGross: 5 },
+        ],
+      },
+    };
+    const withShares = (items: unknown[]): Promise<Array<{ id: string; shareGross?: number }>> =>
+      (service as unknown as { withBundleShares: (...a: unknown[]) => Promise<never> }).withBundleShares(
+        order,
+        items,
+        'conn-1'
+      );
+
+    it('should re-read the record after the expansion was frozen, so a first-seen order is split too', async () => {
+      const reread = { id: 'ol_order_1', bundleLines: [{}] };
+      orderRecordService.getOrderRecord.mockResolvedValue(reread as never);
+      bundleDocuments.resolveForDocuments.mockResolvedValue(presentation);
+
+      const out = await withShares(physical);
+
+      expect(bundleDocuments.resolveForDocuments).toHaveBeenCalledWith(reread, 'conn-1');
+      expect(out.map((i) => i.shareGross)).toEqual([85.72, 4.28]);
+    });
+
+    it('should leave the items untouched when the order has no bundle presentation', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({ id: 'ol_order_1' } as never);
+      bundleDocuments.resolveForDocuments.mockResolvedValue(undefined);
+
+      const out = await withShares(physical);
+
+      expect(out.every((i) => i.shareGross === undefined)).toBe(true);
+    });
+
+    it('should not fail the ingestion when the split cannot be read', async () => {
+      orderRecordService.getOrderRecord.mockRejectedValue(new Error('db down'));
+
+      const out = await withShares(physical);
+
+      expect(out).toHaveLength(2);
+    });
   });
 
   describe('advisory reservations (#2344)', () => {

@@ -521,6 +521,12 @@ export interface InvoiceLine {
     quantity: number;
     name?: string | null;
     giftSlot?: boolean;
+    /**
+     * The gross value of this component for the WHOLE line, as OpenLinker split the
+     * paid set total (0 for a gift slot). Absent when nothing could weight the split;
+     * a provider then falls back to its own division.
+     */
+    totalGross?: number;
   }>;
   /**
    * Opaque per-line goods/services classification code (#1586 Phase 2). Neutral

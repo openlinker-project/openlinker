@@ -267,6 +267,11 @@ export class SubiektOrderProcessorAdapter
       if (item.giftSlot === true) {
         return { item, gross: 0 };
       }
+      // The share core split out of the paid set total; the unit-count division
+      // below only serves a request from a core that does not send one.
+      if (item.shareGross !== undefined) {
+        return { item, gross: item.shareGross };
+      }
       const total = parentTotals.get(item.parentLineId) ?? 0;
       const units = paidUnitsByParent.get(item.parentLineId) ?? 0;
       const soFar = allocated.get(item.parentLineId) ?? 0;

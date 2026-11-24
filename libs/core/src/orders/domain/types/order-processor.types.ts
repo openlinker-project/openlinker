@@ -85,9 +85,10 @@ export interface OrderCreate {
    * flagged `giftSlot`. A destination that moves stock off the document it
    * creates (Subiekt) sells these instead of `items`; a destination that
    * mirrors the commercial order ignores the field. Absent means the physical
-   * list equals `items`.
+   * list equals `items`. `shareGross` is the gross value core assigned this component
+   * out of its set line (0 for a gift slot); absent when no split could be weighted.
    */
-  physicalItems?: Array<OrderItem & { parentLineId?: string; giftSlot?: boolean }>;
+  physicalItems?: Array<OrderItem & { parentLineId?: string; giftSlot?: boolean; shareGross?: number }>;
 
   /**
    * Order totals

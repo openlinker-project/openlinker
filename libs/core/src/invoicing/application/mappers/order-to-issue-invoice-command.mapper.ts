@@ -38,6 +38,7 @@ import {
   resolveGiftPresentationFields,
   type GiftLineForm,
   type ResolvedDeliveryLine,
+  splitBundleLineTotal,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -205,18 +206,24 @@ export function toIssueInvoiceCommand(
   const itemLinesWithStock = itemLines.lines.map((line) => {
     const components =
       line.orderLineId === undefined ? undefined : input.bundleDocument?.byLineId[line.orderLineId];
-    return components === undefined || components.length === 0
-      ? line
-      : {
-          ...line,
-          stockComponents: components.map((component) => ({
-            productId: component.productId,
-            variantId: component.variantId,
-            quantity: component.quantity,
-            name: component.name ?? component.sku ?? null,
-            ...(component.giftSlot === true ? { giftSlot: true } : {}),
-          })),
-        };
+    if (components === undefined || components.length === 0) return line;
+    // One split, owned by core: the provider books these values instead of dividing the set itself.
+    const shares = splitBundleLineTotal(
+      line.unitPriceGross * line.quantity,
+      components,
+      order.totals.currency,
+    );
+    return {
+      ...line,
+      stockComponents: components.map((component, index) => ({
+        productId: component.productId,
+        variantId: component.variantId,
+        quantity: component.quantity,
+        name: component.name ?? component.sku ?? null,
+        ...(component.giftSlot === true ? { giftSlot: true } : {}),
+        ...(shares !== null ? { totalGross: shares[index] } : {}),
+      })),
+    };
   });
   const presentedGifts = presentGiftLines(
     itemLinesWithStock,
