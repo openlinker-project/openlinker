@@ -32,7 +32,6 @@ describe('empikPlugin', () => {
     expect(empikPlugin.platform?.CredentialsPanel).toBeDefined();
     expect(empikPlugin.platform?.bulkOfferConfigSection?.isComplete).toBeDefined();
     expect(empikPlugin.platform?.offerValidation?.blockers.map((blocker) => blocker.id)).toEqual([
-      'empik:no-ean',
       'empik:no-card',
     ]);
     expect(empikPlugin.platform?.supportsListingEdit).toBeUndefined();

@@ -9,7 +9,13 @@
  *   are dropped.
  * - **Category parameters** (`CategoryParametersReader`): PM11 card attributes
  *   for a category, with each LIST attribute's values from VL11, read once per
- *   list per call.
+ *   list per call, a few lists at a time. A list longer than
+ *   {@link MAX_DICTIONARY_VALUES} is not sent: on Empik staging one book
+ *   category names lists of 24 000, 33 000 and 321 000 entries (publishers,
+ *   authors), several megabytes each, which made the wizard wait minutes and
+ *   no picker can show. Such an attribute is offered as free text. An Empik
+ *   offer always points to an existing card and sends no card attributes, so
+ *   nothing is lost today; creating cards (P41) will need a searchable picker.
  * - **Card match** (`EanCategoryMatcher`): P31 by EAN, up to 100 EANs per
  *   request. One card is a match with its category; several are a
  *   `multi-match`; a failed request answers `no-match` for its EANs and never
@@ -43,6 +49,10 @@ const PRODUCTS_PATH = '/api/products';
 /** EANs per P31 request. */
 const P31_BATCH_SIZE = 100;
 const LIST_TYPES = new Set(['LIST', 'LIST_MULTIPLE_VALUES']);
+/** Above this, a value list is not sent as a dictionary (see the header). */
+export const MAX_DICTIONARY_VALUES = 1000;
+/** VL11 requests in flight at once for one category. */
+const VALUE_LIST_CONCURRENCY = 4;
 
 export class MiraklCatalog {
   private readonly logger = new Logger(MiraklCatalog.name);
@@ -159,23 +169,44 @@ export class MiraklCatalog {
         .map((attribute) => attribute.values_list as string)
     );
     const lists = new Map<string, MiraklValueList>();
-    for (const code of codes) {
-      try {
-        const { data } = await this.httpClient.get<{ values_lists?: readonly MiraklValueList[] }>(
-          VALUE_LISTS_PATH,
-          { queryParams: { code } }
-        );
-        const list = (data?.values_lists ?? []).find((candidate) => candidate.code === code);
+    const pending = [...codes];
+    const worker = async (): Promise<void> => {
+      for (let code = pending.shift(); code !== undefined; code = pending.shift()) {
+        const list = await this.readValueList(code);
         if (list) lists.set(code, list);
-      } catch (error) {
-        // The attribute is then offered as free text rather than lost.
-        this.logger.warn(
-          `Value list ${code} on connection ${this.connectionId} could not be read: ` +
-            `${error instanceof Error ? error.name : 'error'}`
-        );
       }
-    }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(VALUE_LIST_CONCURRENCY, pending.length) }, worker)
+    );
     return lists;
+  }
+
+  /** One VL11 list, or `undefined` when it cannot be read or is too long to send. */
+  private async readValueList(code: string): Promise<MiraklValueList | undefined> {
+    try {
+      const { data } = await this.httpClient.get<{ values_lists?: readonly MiraklValueList[] }>(
+        VALUE_LISTS_PATH,
+        { queryParams: { code } }
+      );
+      const list = (data?.values_lists ?? []).find((candidate) => candidate.code === code);
+      if (list && (list.values?.length ?? 0) > MAX_DICTIONARY_VALUES) {
+        this.logger.debug(
+          `Value list ${code} on connection ${this.connectionId} has ` +
+            `${list.values?.length} entries; offered as free text`
+        );
+        return undefined;
+      }
+      return list;
+    } catch (error) {
+      // The attribute is then offered as free text rather than lost. A list
+      // past the client's response cap lands here too.
+      this.logger.warn(
+        `Value list ${code} on connection ${this.connectionId} could not be read: ` +
+          `${error instanceof Error ? error.name : 'error'}`
+      );
+      return undefined;
+    }
   }
 }
 

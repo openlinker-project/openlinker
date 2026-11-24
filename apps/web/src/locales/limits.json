@@ -861,7 +861,6 @@
   "listings:editOfferDrawer.cancel": 10,
   "listings:editOfferDrawer.save": 20,
   "listings:empikOfferValidation.blockers.noCard": 24,
-  "listings:empikOfferValidation.blockers.noEan": 24,
   "listings:listingsListPage.columns.channel": 12,
   "listings:listingsListPage.columns.connection": 16,
   "listings:listingsListPage.columns.listing": 12,

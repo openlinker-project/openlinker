@@ -9,7 +9,7 @@
 import { MiraklApiException } from '../../../domain/exceptions/mirakl-api.exception';
 import type { IMiraklHttpClient } from '../../http/mirakl-http-client.interface';
 import type { MiraklRequestOptions } from '../../http/mirakl-http-client.types';
-import { MiraklCatalog } from '../mirakl-catalog';
+import { MAX_DICTIONARY_VALUES, MiraklCatalog } from '../mirakl-catalog';
 
 function catalog(get: jest.Mock): MiraklCatalog {
   return new MiraklCatalog('conn-1', { get } as unknown as IMiraklHttpClient);
@@ -91,6 +91,77 @@ describe('MiraklCatalog.fetchCategoryParameters', () => {
       ['2039', 'integer'],
     ]);
     expect(get.mock.calls.filter(([path]) => path === '/api/values_lists')).toHaveLength(1);
+  });
+
+  it('should offer an attribute whose list is too long to send as free text', async () => {
+    const huge = Array.from({ length: MAX_DICTIONARY_VALUES + 1 }, (_, i) => ({
+      code: `P${i}`,
+      label: `Publisher ${i}`,
+    }));
+    const get = jest.fn((path: string, options?: MiraklRequestOptions) => {
+      if (path === '/api/products/attributes') {
+        return Promise.resolve({
+          status: 200,
+          data: {
+            attributes: [
+              { code: '800', label: 'Wydawca', type: 'LIST', values_list: '800' },
+              { code: 'VAT_VALUE', label: 'Stawka VAT', type: 'LIST', values_list: 'VAT' },
+            ],
+          },
+        });
+      }
+      const code = options?.queryParams?.code;
+      return Promise.resolve({
+        status: 200,
+        data: {
+          values_lists: [
+            { code, values: code === '800' ? huge : [{ code: '6', label: '5%' }] },
+          ],
+        },
+      });
+    });
+
+    const parameters = await catalog(get).fetchCategoryParameters({ categoryId: '8-853-1' });
+
+    const publisher = parameters.find((parameter) => parameter.id === '800');
+    expect(publisher).toMatchObject({ type: 'string' });
+    expect(publisher).not.toHaveProperty('dictionary');
+    expect(parameters.find((parameter) => parameter.id === 'VAT_VALUE')).toMatchObject({
+      type: 'dictionary',
+      dictionary: [{ id: '6', value: '5%' }],
+    });
+  });
+
+  it('should read several value lists at once rather than one after another', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const get = jest.fn(async (path: string, options?: MiraklRequestOptions) => {
+      if (path === '/api/products/attributes') {
+        return {
+          status: 200,
+          data: {
+            attributes: ['A', 'B', 'C', 'D', 'E'].map((code) => ({
+              code,
+              type: 'LIST',
+              values_list: code,
+            })),
+          },
+        };
+      }
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return {
+        status: 200,
+        data: { values_lists: [{ code: options?.queryParams?.code, values: [{ code: '1' }] }] },
+      };
+    });
+
+    await catalog(get).fetchCategoryParameters({ categoryId: '8-853-1' });
+
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
   });
 });
 

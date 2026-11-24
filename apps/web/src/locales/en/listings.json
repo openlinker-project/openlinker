@@ -378,10 +378,6 @@
       "noCard": {
         "detail": "Add the product in the Empik seller panel first; creating cards from OpenLinker is not available yet.",
         "title": "Empik has no product card for this EAN."
-      },
-      "noEan": {
-        "detail": "Empik finds the product card by EAN. Add one to the product or set it here.",
-        "title": "This product has no EAN."
       }
     },
     "erli": {
@@ -1373,8 +1369,7 @@
   },
   "empikOfferValidation": {
     "blockers": {
-      "noCard": "no Empik card",
-      "noEan": "no EAN"
+      "noCard": "no Empik card"
     }
   },
   "erliBulkConfigSection": {

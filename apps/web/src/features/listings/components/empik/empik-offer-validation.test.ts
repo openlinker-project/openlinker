@@ -6,11 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
-import {
-  EMPIK_NO_CARD_BLOCKER,
-  EMPIK_NO_EAN_BLOCKER,
-  empikOfferValidation,
-} from './empik-offer-validation';
+import { EMPIK_NO_CARD_BLOCKER, empikOfferValidation } from './empik-offer-validation';
 
 function row(overrides: Partial<OfferRowValidationInput> = {}): OfferRowValidationInput {
   return {
@@ -29,10 +25,10 @@ describe('empikOfferValidation', () => {
     expect(empikOfferValidation.validateRow(row())).toEqual([]);
   });
 
-  it('should block a row without an EAN', () => {
-    expect(empikOfferValidation.validateRow(row({ barcode: '  ' }))).toEqual([
-      EMPIK_NO_EAN_BLOCKER,
-    ]);
+  it('should leave a row without an EAN to the host barcode check', () => {
+    expect(
+      empikOfferValidation.validateRow(row({ barcode: '  ', willLinkProductCard: false }))
+    ).toEqual([]);
   });
 
   it('should block a row whose EAN has no Empik card', () => {
@@ -51,7 +47,6 @@ describe('empikOfferValidation', () => {
 
   it('should declare a descriptor for every blocker it raises', () => {
     expect(empikOfferValidation.blockers.map((blocker) => blocker.id)).toEqual([
-      EMPIK_NO_EAN_BLOCKER,
       EMPIK_NO_CARD_BLOCKER,
     ]);
   });

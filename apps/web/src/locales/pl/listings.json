@@ -410,10 +410,6 @@
       "noCard": {
         "detail": "Najpierw dodaj produkt w panelu sprzedawcy Empik; tworzenie kart z OpenLinker nie jest jeszcze dostępne.",
         "title": "Empik nie ma karty produktu dla tego EAN."
-      },
-      "noEan": {
-        "detail": "Empik wyszukuje kartę produktu po EAN. Dodaj go do produktu albo ustaw tutaj.",
-        "title": "Ten produkt nie ma EAN."
       }
     },
     "erli": {
@@ -1507,8 +1503,7 @@
   },
   "empikOfferValidation": {
     "blockers": {
-      "noCard": "brak karty w Empik",
-      "noEan": "brak EAN"
+      "noCard": "brak karty w Empik"
     }
   },
   "erliBulkConfigSection": {
