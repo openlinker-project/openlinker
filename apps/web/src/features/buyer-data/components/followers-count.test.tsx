@@ -1,7 +1,9 @@
 /**
  * FollowersCount tests (#4289)
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { useLocation } from 'react-router-dom';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderWithProviders } from '../../../test/test-utils';
@@ -46,5 +48,26 @@ describe('FollowersCount (#4289)', () => {
     renderWithProviders(<FollowersCount connections={make(8)} />);
     await userEvent.tab();
     expect(screen.getByTestId('followers-list')).toHaveClass('followers-pop__list--scroll');
+  });
+
+  it('should navigate to the connection scope, keep other params and close the popover on click', async () => {
+    function Where(): ReactElement {
+      return <output data-testid="where">{useLocation().pathname + useLocation().search}</output>;
+    }
+    const list = make(2);
+    renderWithProviders(
+      <>
+        <FollowersCount connections={list} />
+        <Where />
+      </>,
+      { route: '/settings/buyer-data?tab=x' }
+    );
+    await userEvent.tab();
+    const link = screen.getByRole('link', { name: 'Open the rules for Shop 1' });
+    await userEvent.click(link);
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      `/settings/buyer-data?tab=x&scope=${list[1].id}`
+    );
+    await waitFor(() => expect(screen.queryByTestId('followers-list')).not.toBeInTheDocument());
   });
 });

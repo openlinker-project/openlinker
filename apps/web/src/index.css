@@ -8531,56 +8531,153 @@ html:has(.login-stage) {
 
 /* ── Buyer data summary on the connection edit (#4289): read-only, one way out. ── */
 .buyer-data-summary {
+  --bds-hide: color-mix(in oklab, var(--status-warning) 62%, var(--bg-surface));
+  --bds-erase: color-mix(in oklab, var(--status-error) 58%, var(--bg-surface));
+  --bds-keep: color-mix(in oklab, var(--border-strong) 55%, var(--bg-surface));
   min-width: 0;
+  animation: retention-soft 120ms linear both;
+}
+.buyer-data-summary__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+}
+.buyer-data-summary__card .rate-limit-section__help {
+  margin: 0;
+}
+.buyer-data-summary__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.buyer-data-summary__head .rate-limit-section__title {
+  margin: 0;
+}
+.buyer-data-summary__badge {
+  display: inline-flex;
   animation: retention-soft 120ms linear both;
 }
 .buyer-data-summary__body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
-.buyer-data-summary__status {
+.buyer-data-summary__body--off .buyer-data-summary__track,
+.buyer-data-summary__body--off .buyer-data-summary__legend {
+  opacity: 0.55;
+}
+.buyer-data-summary__track {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  font-weight: 500;
+  flex-direction: column;
+  gap: var(--space-1);
 }
-.buyer-data-summary__dot {
-  flex: none;
-  width: 0.5rem;
-  height: 0.5rem;
-  border: 1.5px solid var(--text-muted);
+.buyer-data-summary__bar {
+  position: relative;
+  height: 0.625rem;
+  overflow: hidden;
   border-radius: var(--radius-pill);
-  background: transparent;
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
-.buyer-data-summary__dot--own {
-  border-color: var(--accent-primary);
-  background: var(--accent-primary);
+.buyer-data-summary__seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform-origin: left center;
+  animation: buyer-data-grow 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
 }
-.buyer-data-summary__facts {
+.buyer-data-summary__seg--kept {
+  background: var(--bds-keep);
+}
+.buyer-data-summary__seg--hidden {
+  background-color: var(--bds-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.buyer-data-summary__seg--erased {
+  background-color: var(--bds-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.buyer-data-summary__seg--never {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--border-strong) 0 1px,
+    transparent 1px 4px
+  );
+  opacity: 0.5;
+}
+.buyer-data-summary__caps {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.buyer-data-summary__legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-6);
   margin: 0;
 }
-.buyer-data-summary__facts dt {
-  color: var(--text-muted);
-  font-size: 0.75rem;
+.buyer-data-summary__legend-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
 }
-.buyer-data-summary__facts dd {
+.buyer-data-summary__legend-item::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+}
+.buyer-data-summary__legend-item--hidden::before {
+  background: var(--bds-hide);
+}
+.buyer-data-summary__legend-item--erased::before {
+  background: var(--bds-erase);
+}
+.buyer-data-summary__legend dt {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.buyer-data-summary__legend dd {
   margin: 0;
   color: var(--text-primary);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
-.buyer-data-summary__cta {
-  align-self: flex-start;
-  gap: var(--space-2);
+.buyer-data-summary__sentence {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.buyer-data-summary__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
   margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.buyer-data-summary__hint {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.buyer-data-summary__cta {
+  gap: var(--space-2);
 }
 .buyer-data-summary__arrow {
   width: 1rem;
@@ -8591,9 +8688,31 @@ html:has(.login-stage) {
 .buyer-data-summary__cta:focus-visible .buyer-data-summary__arrow {
   transform: translateX(2px);
 }
+@keyframes buyer-data-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 640px) {
+  .buyer-data-summary__foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .buyer-data-summary__cta {
+    justify-content: center;
+    width: 100%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .buyer-data-summary__arrow {
     transition: none;
+  }
+  .buyer-data-summary__seg,
+  .buyer-data-summary__badge {
+    animation: none;
   }
   .scope-tabs .tabs__list[data-placed='true']::before {
     transition: opacity 120ms linear;
@@ -15876,7 +15995,8 @@ a.kpi-card:focus-visible {
 /* ── Name first (#4232) ── the face leads with the connection name the operator
  * chose and the integration slides out. The label is capped so a long name
  * cannot widen a column; the full text stays in the native title. */
-.connection-chip--name-first .connection-chip__label {
+.connection-chip--name-first .connection-chip__label,
+.connection-chip--static .connection-chip__label {
   min-width: 0;
   max-width: 15rem;
   overflow: hidden;
@@ -15885,7 +16005,8 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
-.connection-chip--name-first .connection-chip__env {
+.connection-chip--name-first .connection-chip__env,
+.connection-chip--static .connection-chip__env {
   flex: none;
   padding: 2px 5px;
   border-radius: 4px;
@@ -15909,6 +16030,12 @@ a.kpi-card:focus-visible {
 .connection-chip--name-first.connection-chip--unknown .connection-chip__label {
   color: var(--text-muted);
   font-weight: 400;
+}
+
+/* Static: the face alone, never a link and never wider than at rest. */
+.connection-chip--static {
+  align-self: auto;
+  cursor: inherit;
 }
 
 /* No hover to open it: show the name statically, joined to the face, rather
@@ -40553,6 +40680,12 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: transparent;
   transition: background var(--duration-fast) var(--ease-out);
 }
+.scope-tabs .tabs__trigger.scope-tabs__trigger--chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) 0 var(--space-2);
+}
 .scope-tabs .tabs__trigger:hover {
   background: color-mix(in oklab, var(--bg-surface) 55%, transparent);
 }
@@ -40639,6 +40772,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-top: 1px solid var(--border-subtle);
 }
 .scope-compare__open {
+  display: inline-flex;
+  max-width: 100%;
   padding: 0;
   border: 0;
   background: none;
@@ -40675,6 +40810,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .retention-scope > .retention-scope__hint {
   margin-bottom: var(--space-2);
+}
+/* As a direct child of the tab panel (a column flex) the row-axis basis above
+ * becomes a 12rem HEIGHT: a hint line followed by a ~170px hole. */
+.scope-tabs .tabs__content > .retention-scope__hint {
+  flex: none;
 }
 
 /* ── Load sequence: scope bar, instrument, then the rail panels one after another ── */
@@ -41084,6 +41224,55 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   width: 2px;
   background: var(--text-secondary);
 }
+/* The example order's age: a neutral ink marker, distinct from the two cut handles. Clicking
+   the plot sets it; it glides to the new position. */
+.age-strip__track--pickable {
+  cursor: pointer;
+}
+.age-strip__example {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 0;
+  pointer-events: none;
+  transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.age-strip__example-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.5px;
+  width: 1px;
+  background: var(--text-primary);
+  opacity: 0.75;
+}
+.age-strip__example-flag {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2) 1px var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--text-primary);
+  color: var(--bg-surface);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.age-strip__example--flip .age-strip__example-flag {
+  right: var(--space-1);
+  left: auto;
+}
+.age-strip__example-diamond {
+  width: 0.375rem;
+  height: 0.375rem;
+  background: currentColor;
+  transform: rotate(45deg);
+}
 .age-strip__never {
   position: absolute;
   top: 0;
@@ -41326,88 +41515,25 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-muted);
   font-size: var(--rs-fs-cap);
 }
-.record-card .segmented-control__option {
-  white-space: nowrap;
-  min-height: 2rem;
-  font-size: var(--rs-fs-cap);
-  padding-inline: var(--space-2);
+.record-card .segmented-control {
+  display: flex;
+  align-self: stretch;
 }
-.record-card__source {
-  margin: 0;
-  color: var(--text-muted);
+.record-card .segmented-control__option {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: var(--space-1) var(--space-1);
   font-size: var(--rs-fs-cap);
-  font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.15;
+  text-align: center;
+  text-wrap: balance;
 }
 .record-card__icon {
   flex: none;
   width: 0.875rem;
   height: 0.875rem;
-}
-
-/* Timeline: a track with the two cuts and the order's age, and a legend that cannot collide. */
-.record-card__timeline {
-  display: grid;
-  gap: var(--space-2);
-}
-.record-card__track {
-  position: relative;
-  height: 0.375rem;
-  margin-block: var(--space-1);
-  border-radius: var(--radius-pill);
-  background: var(--rs-keep);
-}
-.record-card__zone {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-.record-card__zone--hide {
-  background: var(--rs-hide);
-}
-.record-card__zone--erase {
-  background: var(--rs-erase);
-  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
-}
-.record-card__dot {
-  position: absolute;
-  top: 50%;
-  width: 0.75rem;
-  height: 0.75rem;
-  margin: -0.375rem 0 0 -0.375rem;
-  border: 2px solid var(--bg-surface);
-  border-radius: 50%;
-  background: var(--text-primary);
-  box-shadow: 0 0 0 1px var(--border-strong);
-}
-.record-card__legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--text-secondary);
-  font-size: var(--rs-fs-cap);
-}
-.record-card__legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.record-card__swatch {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--rs-keep);
-}
-.record-card__swatch--hide {
-  background: var(--rs-hide);
-}
-.record-card__swatch--erase {
-  background: var(--rs-erase);
 }
 
 /* Status: a compact badge sized to its text; the previous one fades out under the new. */
@@ -41537,6 +41663,70 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   animation: retention-soft var(--rs-dur-micro) linear both;
 }
 
+/* While a strip handle is dragged the rows and the badge keep their last values behind a
+   skeleton (same boxes, so nothing jumps) and settle in, row by row, once it is let go. */
+.record-card__rows[data-loading='true'] .record-card__values {
+  position: relative;
+}
+.record-card__rows[data-loading='true'] .record-card__values > *,
+.record-card__pillbox[data-loading='true'] .record-card__pill {
+  visibility: hidden;
+}
+.record-card__rows[data-loading='true'] .record-card__values::after,
+.record-card__pillbox[data-loading='true']::after {
+  content: '';
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: data-table-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.record-card__rows[data-loading='true'] .record-card__values::after {
+  position: absolute;
+  inset: 3px 18% auto 0;
+  height: 1rem;
+}
+.record-card__pillbox[data-loading='true']::after {
+  grid-area: 1 / 1;
+  width: 11rem;
+  height: 1.375rem;
+  border-radius: var(--radius-pill);
+}
+@keyframes record-card-settle {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.record-card__rows--reveal .record-card__row {
+  animation: record-card-settle 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--r, 0) * 30ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .record-card__rows[data-loading='true'] .record-card__values::after,
+  .record-card__pillbox[data-loading='true']::after {
+    animation: none;
+    background-image: none;
+  }
+  .record-card__rows--reveal .record-card__row {
+    animation: retention-soft 120ms linear both;
+    animation-delay: 0ms;
+  }
+  .age-strip__example {
+    transition: none;
+  }
+}
+
 /* Age footer: pinned to the bottom of the rail (or of the sheet) while the rows scroll under it. */
 .record-card__age {
   position: sticky;
@@ -41561,16 +41751,80 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-secondary);
   font-weight: 600;
 }
+.record-card__age-now {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
 .record-card__age-value {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+/* The zone name sits beside the value; the old one fades out under the new. */
+.record-card__zone-box {
+  display: inline-grid;
+  justify-items: end;
+}
+.record-card__zone-badge {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+  animation: retention-soft var(--rs-dur-micro) linear both;
+}
+.record-card__zone-badge--out {
+  animation: retention-fade-out var(--rs-dur-micro) linear both;
+  pointer-events: none;
+}
+/* One control carries everything: the zone-coloured track under a transparent native range. */
 .record-card__scrub {
   position: relative;
   display: flex;
   align-items: center;
   height: 2.75rem;
+}
+.record-card__rail {
+  position: absolute;
+  inset-inline: 0.625rem;
+  top: 50%;
+  height: 0;
+}
+.record-card__track {
+  position: absolute;
+  inset-inline: 0;
+  top: -0.25rem;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--rs-keep);
+}
+.record-card__seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--l, 0) * 1%);
+  width: calc(var(--w, 0) * 1%);
+  transition:
+    left 160ms ease,
+    width 160ms ease;
+}
+.record-card__seg--keep {
+  background: var(--rs-keep);
+}
+.record-card__seg--hide {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.record-card__seg--erase {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
 }
 .record-card__scrub input[type='range'] {
   position: relative;
@@ -41583,32 +41837,39 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   appearance: none;
 }
 .record-card__scrub input[type='range']::-webkit-slider-runnable-track {
-  height: 0.25rem;
-  border-radius: var(--radius-pill);
-  background: var(--rs-keep);
+  height: 0.5rem;
+  background: transparent;
 }
 .record-card__scrub input[type='range']::-moz-range-track {
-  height: 0.25rem;
-  border-radius: var(--radius-pill);
-  background: var(--rs-keep);
+  height: 0.5rem;
+  background: transparent;
 }
 .record-card__scrub input[type='range']::-webkit-slider-thumb {
   width: 1.25rem;
   height: 1.25rem;
-  margin-top: -0.5rem;
+  margin-top: -0.375rem;
   border: 2px solid var(--bg-surface);
   border-radius: 50%;
   background: var(--text-primary);
   box-shadow: 0 0 0 1px var(--border-strong);
+  transition: transform 120ms ease;
   appearance: none;
 }
 .record-card__scrub input[type='range']::-moz-range-thumb {
   width: 1.25rem;
   height: 1.25rem;
+  box-sizing: border-box;
   border: 2px solid var(--bg-surface);
   border-radius: 50%;
   background: var(--text-primary);
   box-shadow: 0 0 0 1px var(--border-strong);
+  transition: transform 120ms ease;
+}
+.record-card__scrub input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+.record-card__scrub input[type='range']:active::-moz-range-thumb {
+  transform: scale(1.1);
 }
 .record-card__scrub input[type='range']:focus-visible {
   outline: none;
@@ -41619,20 +41880,67 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .record-card__scrub input[type='range']:focus-visible::-moz-range-thumb {
   box-shadow: var(--shadow-focus);
 }
-/* Where the rules bite, drawn on the scrubber's own track. The thumb is 20px wide, so a
-   position runs between its centre at 0 and its centre at 1. */
+/* Where the rules bite, drawn on the track. The rail already runs between the thumb's centres. */
 .record-card__cut {
   position: absolute;
-  top: calc(50% - 0.5rem);
-  z-index: 0;
+  top: -0.5rem;
   width: 2px;
   height: 1rem;
   margin-left: -1px;
-  left: calc(0.625rem + (100% - 1.25rem) * var(--x, 0));
+  left: calc(var(--x, 0) * 100%);
+  border-radius: 1px;
   background: var(--rs-hide-line);
 }
 .record-card__cut--erase {
   background: var(--rs-erase-line);
+}
+.record-card__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+}
+.record-card__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.record-card__swatch {
+  flex: none;
+  width: 0.75rem;
+  height: 0.5rem;
+  border-radius: 2px;
+  background: var(--rs-keep);
+}
+.record-card__swatch--hide {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.record-card__swatch--erase {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.record-card__swatch--never {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  .record-card__seg,
+  .record-card__scrub input[type='range']::-webkit-slider-thumb,
+  .record-card__scrub input[type='range']::-moz-range-thumb {
+    transition: none;
+  }
+  .record-card__zone-badge,
+  .record-card__zone-badge--out {
+    animation: none;
+  }
+  .record-card__zone-badge--out {
+    display: none;
+  }
 }
 
 /* ── Plan panel ── */
@@ -41726,6 +42034,11 @@ button.followers-count:focus-visible {
 }
 .followers-pop__chip .connection-chip__face {
   flex: 1;
+}
+.followers-pop__chip:focus-visible {
+  outline: none;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-focus);
 }
 .plan-panel__body {
   display: flex;

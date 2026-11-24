@@ -59,6 +59,18 @@ export interface ConnectionChipProps {
    * show it twice.
    */
   lead?: 'name' | 'platform';
+  /**
+   * Renders the face alone, as a plain element: no link, nothing that slides
+   * out on hover or focus, and the same width at rest and under the pointer.
+   * For a host that is itself the control (a tab) and so cannot nest a link.
+   */
+  static?: boolean;
+  /** Link to this path instead of the connection's detail page (a host's own view of it). */
+  to?: string;
+  /** Called when a linked chip is followed, before the navigation. */
+  onNavigate?: () => void;
+  /** Accessible name of a linked chip; defaults to "name, platform". */
+  linkLabel?: string;
   className?: string;
 }
 
@@ -68,6 +80,10 @@ export function ConnectionChip({
   loading = false,
   channel,
   lead = 'name',
+  static: staticFace = false,
+  to,
+  onNavigate,
+  linkLabel,
   className = '',
 }: ConnectionChipProps): ReactElement {
   const copy = useMessages('connections').connectionChip;
@@ -78,7 +94,8 @@ export function ConnectionChip({
     loading,
     pathname: location.pathname,
   });
-  const { linked, unknown, text: nameText } = target;
+  const { unknown, text: nameText } = target;
+  const linked = !staticFace && (to !== undefined ? !target.system && !target.loading && !unknown : target.linked);
 
   // Only sandbox is marked: production is the norm, and a suffix on every
   // production row would be noise that hides the one row that differs.
@@ -113,6 +130,7 @@ export function ConnectionChip({
     linked ? 'connection-chip--link' : null,
     label ? null : 'connection-chip--name-only',
     unknown ? 'connection-chip--unknown' : null,
+    staticFace ? 'connection-chip--static' : null,
     className,
   ]
     .filter(Boolean)
@@ -130,7 +148,15 @@ export function ConnectionChip({
     </svg>
   ) : null;
 
-  const body = nameFirst ? (
+  const body = staticFace ? (
+    <span className="connection-chip__face">
+      <span className="connection-chip__dot" aria-hidden="true" />
+      <span className="connection-chip__label" aria-busy={target.loading ? true : undefined}>
+        {nameText}
+      </span>
+      {sandbox ? <span className="connection-chip__env">{copy.sandboxTag}</span> : null}
+    </span>
+  ) : nameFirst ? (
     <>
       <span className="connection-chip__face">
         <span className="connection-chip__dot" aria-hidden="true" />
@@ -181,14 +207,18 @@ export function ConnectionChip({
 
   return (
     <Link
-      to={target.targetPath}
+      to={to ?? target.targetPath}
+      onClick={onNavigate}
       className={classes}
       data-channel={channel.platformType ?? undefined}
       title={title}
       // Face and slide-out are adjacent inline boxes, so the computed name would
       // run them together ("e-boxShoper"). Name first: it is what tells two rows
       // apart.
-      aria-label={label ? interpolate(copy.ariaLabel, { name: nameText, platform: label }) : undefined}
+      aria-label={
+        linkLabel ??
+        (label ? interpolate(copy.ariaLabel, { name: nameText, platform: label }) : undefined)
+      }
     >
       {body}
     </Link>

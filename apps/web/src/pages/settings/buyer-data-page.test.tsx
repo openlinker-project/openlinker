@@ -147,6 +147,19 @@ describe('BuyerDataPage (#4289)', () => {
       );
     });
 
+    it('should render each connection tab with the static pill and keep keyboard switching', async () => {
+      render();
+      const tab = await screen.findByRole('tab', { name: 'Shop' });
+      expect(tab.querySelector('.connection-chip--static')).not.toBeNull();
+      expect(tab.querySelector('.connection-chip__reveal')).toBeNull();
+      expect(screen.getByRole('tab', { name: 'Defaults' }).querySelector('.connection-chip')).toBeNull();
+      screen.getByRole('tab', { name: 'Defaults' }).focus();
+      await userEvent.keyboard('{ArrowRight}');
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent('?scope=conn-')
+      );
+    });
+
     it('should switch scope from the comparison table through the same setter', async () => {
       render();
       await userEvent.click(

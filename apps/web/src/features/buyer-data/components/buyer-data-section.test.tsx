@@ -30,8 +30,11 @@ function settings(enabled: boolean): unknown {
   };
 }
 
-function render(initial: BuyerDataOverride | null, enabled = true): void {
-  renderWithProviders(<Harness initial={initial} />, {
+function renderAndReturn(
+  initial: BuyerDataOverride | null,
+  enabled = true
+): ReturnType<typeof renderWithProviders> {
+  return renderWithProviders(<Harness initial={initial} />, {
     apiClient: createMockApiClient({
       operationalSettings: { get: vi.fn().mockResolvedValue(settings(enabled)) },
     }),
@@ -46,46 +49,90 @@ function render(initial: BuyerDataOverride | null, enabled = true): void {
   });
 }
 
+function render(initial: BuyerDataOverride | null, enabled = true): void {
+  renderAndReturn(initial, enabled);
+}
+
 afterEach(cleanup);
 
 describe('BuyerDataSection (#4289)', () => {
   it('should summarise the general rules it follows and offer no inputs', async () => {
     render(null);
 
-    await waitFor(() =>
-      expect(screen.getByText('Follows the default settings')).toBeInTheDocument()
-    );
-    expect(await screen.findByTestId('buyer-data-switch')).toHaveTextContent('The rules are on.');
+    expect(await screen.findByTestId('buyer-data-source')).toHaveTextContent('Active');
+    expect(screen.getByTestId('buyer-data-hint')).toHaveTextContent('apply here too');
     expect(screen.getByTestId('buyer-data-fact-hide')).toHaveTextContent('after 3 mo.');
     expect(screen.getByTestId('buyer-data-fact-erase')).toHaveTextContent('after 1 yr');
-    expect(screen.getByTestId('buyer-data-switch')).toHaveTextContent('The rules are on.');
+    expect(screen.getByTestId('buyer-data-switch')).toHaveTextContent(
+      'Orders leave the list after 3 mo. Personal data is erased after 1 yr.'
+    );
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 
+  it('should keep the track decorative and give its meaning in words', async () => {
+    const { container } = renderAndReturn(null);
+
+    const sentence = await screen.findByTestId('buyer-data-switch');
+    expect(sentence).toBeVisible();
+    expect(container.querySelector('.buyer-data-summary__track')).toHaveAttribute(
+      'aria-hidden',
+      'true'
+    );
+  });
+
   it('should show own values, and never for a zero period', async () => {
     render({ hideAfterDays: 0, eraseAfterDays: 730, mode: 'personal-data' });
 
-    await waitFor(() => expect(screen.getByText('Own rules')).toBeInTheDocument());
-    expect(await screen.findByTestId('buyer-data-fact-hide')).toHaveTextContent('never');
+    expect(await screen.findByTestId('buyer-data-source')).toHaveTextContent('Own rules');
+    expect(screen.getByTestId('buyer-data-fact-hide')).toHaveTextContent('never');
     expect(screen.getByTestId('buyer-data-fact-erase')).toHaveTextContent('after 2 yrs');
+    expect(screen.getByTestId('buyer-data-switch')).toHaveTextContent('Orders are not hidden.');
+  });
+
+  it('should say orders and data are not removed when both periods are never', async () => {
+    render({ hideAfterDays: 0, eraseAfterDays: 0, mode: 'personal-data' });
+
+    expect(await screen.findByTestId('buyer-data-switch')).toHaveTextContent(
+      'Orders and buyer data are not removed.'
+    );
   });
 
   it('should say the rules are switched off here when this connection opted out', async () => {
     render({ enabled: false, hideAfterDays: 90, eraseAfterDays: 365, mode: 'personal-data' });
 
-    await waitFor(() =>
-      expect(screen.getByText('Switched off for this connection.')).toBeInTheDocument()
+    expect(await screen.findByTestId('buyer-data-source')).toHaveTextContent(
+      'Off for this connection'
     );
+    expect(screen.getByTestId('buyer-data-hint')).toHaveTextContent('switched off here');
   });
 
   it('should say the rules are off when the general switch is off', async () => {
     render(null, false);
 
-    await waitFor(() =>
-      expect(screen.getByText('The rules are switched off.')).toBeInTheDocument()
-    );
+    expect(await screen.findByTestId('buyer-data-source')).toHaveTextContent('Switched off');
+    expect(screen.getByTestId('buyer-data-hint')).toHaveTextContent('Turn them on in settings');
+  });
+
+  it('should keep only the link when the general rules are not readable', async () => {
+    renderWithProviders(<Harness initial={null} />, {
+      apiClient: createMockApiClient({
+        operationalSettings: { get: vi.fn().mockRejectedValue(new Error('forbidden')) },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u2',
+        username: 'op',
+        email: 'op@example.com',
+        role: 'operator',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    expect(await screen.findByTestId('buyer-data-cta')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('buyer-data-switch')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('buyer-data-source')).not.toBeInTheDocument();
   });
 
   it('should link to the settings page on this connection scope', async () => {

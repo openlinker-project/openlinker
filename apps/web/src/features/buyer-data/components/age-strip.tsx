@@ -11,6 +11,8 @@
  * makes touch work; the keyboard steps through detents; a table disclosure and
  * a debounced polite live region carry the same facts for a screen reader.
  * Colour is never the only signal: zones differ by hatching and by label.
+ * A click on the plot sets the example order's age (a neutral marker, aria-hidden:
+ * the example card's slider is the accessible control for the same value).
  *
  * @module apps/web/src/features/buyer-data/components
  */
@@ -20,13 +22,14 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   type ReactElement,
   type RefObject,
 } from 'react';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
-import { BUYER_DATA_MIN_DAYS } from '../lib/buyer-data-config';
+import { BUYER_DATA_MAX_DAYS, BUYER_DATA_MIN_DAYS } from '../lib/buyer-data-config';
 import { useShortPeriod } from '../hooks/use-short-period';
 import { waveDelayMs, barRiseDelayMs } from '../lib/motion';
 import { OdometerNumber } from './odometer-number';
@@ -77,7 +80,15 @@ export interface AgeStripProps extends RetentionCuts {
   disabled?: boolean;
   /** Ghosted: the values are inherited and a grab turns them into own values. */
   ghost?: boolean;
+  /** A handle is grabbed (true) or let go (false). */
+  onDragChange?: (dragging: boolean) => void;
+  /** The example order's age, drawn as a marker; absent = no marker and no click-to-set. */
+  exampleDays?: number;
+  onExample?: (days: number) => void;
 }
+
+/** A click right after a handle drag ended is that drag's tail, not a request for an age. */
+const DRAG_TAIL_MS = 350;
 
 const COLUMNS = AXIS_MONTHS;
 
@@ -100,6 +111,7 @@ interface HandleProps {
   disabled: boolean;
   onMove: (days: number) => void;
   onActive: (days: number | null) => void;
+  onDrag: (dragging: boolean) => void;
 }
 
 function Handle({
@@ -112,6 +124,7 @@ function Handle({
   disabled,
   onMove,
   onActive,
+  onDrag,
 }: HandleProps): ReactElement {
   const [dragging, setDragging] = useState(false);
   // Synchronous twin of `dragging`: a move right behind the press must not be dropped
@@ -153,12 +166,14 @@ function Handle({
   }
 
   function endDrag(event: PointerEvent<HTMLButtonElement>): void {
+    const wasDragging = dragRef.current;
     dragRef.current = false;
     if (event.currentTarget.hasPointerCapture?.(event.pointerId) === true) {
       event.currentTarget.releasePointerCapture?.(event.pointerId);
     }
     setDragging(false);
     onActive(null);
+    if (wasDragging) onDrag(false);
   }
 
   function moveTo(event: PointerEvent<HTMLButtonElement>): void {
@@ -207,6 +222,7 @@ function Handle({
           dragRef.current = true;
           setDragging(true);
           onActive(never ? null : days);
+          onDrag(true);
         }}
         onPointerMove={(event) => {
           if (dragRef.current) moveTo(event);
@@ -241,12 +257,35 @@ export function AgeStrip({
   onActive,
   disabled = false,
   ghost = false,
+  onDragChange,
+  exampleDays,
+  onExample,
 }: AgeStripProps): ReactElement {
   const copy = useMessages('buyer-data').strip;
   const format = useFormat();
   const shortPeriod = useShortPeriod();
   const trackRef = useRef<HTMLDivElement>(null);
   const [note, setNote] = useState<string | null>(null);
+  const lastDragEnd = useRef(0);
+
+  function onDrag(dragging: boolean): void {
+    if (!dragging) lastDragEnd.current = Date.now();
+    onDragChange?.(dragging);
+  }
+
+  // Clicking the plot (not a handle, not the tail of a drag) sets the example's age to the
+  // nearest month; it never touches the cuts.
+  function onTrackClick(event: MouseEvent<HTMLDivElement>): void {
+    if (onExample === undefined) return;
+    if ((event.target as Element).closest('.age-strip__handle') !== null) return;
+    if (Date.now() - lastDragEnd.current < DRAG_TAIL_MS) return;
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (rect === undefined || rect.width === 0) return;
+    const pct = ((event.clientX - rect.left) / rect.width) * 100;
+    if (pct >= AXIS_PCT) return;
+    const months = Math.round(((Math.max(0, pct) / AXIS_PCT) * BUYER_DATA_MAX_DAYS) / DAYS_PER_MONTH);
+    onExample(Math.min(AXIS_MONTHS, months) * DAYS_PER_MONTH);
+  }
 
   const cuts: RetentionCuts = { hideAfterDays, eraseAfterDays };
   const columns = useMemo(() => columnsOf(histogram), [histogram]);
@@ -296,6 +335,17 @@ export function AgeStrip({
           hidden: format.number(counts.hidden),
           erased: format.number(counts.erased),
         }),
+    600
+  );
+
+  const exampleText =
+    exampleDays === undefined
+      ? null
+      : exampleDays <= 0
+        ? copy.today
+        : shortPeriod(Math.max(exampleDays, 1));
+  const exampleAnnouncement = useDebouncedValue(
+    exampleText === null ? '' : interpolate(copy.exampleAnnounce, { age: exampleText }),
     600
   );
 
@@ -395,7 +445,12 @@ export function AgeStrip({
       ) : (
         <>
           <div className="age-strip__canvas">
-            <div className="age-strip__track" ref={trackRef} data-testid="age-strip-track">
+            <div
+              className={`age-strip__track${onExample !== undefined ? ' age-strip__track--pickable' : ''}`}
+              ref={trackRef}
+              data-testid="age-strip-track"
+              onClick={onTrackClick}
+            >
               <div className="age-strip__plot" style={{ width: `${AXIS_PCT}%` }}>
                 <div
                   className="age-strip__band age-strip__band--hidden"
@@ -451,6 +506,20 @@ export function AgeStrip({
                 <span>{copy.neverSlot}</span>
               </div>
               <span className="age-strip__today" aria-hidden="true" />
+              {exampleDays !== undefined && exampleText !== null ? (
+                <div
+                  className={`age-strip__example${daysToPct(exampleDays) > 70 ? ' age-strip__example--flip' : ''}`}
+                  style={{ left: `${daysToPct(exampleDays)}%` }}
+                  aria-hidden="true"
+                  data-testid="age-strip-example"
+                >
+                  <span className="age-strip__example-line" />
+                  <span className="age-strip__example-flag">
+                    <i className="age-strip__example-diamond" />
+                    {exampleText}
+                  </span>
+                </div>
+              ) : null}
               <Handle
                 kind="hide"
                 days={hideAfterDays}
@@ -461,6 +530,7 @@ export function AgeStrip({
                 disabled={disabled}
                 onMove={(d) => apply('hide', d)}
                 onActive={onActive}
+                onDrag={onDrag}
               />
               <Handle
                 kind="erase"
@@ -472,6 +542,7 @@ export function AgeStrip({
                 disabled={disabled}
                 onMove={(d) => apply('erase', d)}
                 onActive={onActive}
+                onDrag={onDrag}
               />
             </div>
             <div className="age-strip__axis" aria-hidden="true">
@@ -553,6 +624,14 @@ export function AgeStrip({
       )}
       <p className="sr-only" role="status" aria-live="polite" data-testid="age-strip-live">
         {announcement}
+      </p>
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        data-testid="age-strip-example-live"
+      >
+        {exampleAnnouncement}
       </p>
     </div>
   );

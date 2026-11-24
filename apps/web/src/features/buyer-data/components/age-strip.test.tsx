@@ -8,7 +8,7 @@
 import { useState, type ReactElement } from 'react';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../../test/test-utils';
 import type { BuyerDataAgeHistogram } from '../api/buyer-data.types';
 import { AgeStrip, type StripCounts } from './age-strip';
@@ -188,5 +188,65 @@ describe('AgeStrip (#4289)', () => {
     fireEvent.pointerCancel(handle, { pointerId: 1 });
     fireEvent.pointerMove(handle, { pointerId: 1, pointerType: 'mouse', buttons: 1, clientX: 800 });
     expect(handle).toHaveAttribute('aria-valuenow', '730');
+  });
+
+  describe('click to set the example age', () => {
+    function strip(): {
+      onExample: ReturnType<typeof vi.fn>;
+      onChange: ReturnType<typeof vi.fn>;
+      track: HTMLElement;
+    } {
+      const onExample = vi.fn();
+      const onChange = vi.fn();
+      renderWithProviders(
+        <AgeStrip
+          hideAfterDays={90}
+          eraseAfterDays={365}
+          histogram={HISTOGRAM}
+          histogramState="ready"
+          counts={COUNTS}
+          onChange={onChange}
+          onActive={() => undefined}
+          exampleDays={0}
+          onExample={onExample}
+        />
+      );
+      const track = screen.getByTestId('age-strip-track');
+      track.getBoundingClientRect = (): DOMRect =>
+        ({ left: 0, width: 1000, top: 0, height: 10, right: 1000, bottom: 10, x: 0, y: 0 }) as DOMRect;
+      return { onExample, onChange, track };
+    }
+
+    it('should set the age to the nearest month under the click and leave the cuts alone', () => {
+      const { onExample, onChange, track } = strip();
+      // 20% of the strip = ~811 days, the nearest month is 27 = 810 days.
+      fireEvent.click(track, { clientX: 200 });
+      expect(onExample).toHaveBeenCalledWith(810);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('should ignore a click on a handle and one in the no-end slot', () => {
+      const { onExample, track } = strip();
+      fireEvent.click(screen.getByTestId('age-strip-handle-hide'), { clientX: 100 });
+      fireEvent.click(track, { clientX: 960 });
+      expect(onExample).not.toHaveBeenCalled();
+    });
+
+    it('should ignore the click that trails a handle drag', () => {
+      const { onExample, track } = strip();
+      const handle = screen.getByTestId('age-strip-handle-hide');
+      fireEvent.pointerDown(handle, { pointerId: 1, pointerType: 'mouse', buttons: 1 });
+      fireEvent.pointerMove(handle, { pointerId: 1, pointerType: 'mouse', buttons: 1, clientX: 300 });
+      fireEvent.pointerUp(handle, { pointerId: 1, pointerType: 'mouse' });
+      fireEvent.click(track, { clientX: 300 });
+      expect(onExample).not.toHaveBeenCalled();
+    });
+
+    it('should draw a decorative marker at the example age', () => {
+      strip();
+      const marker = screen.getByTestId('age-strip-example');
+      expect(marker).toHaveAttribute('aria-hidden', 'true');
+      expect(marker).toHaveTextContent('today');
+    });
   });
 });

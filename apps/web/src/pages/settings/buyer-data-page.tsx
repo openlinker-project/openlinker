@@ -53,10 +53,14 @@ import {
   type BuyerDataRules,
 } from '../../features/buyer-data';
 import {
+  ConnectionChip,
+  readConnectionEnvironment,
   useConnectionsQuery,
   useUpdateConnectionMutation,
   type Connection,
 } from '../../features/connections';
+import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
+import { usePlatforms } from '../../shared/plugins';
 import {
   useOperationalSettingsQuery,
   useUpdateOperationalSettingsMutation,
@@ -119,6 +123,7 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
   const scopeCopy = useMessages('buyer-data').scope;
   const { showToast } = useToast();
   const shortPeriod = useShortPeriod();
+  const platforms = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
   const update = useUpdateOperationalSettingsMutation();
   const updateConnection = useUpdateConnectionMutation();
@@ -135,6 +140,21 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
   useEffect(() => {
     setDraft(saved);
   }, [saved.enabled, saved.hideAfterDays, saved.eraseAfterDays, saved.mode]);
+
+  // Static: a tab is itself the control, so the chip cannot link or slide anything out.
+  const connectionChip = (c: Connection): ReactElement => (
+    <ConnectionChip
+      static
+      connectionId={c.id}
+      name={c.name}
+      channel={{
+        platformType: c.platformType,
+        label: resolvePlatformLabel(platforms, c.platformType),
+        shortLabel: resolvePlatformShortLabel(platforms, c.platformType),
+        environment: readConnectionEnvironment(c.config),
+      }}
+    />
+  );
 
   const connections = (connectionsQuery.data ?? [])
     .filter(takesOrders)
@@ -248,7 +268,7 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                           className="scope-compare__open"
                           onClick={() => setTab(c.id)}
                         >
-                          {c.name}
+                          {connectionChip(c)}
                         </button>
                       </td>
                       <td data-label={COPY.columnHide}>{shortPeriod(r.hideAfterDays)}</td>
@@ -376,8 +396,8 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
           {connections.map((c) => {
             const own = overrideOf(c) !== null;
             return (
-              <TabsTrigger key={c.id} value={c.id}>
-                {c.name}
+              <TabsTrigger key={c.id} value={c.id} className="scope-tabs__trigger--chip">
+                {connectionChip(c)}
                 {own ? (
                   <span className="scope-tabs__dot" aria-label={scopeCopy.ownChip} />
                 ) : (

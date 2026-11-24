@@ -87,6 +87,9 @@ export function RetentionStudio({
   });
   const histogramQuery = followerIds === undefined ? singleHistogram : followersHistogram;
   const [activeAge, setActiveAge] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // The example order's age: one value for the strip's marker, the card's slider and the presets.
+  const [exampleDays, setExampleDays] = useState<number | null>(null);
 
   const issues = validateBuyerDataRules(rules);
   const hideError = issues.includes('hide-range') ? periodCopy.errorRange : undefined;
@@ -114,6 +117,8 @@ export function RetentionStudio({
     () => (full ? suggestExampleAge(histogram?.buckets ?? [], rules) : 730),
     [full, histogram, rules]
   );
+
+  const example = exampleDays ?? defaultAge;
 
   function setCuts(cuts: RetentionCuts): void {
     onChange({ ...rules, ...cuts });
@@ -177,6 +182,9 @@ export function RetentionStudio({
       mode={rules.mode}
       handleAgeDays={activeAge}
       defaultAgeDays={defaultAge}
+      ageDays={example}
+      onAgeChange={setExampleDays}
+      dragging={dragging}
       plan={plan}
     />
   );
@@ -211,6 +219,9 @@ export function RetentionStudio({
               counts={counts}
               onChange={setCuts}
               onActive={setActiveAge}
+              onDragChange={setDragging}
+              exampleDays={example}
+              onExample={setExampleDays}
               disabled={disabled}
               ghost={ghost}
             />

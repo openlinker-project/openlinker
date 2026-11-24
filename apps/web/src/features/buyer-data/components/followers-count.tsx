@@ -11,6 +11,8 @@
  * @module apps/web/src/features/buyer-data/components
  */
 import { useCallback, useRef, useState, type ReactElement } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { interpolate } from '../../../shared/i18n';
 import { useMessages } from '../../../shared/i18n';
 import { usePlatforms } from '../../../shared/plugins';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
@@ -22,6 +24,7 @@ import {
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../mappings';
 
 const CLOSE_DELAY_MS = 120;
+const SETTINGS_PATH = '/settings/buyer-data';
 
 export interface FollowersCountProps {
   connections: readonly Connection[];
@@ -38,6 +41,8 @@ export function FollowersCount({
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touched = useRef(false);
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [container, setContainer] = useState<HTMLElement | null>(null);
 
   const findDialog = useCallback((el: HTMLButtonElement | null): void => {
@@ -55,6 +60,16 @@ export function FollowersCount({
   const hideSoon = (): void => {
     cancel();
     timer.current = setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
+  };
+
+  // A connection here is a scope of the page that lists it: following it
+  // switches that page's scope tab in place, keeping its other query params.
+  const scopeTarget = (id: string): string => {
+    const params = new URLSearchParams(
+      location.pathname === SETTINGS_PATH ? searchParams : undefined
+    );
+    params.set('scope', id);
+    return `${SETTINGS_PATH}?${params.toString()}`;
   };
 
   if (connections.length === 0) {
@@ -109,6 +124,8 @@ export function FollowersCount({
         sideOffset={6}
         aria-label={copy.followersListLabel}
         onOpenAutoFocus={(event) => event.preventDefault()}
+        // Focus handed back to the trigger would reopen it through its onFocus.
+        onCloseAutoFocus={(event) => event.preventDefault()}
         onPointerEnter={show}
         onPointerLeave={hideSoon}
       >
@@ -121,6 +138,12 @@ export function FollowersCount({
               <ConnectionChip
                 className="followers-pop__chip"
                 connectionId={connection.id}
+                to={scopeTarget(connection.id)}
+                onNavigate={() => {
+                  cancel();
+                  setOpen(false);
+                }}
+                linkLabel={interpolate(copy.openScope, { name: connection.name })}
                 name={connection.name}
                 channel={{
                   platformType: connection.platformType,
