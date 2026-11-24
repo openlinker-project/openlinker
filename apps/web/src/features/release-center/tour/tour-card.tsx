@@ -263,6 +263,10 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
         { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
         { x: 0, y: 0 }
       );
+      // A target in the topbar (the bell) needs the ring above that bar, which otherwise dims itself.
+      const inChrome = Boolean(element.closest('.shell-topbar'));
+      ring.dataset.chrome = inChrome ? 'true' : 'false';
+      document.documentElement.classList.toggle('tour-chrome-target', inChrome);
       ring.style.width = `${box.width}px`;
       ring.style.height = `${box.height}px`;
       ring.style.top = `${box.top}px`;
@@ -281,6 +285,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
       }
       if (!scrolled) {
         scrolled = true;
+        if (inChrome) return;
         // Once: put the target's top just under the bar. The user's own scrolling is never undone.
         const delta = rect.top - readTopInset();
         if (Math.abs(delta) > 2) {
@@ -321,7 +326,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     let lastBox = '';
     const follow = (): void => {
       const rect = element.getBoundingClientRect();
-      const side = rect.bottom < 56 ? 'above' : rect.top > window.innerHeight - 8 ? 'below' : null;
+      const side = element.closest('.shell-topbar') ? null : rect.bottom < 56 ? 'above' : rect.top > window.innerHeight - 8 ? 'below' : null;
       setOffscreen((previous) => (previous === side ? previous : side));
       const box = `${rect.top}|${rect.left}|${rect.width}|${rect.height}`;
       if (box !== lastBox) {
@@ -348,6 +353,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     void document.fonts?.ready.then(schedule);
     return () => {
       document.documentElement.classList.remove('tour-active');
+      document.documentElement.classList.remove('tour-chrome-target');
       document.documentElement.style.removeProperty('--tour-card-space');
       cancelAnimationFrame(frame);
       cancelAnimationFrame(dockFrame);

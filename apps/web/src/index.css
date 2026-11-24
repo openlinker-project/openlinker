@@ -42283,6 +42283,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* The ring tracks its target in viewport coordinates (see tour-card): a target that is sticky or in a
    scroller of its own would drift away from a ring pinned to the document. */
 .tour-ring { position: fixed; }
+/* A target inside the topbar: the ring sits above the bar and dims it itself, so the bar's own dimming steps aside. */
+.tour-ring[data-chrome='true'] { z-index: 11; }
+.tour-chrome-target .shell-topbar::after { display: none; }
 /* Badge row under the title in the tour card, matching the steps list. */
 .tour-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 2px; }
 .tour-card__text { gap: 6px; }
