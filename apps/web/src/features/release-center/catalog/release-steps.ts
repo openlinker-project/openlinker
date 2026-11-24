@@ -35,6 +35,7 @@ function readConfigValue(source: unknown, key: string): unknown {
 export const RELEASE_STEPS: readonly ReleaseStepEntry[] = [
   {
     id: 'shipping-routing',
+    viewable: false,
     scope: 'connection',
     introducedIn: '0.20.0',
     // Required only while a channel still has carrier-named delivery methods

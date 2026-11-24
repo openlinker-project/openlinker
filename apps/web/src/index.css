@@ -15955,6 +15955,17 @@ a.kpi-card:focus-visible {
     opacity: 1;
     transform: none;
   }
+
+  /* The floating variant is placed in script on hover, which never happens here: without this it stays
+     fixed at the screen corner. A touch screen shows the name inline instead. */
+  .connection-chip--float .connection-chip__reveal,
+  .connection-chip--float[data-side='left'] .connection-chip__reveal {
+    position: relative;
+    top: auto;
+    left: auto;
+    border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+    padding: 0 8px 0 calc(var(--chip-overlap) + 7px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

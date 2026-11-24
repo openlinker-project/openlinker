@@ -46,6 +46,11 @@ export function resolveTourStop(step: TourStepInput): TourStop | null {
   };
 }
 
+/** Whether a person without the right to change settings can open this step's page (the view tour skips the rest). */
+export function stepViewable(stepId: string): boolean {
+  return RELEASE_STEPS.find((candidate) => candidate.id === stepId)?.viewable !== false;
+}
+
 /** `major.minor` of the release that ships this entry, or null for an unknown id. */
 export function tourItemMinor(step: TourStepInput): string | null {
   const introducedIn = step.showcase

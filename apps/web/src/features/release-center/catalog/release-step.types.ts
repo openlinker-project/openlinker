@@ -53,6 +53,8 @@ export interface ReleaseStepEntry {
   routeParams: (ctx: ReleaseStepContext) => Readonly<Record<string, string>>;
   /** Value of the `data-tour` attribute the guided tour highlights. */
   target: string;
+  /** False when the step's page cannot be opened without the right to change settings: the view tour leaves it out. Default true. */
+  viewable?: boolean;
   /**
    * Where the step sends the operator next (a link inside `target`). The tour stays open on that page and
    * walks `targets` there one by one, reading `steps.<id>.follow<i>` (follow0, follow1, ...) instead of `tourBody`.

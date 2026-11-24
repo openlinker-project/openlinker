@@ -13,6 +13,7 @@ import type { ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { requestReleaseTour } from '../lib/release-center-requests';
 import { showcaseSeenOf } from '../lib/release-notifications';
+import { stepViewable } from '../tour/tour-stop';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseCenterView } from './release-center-provider';
 import { ReleaseIcon } from './release-icon';
@@ -27,7 +28,7 @@ export function ReleaseWalkAll({ onNavigate }: { onNavigate: () => void }): Reac
   // Without the right to change settings nothing here can be completed: it is a tour of what changed, never "finished".
   const left = canWriteSteps
     ? view.summary.requiredLeft + view.summary.optionalLeft + unseen
-    : view.instances.length + view.showcases.length;
+    : view.instances.filter((i) => stepViewable(i.step.id)).length + view.showcases.length;
   const finished = canWriteSteps && left === 0;
 
   const start = (): void => {

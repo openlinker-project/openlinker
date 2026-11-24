@@ -15,7 +15,7 @@ import { showcaseSeenOf, type ShowcaseInstance, type StepInstance } from '../lib
 import type { TourRequest } from '../lib/release-center-requests';
 import { compareVersions } from '../lib/compare-versions';
 import type { TourStepInput } from './tour-context';
-import { tourItemMinor } from './tour-stop';
+import { stepViewable, tourItemMinor } from './tour-stop';
 
 export interface TourRequestWalk {
   steps: TourStepInput[];
@@ -39,7 +39,8 @@ export function tourStepsForRequest(
   instances: readonly StepInstance[],
   state: ReleaseState | undefined,
   request: TourRequest,
-  showcases: readonly ShowcaseInstance[] = []
+  showcases: readonly ShowcaseInstance[] = [],
+  canConfig = true
 ): TourRequestWalk {
   const seen = (instance: ShowcaseInstance): boolean =>
     state ? showcaseSeenOf(state, instance.itemKey) : false;
@@ -69,7 +70,9 @@ export function tourStepsForRequest(
     return { steps, startIndex };
   }
 
-  const open = instances.filter((i) => installationStatusOf(state, i.itemKey) === 'open');
+  const open = instances.filter(
+    (i) => installationStatusOf(state, i.itemKey) === 'open' && (canConfig || stepViewable(i.step.id))
+  );
   const setupSteps: TourStepInput[] = open.map((i) => ({
     stepId: i.step.id,
     connectionId: i.connectionId,

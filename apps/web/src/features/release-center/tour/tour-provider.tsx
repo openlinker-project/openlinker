@@ -36,6 +36,7 @@ import { subscribeToTourRequests } from '../lib/release-center-requests';
 import { TourCard } from './tour-card';
 import { TourContext, type TourController, type TourStepInput } from './tour-context';
 import { tourStepsForRequest } from './tour-request-steps';
+import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { resolveTourStop } from './tour-stop';
 import { INITIAL_TOUR_STATE, tourReducer } from './tour-reducer';
 
@@ -134,6 +135,8 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
   }, []);
 
   const view = useReleaseCenterView();
+  const canConfigRef = useRef(false);
+  canConfigRef.current = useReleaseCenterAccess().canWriteSteps;
   const viewRef = useRef(view);
   viewRef.current = view;
   useEffect(
@@ -141,7 +144,7 @@ export function TourProvider({ children }: PropsWithChildren): ReactElement {
       subscribeToTourRequests((request) => {
         const latest = viewRef.current;
         if (!latest) return;
-        const walk = tourStepsForRequest(latest.instances, latest.state, request, latest.showcases);
+        const walk = tourStepsForRequest(latest.instances, latest.state, request, latest.showcases, canConfigRef.current);
         start(walk.steps, null, walk.startIndex);
       }),
     [start]
