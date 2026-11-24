@@ -526,7 +526,7 @@ describe('OrderDetailPage', () => {
       expect(await screen.findByDisplayValue('POZ08A')).toBeInTheDocument();
     });
 
-    it('leaves the form collapsed when no retryShipmentId param is present', async () => {
+    it('opens the label form on the Shipping tab when nothing has shipped and no retryShipmentId param is present (#4286)', async () => {
       const api = createMockApiClient({
         orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
         connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
@@ -537,8 +537,10 @@ describe('OrderDetailPage', () => {
 
       renderWithRoute(api, '/orders/ol_order_abc123');
 
-      await screen.findByText('No shipment yet');
-      expect(screen.queryByText('Recipient')).toBeNull();
+      // The Shipping tab shows the label form straight away (the mockup's shipment card),
+      // instead of the "No shipment yet" empty state; nothing is submitted until the operator clicks.
+      await screen.findByText('Recipient');
+      expect(screen.queryByText('No shipment yet')).toBeNull();
     });
 
     it('should strip retryShipmentId from the URL after consuming it while preserving from (#1905)', async () => {
