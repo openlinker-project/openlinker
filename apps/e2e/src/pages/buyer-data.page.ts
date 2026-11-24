@@ -77,10 +77,6 @@ export class BuyerDataSettingsPage {
     return this.page.getByTestId('buyer-data-save');
   }
 
-  get offNote(): Locator {
-    return this.page.getByTestId('buyer-data-switch-hint');
-  }
-
   get connectionsTable(): Locator {
     return this.page.getByTestId('buyer-data-connections');
   }

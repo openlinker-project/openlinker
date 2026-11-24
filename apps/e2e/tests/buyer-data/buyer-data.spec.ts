@@ -9,8 +9,8 @@
  * Runs against a real stack (`pnpm exec playwright test --project=buyer-data`).
  * Requirements: `E2E_DATABASE_URL` pointing at the stack's Postgres (the
  * connections it creates are deleted there afterwards), and the GLOBAL buyer
- * data setting OFF before the run. The first test turns it on and the last
- * switches it off again, so do not run it against a shared environment.
+ * data setting OFF before the run. The first test turns it on and switches it
+ * off again within the same test, so it is safe to re-run.
  *
  * @module tests/buyer-data
  */
@@ -27,7 +27,7 @@ test.afterAll(async () => {
   await deleteConnectionsByName(OWN_NAME);
 });
 
-test('general settings: off by default, locked until a trial run, then saved', async ({
+test('general settings: switch locked until the plan is calculated, then saved', async ({
   page,
   pages,
 }) => {
@@ -39,13 +39,12 @@ test('general settings: off by default, locked until a trial run, then saved', a
     await expect(page).toHaveURL(/\/settings\/buyer-data$/);
   });
 
-  await test.step('it says these are defaults and that the rules are off', async () => {
+  await test.step('it says these are defaults and starts with the rules off', async () => {
     await expect(page.getByText('These are default settings')).toBeVisible();
-    await expect(settings.offNote).toContainText('The rules are off');
-    await expect(settings.masterSwitch).toBeDisabled();
+    await expect(settings.masterSwitch).toHaveAttribute('aria-checked', 'false');
   });
 
-  await test.step('choosing periods updates the summary and the example order', async () => {
+  await test.step('choosing periods updates the plan and the example order', async () => {
     await settings.rules.choose({ amount: 3, unit: 'months' }, { amount: 2, unit: 'years' });
     await expect(settings.rules.summary).toContainText('will leave the lists');
     await expect(settings.rules.exampleOrder).toBeVisible();
@@ -54,6 +53,7 @@ test('general settings: off by default, locked until a trial run, then saved', a
   await test.step('the calculated plan unlocks the switch and changes nothing', async () => {
     await expect(settings.rules.plan).toContainText('Calculated at');
     await expect(settings.masterSwitch).toBeEnabled();
+    await expect(settings.masterSwitch).toHaveAttribute('aria-checked', 'false');
   });
 
   await test.step('turning the rules on asks for confirmation, then saves', async () => {
@@ -64,6 +64,12 @@ test('general settings: off by default, locked until a trial run, then saved', a
     await page.reload();
     await expect(settings.rules.hideAmount).toHaveValue('3');
     await expect(settings.masterSwitch).toHaveAttribute('aria-checked', 'true');
+  });
+
+  await test.step('the switch is put back off so the run leaves no live rules behind', async () => {
+    await settings.masterSwitch.click();
+    await settings.save.click();
+    await expect(page.getByText('Buyer data rules saved.', { exact: true })).toBeVisible();
   });
 });
 
@@ -157,12 +163,4 @@ test('connection edit: own rules need a trial run, then are saved into the confi
       })
       .toBeNull();
   });
-});
-
-test('cleanup: switch the general rules off again', async ({ page, pages }) => {
-  const settings = pages.buyerDataSettings;
-  await settings.goto();
-  await settings.masterSwitch.click();
-  await settings.save.click();
-  await expect(page.getByText('Buyer data rules saved.', { exact: true })).toBeVisible();
 });

@@ -16,6 +16,7 @@ import { useEffect, type ReactElement } from 'react';
 import { useMessages } from '../../../shared/i18n';
 import { Switch } from '../../../shared/ui/switch';
 import type { BuyerDataPreview, BuyerDataRules } from '../api/buyer-data.types';
+import { useBuyerDataFollowersPlan } from '../hooks/use-buyer-data-followers';
 import { useBuyerDataPlan } from '../hooks/use-buyer-data-plan';
 import { validateBuyerDataRules } from '../lib/buyer-data-config';
 import { RetentionStudio } from './retention-studio';
@@ -34,6 +35,13 @@ export interface RetentionScopeProps {
   showSwitch?: boolean;
   /** Reports the latest answered plan, for the confirmation that counts what will happen. */
   onPlan?: (preview: BuyerDataPreview | undefined) => void;
+  /**
+   * The Defaults tab: only these connections follow the defaults, so the plan
+   * and the strip count them and nobody else. Absent = the scope's own orders.
+   */
+  followerIds?: readonly string[];
+  /** One line saying whose orders the plan counts. */
+  planNote?: string;
   name: string;
 }
 
@@ -46,15 +54,24 @@ export function RetentionScope({
   ghost = false,
   showSwitch = true,
   onPlan,
+  followerIds,
+  planNote,
   name,
 }: RetentionScopeProps): ReactElement {
   const copy = useMessages('buyer-data').scope;
-  const plan = useBuyerDataPlan({
-    connectionId,
+  const input = {
     hideAfterDays: rules.hideAfterDays,
     eraseAfterDays: rules.eraseAfterDays,
     mode: rules.mode,
+  };
+  const single = useBuyerDataPlan(
+    { connectionId, ...input },
+    { enabled: followerIds === undefined }
+  );
+  const followers = useBuyerDataFollowersPlan(input, followerIds ?? [], {
+    enabled: followerIds !== undefined,
   });
+  const plan = followerIds === undefined ? single : followers;
   const issues = validateBuyerDataRules(rules);
   const canEnable = issues.length === 0 && plan.fresh;
 
@@ -100,6 +117,8 @@ export function RetentionScope({
         onChange={onChange}
         connectionId={connectionId}
         plan={plan}
+        followerIds={followerIds}
+        planNote={planNote}
         disabled={locked}
         ghost={ghost}
       />

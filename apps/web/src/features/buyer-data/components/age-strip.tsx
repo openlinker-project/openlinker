@@ -54,6 +54,9 @@ export interface StripCounts {
   kept: number;
   hidden: number;
   erased: number;
+  /** Of `hidden` / `erased`: orders the retention job already processed. */
+  alreadyHidden?: number;
+  alreadyErased?: number;
   /** Computed from the histogram, not yet confirmed by the server. */
   estimated: boolean;
   /** The server is still working on the rules on screen. */
@@ -108,6 +111,9 @@ function Handle({
   onActive,
 }: HandleProps): ReactElement {
   const [dragging, setDragging] = useState(false);
+  // Synchronous twin of `dragging`: a move right behind the press must not be dropped
+  // for want of a render, and a stray move after the press ended must not count.
+  const dragRef = useRef(false);
   const pct = daysToPct(days);
   const never = days <= 0;
 
@@ -143,9 +149,23 @@ function Handle({
     onActive(next);
   }
 
+  function endDrag(event: PointerEvent<HTMLButtonElement>): void {
+    dragRef.current = false;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId) === true) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+    setDragging(false);
+    onActive(null);
+  }
+
   function moveTo(event: PointerEvent<HTMLButtonElement>): void {
     const rect = trackRef.current?.getBoundingClientRect();
     if (rect === undefined || rect.width === 0) return;
+    // A lost pointerup leaves the drag "on" with no button pressed: end it, never follow it.
+    if (event.pointerType === 'mouse' && event.buttons === 0) {
+      endDrag(event);
+      return;
+    }
     const next = pctToDays(((event.clientX - rect.left) / rect.width) * 100, event.shiftKey);
     onMove(next);
     onActive(next);
@@ -173,28 +193,25 @@ function Handle({
         onFocus={() => onActive(never ? null : days)}
         onBlur={() => onActive(null)}
         onPointerEnter={() => {
-          if (!dragging) onActive(never ? null : days);
+          if (!dragRef.current) onActive(never ? null : days);
         }}
         onPointerLeave={() => {
-          if (!dragging) onActive(null);
+          if (!dragRef.current) onActive(null);
         }}
         onPointerDown={(event) => {
           if (disabled) return;
           event.currentTarget.setPointerCapture?.(event.pointerId);
+          dragRef.current = true;
           setDragging(true);
           onActive(never ? null : days);
         }}
         onPointerMove={(event) => {
-          if (dragging) moveTo(event);
+          if (dragRef.current) moveTo(event);
         }}
-        onPointerUp={(event) => {
-          event.currentTarget.releasePointerCapture?.(event.pointerId);
-          setDragging(false);
-          onActive(null);
-        }}
-        onPointerCancel={() => {
-          setDragging(false);
-          onActive(null);
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={(event) => {
+          if (dragRef.current) endDrag(event);
         }}
       >
         {kind === 'erase' ? (
@@ -303,14 +320,21 @@ export function AgeStrip({
   const hiddenFrom = hidePct ?? AXIS_PCT;
   const hiddenTo = erasePct ?? AXIS_PCT;
 
-  const stat = (n: number | undefined): ReactElement =>
+  const stat = (n: number | undefined, already?: number): ReactElement =>
     counts === null || n === undefined ? (
       <span className="age-strip__skeleton" aria-label={copy.calculating} />
     ) : (
-      <strong className={counts.calculating ? 'age-strip__stat--busy' : undefined}>
-        {counts.estimated || counts.calculating ? '≈ ' : ''}
-        {format.number(n)}
-      </strong>
+      <>
+        <strong className={counts.calculating ? 'age-strip__stat--busy' : undefined}>
+          {counts.estimated || counts.calculating ? '≈ ' : ''}
+          {format.number(n)}
+        </strong>
+        {already !== undefined && already > 0 ? (
+          <small className="age-strip__already">
+            {interpolate(copy.zoneAlready, { n: format.number(already) })}
+          </small>
+        ) : null}
+      </>
     );
 
   return (
@@ -324,13 +348,13 @@ export function AgeStrip({
           <span className="age-strip__zone-label">
             {copy.zoneHidden} <small>{copy.zoneHiddenNote}</small>
           </span>
-          {stat(counts?.hidden)}
+          {stat(counts?.hidden, counts?.alreadyHidden)}
         </div>
         <div className="age-strip__zone age-strip__zone--erased">
           <span className="age-strip__zone-label">
             {copy.zoneErased} <small>{copy.zoneErasedNote}</small>
           </span>
-          {stat(counts?.erased)}
+          {stat(counts?.erased, counts?.alreadyErased)}
         </div>
       </div>
 

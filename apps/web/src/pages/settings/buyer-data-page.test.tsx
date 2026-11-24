@@ -124,6 +124,8 @@ describe('BuyerDataPage (#4289)', () => {
 
   it('should save a handle move on the defaults as the new defaults', async () => {
     const { update } = render();
+    // The strip redraws once the connections (and so who follows the defaults) are known.
+    await screen.findByTestId('buyer-data-connections');
     const hide = await screen.findByTestId('age-strip-handle-hide');
     hide.focus();
     await userEvent.keyboard('{ArrowRight}');
@@ -164,6 +166,67 @@ describe('BuyerDataPage (#4289)', () => {
         })
       )
     );
+  });
+
+  it('should keep the studio on a connection with its own rules and let it be edited', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { updateConnection } = render();
+    await userEvent.click(await screen.findByRole('tab', { name: /Allegro/ }));
+
+    expect(await screen.findByTestId('scope-chain')).toHaveTextContent('Own rules');
+    expect(await screen.findByTestId('age-strip-handle-hide')).toBeInTheDocument();
+    expect(screen.getByTestId('retention-studio-conn-conn-allegro')).not.toHaveClass(
+      'retention-studio--ghost'
+    );
+    expect(screen.queryByText(/The switch is shared/)).not.toBeInTheDocument();
+    expect(
+      errors.mock.calls.filter((call) => String(call[0]).includes('cannot be a descendant'))
+    ).toHaveLength(0);
+
+    await userEvent.click(screen.getByTestId('buyer-data-save'));
+    // Untouched own rules are not a change.
+    expect(updateConnection).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it('should show the hint and a ghosted studio for a linked connection, in valid DOM', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Shop' }));
+    expect(await screen.findByText(/The switch is shared/)).toBeInTheDocument();
+    expect(screen.getByTestId('retention-studio-conn-conn-shop')).toHaveClass(
+      'retention-studio--ghost'
+    );
+    expect(
+      errors.mock.calls.filter((call) => String(call[0]).includes('cannot be a descendant'))
+    ).toHaveLength(0);
+    errors.mockRestore();
+  });
+
+  it('should count only the connections that follow the defaults on the Defaults tab', async () => {
+    const preview = vi.fn().mockResolvedValue({
+      toHide: 1,
+      toErase: 0,
+      total: 1,
+      totalOrders: 10,
+      skippedProtected: 0,
+      skippedByReason: { openReturn: 0, hold: 0, invoicePending: 0 },
+      samples: [],
+    });
+    renderWithProviders(<BuyerDataPage />, {
+      apiClient: createMockApiClient({
+        operationalSettings: { get: vi.fn().mockResolvedValue(settingsView()) },
+        connections: { list: vi.fn().mockResolvedValue([SHOP, ALLEGRO]) },
+        buyerData: { preview },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(ADMIN),
+    });
+    expect(await screen.findByTestId('plan-note')).toHaveTextContent('1');
+    await waitFor(() => expect(screen.getByTestId('plan-stays')).toHaveTextContent('9'));
+    const scoped = preview.mock.calls.map((c) => (c[0] as { connectionId?: string }).connectionId);
+    expect(scoped).toContain('conn-shop');
+    expect(scoped).not.toContain('conn-allegro');
+    expect(scoped).not.toContain(undefined);
   });
 
   it('should send a connection back to the defaults with an explicit null', async () => {

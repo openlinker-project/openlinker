@@ -18,6 +18,7 @@ import { useMessages } from '../../../shared/i18n';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { isBuyerDataEraseMode, type BuyerDataRules } from '../api/buyer-data.types';
 import { useBuyerDataAgeHistogram } from '../hooks/use-buyer-data-age-histogram';
+import { useBuyerDataFollowersHistogram } from '../hooks/use-buyer-data-followers';
 import type { BuyerDataPlan } from '../hooks/use-buyer-data-plan';
 import { validateBuyerDataRules } from '../lib/buyer-data-config';
 import { estimateZoneCounts, type RetentionCuts } from '../lib/retention-scale';
@@ -33,6 +34,10 @@ export interface RetentionStudioProps {
   connectionId?: string;
   /** Null for the compact variant, which asks the server nothing. */
   plan: BuyerDataPlan | null;
+  /** Defaults tab: draw and count only the connections that follow the defaults. */
+  followerIds?: readonly string[];
+  /** One line saying whose orders the plan counts. */
+  planNote?: string;
   /** `compact` drops the strip and the plan: inputs and the example order only. */
   variant?: 'full' | 'compact';
   disabled?: boolean;
@@ -47,6 +52,8 @@ export function RetentionStudio({
   onChange,
   connectionId,
   plan,
+  followerIds,
+  planNote,
   variant = 'full',
   disabled = false,
   ghost = false,
@@ -55,7 +62,13 @@ export function RetentionStudio({
   const copy = useMessages('buyer-data').rules;
   const periodCopy = useMessages('buyer-data').period;
   const full = variant === 'full';
-  const histogramQuery = useBuyerDataAgeHistogram(connectionId, { enabled: full });
+  const singleHistogram = useBuyerDataAgeHistogram(connectionId, {
+    enabled: full && followerIds === undefined,
+  });
+  const followersHistogram = useBuyerDataFollowersHistogram(followerIds ?? [], {
+    enabled: full && followerIds !== undefined,
+  });
+  const histogramQuery = followerIds === undefined ? singleHistogram : followersHistogram;
   const [activeAge, setActiveAge] = useState<number | null>(null);
 
   const issues = validateBuyerDataRules(rules);
@@ -74,12 +87,22 @@ export function RetentionStudio({
       : 'ready';
 
   const counts = useMemo<StripCounts | null>(() => {
+    // The plan only counts what is still to be done; what the job already hid or
+    // erased is in the histogram and belongs in the zone it sits in.
+    let alreadyHidden = 0;
+    let alreadyErased = 0;
+    for (const bucket of histogram?.buckets ?? []) {
+      alreadyHidden += bucket.hidden;
+      alreadyErased += bucket.erased;
+    }
     if (plan?.fresh === true && plan.data !== undefined) {
       const { totalOrders, total, toErase } = plan.data;
       return {
         kept: Math.max(0, totalOrders - total),
-        hidden: Math.max(0, total - toErase),
-        erased: toErase,
+        hidden: Math.max(0, total - toErase) + alreadyHidden,
+        erased: toErase + alreadyErased,
+        alreadyHidden,
+        alreadyErased,
         estimated: false,
         calculating: false,
       };
@@ -87,6 +110,8 @@ export function RetentionStudio({
     if (histogram !== undefined) {
       return {
         ...estimateZoneCounts(histogram.buckets, rules),
+        alreadyHidden,
+        alreadyErased,
         estimated: true,
         calculating: plan?.calculating ?? false,
       };
@@ -97,6 +122,8 @@ export function RetentionStudio({
         kept: Math.max(0, totalOrders - total),
         hidden: Math.max(0, total - toErase),
         erased: toErase,
+        alreadyHidden: 0,
+        alreadyErased: 0,
         estimated: true,
         calculating: true,
       };
@@ -147,6 +174,7 @@ export function RetentionStudio({
               setCuts({ hideAfterDays: days, eraseAfterDays: rules.eraseAfterDays })
             }
             error={hideError}
+            restoreAtLeastDays={90}
             disabled={disabled}
           />
           <PeriodInput
@@ -159,6 +187,7 @@ export function RetentionStudio({
               setCuts({ hideAfterDays: rules.hideAfterDays, eraseAfterDays: days })
             }
             error={eraseError}
+            restoreAtLeastDays={Math.max(365, rules.hideAfterDays)}
             disabled={disabled}
           />
         </div>
@@ -188,29 +217,20 @@ export function RetentionStudio({
           </div>
         ) : null}
 
-        {full ? null : (
-          <RecordCard
-            hideAfterDays={rules.hideAfterDays}
-            eraseAfterDays={rules.eraseAfterDays}
-            mode={rules.mode}
-            handleAgeDays={activeAge}
-            defaultAgeDays={defaultAge}
-          />
-        )}
+        <RecordCard
+          hideAfterDays={rules.hideAfterDays}
+          eraseAfterDays={rules.eraseAfterDays}
+          mode={rules.mode}
+          handleAgeDays={activeAge}
+          defaultAgeDays={defaultAge}
+        />
       </div>
 
       {full ? (
         <div className="retention-studio__side">
           {plan !== null ? (
-            <PlanPanel plan={plan} mode={rules.mode} invalid={issues.length > 0} />
+            <PlanPanel plan={plan} mode={rules.mode} invalid={issues.length > 0} note={planNote} />
           ) : null}
-          <RecordCard
-            hideAfterDays={rules.hideAfterDays}
-            eraseAfterDays={rules.eraseAfterDays}
-            mode={rules.mode}
-            handleAgeDays={activeAge}
-            defaultAgeDays={defaultAge}
-          />
         </div>
       ) : null}
     </div>

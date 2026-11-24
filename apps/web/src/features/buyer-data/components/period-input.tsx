@@ -24,6 +24,8 @@ export interface PeriodInputProps {
   onChange: (days: number) => void;
   error?: string;
   disabled?: boolean;
+  /** Un-ticking "never" restores the last period, but never one shorter than this. */
+  restoreAtLeastDays?: number;
 }
 
 const UNITS: readonly PeriodUnit[] = ['days', 'months', 'years'];
@@ -37,6 +39,7 @@ export function PeriodInput({
   onChange,
   error,
   disabled = false,
+  restoreAtLeastDays = 1,
 }: PeriodInputProps): ReactElement {
   const copy = useMessages('buyer-data').period;
   const labelId = useId();
@@ -119,7 +122,9 @@ export function PeriodInput({
             checked={never}
             disabled={disabled}
             data-testid={`period-never-${name}`}
-            onChange={(event) => onChange(event.target.checked ? 0 : lastDays.current)}
+            onChange={(event) =>
+              onChange(event.target.checked ? 0 : Math.max(lastDays.current, restoreAtLeastDays))
+            }
           />
           <span>{neverLabel}</span>
         </label>

@@ -21,9 +21,11 @@ export interface PlanPanelProps {
   mode: BuyerDataEraseMode;
   /** The rules on screen cannot be sent (period out of range). */
   invalid: boolean;
+  /** Whose orders these numbers are about, when that is not obvious. */
+  note?: string;
 }
 
-export function PlanPanel({ plan, mode, invalid }: PlanPanelProps): ReactElement {
+export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactElement {
   const copy = useMessages('buyer-data').plan;
   const format = useFormat();
   const data = plan.data;
@@ -70,6 +72,12 @@ export function PlanPanel({ plan, mode, invalid }: PlanPanelProps): ReactElement
                   : ''}
         </span>
       </header>
+
+      {note !== undefined ? (
+        <p className="plan-panel__note" data-testid="plan-note">
+          {note}
+        </p>
+      ) : null}
 
       <div className={`plan-panel__body${busy ? ' plan-panel__body--busy' : ''}`}>
         <dl className="plan-panel__numbers">

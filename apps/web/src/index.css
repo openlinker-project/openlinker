@@ -40528,6 +40528,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   gap: var(--space-4);
   min-width: 0;
 }
+@media (min-width: 1100px) {
+  /* The plan stays in view while the (taller) editing column scrolls. */
+  .retention-studio--full .retention-studio__side {
+    position: sticky;
+    top: var(--space-4);
+  }
+}
 .retention-studio__main {
   display: flex;
   flex-direction: column;
@@ -40654,6 +40661,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
+.age-strip__already {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
 .age-strip__stat--busy {
   opacity: 0.6;
 }
@@ -40756,6 +40768,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   text-align: center;
 }
 .age-strip__never span {
+  white-space: nowrap;
   padding: 0 var(--space-1);
   background: var(--bg-surface);
 }
@@ -41094,6 +41107,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   color: var(--text-muted);
   font-size: 0.75rem;
 }
+.plan-panel__note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
 .plan-panel__body {
   display: flex;
   flex-direction: column;
@@ -41180,6 +41198,48 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   font-size: 0.8125rem;
 }
 @media (max-width: 600px) {
+  .age-strip__never span {
+    writing-mode: vertical-rl;
+    padding: var(--space-1) 0;
+  }
+  .scope-compare__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .scope-compare__table,
+  .scope-compare__table tbody,
+  .scope-compare__table tr,
+  .scope-compare__table td {
+    display: block;
+    width: 100%;
+  }
+  .scope-compare__table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .scope-compare__table td {
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .scope-compare__table td:first-child {
+    grid-column: 1 / -1;
+  }
+  .scope-compare__table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
   .age-strip {
     padding: var(--space-3);
   }

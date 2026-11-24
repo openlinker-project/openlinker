@@ -84,7 +84,7 @@ describe('RecordCard (#4289)', () => {
 
   it('should show the protected example untouched by the handles', async () => {
     card({ defaultAgeDays: 0, handleAgeDays: 900 });
-    await userEvent.click(screen.getByRole('radio', { name: 'Protected (open return)' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Protected' }));
     expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'protected');
     expect(screen.getByTestId('record-ribbon')).toHaveTextContent('Skipped: open return');
     expect(screen.getByTestId('record-field-email')).toHaveTextContent('john.smith@example.com');

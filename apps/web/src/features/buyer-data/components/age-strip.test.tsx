@@ -6,7 +6,7 @@
  * erase-not-before-hide rule, and the honest states (loading, empty, failed).
  */
 import { useState, type ReactElement } from 'react';
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderWithProviders } from '../../../test/test-utils';
@@ -157,5 +157,36 @@ describe('AgeStrip (#4289)', () => {
     renderWithProviders(<Harness />);
     await userEvent.click(screen.getByRole('button', { name: 'Hide after: longer' }));
     expect(screen.getByTestId('age-strip-handle-hide')).toHaveAttribute('aria-valuenow', '180');
+  });
+
+  it('should follow a drag, and stop following once the pointer is released or lost', () => {
+    renderWithProviders(<Harness initial={{ hideAfterDays: 90, eraseAfterDays: 0 }} />);
+    const track = screen.getByTestId('age-strip-track');
+    track.getBoundingClientRect = (): DOMRect =>
+      ({
+        left: 0,
+        width: 1000,
+        top: 0,
+        height: 10,
+        right: 1000,
+        bottom: 10,
+        x: 0,
+        y: 0,
+      }) as DOMRect;
+    const handle = screen.getByTestId('age-strip-handle-hide');
+
+    fireEvent.pointerDown(handle, { pointerId: 1, pointerType: 'mouse', buttons: 1 });
+    // 20% of the strip = 20/90 of ten years ~ 810 days, snaps to 730.
+    fireEvent.pointerMove(handle, { pointerId: 1, pointerType: 'mouse', buttons: 1, clientX: 200 });
+    expect(handle).toHaveAttribute('aria-valuenow', '730');
+
+    // The release was lost (no pointerup): a later move with no button pressed must not drag.
+    fireEvent.pointerMove(handle, { pointerId: 1, pointerType: 'mouse', buttons: 0, clientX: 800 });
+    expect(handle).toHaveAttribute('aria-valuenow', '730');
+
+    fireEvent.pointerDown(handle, { pointerId: 1, pointerType: 'mouse', buttons: 1 });
+    fireEvent.pointerCancel(handle, { pointerId: 1 });
+    fireEvent.pointerMove(handle, { pointerId: 1, pointerType: 'mouse', buttons: 1, clientX: 800 });
+    expect(handle).toHaveAttribute('aria-valuenow', '730');
   });
 });

@@ -14,7 +14,7 @@
  *
  * @module apps/web/src/pages/settings
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { describeApiError } from '../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../shared/i18n';
@@ -120,7 +120,9 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
     setDraft(saved);
   }, [saved.enabled, saved.hideAfterDays, saved.eraseAfterDays, saved.mode]);
 
-  const connections = (connectionsQuery.data ?? []).filter(takesOrders);
+  const connections = (connectionsQuery.data ?? [])
+    .filter(takesOrders)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const savedOverride = (c: Connection): BuyerDataOverride | null =>
     readBuyerDataSettings(c.config);
   const overrideOf = (c: Connection): BuyerDataOverride | null =>
@@ -130,6 +132,15 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
     (c) => c.id in connDrafts && !sameOverride(connDrafts[c.id] ?? null, savedOverride(c))
   );
   const changed = !sameRules(draft, saved) || dirtyConnections.length > 0;
+  // Who the Defaults tab speaks for: the connections that have no rules of their own.
+  const followerKey = connections
+    .filter((c) => overrideOf(c) === null)
+    .map((c) => c.id)
+    .join(',');
+  const followerIds = useMemo(
+    () => (followerKey === '' ? [] : followerKey.split(',')),
+    [followerKey]
+  );
   const ownCount = connections.filter((c) => overrideOf(c) !== null).length;
   const issues = [
     ...validateBuyerDataRules(draft),
@@ -206,6 +217,12 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
     { toHide: 0, toErase: 0 }
   );
 
+  // Who follows the defaults decides what the Defaults tab counts: until the
+  // connections are known an unscoped plan would count the wrong orders.
+  if (connectionsQuery.isPending) {
+    return <LoadingState liveRegion="off" title={COPY.title} message={COPY.loading} />;
+  }
+
   return (
     <form
       className="buyer-data-page"
@@ -243,6 +260,12 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
             name="general"
             rules={draft}
             savedEnabled={saved.enabled}
+            followerIds={connections.length > 0 ? followerIds : undefined}
+            planNote={
+              connections.length > 0
+                ? interpolate(scopeCopy.plansFollowers, { n: followerIds.length })
+                : undefined
+            }
             onChange={setDraft}
             onPlan={(preview) => {
               plans.current[DEFAULTS_TAB] = preview;
@@ -303,23 +326,23 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                   {interpolate(scopeCopy.linkedSwitch, {
                     state: draft.enabled ? scopeCopy.stateOn : scopeCopy.stateOff,
                   })}
-                  <RetentionScope
-                    name={`conn-${c.id}`}
-                    connectionId={c.id}
-                    rules={effective}
-                    savedEnabled={resolveBuyerDataRules(savedOverride(c), saved).enabled}
-                    ghost={!own}
-                    showSwitch={own}
-                    // A grab on a linked scope makes the shown values its own, switched off.
-                    onChange={(next) =>
-                      setConnection(c, overrideFromRules(own ? next : { ...next, enabled: false }))
-                    }
-                    onPlan={(preview) => {
-                      plans.current[c.id] = preview;
-                    }}
-                  />
                 </p>
               )}
+              <RetentionScope
+                name={`conn-${c.id}`}
+                connectionId={c.id}
+                rules={effective}
+                savedEnabled={resolveBuyerDataRules(savedOverride(c), saved).enabled}
+                ghost={!own}
+                showSwitch={own}
+                // A grab on a linked scope makes the shown values its own, switched off.
+                onChange={(next) =>
+                  setConnection(c, overrideFromRules(own ? next : { ...next, enabled: false }))
+                }
+                onPlan={(preview) => {
+                  plans.current[c.id] = preview;
+                }}
+              />
             </TabsContent>
           );
         })}
@@ -337,7 +360,10 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
               {interpolate(COPY.connectionsHelp, { own: ownCount, total: connections.length })}
             </p>
             <div className="data-table__container">
-              <table className="data-table" data-testid="buyer-data-connections">
+              <table
+                className="data-table scope-compare__table"
+                data-testid="buyer-data-connections"
+              >
                 <thead>
                   <tr>
                     <th scope="col">{COPY.columnConnection}</th>
@@ -364,9 +390,9 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                             {c.name}
                           </button>
                         </td>
-                        <td>{shortPeriod(r.hideAfterDays)}</td>
-                        <td>{shortPeriod(r.eraseAfterDays)}</td>
-                        <td>
+                        <td data-label={COPY.columnHide}>{shortPeriod(r.hideAfterDays)}</td>
+                        <td data-label={COPY.columnErase}>{shortPeriod(r.eraseAfterDays)}</td>
+                        <td data-label={COPY.columnSource}>
                           <StatusBadge tone={override === null ? 'neutral' : 'info'}>
                             {override === null ? COPY.inherit : COPY.own}
                           </StatusBadge>

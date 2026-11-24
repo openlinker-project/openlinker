@@ -12,6 +12,13 @@ export class LoginPage {
   constructor(private readonly page: Page) {}
 
   async goto(): Promise<void> {
+    // The app defaults to Polish; the labels below are English. Same key as the
+    // fixtures use (`openlinker.locale`), set before the first paint.
+    await this.page.addInitScript(() => {
+      if (window.localStorage.getItem('openlinker.locale') === null) {
+        window.localStorage.setItem('openlinker.locale', 'en');
+      }
+    });
     await this.page.goto('/login');
     await expect(this.page.getByRole('heading', { name: /^Sign in to\b/ })).toBeVisible();
   }
