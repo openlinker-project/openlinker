@@ -218,6 +218,8 @@
       "ownPacking": "OpenLinker packs"
     },
     "close": "Close the tour",
+    "collapse": "Fold to the steps only",
+    "expand": "Show the text",
     "finish": "Done",
     "goToStep": "Back to this step's page",
     "leave": {

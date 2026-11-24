@@ -43064,3 +43064,27 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .tour-card .tour-choice { min-height: 40px; padding-block: 6px; }
   .tour-card__rail .pseg { margin-block: 3px; }
 }
+
+/* The fold button is for phones only: it drops the text and the choices and leaves the steps and the buttons. */
+.tour-card__fold { display: none; }
+@media (max-width: 480px) {
+  .tour-card__fold {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .tour-card__fold svg { transition: transform 220ms var(--ease-out); }
+  .tour-card[data-collapsed='true'] .tour-card__fold svg { transform: rotate(180deg); }
+  .tour-card[data-collapsed='true'] .tour-card__text,
+  .tour-card[data-collapsed='true'] .tour-card__choices,
+  .tour-card[data-collapsed='true'] .tour-card__live,
+  .tour-card[data-collapsed='true'] .tour-card__reason { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .tour-card__fold svg { transition: none; } }

@@ -105,6 +105,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const [offscreen, setOffscreen] = useState<'above' | 'below' | null>(null);
   const reasonId = useId();
   const location = useLocation();
+  // On a phone the card can fold down to the steps alone, so what it points at stays in view.
+  const [collapsed, setCollapsed] = useState(false);
   // On the page a step's link leads to, the tour points there instead of at the step's own element.
   const onFollowPage = Boolean(
     stop?.follow &&
@@ -439,6 +441,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
       <section
         ref={cardRef}
         className="tour-card"
+        data-collapsed={collapsed}
         data-parity={state.index % 2}
         role="region"
         aria-label={tour.regionLabel}
@@ -554,6 +557,16 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
               : interpolate(tour.stepOf, { current: groupIndex + 1, total })}
           </span>
           <span className="tour-card__top-end">
+            <button
+              type="button"
+              className="tour-card__fold"
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? tour.expand : tour.collapse}
+              title={collapsed ? tour.expand : tour.collapse}
+              onClick={() => setCollapsed((value) => !value)}
+            >
+              <ReleaseIcon name="chevron" size={14} />
+            </button>
             <button
               type="button"
               className="tour-card__close"

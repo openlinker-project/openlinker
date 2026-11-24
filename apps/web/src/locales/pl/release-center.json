@@ -222,6 +222,8 @@
       "ownPacking": "Pakujemy w OpenLinker"
     },
     "close": "Zamknij przewodnik",
+    "collapse": "Zwiń do samych kroków",
+    "expand": "Rozwiń treść",
     "finish": "Gotowe",
     "goToStep": "Wróć na stronę kroku",
     "leave": {
