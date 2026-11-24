@@ -168,8 +168,14 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     state.index * 100 + (onFollowPage ? followIndex + 1 : 0)
   );
 
+  // The step whose target was on screen at some point: if a resize later swaps the layout (desktop table to phone cards)
+  // the target goes missing, but that is not a reason to pass the step on the operator's behalf.
+  const foundAtStep = useRef<number | null>(null);
   useEffect(() => {
-    if (target.state === 'found') dispatch({ type: 'target', state: 'found' });
+    if (target.state === 'found') {
+      foundAtStep.current = state.index;
+      dispatch({ type: 'target', state: 'found' });
+    }
     else if (target.state === 'missing') {
       dispatch({ type: 'target', state: 'missing' });
       if (showcase) {
@@ -204,6 +210,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   // A guide stop whose target takes no room on this screen (a control that hides itself on a phone) is passed.
   useEffect(() => {
     if (!showcase || state.target !== 'missing') return undefined;
+    if (foundAtStep.current === state.index) return undefined;
     const timer = window.setTimeout(() => {
       if (state.index === state.steps.length - 1) onClose();
       else dispatch({ type: 'next' });
