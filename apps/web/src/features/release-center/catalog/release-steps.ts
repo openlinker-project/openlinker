@@ -59,6 +59,7 @@ export const RELEASE_STEPS: readonly ReleaseStepEntry[] = [
   },
   {
     id: 'packing-owner',
+    viewable: false,
     scope: 'connection',
     introducedIn: '0.20.0',
     importance: () => 'optional',
@@ -76,6 +77,7 @@ export const RELEASE_STEPS: readonly ReleaseStepEntry[] = [
   },
   {
     id: 'inpost-notify-buyer',
+    viewable: false,
     scope: 'connection',
     introducedIn: '0.20.0',
     importance: () => 'optional',
