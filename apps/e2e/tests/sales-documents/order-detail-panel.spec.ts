@@ -61,7 +61,7 @@ const VIEWPORTS = [
 ] as const;
 
 async function gotoOrder(page: Page, orderId: string): Promise<void> {
-  await page.goto(`/orders/${orderId}`);
+  await page.goto(`/orders/${orderId}?tab=documents`);
   await expect(page.locator('.sales-document-panel')).toBeVisible({ timeout: 30_000 });
 }
 

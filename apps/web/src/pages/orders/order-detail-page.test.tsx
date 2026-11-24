@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
@@ -886,6 +886,63 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
   });
 });
 
+describe('OrderDetailPage - tabs (#4286)', () => {
+  afterEach(cleanup);
+
+  function renderAt(route: string): void {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+    renderWithProviders(
+      <Routes>
+        <Route path="/orders/:internalOrderId" element={<OrderDetailPage />} />
+      </Routes>,
+      { apiClient: api, route },
+    );
+  }
+
+  it('should open the Overview tab by default and list every section as a tab', async () => {
+    renderAt('/orders/ol_order_abc123');
+    await screen.findByText('ol_order_abc123');
+    const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent?.replace(/\d+$/, ''))).toEqual([
+      'Overview',
+      'Shipping',
+      'Packing',
+      'Sales documents',
+      'Returns',
+      'Notes',
+      'History',
+      'Technical',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('data-state', 'active');
+  });
+
+  it('should open the tab named by ?tab=', async () => {
+    renderAt('/orders/ol_order_abc123?tab=notes');
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByRole('tab', { name: 'Notes' })).toHaveAttribute('data-state', 'active');
+  });
+
+  it('should open the tab that holds a legacy anchor', async () => {
+    renderAt('/orders/ol_order_abc123#invoicing');
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByRole('tab', { name: /Sales documents/ })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+  });
+
+  it('should keep inactive panels mounted so their state survives a tab change', async () => {
+    renderAt('/orders/ol_order_abc123');
+    await screen.findByText('ol_order_abc123');
+    expect(document.getElementById('shipment')).not.toBeNull();
+    expect(document.getElementById('invoicing')).not.toBeNull();
+    expect(document.getElementById('packing')).not.toBeNull();
+  });
+});
+
 describe('OrderDetailPage - packing affordance for a destination that packs itself (#2118)', () => {
   afterEach(cleanup);
 
@@ -898,7 +955,8 @@ describe('OrderDetailPage - packing affordance for a destination that packs itse
     renderDetail(api);
 
     await screen.findByText('ol_order_abc123');
-    expect(await screen.findByText('Packing')).toBeInTheDocument();
+    // The tab strip also carries a "Packing" label (#4286), so the control is looked up inside its own anchor.
+    expect(await within(document.getElementById('packing') as HTMLElement).findByText('Packing')).toBeInTheDocument();
   });
 
   it('hides the Mark packed control when the order went to a destination that packs itself', async () => {
@@ -916,7 +974,11 @@ describe('OrderDetailPage - packing affordance for a destination that packs itse
     renderDetail(api);
 
     await screen.findByText('ol_order_abc123');
-    await waitFor(() => expect(screen.queryByText('Packing')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        within(document.getElementById('packing') as HTMLElement).queryByText('Packing'),
+      ).not.toBeInTheDocument(),
+    );
   });
 });
 
