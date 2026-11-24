@@ -43104,3 +43104,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .tour-card .tour-card__close { width: 44px; height: 44px; margin-block: -6px; }
   .tour-card__top-end { gap: 4px; }
 }
+
+/* The grab handle is for phones: swipe it down to fold the card, up to open it, tap to toggle. */
+.tour-card__handle { display: none; }
+@media (max-width: 480px) {
+  .tour-card__handle {
+    display: grid;
+    place-items: center;
+    height: 22px;
+    margin-block: -6px 0;
+    touch-action: none;
+    cursor: grab;
+  }
+  .tour-card__grip { width: 36px; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 55%, transparent); }
+}

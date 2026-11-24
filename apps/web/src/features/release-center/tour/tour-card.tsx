@@ -117,6 +117,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const location = useLocation();
   // On a phone the card can fold down to the steps alone, so what it points at stays in view.
   const [collapsed, setCollapsed] = useState(false);
+  // A swipe on the handle folds (down) or unfolds (up) the card; a plain tap on it toggles too.
+  const dragStart = useRef<{ y: number; moved: boolean } | null>(null);
   // On the page a step's link leads to, the tour points there instead of at the step's own element.
   const onFollowPage = Boolean(
     stop?.follow &&
@@ -469,6 +471,33 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
         aria-label={tour.regionLabel}
         tabIndex={-1}
       >
+        <div
+          className="tour-card__handle"
+          role="presentation"
+          onPointerDown={(event) => {
+            dragStart.current = { y: event.clientY, moved: false };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const start = dragStart.current;
+            if (!start) return;
+            const dy = event.clientY - start.y;
+            if (Math.abs(dy) > 28 && !start.moved) {
+              start.moved = true;
+              setCollapsed(dy > 0);
+            }
+          }}
+          onPointerUp={() => {
+            const start = dragStart.current;
+            dragStart.current = null;
+            if (start && !start.moved) setCollapsed((value) => !value);
+          }}
+          onPointerCancel={() => {
+            dragStart.current = null;
+          }}
+        >
+          <span className="tour-card__grip" aria-hidden="true" />
+        </div>
         <div className="tour-card__rail" role="group" aria-label={tour.railLabel}>
           {clusters.map((cluster) => (
             <div
