@@ -21,7 +21,7 @@ import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
-import { GUIDED_DIALOG_FALLBACK_MS, onGuidedLanded } from '../lib/guided-jump';
+import { GUIDED_DIALOG_FALLBACK_MS, onGuidedLanded, readLiveLocation } from '../lib/guided-jump';
 import { prefersMotion } from '../../../shared/ui/prefers-motion';
 
 /** Which job the trigger dialog opens on, by the `?sync=` value another tab sends. */
@@ -69,7 +69,9 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   useEffect(() => {
     if (!syncTarget || !sync.visible) return;
     // The params are dropped at once (so a reload never reopens the dialog), but the history
-    // state stays: the page still needs its guided flag to finish the tab animation.
+    // state stays: the page still needs its guided flag to finish the tab animation. The state
+    // is read live: the page may have just cleared the flag in this same tick, and writing back
+    // the render's copy would bring it back.
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
@@ -77,7 +79,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
         params.delete('scope');
         return params;
       },
-      { replace: true, state: location.state }
+      { replace: true, state: readLiveLocation(location).state }
     );
     const open = (guidedEntrance: boolean): void => {
       setTriggerGuidedEntrance(guidedEntrance);

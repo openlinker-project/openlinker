@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   announceGuidedLanded,
   computeInkTravel,
   computeRipple,
   onGuidedLanded,
+  readLiveLocation,
   scrollLeftToReveal,
   tabDirection,
 } from './guided-jump';
@@ -59,5 +60,25 @@ describe('guided landed signal', () => {
     off();
     announceGuidedLanded();
     expect(seen).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('readLiveLocation', () => {
+  const stale = { search: '?tab=actions&sync=orders&scope=range', state: { guided: true } };
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  it('should return the render copy when there is no browser history entry (memory router)', () => {
+    window.history.replaceState(null, '', '/');
+    expect(readLiveLocation(stale)).toBe(stale);
+  });
+
+  it('should return the live search and a cleared state when another writer already replaced the entry', () => {
+    window.history.replaceState({ usr: null, key: 'k', idx: 2 }, '', '/c?tab=actions');
+    expect(readLiveLocation(stale)).toEqual({ search: '?tab=actions', state: null });
+  });
+
+  it('should keep a guided state that is still live', () => {
+    window.history.replaceState({ usr: { guided: true }, key: 'k', idx: 2 }, '', '/c?tab=actions');
+    expect(readLiveLocation(stale).state).toEqual({ guided: true });
   });
 });

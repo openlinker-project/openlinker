@@ -301,6 +301,29 @@ describe('ConnectionActionsPanel', () => {
       expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
     });
 
+    it('should drop the sync params and keep the guided flag for the page to clear', async () => {
+      function Probe(): ReactElement {
+        const location = useLocation();
+        return (
+          <>
+            <div data-testid="search">{location.search}</div>
+            <div data-testid="guided">{JSON.stringify(location.state)}</div>
+          </>
+        );
+      }
+      renderWithProviders(
+        <>
+          <GuidedArrival />
+          <Probe />
+        </>,
+        { ...adminSession, apiClient: api() }
+      );
+
+      await screen.findByRole('combobox', { name: /what to sync/i });
+      expect(screen.getByTestId('search').textContent).toBe('?tab=actions');
+      expect(screen.getByTestId('guided').textContent).toBe('{"guided":true}');
+    });
+
     it('opens when the tab underline lands, not before', async () => {
       vi.stubGlobal('matchMedia', () => ({ matches: true }));
       renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
