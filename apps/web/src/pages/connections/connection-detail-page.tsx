@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from 'react';
+import { useCallback, useEffect, type CSSProperties, type ReactElement } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { hasPricingSyncPage } from '../../features/connections/lib/pricing-destination';
@@ -34,6 +34,8 @@ import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-s
 import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { useGuidedTabTravel } from '../../features/connections/hooks/use-guided-tab-travel';
+import { GUIDED_FLAG_FALLBACK_MS } from '../../features/connections/lib/guided-jump';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
@@ -216,8 +218,6 @@ function ArchivedBanner({ connection }: { connection: Connection }): ReactElemen
 const TAB_VALUES = ['overview', 'orders', 'health', 'actions', 'config', 'gifts'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
-/** How long the guided-arrival animation plays before its flag is dropped. */
-const GUIDED_ARRIVAL_MS = 1200;
 
 function isTabValue(value: string | null): value is TabValue {
   return value !== null && (TAB_VALUES as readonly string[]).includes(value);
@@ -358,18 +358,27 @@ export function ConnectionDetailPage(): ReactElement {
   const activeTab: TabValue = isTabValue(tabParam) ? tabParam : 'overview';
 
   // Arrived from a guided jump (e.g. "Get orders from a period…" on the Sync tab): the tab
-  // animates in once so the operator sees where they were taken, then the flag is dropped so
-  // a reload or a later tab click does not replay it.
+  // underline travels from the origin tab, the panel slides in, then the flag is dropped so a
+  // reload or a later tab click does not replay it. The flag is dropped when the underline has
+  // landed (useGuidedTabTravel), with a timeout as the fallback if the sequence stalls.
   const location = useLocation();
   const navigate = useNavigate();
-  const guided = (location.state as { guided?: boolean } | null)?.guided === true;
+  const guidedState = location.state as { guided?: boolean; fromTab?: string } | null;
+  const guided = guidedState?.guided === true;
+  const clearGuided = useCallback((): void => {
+    void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, navigate]);
   useEffect(() => {
-    if (!guided) return;
-    const timer = window.setTimeout(() => {
-      void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-    }, GUIDED_ARRIVAL_MS);
+    if (!guided) return undefined;
+    const timer = window.setTimeout(clearGuided, GUIDED_FLAG_FALLBACK_MS);
     return () => window.clearTimeout(timer);
-  }, [guided, location.pathname, location.search, navigate]);
+  }, [guided, clearGuided]);
+  const travel = useGuidedTabTravel({
+    guided,
+    fromTab: guidedState?.fromTab,
+    toTab: activeTab,
+    onSettled: clearGuided,
+  });
 
   const handleTabChange = (value: string): void => {
     setSearchParams(
@@ -519,9 +528,12 @@ export function ConnectionDetailPage(): ReactElement {
         <Tabs
           value={activeTab}
           onValueChange={handleTabChange}
-          className={guided ? 'tabs--guided' : undefined}
+          className={
+            guided ? (travel.ink ? 'tabs--guided tabs--guided-travel' : 'tabs--guided') : undefined
+          }
+          style={guided ? ({ '--guided-dir': travel.direction } as CSSProperties) : undefined}
         >
-          <TabsList className="tabs__list--scroll">
+          <TabsList ref={travel.listRef} className="tabs__list--scroll">
             <TabsTrigger value="overview">{copy.tabs.overview}</TabsTrigger>
             {isOrderSource && !isOms ? (
               <TabsTrigger value="orders">{copy.tabs.orders}</TabsTrigger>
@@ -530,6 +542,16 @@ export function ConnectionDetailPage(): ReactElement {
             {isOms ? null : <TabsTrigger value="actions">{copy.tabs.actions}</TabsTrigger>}
             {isOms ? null : <TabsTrigger value="config">{copy.tabs.config}</TabsTrigger>}
             {supportsGifts ? <TabsTrigger value="gifts">{copy.tabs.gifts}</TabsTrigger> : null}
+            {travel.ink ? (
+              <span
+                ref={travel.inkRef}
+                className="tabs__ink"
+                aria-hidden="true"
+                style={{
+                  transform: `translateX(${travel.ink.from.left}px) scaleX(${travel.ink.from.width})`,
+                }}
+              />
+            ) : null}
           </TabsList>
 
           <TabsContent value="overview">

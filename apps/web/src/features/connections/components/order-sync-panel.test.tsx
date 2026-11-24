@@ -3,7 +3,7 @@
  *
  * @module features/connections/components
  */
-import type { ReactElement } from 'react';
+import { useRef, type ReactElement } from 'react';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -17,7 +17,19 @@ import { OrderSyncPanel } from './order-sync-panel';
 
 function LocationProbe(): ReactElement {
   const location = useLocation();
-  return <div data-testid="location">{location.pathname + location.search}</div>;
+  const visits = useRef(0);
+  const lastKey = useRef('');
+  if (lastKey.current !== location.key && location.search.includes('tab=actions')) {
+    lastKey.current = location.key;
+    visits.current += 1;
+  }
+  return (
+    <>
+      <div data-testid="location">{location.pathname + location.search}</div>
+      <div data-testid="state">{JSON.stringify(location.state)}</div>
+      <div data-testid="count">{visits.current}</div>
+    </>
+  );
 }
 import type { ConnectionSyncStatus } from '../api/connections.types';
 
@@ -385,7 +397,7 @@ describe('OrderSyncPanel', () => {
       ]),
     });
 
-    it('presses the button, then opens Actions with the period option chosen', async () => {
+    it('jumps to Actions at once, with the guided state, when motion is not allowed', async () => {
       const user = userEvent.setup();
       const apiClient = createMockApiClient({
         connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
@@ -399,16 +411,46 @@ describe('OrderSyncPanel', () => {
         { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
       );
 
-      const button = await screen.findByRole('button', { name: 'Get orders from a period…' });
-      await user.click(button);
+      await user.click(await screen.findByRole('button', { name: 'Get orders from a period…' }));
 
-      expect(button).toHaveClass('button--pressed');
-      expect(screen.getByTestId('location')).not.toHaveTextContent('tab=actions');
       await waitFor(() =>
         expect(screen.getByTestId('location')).toHaveTextContent(
           '/connections/conn_1?tab=actions&sync=orders&scope=range'
         )
       );
+      expect(screen.getByTestId('state')).toHaveTextContent('{"guided":true,"fromTab":"orders"}');
+    });
+
+    it('presses and ripples first with motion, jumps once, and ignores a second click', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      try {
+        const user = userEvent.setup();
+        const apiClient = createMockApiClient({
+          connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
+          adapters: adapterWithWindow(true),
+        });
+        renderWithProviders(
+          <>
+            <OrderSyncPanel connection={CONNECTION} />
+            <LocationProbe />
+          </>,
+          { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+        );
+
+        const button = await screen.findByRole('button', { name: 'Get orders from a period…' });
+        await user.click(button);
+        await user.click(button);
+
+        expect(button).toHaveClass('guided-press');
+        expect(button.querySelector('.guided-ripple')).not.toBeNull();
+        expect(screen.getByTestId('location')).not.toHaveTextContent('tab=actions');
+        await waitFor(() =>
+          expect(screen.getByTestId('location')).toHaveTextContent('tab=actions&sync=orders&scope=range')
+        );
+        expect(screen.getByTestId('count')).toHaveTextContent('1');
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
 
     it('does not offer the period read when the shop cannot read a window', async () => {
