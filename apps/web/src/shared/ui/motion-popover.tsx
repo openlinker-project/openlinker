@@ -37,18 +37,33 @@ const GAP = 8;
 
 export type PopoverPlacement = 'up' | 'down';
 
-/** Centred on the trigger, moved inwards only as far as needed to stay on screen. */
+/**
+ * The zoom the trigger sits under (the text size switch zooms the whole app),
+ * measured as rendered width over layout width. 1 when nothing is zoomed.
+ */
+export function measureZoom(el: HTMLElement): number {
+  const scale = el.getBoundingClientRect().width / el.offsetWidth;
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+/**
+ * Centred on the trigger, moved inwards only as far as needed to stay on screen.
+ * `trigger` and the viewport are in screen pixels while `left`/`top`/`bottom`
+ * are written inside the zoomed subtree, so everything is divided by `zoom`.
+ */
 export function anchoredPosition(
   trigger: DOMRect,
   width: number,
-  placement: PopoverPlacement
+  placement: PopoverPlacement,
+  zoom = 1
 ): CSSProperties {
   const half = width / 2;
-  const centre = trigger.left + trigger.width / 2;
-  const left = Math.min(Math.max(centre, GAP + half), window.innerWidth - GAP - half);
+  const centre = (trigger.left + trigger.width / 2) / zoom;
+  const viewportWidth = window.innerWidth / zoom;
+  const left = Math.min(Math.max(centre, GAP + half), viewportWidth - GAP - half);
   return placement === 'down'
-    ? { left, top: trigger.bottom + GAP }
-    : { left, bottom: window.innerHeight - trigger.top + GAP };
+    ? { left, top: trigger.bottom / zoom + GAP }
+    : { left, bottom: (window.innerHeight - trigger.top) / zoom + GAP };
 }
 
 export interface UseAnchoredPopoverOptions {
@@ -88,7 +103,14 @@ export function useAnchoredPopover<T extends HTMLElement = HTMLButtonElement>({
     };
     const place = (): void => {
       if (anchorRef.current) {
-        setPosition(anchoredPosition(anchorRef.current.getBoundingClientRect(), width, placement));
+        setPosition(
+          anchoredPosition(
+            anchorRef.current.getBoundingClientRect(),
+            width,
+            placement,
+            measureZoom(anchorRef.current)
+          )
+        );
       }
     };
     document.addEventListener('pointerdown', onPointerDown);
@@ -104,7 +126,14 @@ export function useAnchoredPopover<T extends HTMLElement = HTMLButtonElement>({
   const toggle = useCallback((): void => {
     if (!open && anchorRef.current) {
       setHost(anchorRef.current.closest('dialog'));
-      setPosition(anchoredPosition(anchorRef.current.getBoundingClientRect(), width, placement));
+      setPosition(
+          anchoredPosition(
+            anchorRef.current.getBoundingClientRect(),
+            width,
+            placement,
+            measureZoom(anchorRef.current)
+          )
+        );
     }
     setOpen(!open);
   }, [open, width, placement]);
