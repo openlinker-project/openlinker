@@ -238,6 +238,28 @@ describe('OrdersListPage filter bar', () => {
     expect(badges.every((b) => b.getAttribute('title')?.includes('erased') === true)).toBe(true);
   });
 
+  it('should show the Hidden badge on the mobile card too', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const list = vi.fn().mockResolvedValue(
+        paginated([{ ...order, hiddenAt: '2026-11-01T00:00:00.000Z', personalDataErasedAt: null }]),
+      );
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: createMockApiClient({
+          orders: { list },
+          connections: { list: vi.fn().mockResolvedValue([connection]) },
+        }),
+        route: '/orders?hidden=true',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      await screen.findByText('ALG-1');
+
+      expect(await screen.findByTestId('order-hidden-badge')).toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
+  });
+
   it('should send packed=false when "Not packed yet" is chosen in the panel', async () => {
     const user = userEvent.setup();
     const { list } = setup();

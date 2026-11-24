@@ -1923,6 +1923,10 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
+                    <OrderHiddenBadge
+                      hiddenAt={order.hiddenAt}
+                      personalDataErasedAt={order.personalDataErasedAt}
+                    />
                     <OrderPhaseOrWaitingBadge order={order} compact />
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
                     <OrderDestinationRoutingBadge

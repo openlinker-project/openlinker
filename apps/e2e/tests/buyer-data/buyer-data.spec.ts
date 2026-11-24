@@ -6,8 +6,11 @@
  * by default, own rules stored switched off) and the connection edit (own rules,
  * trial run, enabling, saved into `config.buyerDataRetention`).
  *
- * Runs against a real stack. It changes the GLOBAL buyer data setting, so the
- * last test switches it off again; do not run it against a shared environment.
+ * Runs against a real stack (`pnpm exec playwright test --project=buyer-data`).
+ * Requirements: `E2E_DATABASE_URL` pointing at the stack's Postgres (the
+ * connections it creates are deleted there afterwards), and the GLOBAL buyer
+ * data setting OFF before the run. The first test turns it on and the last
+ * switches it off again, so do not run it against a shared environment.
  *
  * @module tests/buyer-data
  */

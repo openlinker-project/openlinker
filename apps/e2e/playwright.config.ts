@@ -67,6 +67,11 @@
  *                      (#3912, ADR-082): settings tab, wizards, live eparagony
  *                      sandbox receipts, preview, visual parity. Own auth bootstrap.
  *                      `retries: 0` (registers real sandbox receipts).
+ *   - `buyer-data`   - buyer data retention rules (#4289): the general settings
+ *                      page, the new-connection wizard and the connection edit.
+ *                      Mutating: switches the GLOBAL buyer data setting on and
+ *                      the last test off again. Needs `E2E_DATABASE_URL` and the
+ *                      setting OFF before the run. `retries: 0`.
  *   - `g11`          - G11 product and analytics suite (#3591): variant pictures,
  *                      cost price, margin, cost work list, CSV export. Mutating;
  *                      reads its stand from `E2E_G11_SETUP`. `retries: 0`.
@@ -480,6 +485,18 @@ export default defineConfig({
       retries: 0,
       dependencies: ['delivery-on-documents-auth'],
       use: { ...devices['Desktop Chrome'], storageState: DELIVERY_STORAGE_STATE },
+    },
+    {
+      // Buyer data retention rules (#4289). MUTATING: the first test turns the
+      // GLOBAL setting on and the last one switches it off again, so run it on a
+      // stack you control with the setting off. `E2E_DATABASE_URL` must point at
+      // the stack's Postgres (connection cleanup goes through it). `retries: 0`:
+      // a retry would start from a setting the failed run left switched on.
+      name: 'buyer-data',
+      testMatch: /buyer-data\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
       // G10 batched sales-document issuing (#3585, mockup M15). Mockup
