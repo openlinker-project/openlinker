@@ -1,0 +1,282 @@
+[
+ {
+  "n": "desktop-admin: orders no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "desktop-admin: bell panel inside viewport",
+  "pass": true,
+  "d": "{\"x\":948,\"w\":460,\"h\":828}"
+ },
+ {
+  "n": "desktop-admin: pinned row present",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-admin: no nested scroller in cards",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-admin: no floating chip name stranded in a screen corner",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-admin: bell panel content does not overflow sideways",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-admin: tour card opens",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-admin: tour card inside viewport",
+  "pass": true,
+  "d": "{\"x\":1084,\"w\":340,\"y\":631,\"h\":253}"
+ },
+ {
+  "n": "desktop-admin: first stop is not a 'cannot find' dead end",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-admin: config tour offers choices and records steps",
+  "pass": true,
+  "d": "choice=true writes=4"
+ },
+ {
+  "n": "desktop-admin: walked 11 stops",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-admin: /whats-new no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "desktop-admin: /settings no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "desktop-admin: /connections no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "desktop-viewer: orders no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "desktop-viewer: bell panel inside viewport",
+  "pass": true,
+  "d": "{\"x\":948,\"w\":460,\"h\":828}"
+ },
+ {
+  "n": "desktop-viewer: pinned row present",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: no nested scroller in cards",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: no floating chip name stranded in a screen corner",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: bell panel content does not overflow sideways",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: tour card opens",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: tour card inside viewport",
+  "pass": true,
+  "d": "{\"x\":1084,\"w\":340,\"y\":619,\"h\":265}"
+ },
+ {
+  "n": "desktop-viewer: first stop is not a 'cannot find' dead end",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: view tour has no choices, no step writes, only guides the role can open",
+  "pass": true,
+  "d": "chip=Guide writes=0"
+ },
+ {
+  "n": "desktop-viewer: walked 7 stops",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "desktop-viewer: /whats-new no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "desktop-viewer: /settings no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "desktop-viewer: /connections no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-admin: orders no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-admin: bell panel inside viewport",
+  "pass": true,
+  "d": "{\"x\":12,\"w\":362,\"h\":772}"
+ },
+ {
+  "n": "mobile-admin: pinned row present",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: no nested scroller in cards",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: no floating chip name stranded in a screen corner",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: bell panel content does not overflow sideways",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: tour card opens",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: tour card inside viewport",
+  "pass": true,
+  "d": "{\"x\":0,\"w\":390,\"y\":526,\"h\":318}"
+ },
+ {
+  "n": "mobile-admin: first stop is not a 'cannot find' dead end",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: config tour offers choices and records steps",
+  "pass": true,
+  "d": "choice=true writes=4"
+ },
+ {
+  "n": "mobile-admin: walked 11 stops",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-admin: /whats-new no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-admin: /settings no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-admin: /connections no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-viewer: orders no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-viewer: bell panel inside viewport",
+  "pass": true,
+  "d": "{\"x\":12,\"w\":362,\"h\":772}"
+ },
+ {
+  "n": "mobile-viewer: pinned row present",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: no nested scroller in cards",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: no floating chip name stranded in a screen corner",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: bell panel content does not overflow sideways",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: tour card opens",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: tour card inside viewport",
+  "pass": true,
+  "d": "{\"x\":0,\"w\":390,\"y\":514,\"h\":330}"
+ },
+ {
+  "n": "mobile-viewer: first stop is not a 'cannot find' dead end",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: view tour has no choices, no step writes, only guides the role can open",
+  "pass": true,
+  "d": "chip=Guide writes=0"
+ },
+ {
+  "n": "mobile-viewer: walked 7 stops",
+  "pass": true,
+  "d": ""
+ },
+ {
+  "n": "mobile-viewer: /whats-new no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-viewer: /settings no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ },
+ {
+  "n": "mobile-viewer: /connections no horizontal overflow",
+  "pass": true,
+  "d": "0"
+ }
+]
