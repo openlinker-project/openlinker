@@ -1591,7 +1591,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 .bf-examples__t { grid-column: 1 / -1; margin: 0; font-weight: 600; color: var(--text-strong, inherit); }
 .bf-example-card {
   display: grid; gap: 2px; text-align: left; padding: 10px 12px; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 10px; background: var(--surface, transparent); color: inherit;
+  border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface, transparent); color: inherit;
   transition: transform var(--ux-dur) var(--ux-ease), border-color var(--ux-dur) var(--ux-ease), background-color var(--ux-dur) var(--ux-ease);
 }
 .bf-example-card span { font-size: 0.875rem; color: var(--text-muted, inherit); }
@@ -1615,7 +1615,7 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 
 /* Round 6, lane B: listing wizard bundle advisories */
 .bundle-comp__advisory {
-  background: var(--status-warning-bg, var(--surface-muted));
+  background: var(--status-warning-bg, var(--bg-surface-muted));
   color: var(--status-warning-strong, var(--status-warning-fg));
 }
 .bundle-comp__title.is-warn b { color: var(--status-warning-strong, var(--status-warning-fg)); }
@@ -1665,10 +1665,10 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 .bulk-pack__lead { margin: 4px 0 0; color: var(--text-muted, inherit); max-width: 64ch; }
 .bulk-pack__shop { display: grid; gap: 4px; max-width: 360px; margin: 0; }
 .bulk-pack__skipped { margin: 0; padding-left: 18px; }
-.bulk-pack__scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.bulk-pack__scroll { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 10px; }
 .bulk-pack__table { width: 100%; border-collapse: collapse; min-width: 880px; }
-.bulk-pack__table th, .bulk-pack__table td { padding: 8px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
-.bulk-pack__table thead th { font-size: 0.8125rem; font-weight: 600; color: var(--text-muted, inherit); background: var(--surface-muted, transparent); }
+.bulk-pack__table th, .bulk-pack__table td { padding: 8px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-subtle); }
+.bulk-pack__table thead th { font-size: 0.8125rem; font-weight: 600; color: var(--text-muted, inherit); background: var(--bg-surface-muted, transparent); }
 .bulk-pack__table tbody tr:last-child th, .bulk-pack__table tbody tr:last-child td { border-bottom: 0; }
 .bulk-pack__product { font-weight: 500; }
 .bulk-pack__product span { display: block; }
@@ -1676,11 +1676,11 @@ button.s2-restore:focus-visible, .s2-restore:focus-visible { outline: 2px solid 
 .bulk-pack__table td:nth-child(2) { width: 96px; }
 .bulk-pack__table td:nth-child(5) { width: 120px; }
 .bulk-pack__row { transition: background-color var(--ux-dur) var(--ux-ease), opacity var(--ux-dur) var(--ux-ease); }
-.bulk-pack__row:hover:not(.bulk-pack__row--created) { background: var(--surface-muted, transparent); }
+.bulk-pack__row:hover:not(.bulk-pack__row--created) { background: var(--bg-surface-muted, transparent); }
 .bulk-pack__row--created { opacity: 0.75; }
 .bulk-pack__row--failed { background: var(--status-error-soft); }
-.bulk-pack__status { display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 0.8125rem; font-weight: 600; background: var(--surface-muted, transparent); }
-.bulk-pack__status--created { background: var(--status-success-soft, var(--surface-muted)); color: var(--status-success-strong, inherit); }
+.bulk-pack__status { display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 0.8125rem; font-weight: 600; background: var(--bg-surface-muted, transparent); }
+.bulk-pack__status--created { background: var(--status-success-soft, var(--bg-surface-muted)); color: var(--status-success-strong, inherit); }
 .bulk-pack__status--failed { background: var(--status-error-soft); color: var(--status-error-strong, var(--status-error-fg)); }
 .bulk-pack__status--creating { background: var(--status-info-soft); color: var(--status-info-strong, var(--status-info-fg)); }
 .bulk-pack__error { display: block; margin-top: 4px; color: var(--status-error-strong, var(--status-error-fg)); font-size: 0.8125rem; max-width: 32ch; }
@@ -1846,7 +1846,7 @@ html[data-theme='dark'] {
 .bulk-pack__table td:nth-child(3) .control { min-width: 16rem; width: 100%; }
 .bulk-pack__actions {
   position: sticky; bottom: 0; z-index: 5; align-items: center;
-  padding: var(--space-3) 0; background: var(--surface-page, var(--surface)); border-top: 1px solid var(--border-subtle);
+  padding: var(--space-3) 0; background: var(--surface-page, var(--bg-surface)); border-top: 1px solid var(--border-subtle);
 }
 .bulk-pack__progress { display: flex; align-items: center; gap: var(--space-2); margin-right: auto; font-size: 0.8125rem; color: var(--text-secondary); }
 .bulk-pack__progress progress { width: 140px; height: 6px; accent-color: var(--accent-primary); }
@@ -1857,7 +1857,7 @@ html[data-theme='dark'] {
 /* Step 1 example cards: a full bordered card, content left-aligned in one column (no empty icon gutter). */
 .bf-examples .bf-example-card {
   display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-items: start; gap: 4px;
-  padding: 12px 14px; border: 1px solid var(--border-default, var(--border)); border-radius: var(--radius-lg, 10px);
+  padding: 12px 14px; border: 1px solid var(--border-default, var(--border-subtle)); border-radius: var(--radius-lg, 10px);
   background: var(--surface, var(--bg-surface)); box-shadow: none; min-height: 0; height: auto; text-align: left;
 }
 .bf-examples .bf-example-card b { font-weight: 600; color: var(--text-primary); }
@@ -1903,3 +1903,74 @@ html[data-theme='dark'] {
 }
 .bf-examples .bf-example-card > b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
 .bf-examples .bf-example-card > span { font-size: 0.8125rem; font-weight: 400; color: var(--text-secondary); }
+
+/* Round 9: three screens read as sketches or as a different app. Real tokens, one surface per screen,
+   dividers instead of boxes, and the listing wizard's bundle chip back to the app's regular chip. */
+.bulk-pack__scroll { background: var(--bg-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.bulk-pack__table thead th {
+  font-size: 0.75rem; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--text-secondary); background: var(--bg-surface-muted); border-bottom: 1px solid var(--border-subtle);
+  padding: 10px 12px;
+}
+.bulk-pack__table td { padding: 12px; vertical-align: middle; }
+.bulk-pack__table tbody tr + tr td { border-top: 1px solid var(--border-subtle); }
+.bulk-pack__table th, .bulk-pack__table td { border-bottom: 0; }
+.bulk-pack__status {
+  background: transparent; padding: 0; font-weight: 500; font-size: 0.8125rem; color: var(--text-secondary);
+}
+.bulk-pack__status--created { background: transparent; color: var(--status-success-strong, var(--text-primary)); }
+.bulk-pack__status--failed { background: transparent; }
+.bulk-pack__status--creating { background: transparent; }
+.bulk-pack__row--failed { background: transparent; }
+.bulk-pack__remove { color: var(--text-muted); border-radius: var(--radius-md); }
+.bulk-pack__remove:hover:not(:disabled) { background: var(--bg-surface-hover); color: var(--text-primary); transform: none; }
+.bulk-pack__actions {
+  position: sticky; bottom: 0; padding: 12px 0; background: var(--bg-shell);
+  border-top: 1px solid var(--border-subtle);
+}
+.bulk-pack__lead { color: var(--text-secondary); }
+
+/* Step 4 and "Send it on": one grouped list with hairlines, one focal point (the action button). */
+.bf-review > div { border: 0; border-radius: 0; background: transparent; padding: 10px 0; }
+.bf-review > div + div { border-top: 1px solid var(--border-subtle); }
+.bf-review { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); padding: 4px 16px; }
+.bf-targets > li { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 10px 0; }
+.bf-targets > li + li { border-top: 1px solid var(--border-subtle); }
+.bf-targets { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); padding: 4px 16px; }
+.bf-sendon { border: 0; background: transparent; box-shadow: none; padding: 0; }
+
+/* Listing wizard: the bundle marker is an ordinary quiet chip, not a mono-caps badge. */
+.bundle-row-tag, .bundle-row-tag--pack {
+  font-family: inherit; text-transform: none; letter-spacing: 0; font-size: 0.75rem; font-weight: 500;
+  border: 1px solid var(--border-subtle); background: var(--bg-surface-muted); color: var(--text-secondary);
+  border-radius: var(--radius-md); padding: 1px 8px;
+}
+.bulk-review__c-product .t small { font-family: inherit; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+.bulk-pack__table td:nth-child(3) .control { min-width: 12rem; }
+.bulk-pack__table td:nth-child(4) .control { min-width: 11rem; }
+.bulk-pack__error { max-width: 26ch; font-size: 0.75rem; line-height: 1.4; }
+.bulk-pack__actions { background: transparent; }
+.bulk-pack__table td:nth-child(4) { min-width: 12rem; }
+.bulk-pack__table td:nth-child(4) input { width: 100%; min-width: 11rem; }
+.bulk-pack__table { min-width: 1080px; }
+.bulk-pack__table td:nth-child(1) { min-width: 13rem; }
+.bulk-pack__table td:nth-child(6) { min-width: 13rem; }
+.bulk-pack__table td:nth-child(3) .control, .bulk-pack__table td:nth-child(3) input { min-width: 10rem; }
+.bulk-pack__table { min-width: 1180px; }
+.bulk-pack__table td:nth-child(2) { min-width: 6rem; }
+.bulk-pack__table td:nth-child(5) { min-width: 8.5rem; }
+.bulk-pack__table td:nth-child(2) input, .bulk-pack__table td:nth-child(5) input { min-width: 0; width: 100%; }
+
+/* Round 9, step 4: one surface per idea, no stacked tinted boxes. The save button is the only accent. */
+.bulk-pack__table tbody th { min-width: 13rem; }
+.bundle-form .rule-composer-readback {
+  background: transparent; border: 0; border-left: 2px solid var(--border-strong); border-radius: 0; padding: 2px 0 2px 14px; box-shadow: none;
+}
+.bundle-form .rule-composer-readback__eyebrow { text-transform: none; letter-spacing: 0; font-size: 0.8125rem; font-weight: 500; color: var(--text-muted); }
+.s4-happens { background: transparent; border: 0; padding: 0; }
+.s-hero { box-shadow: none; background: var(--bg-surface); border-color: var(--border-subtle); }
+.s-hero.is-ok { background: var(--bg-surface); border-color: var(--border-subtle); }
+.s-hero__label, .bf-summary__h { text-transform: none; letter-spacing: 0; font-size: 0.8125rem; font-weight: 500; color: var(--text-muted); }
+.bf-summary__list > li.is-lim { background: transparent; border-color: var(--border-subtle); box-shadow: none; }
+.bf-summary .s-limit-tag, .bf-summary__list .s-limit { text-transform: none; letter-spacing: 0; font-family: inherit; }
+.s-hero__label { font-family: inherit; }
