@@ -37840,6 +37840,7 @@ legend.analytics-settings-dialog__label {
   max-width: 100%;
   box-sizing: border-box;
 }
+.conn-health__failed-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .conn-health__failed:hover { border-color: var(--status-error); }
 .conn-health__failed:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
 .conn-health__failed svg {
