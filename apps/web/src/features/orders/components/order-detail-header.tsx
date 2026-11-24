@@ -10,11 +10,10 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import type { ReactElement, ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ConnectionEntityLabel } from '../../connections';
-import { CopyableId } from '../../../shared/ui/copyable-id';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
@@ -87,6 +86,7 @@ export function OrderDetailHeader({
   const paymentLabels: Record<PaymentStatus, string> = copy.payment;
   const format = useFormat();
   const plural = usePlural();
+  const [copied, setCopied] = useState(false);
   const rollup = rollupSyncStatus(order.syncStatus);
   const healthLevel = deriveHealthLevel(rollup);
   const methodLabel = paymentMethodChipLabel(snapshot.paymentMethod, snapshot.paymentStatus);
@@ -94,7 +94,11 @@ export function OrderDetailHeader({
   // A source number reads as is; an internal id or a UUID is shortened to 8 characters, the full id stays behind the copy chip.
   const rawNumber = snapshot.orderNumber ?? order.internalOrderId;
   const isLongId = rawNumber.length > 14;
-  const shortNumber = isLongId ? `#${rawNumber.replace(/^ol_order_/, '').slice(0, 8)}` : rawNumber;
+  const shortNumber = isLongId
+    ? `#${rawNumber.replace(/^ol_order_/, '').slice(0, 8)}`
+    : rawNumber.startsWith('#')
+      ? rawNumber
+      : `#${rawNumber}`;
   const title = interpolate(copy.title, { number: shortNumber });
 
   const firstItem = snapshot.items[0];
@@ -110,7 +114,23 @@ export function OrderDetailHeader({
         <h1 className="order-header__title" title={rawNumber}>
           {title}
         </h1>
-        <CopyableId id={order.internalOrderId} label={copy.copyId} />
+        <button
+          type="button"
+          className="order-header__copy-id"
+          title={order.internalOrderId}
+          onClick={() => {
+            void navigator.clipboard?.writeText(order.internalOrderId).then(
+              () => {
+                setCopied(true);
+                window.setTimeout(() => { setCopied(false); }, 1500);
+              },
+              () => undefined,
+            );
+          }}
+        >
+          {copied ? copy.copiedId : copy.copyId}
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="order-header__icon"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M5 15V6a2 2 0 012-2h9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+        </button>
         {/* The chip reads "Copy id"; the full id stays in the page text for assistive tech, search and tests. */}
         <span className="sr-only">{order.internalOrderId}</span>
         <span className="order-header__channel">

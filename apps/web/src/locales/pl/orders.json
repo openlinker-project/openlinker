@@ -1630,6 +1630,7 @@
   },
   "orderDetailHeader": {
     "allIssues": "Wszystkie problemy ({count})",
+    "copiedId": "Skopiowano",
     "copyId": "Kopiuj id",
     "items": {
       "few": "{n} pozycje",

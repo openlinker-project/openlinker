@@ -13,13 +13,13 @@ export class LoginPage {
 
   async goto(): Promise<void> {
     await this.page.goto('/login');
-    await expect(this.page.getByRole('heading', { name: 'Sign in to your account' })).toBeVisible();
+    await expect(this.page.getByRole('heading', { name: 'Sign in to OpenLinker' })).toBeVisible();
   }
 
   async login(username: string, password: string): Promise<void> {
-    await this.page.getByLabel('Username').fill(username);
-    await this.page.getByLabel('Password').fill(password);
-    await this.page.getByRole('button', { name: 'Sign in' }).click();
+    await this.page.getByRole('textbox', { name: 'Username or email' }).fill(username);
+    await this.page.getByRole('textbox', { name: 'Password' }).fill(password);
+    await this.page.getByRole('button', { name: 'Sign in', exact: true }).click();
     // The SPA redirects away from /login on success.
     await this.page.waitForURL((url) => !url.pathname.startsWith('/login'), {
       timeout: 15_000,

@@ -40470,3 +40470,17 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-header__phase-note { flex: 1 1 auto; min-width: 0; }
 }
 .order-header__tags .button, .order-header__tags [class*='add'] { border: 1px dashed var(--border-default); border-radius: var(--radius-pill); padding: 4px 12px; font-size: 0.8125rem; background: transparent; }
+/* header chips and strip details per the mockup */
+.order-header__copy-id { display: inline-flex; align-items: center; gap: 8px; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; padding: 4px 10px; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text-secondary); cursor: pointer; }
+.order-header__copy-id:hover { background: var(--bg-surface-hover); }
+.order-header__top .status-badge { font-size: 0.9375rem; font-weight: 600; padding: 7px 14px; border-radius: 10px; }
+.order-header__issues { border: 0; background: var(--bg-surface-hover); min-height: 36px; padding: 0 14px; }
+.order-next-step__eyebrow { font-weight: 700; color: var(--text-primary); }
+.order-header__shipby--warning, .order-header__shipby--error { font-weight: 500; }
+/* spacing taken from the diff against the mockup header */
+@media (min-width: 761px) {
+  .order-header__body { padding: 22px 26px 18px; row-gap: 8px; }
+  .order-header__copy-id { padding: 3px 10px; }
+  .order-header__identity { margin-top: -2px; }
+  .order-header__top .status-badge { padding: 6px 14px; }
+}

@@ -699,7 +699,10 @@ export function OrderDetailPage(): ReactElement {
     />
     {canGenerateLabel ? (
       <Button
+        tone="secondary"
         className="button--sm"
+        disabled={Boolean(order.activeHold)}
+        title={order.activeHold ? copy.nextStep.onHold.replace('{reason}', holdReasonLabel(order.activeHold.reason)) : undefined}
         onClick={() => {
           handleTabChange('shipping');
         }}

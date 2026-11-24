@@ -1548,6 +1548,7 @@
   },
   "orderDetailHeader": {
     "allIssues": "All issues ({count})",
+    "copiedId": "Copied",
     "copyId": "Copy id",
     "items": {
       "one": "{n} item",

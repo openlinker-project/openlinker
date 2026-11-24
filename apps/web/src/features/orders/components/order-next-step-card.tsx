@@ -63,7 +63,7 @@ export function OrderNextStepCard({
         </div>
         <button
           type="button"
-          className="button button--primary button--sm"
+          className="button button--primary"
           onClick={() => { onOpenTab(primary.tab); }}
         >
           {interpolate(copy.open, { tab: tabLabels[primary.tab] })}
