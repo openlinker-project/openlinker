@@ -2860,7 +2860,7 @@ function VariantScopeForm({
     [baseValues.parameters, edit.params],
   );
   const visibleParams = useMemo(
-    () => effectiveCategoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues)),
+    () => effectiveCategoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues, effectiveCategoryParameters)),
     [effectiveCategoryParameters, effectiveParamValues],
   );
   const requiredParams = visibleParams.filter((p) => p.required);
