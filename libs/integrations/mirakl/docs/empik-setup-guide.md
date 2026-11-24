@@ -187,8 +187,9 @@ in another channel or to pack Empik orders in OpenLinker).
 What you get:
 
 - **Products**: each Empik offer becomes one product with one variant, keyed by
-  your shop SKU: title, description, brand, EAN, gross price and category. Empik
-  gives sellers no images and no VAT rate for a card, so both stay empty.
+  your shop SKU: title, description, brand, EAN, gross price, category and the
+  card's picture. A card without a picture in Empik (most book cards) has no
+  image in OpenLinker either. Empik gives sellers no VAT rate, so it stays empty.
 - **Stock**: the offer quantity. A change made in OpenLinker (a routed sale, a
   manual correction) is queued and sent every minute as one `STO01` file.
 - **Deletions**: an offer that disappears from Empik is treated as a product

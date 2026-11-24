@@ -7,8 +7,10 @@ import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { MiraklConfigException } from '../../../../domain/exceptions/mirakl-config.exception';
 import { MiraklNotSupportedException } from '../../../../domain/exceptions/mirakl-not-supported.exception';
 import type { MiraklOffer } from '../../../../domain/types/mirakl-offer.types';
+import type { MiraklRequestOptions } from '../../../http/mirakl-http-client.types';
 import { MiraklOfferReader } from '../mirakl-offer-reader';
 import { MiraklProductMasterAdapter } from '../mirakl-product-master.adapter';
+import { MiraklProductMediaReader } from '../mirakl-product-media-reader';
 import { CONNECTION_ID, fakeIdentity, fakeOffers } from './mirakl-master.fixture';
 
 function setup(
@@ -23,15 +25,17 @@ function setup(
     { shop_sku: 'AB', product_title: 'Near miss', price: 20 },
     { product_title: 'No sku' },
     { shop_sku: 'B', product_title: 'Beta', price: 30 },
-  ]
+  ],
+  media: Parameters<typeof fakeOffers>[1] = {}
 ): { adapter: MiraklProductMasterAdapter; http: ReturnType<typeof fakeOffers> } {
-  const http = fakeOffers(offers);
+  const http = fakeOffers(offers, media);
   const { identity } = fakeIdentity();
   const adapter = new MiraklProductMasterAdapter(
     CONNECTION_ID,
     'Empik',
     new MiraklOfferReader(http.client),
-    identity
+    identity,
+    new MiraklProductMediaReader(http.client)
   );
   return { adapter, http };
 }
@@ -138,5 +142,60 @@ describe('MiraklProductMasterAdapter', () => {
     await expect(adapter.assignCategories('ol_product_A', ['C1'])).rejects.toBeInstanceOf(
       MiraklNotSupportedException
     );
+  });
+
+  describe('images', () => {
+    const PICTURE = 'https://media.example/MEDIA/abc';
+    const cards: MiraklOffer[] = [
+      { shop_sku: 'A', product_sku: 'P-A', product_title: 'Gadget' },
+      { shop_sku: 'B', product_sku: 'P-B', product_title: 'Book' },
+    ];
+
+    it("should give a product its card's picture from P11", async () => {
+      const { adapter, http } = setup(cards, { 'P-A': { media_url: PICTURE, type: 'LARGE' } });
+
+      const product = await adapter.getProduct('ol_product_A');
+
+      expect(http.get).toHaveBeenCalledWith('/api/products/offers', {
+        queryParams: { product_ids: 'P-A' },
+      });
+      expect(product.images).toEqual([PICTURE]);
+    });
+
+    it('should read the pictures of a batch of products in one P11 call', async () => {
+      const { adapter, http } = setup(cards, { 'P-A': [{ media_url: PICTURE }] });
+
+      const products = await adapter.getProducts({ externalIds: ['A', 'B'] });
+
+      const p11Calls = http.get.mock.calls.filter(([path]) => path === '/api/products/offers');
+      expect(p11Calls).toEqual([
+        ['/api/products/offers', { queryParams: { product_ids: 'P-A,P-B' } }],
+      ]);
+      expect(products.map((product) => [product.sku, product.images])).toEqual([
+        ['A', [PICTURE]],
+        ['B', null],
+      ]);
+    });
+
+    it('should leave a card without a picture with no images', async () => {
+      const { adapter } = setup(cards);
+
+      expect((await adapter.getProduct('ol_product_B')).images).toBeNull();
+    });
+
+    it('should fail the read when P11 fails rather than report no images', async () => {
+      const { adapter, http } = setup(cards);
+      const offersOnly = http.get.getMockImplementation() as (
+        path: string,
+        options?: MiraklRequestOptions
+      ) => Promise<unknown>;
+      http.get.mockImplementation((path: string, options?: MiraklRequestOptions) =>
+        path === '/api/products/offers'
+          ? Promise.reject(new Error('P11 down'))
+          : offersOnly(path, options)
+      );
+
+      await expect(adapter.getProduct('ol_product_A')).rejects.toThrow('P11 down');
+    });
   });
 });

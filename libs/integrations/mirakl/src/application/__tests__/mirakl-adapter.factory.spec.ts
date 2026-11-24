@@ -7,6 +7,7 @@
  * @module libs/integrations/mirakl/src/application
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { isRefundExecutor, isRefundSourceReader } from '@openlinker/core/orders';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { MiraklConfigException } from '../../domain/exceptions/mirakl-config.exception';
 import type { MiraklOfferWriteRepositoryPort } from '../../domain/ports/mirakl-offer-write-repository.port';
@@ -166,6 +167,29 @@ describe('MiraklAdapterFactory', () => {
         false
       );
       expect(requestedUrls(fetchMock)).toHaveLength(1);
+    });
+
+    it('should read refunds but send none unless the connection opted in', async () => {
+      const { orderSource } = await factory.createAdapters(
+        connection({}),
+        resolver({ apiKey: 'k' }),
+        ordersFetch() as unknown as typeof fetch,
+        MASTER
+      );
+
+      expect(isRefundSourceReader(orderSource)).toBe(true);
+      expect(isRefundExecutor(orderSource)).toBe(false);
+    });
+
+    it('should send refunds when the connection opted in', async () => {
+      const { orderSource } = await factory.createAdapters(
+        connection({ refundsThroughMarketplace: true }),
+        resolver({ apiKey: 'k' }),
+        ordersFetch() as unknown as typeof fetch,
+        MASTER
+      );
+
+      expect(isRefundExecutor(orderSource)).toBe(true);
     });
   });
 });

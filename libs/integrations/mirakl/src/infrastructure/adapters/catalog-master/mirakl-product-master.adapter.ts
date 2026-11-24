@@ -12,8 +12,9 @@
  * elsewhere are paused. A missing identifier mapping is not: that stays a
  * retryable plugin error.
  *
- * What the operator does not get: images (Mirakl gives the seller none) and a
- * tax rate (not on the offer); see `mirakl-master-product.mapper.ts`.
+ * Images come from the catalogue card through P11 (OF21 carries none), one
+ * call per batch of offers; a card without a picture gives none. The tax rate
+ * is not on the offer and stays unreported; see `mirakl-master-product.mapper.ts`.
  *
  * Filters: OF21 offers neither text search nor a category filter, so `query`,
  * `categoryIds` and `status` are refused rather than answered from one window,
@@ -44,6 +45,7 @@ import {
 } from './mirakl-master-product.mapper';
 import type { MiraklMasterIdentity } from './mirakl-master-identity';
 import type { MiraklOfferReader } from './mirakl-offer-reader';
+import type { MiraklProductMediaReader } from './mirakl-product-media-reader';
 
 /** Window used when a caller asks for products without a limit. */
 const DEFAULT_WINDOW = 50;
@@ -55,14 +57,16 @@ export class MiraklProductMasterAdapter implements ProductMasterPort {
     private readonly connectionId: string,
     private readonly brand: string,
     private readonly reader: MiraklOfferReader,
-    private readonly identity: MiraklMasterIdentity
+    private readonly identity: MiraklMasterIdentity,
+    private readonly media: MiraklProductMediaReader
   ) {}
 
   // ─── Reads ─────────────────────────────────────────────────────────────────
 
   async getProduct(productId: string): Promise<Product> {
     const offer = await this.readOffer(productId);
-    return mapMiraklOfferToProduct(offer, productId);
+    const images = await this.imagesOf([offer]);
+    return mapMiraklOfferToProduct(offer, productId, imagesFor(images, offer));
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -171,6 +175,7 @@ export class MiraklProductMasterAdapter implements ProductMasterPort {
       );
     }
     const ids = await this.identity.productIds(withSku.map((offer) => offer.shop_sku));
+    const images = await this.imagesOf(withSku);
     const products: Product[] = [];
     for (const offer of withSku) {
       const internalId = ids.get(this.identity.key(offer.shop_sku));
@@ -180,9 +185,16 @@ export class MiraklProductMasterAdapter implements ProductMasterPort {
         );
         continue;
       }
-      products.push(mapMiraklOfferToProduct(offer, internalId));
+      products.push(mapMiraklOfferToProduct(offer, internalId, imagesFor(images, offer)));
     }
     return products;
+  }
+
+  /** The card pictures of these offers, keyed by `product_sku`. */
+  private imagesOf(offers: readonly MiraklOffer[]): Promise<Map<string, readonly string[]>> {
+    return this.media.imagesFor(
+      offers.flatMap((offer) => (offer.product_sku ? [offer.product_sku] : []))
+    );
   }
 
   private refuseUnsupportedFilters(filters: ProductFilters | undefined): void {
@@ -200,4 +212,11 @@ export class MiraklProductMasterAdapter implements ProductMasterPort {
   private refuse(operation: string): Promise<never> {
     return Promise.reject(new MiraklNotSupportedException(operation, this.brand));
   }
+}
+
+function imagesFor(
+  images: ReadonlyMap<string, readonly string[]>,
+  offer: MiraklOffer
+): readonly string[] {
+  return offer.product_sku ? images.get(offer.product_sku) ?? [] : [];
 }

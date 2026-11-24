@@ -1,12 +1,16 @@
 /**
- * Fakes shared by the Mirakl master adapter specs (#4284): an OF21 / STO01
- * HTTP client over an in-memory offer list, and an identifier mapping where
+ * Fakes shared by the Mirakl master adapter specs (#4284): an OF21 / P11 /
+ * STO01 HTTP client over an in-memory offer list and card media, and an
+ * identifier mapping where
  * `ol_product_<sku>` maps to `<sku>`.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters/catalog-master
  */
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import type { MiraklOffer } from '../../../../domain/types/mirakl-offer.types';
+import type {
+  MiraklOffer,
+  MiraklProductWithOffers,
+} from '../../../../domain/types/mirakl-offer.types';
 import type { IMiraklHttpClient } from '../../../http/mirakl-http-client.interface';
 import type {
   MiraklFileUpload,
@@ -23,9 +27,23 @@ export interface FakeMiraklOffers {
   readonly offers: MiraklOffer[];
 }
 
-export function fakeOffers(offers: MiraklOffer[]): FakeMiraklOffers {
+/**
+ * `media` is the card pictures P11 answers, by `product_sku`; a sku without an
+ * entry is a card P11 returns with `product_media: null`.
+ */
+export function fakeOffers(
+  offers: MiraklOffer[],
+  media: Record<string, MiraklProductWithOffers['product_media']> = {}
+): FakeMiraklOffers {
   const get = jest.fn((path: string, options?: MiraklRequestOptions) => {
     const query = options?.queryParams ?? {};
+    if (path === '/api/products/offers') {
+      const ids = String(query.product_ids ?? '').split(',');
+      const products = ids
+        .filter((id) => offers.some((offer) => offer.product_sku === id))
+        .map((id) => ({ product_sku: id, product_media: media[id] ?? null }));
+      return Promise.resolve({ status: 200, data: { products } });
+    }
     if (path !== '/api/offers') {
       return Promise.reject(new Error(`unexpected GET ${path}`));
     }

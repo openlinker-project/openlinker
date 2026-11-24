@@ -25,7 +25,10 @@
  * The same adapter carries the order's way back (#4276), each part in its own
  * class: the status writeback (OR23/OR24 ship, OR29 cancel), the fulfilment
  * readback (OR11), the source options (SH12) and the invoice upload (OR74),
- * and the returns feed (RT11, #4279).
+ * the returns feed (RT11, #4279) and the refunds already paid on an order
+ * (OR11). Sending a refund (OR28) is opt-in and lives in
+ * {@link MiraklRefundingOrderSourceAdapter}, because core finds a refund
+ * executor by the presence of `executeRefund`.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  * @implements {OrderSourcePort}
@@ -34,6 +37,7 @@
  * @implements {SourceOptionsReader}
  * @implements {OrderBillingDocumentUploader}
  * @implements {ReturnSourceReader}
+ * @implements {RefundSourceReader}
  */
 import type {
   IncomingOrder,
@@ -52,6 +56,11 @@ import type {
   UploadBillingDocumentInput,
   ReturnSourceReader,
   UploadBillingDocumentResult,
+  ExecuteRefundCommand,
+  RefundExecutionResult,
+  RefundExecutor,
+  RefundSourceReader,
+  SourceRefundObservation,
 } from '@openlinker/core/orders';
 import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
@@ -74,6 +83,8 @@ import { MiraklOrderDocumentUploader } from './mirakl-order-document-uploader';
 import { MIRAKL_ORDERS_PATH, readMiraklOrder } from './mirakl-order-reader';
 import { MiraklOrderStatusWriter } from './mirakl-order-status-writer';
 import { mapMiraklOrderToIncomingOrder, type MiraklOrderLineRefKind } from './mirakl-order.mapper';
+import type { MiraklRefundExecutor } from './mirakl-refunds';
+import { MiraklRefundReader } from './mirakl-refunds';
 import { MiraklReturnSource } from './mirakl-return-source';
 import { MiraklSourceOptions } from './mirakl-source-options';
 
@@ -112,7 +123,8 @@ export class MiraklOrderSourceAdapter
     OrderFulfillmentReadback,
     SourceOptionsReader,
     OrderBillingDocumentUploader,
-    ReturnSourceReader
+    ReturnSourceReader,
+    RefundSourceReader
 {
   private readonly logger = new Logger(MiraklOrderSourceAdapter.name);
   private readonly now: () => Date;
@@ -121,6 +133,7 @@ export class MiraklOrderSourceAdapter
   private readonly options: MiraklSourceOptions;
   private readonly documentUploader: MiraklOrderDocumentUploader;
   private readonly returns: MiraklReturnSource;
+  private readonly refunds: MiraklRefundReader;
   private readonly lineRef: MiraklOrderLineRefKind;
   readonly terminalRawStatuses: readonly string[];
 
@@ -148,6 +161,7 @@ export class MiraklOrderSourceAdapter
       settings.invoiceTypeCode ?? DEFAULT_INVOICE_TYPE_CODE
     );
     this.returns = new MiraklReturnSource(connectionId, httpClient, this.now);
+    this.refunds = new MiraklRefundReader(httpClient);
     this.terminalRawStatuses = this.returns.terminalRawStatuses;
   }
 
@@ -221,6 +235,10 @@ export class MiraklOrderSourceAdapter
     return this.returns.getReturn(input);
   }
 
+  listRefunds(input: { externalOrderId: string }): Promise<SourceRefundObservation[]> {
+    return this.refunds.listRefunds(input);
+  }
+
   private readWindow(
     window: MiraklFeedWindow,
     maxPages: number
@@ -269,5 +287,31 @@ export class MiraklOrderSourceAdapter
       });
     }
     return items;
+  }
+}
+
+/**
+ * The order source of a connection that opted in to sending refunds
+ * (`config.refundsThroughMarketplace: true`). A class of its own rather than a
+ * flag: core treats any adapter with `executeRefund` as a refund executor.
+ *
+ * @implements {RefundExecutor}
+ */
+export class MiraklRefundingOrderSourceAdapter
+  extends MiraklOrderSourceAdapter
+  implements RefundExecutor
+{
+  constructor(
+    connectionId: string,
+    httpClient: IMiraklHttpClient,
+    acceptance: MiraklOrderAcceptance,
+    settings: MiraklOrderSourceOptions,
+    private readonly refundExecutor: MiraklRefundExecutor
+  ) {
+    super(connectionId, httpClient, acceptance, settings);
+  }
+
+  executeRefund(command: ExecuteRefundCommand): Promise<RefundExecutionResult> {
+    return this.refundExecutor.executeRefund(command);
   }
 }

@@ -89,6 +89,8 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
       'InventoryMaster',
     ],
     defaultEnabledCapabilities: [...MIRAKL_DEFAULT_ENABLED_CAPABILITIES],
+    // Readable by every role: the orders UI words a refund confirmation by it.
+    publicConfigKeys: ['refundsThroughMarketplace'],
     displayName: profile.displayName,
     version: profile.version,
     isDefault: true,

@@ -44,3 +44,25 @@ export interface MiraklOffersPage {
   readonly offers?: readonly MiraklOffer[];
   readonly total_count?: number;
 }
+
+/**
+ * One catalogue card as P11 (`GET /api/products/offers`) returns it, reduced to
+ * what the catalogue master reads (#4284). `product_media` was seen on Empik
+ * staging as one object (`{ media_url, type: 'LARGE' }`) and as `null` for a
+ * card without a picture; an array is accepted too, in case a card has several.
+ */
+export interface MiraklProductWithOffers {
+  readonly product_sku?: string;
+  readonly product_media?: MiraklCardMedia | readonly MiraklCardMedia[] | null;
+}
+
+/** One picture of a catalogue card. */
+export interface MiraklCardMedia {
+  readonly media_url?: string;
+  readonly type?: string;
+}
+
+/** The P11 response. */
+export interface MiraklProductsWithOffersPage {
+  readonly products?: readonly MiraklProductWithOffers[];
+}

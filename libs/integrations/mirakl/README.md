@@ -142,6 +142,26 @@ The order source is also a `ReturnSourceReader` over RT11 (`GET /api/returns`):
 Follows Mirakl's RT11 documentation; Empik staging has no return yet, so the
 fixture is to be checked against the first real one.
 
+## Refunds
+
+- **Read** (`RefundSourceReader`, always on): the refunds already paid on an
+  order, from OR11 `order_lines[].refunds` in state `REFUNDED`, one per line
+  refund, with the payment instant (`transaction_date`) or none.
+- **Send** (`RefundExecutor`, OR28 `PUT /api/orders/refund`): only on a
+  connection with `refundsThroughMarketplace: true`; otherwise a confirmed
+  refund is recorded as made outside OpenLinker. Core asks for one amount; it is
+  spread over what is left to refund on the order's lines, product parts first,
+  then shipping, with line taxes in proportion. More than is left is refused
+  before sending. The reason maps to the operator's refund codes (Empik: RE02
+  `REFUND`, in the operator profile).
+- Mirakl takes no idempotency key, so the key is kept in the host cache: a
+  retry answers from the first refund, and a retry of an attempt that did not
+  finish throws (outcome unknown) instead of refunding again. No cache, no
+  refund. A sent refund is `accepted`: the operator pays it out later, and the
+  reader then reports it as paid.
+
+Not checked live: staging has no orders to refund.
+
 ## Catalogue and stock master (#4284)
 
 A connection can treat the seller's Mirakl offers as the catalogue and the
@@ -150,9 +170,11 @@ turn `OfferManager` off (a stock master is never also a stock write-back
 target, #1498). Both are off on a new connection, which stays a marketplace.
 
 - **Products**: each offer (OF21) is a product with one variant, keyed by
-  `shop_sku`: title, description, brand, EAN, gross price and category. No
-  images (Mirakl gives the seller none for a catalogue card) and no VAT rate
-  (not on the offer). A description that is only CSS, which some Empik cards
+  `shop_sku`: title, description, brand, EAN, gross price and category.
+  Images are the catalogue card's pictures, read from P11
+  (`/api/products/offers`, up to 100 cards a call) because OF21 has none; a
+  card without a picture (most Empik book cards) gives none. No VAT rate (not
+  on the offer). A description that is only CSS, which some Empik cards
   return instead of text, is left out. Writing the catalogue from OpenLinker
   is refused. An
   offer that disappears from OF21 is a product deleted at the master, so its

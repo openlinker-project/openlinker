@@ -6,8 +6,10 @@
  * by `shop_sku`.
  *
  * What is deliberately left out:
- * - images: Mirakl gives the seller no media for a catalogue card (spike on
- *   Empik staging, 2026-11-23), so `images` is `null`, never an invented url;
+ * - images that are not on the card: OF21 carries no media, so the caller
+ *   passes the card's pictures read from P11 (`mirakl-product-media-reader.ts`);
+ *   a card without a picture (most Empik book cards) gives `null`, never an
+ *   invented url;
  * - tax rate: an offer carries no VAT rate, so it stays unreported;
  * - GPSR: not on the offer, left `undefined` ("not reported"), never `null`
  *   ("asserted none");
@@ -27,8 +29,12 @@ import type { MiraklOffer } from '../../../domain/types/mirakl-offer.types';
 /** Name of the feature that carries the offer's brand. */
 export const MIRAKL_BRAND_FEATURE = 'Brand';
 
-/** The offer as a product, under the given internal id. */
-export function mapMiraklOfferToProduct(offer: MiraklOffer, internalId: string): Product {
+/** The offer as a product, under the given internal id, with its card's pictures. */
+export function mapMiraklOfferToProduct(
+  offer: MiraklOffer,
+  internalId: string,
+  images: readonly string[] = []
+): Product {
   const sku = offer.shop_sku ?? null;
   const category = mapMiraklOfferCategory(offer);
   const brand = nonBlank(offer.product_brand);
@@ -38,7 +44,7 @@ export function mapMiraklOfferToProduct(offer: MiraklOffer, internalId: string):
     sku,
     price: readPrice(offer.price),
     description: readMiraklOfferDescription(offer.product_description),
-    images: null,
+    images: images.length > 0 ? [...images] : null,
     currency: nonBlank(offer.currency_iso_code),
     ...(category
       ? {
