@@ -1,8 +1,8 @@
 /**
  * ErliSetupForm Tests
  *
- * Coverage for the three-step Erli setup wizard (credentials, sales documents,
- * review). Tests form validation,
+ * Coverage for the four-step Erli setup wizard (credentials, product catalogue,
+ * sales documents, review). Tests form validation,
  * submission via the generic create-connection mutation, and the post-create
  * "Test connection" flow that surfaces a ConnectionTestResult.
  */
@@ -35,8 +35,8 @@ const PL_SUGGESTION = {
   disclaimer: 'Not legal advice.',
 };
 
-/** Fills the credentials step and walks to the review step. */
-async function fillAndReachReview(
+/** Fills the credentials step and moves on to the product catalogue step. */
+async function fillCredentialsAndReachCatalogue(
   overrides: { name?: string; apiKey?: string; environment?: string } = {},
 ): Promise<void> {
   fireEvent.change(screen.getByLabelText('Connection name'), {
@@ -50,6 +50,19 @@ async function fillAndReachReview(
       target: { value: overrides.environment },
     });
   }
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByRole('radiogroup', { name: 'Product catalog' });
+}
+
+/** Fills the credentials step and walks to the review step (catalogue left as the wizard chose it). */
+async function fillAndReachReview(
+  overrides: { name?: string; apiKey?: string; environment?: string } = {},
+): Promise<void> {
+  await fillCredentialsAndReachCatalogue(overrides);
+  await walkFromCatalogueToReview();
+}
+
+async function walkFromCatalogueToReview(): Promise<void> {
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByText('How should delivery appear on receipts and invoices?');
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -142,8 +155,10 @@ describe('ErliSetupForm', () => {
 
       renderWithProviders(<ErliSetupForm />, { apiClient });
 
+      expect(screen.queryByRole('radiogroup', { name: 'Product catalog' })).toBeNull();
+      await fillCredentialsAndReachCatalogue();
       await waitFor(() => expect(screen.getByRole('radio', { name: /^No catalog/ })).toBeChecked());
-      await fillAndReachReview();
+      await walkFromCatalogueToReview();
       expect(screen.getByText('No catalog (marketplace only)')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
@@ -166,8 +181,9 @@ describe('ErliSetupForm', () => {
 
       renderWithProviders(<ErliSetupForm />, { apiClient });
 
+      await fillCredentialsAndReachCatalogue();
       expect(await screen.findByRole('radio', { name: /^Linked to a catalog/ })).toBeChecked();
-      await fillAndReachReview();
+      await walkFromCatalogueToReview();
       fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
@@ -182,9 +198,10 @@ describe('ErliSetupForm', () => {
 
       renderWithProviders(<ErliSetupForm />, { apiClient });
 
+      await fillCredentialsAndReachCatalogue();
       await waitFor(() => expect(screen.getByRole('radio', { name: /^No catalog/ })).toBeChecked());
       fireEvent.click(screen.getByRole('radio', { name: /^Linked to a catalog/ }));
-      await fillAndReachReview();
+      await walkFromCatalogueToReview();
       fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
@@ -351,6 +368,8 @@ describe('ErliSetupForm', () => {
     renderWithProviders(<ErliSetupForm />, { apiClient });
     fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'Erli' } });
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByRole('radiogroup', { name: 'Product catalog' });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByText('How should delivery appear on receipts and invoices?');
 

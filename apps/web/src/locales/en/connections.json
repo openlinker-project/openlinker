@@ -943,6 +943,7 @@
     },
     "steps": {
       "credentials": "Credentials",
+      "productCatalogue": "Product catalogue",
       "review": "Review & connect",
       "salesDocuments": "Sales documents"
     },

@@ -969,6 +969,7 @@
     },
     "steps": {
       "credentials": "Dane dostępowe",
+      "productCatalogue": "Katalog produktów",
       "review": "Sprawdź i połącz",
       "salesDocuments": "Dokumenty sprzedaży"
     },
