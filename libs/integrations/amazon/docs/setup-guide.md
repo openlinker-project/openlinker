@@ -150,8 +150,9 @@ An order Amazon cannot fulfil (not in FBA stock, an unknown SKU) is refused with
 and routing tries elsewhere. Cancelling in OpenLinker cancels the Amazon order until Amazon starts
 processing it.
 
-Known gap: OpenLinker does not yet ask Amazon for the progress of an MCF order, so shipped units
-and the tracking number do not come back to OpenLinker or to the order's channel on their own.
+Shipped and cancelled units are read back when the MCF status poll is on (section 7), and the
+order's channel is told it was sent. Known gap: Amazon's tracking number does not come back yet, so
+the channel is told the order was sent without it.
 
 ## 7. Background tasks
 
