@@ -10,6 +10,7 @@
  * @module libs/core/src/invoicing/application/mappers
  */
 import type { Address, Order, OrderItem } from '@openlinker/core/orders';
+import { isUnmatchedProductId, readableProductLabel } from '@openlinker/core/identifier-mapping';
 
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
 import type {
@@ -457,7 +458,7 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     );
   }
   return {
-    name: item.name?.trim() || item.sku || item.productId,
+    name: item.name?.trim() || item.sku || readableProductLabel(item.productId),
     quantity: item.quantity,
     // `price` alone was right only while every issuable order priced its lines
     // gross. A net-priced source now reports its own gross beside the net one
@@ -470,7 +471,10 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     // Carried so a provider can emit a real catalogue line rather than a
     // free-text one - see `InvoiceLine.productId`. The shipping lines composed
     // below deliberately omit it: a delivery charge is not a catalogue item.
-    productId: item.productId,
+    // #4280: a line accepted without a catalogue match carries a synthetic id that
+    // names no product in any provider; sending it would make the provider count a
+    // defect (an unlinked line) and would put a fake id on a fiscal document.
+    ...(!isUnmatchedProductId(item.productId) && { productId: item.productId }),
     // Present-only, because it genuinely is absent for a simple product. A
     // destination whose catalogue item is the VARIANT rather than the product
     // cannot name the goods without it - see `InvoiceLine.variantId`.

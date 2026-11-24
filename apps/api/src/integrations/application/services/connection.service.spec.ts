@@ -1286,6 +1286,62 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('catalogue mode validation (#4280)', () => {
+      it('should accept none, linked and a cleared null on create', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        for (const catalogueMode of ['none', 'linked', null]) {
+          await expect(
+            service.create({ ...payload, config: { ...payload.config, catalogueMode } })
+          ).resolves.toEqual(mockConnection);
+        }
+      });
+
+      it('should accept a create with the key absent - an existing install is unchanged', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalledWith(
+          expect.objectContaining({ config: payload.config })
+        );
+      });
+
+      it('should name the field, the rule and the allowed values on a refusal', async () => {
+        const error = await service
+          .create({ ...payload, config: { ...payload.config, catalogueMode: 'None' } })
+          .catch((caught: unknown) => caught);
+
+        expect((error as BadRequestException).getResponse()).toEqual({
+          statusCode: 400,
+          code: 'CONNECTION_CONFIG_INVALID',
+          message: 'config.catalogueMode must be one of: linked, none',
+          params: { field: 'config.catalogueMode', rule: 'one-of', allowed: 'linked, none' },
+        });
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a non-string value on create', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, catalogueMode: true as unknown as string },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject an unrecognised value on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', catalogueMode: 'off' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
     describe('fulfilment ownership flag validation (#2118)', () => {
       it('should accept a boolean flag and a cleared null on create', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);

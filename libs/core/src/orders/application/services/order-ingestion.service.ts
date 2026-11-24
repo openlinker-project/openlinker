@@ -33,6 +33,9 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
   CONNECTION_PORT_TOKEN,
+  buildUnmatchedProductId,
+  isUnmatchedProductId,
+  readCatalogueMode,
   type Connection,
   type ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
@@ -632,6 +635,12 @@ export class OrderIngestionService implements IOrderIngestionService {
       kind: ItemResolutionFailureKind;
     }> = [];
 
+    // #4280: read lazily and at most once, only when a line actually fails to
+    // map, so an install that never sets `catalogueMode` pays no extra lookup.
+    let unmatchedAccepted: boolean | undefined;
+    const acceptsUnmatchedItems = async (): Promise<boolean> =>
+      (unmatchedAccepted ??= await this.readAcceptsUnmatchedItems(connectionId));
+
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
       // A ready order with a frozen expansion was already decided: re-asking the
@@ -697,6 +706,17 @@ export class OrderIngestionService implements IOrderIngestionService {
           ...(item.gift !== undefined ? { gift: item.gift } : {}),
           ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
         });
+      } else if (
+        result.kind === 'missing_mapping' &&
+        (await acceptsUnmatchedItems())
+      ) {
+        // #4280: this source has no catalogue to map against (`catalogueMode:
+        // 'none'`), so a mapping gap is not a transient state waiting for a
+        // ProductMaster sweep - nothing will ever heal it. Accept the line as an
+        // unmatched one so the order can reach `ready`. Only `missing_mapping`:
+        // a `source_deleted` ref names a variant that EXISTS and was removed at
+        // its master, which is a different fact and stays a hold.
+        resolvedItems.push(this.buildUnmatchedItem(connectionId, item));
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason, kind: result.kind });
       }
@@ -1005,7 +1025,11 @@ export class OrderIngestionService implements IOrderIngestionService {
           ...(physicalItems.some(
             (item) => 'parentLineId' in item && item.parentLineId !== undefined
           )
-            ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+            ? {
+                physicalProductIds: physicalItems
+                  .map((item) => item.productId)
+                  .filter((productId) => !isUnmatchedProductId(productId)),
+              }
             : {}),
         });
       } catch (error) {
@@ -2516,6 +2540,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     const items = await Promise.all(
       order.items.map(async (item) => {
         if (item.gift === undefined || item.taxRate !== undefined) return item;
+        // #4280: no catalogue to read a rate from for a synthetic id.
+        if (isUnmatchedProductId(item.productId)) return item;
         const tax = await this.resolveLineTaxRate(item.productId, item.variantId, {});
         return { ...item, ...tax };
       })
@@ -2559,6 +2585,72 @@ export class OrderIngestionService implements IOrderIngestionService {
       });
     }
     return candidates;
+  }
+
+  /**
+   * Whether the source connection accepts order lines that match no catalogue
+   * product (`config.catalogueMode === 'none'`, #4280).
+   *
+   * Fails SAFE: a connection that cannot be read answers `false`, i.e. the
+   * historical `awaiting_mapping` behaviour. Guessing `true` on a read failure
+   * would persist unmatched lines for an install that never asked for them.
+   */
+  private async readAcceptsUnmatchedItems(connectionId: string): Promise<boolean> {
+    try {
+      // Config only: `getAdapter` would throw for a disabled connection and
+      // silently fall back to awaiting_mapping.
+      const connection = await this.connections.get(connectionId);
+      return readCatalogueMode(connection.config) === 'none';
+    } catch (error) {
+      this.logger.warn(
+        `Could not read catalogueMode for connection ${connectionId}; treating unmapped lines as awaiting_mapping: ${(error as Error).message}`
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Build an order line that carries no catalogue match (#4280).
+   *
+   * `productId` is the deterministic synthetic id (`unmatched:<connection>:<offer>`),
+   * no `variantId`. The tax rate is the CHANNEL's own statement and nothing else:
+   * there is no catalogue to read a shop rate from, and journalling the channel
+   * rate against a synthetic product id would write evidence for a product that
+   * does not exist.
+   */
+  private buildUnmatchedItem(
+    connectionId: string,
+    item: IncomingOrderItem
+  ): Order['items'][number] {
+    const channelCode = item.taxRate?.trim();
+    return {
+      id: item.id,
+      // An adapter may report a blank external id (Erli's wire type only demands a
+      // string); the line id keeps the synthetic id from collapsing to
+      // `unmatched:<connection>:` and every blank line into one product.
+      productId: buildUnmatchedProductId(
+        connectionId,
+        item.productRef.externalId.trim() || item.id
+      ),
+      quantity: item.quantity,
+      price: item.price,
+      sku: item.sku,
+      name: item.name,
+      imageUrl: item.imageUrl,
+      ...(item.unitPriceGross !== undefined && Number.isFinite(item.unitPriceGross)
+        ? { unitPriceGross: item.unitPriceGross }
+        : {}),
+      ...(channelCode
+        ? {
+            taxRate: channelCode,
+            ...(item.taxRateCountry ? { taxRateCountry: item.taxRateCountry } : {}),
+            taxSource: 'channel' as const,
+            taxRateReadAt: new Date().toISOString(),
+          }
+        : {}),
+      ...(item.gift !== undefined ? { gift: item.gift } : {}),
+      ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
+    };
   }
 
   private async resolveLineTaxRate(
@@ -2660,7 +2752,13 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (order.status === 'cancelled' || alreadyCancelled) return;
 
       const lines: ReserveOrderLineInput[] = physicalItems
-        .filter((item) => Boolean(item.productId) && item.quantity > 0)
+        // #4280: an unmatched line has no catalogue product and so no stock
+        // position to hold; asking the ledger to find one for a synthetic id is
+        // a wasted query on the hot path of every such order.
+        .filter(
+          (item) =>
+            Boolean(item.productId) && !isUnmatchedProductId(item.productId) && item.quantity > 0
+        )
         .map((item) => ({
           orderLineId: item.id,
           productId: item.productId,

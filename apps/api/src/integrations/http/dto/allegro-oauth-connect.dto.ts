@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsString, IsNotEmpty, IsObject, IsOptional, IsUrl, IsUUID } from 'class-validator';
+import { IsIn, IsString, IsNotEmpty, IsObject, IsOptional, IsUrl, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -95,4 +95,16 @@ export class AllegroOAuthConnectDto {
   @IsObject()
   @IsOptional()
   deliveryOnDocuments?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether this connection expects its order lines to resolve to catalogue products, seeded ' +
+      'into the new connection config as `catalogueMode` (#4280). `none` lets a marketplace-only ' +
+      'install ingest orders without any catalogue; `linked` (or omitted) is today’s behaviour. ' +
+      'Ignored when re-authenticating an existing connection.',
+    enum: ['linked', 'none'],
+  })
+  @IsIn(['linked', 'none'])
+  @IsOptional()
+  catalogueMode?: 'linked' | 'none';
 }

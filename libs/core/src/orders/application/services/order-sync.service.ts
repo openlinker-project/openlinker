@@ -63,6 +63,7 @@ import {
   CORE_ENTITY_TYPE,
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
+  isUnmatchedProductId,
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
@@ -128,8 +129,11 @@ export class OrderSyncService implements IOrderSyncService {
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
     const { order, sourceConnectionId, sourceEventId } = request;
     // #3607: stock sites read the physical products; the mirror keeps `order.items`.
+    // #4280: an unmatched line (catalogue-less mode) has no catalogue product, so
+    // its synthetic id must not reach the stock sites below.
     const physicalProductIds =
-      request.physicalProductIds ?? order.items.map((item) => item.productId);
+      request.physicalProductIds ??
+      order.items.map((item) => item.productId).filter((id) => !isUnmatchedProductId(id));
 
     this.logger.log(
       `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`
