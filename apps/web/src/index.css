@@ -43080,6 +43080,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     background: transparent;
     color: var(--text-secondary);
   }
+  .tour-card .tour-card__fold { box-shadow: none; background: transparent; border: 0; }
   .tour-card__fold svg { transition: transform 220ms var(--ease-out); }
   .tour-card[data-collapsed='true'] .tour-card__fold svg { transform: rotate(180deg); }
   .tour-card[data-collapsed='true'] .tour-card__text,
