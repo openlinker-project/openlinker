@@ -700,7 +700,7 @@ jobs:
   build:
     name: Build
     timeout-minutes: 30
-    #    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest
     runs-on: integration-tests-runner
     needs: changes
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
