@@ -15,6 +15,7 @@ import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Infotip } from '../../../shared/ui/infotip';
 import type { BuyerDataEraseMode } from '../api/buyer-data.types';
 import type { BuyerDataPlan } from '../hooks/use-buyer-data-plan';
+import { TickingNumber } from './ticking-number';
 
 export interface PlanPanelProps {
   plan: BuyerDataPlan;
@@ -53,7 +54,7 @@ export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactE
     data === undefined ? (
       <span className="plan-panel__skeleton" aria-label={copy.calculating} />
     ) : (
-      format.number(n)
+      <TickingNumber value={n} format={format.number} />
     );
 
   return (
@@ -82,15 +83,24 @@ export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactE
       <div className={`plan-panel__body${busy ? ' plan-panel__body--busy' : ''}`}>
         <dl className="plan-panel__numbers">
           <div className="plan-panel__number plan-panel__number--stays">
-            <dt>{copy.stays}</dt>
+            <dt>
+              <i className="plan-panel__swatch" aria-hidden="true" />
+              {copy.stays}
+            </dt>
             <dd data-testid="plan-stays">{number(stays)}</dd>
           </div>
           <div className="plan-panel__number plan-panel__number--hidden">
-            <dt>{copy.hidden}</dt>
+            <dt>
+              <i className="plan-panel__swatch" aria-hidden="true" />
+              {copy.hidden}
+            </dt>
             <dd data-testid="plan-hidden">{number(hidden)}</dd>
           </div>
           <div className="plan-panel__number plan-panel__number--erased">
-            <dt>{copy.erased}</dt>
+            <dt>
+              <i className="plan-panel__swatch" aria-hidden="true" />
+              {copy.erased}
+            </dt>
             <dd data-testid="plan-erased">{number(erased)}</dd>
           </div>
         </dl>
@@ -124,6 +134,12 @@ export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactE
         {data !== undefined && data.skippedProtected > 0 ? (
           <div className="plan-panel__skipped" data-testid="plan-skipped">
             <strong>
+              <svg viewBox="0 0 16 16" className="plan-panel__shield" aria-hidden="true">
+                <path
+                  d="M8 1.5 13 3.5V8c0 3-2 5-5 6.5C5 13 3 11 3 8V3.5L8 1.5Zm-.7 9 3.6-3.6-1-1-2.6 2.6-1.2-1.2-1 1 2.2 2.2Z"
+                  fill="currentColor"
+                />
+              </svg>
               {interpolate(copy.skipped, { n: format.number(data.skippedProtected) })}
             </strong>
             {reasons.length > 0 ? (

@@ -226,6 +226,11 @@
     "zoneHiddenNote": "can be undone",
     "zoneKept": "Visible"
   },
+  "studio": {
+    "close": "Close",
+    "sheetTitle": "What will happen",
+    "viewPlan": "See the plan"
+  },
   "tile": {
     "description": "Decide when orders leave the list and when buyers' personal data is erased. General rules here; each connection can have its own.",
     "eyebrow": "Data protection",

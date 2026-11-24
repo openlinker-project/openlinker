@@ -40362,7 +40362,38 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   }
 }
 
+
 /* ── Retention studio (#4289) ── */
+/* Two zones: a workbench (the controls) and a sticky rail (what they do). The
+   studio keeps its own small set of figures here rather than in the global
+   tokens: they are this screen's rhythm, not the design system's. */
+.retention-studio,
+.retention-studio__sheet {
+  --rs-top: calc(var(--shell-topbar-height, 52px) + var(--demo-banner-height, 0px) + var(--space-4));
+  --rs-bar: 4.5rem;
+  --rs-rail: 22rem;
+  /* Zone colours are the status tokens mixed down into the surface, so the three
+     fates read as tints of one palette instead of three saturated fills. */
+  --rs-hide: color-mix(in oklab, var(--status-warning) 62%, var(--bg-surface));
+  --rs-hide-soft: color-mix(in oklab, var(--status-warning) 8%, var(--bg-surface));
+  --rs-hide-line: color-mix(in oklab, var(--status-warning) 80%, var(--bg-surface));
+  --rs-erase: color-mix(in oklab, var(--status-error) 58%, var(--bg-surface));
+  --rs-erase-soft: color-mix(in oklab, var(--status-error) 6%, var(--bg-surface));
+  --rs-erase-line: color-mix(in oklab, var(--status-error) 78%, var(--bg-surface));
+  --rs-keep: color-mix(in oklab, var(--border-strong) 75%, var(--bg-surface));
+  --rs-fs-hero: 1.75rem;
+  --rs-fs-title: 1.25rem;
+  --rs-fs-body: 0.875rem;
+  --rs-fs-cap: 0.75rem;
+}
+
+/* `overflow-x: hidden` on the shell turns it into a scroll container that never
+   scrolls, which silently disables every `position: sticky` below it. `clip`
+   still stops sideways spill without becoming one. */
+.shell-content:has(.retention-studio--full) {
+  overflow-x: clip;
+}
+
 /* Page rhythm and containment: nothing may push the page wider than the screen. */
 .buyer-data-page,
 .buyer-data-page > *,
@@ -40376,7 +40407,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .buyer-data-page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 [data-testid='buyer-data-section'],
 [data-testid='buyer-data-wizard-step'] {
@@ -40387,13 +40418,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .buyer-data-points {
   margin: 0;
   padding-left: var(--space-4);
-}
-.buyer-data-page__actions {
-  align-items: center;
-}
-.buyer-data-page__draft {
-  color: var(--status-warning-fg);
-  font-size: 0.875rem;
 }
 [data-testid='buyer-data-section'] .segmented-control,
 [data-testid='buyer-data-wizard-step'] .segmented-control,
@@ -40414,47 +40438,83 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   text-align: center;
 }
 
+/* Scope bar: Defaults and each connection as one segmented track; the dot says
+   whether a connection follows the defaults (ring) or has rules of its own (filled). */
 .scope-tabs .tabs__list {
+  display: flex;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-muted);
   overflow-x: auto;
   scrollbar-width: none;
 }
 .scope-tabs .tabs__trigger {
   flex: none;
+  min-height: 2rem;
+  margin: 0;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  font-size: var(--rs-fs-body);
   white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.scope-tabs .tabs__trigger:hover {
+  background: color-mix(in oklab, var(--bg-surface) 55%, transparent);
+}
+.scope-tabs .tabs__trigger[data-state='active'] {
+  background: var(--bg-surface);
+  box-shadow:
+    0 0 0 1px var(--border-default),
+    var(--shadow-xs);
+}
+.scope-tabs .tabs__trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.scope-tabs .tabs__content {
+  gap: var(--space-4);
+  animation: retention-fade var(--duration-fast) var(--ease-out);
 }
 .scope-tabs__lead {
-  margin: var(--space-3) 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-body);
 }
 .scope-tabs__dot {
   display: inline-block;
-  width: 0.4375rem;
-  height: 0.4375rem;
-  margin-left: var(--space-2);
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: var(--radius-pill);
   background: var(--accent-primary);
+}
+.scope-tabs__dot--linked {
+  border: 1.5px solid var(--text-muted);
+  background: transparent;
 }
 .scope-chain {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin: var(--space-3) 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--bg-muted);
-}
-.scope-chain--own {
-  border-style: solid;
-  border-color: var(--accent-primary-border);
-  background: var(--accent-primary-soft);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  color: var(--text-secondary);
 }
 .scope-chain__icon {
   flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  color: var(--text-secondary);
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--text-muted);
+}
+.scope-chain--own .scope-chain__icon {
+  color: var(--accent-primary-soft-strong);
 }
 .scope-chain__text {
   display: flex;
@@ -40463,7 +40523,12 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-body);
+}
+.scope-compare {
+  margin-top: var(--space-2);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
 }
 .scope-compare__open {
   padding: 0;
@@ -40484,67 +40549,143 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 
 .retention-scope {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
   min-width: 0;
 }
 .retention-scope__switch {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
-}
-.retention-scope__switch--on {
-  border-color: var(--accent-primary-border);
-  background: var(--accent-primary-soft);
+  gap: var(--space-1) var(--space-4);
 }
 .retention-scope__hint {
-  flex: 1 1 14rem;
+  flex: 1 1 12rem;
   margin: 0;
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-cap);
+  line-height: 1.4;
+}
+.retention-scope > .retention-scope__hint {
+  margin-bottom: var(--space-2);
 }
 
+/* ── Layout ── */
 .retention-studio {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   min-width: 0;
 }
-@media (min-width: 1100px) {
-  .retention-studio--full {
-    grid-template-columns: minmax(0, 1fr) 24rem;
-    align-items: start;
-  }
-}
-.retention-studio__side {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-@media (min-width: 1100px) {
-  /* The plan stays in view while the (taller) editing column scrolls. */
-  .retention-studio--full .retention-studio__side {
-    position: sticky;
-    top: var(--space-4);
-  }
-}
 .retention-studio__main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
   min-width: 0;
+}
+/* Below 1100px the rail dissolves: its pieces become siblings of the workbench, with
+   the master switch first, so it is never left at the bottom of the page. */
+.retention-studio--full .retention-studio__side {
+  display: contents;
+}
+.retention-studio--full .retention-studio__rail-head {
+  order: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.retention-studio--full .retention-studio__main {
+  order: 1;
+}
+.retention-studio--full .retention-studio__rail-plan {
+  order: 2;
+}
+.retention-studio--full .retention-studio__rail-card {
+  order: 3;
+}
+.retention-studio--full .retention-studio__summary {
+  order: 4;
+}
+
+@media (min-width: 1100px) {
+  .retention-studio--full {
+    grid-template-columns: minmax(0, 1fr) var(--rs-rail);
+    align-items: start;
+  }
+  .retention-studio--full .retention-studio__main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  /* The consequences stay in view while the workbench scrolls; if the rail is taller
+     than the screen it scrolls on its own. */
+  .retention-studio--full .retention-studio__side {
+    display: flex;
+    flex-direction: column;
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: var(--rs-top);
+    max-height: calc(100vh - var(--rs-top) - var(--rs-bar) - var(--space-2));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    /* A shadow appears at the edge only where there is more to scroll to. */
+    background:
+      linear-gradient(transparent, var(--bg-surface) 70%) center bottom / 100% 2rem local no-repeat,
+      radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.14), transparent) center bottom /
+        100% 0.5rem scroll no-repeat,
+      var(--bg-surface);
+  }
+  .retention-studio--full .retention-studio__rail-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: var(--space-3) var(--space-4);
+    border: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    border-radius: 0;
+    background: var(--bg-surface);
+  }
+  .retention-studio--full .retention-studio__summary {
+    display: none;
+  }
+}
+
+/* The rail is one flat panel: its sections lose their own frames and are divided by hairlines. */
+.retention-studio__side .plan-panel,
+.retention-studio__side .record-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.retention-studio__side .retention-studio__rail-plan + .retention-studio__rail-card {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ── Instrument: the strip and its control deck are one surface ── */
+.retention-studio__instrument {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.retention-studio__deck {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: color-mix(in oklab, var(--bg-muted) 45%, var(--bg-surface));
 }
 .retention-studio__inputs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: var(--space-4);
+  gap: var(--space-4) var(--space-5);
+  align-items: start;
 }
 .retention-studio--ghost .retention-studio__inputs,
 .retention-studio--ghost .retention-studio__mode {
@@ -40554,33 +40695,51 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
 }
-.retention-studio__irreversible {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--status-error);
-  background: var(--status-error-soft);
-  color: var(--status-error-fg);
-  font-size: 0.8125rem;
+.retention-studio--compact {
+  gap: var(--space-4);
 }
+.retention-studio--compact .retention-studio__main {
+  gap: var(--space-4);
+}
+
 .period-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
   min-width: 0;
 }
 .period-field__label {
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-body);
   font-weight: 600;
 }
 .period-field__hint {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
+  line-height: 1.45;
 }
 .period-field__error {
   color: var(--status-error-fg);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
+}
+/* One calm line, attached to the field it is about. */
+.period-field__footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.45;
+}
+.period-field__footnote-icon {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: 1px;
+  color: var(--status-error-fg);
 }
 .period-input {
   display: flex;
@@ -40591,83 +40750,96 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .period-input .control {
   width: auto;
   min-width: 0;
+  min-height: 2.75rem;
 }
 .period-input input.control {
   width: 5.5rem;
+  font-variant-numeric: tabular-nums;
 }
 .period-input__never {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   min-height: 44px;
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-body);
 }
 .period-input__never input {
   width: 1.125rem;
   height: 1.125rem;
 }
 
-/* Age strip */
+/* ── Age strip ── */
 .age-strip {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
+  padding: var(--space-5) var(--space-5) var(--space-4);
   min-width: 0;
 }
 .age-strip--ghost .age-strip__canvas {
   opacity: 0.6;
 }
+/* The three fates as a legend that is also the readout: swatch, name, count. */
 .age-strip__zones {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
 }
 .age-strip__zone {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border-left: 4px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-muted);
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--border-subtle);
   min-width: 0;
 }
-.age-strip__zone--hidden {
-  border-left-color: var(--status-warning);
-  background: var(--status-warning-soft);
-}
-.age-strip__zone--erased {
-  border-left-color: var(--status-error);
-  background: var(--status-error-soft);
+.age-strip__zone:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 .age-strip__zone-label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--rs-fs-cap);
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 .age-strip__zone-label small {
-  display: block;
-  font-size: 0.6875rem;
-  font-weight: 500;
   color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+  font-weight: 400;
+}
+.age-strip__swatch {
+  align-self: center;
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  background: var(--rs-keep);
+}
+.age-strip__zone--hidden .age-strip__swatch {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.age-strip__zone--erased .age-strip__swatch {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
 }
 .age-strip__zone strong {
-  font-size: 1.375rem;
-  line-height: 1.1;
+  font-size: var(--rs-fs-title);
+  line-height: 1.15;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .age-strip__already {
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: var(--rs-fs-cap);
   font-weight: 500;
 }
 .age-strip__stat--busy {
-  opacity: 0.6;
+  color: var(--text-secondary);
 }
 .age-strip__skeleton,
 .plan-panel__skeleton {
@@ -40685,11 +40857,11 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .age-strip__canvas {
   position: relative;
-  padding: 2.5rem 0 3.75rem;
+  padding: 3rem 0 3.75rem;
 }
 .age-strip__track {
   position: relative;
-  height: 9rem;
+  height: 11rem;
   border-bottom: 1px solid var(--border-strong);
 }
 .age-strip__plot {
@@ -40714,16 +40886,18 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .age-strip__bar {
   display: block;
   width: 100%;
-  border-radius: 1px 1px 0 0;
-  background: var(--border-strong);
-  transition: height var(--duration-normal) var(--ease-out);
+  border-radius: 2px 2px 0 0;
+  background: var(--rs-keep);
+  transition:
+    height var(--duration-normal) var(--ease-out),
+    background-color 160ms ease-out;
 }
 .age-strip__bar--hidden {
-  background-color: var(--status-warning);
+  background-color: var(--rs-hide);
   background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
 }
 .age-strip__bar--erased {
-  background-color: var(--status-error);
+  background-color: var(--rs-erase);
   background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
 }
 .age-strip__band {
@@ -40733,10 +40907,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   z-index: 0;
 }
 .age-strip__band--hidden {
-  background: var(--status-warning-soft);
+  background: var(--rs-hide-soft);
 }
 .age-strip__band--erased {
-  background: var(--status-error-soft);
+  background: var(--rs-erase-soft);
 }
 .age-strip__tick {
   position: absolute;
@@ -40751,7 +40925,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   inset: 0 auto 0 0;
   z-index: 2;
   width: 2px;
-  background: var(--accent-primary);
+  background: var(--text-secondary);
 }
 .age-strip__never {
   position: absolute;
@@ -40762,9 +40936,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   align-items: center;
   justify-content: center;
   border-left: 1px dashed var(--border-strong);
-  background-image: repeating-linear-gradient(135deg, var(--border-default) 0 1px, transparent 1px 6px);
+  background-image: repeating-linear-gradient(135deg, var(--border-subtle) 0 1px, transparent 1px 6px);
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: var(--rs-fs-cap);
   text-align: center;
 }
 .age-strip__never span {
@@ -40775,9 +40949,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .age-strip__axis {
   position: relative;
   height: 1.25rem;
-  margin-top: var(--space-2);
-  color: var(--text-muted);
-  font-size: 0.6875rem;
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  font-variant-numeric: tabular-nums;
 }
 .age-strip__axis span {
   position: absolute;
@@ -40806,31 +40981,38 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   bottom: 0;
   left: -1px;
   width: 2px;
-  background: var(--status-warning);
+  background: var(--rs-hide-line);
 }
 .age-strip__handle--erase .age-strip__line {
-  background: var(--status-error);
+  background: var(--rs-erase-line);
 }
+/* The flag is neutral; only its edge says which cut it is. The accent is reserved
+   for the one being held. */
 .age-strip__flag {
   position: absolute;
   left: 0;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   min-height: 1.75rem;
   padding: 0 var(--space-3);
-  border: 1px solid var(--status-warning);
+  border: 1px solid var(--rs-hide-line);
   border-radius: var(--radius-pill);
-  background: var(--status-warning-soft);
-  color: var(--status-warning-fg);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font: inherit;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: var(--rs-fs-cap);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: grab;
   transform: translateX(-1rem);
   touch-action: none;
   box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 .age-strip__handle--hide .age-strip__flag {
   bottom: 100%;
@@ -40839,20 +41021,33 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .age-strip__handle--erase .age-strip__flag {
   top: 100%;
   margin-top: var(--space-1);
-  border-color: var(--status-error);
-  background: var(--status-error-soft);
-  color: var(--status-error-fg);
+  border-color: var(--rs-erase-line);
 }
 .age-strip__handle--flip .age-strip__flag {
   left: auto;
   right: 0;
   transform: translateX(1rem);
 }
+.age-strip__flag:active,
+.age-strip__handle--dragging .age-strip__flag {
+  background: var(--accent-primary-soft);
+  color: var(--text-primary);
+}
 .age-strip__handle--dragging .age-strip__flag {
   cursor: grabbing;
+  border-color: var(--accent-primary);
+  box-shadow:
+    0 0 0 4px var(--accent-ring),
+    var(--shadow-md);
+  transform: translateX(-1rem) scale(1.08);
+  will-change: transform;
+}
+.age-strip__handle--flip.age-strip__handle--dragging .age-strip__flag {
+  transform: translateX(1rem) scale(1.08);
 }
 .age-strip__flag:focus-visible {
   outline: none;
+  border-color: var(--accent-primary);
   box-shadow: var(--shadow-focus);
 }
 .age-strip__flag[aria-disabled='true'] {
@@ -40862,6 +41057,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .age-strip__lock {
   width: 0.75rem;
   height: 0.75rem;
+  color: var(--status-error-fg);
 }
 .age-strip__steppers {
   display: none;
@@ -40873,7 +41069,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   grid-template-columns: 1fr 2.75rem 5rem 2.75rem;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-body);
 }
 .age-strip__stepper button {
   min-height: 44px;
@@ -40888,11 +41084,12 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .age-strip__stepper output {
   text-align: center;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .age-strip__note {
   margin: 0;
   color: var(--status-warning-fg);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
 }
 .age-strip__message,
 .age-strip__placeholder {
@@ -40901,14 +41098,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  min-height: 9rem;
+  min-height: 11rem;
   margin: 0;
   padding: var(--space-4);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-md);
   background-image: repeating-linear-gradient(135deg, var(--bg-muted) 0 1px, transparent 1px 8px);
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-body);
   text-align: center;
 }
 .age-strip__message--error {
@@ -40918,13 +41115,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .age-strip__table summary {
   cursor: pointer;
   color: var(--text-link);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
 }
 .age-strip__table table {
   width: 100%;
   margin-top: var(--space-2);
   border-collapse: collapse;
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
+  font-variant-numeric: tabular-nums;
 }
 .age-strip__table th,
 .age-strip__table td {
@@ -40933,7 +41131,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   text-align: left;
 }
 
-/* Record card */
+/* ── Record card ── */
 .record-card {
   display: flex;
   flex-direction: column;
@@ -40950,18 +41148,25 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   justify-content: space-between;
   gap: var(--space-2);
 }
-.record-card__head h4 {
+.record-card__head h4,
+.plan-panel__head h4 {
   margin: 0;
-  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .record-card__sample-tag {
   padding: 0 var(--space-2);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-pill);
   color: var(--text-muted);
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--rs-fs-cap);
+}
+.retention-studio__side .record-card .segmented-control__option {
+  min-height: 2rem;
+  font-size: var(--rs-fs-cap);
 }
 .record-card__ribbon {
   display: flex;
@@ -40970,28 +41175,24 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--status-success-soft);
+  background: color-mix(in oklab, var(--status-success) 11%, var(--bg-surface));
   color: var(--status-success-fg);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
   font-weight: 700;
-  transition: background var(--duration-normal) var(--ease-out);
+  animation: retention-ribbon 160ms var(--ease-out);
 }
 .record-card--hidden .record-card__ribbon,
 .record-card--hidden-erased .record-card__ribbon {
-  background: var(--status-warning-soft);
+  background: var(--rs-hide-soft);
   color: var(--status-warning-fg);
 }
 .record-card--visible-erased .record-card__ribbon,
 .record-card--hidden-erased .record-card__ribbon {
-  background: var(--status-error-soft);
+  background: var(--rs-erase-soft);
   color: var(--status-error-fg);
 }
-.record-card--protected {
-  border: 2px dashed var(--status-info);
-  background-image: repeating-linear-gradient(135deg, var(--status-info-soft) 0 1px, transparent 1px 8px);
-}
 .record-card--protected .record-card__ribbon {
-  background: var(--status-info-soft);
+  background: color-mix(in oklab, var(--status-info) 10%, var(--bg-surface));
   color: var(--status-info-fg);
 }
 .record-card--hidden .record-card__fields,
@@ -41008,86 +41209,81 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   display: flex;
   flex-direction: column;
   margin: 0;
+  transition:
+    opacity var(--duration-normal) var(--ease-out),
+    filter var(--duration-normal) var(--ease-out);
 }
 .record-card__row {
   display: grid;
-  grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr);
+  grid-template-columns: minmax(4.75rem, 5.5rem) minmax(0, 1fr);
   gap: var(--space-3);
-  padding-block: var(--space-1);
+  padding-block: 0.1875rem;
   border-top: 1px solid var(--border-subtle);
 }
 .record-card__row:first-child {
   border-top: 0;
 }
 .record-card__row--stays {
-  background: var(--bg-muted);
+  background: color-mix(in oklab, var(--bg-muted) 60%, transparent);
 }
 .record-card__row dt {
   color: var(--text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
 }
 .record-card__row dd {
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 0.875rem;
+  font-size: var(--rs-fs-cap);
+  font-variant-numeric: tabular-nums;
 }
 .record-card__value--redacted {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  animation: retention-redact 500ms var(--ease-out) both;
-  animation-delay: calc(var(--i, 0) * 90ms);
-}
-@keyframes retention-redact {
-  from {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  animation: retention-redact 320ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
 }
 .record-card__stays {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--rs-fs-cap);
+  animation: retention-fade 220ms var(--ease-out) both;
 }
 .record-card__age {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 .record-card__age label {
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .record-card__age input[type='range'] {
   width: 100%;
-  min-height: 44px;
+  min-height: 1.75rem;
   accent-color: var(--accent-primary);
 }
 .record-card__hold {
   justify-self: start;
-  min-height: 44px;
+  min-height: 2rem;
   user-select: none;
   touch-action: none;
 }
 .record-card__protected-note {
   margin: 0;
   color: var(--status-info-fg);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
 }
 
-/* Plan panel */
+/* ── Plan panel ── */
 .plan-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--border-default);
-  border-top: 3px solid var(--accent-primary);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   min-width: 0;
@@ -41099,61 +41295,63 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   justify-content: space-between;
   gap: var(--space-2);
 }
-.plan-panel__head h4 {
-  margin: 0;
-  font-size: 0.9375rem;
-}
 .plan-panel__status {
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--rs-fs-cap);
 }
 .plan-panel__note {
-  margin: 0;
+  margin: calc(var(--space-2) * -1) 0 0;
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--rs-fs-cap);
 }
 .plan-panel__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  transition: opacity var(--duration-normal) var(--ease-out);
-}
-.plan-panel__body--busy {
-  opacity: 0.55;
 }
 .plan-panel__numbers {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin: 0;
 }
 .plan-panel__number {
-  padding: var(--space-2);
-  border-top: 3px solid var(--border-strong);
   min-width: 0;
 }
-.plan-panel__number--hidden {
-  border-top-color: var(--status-warning);
-}
-.plan-panel__number--erased {
-  border-top-color: var(--status-error);
-}
 .plan-panel__number dt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--rs-fs-cap);
   font-weight: 600;
 }
+.plan-panel__swatch {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  background: var(--rs-keep);
+}
+.plan-panel__number--hidden .plan-panel__swatch {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.plan-panel__number--erased .plan-panel__swatch {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
 .plan-panel__number dd {
-  margin: 0;
-  font-size: 1.5rem;
+  margin: var(--space-1) 0 0;
+  font-size: var(--rs-fs-hero);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 .plan-panel__bar {
   display: flex;
-  height: 0.625rem;
+  height: 0.5rem;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: var(--bg-strong);
@@ -41164,27 +41362,38 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   transition: width var(--duration-slow) var(--ease-out);
 }
 .plan-panel__seg--stays {
-  background: var(--border-strong);
+  background: var(--rs-keep);
 }
 .plan-panel__seg--hidden {
-  background-color: var(--status-warning);
+  background-color: var(--rs-hide);
   background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
 }
 .plan-panel__seg--erased {
-  background-color: var(--status-error);
+  background-color: var(--rs-erase);
   background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
 }
 .plan-panel__sentence {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
+  line-height: 1.5;
 }
 .plan-panel__skipped {
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--status-info);
-  background: var(--status-info-soft);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+}
+.plan-panel__skipped strong {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--rs-fs-body);
+}
+.plan-panel__shield {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
   color: var(--status-info-fg);
-  font-size: 0.8125rem;
 }
 .plan-panel__skipped ul,
 .plan-panel__untouched ul {
@@ -41195,8 +41404,166 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--rs-fs-cap);
 }
+.plan-panel__untouched strong {
+  color: var(--text-primary);
+}
+
+/* A new answer is on its way: the figures shimmer, they are not dimmed away. */
+.plan-panel__body--busy .ticker {
+  background-image: linear-gradient(
+    100deg,
+    var(--text-primary) 35%,
+    var(--text-muted) 50%,
+    var(--text-primary) 65%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: retention-shimmer 1.1s linear infinite;
+}
+
+/* A figure that just changed gets a short tint, so the eye finds it. */
+.ticker {
+  display: inline-block;
+  border-radius: var(--radius-xs);
+}
+.ticker--pulse {
+  animation: retention-tick 600ms ease-out;
+}
+@keyframes retention-tick {
+  from {
+    background-color: color-mix(in oklab, var(--accent-primary) 26%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes retention-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+@keyframes retention-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes retention-ribbon {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes retention-redact {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Save bar ── */
+.studio-actions {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 6;
+  margin-top: var(--space-2);
+}
+.studio-actions__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+.studio-actions__draft {
+  display: inline-flex;
+  flex: 1 1 14rem;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+}
+.studio-actions__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--status-warning);
+}
+
+/* ── Phone: a compact summary rides above the save bar ── */
+.retention-studio__summary {
+  display: none;
+}
+.retention-studio__sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: 85vh;
+  overflow-y: auto;
+}
+@media (max-width: 699px) {
+  .retention-studio--full .retention-studio__rail-plan,
+  .retention-studio--full .retention-studio__rail-card {
+    display: none;
+  }
+  .retention-studio--full .retention-studio__summary {
+    position: sticky;
+    bottom: var(--rs-bar);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-md);
+  }
+  .retention-studio__summary dl {
+    display: grid;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin: 0;
+  }
+  .retention-studio__summary dt {
+    color: var(--text-secondary);
+    font-size: var(--rs-fs-cap);
+  }
+  .retention-studio__summary dd {
+    margin: 0;
+    font-size: var(--rs-fs-title);
+    font-weight: 700;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
 @media (max-width: 600px) {
   .age-strip__never span {
     writing-mode: vertical-rl;
@@ -41241,15 +41608,23 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     letter-spacing: 0.04em;
   }
   .age-strip {
-    padding: var(--space-3);
+    padding: var(--space-4) var(--space-3) var(--space-3);
   }
   .age-strip__zones {
     grid-template-columns: 1fr;
+    gap: var(--space-2);
   }
-  .age-strip__zone {
-    flex-direction: row;
+  .age-strip__zone,
+  .age-strip__zone:first-child {
+    display: grid;
+    grid-template-columns: 1fr 4.5ch 7.5rem;
     align-items: baseline;
-    justify-content: space-between;
+    gap: 0 var(--space-3);
+    padding: 0;
+    border-left: 0;
+  }
+  .age-strip__zone strong {
+    text-align: right;
   }
   .age-strip__zone strong {
     font-size: 1.125rem;
@@ -41261,25 +41636,46 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     min-height: 2.75rem;
   }
   .age-strip__canvas {
-    padding-top: 3.25rem;
+    padding-top: 3.5rem;
     padding-bottom: 4.5rem;
+  }
+  .age-strip__track {
+    height: 9rem;
   }
   .age-strip__handle--erase {
     bottom: -1.75rem;
+  }
+  .retention-studio__deck {
+    padding: var(--space-4) var(--space-3);
   }
   .record-card__row {
     grid-template-columns: 1fr;
     gap: 0;
   }
+  .studio-actions__inner {
+    padding: var(--space-3);
+  }
 }
+
 @media (prefers-reduced-motion: reduce) {
   .age-strip__bar,
+  .age-strip__flag,
   .plan-panel__seg,
-  .plan-panel__body,
-  .record-card__ribbon {
+  .record-card__fields,
+  .scope-tabs .tabs__trigger {
     transition: none;
   }
   .record-card__value--redacted,
+  .record-card__stays,
+  .record-card__ribbon,
+  .scope-tabs .tabs__content,
+  .ticker--pulse,
+  .plan-panel__body--busy .ticker {
+    animation: none;
+  }
+  .age-strip__handle--dragging .age-strip__flag {
+    will-change: auto;
+  }
   .age-strip__skeleton,
   .plan-panel__skeleton {
     animation: none;

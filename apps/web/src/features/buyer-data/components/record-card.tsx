@@ -145,7 +145,7 @@ export function RecordCard({
         ]}
       />
 
-      <p className="record-card__ribbon" data-testid="record-ribbon" role="status">
+      <p key={state} className="record-card__ribbon" data-testid="record-ribbon" role="status">
         {isProtected ? <ShieldIcon /> : null}
         {ribbon[state]}
       </p>

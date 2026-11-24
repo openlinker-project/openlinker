@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/buyer-data/components
  */
-import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { useMessages } from '../../../shared/i18n';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
@@ -26,6 +26,8 @@ export interface PeriodInputProps {
   disabled?: boolean;
   /** Un-ticking "never" restores the last period, but never one shorter than this. */
   restoreAtLeastDays?: number;
+  /** One calm line under the field, with a mark in front (the irreversibility note). */
+  footnote?: ReactNode;
 }
 
 const UNITS: readonly PeriodUnit[] = ['days', 'months', 'years'];
@@ -40,6 +42,7 @@ export function PeriodInput({
   error,
   disabled = false,
   restoreAtLeastDays = 1,
+  footnote,
 }: PeriodInputProps): ReactElement {
   const copy = useMessages('buyer-data').period;
   const labelId = useId();
@@ -84,7 +87,6 @@ export function PeriodInput({
       <span id={labelId} className="period-field__label">
         {label}
       </span>
-      {description !== undefined ? <span className="period-field__hint">{description}</span> : null}
       <div className="period-input">
         <Input
           type="number"
@@ -129,9 +131,21 @@ export function PeriodInput({
           <span>{neverLabel}</span>
         </label>
       </div>
+      {description !== undefined ? <span className="period-field__hint">{description}</span> : null}
       {error !== undefined ? (
         <span className="period-field__error" role="alert">
           {error}
+        </span>
+      ) : null}
+      {footnote !== undefined ? (
+        <span className="period-field__footnote" data-testid={`period-footnote-${name}`}>
+          <svg viewBox="0 0 16 16" className="period-field__footnote-icon" aria-hidden="true">
+            <path
+              d="M5 7V5a3 3 0 0 1 6 0v2h1v7H4V7h1Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z"
+              fill="currentColor"
+            />
+          </svg>
+          {footnote}
         </span>
       ) : null}
     </div>

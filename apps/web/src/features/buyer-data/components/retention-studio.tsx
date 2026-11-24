@@ -13,8 +13,10 @@
  *
  * @module apps/web/src/features/buyer-data/components
  */
-import { useMemo, useState, type ReactElement } from 'react';
-import { useMessages } from '../../../shared/i18n';
+import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useFormat, useMessages } from '../../../shared/i18n';
+import { Button } from '../../../shared/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { isBuyerDataEraseMode, type BuyerDataRules } from '../api/buyer-data.types';
 import { useBuyerDataAgeHistogram } from '../hooks/use-buyer-data-age-histogram';
@@ -26,6 +28,7 @@ import { AgeStrip, type StripCounts } from './age-strip';
 import { PeriodInput } from './period-input';
 import { PlanPanel } from './plan-panel';
 import { RecordCard } from './record-card';
+import { TickingNumber } from './ticking-number';
 
 export interface RetentionStudioProps {
   rules: BuyerDataRules;
@@ -43,6 +46,10 @@ export interface RetentionStudioProps {
   disabled?: boolean;
   /** The values are inherited (ghosted); changing one makes them the scope's own. */
   ghost?: boolean;
+  /** The master switch (and its status line); lives at the head of the consequences rail. */
+  railHead?: ReactNode;
+  /** Whatever closes the workbench (the channel comparison); scrolls under the sticky rail. */
+  footer?: ReactNode;
   /** Id prefix keeping test ids unique when two studios share a page. */
   name: string;
 }
@@ -57,10 +64,16 @@ export function RetentionStudio({
   variant = 'full',
   disabled = false,
   ghost = false,
+  railHead,
+  footer,
   name,
 }: RetentionStudioProps): ReactElement {
   const copy = useMessages('buyer-data').rules;
   const periodCopy = useMessages('buyer-data').period;
+  const studioCopy = useMessages('buyer-data').studio;
+  const planCopy = useMessages('buyer-data').plan;
+  const format = useFormat();
+  const [planOpen, setPlanOpen] = useState(false);
   const full = variant === 'full';
   const singleHistogram = useBuyerDataAgeHistogram(connectionId, {
     enabled: full && followerIds === undefined,
@@ -143,6 +156,74 @@ export function RetentionStudio({
     onChange({ ...rules, ...cuts });
   }
 
+  const periodInputs = (
+    <div className="retention-studio__inputs">
+      <PeriodInput
+        name={`${name}-hide`}
+        label={copy.hideLabel}
+        description={copy.hideDescription}
+        neverLabel={copy.neverLabel}
+        days={rules.hideAfterDays}
+        onChange={(days) => setCuts({ hideAfterDays: days, eraseAfterDays: rules.eraseAfterDays })}
+        error={hideError}
+        restoreAtLeastDays={90}
+        disabled={disabled}
+      />
+      <PeriodInput
+        name={`${name}-erase`}
+        label={copy.eraseLabel}
+        description={copy.eraseDescription}
+        neverLabel={copy.neverLabel}
+        days={rules.eraseAfterDays}
+        onChange={(days) => setCuts({ hideAfterDays: rules.hideAfterDays, eraseAfterDays: days })}
+        error={eraseError}
+        restoreAtLeastDays={Math.max(365, rules.hideAfterDays)}
+        disabled={disabled}
+        footnote={rules.eraseAfterDays > 0 ? copy.irreversibleBody : undefined}
+      />
+    </div>
+  );
+
+  const modeControl =
+    rules.eraseAfterDays > 0 ? (
+      <div className="retention-studio__mode">
+        <span className="period-field__label" id={`${name}-mode-label`}>
+          {copy.modeLabel}
+        </span>
+        <SegmentedControl
+          aria-labelledby={`${name}-mode-label`}
+          value={rules.mode}
+          onChange={(value) => {
+            if (isBuyerDataEraseMode(value)) onChange({ ...rules, mode: value });
+          }}
+          options={[
+            { value: 'personal-data', label: copy.modePersonal, disabled },
+            { value: 'whole-order', label: copy.modeWhole, disabled },
+          ]}
+        />
+        <p className="period-field__hint">
+          {rules.mode === 'whole-order' ? copy.modeDescriptionWhole : copy.modeDescriptionPersonal}
+        </p>
+      </div>
+    ) : null;
+
+  const recordCard = (
+    <RecordCard
+      hideAfterDays={rules.hideAfterDays}
+      eraseAfterDays={rules.eraseAfterDays}
+      mode={rules.mode}
+      handleAgeDays={activeAge}
+      defaultAgeDays={defaultAge}
+    />
+  );
+  const planPanel =
+    plan !== null ? (
+      <PlanPanel plan={plan} mode={rules.mode} invalid={issues.length > 0} note={planNote} />
+    ) : null;
+
+  const summaryNumber = (n: number | undefined): ReactNode =>
+    n === undefined ? '–' : <TickingNumber value={n} format={format.number} />;
+
   return (
     <div
       className={`retention-studio retention-studio--${variant}${ghost ? ' retention-studio--ghost' : ''}`}
@@ -150,87 +231,82 @@ export function RetentionStudio({
     >
       <div className="retention-studio__main">
         {full ? (
-          <AgeStrip
-            hideAfterDays={rules.hideAfterDays}
-            eraseAfterDays={rules.eraseAfterDays}
-            histogram={histogram}
-            histogramState={histogramState}
-            counts={counts}
-            onChange={setCuts}
-            onActive={setActiveAge}
-            disabled={disabled}
-            ghost={ghost}
-          />
-        ) : null}
-
-        <div className="retention-studio__inputs">
-          <PeriodInput
-            name={`${name}-hide`}
-            label={copy.hideLabel}
-            description={copy.hideDescription}
-            neverLabel={copy.neverLabel}
-            days={rules.hideAfterDays}
-            onChange={(days) =>
-              setCuts({ hideAfterDays: days, eraseAfterDays: rules.eraseAfterDays })
-            }
-            error={hideError}
-            restoreAtLeastDays={90}
-            disabled={disabled}
-          />
-          <PeriodInput
-            name={`${name}-erase`}
-            label={copy.eraseLabel}
-            description={copy.eraseDescription}
-            neverLabel={copy.neverLabel}
-            days={rules.eraseAfterDays}
-            onChange={(days) =>
-              setCuts({ hideAfterDays: rules.hideAfterDays, eraseAfterDays: days })
-            }
-            error={eraseError}
-            restoreAtLeastDays={Math.max(365, rules.hideAfterDays)}
-            disabled={disabled}
-          />
-        </div>
-
-        {rules.eraseAfterDays > 0 ? (
-          <div className="retention-studio__mode">
-            <span className="period-field__label" id={`${name}-mode-label`}>
-              {copy.modeLabel}
-            </span>
-            <SegmentedControl
-              aria-labelledby={`${name}-mode-label`}
-              value={rules.mode}
-              onChange={(value) => {
-                if (isBuyerDataEraseMode(value)) onChange({ ...rules, mode: value });
-              }}
-              options={[
-                { value: 'personal-data', label: copy.modePersonal, disabled },
-                { value: 'whole-order', label: copy.modeWhole, disabled },
-              ]}
+          <section className="retention-studio__instrument">
+            <AgeStrip
+              hideAfterDays={rules.hideAfterDays}
+              eraseAfterDays={rules.eraseAfterDays}
+              histogram={histogram}
+              histogramState={histogramState}
+              counts={counts}
+              onChange={setCuts}
+              onActive={setActiveAge}
+              disabled={disabled}
+              ghost={ghost}
             />
-            <p className="period-field__hint">
-              {rules.mode === 'whole-order'
-                ? copy.modeDescriptionWhole
-                : copy.modeDescriptionPersonal}
-            </p>
-            <p className="retention-studio__irreversible">{copy.irreversibleBody}</p>
-          </div>
-        ) : null}
-
-        <RecordCard
-          hideAfterDays={rules.hideAfterDays}
-          eraseAfterDays={rules.eraseAfterDays}
-          mode={rules.mode}
-          handleAgeDays={activeAge}
-          defaultAgeDays={defaultAge}
-        />
+            <div className="retention-studio__deck">
+              {periodInputs}
+              {modeControl}
+            </div>
+          </section>
+        ) : (
+          <>
+            {periodInputs}
+            {modeControl}
+            {recordCard}
+          </>
+        )}
+        {footer}
       </div>
 
       {full ? (
-        <div className="retention-studio__side">
-          {plan !== null ? (
-            <PlanPanel plan={plan} mode={rules.mode} invalid={issues.length > 0} note={planNote} />
+        <aside className="retention-studio__side" data-testid="retention-rail">
+          {railHead !== undefined ? (
+            <div className="retention-studio__rail-head">{railHead}</div>
           ) : null}
+          {planPanel !== null ? (
+            <div className="retention-studio__rail-plan">{planPanel}</div>
+          ) : null}
+          <div className="retention-studio__rail-card">{recordCard}</div>
+        </aside>
+      ) : null}
+
+      {full ? (
+        <div className="retention-studio__summary" data-testid="studio-summary">
+          <dl>
+            <div>
+              <dt>{planCopy.stays}</dt>
+              <dd>{summaryNumber(counts?.kept)}</dd>
+            </div>
+            <div>
+              <dt>{planCopy.hidden}</dt>
+              <dd>{summaryNumber(counts?.hidden)}</dd>
+            </div>
+            <div>
+              <dt>{planCopy.erased}</dt>
+              <dd>{summaryNumber(counts?.erased)}</dd>
+            </div>
+          </dl>
+          <Button
+            type="button"
+            tone="secondary"
+            className="button--sm"
+            data-testid="studio-summary-open"
+            onClick={() => setPlanOpen(true)}
+          >
+            {studioCopy.viewPlan}
+          </Button>
+          <Dialog open={planOpen} onOpenChange={setPlanOpen}>
+            <DialogContent className="retention-studio__sheet" aria-describedby={undefined}>
+              <DialogTitle>{studioCopy.sheetTitle}</DialogTitle>
+              {planPanel}
+              {recordCard}
+              <DialogClose asChild>
+                <Button type="button" tone="secondary">
+                  {studioCopy.close}
+                </Button>
+              </DialogClose>
+            </DialogContent>
+          </Dialog>
         </div>
       ) : null}
     </div>

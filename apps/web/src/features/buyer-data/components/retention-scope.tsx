@@ -12,7 +12,7 @@
  *
  * @module apps/web/src/features/buyer-data/components
  */
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, type ReactElement, type ReactNode } from 'react';
 import { useMessages } from '../../../shared/i18n';
 import { Switch } from '../../../shared/ui/switch';
 import type { BuyerDataPreview, BuyerDataRules } from '../api/buyer-data.types';
@@ -42,6 +42,8 @@ export interface RetentionScopeProps {
   followerIds?: readonly string[];
   /** One line saying whose orders the plan counts. */
   planNote?: string;
+  /** Closes the workbench under the studio (the channel comparison). */
+  footer?: ReactNode;
   name: string;
 }
 
@@ -56,6 +58,7 @@ export function RetentionScope({
   onPlan,
   followerIds,
   planNote,
+  footer,
   name,
 }: RetentionScopeProps): ReactElement {
   const copy = useMessages('buyer-data').scope;
@@ -88,29 +91,30 @@ export function RetentionScope({
       ? copy.hintReady
       : copy.hintWaiting;
 
+  const railHead = showSwitch ? (
+    <div
+      className={`retention-scope__switch${rules.enabled ? ' retention-scope__switch--on' : ''}`}
+    >
+      <Switch
+        checked={rules.enabled}
+        disabled={locked || (!canEnable && !rules.enabled)}
+        onCheckedChange={(enabled) => onChange({ ...rules, enabled })}
+        aria-describedby={`${name}-switch-hint`}
+        data-testid={`buyer-data-switch-${name}`}
+        label={copy.switchLabel}
+      />
+      <p
+        id={`${name}-switch-hint`}
+        className="retention-scope__hint"
+        data-testid="buyer-data-switch-hint"
+      >
+        {hint}
+      </p>
+    </div>
+  ) : undefined;
+
   return (
     <div className="retention-scope" data-testid={`retention-scope-${name}`}>
-      {showSwitch ? (
-        <div
-          className={`retention-scope__switch${rules.enabled ? ' retention-scope__switch--on' : ''}`}
-        >
-          <Switch
-            checked={rules.enabled}
-            disabled={locked || (!canEnable && !rules.enabled)}
-            onCheckedChange={(enabled) => onChange({ ...rules, enabled })}
-            aria-describedby={`${name}-switch-hint`}
-            data-testid={`buyer-data-switch-${name}`}
-            label={copy.switchLabel}
-          />
-          <p
-            id={`${name}-switch-hint`}
-            className="retention-scope__hint"
-            data-testid="buyer-data-switch-hint"
-          >
-            {hint}
-          </p>
-        </div>
-      ) : null}
       <RetentionStudio
         name={name}
         rules={rules}
@@ -121,6 +125,8 @@ export function RetentionScope({
         planNote={planNote}
         disabled={locked}
         ghost={ghost}
+        railHead={railHead}
+        footer={footer}
       />
     </div>
   );

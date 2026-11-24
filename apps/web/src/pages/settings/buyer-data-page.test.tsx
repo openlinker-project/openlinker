@@ -86,16 +86,31 @@ describe('BuyerDataPage (#4289)', () => {
     expect(screen.queryByTestId('buyer-data-page')).not.toBeInTheDocument();
   });
 
-  it('should say these are defaults and that the rules are off', async () => {
+  it('should say these are defaults behind a quiet info mark and that the rules are off', async () => {
     render();
-    expect(await screen.findByText('These are default settings')).toBeInTheDocument();
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'These are default settings' })
+    );
     expect(
-      screen.getByText(/Every new connection and every one without its own rules/)
+      await screen.findByText(/Every new connection and every one without its own rules/)
     ).toBeInTheDocument();
     expect(screen.getByTestId('buyer-data-untouched')).toHaveTextContent(
       'Data in your shop and marketplace is not changed.'
     );
-    expect(screen.getByRole('switch', { name: 'Turn on the rules' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Turn on the rules' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
+  });
+
+  it('should put the master switch in the sticky rail and offer a plan summary for phones', async () => {
+    render();
+    const rail = await screen.findByTestId('retention-rail');
+    expect(rail).toContainElement(screen.getByRole('switch', { name: 'Turn on the rules' }));
+    expect(rail).toContainElement(await screen.findByTestId('plan-panel'));
+    expect(screen.getByTestId('studio-summary')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('studio-summary-open'));
+    expect(await screen.findByRole('dialog', { name: 'What will happen' })).toBeInTheDocument();
   });
 
   it('should keep the switch locked until the plan is calculated, then confirm before saving the knobs', async () => {

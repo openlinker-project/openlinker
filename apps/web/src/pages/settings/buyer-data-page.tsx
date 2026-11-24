@@ -21,6 +21,7 @@ import { interpolate, useMessages } from '../../shared/i18n';
 import { AccessGate } from '../../shared/ui/access-gate';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
+import { Infotip } from '../../shared/ui/infotip';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { AccessDeniedState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -150,6 +151,64 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
     }),
   ];
 
+  const comparison = (
+    <section className="scope-compare" aria-labelledby="scope-compare-title">
+      <h3 id="scope-compare-title" className="rate-limit-section__title">
+        {COPY.connectionsTitle}
+      </h3>
+      {connections.length === 0 ? (
+        <p className="rate-limit-section__help">{COPY.noConnections}</p>
+      ) : (
+        <>
+          <p className="rate-limit-section__help">
+            {interpolate(COPY.connectionsHelp, { own: ownCount, total: connections.length })}
+          </p>
+          <div className="data-table__container">
+            <table className="data-table scope-compare__table" data-testid="buyer-data-connections">
+              <thead>
+                <tr>
+                  <th scope="col">{COPY.columnConnection}</th>
+                  <th scope="col">{COPY.columnHide}</th>
+                  <th scope="col">{COPY.columnErase}</th>
+                  <th scope="col">{COPY.columnSource}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {connections.map((c) => {
+                  const override = overrideOf(c);
+                  const r = resolveBuyerDataRules(override, draft);
+                  return (
+                    <tr
+                      key={c.id}
+                      className={tab === c.id ? 'scope-compare__row--active' : undefined}
+                    >
+                      <td>
+                        <button
+                          type="button"
+                          className="scope-compare__open"
+                          onClick={() => setTab(c.id)}
+                        >
+                          {c.name}
+                        </button>
+                      </td>
+                      <td data-label={COPY.columnHide}>{shortPeriod(r.hideAfterDays)}</td>
+                      <td data-label={COPY.columnErase}>{shortPeriod(r.eraseAfterDays)}</td>
+                      <td data-label={COPY.columnSource}>
+                        <StatusBadge tone={override === null ? 'neutral' : 'info'}>
+                          {override === null ? COPY.inherit : COPY.own}
+                        </StatusBadge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+
   function setConnection(connection: Connection, next: BuyerDataOverride | null): void {
     setConnDrafts((current) => {
       const copy = { ...current };
@@ -232,14 +291,6 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
       }}
       data-testid="buyer-data-page"
     >
-      <Alert tone="info" title={COPY.defaultsTitle} density="compact">
-        <ul className="buyer-data-points">
-          <li>{COPY.defaultsPoint1}</li>
-          <li>{COPY.defaultsPoint2}</li>
-          <li data-testid="buyer-data-untouched">{COPY.untouched}</li>
-        </ul>
-      </Alert>
-
       <Tabs value={tab} onValueChange={setTab} className="scope-tabs">
         <TabsList aria-label={scopeCopy.tabsLabel}>
           <TabsTrigger value={DEFAULTS_TAB}>{scopeCopy.defaultsTab}</TabsTrigger>
@@ -248,7 +299,11 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
             return (
               <TabsTrigger key={c.id} value={c.id}>
                 {c.name}
-                {own ? <span className="scope-tabs__dot" aria-label={scopeCopy.ownChip} /> : null}
+                {own ? (
+                  <span className="scope-tabs__dot" aria-label={scopeCopy.ownChip} />
+                ) : (
+                  <span className="scope-tabs__dot scope-tabs__dot--linked" aria-hidden="true" />
+                )}
               </TabsTrigger>
             );
           })}
@@ -267,6 +322,7 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                 : undefined
             }
             onChange={setDraft}
+            footer={comparison}
             onPlan={(preview) => {
               plans.current[DEFAULTS_TAB] = preview;
             }}
@@ -335,6 +391,7 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                 savedEnabled={resolveBuyerDataRules(savedOverride(c), saved).enabled}
                 ghost={!own}
                 showSwitch={own}
+                footer={comparison}
                 // A grab on a linked scope makes the shown values its own, switched off.
                 onChange={(next) =>
                   setConnection(c, overrideFromRules(own ? next : { ...next, enabled: false }))
@@ -348,77 +405,25 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
         })}
       </Tabs>
 
-      <section className="scope-compare" aria-labelledby="scope-compare-title">
-        <h3 id="scope-compare-title" className="rate-limit-section__title">
-          {COPY.connectionsTitle}
-        </h3>
-        {connections.length === 0 ? (
-          <p className="rate-limit-section__help">{COPY.noConnections}</p>
-        ) : (
-          <>
-            <p className="rate-limit-section__help">
-              {interpolate(COPY.connectionsHelp, { own: ownCount, total: connections.length })}
-            </p>
-            <div className="data-table__container">
-              <table
-                className="data-table scope-compare__table"
-                data-testid="buyer-data-connections"
-              >
-                <thead>
-                  <tr>
-                    <th scope="col">{COPY.columnConnection}</th>
-                    <th scope="col">{COPY.columnHide}</th>
-                    <th scope="col">{COPY.columnErase}</th>
-                    <th scope="col">{COPY.columnSource}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {connections.map((c) => {
-                    const override = overrideOf(c);
-                    const r = resolveBuyerDataRules(override, draft);
-                    return (
-                      <tr
-                        key={c.id}
-                        className={tab === c.id ? 'scope-compare__row--active' : undefined}
-                      >
-                        <td>
-                          <button
-                            type="button"
-                            className="scope-compare__open"
-                            onClick={() => setTab(c.id)}
-                          >
-                            {c.name}
-                          </button>
-                        </td>
-                        <td data-label={COPY.columnHide}>{shortPeriod(r.hideAfterDays)}</td>
-                        <td data-label={COPY.columnErase}>{shortPeriod(r.eraseAfterDays)}</td>
-                        <td data-label={COPY.columnSource}>
-                          <StatusBadge tone={override === null ? 'neutral' : 'info'}>
-                            {override === null ? COPY.inherit : COPY.own}
-                          </StatusBadge>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </section>
-
-      <div className="form-actions buyer-data-page__actions">
-        <Button
-          type="submit"
-          disabled={!changed || issues.length > 0 || saving}
-          data-testid="buyer-data-save"
-        >
-          {COPY.save}
-        </Button>
-        <Link className="button button--secondary" to="/settings">
-          {COPY.cancel}
-        </Link>
-        {changed ? <span className="buyer-data-page__draft">{COPY.draftHint}</span> : null}
+      <div className="studio-actions" data-testid="buyer-data-actions">
+        <div className="studio-actions__inner">
+          <Button
+            type="submit"
+            disabled={!changed || issues.length > 0 || saving}
+            data-testid="buyer-data-save"
+          >
+            {COPY.save}
+          </Button>
+          <Link className="button button--secondary" to="/settings">
+            {COPY.cancel}
+          </Link>
+          {changed ? (
+            <span className="studio-actions__draft" role="status">
+              <i className="studio-actions__dot" aria-hidden="true" />
+              {COPY.draftHint}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -449,7 +454,26 @@ export function BuyerDataPage(): ReactElement {
       backTo={{ to: '/settings', label: COPY.settings }}
       eyebrow={COPY.settings}
       title={COPY.title}
-      description={COPY.description}
+      description={
+        <>
+          {COPY.description}{' '}
+          <Infotip
+            ariaLabel={COPY.defaultsTitle}
+            definitions={[
+              {
+                term: COPY.defaultsTitle,
+                text: (
+                  <ul className="buyer-data-points">
+                    <li>{COPY.defaultsPoint1}</li>
+                    <li>{COPY.defaultsPoint2}</li>
+                    <li data-testid="buyer-data-untouched">{COPY.untouched}</li>
+                  </ul>
+                ),
+              },
+            ]}
+          />
+        </>
+      }
     >
       <AccessGate
         require="connections:write"

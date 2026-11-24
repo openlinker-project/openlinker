@@ -27,6 +27,7 @@ import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { BUYER_DATA_MIN_DAYS } from '../lib/buyer-data-config';
 import { useShortPeriod } from '../hooks/use-short-period';
+import { TickingNumber } from './ticking-number';
 import type { BuyerDataAgeHistogram } from '../api/buyer-data.types';
 import {
   AXIS_MONTHS,
@@ -327,7 +328,7 @@ export function AgeStrip({
       <>
         <strong className={counts.calculating ? 'age-strip__stat--busy' : undefined}>
           {counts.estimated || counts.calculating ? '≈ ' : ''}
-          {format.number(n)}
+          <TickingNumber value={n} format={format.number} />
         </strong>
         {already !== undefined && already > 0 ? (
           <small className="age-strip__already">
@@ -341,17 +342,22 @@ export function AgeStrip({
     <div className={`age-strip${ghost ? ' age-strip--ghost' : ''}`} data-testid="age-strip">
       <div className="age-strip__zones">
         <div className="age-strip__zone age-strip__zone--kept">
-          <span className="age-strip__zone-label">{copy.zoneKept}</span>
+          <span className="age-strip__zone-label">
+            <i className="age-strip__swatch" aria-hidden="true" />
+            {copy.zoneKept}
+          </span>
           {stat(counts?.kept)}
         </div>
         <div className="age-strip__zone age-strip__zone--hidden">
           <span className="age-strip__zone-label">
+            <i className="age-strip__swatch" aria-hidden="true" />
             {copy.zoneHidden} <small>{copy.zoneHiddenNote}</small>
           </span>
           {stat(counts?.hidden, counts?.alreadyHidden)}
         </div>
         <div className="age-strip__zone age-strip__zone--erased">
           <span className="age-strip__zone-label">
+            <i className="age-strip__swatch" aria-hidden="true" />
             {copy.zoneErased} <small>{copy.zoneErasedNote}</small>
           </span>
           {stat(counts?.erased, counts?.alreadyErased)}
