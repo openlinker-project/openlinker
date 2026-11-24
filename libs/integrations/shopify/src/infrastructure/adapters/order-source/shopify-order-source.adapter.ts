@@ -47,6 +47,7 @@
  * @implements {OrderFeedDateBootstrap}
  * @implements {OrderWindowReader}
  */
+import { ShopifyAuthFailureClassifierAdapter } from '../shopify-auth-failure-classifier.adapter';
 import type {
   ExecuteRefundCommand,
   IncomingOrder,
@@ -161,6 +162,8 @@ const MAX_EXTRA_LINE_PAGES = 20;
  * through its `OrderSource` adapter, so a dispatch on an order that came from
  * Shopify is written back by the same code the destination role uses.
  */
+const AUTH_CLASSIFIER = new ShopifyAuthFailureClassifierAdapter();
+
 export class ShopifyOrderSourceAdapter
   implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback, SourceOptionsReader, OrderFulfillmentReadback,
     OrderFeedBootstrap, OrderFeedDateBootstrap, OrderWindowReader
@@ -256,12 +259,12 @@ export class ShopifyOrderSourceAdapter
   }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
-    if (input.fromCursor === null) {
-      // A cursor-less read is the whole history. Without the scope Shopify shows
-      // only the last 60 days, so it would truncate without a word.
+    const cursor = parseShopifyFeedCursor(input.fromCursor, this.connection.id);
+    if (cursor.updatedAt === null) {
+      // An empty cursor (null, empty or blank) is the whole history. Without the
+      // scope Shopify shows only the last 60 days, so it would truncate without a word.
       await this.assertOldOrdersReadable(null);
     }
-    const cursor = parseShopifyFeedCursor(input.fromCursor, this.connection.id);
     const settledBefore = Date.now() - SETTLE_WINDOW_MS;
     const limit = Math.max(1, input.limit);
     const wanted = input.eventTypes === undefined ? null : new Set(input.eventTypes);
@@ -510,6 +513,11 @@ export class ShopifyOrderSourceAdapter
       }
       return scopes.some((scope) => scope.handle === READ_ALL_ORDERS_SCOPE);
     } catch (error) {
+      if (AUTH_CLASSIFIER.isCredentialRejected(error)) {
+        // A revoked or expired token must reach the host's auth classifier so the
+        // connection moves to needs_reauth, not be reported as a failed start check.
+        throw error;
+      }
       this.logger.warn(
         `Could not read the granted scopes to check ${READ_ALL_ORDERS_SCOPE}; an import reaching back more than ` +
           `60 days is refused (connection: ${this.connection.id}): ${error instanceof Error ? error.message : String(error)}`,

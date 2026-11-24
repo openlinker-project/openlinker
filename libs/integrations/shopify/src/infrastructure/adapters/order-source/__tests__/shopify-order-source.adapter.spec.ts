@@ -9,6 +9,7 @@ import {
 
 import { ShopifyAdapterFactory } from '../../../../application/shopify-adapter.factory';
 import type { ShopifyResolution } from '../../../../application/shopify-adapter.factory';
+import { ShopifyApiError } from '../../../../domain/exceptions/shopify-api.error';
 import { ShopifyOrderTooLargeException } from '../../../../domain/exceptions/shopify-order-too-large.exception';
 import { ShopifyReturnNotFoundException } from '../../../../domain/exceptions/shopify-return-not-found.exception';
 import { ShopifyUserErrorsException } from '../../../../domain/exceptions/shopify-user-errors.exception';
@@ -174,6 +175,19 @@ describe('ShopifyOrderSourceAdapter', () => {
         OrderSyncStartUnavailableError,
       );
       expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('should rethrow an auth rejection from the scope check so the connection can move to needs_reauth', async () => {
+      const rejection = new ShopifyApiError(401, 'Unauthorized');
+      const query = jest.fn().mockRejectedValue(rejection);
+      await expect(build(query).listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBe(rejection);
+    });
+
+    it('should run the whole-history scope check when the cursor is blank', async () => {
+      const query = jest.fn().mockResolvedValue({ currentAppInstallation: { accessScopes: [] } });
+      await expect(build(query).listOrderFeed({ fromCursor: '  ', limit: 10 })).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError,
+      );
     });
 
     it('should refuse a cursor-less read when the scopes cannot be read', async () => {
