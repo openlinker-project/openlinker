@@ -219,6 +219,8 @@
     },
     "close": "Close the tour",
     "collapse": "Fold to the steps only",
+    "doneToastBody": "That is all. You can return to it from What's new.",
+    "doneToastTitle": "Guide finished",
     "expand": "Show the text",
     "finish": "Done",
     "goToStep": "Back to this step's page",
@@ -278,6 +280,7 @@
     "releasesNav": "Releases",
     "setNow": "Set up now",
     "setupTitle": "Still to set up",
+    "setupTitleView": "What changed",
     "showWhere": "Show me where",
     "title": "What's new in OpenLinker"
   }

@@ -223,6 +223,8 @@
     },
     "close": "Zamknij przewodnik",
     "collapse": "Zwiń do samych kroków",
+    "doneToastBody": "To wszystko. Wrócisz do niego w „Co nowego\".",
+    "doneToastTitle": "Przewodnik zakończony",
     "expand": "Rozwiń treść",
     "finish": "Gotowe",
     "goToStep": "Wróć na stronę kroku",
@@ -282,6 +284,7 @@
     "releasesNav": "Wydania",
     "setNow": "Ustaw teraz",
     "setupTitle": "Do skonfigurowania",
+    "setupTitleView": "Co się zmieniło",
     "showWhere": "Pokaż, gdzie to jest",
     "title": "Co nowego w OpenLinker"
   }

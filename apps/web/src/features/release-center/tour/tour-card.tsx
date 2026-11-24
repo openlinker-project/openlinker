@@ -21,6 +21,7 @@ import {
   type ReactElement,
 } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { useToast } from '../../../shared/ui/toast-provider';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
@@ -61,6 +62,14 @@ interface TourCardProps {
 
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function useOptionalToast(): ReturnType<typeof useToast> | null {
+  try {
+    return useToast();
+  } catch {
+    return null;
+  }
 }
 
 export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }: TourCardProps): ReactElement | null {
@@ -104,6 +113,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   // Which side of the screen the highlighted element has scrolled off, so the operator can be pointed back.
   const [offscreen, setOffscreen] = useState<'above' | 'below' | null>(null);
   const reasonId = useId();
+  const toast = useOptionalToast();
   const location = useLocation();
   // On a phone the card can fold down to the steps alone, so what it points at stays in view.
   const [collapsed, setCollapsed] = useState(false);
@@ -398,8 +408,10 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     if (!showcase && canConfig && step.importance === 'optional' && !done && state.target === 'found') {
       steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
     }
-    if (isLast) onClose();
-    else dispatch({ type: 'next' });
+    if (isLast) {
+      toast?.showToast({ tone: 'success', title: tour.doneToastTitle, description: tour.doneToastBody });
+      onClose();
+    } else dispatch({ type: 'next' });
   };
 
   // "Stays as it is" is a decision too: it records the step as handled, so it also unblocks a required step.
@@ -601,11 +613,6 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                 {!canConfig ? tour.viewOnly : step.importance === 'required' ? tour.required : tour.optional}
               </span>
             )}
-            {showcase && showcase.stopCount > 1 ? (
-              <span className="tour-card__stop" key={showcase.stopIndex}>
-                {interpolate(tour.stopOf, { current: showcase.stopIndex + 1, total: showcase.stopCount })}
-              </span>
-            ) : null}
           </div>
           <p className="tour-card__body">
             {(onFollowPage ? (stepCopy as Record<string, string | undefined>)[`follow${followIndex}`] : undefined) ??

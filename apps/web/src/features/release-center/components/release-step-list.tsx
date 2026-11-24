@@ -79,7 +79,8 @@ export function ReleaseStepList({
     const connection = instance.connectionId ? connectionById.get(instance.connectionId) : undefined;
     const platformType = connection?.platformType ?? null;
     const chips: ReactElement[] = [];
-    if (parts.importance) {
+    // Someone who cannot change settings reads the card note once; a chip per step would only repeat it.
+    if (parts.importance && canWriteSteps) {
       chips.push(
         <span
           key="importance"
@@ -156,7 +157,7 @@ export function ReleaseStepList({
             {panel.goBack} <ReleaseIcon name="arrow-right" size={12} />
           </Button>
         ) : null}
-        {closed ? (
+        {!canWriteSteps ? null : closed ? (
           <ReadOnlyLock active={!canWriteSteps} message={panel.needsAdmin}>
             <Button
               className="button--xs"

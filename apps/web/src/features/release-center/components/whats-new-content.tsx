@@ -21,6 +21,7 @@ import {
   pageOfIndex,
   paginateReleases,
 } from '../lib/paginate-releases';
+import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { notificationStatusOf } from '../lib/release-notifications';
 import { BaselineMarkdown } from './baseline-markdown';
 import { useReleaseCenterView } from './release-center-provider';
@@ -29,6 +30,7 @@ import { ReleaseCard } from './release-card';
 export function WhatsNewContent(): ReactElement {
   const copy = useMessages('release-center').whatsNew;
   const view = useReleaseCenterView();
+  const { canWriteSteps } = useReleaseCenterAccess();
   const cards = view
     ? view.notifications.filter(
         (notification) =>
@@ -99,7 +101,7 @@ export function WhatsNewContent(): ReactElement {
       <aside className="whats-new__rail" data-tour="whats-new-setup">
       {!view ? null : cards.length > 0 ? (
         <section className="whats-new__setup" aria-label={copy.setupTitle}>
-          <h3 className="whats-new__setup-title">{copy.setupTitle}</h3>
+          <h3 className="whats-new__setup-title">{canWriteSteps ? copy.setupTitle : copy.setupTitleView}</h3>
           {cards.map((notification) => (
             <ReleaseCard
               key={notification.itemKey}

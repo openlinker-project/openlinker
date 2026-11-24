@@ -48,7 +48,11 @@ export function ReleaseWalkAll({ onNavigate }: { onNavigate: () => void }): Reac
   };
 
   return (
-    <article className={`msg msg--${finished || !canWriteSteps || view.summary.requiredLeft === 0 ? 'info' : 'warning'} msg--pinned`}>
+    <article
+      onClick={(event) => {
+        if (!(event.target instanceof Element && event.target.closest('button'))) start();
+      }}
+      className={`msg msg--${finished || !canWriteSteps || view.summary.requiredLeft === 0 ? 'info' : 'warning'} msg--pinned msg--clickable`}>
       <span className="msg__icon">
         <ReleaseIcon name={finished ? 'check' : 'play'} size={16} />
       </span>

@@ -135,14 +135,11 @@ export function ReleaseBell(): ReactElement | null {
         >
           <ReleaseIcon name="bell" size={18} />
           <span className="release-bell__label">{bell.label}</span>
-          <span
-            key={summary.count}
-            className="release-bell__badge"
-            data-zero={summary.count === 0}
-            aria-hidden="true"
-          >
-            {summary.count}
-          </span>
+          {summary.count > 0 ? (
+            <span key={summary.count} className="release-bell__badge" aria-hidden="true">
+              {summary.count}
+            </span>
+          ) : null}
           {summary.showDot ? <span className="release-bell__dot" aria-hidden="true" /> : null}
           <span className="sr-only">{srText}</span>
         </button>
