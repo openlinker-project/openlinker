@@ -87,6 +87,7 @@ describe('BuyerDataSection (#4289)', () => {
       toHide: 12,
       toErase: 3,
       total: 100,
+      totalOrders: 250,
       skippedProtected: 0,
       samples: [{ orderRef: 'OL-1', placedAt: '2024-12-01T10:00:00.000Z', maskedBuyer: 'J. K.' }],
     });

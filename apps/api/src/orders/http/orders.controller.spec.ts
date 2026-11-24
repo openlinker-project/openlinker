@@ -210,6 +210,7 @@ describe('OrdersController', () => {
       findSearchTextReindexPage: jest.fn(),
       rewriteSearchText: jest.fn(),
       countBuyerDataRetentionCandidates: jest.fn(),
+      countVisibleOrdersForBuyerData: jest.fn(),
       findBuyerDataRetentionSamples: jest.fn(),
       hideOrdersForBuyerDataRetention: jest.fn(),
       findErasableOrdersForBuyerDataRetention: jest.fn(),

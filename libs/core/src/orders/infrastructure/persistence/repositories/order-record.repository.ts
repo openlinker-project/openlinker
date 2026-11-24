@@ -835,7 +835,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     // #4289: hidden orders are out of the default list and search. `hidden: true`
     // is the explicit "show hidden" view. Detail reads (`findById`) do not go
     // through this builder, so a direct link to a hidden order still opens.
-    qb.andWhere(filters.hidden === true ? 'rec."hiddenAt" IS NOT NULL' : 'rec."hiddenAt" IS NULL');
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(filters.hidden));
 
     if (filters.search !== undefined) {
       // #3527 — free-text search over the denormalized, diacritic-folded
@@ -2825,10 +2825,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
    * disagreement stops being visible. This helper carries only what is
    * genuinely common; the asymmetry stays where a reader can see it.
    */
+  /**
+   * #4289 - the ONE definition of the hidden-order scope. The list builder and
+   * every summary reader apply it, so the KPI cards cannot count orders the
+   * list excludes by default.
+   */
+  private static hiddenScopePredicate(hidden: boolean | undefined): string {
+    return hidden === true ? 'rec."hiddenAt" IS NOT NULL' : 'rec."hiddenAt" IS NULL';
+  }
+
   private static applySummaryScope(
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     filters: OrderHealthSummaryFilters
   ): void {
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(filters.hidden));
     if (filters.sourceConnectionId) {
       qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
         sourceConnectionId: filters.sourceConnectionId,
@@ -3540,6 +3550,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
       total: Number(row?.total ?? 0),
       skippedProtected: Number(row?.skipped ?? 0),
     };
+  }
+
+  async countVisibleOrdersForBuyerData(connectionId?: string): Promise<number> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where(OrderRecordRepository.hiddenScopePredicate(false));
+    if (connectionId !== undefined) {
+      qb.andWhere('rec.sourceConnectionId = :connectionId', { connectionId });
+    }
+    return qb.getCount();
   }
 
   async findBuyerDataRetentionSamples(

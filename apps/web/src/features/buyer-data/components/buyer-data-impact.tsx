@@ -40,9 +40,9 @@ export function BuyerDataImpact({
   if (preview === undefined) {
     return isLoading ? <p className="muted-text">{copy.loading}</p> : null;
   }
-  if (preview.total === 0) return <p className="muted-text">{copy.empty}</p>;
+  if (preview.totalOrders === 0) return <p className="muted-text">{copy.empty}</p>;
 
-  const stays = Math.max(0, preview.total - (rules.hideAfterDays > 0 ? preview.toHide : 0));
+  const stays = Math.max(0, preview.totalOrders - (rules.hideAfterDays > 0 ? preview.toHide : 0));
   return (
     <div data-testid="buyer-data-impact" aria-busy={isLoading}>
       <div className="kpi-grid">

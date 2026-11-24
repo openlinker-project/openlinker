@@ -49,6 +49,8 @@ export interface BuyerDataRetentionPreviewInput {
 }
 
 export interface BuyerDataRetentionPreview extends BuyerDataRetentionCounts {
+  /** Every order still on the list in scope, hidden ones excluded. */
+  readonly totalOrders: number;
   readonly samples: readonly BuyerDataRetentionSample[];
 }
 

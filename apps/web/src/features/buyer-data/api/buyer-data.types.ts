@@ -50,6 +50,8 @@ export interface BuyerDataPreview {
   toHide: number;
   toErase: number;
   total: number;
+  /** Every order still on the list in scope; `total` only counts the ones a rule reaches. */
+  totalOrders: number;
   skippedProtected: number;
   samples: BuyerDataPreviewSample[];
 }

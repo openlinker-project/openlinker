@@ -15,6 +15,7 @@ const previewSchema = z.object({
   toHide: z.number(),
   toErase: z.number(),
   total: z.number(),
+  totalOrders: z.number(),
   skippedProtected: z.number().default(0),
   samples: z
     .array(z.object({ orderRef: z.string(), placedAt: z.string(), maskedBuyer: z.string() }))

@@ -25,6 +25,7 @@ describe('BuyerDataRetentionService', () => {
       countBuyerDataRetentionCandidates: jest
         .fn()
         .mockResolvedValue({ toHide: 2, toErase: 1, total: 2, skippedProtected: 3 }),
+      countVisibleOrdersForBuyerData: jest.fn().mockResolvedValue(10),
       findBuyerDataRetentionSamples: jest.fn().mockResolvedValue([]),
       hideOrdersForBuyerDataRetention: jest.fn().mockResolvedValue(0),
       findErasableOrdersForBuyerDataRetention: jest.fn().mockResolvedValue([]),
@@ -55,7 +56,12 @@ describe('BuyerDataRetentionService', () => {
       eraseAfterDays: 365,
       mode: 'whole-order',
     });
-    expect(result).toMatchObject({ toHide: 2, toErase: 1, skippedProtected: 3 });
+    expect(result).toMatchObject({
+      toHide: 2,
+      toErase: 1,
+      skippedProtected: 3,
+      totalOrders: 10,
+    });
     expect(orders.countBuyerDataRetentionCandidates.mock.calls[0][0].eraseHides).toBe(true);
     expect(orders.hideOrdersForBuyerDataRetention).not.toHaveBeenCalled();
     expect(orders.erasePersonalDataForRetention).not.toHaveBeenCalled();

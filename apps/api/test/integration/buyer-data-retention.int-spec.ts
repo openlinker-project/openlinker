@@ -140,4 +140,27 @@ describe('Buyer data retention (integration)', () => {
     expect(row.personalDataErasedAt).not.toBeNull();
     expect(row.hiddenAt).not.toBeNull();
   });
+
+  it('should keep hidden orders out of the list total, the summary and the preview total alike', async () => {
+    const hidden = await seed('ol_order_ret_h');
+    await seed('ol_order_ret_v');
+    await harness
+      .getDataSource()
+      .getRepository(OrderRecordOrmEntity)
+      .update({ internalOrderId: hidden.internalOrderId }, { hiddenAt: new Date() });
+
+    const list = await repository.findMany({}, { limit: 20, offset: 0 });
+    const summary = await repository.countByHealth({});
+    const preview = await service.preview({
+      hideAfterDays: 0,
+      eraseAfterDays: 0,
+      mode: 'personal-data',
+    });
+    const shownHidden = await repository.countMany({ hidden: true });
+
+    expect(list.total).toBe(1);
+    expect(summary.total).toBe(list.total);
+    expect(preview.totalOrders).toBe(list.total);
+    expect(shownHidden).toBe(1);
+  });
 });

@@ -275,6 +275,8 @@ export interface FailedSyncValueSummary {
  * contradiction (counting all buckets while filtering to one).
  */
 export interface OrderHealthSummaryFilters {
+  /** #4289: same default as the list - hidden orders are excluded unless `true`. */
+  hidden?: boolean;
   sourceConnectionId?: string;
   customerId?: string;
   createdFrom?: Date;

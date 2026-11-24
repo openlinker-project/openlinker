@@ -199,6 +199,7 @@ export function createMockApiClient(
         toHide: 120,
         toErase: 40,
         total: 1000,
+        totalOrders: 1500,
         skippedProtected: 3,
         samples: [{ orderRef: 'OL-91240', placedAt: '2024-12-01T10:00:00.000Z', maskedBuyer: 'J. K.' }],
       }),

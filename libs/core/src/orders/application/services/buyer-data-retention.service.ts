@@ -91,11 +91,12 @@ export class BuyerDataRetentionService implements IBuyerDataRetentionService {
       eraseBefore: cutoff(now, input.eraseAfterDays),
       eraseHides: input.mode === 'whole-order',
     };
-    const [counts, samples] = await Promise.all([
+    const [counts, totalOrders, samples] = await Promise.all([
       this.orders.countBuyerDataRetentionCandidates(scope),
+      this.orders.countVisibleOrdersForBuyerData(input.connectionId),
       this.orders.findBuyerDataRetentionSamples(scope, BUYER_DATA_PREVIEW_SAMPLE_COUNT),
     ]);
-    return { ...counts, samples };
+    return { ...counts, totalOrders, samples };
   }
 
   async runOnce(now: Date = new Date()): Promise<BuyerDataRetentionRunResult> {

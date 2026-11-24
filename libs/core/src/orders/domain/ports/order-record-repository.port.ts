@@ -884,6 +884,13 @@ export interface OrderRecordRepositoryPort {
   ): Promise<BuyerDataRetentionCounts>;
 
   /**
+   * Buyer data retention (#4289): every order still on the list (not hidden)
+   * in the scope's connection, or in all of them. The candidate counts only
+   * cover orders past the shortest period, so "what stays" needs this.
+   */
+  countVisibleOrdersForBuyerData(connectionId?: string): Promise<number>;
+
+  /**
    * Up to `limit` example orders the scope would touch, newest first. Carries
    * no personal data: the reference and date are the order's own, the buyer
    * is always a masked placeholder.

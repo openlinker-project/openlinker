@@ -55,6 +55,10 @@ export class BuyerDataRetentionPreviewResponseDto {
   @ApiProperty({ description: 'Orders whose personal data would be erased.' }) toErase!: number;
   @ApiProperty({ description: 'Distinct orders that would be hidden or erased.' }) total!: number;
   @ApiProperty({
+    description: 'Every order still on the list (not hidden) in scope, past the periods or not.',
+  })
+  totalOrders!: number;
+  @ApiProperty({
     description:
       'Orders the rule would reach but skips: an open hold, an open return or a document being issued.',
   })
@@ -68,6 +72,7 @@ export class BuyerDataRetentionPreviewResponseDto {
     dto.toHide = preview.toHide;
     dto.toErase = preview.toErase;
     dto.total = preview.total;
+    dto.totalOrders = preview.totalOrders;
     dto.skippedProtected = preview.skippedProtected;
     dto.samples = preview.samples.map((sample) => ({ ...sample }));
     return dto;
