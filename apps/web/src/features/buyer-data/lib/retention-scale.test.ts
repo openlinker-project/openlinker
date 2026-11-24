@@ -19,6 +19,7 @@ describe('retention scale (#4289)', () => {
     expect(snapToDetent(130)).toBe(90);
     expect(snapToDetent(135)).toBe(180);
     expect(snapToDetent(5000)).toBe(3650);
+    expect(snapToDetent(2600)).toBe(2555);
     expect(snapToDetent(1)).toBe(30);
   });
 

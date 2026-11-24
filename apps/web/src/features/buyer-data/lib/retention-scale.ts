@@ -14,9 +14,13 @@
  */
 import { BUYER_DATA_MAX_DAYS, BUYER_DATA_MIN_DAYS } from './buyer-data-config';
 
-/** The stops a handle snaps to: the periods an operator actually reasons in. */
+/**
+ * The stops a handle snaps to: the periods an operator actually reasons in,
+ * plus whole years between 5 and 10 so the last stretch of the axis is not one
+ * 1825-day jump (6, 7, 8 and 9 years). The main stops stay the recommended ones.
+ */
 export const RETENTION_DETENTS: readonly number[] = [
-  30, 60, 90, 180, 365, 540, 730, 1095, 1825, 3650,
+  30, 60, 90, 180, 365, 540, 730, 1095, 1825, 2190, 2555, 2920, 3285, 3650,
 ];
 
 /** Detents worth a tick mark on the axis. */
