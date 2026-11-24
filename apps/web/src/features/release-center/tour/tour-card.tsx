@@ -700,7 +700,12 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
               aria-expanded={!collapsed}
               aria-label={collapsed ? tour.expand : tour.collapse}
               title={collapsed ? tour.expand : tour.collapse}
-              onClick={() => setCollapsed((value) => !value)}
+              onClick={() => {
+                // Same glide as a swipe: remember the height before the fold so the card eases to the new one.
+                const card = cardRef.current;
+                if (card) flip.current = { height: card.offsetHeight, offset: 0 };
+                setCollapsed((value) => !value);
+              }}
             >
               <ReleaseIcon name="chevron" size={14} />
             </button>

@@ -43092,6 +43092,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .tour-card[data-collapsed='true'] .tour-card__live,
   .tour-card[data-collapsed='true'] .tour-card__reason { display: none; }
 }
+/* Unfolding brings the text and choices back with a short rise; display:none to block restarts the animation each time. */
+@keyframes tour-unfold { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .tour-card[data-collapsed='false'] .tour-card__text,
+  .tour-card[data-collapsed='false'] .tour-card__choices { animation: tour-unfold 280ms var(--ease-out) both; }
+  .tour-card[data-collapsed='false'] .tour-card__choices { animation-delay: 50ms; }
+}
 @media (prefers-reduced-motion: reduce) { .tour-card__fold svg { transition: none; } }
 
 /* Phone: the step list uses the width it has instead of an indent plus a clipped edge. */
