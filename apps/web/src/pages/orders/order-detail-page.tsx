@@ -1034,21 +1034,23 @@ export function OrderDetailPage(): ReactElement {
               divs so the target exists even while a panel is capability-gated
               (renders null) or still loading. */}
           <div id="shipment" tabIndex={-1}>
-            <OrderShipToBox
-              methodName={snapshot.shipping?.methodName ?? methodFallback ?? null}
-              address={snapshot.shippingAddress}
-              pickupPoint={snapshot.pickupPoint}
-            />
-            <OrderShipmentPanel
-              order={order}
-              autoOpenForShipmentId={retryShipmentId}
-              defaultFormOpen={snapshot.status !== 'cancelled'}
-            />
+            <div className="order-shipping-grid">
+              <OrderShipToBox
+                methodName={snapshot.shipping?.methodName ?? methodFallback ?? null}
+                address={snapshot.shippingAddress}
+                pickupPoint={snapshot.pickupPoint}
+              />
+              <OrderShipmentPanel
+                order={order}
+                autoOpenForShipmentId={retryShipmentId}
+                defaultFormOpen={snapshot.status !== 'cancelled'}
+              />
+            </div>
           </div>
 
       </TabsContent>
 
-      <TabsContent value="packing" forceMount className="order-detail__tab">
+      <TabsContent value="packing" forceMount className="order-detail__tab order-detail__split">
           {/* Packing is a fact about EVERY order, so this sits in the always
               rendered left stack rather than inside the capability-gated
               shipment panel — an order with no shipping-capable connection
@@ -1115,7 +1117,7 @@ export function OrderDetailPage(): ReactElement {
 
       </TabsContent>
 
-      <TabsContent value="documents" forceMount className="order-detail__tab">
+      <TabsContent value="documents" forceMount className="order-detail__tab order-detail__split">
           {/* #2160: one unified "Sales document" slot replaces the two
               independent OrderInvoicePanel / OrderReceiptPanel siblings.
               `id="invoicing"` is kept (not renamed to e.g. "sales-document")
@@ -1201,7 +1203,7 @@ export function OrderDetailPage(): ReactElement {
 
       </TabsContent>
 
-      <TabsContent value="technical" forceMount className="order-detail__tab">
+      <TabsContent value="technical" forceMount className="order-detail__tab order-detail__split">
           <section className="detail-section">
             <h3 className="detail-section__title">
               {order.syncStatus.length > 0

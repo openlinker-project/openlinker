@@ -40494,3 +40494,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-ship-to__point { display: flex; flex-direction: column; gap: 2px; padding: 10px 16px; border: 1px solid var(--border-default); border-left: 3px solid var(--accent-primary); border-radius: 10px; background: var(--bg-surface-muted); }
 .order-ship-to__point strong { font-size: 1.0625rem; font-weight: 600; }
 .order-ship-to__point small { color: var(--text-muted); font-size: 0.75rem; }
+/* Shipping tab on a wide screen: the shipment or label form on the left, ship-to on the right (#4286) */
+@media (min-width: 1500px) {
+  /* the shipment or label form is the main column; ship-to is the side column, like the Overview */
+  .order-shipping-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 28px; align-items: start; }
+  .order-shipping-grid > .order-ship-to { order: 2; margin-bottom: 0; position: sticky; top: 16px; }
+}
+/* Wide screens: tabs made of several independent cards flow into two balanced columns (#4286) */
+@media (min-width: 1500px) {
+  .order-detail__split[data-state='active'] { display: block; column-count: 2; column-gap: 28px; }
+  .order-detail__split[data-state='active'] > * { break-inside: avoid; margin-bottom: 28px; }
+}
