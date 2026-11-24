@@ -2,8 +2,9 @@
  * Buyer data settings page (#4289)
  *
  * Pins: admin-only; off by default and says so; the defaults note names the
- * scope; the master switch stays locked until a trial run; enabling asks for
- * confirmation and writes the four knobs; connections with own rules are listed.
+ * scope; the master switch stays locked until the plan is calculated; enabling
+ * asks for confirmation and writes the four knobs; each connection has a tab
+ * that links to or breaks from the defaults; connections are compared in a table.
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -52,19 +53,26 @@ function settingsView(overrides: Record<string, unknown> = {}): unknown {
   };
 }
 
-function render(opts: { view?: unknown; user?: SessionUser } = {}): { update: Mock } {
+function render(opts: { view?: unknown; user?: SessionUser } = {}): {
+  update: Mock;
+  updateConnection: Mock;
+} {
   const update = vi.fn().mockResolvedValue(undefined);
+  const updateConnection = vi.fn().mockResolvedValue(SHOP);
   renderWithProviders(<BuyerDataPage />, {
     apiClient: createMockApiClient({
       operationalSettings: {
         get: vi.fn().mockResolvedValue(opts.view ?? settingsView()),
         update: update as never,
       },
-      connections: { list: vi.fn().mockResolvedValue([SHOP, ALLEGRO]) },
+      connections: {
+        list: vi.fn().mockResolvedValue([SHOP, ALLEGRO]),
+        update: updateConnection as never,
+      },
     }),
     sessionAdapter: createAuthenticatedSessionAdapter(opts.user ?? ADMIN),
   });
-  return { update };
+  return { update, updateConnection };
 }
 
 afterEach(cleanup);
@@ -84,25 +92,24 @@ describe('BuyerDataPage (#4289)', () => {
     expect(
       screen.getByText(/Every new connection and every one without its own rules/)
     ).toBeInTheDocument();
-    expect(screen.getByTestId('buyer-data-off-note')).toHaveTextContent(
-      'Nothing changes until you turn the rules on'
+    expect(screen.getByTestId('buyer-data-untouched')).toHaveTextContent(
+      'Data in your shop and marketplace is not changed.'
     );
+    expect(screen.getByRole('switch', { name: 'Turn on the rules' })).toBeDisabled();
   });
 
-  it('should keep the switch locked until a trial run, then confirm before saving the knobs', async () => {
+  it('should keep the switch locked until the plan is calculated, then confirm before saving the knobs', async () => {
     const { update } = render();
 
-    const toggle = await screen.findByTestId('buyer-data-master-switch');
+    const toggle = await screen.findByRole('switch', { name: 'Turn on the rules' });
     expect(toggle).toBeDisabled();
-
-    await userEvent.click(screen.getByTestId('buyer-data-trial-run'));
-    expect(await screen.findByTestId('buyer-data-trial-result')).toBeInTheDocument();
     await waitFor(() => expect(toggle).toBeEnabled());
 
     await userEvent.click(toggle);
     await userEvent.click(screen.getByTestId('buyer-data-save'));
     const dialog = await screen.findByRole('dialog');
     expect(update).not.toHaveBeenCalled();
+    expect(dialog).toHaveTextContent('hide 120 orders and erase personal data from 40');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Turn on the rules' }));
 
     await waitFor(() =>
@@ -115,16 +122,77 @@ describe('BuyerDataPage (#4289)', () => {
     );
   });
 
+  it('should save a handle move on the defaults as the new defaults', async () => {
+    const { update } = render();
+    const hide = await screen.findByTestId('age-strip-handle-hide');
+    hide.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    await userEvent.click(screen.getByTestId('buyer-data-save'));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ buyerDataHideAfterDays: 180, buyerDataRetentionEnabled: false })
+      )
+    );
+  });
+
+  it('should show a linked connection ghosted and unlink it when a handle is grabbed', async () => {
+    const { updateConnection } = render();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Shop' }));
+
+    expect(await screen.findByTestId('scope-chain')).toHaveTextContent('Follows defaults');
+    expect(screen.getByTestId('scope-unlink')).toBeInTheDocument();
+
+    const hide = await screen.findByTestId('age-strip-handle-hide');
+    hide.focus();
+    await userEvent.keyboard('{ArrowRight}');
+
+    expect(screen.getByTestId('scope-chain')).toHaveTextContent('Own rules');
+    await userEvent.click(screen.getByTestId('buyer-data-save'));
+    await waitFor(() =>
+      expect(updateConnection).toHaveBeenCalledWith(
+        'conn-shop',
+        expect.objectContaining({
+          config: {
+            buyerDataRetention: {
+              enabled: false,
+              hideAfterDays: 180,
+              eraseAfterDays: 730,
+              mode: 'personal-data',
+            },
+          },
+        })
+      )
+    );
+  });
+
+  it('should send a connection back to the defaults with an explicit null', async () => {
+    const { updateConnection } = render();
+    await userEvent.click(await screen.findByRole('tab', { name: /Allegro/ }));
+    await userEvent.click(await screen.findByTestId('scope-relink'));
+    expect(screen.getByTestId('scope-chain')).toHaveTextContent('Follows defaults');
+
+    await userEvent.click(screen.getByTestId('buyer-data-save'));
+    await waitFor(() =>
+      expect(updateConnection).toHaveBeenCalledWith(
+        'conn-allegro',
+        expect.objectContaining({ config: { buyerDataRetention: null } })
+      )
+    );
+  });
+
   it('should list connections and mark the one with its own rules', async () => {
     render();
     const table = await screen.findByTestId('buyer-data-connections');
-    expect(within(table).getByText('Own rules')).toBeInTheDocument();
-    expect(within(table).getByText('Same as general')).toBeInTheDocument();
+    expect(within(table).getByText('Own')).toBeInTheDocument();
+    expect(within(table).getByText('Same as default')).toBeInTheDocument();
     expect(
       screen.getByText(
-        '1 of 2 connections have their own rules. You change them in the connection edit.'
+        '1 of 2 connections have their own rules. Click a connection to see its rules.'
       )
     ).toBeInTheDocument();
+    await userEvent.click(within(table).getByRole('button', { name: 'Shop' }));
+    expect(await screen.findByTestId('scope-chain')).toBeInTheDocument();
   });
 
   it('should disable saving while the erase period is shorter than the hide period', async () => {

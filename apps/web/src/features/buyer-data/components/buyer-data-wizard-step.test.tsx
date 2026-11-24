@@ -30,7 +30,7 @@ describe('BuyerDataWizardStep (#4289)', () => {
       await screen.findByRole('radio', { name: 'Use general settings (recommended)' })
     ).toBeChecked();
     expect(screen.getByText(/takes the rules from Settings > Buyer data/)).toBeInTheDocument();
-    expect(screen.queryByTestId('buyer-data-rules-editor')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('retention-studio-wizard')).not.toBeInTheDocument();
   });
 
   it('should reveal the questions for own rules and keep them switched off', async () => {
@@ -38,7 +38,11 @@ describe('BuyerDataWizardStep (#4289)', () => {
 
     await userEvent.click(await screen.findByRole('radio', { name: 'Set own' }));
 
-    expect(screen.getByTestId('buyer-data-rules-editor')).toBeInTheDocument();
+    expect(screen.getByTestId('retention-studio-wizard')).toBeInTheDocument();
+    // Compact: a connection that does not exist yet has no orders to draw or count.
+    expect(screen.queryByTestId('age-strip')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('plan-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('record-card')).toBeInTheDocument();
     expect(screen.getByText(/saved switched off/)).toBeInTheDocument();
     expect(JSON.parse(screen.getByTestId('value').textContent ?? '')).toMatchObject({
       choice: 'own',

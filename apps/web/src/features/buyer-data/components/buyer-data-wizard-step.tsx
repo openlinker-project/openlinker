@@ -5,8 +5,9 @@
  * general ones (the recommended default, so a connection created without
  * touching this is governed like every other) or its own. Controlled - the
  * wizard keeps the value in its form state and maps it to config at submit.
- * Own rules are saved switched off; a connection with no orders yet has nothing
- * for a trial run to count, so that happens in the connection edit.
+ * Own rules are saved switched off. A connection that does not exist yet has no
+ * orders, so the compact studio (inputs and the example order) is shown without
+ * the strip and the plan; those appear in the connection edit.
  *
  * @module apps/web/src/features/buyer-data/components
  */
@@ -15,8 +16,9 @@ import { interpolate, useMessages } from '../../../shared/i18n';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useOperationalSettingsQuery } from '../../settings';
 import type { BuyerDataWizardChoice, BuyerDataWizardValue } from '../api/buyer-data.types';
+import { useBuyerDataSummary } from '../hooks/use-buyer-data-summary';
 import { globalRulesFromSettings } from '../lib/buyer-data-config';
-import { BuyerDataRulesEditor, useBuyerDataSummary } from './buyer-data-rules-editor';
+import { RetentionStudio } from './retention-studio';
 
 export interface BuyerDataWizardStepProps {
   value: BuyerDataWizardValue;
@@ -50,9 +52,10 @@ export function BuyerDataWizardStep({ value, onChange }: BuyerDataWizardStepProp
       {own ? (
         <>
           <p className="rate-limit-section__help">{copy.ownNote}</p>
-          <BuyerDataRulesEditor
+          <RetentionStudio
             name="wizard"
-            collapseExample
+            variant="compact"
+            plan={null}
             rules={rules}
             onChange={(next) => onChange({ choice: 'own', rules: { ...next, enabled: false } })}
           />

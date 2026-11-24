@@ -41,30 +41,29 @@ test('general settings: off by default, locked until a trial run, then saved', a
 
   await test.step('it says these are defaults and that the rules are off', async () => {
     await expect(page.getByText('These are default settings')).toBeVisible();
-    await expect(settings.offNote).toContainText('Nothing changes until you turn the rules on');
+    await expect(settings.offNote).toContainText('The rules are off');
     await expect(settings.masterSwitch).toBeDisabled();
   });
 
   await test.step('choosing periods updates the summary and the example order', async () => {
-    await settings.rules.choose('After 3 months', 'After 2 years');
-    await expect(settings.rules.summary).toContainText('after 3 months');
-    await expect(page.getByTestId('buyer-data-journey-erased')).toContainText('BUYER-000123');
+    await settings.rules.choose({ amount: 3, unit: 'months' }, { amount: 2, unit: 'years' });
+    await expect(settings.rules.summary).toContainText('will leave the lists');
+    await expect(settings.rules.exampleOrder).toBeVisible();
   });
 
-  await test.step('the trial run unlocks the switch and changes nothing', async () => {
-    await settings.rules.trialRun.click();
-    await expect(settings.rules.trialResult).toContainText('Nothing was changed');
+  await test.step('the calculated plan unlocks the switch and changes nothing', async () => {
+    await expect(settings.rules.plan).toContainText('Calculated at');
     await expect(settings.masterSwitch).toBeEnabled();
   });
 
   await test.step('turning the rules on asks for confirmation, then saves', async () => {
-    await settings.masterSwitch.check();
+    await settings.masterSwitch.click();
     await settings.save.click();
     await page.getByRole('dialog').getByRole('button', { name: 'Turn on' }).click();
     await expect(page.getByText('Buyer data rules saved.', { exact: true })).toBeVisible();
     await page.reload();
-    await expect(settings.rules.hideSelect).toHaveValue('90');
-    await expect(settings.masterSwitch).toBeChecked();
+    await expect(settings.rules.hideAmount).toHaveValue('3');
+    await expect(settings.masterSwitch).toHaveAttribute('aria-checked', 'true');
   });
 });
 
@@ -84,7 +83,7 @@ test('Erli wizard: general settings by default, own rules saved switched off', a
     await expect(step.inheritOption).toBeChecked();
     if (own) {
       await step.ownOption.check();
-      await step.rules.choose('After 6 months', 'After 3 years');
+      await step.rules.choose({ amount: 6, unit: 'months' }, { amount: 3, unit: 'years' });
     }
     await page.getByRole('button', { name: 'Connect Erli' }).click();
     await expect(page.getByRole('button', { name: 'Test connection' })).toBeVisible({
@@ -129,13 +128,12 @@ test('connection edit: own rules need a trial run, then are saved into the confi
   await test.step('taking own rules starts them switched off', async () => {
     await section.ownOption.check();
     await expect(section.enabledSwitch).toBeDisabled();
-    await section.rules.choose('After 1 year', 'After 2 years');
+    await section.rules.choose({ amount: 1, unit: 'years' }, { amount: 2, unit: 'years' });
   });
 
   await test.step('the trial run unlocks the switch', async () => {
-    await section.rules.trialRun.click();
-    await expect(section.rules.trialResult).toContainText('Nothing was changed');
-    await section.enabledSwitch.check();
+    await expect(section.rules.plan).toContainText('Calculated at');
+    await section.enabledSwitch.click();
   });
 
   await test.step('saving writes config.buyerDataRetention', async () => {
@@ -164,7 +162,7 @@ test('connection edit: own rules need a trial run, then are saved into the confi
 test('cleanup: switch the general rules off again', async ({ page, pages }) => {
   const settings = pages.buyerDataSettings;
   await settings.goto();
-  await settings.masterSwitch.uncheck();
+  await settings.masterSwitch.click();
   await settings.save.click();
   await expect(page.getByText('Buyer data rules saved.', { exact: true })).toBeVisible();
 });

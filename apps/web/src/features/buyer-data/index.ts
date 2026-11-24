@@ -5,6 +5,7 @@
  */
 export { BUYER_DATA_ERASE_MODES, isBuyerDataEraseMode } from './api/buyer-data.types';
 export type {
+  BuyerDataAgeHistogram,
   BuyerDataEraseMode,
   BuyerDataOverride,
   BuyerDataPreview,
@@ -15,13 +16,11 @@ export type {
 } from './api/buyer-data.types';
 export * from './lib/buyer-data-config';
 export { usePeriodLabel } from './hooks/use-period-label';
-export { useBuyerDataImpactQuery } from './hooks/use-buyer-data-impact-query';
-export { useBuyerDataTrialMutation } from './hooks/use-buyer-data-trial-mutation';
-export { BuyerDataImpact } from './components/buyer-data-impact';
-export { BuyerDataRulesEditor, useBuyerDataSummary } from './components/buyer-data-rules-editor';
+export { useShortPeriod } from './hooks/use-short-period';
+export { useBuyerDataSummary } from './hooks/use-buyer-data-summary';
+export { RetentionScope } from './components/retention-scope';
 export { BuyerDataSection } from './components/buyer-data-section';
 export { BuyerDataTile } from './components/buyer-data-tile';
-export { BuyerDataTrial } from './components/buyer-data-trial';
 export {
   BuyerDataWizardReviewRows,
   BuyerDataWizardStep,

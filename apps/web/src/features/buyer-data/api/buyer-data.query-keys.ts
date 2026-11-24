@@ -7,5 +7,7 @@ import type { BuyerDataPreviewInput } from './buyer-data.types';
 
 export const buyerDataQueryKeys = {
   all: ['buyer-data'] as const,
-  impact: (input: BuyerDataPreviewInput) => ['buyer-data', 'impact', input] as const,
+  plan: (input: BuyerDataPreviewInput) => ['buyer-data', 'plan', input] as const,
+  histogram: (connectionId: string | undefined) =>
+    ['buyer-data', 'histogram', connectionId ?? 'all'] as const,
 };

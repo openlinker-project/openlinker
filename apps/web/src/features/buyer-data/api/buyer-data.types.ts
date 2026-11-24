@@ -46,6 +46,13 @@ export interface BuyerDataPreviewSample {
   maskedBuyer: string;
 }
 
+/** Why a protected order is left alone; the three reasons the server reports. */
+export interface BuyerDataSkippedByReason {
+  openReturn: number;
+  hold: number;
+  invoicePending: number;
+}
+
 export interface BuyerDataPreview {
   toHide: number;
   toErase: number;
@@ -53,7 +60,23 @@ export interface BuyerDataPreview {
   /** Every order still on the list in scope; `total` only counts the ones a rule reaches. */
   totalOrders: number;
   skippedProtected: number;
+  skippedByReason: BuyerDataSkippedByReason;
   samples: BuyerDataPreviewSample[];
+}
+
+/** Orders of one age (a whole month) split by what the retention job already did to them. */
+export interface BuyerDataAgeBucket {
+  ageMonths: number;
+  visible: number;
+  hidden: number;
+  erased: number;
+}
+
+export interface BuyerDataAgeHistogram {
+  bucketUnit: 'month';
+  buckets: BuyerDataAgeBucket[];
+  totalOrders: number;
+  oldestPlacedAt: string | null;
 }
 
 /** What the new-connection wizard keeps in its form state. */

@@ -16,40 +16,44 @@ export class BuyerDataRules {
     private readonly name: string
   ) {}
 
-  /** The select of the "when to hide" question. */
-  get hideSelect(): Locator {
-    return this.root
-      .getByTestId(`buyer-data-period-${this.name}-hide`)
-      .getByRole('combobox')
-      .first();
+  private period(kind: 'hide' | 'erase'): Locator {
+    return this.root.getByTestId(`period-input-${this.name}-${kind}`);
   }
 
-  get eraseSelect(): Locator {
-    return this.root
-      .getByTestId(`buyer-data-period-${this.name}-erase`)
-      .getByRole('combobox')
-      .first();
+  /** The number box of the "hide after" period. */
+  get hideAmount(): Locator {
+    return this.period('hide').getByRole('spinbutton');
+  }
+
+  get eraseAmount(): Locator {
+    return this.period('erase').getByRole('spinbutton');
   }
 
   get summary(): Locator {
-    return this.root.getByTestId('buyer-data-summary');
+    return this.root.getByTestId('plan-sentence');
   }
 
-  get journey(): Locator {
-    return this.root.getByTestId('buyer-data-journey');
+  get plan(): Locator {
+    return this.root.getByTestId('plan-panel');
   }
 
-  get trialRun(): Locator {
-    return this.root.getByTestId('buyer-data-trial-run');
+  get exampleOrder(): Locator {
+    return this.root.getByTestId('record-card');
   }
 
-  get trialResult(): Locator {
-    return this.root.getByTestId('buyer-data-trial-result');
-  }
-
-  async choose(hide: string, erase: string): Promise<void> {
-    await this.hideSelect.selectOption({ label: hide });
-    await this.eraseSelect.selectOption({ label: erase });
+  /** Sets both periods as `amount` + unit label (e.g. 3, 'miesięcy'). */
+  async choose(
+    hide: { amount: number; unit: string },
+    erase: { amount: number; unit: string }
+  ): Promise<void> {
+    for (const [kind, value] of [
+      ['hide', hide],
+      ['erase', erase],
+    ] as const) {
+      const field = this.period(kind);
+      await field.getByRole('combobox').selectOption({ label: value.unit });
+      await field.getByRole('spinbutton').fill(String(value.amount));
+    }
   }
 }
 
@@ -66,7 +70,7 @@ export class BuyerDataSettingsPage {
   }
 
   get masterSwitch(): Locator {
-    return this.page.getByTestId('buyer-data-master-switch');
+    return this.page.getByTestId('buyer-data-switch-general');
   }
 
   get save(): Locator {
@@ -74,8 +78,7 @@ export class BuyerDataSettingsPage {
   }
 
   get offNote(): Locator {
-    // No test id on the note: the page renders it as plain text.
-    return this.page.getByText('Nothing changes until you turn the rules on');
+    return this.page.getByTestId('buyer-data-switch-hint');
   }
 
   get connectionsTable(): Locator {
@@ -107,7 +110,7 @@ export class BuyerDataConnectionSection {
   }
 
   get enabledSwitch(): Locator {
-    return this.root.getByTestId('buyer-data-enabled');
+    return this.root.getByTestId('buyer-data-switch-connection');
   }
 }
 

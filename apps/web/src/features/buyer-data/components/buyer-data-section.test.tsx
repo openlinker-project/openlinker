@@ -49,13 +49,15 @@ describe('BuyerDataSection (#4289)', () => {
 
     expect(await screen.findByText(/Same as the general settings/)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Same as general' })).toBeChecked();
-    expect(screen.queryByTestId('buyer-data-period-connection-hide')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('retention-studio-connection')).not.toBeInTheDocument();
   });
 
   it('should start own rules switched off and write them after setValue', async () => {
     const sync = vi.fn();
     renderWithProviders(<Harness initial={null} sync={sync} />, {
-      apiClient: createMockApiClient(),
+      apiClient: createMockApiClient({
+        buyerData: { preview: vi.fn().mockReturnValue(new Promise(() => undefined)) },
+      }),
     });
 
     await userEvent.click(await screen.findByRole('radio', { name: 'Set own' }));
@@ -64,8 +66,8 @@ describe('BuyerDataSection (#4289)', () => {
       enabled: false,
     });
     expect(sync).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('buyer-data-period-connection-hide')).toBeInTheDocument();
-    expect(screen.getByTestId('buyer-data-enabled')).toBeDisabled();
+    expect(screen.getByTestId('retention-studio-connection')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Turn on the rules' })).toBeDisabled();
   });
 
   it('should write inherit back as an explicit null', async () => {
@@ -82,14 +84,22 @@ describe('BuyerDataSection (#4289)', () => {
     expect(screen.getByTestId('value')).toHaveTextContent('null');
   });
 
-  it('should unlock the switch only after a trial run and send the connection id', async () => {
-    const preview = vi.fn().mockResolvedValue({
-      toHide: 12,
-      toErase: 3,
-      total: 100,
-      totalOrders: 250,
-      skippedProtected: 0,
-      samples: [{ orderRef: 'OL-1', placedAt: '2024-12-01T10:00:00.000Z', maskedBuyer: 'J. K.' }],
+  it('should unlock the switch once the plan for this connection is calculated', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const preview = vi.fn().mockImplementation(async () => {
+      await gate;
+      return {
+        toHide: 12,
+        toErase: 3,
+        total: 100,
+        totalOrders: 250,
+        skippedProtected: 0,
+        skippedByReason: { openReturn: 0, hold: 0, invoicePending: 0 },
+        samples: [],
+      };
     });
     renderWithProviders(
       <Harness
@@ -99,28 +109,44 @@ describe('BuyerDataSection (#4289)', () => {
       { apiClient: createMockApiClient({ buyerData: { preview } }) }
     );
 
-    const toggle = await screen.findByTestId('buyer-data-enabled');
+    const toggle = await screen.findByRole('switch', { name: 'Turn on the rules' });
     expect(toggle).toBeDisabled();
+    release();
 
-    await userEvent.click(screen.getByTestId('buyer-data-trial-run'));
-
-    expect(await screen.findByTestId('buyer-data-trial-result')).toHaveTextContent(
-      'Nothing was changed'
-    );
-    expect(preview).toHaveBeenCalledWith({
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(preview.mock.calls[0]?.[0]).toEqual({
       connectionId: 'conn-1',
       hideAfterDays: 90,
       eraseAfterDays: 365,
       mode: 'personal-data',
     });
-    await waitFor(() => expect(toggle).toBeEnabled());
     await userEvent.click(toggle);
     expect(JSON.parse(screen.getByTestId('value').textContent ?? '')).toMatchObject({
       enabled: true,
     });
   });
 
-  it('should refuse an erase period shorter than the hide period and not run the trial', async () => {
+  it('should write a handle move into the connection override', async () => {
+    const sync = vi.fn();
+    renderWithProviders(
+      <Harness
+        initial={{ enabled: false, hideAfterDays: 90, eraseAfterDays: 365, mode: 'personal-data' }}
+        sync={sync}
+      />,
+      { apiClient: createMockApiClient() }
+    );
+
+    const hide = await screen.findByTestId('age-strip-handle-hide');
+    hide.focus();
+    await userEvent.keyboard('{ArrowRight}');
+
+    expect(JSON.parse(screen.getByTestId('value').textContent ?? '')).toMatchObject({
+      hideAfterDays: 180,
+    });
+    expect(sync).toHaveBeenCalled();
+  });
+
+  it('should refuse an erase period shorter than the hide period and keep the switch locked', async () => {
     renderWithProviders(
       <Harness
         initial={{ enabled: false, hideAfterDays: 365, eraseAfterDays: 90, mode: 'personal-data' }}
@@ -132,7 +158,7 @@ describe('BuyerDataSection (#4289)', () => {
     expect(
       await screen.findByText('Personal data cannot be erased before the order is hidden.')
     ).toBeInTheDocument();
-    expect(screen.getByTestId('buyer-data-trial-run')).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Turn on the rules' })).toBeDisabled();
   });
 
   it('should disable every control for a session that cannot write', async () => {

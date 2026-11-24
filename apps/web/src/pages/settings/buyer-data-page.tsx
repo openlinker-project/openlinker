@@ -1,19 +1,23 @@
 /**
  * Buyer Data Settings Page (#4289)
  *
- * The general (default) rules for when an order leaves the list and when a
- * buyer's personal data is erased. They apply to every new connection and to
- * every connection without rules of its own; a connection can override them in
- * its edit. Off by default, and switched on only after a trial run has shown
- * what the rules would do - the page says both, and that erasing cannot be
- * undone. Admin only, like every write behind it.
+ * The retention studio: set when an order leaves the lists (reversible) and
+ * when a buyer's personal data is erased (not), on a strip of the shop's own
+ * orders by age, and watch what the choice does to the data. "Defaults" apply
+ * to every connection that has no rules of its own; each order-taking
+ * connection has a tab where it can follow the defaults (linked) or break away
+ * with its own cut-offs (grabbing a handle unlinks it).
+ *
+ * Nothing is saved until "Save"; a switch can only be turned on once the plan
+ * for what is on screen has been calculated, and turning it on asks again with
+ * the counts. Admin only, like every write behind it.
  *
  * @module apps/web/src/pages/settings
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { describeApiError } from '../../shared/api/describe-api-error';
-import { interpolate, useMessages, usePlural } from '../../shared/i18n';
+import { interpolate, useMessages } from '../../shared/i18n';
 import { AccessGate } from '../../shared/ui/access-gate';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
@@ -21,35 +25,32 @@ import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { AccessDeniedState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { StatusBadge } from '../../shared/ui/status-badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { useToast } from '../../shared/ui/toast-provider';
 import {
-  BuyerDataImpact,
-  BuyerDataRulesEditor,
-  BuyerDataTrial,
-  daysToPeriod,
+  RetentionScope,
   globalRulesFromSettings,
+  overrideFromRules,
   readBuyerDataSettings,
   resolveBuyerDataRules,
-  useBuyerDataImpactQuery,
-    useBuyerDataTrialMutation,
+  useShortPeriod,
   validateBuyerDataRules,
+  withBuyerDataSettings,
+  type BuyerDataOverride,
+  type BuyerDataPreview,
   type BuyerDataRules,
 } from '../../features/buyer-data';
-import { useConnectionsQuery, type Connection } from '../../features/connections';
+import {
+  useConnectionsQuery,
+  useUpdateConnectionMutation,
+  type Connection,
+} from '../../features/connections';
 import {
   useOperationalSettingsQuery,
   useUpdateOperationalSettingsMutation,
 } from '../../features/settings';
 
-function useShortPeriod(): (days: number) => string {
-  const copy = useMessages('buyer-data').period;
-  const plural = usePlural();
-  return (days) => {
-    if (days <= 0) return copy.shortNever;
-    const { amount, unit } = daysToPeriod(days);
-    return plural(amount, copy.short[unit], { n: amount });
-  };
-}
+const DEFAULTS_TAB = 'defaults';
 
 function takesOrders(connection: Connection): boolean {
   return connection.status !== 'archived' && connection.enabledCapabilities.includes('OrderSource');
@@ -64,143 +65,270 @@ function sameRules(a: BuyerDataRules, b: BuyerDataRules): boolean {
   );
 }
 
+function sameOverride(a: BuyerDataOverride | null, b: BuyerDataOverride | null): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.enabled === b.enabled &&
+    a.hideAfterDays === b.hideAfterDays &&
+    a.eraseAfterDays === b.eraseAfterDays &&
+    a.mode === b.mode
+  );
+}
+
+function ChainIcon({ linked }: { linked: boolean }): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" className="scope-chain__icon" aria-hidden="true">
+      {linked ? (
+        <path
+          d="M6.5 9.5 9.5 6.5M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      ) : (
+        <path
+          d="M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1M3 3l1.2 1.2M13 13l-1.2-1.2"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  );
+}
+
 function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
   const COPY = useMessages('buyer-data').page;
+  const scopeCopy = useMessages('buyer-data').scope;
   const { showToast } = useToast();
   const shortPeriod = useShortPeriod();
   const connectionsQuery = useConnectionsQuery();
   const update = useUpdateOperationalSettingsMutation();
-  const trial = useBuyerDataTrialMutation();
+  const updateConnection = useUpdateConnectionMutation();
   const [draft, setDraft] = useState(saved);
-  const [checked, setChecked] = useState<{ key: string; at: string } | null>(null);
+  /** Connections edited on this page; absent = as saved. `null` = follow the defaults. */
+  const [connDrafts, setConnDrafts] = useState<Record<string, BuyerDataOverride | null>>({});
+  const [tab, setTab] = useState(DEFAULTS_TAB);
   const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const plans = useRef<Record<string, BuyerDataPreview | undefined>>({});
 
   // A saved row that changed under the page is a fresh decision: adopt it.
   useEffect(() => {
     setDraft(saved);
-    setChecked(null);
   }, [saved.enabled, saved.hideAfterDays, saved.eraseAfterDays, saved.mode]);
 
-  const issues = validateBuyerDataRules(draft);
-  const impact = useBuyerDataImpactQuery({
-    hideAfterDays: draft.hideAfterDays,
-    eraseAfterDays: draft.eraseAfterDays,
-    mode: draft.mode,
-  });
-  const rulesKey = `${draft.hideAfterDays}:${draft.eraseAfterDays}:${draft.mode}`;
-  const ranOnce = checked !== null && checked.key === rulesKey;
-  const stale = checked !== null && !ranOnce;
-  const changed = !sameRules(draft, saved);
-  const canEnable = issues.length === 0 && (ranOnce || saved.enabled);
   const connections = (connectionsQuery.data ?? []).filter(takesOrders);
-  const ownCount = connections.filter((c) => readBuyerDataSettings(c.config) !== null).length;
+  const savedOverride = (c: Connection): BuyerDataOverride | null =>
+    readBuyerDataSettings(c.config);
+  const overrideOf = (c: Connection): BuyerDataOverride | null =>
+    c.id in connDrafts ? connDrafts[c.id] ?? null : savedOverride(c);
 
-  function persist(): void {
-    update.mutate(
-      {
-        buyerDataRetentionEnabled: draft.enabled,
-        buyerDataHideAfterDays: draft.hideAfterDays,
-        buyerDataEraseAfterDays: draft.eraseAfterDays,
-        buyerDataEraseMode: draft.mode,
-      },
-      {
-        onSuccess: () => showToast({ description: COPY.saved, tone: 'success' }),
-        onError: (error) =>
-          showToast({
-            title: COPY.saveFailed,
-            description: describeApiError(error, 'buyer-data'),
-            tone: 'error',
-          }),
+  const dirtyConnections = connections.filter(
+    (c) => c.id in connDrafts && !sameOverride(connDrafts[c.id] ?? null, savedOverride(c))
+  );
+  const changed = !sameRules(draft, saved) || dirtyConnections.length > 0;
+  const ownCount = connections.filter((c) => overrideOf(c) !== null).length;
+  const issues = [
+    ...validateBuyerDataRules(draft),
+    ...connections.flatMap((c) => {
+      const o = overrideOf(c);
+      return o === null ? [] : validateBuyerDataRules(resolveBuyerDataRules(o, draft));
+    }),
+  ];
+
+  function setConnection(connection: Connection, next: BuyerDataOverride | null): void {
+    setConnDrafts((current) => {
+      const copy = { ...current };
+      if (sameOverride(next, savedOverride(connection))) delete copy[connection.id];
+      else copy[connection.id] = next;
+      return copy;
+    });
+  }
+
+  /** Scopes whose switch goes from off to on with this save. */
+  function newlyEnabled(): string[] {
+    const keys: string[] = [];
+    if (draft.enabled && !saved.enabled) keys.push(DEFAULTS_TAB);
+    for (const c of dirtyConnections) {
+      const next = connDrafts[c.id] ?? null;
+      const before = resolveBuyerDataRules(savedOverride(c), saved).enabled;
+      if (next?.enabled === true && !before) keys.push(c.id);
+    }
+    return keys;
+  }
+
+  async function persist(): Promise<void> {
+    setSaving(true);
+    try {
+      if (!sameRules(draft, saved)) {
+        await update.mutateAsync({
+          buyerDataRetentionEnabled: draft.enabled,
+          buyerDataHideAfterDays: draft.hideAfterDays,
+          buyerDataEraseAfterDays: draft.eraseAfterDays,
+          buyerDataEraseMode: draft.mode,
+        });
       }
-    );
+      for (const c of dirtyConnections) {
+        await updateConnection.mutateAsync({
+          connectionId: c.id,
+          input: { config: withBuyerDataSettings(c.config, connDrafts[c.id] ?? null) },
+        });
+      }
+      setConnDrafts({});
+      showToast({ description: COPY.saved, tone: 'success' });
+    } catch (error) {
+      showToast({
+        title: COPY.saveFailed,
+        description: describeApiError(error, 'buyer-data'),
+        tone: 'error',
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   function save(): void {
-    if (draft.enabled && !saved.enabled) {
+    if (newlyEnabled().length > 0) {
       setConfirming(true);
       return;
     }
-    persist();
+    void persist();
   }
+
+  const dialogCounts = newlyEnabled().reduce(
+    (sum, key) => ({
+      toHide: sum.toHide + (plans.current[key]?.toHide ?? 0),
+      toErase: sum.toErase + (plans.current[key]?.toErase ?? 0),
+    }),
+    { toHide: 0, toErase: 0 }
+  );
 
   return (
     <form
-      className="form-card form-narrow buyer-data-page"
+      className="buyer-data-page"
       onSubmit={(event) => {
         event.preventDefault();
         if (issues.length === 0 && changed) save();
       }}
       data-testid="buyer-data-page"
     >
-      <Alert tone="info" title={COPY.defaultsTitle}>
+      <Alert tone="info" title={COPY.defaultsTitle} density="compact">
         <ul className="buyer-data-points">
           <li>{COPY.defaultsPoint1}</li>
           <li>{COPY.defaultsPoint2}</li>
+          <li data-testid="buyer-data-untouched">{COPY.untouched}</li>
         </ul>
       </Alert>
-      <p className="rate-limit-section__help">{COPY.untouched}</p>
 
-      <section className="buyer-data-enable" aria-labelledby="buyer-data-rules-title">
-        <h3 id="buyer-data-rules-title" className="rate-limit-section__title">
-          {COPY.rulesTitle}
-        </h3>
-        <label className="rate-limit-section__toggle buyer-data-enable__toggle">
-          <input
-            type="checkbox"
-            checked={draft.enabled}
-            disabled={!canEnable && !draft.enabled}
-            aria-describedby="buyer-data-master-hint"
-            data-testid="buyer-data-master-switch"
-            onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+      <Tabs value={tab} onValueChange={setTab} className="scope-tabs">
+        <TabsList aria-label={scopeCopy.tabsLabel}>
+          <TabsTrigger value={DEFAULTS_TAB}>{scopeCopy.defaultsTab}</TabsTrigger>
+          {connections.map((c) => {
+            const own = overrideOf(c) !== null;
+            return (
+              <TabsTrigger key={c.id} value={c.id}>
+                {c.name}
+                {own ? <span className="scope-tabs__dot" aria-label={scopeCopy.ownChip} /> : null}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+
+        <TabsContent value={DEFAULTS_TAB}>
+          <p className="scope-tabs__lead">{scopeCopy.defaultsLead}</p>
+          <RetentionScope
+            name="general"
+            rules={draft}
+            savedEnabled={saved.enabled}
+            onChange={setDraft}
+            onPlan={(preview) => {
+              plans.current[DEFAULTS_TAB] = preview;
+            }}
           />
-          <span>{COPY.enabledLabel}</span>
-        </label>
-        <p
-          id="buyer-data-master-hint"
-          className="rate-limit-section__help"
-          data-testid={saved.enabled ? undefined : 'buyer-data-off-note'}
-        >
-          {saved.enabled
-            ? COPY.onBody
-            : draft.enabled
-              ? COPY.draftHint
-              : canEnable
-                ? COPY.offBody
-                : `${COPY.offBody} ${COPY.enabledNeedsCheck}`}
-        </p>
-      </section>
+        </TabsContent>
 
-      <BuyerDataRulesEditor name="general" rules={draft} onChange={setDraft} />
+        {connections.map((c) => {
+          const override = overrideOf(c);
+          const own = override !== null;
+          const effective = resolveBuyerDataRules(override, draft);
+          return (
+            <TabsContent key={c.id} value={c.id}>
+              <div
+                className={`scope-chain${own ? ' scope-chain--own' : ''}`}
+                data-testid="scope-chain"
+              >
+                <ChainIcon linked={!own} />
+                <div className="scope-chain__text">
+                  {own ? (
+                    <>
+                      <StatusBadge tone="info">{scopeCopy.ownChip}</StatusBadge>
+                      <span>{scopeCopy.ownLead}</span>
+                    </>
+                  ) : (
+                    <>
+                      <StatusBadge tone="neutral">{scopeCopy.linkedChip}</StatusBadge>
+                      <span>{scopeCopy.linkedLead}</span>
+                    </>
+                  )}
+                </div>
+                {own ? (
+                  <Button
+                    type="button"
+                    tone="secondary"
+                    className="button--sm"
+                    data-testid="scope-relink"
+                    onClick={() => setConnection(c, null)}
+                  >
+                    {scopeCopy.relink}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    tone="secondary"
+                    className="button--sm"
+                    data-testid="scope-unlink"
+                    onClick={() =>
+                      setConnection(c, overrideFromRules({ ...effective, enabled: false }))
+                    }
+                  >
+                    {scopeCopy.unlink}
+                  </Button>
+                )}
+              </div>
+              {own ? null : (
+                <p className="retention-scope__hint">
+                  {interpolate(scopeCopy.linkedSwitch, {
+                    state: draft.enabled ? scopeCopy.stateOn : scopeCopy.stateOff,
+                  })}
+                  <RetentionScope
+                    name={`conn-${c.id}`}
+                    connectionId={c.id}
+                    rules={effective}
+                    savedEnabled={resolveBuyerDataRules(savedOverride(c), saved).enabled}
+                    ghost={!own}
+                    showSwitch={own}
+                    // A grab on a linked scope makes the shown values its own, switched off.
+                    onChange={(next) =>
+                      setConnection(c, overrideFromRules(own ? next : { ...next, enabled: false }))
+                    }
+                    onPlan={(preview) => {
+                      plans.current[c.id] = preview;
+                    }}
+                  />
+                </p>
+              )}
+            </TabsContent>
+          );
+        })}
+      </Tabs>
 
-      <BuyerDataImpact
-        rules={draft}
-        preview={impact.data}
-        isLoading={impact.isFetching}
-        isError={impact.isError}
-        isInvalid={issues.length > 0}
-      />
-
-      <BuyerDataTrial
-        result={checked !== null ? trial.data : undefined}
-        checkedAt={checked?.at}
-        stale={stale}
-        isPending={trial.isPending}
-        isError={trial.isError}
-        disabled={issues.length > 0}
-        onRun={() =>
-          trial.mutate(
-            {
-              hideAfterDays: draft.hideAfterDays,
-              eraseAfterDays: draft.eraseAfterDays,
-              mode: draft.mode,
-            },
-            { onSuccess: () => setChecked({ key: rulesKey, at: new Date().toISOString() }) }
-          )
-        }
-      />
-
-      <section className="rate-limit-section">
-        <h3 className="rate-limit-section__title">{COPY.connectionsTitle}</h3>
+      <section className="scope-compare" aria-labelledby="scope-compare-title">
+        <h3 id="scope-compare-title" className="rate-limit-section__title">
+          {COPY.connectionsTitle}
+        </h3>
         {connections.length === 0 ? (
           <p className="rate-limit-section__help">{COPY.noConnections}</p>
         ) : (
@@ -213,37 +341,35 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                 <thead>
                   <tr>
                     <th scope="col">{COPY.columnConnection}</th>
-                    <th scope="col" className="buyer-data-connections__rules">{COPY.columnRules}</th>
+                    <th scope="col">{COPY.columnHide}</th>
+                    <th scope="col">{COPY.columnErase}</th>
                     <th scope="col">{COPY.columnSource}</th>
-                    <th scope="col">
-                      <span className="sr-only">{COPY.edit}</span>
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {connections.map((connection) => {
-                    const override = readBuyerDataSettings(connection.config);
+                  {connections.map((c) => {
+                    const override = overrideOf(c);
+                    const r = resolveBuyerDataRules(override, draft);
                     return (
-                      <tr key={connection.id}>
-                        <td>{connection.name}</td>
+                      <tr
+                        key={c.id}
+                        className={tab === c.id ? 'scope-compare__row--active' : undefined}
+                      >
                         <td>
-                          {((): string => {
-                            const r = resolveBuyerDataRules(override, saved);
-                            return `${shortPeriod(r.hideAfterDays)} / ${shortPeriod(r.eraseAfterDays)}`;
-                          })()}
+                          <button
+                            type="button"
+                            className="scope-compare__open"
+                            onClick={() => setTab(c.id)}
+                          >
+                            {c.name}
+                          </button>
                         </td>
+                        <td>{shortPeriod(r.hideAfterDays)}</td>
+                        <td>{shortPeriod(r.eraseAfterDays)}</td>
                         <td>
                           <StatusBadge tone={override === null ? 'neutral' : 'info'}>
                             {override === null ? COPY.inherit : COPY.own}
                           </StatusBadge>
-                        </td>
-                        <td>
-                          <Link
-                            className="button button--secondary button--sm"
-                            to={`/connections/${encodeURIComponent(connection.id)}/edit`}
-                          >
-                            {COPY.edit}
-                          </Link>
                         </td>
                       </tr>
                     );
@@ -255,10 +381,10 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
         )}
       </section>
 
-      <div className="form-actions">
+      <div className="form-actions buyer-data-page__actions">
         <Button
           type="submit"
-          disabled={!changed || issues.length > 0 || update.isPending}
+          disabled={!changed || issues.length > 0 || saving}
           data-testid="buyer-data-save"
         >
           {COPY.save}
@@ -266,6 +392,7 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
         <Link className="button button--secondary" to="/settings">
           {COPY.cancel}
         </Link>
+        {changed ? <span className="buyer-data-page__draft">{COPY.draftHint}</span> : null}
       </div>
 
       <ConfirmDialog
@@ -274,13 +401,13 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
         title={COPY.enableDialogTitle}
         tone="danger"
         description={interpolate(COPY.enableDialogBody, {
-          toHide: trial.data?.toHide ?? 0,
-          toErase: trial.data?.toErase ?? 0,
+          toHide: dialogCounts.toHide,
+          toErase: dialogCounts.toErase,
         })}
         confirmLabel={COPY.enableDialogConfirm}
         onConfirm={() => {
           setConfirming(false);
-          persist();
+          void persist();
         }}
       />
     </form>
