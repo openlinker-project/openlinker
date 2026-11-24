@@ -20,8 +20,8 @@ export function findTourTarget(target: string): HTMLElement | null {
 
 /** An element that is in the DOM but takes no room (a control that hides itself on this screen) cannot be pointed at. */
 function hasRoom(element: HTMLElement): boolean {
-  // jsdom has no layout, so every box is empty there; the check is for real browsers.
-  if (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom')) return true;
+  // A DOM without a layout engine (the unit-test environment) reports an empty box for everything.
+  if (document.documentElement.getBoundingClientRect().width === 0) return true;
   const box = element.getBoundingClientRect();
   return box.width > 0 && box.height > 0;
 }
