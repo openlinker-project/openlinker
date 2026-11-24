@@ -340,16 +340,35 @@ describe('AmazonOfferManagerAdapter.findProductsByBarcode', () => {
 });
 
 describe('AmazonOfferManagerAdapter.resolveCategoriesForBatchByEan', () => {
-  it('should resolve each variant without failing the batch', async () => {
-    const { adapter, get } = setup();
-    get
-      .mockResolvedValueOnce({ status: 200, data: { numberOfResults: 1, items: [catalogHit] }, requestId: 'r' })
-      .mockRejectedValueOnce(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'))
-      .mockResolvedValueOnce({
-        status: 200,
-        data: { numberOfResults: 2, items: [catalogHit, { ...catalogHit, asin: 'B0MUG00002' }] },
-        requestId: 'r',
-      });
+  const DE = 'A1PA6795UKMFR9';
+  const withEan = (asin: string, ean: string): Record<string, unknown> => ({
+    ...catalogHit,
+    asin,
+    identifiers: [{ marketplaceId: DE, identifiers: [{ identifierType: 'EAN', identifier: ean }] }],
+  });
+
+  function batchSetup(): { adapter: AmazonOfferManagerAdapter; get: jest.Mock; sleep: jest.Mock } {
+    const get = jest.fn();
+    const sleep = jest.fn().mockResolvedValue(undefined);
+    const client = { get } as unknown as AmazonSpApiClient;
+    const adapter = new AmazonOfferManagerAdapter('conn-amz', client, CONFIG, jest.fn(), undefined, false, sleep);
+    return { adapter, get, sleep };
+  }
+
+  it('should look up the barcodes in one search and split the items back by barcode', async () => {
+    const { adapter, get } = batchSetup();
+    get.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: {
+        numberOfResults: 3,
+        items: [
+          withEan('B0MUG00001', '5901234123457'),
+          withEan('B0MUG00002', '5901234123459'),
+          withEan('B0MUG00003', '5901234123459'),
+        ],
+      },
+    });
 
     const result = await adapter.resolveCategoriesForBatchByEan({
       items: [
@@ -357,9 +376,15 @@ describe('AmazonOfferManagerAdapter.resolveCategoriesForBatchByEan', () => {
         { variantId: 'v2', ean: null },
         { variantId: 'v3', ean: '5901234123458' },
         { variantId: 'v4', ean: '5901234123459' },
+        { variantId: 'v5', ean: 'not-a-barcode' },
       ],
     });
 
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith(
+      '/catalog/2022-04-01/items',
+      expect.objectContaining({ identifiers: ['5901234123457', '5901234123458', '5901234123459'], pageSize: 20 }),
+    );
     expect(result.get('v1')).toEqual({
       kind: 'matched',
       allegroCategoryId: 'KITCHEN',
@@ -368,7 +393,70 @@ describe('AmazonOfferManagerAdapter.resolveCategoriesForBatchByEan', () => {
     });
     expect(result.get('v2')).toEqual({ kind: 'no-ean' });
     expect(result.get('v3')).toEqual({ kind: 'no-match' });
-    expect(result.get('v4')).toMatchObject({ kind: 'multi-match', candidates: [{ productCardId: 'B0MUG00001' }, {}] });
+    expect(result.get('v4')).toMatchObject({
+      kind: 'multi-match',
+      candidates: [{ productCardId: 'B0MUG00002' }, { productCardId: 'B0MUG00003' }],
+    });
+    expect(result.get('v5')).toEqual({ kind: 'no-match' });
+  });
+
+  it('should send at most 20 barcodes per search', async () => {
+    const { adapter, get } = batchSetup();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { numberOfResults: 0, items: [] } });
+    const items = Array.from({ length: 25 }, (_, index) => ({
+      variantId: `v${index}`,
+      ean: String(5901234100000 + index),
+    }));
+
+    await adapter.resolveCategoriesForBatchByEan({ items });
+
+    expect(get).toHaveBeenCalledTimes(2);
+    expect((get.mock.calls[0] as [string, { identifiers: string[] }])[1].identifiers).toHaveLength(20);
+    expect((get.mock.calls[1] as [string, { identifiers: string[] }])[1].identifiers).toHaveLength(5);
+  });
+
+  it('should ask again after a throttled search instead of reporting no match', async () => {
+    const { adapter, get, sleep } = batchSetup();
+    get
+      .mockRejectedValueOnce(new AmazonApiError(429, 'QuotaExceeded', 'slow down', 'r'))
+      .mockResolvedValueOnce({
+        status: 200,
+        requestId: 'r',
+        data: { numberOfResults: 1, items: [withEan('B0MUG00001', '5901234123457')] },
+      });
+
+    const result = await adapter.resolveCategoriesForBatchByEan({ items: [{ variantId: 'v1', ean: '5901234123457' }] });
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(result.get('v1')).toMatchObject({ kind: 'matched', productCardId: 'B0MUG00001' });
+  });
+
+  it('should fold a search that keeps failing into no match without failing the batch', async () => {
+    const { adapter, get, sleep } = batchSetup();
+    get.mockRejectedValue(new AmazonApiError(429, 'QuotaExceeded', 'slow down', 'r'));
+
+    const result = await adapter.resolveCategoriesForBatchByEan({
+      items: [
+        { variantId: 'v1', ean: '5901234123457' },
+        { variantId: 'v2', ean: null },
+      ],
+    });
+
+    expect(get).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    expect(result.get('v1')).toEqual({ kind: 'no-match' });
+    expect(result.get('v2')).toEqual({ kind: 'no-ean' });
+  });
+
+  it('should not retry a failure that is not a throttle', async () => {
+    const { adapter, get, sleep } = batchSetup();
+    get.mockRejectedValue(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'));
+
+    const result = await adapter.resolveCategoriesForBatchByEan({ items: [{ variantId: 'v1', ean: '5901234123457' }] });
+
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(result.get('v1')).toEqual({ kind: 'no-match' });
   });
 });
 

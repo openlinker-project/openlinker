@@ -30,8 +30,13 @@
  * app) is a later child; it registers on `host.oauthCompletionRegistry` here.
  *
  * No `defaultRateLimit`: SP-API quotas are per operation, not one request
- * rate, and Amazon is multi-tenant SaaS rather than a merchant-hosted box (the
- * Erli and Allegro reasoning). The capability adapters pace each operation.
+ * rate, so one manifest value would either throttle every call to the slowest
+ * operation or pace none (the Erli reasoning). Instead every client gets
+ * `createAmazonPacedFetch`, which sends the operations that fan out with
+ * catalogue or stock size (Catalog Items, Listings Items) through their own
+ * buckets at Amazon's documented rates. Other calls run unpaced unless the
+ * operator sets `config.rateLimit`; a 429 there is deferred by the retry
+ * classifier.
  *
  * @module libs/integrations/amazon/src
  */
@@ -48,6 +53,7 @@ import { AmazonRetryClassifierAdapter } from './infrastructure/adapters/amazon-r
 import { AmazonEmailNormalizerAdapter } from './infrastructure/adapters/amazon-email-normalizer.adapter';
 import { buildAmazonSchedulerTasks } from './infrastructure/scheduler/amazon-scheduler-tasks';
 import { AmazonAdapterFactory } from './application/amazon-adapter.factory';
+import { createAmazonPacedFetch } from './infrastructure/http/amazon-paced-transport';
 import type { AmazonResolution } from './application/interfaces/amazon-adapter.factory.interface';
 
 /**
@@ -113,7 +119,7 @@ export function createAmazonPlugin(): AdapterPlugin {
       // Dispatch FIRST, build lazily: an unsupported capability fails with the
       // SDK's uniform error before any credential is decrypted.
       const resolve = (): Promise<AmazonResolution> =>
-        factory.resolve(connection, host.credentialsResolver, host.http.forConnection(connection), host.cache);
+        factory.resolve(connection, host.credentialsResolver, createAmazonPacedFetch(host.http, connection), host.cache);
       try {
         return dispatchCapability<Promise<T>>(
           capability,

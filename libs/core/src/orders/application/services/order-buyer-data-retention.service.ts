@@ -120,7 +120,8 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
     let redacted = 0;
     let processed = 0;
 
-    let ordersExhausted = true;
+    // Stays true unless the candidate set runs out before the per-run cap.
+    let orderBudgetSpent = true;
     // Orders that failed this run. They stay candidates (the frontier is
     // oldest first), so a page made only of them means nothing else can be
     // reached this run; the loop stops instead of re-reading them.
@@ -154,7 +155,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
       }
       processed += candidates.length;
       if (candidates.length < BUYER_DATA_RETENTION_PAGE_SIZE) {
-        ordersExhausted = false;
+        orderBudgetSpent = false;
         break;
       }
     }
@@ -166,7 +167,7 @@ export class OrderBuyerDataRetentionService implements IOrderBuyerDataRetentionS
       redacted,
       failed: failedIds.size,
       customersRedacted: customers.redacted,
-      budgetExhausted: ordersExhausted || customers.budgetExhausted,
+      budgetExhausted: orderBudgetSpent || customers.budgetExhausted,
     };
   }
 

@@ -126,10 +126,16 @@ import {
 } from '../../mappers/amazon-listing-composer';
 import { mapProductTypeSchemaToParameters } from '../../mappers/amazon-product-type-schema.mapper';
 import { listingEan } from '../../mappers/amazon-product.mapper';
-import { AmazonCatalogReader, normalizeEan } from './amazon-catalog-reader';
+import { AmazonCatalogReader, CATALOG_SEARCH_MAX_IDENTIFIERS, normalizeEan } from './amazon-catalog-reader';
 import { AmazonProductTypeReader } from './amazon-product-type-reader';
 
 const LISTINGS_PATH = '/listings/2021-08-01/items';
+/**
+ * Waits before re-asking a throttled catalogue search. The transport already
+ * paces Catalog Items at its quota, so a 429 means another app on the seller
+ * spent it; a couple of short waits usually clear it.
+ */
+const CATALOG_THROTTLE_RETRY_DELAYS_MS = [1_000, 3_000] as const;
 /** `searchListingsItems` returns at most 20 items a page. */
 const MAX_PAGE_SIZE = 20;
 /**
@@ -165,6 +171,7 @@ export class AmazonOfferManagerAdapter
     fetchImpl: FetchLike,
     private readonly cache?: CachePort,
     private readonly isStockMaster = false,
+    private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
   ) {
     this.catalog = new AmazonCatalogReader(client, config.marketplaceIds[0]);
     this.productTypes = new AmazonProductTypeReader(client, fetchImpl, config.marketplaceIds[0]);
@@ -223,46 +230,64 @@ export class AmazonOfferManagerAdapter
 
   async resolveCategoriesForBatchByEan(input: BatchCategoryByEanInput): Promise<Map<string, EanMatchResult>> {
     const results = new Map<string, EanMatchResult>();
-    // Sequential: Catalog Items allows 2 requests a second; the client's
-    // limiter paces each call, a parallel fan-out would only queue there.
+    const byEan = new Map<string, string[]>();
     for (const item of input.items) {
       if (item.ean === null || item.ean.trim().length === 0) {
         results.set(item.variantId, { kind: 'no-ean' });
         continue;
       }
-      let entries: AmazonCatalogEntry[];
+      const normalized = normalizeEan(item.ean);
+      if (normalized === null) {
+        results.set(item.variantId, { kind: 'no-match' });
+        continue;
+      }
+      byEan.set(normalized, [...(byEan.get(normalized) ?? []), item.variantId]);
+    }
+
+    // One search per 20 barcodes, sequential: the transport paces Catalog Items
+    // at 2 requests a second, so a parallel fan-out would only queue there.
+    const eans = [...byEan.keys()];
+    for (let offset = 0; offset < eans.length; offset += CATALOG_SEARCH_MAX_IDENTIFIERS) {
+      const chunk = eans.slice(offset, offset + CATALOG_SEARCH_MAX_IDENTIFIERS);
+      let found: Map<string, AmazonCatalogEntry[]>;
       try {
-        entries = await this.catalog.findByEan(item.ean);
+        found = await this.searchCatalogWithRetry(chunk);
       } catch (error) {
         // The port folds a failed lookup into `no-match`; the log is what tells
         // a throttled or refused catalogue read from a barcode Amazon lacks.
         this.logger.warn(
-          `Amazon catalogue lookup failed for variant ${item.variantId} on connection ${this.connectionId}: ${describeLookupFailure(error)}`,
+          `Amazon catalogue lookup failed for ${chunk.length} barcode(s) on connection ${this.connectionId}: ${describeLookupFailure(error)}`,
         );
-        results.set(item.variantId, { kind: 'no-match' });
+        for (const ean of chunk) {
+          for (const variantId of byEan.get(ean) ?? []) {
+            results.set(variantId, { kind: 'no-match' });
+          }
+        }
         continue;
       }
-      if (entries.length === 0) {
-        results.set(item.variantId, { kind: 'no-match' });
-      } else if (entries.length === 1) {
-        results.set(item.variantId, {
-          kind: 'matched',
-          allegroCategoryId: entries[0].productType ?? AMAZON_OFFER_ONLY_PRODUCT_TYPE,
-          productCardId: entries[0].asin,
-          method: 'auto_detect',
-        });
-      } else {
-        results.set(item.variantId, {
-          kind: 'multi-match',
-          candidates: entries.map((entry) => ({
-            allegroCategoryId: entry.productType ?? AMAZON_OFFER_ONLY_PRODUCT_TYPE,
-            productCardId: entry.asin,
-            name: entry.name,
-          })),
-        });
+      for (const ean of chunk) {
+        const result = toEanMatchResult(found.get(ean) ?? []);
+        for (const variantId of byEan.get(ean) ?? []) {
+          results.set(variantId, result);
+        }
       }
     }
     return results;
+  }
+
+  /** A throttled search is asked again after a short wait instead of reading as "no product". */
+  private async searchCatalogWithRetry(eans: readonly string[]): Promise<Map<string, AmazonCatalogEntry[]>> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.catalog.searchByEans(eans);
+      } catch (error) {
+        const delay = CATALOG_THROTTLE_RETRY_DELAYS_MS[attempt];
+        if (!(error instanceof AmazonApiError) || error.statusCode !== 429 || delay === undefined) {
+          throw error;
+        }
+        await this.sleep(delay);
+      }
+    }
   }
 
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
@@ -597,6 +622,32 @@ function readPublicationStatus(
 }
 
 /** The status and Amazon's error code, never the response body. */
+function toEanMatchResult(entries: readonly AmazonCatalogEntry[]): EanMatchResult {
+  if (entries.length === 0) {
+    return { kind: 'no-match' };
+  }
+  if (entries.length === 1) {
+    return {
+      kind: 'matched',
+      allegroCategoryId: entries[0].productType ?? AMAZON_OFFER_ONLY_PRODUCT_TYPE,
+      productCardId: entries[0].asin,
+      method: 'auto_detect',
+    };
+  }
+  return {
+    kind: 'multi-match',
+    candidates: entries.map((entry) => ({
+      allegroCategoryId: entry.productType ?? AMAZON_OFFER_ONLY_PRODUCT_TYPE,
+      productCardId: entry.asin,
+      name: entry.name,
+    })),
+  };
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function describeLookupFailure(error: unknown): string {
   if (error instanceof AmazonApiError) {
     return `HTTP ${error.statusCode}${error.errorCode ? ` ${error.errorCode}` : ''}`;

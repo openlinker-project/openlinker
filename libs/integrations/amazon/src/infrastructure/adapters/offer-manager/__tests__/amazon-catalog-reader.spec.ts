@@ -44,7 +44,7 @@ describe('AmazonCatalogReader', () => {
       identifiersType: 'EAN',
       marketplaceIds: [DE],
       includedData: ['summaries', 'images', 'identifiers', 'productTypes'],
-      pageSize: 10,
+      pageSize: 20,
     });
     expect(entries).toEqual([
       {
@@ -56,6 +56,38 @@ describe('AmazonCatalogReader', () => {
         images: ['https://m.media-amazon.com/main.jpg', 'https://m.media-amazon.com/side.jpg'],
       },
     ]);
+  });
+
+  it('should follow the pages of a multi-barcode search and key items by the barcode they carry', async () => {
+    const { reader, get } = setup();
+    const other: AmazonCatalogItem = {
+      ...mug,
+      asin: 'B0MUG00002',
+      identifiers: [{ marketplaceId: DE, identifiers: [{ identifierType: 'UPC', identifier: '012345678905' }] }],
+    };
+    get
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { numberOfResults: 2, items: [mug], pagination: { nextToken: 'p2' } },
+        requestId: 'r',
+      })
+      .mockResolvedValueOnce({ status: 200, data: { numberOfResults: 2, items: [other] }, requestId: 'r' });
+
+    const found = await reader.searchByEans(['5901234123457', '0012345678905', '4006381333931']);
+
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get).toHaveBeenLastCalledWith('/catalog/2022-04-01/items', expect.objectContaining({ pageToken: 'p2' }));
+    expect(found.get('5901234123457')?.map((entry) => entry.asin)).toEqual(['B0MUG00001']);
+    expect(found.get('0012345678905')?.map((entry) => entry.asin)).toEqual(['B0MUG00002']);
+    expect(found.get('4006381333931')).toEqual([]);
+  });
+
+  it('should refuse more than 20 barcodes in one search', async () => {
+    const { reader, get } = setup();
+    const eans = Array.from({ length: 21 }, (_, index) => String(5901234100000 + index));
+
+    await expect(reader.searchByEans(eans)).rejects.toThrow('at most 20');
+    expect(get).not.toHaveBeenCalled();
   });
 
   it('should not call Amazon for a value that is not a barcode', async () => {
