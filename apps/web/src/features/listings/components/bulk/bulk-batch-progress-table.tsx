@@ -132,7 +132,10 @@ export function BulkBatchProgressTable({
             const firstMessage = record.errors?.[0]?.message;
             const accountLevel = accountLevelRecordIds?.has(record.id) === true;
             const fixUrl = accountLevel ? null : buildFixUrl?.(record);
-            const shown = accountLevel && accountLevelRowLabel ? accountLevelRowLabel : (firstMessage ?? copy.failed);
+            const shown =
+              accountLevel && accountLevelRowLabel
+                ? accountLevelRowLabel
+                : firstMessage ?? copy.failed;
             return (
               <span className="bulk-batch__err-cell">
                 <span
@@ -168,9 +171,7 @@ export function BulkBatchProgressTable({
           }
           if (record.status === 'validating') {
             return (
-              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                {copy.validating}
-              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{copy.validating}</span>
             );
           }
           return <span className="dim">-</span>;
@@ -416,16 +417,40 @@ function RecordStatusBadge({ status }: { status: OfferCreationStatus }): ReactEl
   const copy = useMessages('listings').bulkBatchProgressTable.statusBadge;
   switch (status) {
     case 'pending':
-      return <StatusBadge tone="neutral" withDot>{copy.pending}</StatusBadge>;
+      return (
+        <StatusBadge tone="neutral" withDot>
+          {copy.pending}
+        </StatusBadge>
+      );
     case 'validating':
-      return <StatusBadge tone="info" withDot pulse>{copy.running}</StatusBadge>;
+      return (
+        <StatusBadge tone="info" withDot pulse>
+          {copy.running}
+        </StatusBadge>
+      );
     case 'draft':
-      return <StatusBadge tone="success" withDot>{copy.draft}</StatusBadge>;
+      return (
+        <StatusBadge tone="success" withDot>
+          {copy.draft}
+        </StatusBadge>
+      );
     case 'active':
-      return <StatusBadge tone="success" withDot>{copy.succeeded}</StatusBadge>;
+      return (
+        <StatusBadge tone="success" withDot>
+          {copy.succeeded}
+        </StatusBadge>
+      );
     case 'reused':
-      return <StatusBadge tone="success" withDot>{copy.alreadyExisted}</StatusBadge>;
+      return (
+        <StatusBadge tone="success" withDot>
+          {copy.alreadyExisted}
+        </StatusBadge>
+      );
     case 'failed':
-      return <StatusBadge tone="error" withDot>{copy.failed}</StatusBadge>;
+      return (
+        <StatusBadge tone="error" withDot>
+          {copy.failed}
+        </StatusBadge>
+      );
   }
 }

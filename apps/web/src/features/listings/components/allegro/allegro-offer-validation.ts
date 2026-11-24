@@ -85,7 +85,8 @@ function allegroSalesCenterUrl(connectionConfig: Record<string, unknown>): strin
   // seller to the sandbox panel to fix a real block is worse than no link.
   const environment = connectionConfig['environment'];
   if (environment === 'sandbox') return 'https://salescenter.allegro.com.allegrosandbox.pl';
-  if (environment === 'production' || environment === undefined) return 'https://salescenter.allegro.com';
+  if (environment === 'production' || environment === undefined)
+    return 'https://salescenter.allegro.com';
   return null;
 }
 
