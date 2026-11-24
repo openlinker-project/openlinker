@@ -316,7 +316,6 @@ export function OrderTagsSettingsPage(): ReactElement {
         <div className="toolbar__group">
           <Button
             ref={newTagButtonRef}
-            data-tour="order-tags-new"
             aria-expanded={creating}
             onClick={() => {
               setCreating(true);

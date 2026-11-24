@@ -15,16 +15,6 @@ import type { ReleaseShowcaseEntry } from './release-step.types';
 
 export const RELEASE_SHOWCASES: readonly ReleaseShowcaseEntry[] = [
   {
-    id: 'orders-views',
-    introducedIn: '0.20.0',
-    appliesWhen: () => true,
-    stops: [
-      { routePattern: 'orders', target: 'orders-columns' },
-      { routePattern: 'orders', target: 'orders-table', follow: { pathPrefix: 'orders', target: 'order-detail' } },
-      { routePattern: 'settings/order-tags', target: 'order-tags-new' },
-    ],
-  },
-  {
     id: 'release-center-tour',
     introducedIn: '0.20.0',
     appliesWhen: () => true,

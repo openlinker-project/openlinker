@@ -157,25 +157,6 @@
       "title": "Poznaj OpenLinker",
       "why": "Zobacz, gdzie są zamówienia i jak ustawić kolumny listy."
     },
-    "orders-views": {
-      "stops": {
-        "0": {
-          "body": "Wybierz, które kolumny widzisz na liście zamówień. Twój wybór zapamiętujemy.",
-          "title": "Kolumny listy"
-        },
-        "1": {
-          "body": "Tu są zamówienia ze wszystkich kanałów. Kliknij wiersz, żeby otworzyć szczegóły.",
-          "followBody": "Oto szczegóły zamówienia, które kliknąłeś. Stąd obsłużysz je w całości. Wróć do listy, żeby dokończyć.",
-          "title": "Lista zamówień"
-        },
-        "2": {
-          "body": "Dodaj własną etykietę i kolor, a potem oznaczaj nią zamówienia z listy.",
-          "title": "Etykiety zamówień"
-        }
-      },
-      "title": "Nowe widoki zamówień",
-      "why": "Zobacz, gdzie wybierzesz kolumny listy i gdzie zarządzasz etykietami zamówień."
-    },
     "release-center-tour": {
       "stops": {
         "0": {

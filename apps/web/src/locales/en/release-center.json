@@ -153,25 +153,6 @@
       "title": "Get to know OpenLinker",
       "why": "See where orders are and how to set the list columns."
     },
-    "orders-views": {
-      "stops": {
-        "0": {
-          "body": "Choose which columns the orders list shows. We remember your choice.",
-          "title": "List columns"
-        },
-        "1": {
-          "body": "Orders from every channel are here. Click a row to open its details.",
-          "followBody": "These are the details of the order you opened. You can handle it from here. Go back to the list to finish.",
-          "title": "Orders list"
-        },
-        "2": {
-          "body": "Add your own tag and colour, then tag orders from the list.",
-          "title": "Order tags"
-        }
-      },
-      "title": "New order views",
-      "why": "See where you pick the list columns and where you manage order tags."
-    },
     "release-center-tour": {
       "stops": {
         "0": {
