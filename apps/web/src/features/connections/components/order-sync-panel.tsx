@@ -159,6 +159,22 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
       : verdict === 'ok' || verdict === 'failing'
         ? null
         : copy.verdictNext[verdict];
+  // A failing import says nothing here: the failures row below carries the count and the way in,
+  // so a second, vaguer sentence would only repeat it.
+  const verdictText: string | null =
+    data === undefined
+      ? null
+      : pausedStatus !== null
+        ? copy.paused[pausedStatus].text
+        : verdict === 'failing'
+          ? null
+          : verdict === 'behind' && !data.orderImport?.lastPolledAt
+            ? copy.verdictText.behindQueued
+            : interpolate(copy.verdictText[verdict], {
+                when: data.orderImport?.lastPolledAt
+                  ? format.relativeTime(data.orderImport.lastPolledAt)
+                  : '',
+              });
   const pausedReason = pausedStatus !== null ? copy.paused[pausedStatus].reason : undefined;
   // The same recovery targets the connection page's re-authentication banner offers.
   const reauthTo =
@@ -173,7 +189,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
     if (start === null) {
       return fallbackAt === null
         ? copy.startText.unknown
-        : interpolate(copy.startText.started, { date: format.dateTime(fallbackAt) });
+        : interpolate(copy.startText.started, { date: format.date(fallbackAt) });
     }
     const order =
       start.order === 'newest-first' ? copy.orderPhrase.newest : copy.orderPhrase.oldest;
@@ -187,7 +203,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
             : interpolate(copy.startText.whatAll, { order });
       return interpolate(copy.startText.pending, { what });
     }
-    const when = start.appliedAt === null ? '' : format.dateTime(start.appliedAt);
+    const when = start.appliedAt === null ? '' : format.date(start.appliedAt);
     if (start.mode === 'now') return interpolate(copy.startText.now, { date: when });
     if (start.mode === 'from') return interpolate(copy.startText.from, { date, order });
     return interpolate(copy.startText.all, { order });
@@ -200,7 +216,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
         <div className="order-sync-panel__actions">
           {sync.visible ? (
             <Button
-              tone="secondary"
+              tone="primary"
               onClick={() => void checkNow()}
               disabled={enqueueCheck.isPending || sync.demoReadOnly || pausedStatus !== null}
               title={pausedReason}
@@ -214,7 +230,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               className={pressed ? 'guided-press' : undefined}
               onClick={goToPeriodSync}
               disabled={sync.demoReadOnly || pausedStatus !== null}
-              title={pausedReason}
+              title={pausedReason ?? copy.getPeriodHint}
             >
               {copy.getPeriod}
               {ripple ? (
@@ -265,17 +281,9 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
             >
               {pausedStatus !== null ? copy.paused[pausedStatus].verdict : copy.verdict[verdict]}
             </StatusBadge>
-            <p className="order-sync-panel__verdict-text">
-              {pausedStatus !== null
-                ? copy.paused[pausedStatus].text
-                : verdict === 'behind' && !data.orderImport?.lastPolledAt
-                  ? copy.verdictText.behindQueued
-                  : interpolate(copy.verdictText[verdict], {
-                      when: data.orderImport?.lastPolledAt
-                        ? format.relativeTime(data.orderImport.lastPolledAt)
-                        : '',
-                    })}
-            </p>
+            {verdictText !== null ? (
+              <p className="order-sync-panel__verdict-text">{verdictText}</p>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -303,7 +311,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               </div>
               {write.visible ? (
                 <Button
-                  tone="secondary"
+                  tone="ghost"
                   onClick={() => setDialogOpen(true)}
                   disabled={write.demoReadOnly || pausedStatus !== null}
                   title={pausedReason}

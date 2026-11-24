@@ -7819,6 +7819,28 @@ html:has(.login-stage) {
   overflow-y: auto;
 }
 
+/* Why Apply is unavailable, written beside the button instead of leaving it dead. */
+.order-sync-restart-dialog__hint,
+.trigger-sync-dialog__hint {
+  align-self: center;
+  margin: 0 auto 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* A standing fact about the connection, quieter than the notes inside the form body. */
+.order-sync-restart-dialog__notice {
+  margin: var(--space-3) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.trigger-sync-dialog__intro {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 /* ── Connection sync-status panel (#2615) ── */
 .connection-sync-status__headline {
   margin: var(--space-2) 0 0;
@@ -10973,6 +10995,18 @@ a.kpi-card:focus-visible {
   }
 
   .setup-stepper__list {
+@keyframes setup-stepper-new-step {
+  0% { background: var(--accent-primary-soft); transform: scale(1.06); }
+  100% { background: transparent; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .setup-stepper__step--new {
+    border-radius: var(--radius-md);
+    animation: setup-stepper-new-step 900ms ease-out;
+  }
+}
+
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -40357,6 +40391,20 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 
 .order-sync-start__card:focus-visible {
+/* Helper text, not body copy: the cards below are what the operator reads. */
+.order-sync-start__helper {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* One-page forms: the section follows credential fields and needs its own start. */
+.order-sync-start--separated {
+  margin-top: var(--space-4);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-default);
+}
+
   border-color: var(--accent-primary);
   box-shadow: var(--shadow-focus);
 }
@@ -40370,11 +40418,70 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   cursor: not-allowed;
   opacity: 0.6;
 }
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 
 .order-sync-start__card--disabled:hover {
+/* A tint alone is easy to miss: a heavier border and a filled radio dot say "chosen". */
   border-color: var(--border-default);
   box-shadow: none;
 }
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+}
+
+.order-sync-start__card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.order-sync-start__dot {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+}
+
+.order-sync-start__card--checked .order-sync-start__dot {
+  border-color: var(--accent-primary);
+  background: radial-gradient(circle, var(--accent-primary) 0 40%, var(--bg-surface) 45%);
+}
+
+.order-sync-start__badge {
+  padding: 0 var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  border-radius: 999px;
+}
+
+.order-sync-start__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--status-warning-strong);
+}
+
+.order-sync-start__warning svg {
+  flex: none;
+  margin-top: 0.125rem;
+}
+
+.subiekt-advanced {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.subiekt-advanced__summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 
 .order-sync-start__reason {
   display: block;
@@ -40640,7 +40747,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .order-range__hint {
   margin: calc(var(--space-1) * -1) 0 0;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 .order-range__dates {
@@ -40717,7 +40824,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .order-import-health__run-detail {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -40831,6 +40938,13 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 
 .order-sync-panel__facts {
+.order-import-health__stat-note {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-6, 2rem);
@@ -40981,6 +41095,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     position: absolute;
     pointer-events: none;
   }
+.order-sync-panel__start-row .button--ghost {
+  /* The quietest of the three actions, but still readable as a link: not the muted
+     ghost grey, which on this card reads as a disabled control. */
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
   .trigger-sync-dialog__scope--preselected::before {
     inset: calc(var(--space-2) * -1);
     z-index: -1;

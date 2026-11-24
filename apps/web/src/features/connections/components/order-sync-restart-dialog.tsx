@@ -68,6 +68,15 @@ export function OrderSyncRestartDialog({
   // An untouched empty date reads as "pick one", not as an error shown up front.
   const showDateError = value.mode === 'from' && (value.from ?? '') !== '' ? dateError : undefined;
 
+  // "Only new orders" on a connection already reading the feed changes nothing, so it is not an
+  // action; the reason is written out beside the button instead of leaving it dead.
+  const alreadyFollowing = hasFeedPosition && value.mode === 'now';
+  const applyBlockedReason: string | null = alreadyFollowing
+    ? copy.alreadyFollowingHint
+    : !parsed.success
+      ? copy.noChangeHint
+      : null;
+
   function handleOpenChange(next: boolean): void {
     if (pending) return;
     if (!next) {
@@ -121,21 +130,29 @@ export function OrderSyncRestartDialog({
             error={showDateError}
             restart
           />
-          {value.mode === 'now' ? (
-            <p className="order-sync-start__note">
-              {hasFeedPosition ? copy.alreadyFollowingNote : copy.nowNote}
-            </p>
+          {value.mode === 'now' && !alreadyFollowing ? (
+            <p className="order-sync-start__note">{copy.nowNote}</p>
           ) : null}
         </div>
+        {alreadyFollowing ? (
+          <p className="order-sync-restart-dialog__notice" role="status">
+            {copy.alreadyFollowingNote}
+          </p>
+        ) : null}
 
         <DialogFooter>
+          {applyBlockedReason !== null ? (
+            <p className="order-sync-restart-dialog__hint" role="status">
+              {applyBlockedReason}
+            </p>
+          ) : null}
           <Button tone="secondary" onClick={() => handleOpenChange(false)} disabled={pending}>
             {copy.cancel}
           </Button>
           <Button
             tone="primary"
             onClick={() => void handleConfirm()}
-            disabled={pending || !parsed.success || (hasFeedPosition && value.mode === 'now')}
+            disabled={pending || applyBlockedReason !== null}
           >
             {pending ? copy.confirming : copy.confirm}
           </Button>

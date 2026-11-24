@@ -152,7 +152,65 @@ describe('OrderSyncPanel', () => {
       )
     );
 
-    expect(await screen.findByText('Every order the shop has, newest first.')).toBeInTheDocument();
+    expect(await screen.findByText('Every order the shop has, starting with the newest.')).toBeInTheDocument();
+  });
+
+  it('should state every start with a date and no time of day when the start was applied', async () => {
+    renderPanel(
+      vi.fn<GetSyncStatus>().mockResolvedValue(
+        makeStatus({
+          orderStart: {
+            mode: 'now',
+            from: null,
+            order: 'oldest-first',
+            appliedAt: '2026-11-18T08:45:00.000Z',
+            pending: false,
+          },
+        })
+      )
+    );
+
+    const sentence = await screen.findByText(/^New orders only, from /);
+    expect(sentence.textContent).not.toMatch(/\d:\d\d/);
+  });
+
+  it('should explain the import order in plain words when the start names one', async () => {
+    renderPanel(
+      vi.fn<GetSyncStatus>().mockResolvedValue(
+        makeStatus({
+          orderStart: {
+            mode: 'from',
+            from: '2026-10-01',
+            order: 'oldest-first',
+            appliedAt: '2026-11-18T08:00:00.000Z',
+            pending: false,
+          },
+        })
+      )
+    );
+
+    expect(await screen.findByText(/starting with the oldest\. Earlier orders stay/)).toBeInTheDocument();
+  });
+
+  it('should make Check for new orders the primary action and the start change a ghost button', async () => {
+    renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
+
+    expect(await screen.findByRole('button', { name: 'Check for new orders' })).toHaveClass('button--primary');
+    expect(screen.getByRole('button', { name: 'Get orders from a period…' })).toHaveClass(
+      'button--secondary'
+    );
+    expect(screen.getByRole('button', { name: 'Change where syncing starts…' })).toHaveClass(
+      'button--ghost'
+    );
+  });
+
+  it('should explain the period read in a tooltip when the connection is active', async () => {
+    renderPanel(vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()));
+
+    expect(await screen.findByRole('button', { name: 'Get orders from a period…' })).toHaveAttribute(
+      'title',
+      'Reads the orders of one past period, once.'
+    );
   });
 
   it('says a restarted choice starts on the next check', async () => {
@@ -242,6 +300,7 @@ describe('OrderSyncPanel', () => {
       expect(await screen.findByText('42')).toBeInTheDocument();
       expect(screen.getByText('Needs attention')).toBeInTheDocument();
       expect(screen.getByText('2 orders could not be imported')).toBeInTheDocument();
+      expect(screen.queryByText('Some orders could not be imported.')).not.toBeInTheDocument();
       expect(screen.queryByText(/unknown product/)).not.toBeInTheDocument();
 
       expect(screen.getByRole('button', { name: 'Change where syncing starts…' })).toBeInTheDocument();
@@ -253,6 +312,19 @@ describe('OrderSyncPanel', () => {
       expect(screen.getByText(/Latest: order 37/)).toBeInTheDocument();
       expect(screen.getByText(/Sync products from the shop, then use Retry failed orders/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Sync products…' })).toBeInTheDocument();
+    });
+
+    it('should say failed orders are not counted when nothing was imported next to a failure', async () => {
+      renderHealth(makeStatus({ orderImport: { ...importFigures, importedLast24h: 0 } }));
+
+      expect(await screen.findByText('Orders that failed are not counted here.')).toBeInTheDocument();
+    });
+
+    it('should not add the note when orders were imported', async () => {
+      renderHealth(makeStatus({ orderImport: importFigures }));
+
+      await screen.findByText('Imported in the last 24 hours');
+      expect(screen.queryByText('Orders that failed are not counted here.')).not.toBeInTheDocument();
     });
 
     it('should send the operator to Actions on the product sync from the failure card', async () => {
