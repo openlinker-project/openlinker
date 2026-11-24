@@ -13,17 +13,22 @@ import type { ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { requestReleaseTour } from '../lib/release-center-requests';
 import { showcaseSeenOf } from '../lib/release-notifications';
+import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { useReleaseCenterView } from './release-center-provider';
 import { ReleaseIcon } from './release-icon';
 
 export function ReleaseWalkAll({ onNavigate }: { onNavigate: () => void }): ReactElement | null {
   const view = useReleaseCenterView();
   const copy = useMessages('release-center').panel.walkAll;
+  const { canWriteSteps } = useReleaseCenterAccess();
   if (!view || (view.instances.length === 0 && view.showcases.length === 0)) return null;
 
   const unseen = view.showcases.filter((s) => !showcaseSeenOf(view.state, s.itemKey)).length;
-  const left = view.summary.requiredLeft + view.summary.optionalLeft + unseen;
-  const finished = left === 0;
+  // Without the right to change settings nothing here can be completed: it is a tour of what changed, never "finished".
+  const left = canWriteSteps
+    ? view.summary.requiredLeft + view.summary.optionalLeft + unseen
+    : view.instances.length + view.showcases.length;
+  const finished = canWriteSteps && left === 0;
 
   const start = (): void => {
     requestReleaseTour(
@@ -42,24 +47,26 @@ export function ReleaseWalkAll({ onNavigate }: { onNavigate: () => void }): Reac
   };
 
   return (
-    <article className={`msg msg--${finished || view.summary.requiredLeft === 0 ? 'info' : 'warning'} msg--pinned`}>
+    <article className={`msg msg--${finished || !canWriteSteps || view.summary.requiredLeft === 0 ? 'info' : 'warning'} msg--pinned`}>
       <span className="msg__icon">
         <ReleaseIcon name={finished ? 'check' : 'play'} size={16} />
       </span>
       <div className="msg__main">
         <p className="msg__title">
-          {finished ? copy.doneTitle : interpolate(copy.leftTitle, { count: left })}
+          {finished ? copy.doneTitle : interpolate(canWriteSteps ? copy.leftTitle : copy.viewTitle, { count: left })}
         </p>
         <p className="msg__body">
           {finished
             ? copy.doneBody
-            : view.summary.requiredLeft > 0
+            : !canWriteSteps
+              ? copy.viewBody
+              : view.summary.requiredLeft > 0
               ? interpolate(copy.requiredLeft, { count: view.summary.requiredLeft })
               : copy.onlyOptional}
         </p>
         <div className="msg__foot">
           <button type="button" className="msg__action" onClick={start}>
-            {finished ? copy.again : copy.start}
+            {finished ? copy.again : canWriteSteps ? copy.start : copy.viewStart}
           </button>
         </div>
       </div>

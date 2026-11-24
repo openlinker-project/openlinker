@@ -140,7 +140,11 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
   const messages = useNotificationMessages();
   // An unread warning or error counts toward the badge; a plain info or success only shows its dot.
   const summary = useMemo(() => {
-    const base = summarizeBell(instances, state, now);
+    const raw = summarizeBell(instances, state, now);
+    // Someone who cannot change settings can never clear a required step, so it neither counts nor alarms.
+    const base = canWriteSteps
+      ? raw
+      : { ...raw, count: 0, requiredLeft: 0, optionalLeft: raw.optionalLeft + raw.requiredLeft };
     const alerts = messages.filter((message) => {
       if (message.severity !== 'warning' && message.severity !== 'error') return false;
       const row = state.user.find((entry) => entry.itemKey === message.itemKey);
@@ -148,7 +152,7 @@ export function ReleaseCenterProvider({ children }: PropsWithChildren): ReactEle
     }).length;
     const count = base.count + alerts;
     return { ...base, count, showDot: count === 0 && base.optionalLeft > 0 };
-  }, [instances, state, now, messages]);
+  }, [instances, state, now, messages, canWriteSteps]);
 
   // Ring when the count goes up or a new notification appears, never on first load.
   const [ringSignal, setRingSignal] = useState(0);

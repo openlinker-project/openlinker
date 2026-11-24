@@ -34,7 +34,7 @@
     "toGuide": "Go to the guide"
   },
   "panel": {
-    "adminCompletes": "An administrator completes the steps",
+    "adminCompletes": "An administrator changes these settings. You can still see where they are.",
     "archivedLabel": "Archived",
     "close": "Close",
     "ctaAgain": "Go through again",
@@ -122,13 +122,16 @@
     "versionBadge": "v{version}",
     "viewedChip": "Viewed",
     "walkAll": {
-      "leftTitle": "{count} left to go through",
-      "requiredLeft": "{count} required",
-      "onlyOptional": "Nothing required, all optional",
-      "start": "Go through everything",
-      "doneTitle": "All caught up",
+      "again": "Go through everything again",
       "doneBody": "You can walk through the guides again.",
-      "again": "Go through everything again"
+      "doneTitle": "All caught up",
+      "leftTitle": "{count} left to go through",
+      "onlyOptional": "Nothing required, all optional",
+      "requiredLeft": "{count} required",
+      "start": "Go through everything",
+      "viewBody": "See where things changed. There is nothing you need to set.",
+      "viewStart": "Show me what changed",
+      "viewTitle": "{count} to look at"
     }
   },
   "showcases": {
@@ -172,23 +175,25 @@
       "title": "Choose when the marketplace is told \"shipped\"",
       "tourBody": "The marketplace is told \"shipped\" either shortly after the label is bought or only after you click \"Mark dispatched\". This applies to this InPost account.",
       "tourTitle": "When is the marketplace told \"shipped\"?",
+      "viewBody": "Here you set when the marketplace is told \"shipped\" after an InPost label is bought.",
       "why": "Buying a label does not mean the parcel has been handed over, so by default the marketplace is told \"shipped\" only after you click \"Mark dispatched\". If you prefer, it is told shortly after the label is bought."
     },
     "packing-owner": {
       "title": "Say whether another system packs parcels",
       "tourBody": "Choose who packs orders that arrive in this system. This changes only what OpenLinker shows. Nothing gets blocked.",
       "tourTitle": "Who packs the orders?",
+      "viewBody": "Here you set who packs orders from this shop: OpenLinker or another system. It only changes what you see in OpenLinker.",
       "why": "If an external warehouse system packs the orders, tick \"This system packs and ships orders itself\". OpenLinker then hides its own \"Mark as packed\" button."
     },
     "shipping-routing": {
       "title": "Check who ships each delivery method",
       "tourBody": "Every delivery method has a sender assigned. Check the list, fix what is wrong, then save on the page.",
       "tourTitle": "Who ships parcels from this channel?",
+      "viewBody": "Here you can see who ships orders for each delivery method of this channel. Open Mappings, Fulfilment tab.",
       "why": "Go to Mappings, Fulfilment tab. Check who ships each delivery method of this channel, fix the assignments and save."
     }
   },
   "tour": {
-    "adminOnly": "Needs an administrator",
     "away": "You are on a different page than this step. Do what is needed here, then come back with the button below.",
     "back": "Back",
     "backToTarget": "Back to the highlighted item",
@@ -241,7 +246,8 @@
     "stepOfRelease": "Version {version}: step {current} of {total}",
     "stopLive": "Stop {current} of {total}: {title}",
     "stopOf": "Stop {current} of {total}",
-    "viewerHint": "You can see this setting. Only an administrator can change it."
+    "viewOnly": "For your information",
+    "viewWhere": "This is where it changed. There is nothing for you to do here."
   },
   "whatsNew": {
     "allSet": "All set",

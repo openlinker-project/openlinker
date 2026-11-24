@@ -38,7 +38,7 @@
     "toGuide": "Przejdź do przewodnika"
   },
   "panel": {
-    "adminCompletes": "Kroki wykonuje administrator",
+    "adminCompletes": "Ustawienia zmienia administrator. Tu zobaczysz, gdzie je znaleźć.",
     "archivedLabel": "Archiwum",
     "close": "Zamknij",
     "ctaAgain": "Przejdź jeszcze raz",
@@ -126,13 +126,16 @@
     "versionBadge": "v{version}",
     "viewedChip": "Obejrzane",
     "walkAll": {
-      "leftTitle": "Do przejścia: {count}",
-      "requiredLeft": "w tym wymagane: {count}",
-      "onlyOptional": "Nic wymaganego, same opcjonalne",
-      "start": "Przejdź przez wszystko",
-      "doneTitle": "Wszystko przejrzane",
+      "again": "Przejdź wszystko jeszcze raz",
       "doneBody": "Możesz przejść przewodniki jeszcze raz.",
-      "again": "Przejdź wszystko jeszcze raz"
+      "doneTitle": "Wszystko przejrzane",
+      "leftTitle": "Do przejścia: {count}",
+      "onlyOptional": "Nic wymaganego, same opcjonalne",
+      "requiredLeft": "w tym wymagane: {count}",
+      "start": "Przejdź przez wszystko",
+      "viewBody": "Zobacz, gdzie zaszły zmiany. Niczego nie musisz ustawiać.",
+      "viewStart": "Pokaż mi, co się zmieniło",
+      "viewTitle": "Do obejrzenia: {count}"
     }
   },
   "showcases": {
@@ -176,23 +179,25 @@
       "title": "Ustaw, kiedy marketplace dostaje „wysłano”",
       "tourBody": "Marketplace dostaje „wysłano” krótko po kupnie etykiety albo dopiero po kliknięciu „Oznacz jako nadane”. Ustawienie dotyczy tego konta InPost.",
       "tourTitle": "Kiedy marketplace dostaje „wysłano”?",
+      "viewBody": "Tu ustawia się, kiedy marketplace dostaje informację „wysłane\" po zakupie etykiety InPost.",
       "why": "Zakup etykiety nie znaczy jeszcze, że paczka została nadana, dlatego domyślnie marketplace dostaje „wysłano” dopiero po kliknięciu „Oznacz jako nadane”. Jeśli wolisz, dostanie je krótko po kupnie etykiety."
     },
     "packing-owner": {
       "title": "Wskaż, kto pakuje zamówienia",
       "tourBody": "Wskaż, kto pakuje zamówienia z tego sklepu: OpenLinker czy inny system. Zmienia to tylko to, co widzisz w OpenLinkerze, niczego nie blokuje.",
       "tourTitle": "Kto pakuje zamówienia?",
+      "viewBody": "Tu wskazuje się, kto pakuje zamówienia z tego sklepu: OpenLinker czy inny system. To zmienia tylko to, co widać w OpenLinkerze.",
       "why": "Jeśli zamówienia pakuje zewnętrzny system magazynowy, zaznacz „Ten system sam pakuje i wysyła zamówienia”. OpenLinker nie pokaże wtedy własnego przycisku „Oznacz jako spakowane”."
     },
     "shipping-routing": {
       "title": "Sprawdź, kto wysyła każdą metodę dostawy",
       "tourBody": "Każdą metodę dostawy z tego kanału wysyła wskazany przewoźnik lub magazyn. Sprawdź przypisania, popraw te, które się nie zgadzają, i zapisz.",
       "tourTitle": "Kto wysyła paczki z tego kanału?",
+      "viewBody": "Tu widać, kto wysyła zamówienia z każdej metody dostawy w tym kanale. Wejdź w Mapowania, zakładka Realizacja.",
       "why": "Wejdź w Mapowania, zakładka Realizacja. Sprawdź, kto wysyła poszczególne metody dostawy z tego kanału, popraw przypisania i zapisz."
     }
   },
   "tour": {
-    "adminOnly": "Wymaga administratora",
     "away": "Jesteś na innej stronie niż ten krok. Zrób tutaj, co trzeba, a potem wróć do kroku przyciskiem poniżej.",
     "back": "Wstecz",
     "backToTarget": "Wróć do zaznaczonego elementu",
@@ -245,7 +250,8 @@
     "stepOfRelease": "Wersja {version}: krok {current} z {total}",
     "stopLive": "Przystanek {current} z {total}: {title}",
     "stopOf": "Przystanek {current} z {total}",
-    "viewerHint": "Widzisz to ustawienie, ale zmienić je może tylko administrator."
+    "viewOnly": "Do obejrzenia",
+    "viewWhere": "Tu zaszła zmiana. Nie musisz tu nic robić."
   },
   "whatsNew": {
     "allSet": "Wszystko ustawione",

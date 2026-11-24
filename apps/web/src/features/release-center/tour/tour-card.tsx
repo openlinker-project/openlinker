@@ -21,7 +21,7 @@ import {
   type ReactElement,
 } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import { useIsAdmin } from '../../../shared/auth/use-permission';
+import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -68,7 +68,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const tour = copy.tour;
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
-  const isAdmin = useIsAdmin();
+  // CONFIG mode (may change settings) or VIEW mode (only shown where things changed).
+  const canConfig = useReleaseCenterAccess().canWriteSteps;
   const steps = useReleaseStepsMutation();
   const releaseState = useReleaseStateQuery();
   const step = state.steps[state.index];
@@ -322,12 +323,14 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     onSuccess: async (choiceId) => {
       setSaveFailed(false);
       setSavedChoice(choiceId);
-      await queryClient.invalidateQueries({ queryKey: connectionsQueryKeys.all });
+      // The decision is recorded first: waiting for the connections to refetch must not delay or lose it.
       if (step && entry) {
-        steps.mutate([
-          { itemKey: releaseStepItemKey(step.stepId, step.connectionId), status: 'done', doneVia: 'manual' },
-        ]);
+        steps.mutate(
+          [{ itemKey: releaseStepItemKey(step.stepId, step.connectionId), status: 'done', doneVia: 'manual' }],
+          { onError: () => setSaveFailed(true) }
+        );
       }
+      await queryClient.invalidateQueries({ queryKey: connectionsQueryKeys.all });
     },
     onError: () => setSaveFailed(true),
   });
@@ -362,7 +365,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const groupIndex = groups.findIndex((group) => group.key === tourItemKey(step));
   const isLast = state.index === state.steps.length - 1;
   const stepPath = resolveTourStop(step)?.path ?? null;
-  const blocked = !showcase && isAdmin && step.importance === 'required' && !done;
+  const blocked = !showcase && canConfig && step.importance === 'required' && !done;
   const choiceLabels = tour.choices as Record<string, string>;
   const shownChoice = savedChoice ?? pressed;
   // While the target is still being looked for, every control waits: acting now would run against a step nobody has seen.
@@ -375,12 +378,12 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     status = stepPath && stepPath !== location.pathname ? tour.away : tour.missing;
   }
   else if (saveFailed) status = tour.saveFailed;
-  else if (shownChoice) status = interpolate(tour.saved, { choice: choiceLabels[shownChoice] ?? shownChoice });
+  else if (savedChoice) status = interpolate(tour.saved, { choice: choiceLabels[savedChoice] ?? savedChoice });
 
   const handleNext = (): void => {
     if (blocked) return;
     // Walking past an optional step you could see counts as having looked at it, like "stays as it is".
-    if (!showcase && isAdmin && step.importance === 'optional' && !done && state.target === 'found') {
+    if (!showcase && canConfig && step.importance === 'optional' && !done && state.target === 'found') {
       steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
     }
     if (isLast) onClose();
@@ -398,7 +401,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
 
   // A missing optional step is handled too: the operator was told and moved on, and it must not stay open for ever.
   const handleSkipMissing = (): void => {
-    if (isAdmin && step.importance === 'optional' && !done) {
+    if (canConfig && step.importance === 'optional' && !done) {
       steps.mutate([{ itemKey, status: 'done', doneVia: 'manual' }]);
     }
     if (isLast) onClose();
@@ -570,9 +573,9 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
               <span className="release-chip release-chip--muted">{tour.showcaseChip}</span>
             ) : (
               <span
-                className={`release-chip${isAdmin && step.importance === 'required' ? ' release-chip--accent' : ' release-chip--muted'}`}
+                className={`release-chip${canConfig && step.importance === 'required' ? ' release-chip--accent' : ' release-chip--muted'}`}
               >
-                {!isAdmin ? tour.adminOnly : step.importance === 'required' ? tour.required : tour.optional}
+                {!canConfig ? tour.viewOnly : step.importance === 'required' ? tour.required : tour.optional}
               </span>
             )}
             {showcase && showcase.stopCount > 1 ? (
@@ -582,10 +585,12 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
             ) : null}
           </div>
           <p className="tour-card__body">
-            {(onFollowPage ? (stepCopy as Record<string, string | undefined>)[`follow${followIndex}`] : undefined) ?? stepCopy.tourBody}
+            {(onFollowPage ? (stepCopy as Record<string, string | undefined>)[`follow${followIndex}`] : undefined) ??
+              (!canConfig && !showcase ? (stepCopy as Record<string, string | undefined>).viewBody : undefined) ??
+              stepCopy.tourBody}
           </p>
         </div>
-        {!showcase && isAdmin && spec ? (
+        {!showcase && canConfig && spec ? (
           <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle} inert={searching}>
             {spec.choices.map((choice) => (
               <button
@@ -623,8 +628,8 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
                 title: stepCopy.tourTitle,
               })}
             </p>
-          ) : !isAdmin && !showcase ? (
-            <p className="tour-card__hint">{tour.viewerHint}</p>
+          ) : !canConfig && !showcase ? (
+            <p className="tour-card__hint">{tour.viewWhere}</p>
           ) : null}
         </div>
         {blocked && state.target !== 'missing' && !onFollowPage ? (
@@ -637,7 +642,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
             <Button tone="ghost" className="button--sm" onClick={() => setConfirmSkip(true)}>
               {tour.skipShowcase}
             </Button>
-          ) : isAdmin && !done && state.target !== 'missing' ? (
+          ) : canConfig && !done && state.target !== 'missing' ? (
             <Button tone="ghost" className="button--sm" onClick={handleStaysAsIs}>
               {copy.panel.stayAsIs}
             </Button>
