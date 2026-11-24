@@ -13,7 +13,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { describeApiError } from '../../shared/api/describe-api-error';
-import { interpolate, useMessages } from '../../shared/i18n';
+import { interpolate, useMessages, usePlural } from '../../shared/i18n';
 import { AccessGate } from '../../shared/ui/access-gate';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
@@ -26,12 +26,12 @@ import {
   BuyerDataImpact,
   BuyerDataRulesEditor,
   BuyerDataTrial,
+  daysToPeriod,
   globalRulesFromSettings,
   readBuyerDataSettings,
   resolveBuyerDataRules,
   useBuyerDataImpactQuery,
-  useBuyerDataSummary,
-  useBuyerDataTrialMutation,
+    useBuyerDataTrialMutation,
   validateBuyerDataRules,
   type BuyerDataRules,
 } from '../../features/buyer-data';
@@ -40,6 +40,16 @@ import {
   useOperationalSettingsQuery,
   useUpdateOperationalSettingsMutation,
 } from '../../features/settings';
+
+function useShortPeriod(): (days: number) => string {
+  const copy = useMessages('buyer-data').period;
+  const plural = usePlural();
+  return (days) => {
+    if (days <= 0) return copy.shortNever;
+    const { amount, unit } = daysToPeriod(days);
+    return plural(amount, copy.short[unit], { n: amount });
+  };
+}
 
 function takesOrders(connection: Connection): boolean {
   return connection.status !== 'archived' && connection.enabledCapabilities.includes('OrderSource');
@@ -57,18 +67,18 @@ function sameRules(a: BuyerDataRules, b: BuyerDataRules): boolean {
 function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
   const COPY = useMessages('buyer-data').page;
   const { showToast } = useToast();
-  const summarise = useBuyerDataSummary();
+  const shortPeriod = useShortPeriod();
   const connectionsQuery = useConnectionsQuery();
   const update = useUpdateOperationalSettingsMutation();
   const trial = useBuyerDataTrialMutation();
   const [draft, setDraft] = useState(saved);
-  const [ranOnce, setRanOnce] = useState(false);
+  const [checked, setChecked] = useState<{ key: string; at: string } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   // A saved row that changed under the page is a fresh decision: adopt it.
   useEffect(() => {
     setDraft(saved);
-    setRanOnce(false);
+    setChecked(null);
   }, [saved.enabled, saved.hideAfterDays, saved.eraseAfterDays, saved.mode]);
 
   const issues = validateBuyerDataRules(draft);
@@ -77,6 +87,9 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
     eraseAfterDays: draft.eraseAfterDays,
     mode: draft.mode,
   });
+  const rulesKey = `${draft.hideAfterDays}:${draft.eraseAfterDays}:${draft.mode}`;
+  const ranOnce = checked !== null && checked.key === rulesKey;
+  const stale = checked !== null && !ranOnce;
   const changed = !sameRules(draft, saved);
   const canEnable = issues.length === 0 && (ranOnce || saved.enabled);
   const connections = (connectionsQuery.data ?? []).filter(takesOrders);
@@ -112,7 +125,7 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
 
   return (
     <form
-      className="form-card form-narrow"
+      className="form-card form-narrow buyer-data-page"
       onSubmit={(event) => {
         event.preventDefault();
         if (issues.length === 0 && changed) save();
@@ -120,18 +133,42 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
       data-testid="buyer-data-page"
     >
       <Alert tone="info" title={COPY.defaultsTitle}>
-        {COPY.defaultsBody}
+        <ul className="buyer-data-points">
+          <li>{COPY.defaultsPoint1}</li>
+          <li>{COPY.defaultsPoint2}</li>
+        </ul>
       </Alert>
+      <p className="rate-limit-section__help">{COPY.untouched}</p>
 
-      {saved.enabled ? (
-        <Alert tone="success" title={COPY.onTitle}>
-          {COPY.onBody}
-        </Alert>
-      ) : (
-        <Alert tone="info" title={COPY.offTitle} data-testid="buyer-data-off-note">
-          {COPY.offBody}
-        </Alert>
-      )}
+      <section className="buyer-data-enable" aria-labelledby="buyer-data-rules-title">
+        <h3 id="buyer-data-rules-title" className="rate-limit-section__title">
+          {COPY.rulesTitle}
+        </h3>
+        <label className="rate-limit-section__toggle buyer-data-enable__toggle">
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            disabled={!canEnable && !draft.enabled}
+            aria-describedby="buyer-data-master-hint"
+            data-testid="buyer-data-master-switch"
+            onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+          />
+          <span>{COPY.enabledLabel}</span>
+        </label>
+        <p
+          id="buyer-data-master-hint"
+          className="rate-limit-section__help"
+          data-testid={saved.enabled ? undefined : 'buyer-data-off-note'}
+        >
+          {saved.enabled
+            ? COPY.onBody
+            : draft.enabled
+              ? COPY.draftHint
+              : canEnable
+                ? COPY.offBody
+                : `${COPY.offBody} ${COPY.enabledNeedsCheck}`}
+        </p>
+      </section>
 
       <BuyerDataRulesEditor name="general" rules={draft} onChange={setDraft} />
 
@@ -144,7 +181,9 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
       />
 
       <BuyerDataTrial
-        result={ranOnce ? trial.data : undefined}
+        result={checked !== null ? trial.data : undefined}
+        checkedAt={checked?.at}
+        stale={stale}
         isPending={trial.isPending}
         isError={trial.isError}
         disabled={issues.length > 0}
@@ -155,24 +194,10 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
               eraseAfterDays: draft.eraseAfterDays,
               mode: draft.mode,
             },
-            { onSuccess: () => setRanOnce(true) }
+            { onSuccess: () => setChecked({ key: rulesKey, at: new Date().toISOString() }) }
           )
         }
       />
-
-      <label className="rate-limit-section__toggle">
-        <input
-          type="checkbox"
-          checked={draft.enabled}
-          disabled={!canEnable && !draft.enabled}
-          data-testid="buyer-data-master-switch"
-          onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-        />
-        <span>{COPY.enabledLabel}</span>
-      </label>
-      {!canEnable && !draft.enabled ? (
-        <p className="rate-limit-section__help">{COPY.enabledNeedsCheck}</p>
-      ) : null}
 
       <section className="rate-limit-section">
         <h3 className="rate-limit-section__title">{COPY.connectionsTitle}</h3>
@@ -188,7 +213,7 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                 <thead>
                   <tr>
                     <th scope="col">{COPY.columnConnection}</th>
-                    <th scope="col">{COPY.columnRules}</th>
+                    <th scope="col" className="buyer-data-connections__rules">{COPY.columnRules}</th>
                     <th scope="col">{COPY.columnSource}</th>
                     <th scope="col">
                       <span className="sr-only">{COPY.edit}</span>
@@ -201,7 +226,12 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
                     return (
                       <tr key={connection.id}>
                         <td>{connection.name}</td>
-                        <td>{summarise(resolveBuyerDataRules(override, saved))}</td>
+                        <td>
+                          {((): string => {
+                            const r = resolveBuyerDataRules(override, saved);
+                            return `${shortPeriod(r.hideAfterDays)} / ${shortPeriod(r.eraseAfterDays)}`;
+                          })()}
+                        </td>
                         <td>
                           <StatusBadge tone={override === null ? 'neutral' : 'info'}>
                             {override === null ? COPY.inherit : COPY.own}
@@ -242,7 +272,11 @@ function BuyerDataSettings({ saved }: { saved: BuyerDataRules }): ReactElement {
         open={confirming}
         onOpenChange={setConfirming}
         title={COPY.enableDialogTitle}
-        description={COPY.enableDialogBody}
+        tone="danger"
+        description={interpolate(COPY.enableDialogBody, {
+          toHide: trial.data?.toHide ?? 0,
+          toErase: trial.data?.toErase ?? 0,
+        })}
         confirmLabel={COPY.enableDialogConfirm}
         onConfirm={() => {
           setConfirming(false);

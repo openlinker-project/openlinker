@@ -19,6 +19,10 @@ export interface BuyerDataTrialProps {
   isPending: boolean;
   isError: boolean;
   disabled: boolean;
+  /** ISO instant of the last successful check, if any. */
+  checkedAt?: string;
+  /** The rules changed after the check, so its numbers describe other rules. */
+  stale?: boolean;
   onRun: () => void;
 }
 
@@ -27,6 +31,8 @@ export function BuyerDataTrial({
   isPending,
   isError,
   disabled,
+  checkedAt,
+  stale = false,
   onRun,
 }: BuyerDataTrialProps): ReactElement {
   const copy = useMessages('buyer-data').section;
@@ -48,7 +54,15 @@ export function BuyerDataTrial({
       </div>
       {isError ? <Alert tone="error">{copy.checkError}</Alert> : null}
       {result !== undefined ? (
-        <Alert tone="success" title={copy.checkTitle} data-testid="buyer-data-trial-result">
+        <Alert
+          tone={stale ? 'warning' : 'success'}
+          title={copy.checkTitle}
+          data-testid="buyer-data-trial-result"
+        >
+          {stale ? <p>{copy.checkStale}</p> : null}
+          {checkedAt !== undefined && !stale ? (
+            <p className="muted-text">{interpolate(copy.checkedAt, { time: format.time(checkedAt) })}</p>
+          ) : null}
           {interpolate(copy.checkDone, {
             total: format.number(result.total),
             toHide: format.number(result.toHide),

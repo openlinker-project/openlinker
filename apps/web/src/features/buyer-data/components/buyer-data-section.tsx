@@ -54,10 +54,11 @@ export function BuyerDataSection({
   syncBuyerDataToJson,
 }: BuyerDataSectionProps): ReactElement {
   const copy = useMessages('buyer-data').section;
+  const pageCopy = useMessages('buyer-data').page;
   const summarise = useBuyerDataSummary();
   const settingsQuery = useOperationalSettingsQuery();
   const trial = useBuyerDataTrialMutation();
-  const [ranOnce, setRanOnce] = useState(false);
+  const [checked, setChecked] = useState<{ key: string; at: string } | null>(null);
 
   const override: BuyerDataOverride | null = form.watch('buyerDataRetention') ?? null;
   const globalRules = globalRulesFromSettings(settingsQuery.data);
@@ -73,11 +74,13 @@ export function BuyerDataSection({
     mode: effective.mode,
   });
 
+  const rulesKey = `${effective.hideAfterDays}:${effective.eraseAfterDays}:${effective.mode}`;
+  const ranOnce = checked !== null && checked.key === rulesKey;
+  const stale = checked !== null && !ranOnce;
+
   function store(next: BuyerDataOverride | null): void {
     form.setValue('buyerDataRetention', next, { shouldDirty: true });
     syncBuyerDataToJson();
-    setRanOnce(false);
-    trial.reset();
   }
 
   function setSource(source: Source): void {
@@ -134,12 +137,35 @@ export function BuyerDataSection({
         </p>
       )}
 
+      {own ? (
+        <div className="buyer-data-enable">
+          <label className="rate-limit-section__toggle buyer-data-enable__toggle">
+            <input
+              type="checkbox"
+              checked={effective.enabled}
+              disabled={locked || !canEnable}
+              aria-describedby={effective.enabled ? undefined : 'buyer-data-enable-hint'}
+              data-testid="buyer-data-enabled"
+              onChange={(event) => toggleEnabled(event.target.checked)}
+            />
+            <span>{copy.enabledLabel}</span>
+          </label>
+          {effective.enabled ? null : (
+            <p id="buyer-data-enable-hint" className="rate-limit-section__help">
+              {canEnable ? pageCopy.draftHint : `${pageCopy.draftHint} ${copy.enabledNeedsCheck}`}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="rate-limit-section__help">{interpolate(copy.enabledInherited, { state })}</p>
+      )}
       <BuyerDataRulesEditor
         name="connection"
         rules={effective}
         onChange={changeRules}
         disabled={locked}
         showQuestions={own}
+        collapseExample
       />
 
       <BuyerDataImpact
@@ -151,7 +177,9 @@ export function BuyerDataSection({
       />
 
       <BuyerDataTrial
-        result={ranOnce ? trial.data : undefined}
+        result={checked !== null ? trial.data : undefined}
+        checkedAt={checked?.at}
+        stale={stale}
         isPending={trial.isPending}
         isError={trial.isError}
         disabled={locked || issues.length > 0}
@@ -163,30 +191,11 @@ export function BuyerDataSection({
               eraseAfterDays: effective.eraseAfterDays,
               mode: effective.mode,
             },
-            { onSuccess: () => setRanOnce(true) }
+            { onSuccess: () => setChecked({ key: rulesKey, at: new Date().toISOString() }) }
           );
         }}
       />
 
-      {own ? (
-        <>
-          <label className="rate-limit-section__toggle">
-            <input
-              type="checkbox"
-              checked={effective.enabled}
-              disabled={locked || !canEnable}
-              data-testid="buyer-data-enabled"
-              onChange={(event) => toggleEnabled(event.target.checked)}
-            />
-            <span>{copy.enabledLabel}</span>
-          </label>
-          {!canEnable && !effective.enabled ? (
-            <p className="rate-limit-section__help">{copy.enabledNeedsCheck}</p>
-          ) : null}
-        </>
-      ) : (
-        <p className="rate-limit-section__help">{interpolate(copy.enabledInherited, { state })}</p>
-      )}
     </section>
   );
 }

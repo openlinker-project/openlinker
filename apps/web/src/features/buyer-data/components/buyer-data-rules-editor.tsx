@@ -12,6 +12,7 @@
 import type { ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
+import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
 import { FormField } from '../../../shared/ui/form-field';
 import { Select } from '../../../shared/ui/select';
 import { usePeriodLabel } from '../hooks/use-period-label';
@@ -32,6 +33,8 @@ export interface BuyerDataRulesEditorProps {
   disabled?: boolean;
   /** False shows only the summary and the example order (rules inherited, not editable here). */
   showQuestions?: boolean;
+  /** Collapse the example order behind a disclosure (compact surfaces). */
+  collapseExample?: boolean;
 }
 
 /** The one-line summary of what a set of rules does, also used outside the editor. */
@@ -60,9 +63,11 @@ export function BuyerDataRulesEditor({
   name,
   disabled = false,
   showQuestions = true,
+  collapseExample = false,
 }: BuyerDataRulesEditorProps): ReactElement {
   const copy = useMessages('buyer-data').rules;
   const periodCopy = useMessages('buyer-data').period;
+  const journeyCopy = useMessages('buyer-data').journey;
   const summarise = useBuyerDataSummary();
   const issues = validateBuyerDataRules(rules);
 
@@ -76,7 +81,7 @@ export function BuyerDataRulesEditor({
   return (
     <div data-testid="buyer-data-rules-editor">
       {showQuestions ? (
-        <div className="form-field">
+        <div className="buyer-data-questions">
           <div>
             <BuyerDataPeriodField
               name={`${name}-hide`}
@@ -104,8 +109,11 @@ export function BuyerDataRulesEditor({
             />
             {rules.eraseAfterDays > 0 ? (
               <>
+                <Alert tone="warning" title={copy.irreversibleTitle} density="compact">
+                  {copy.irreversibleBody}
+                </Alert>
                 <FormField
-                  label={copy.modeLabel}
+                  label={`${copy.stepMode}. ${copy.modeLabel}`}
                   name={`${name}-mode`}
                   description={
                     rules.mode === 'whole-order'
@@ -126,18 +134,28 @@ export function BuyerDataRulesEditor({
                     <option value="whole-order">{copy.modeWhole}</option>
                   </Select>
                 </FormField>
-                <Alert tone="warning" title={copy.irreversibleTitle}>
-                  {copy.irreversibleBody}
-                </Alert>
               </>
             ) : null}
           </div>
         </div>
       ) : null}
-      <Alert tone="info" title={copy.summaryTitle} data-testid="buyer-data-summary">
-        {summarise(rules)}
-      </Alert>
-      <BuyerDataJourney rules={rules} />
+      {collapseExample ? (
+        <InlineDisclosure
+          label={copy.summaryTitle}
+          value={summarise(rules)}
+          changeLabel={journeyCopy.show}
+          className="buyer-data-example"
+        >
+          <BuyerDataJourney rules={rules} idPrefix={name} />
+        </InlineDisclosure>
+      ) : (
+        <>
+          <Alert tone="info" title={copy.summaryTitle} data-testid="buyer-data-summary">
+            {summarise(rules)}
+          </Alert>
+          <BuyerDataJourney rules={rules} idPrefix={name} />
+        </>
+      )}
     </div>
   );
 }

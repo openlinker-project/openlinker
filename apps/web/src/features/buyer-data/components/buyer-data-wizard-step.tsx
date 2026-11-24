@@ -12,7 +12,6 @@
  */
 import type { ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
-import { Alert } from '../../../shared/ui/alert';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useOperationalSettingsQuery } from '../../settings';
 import type { BuyerDataWizardChoice, BuyerDataWizardValue } from '../api/buyer-data.types';
@@ -53,14 +52,18 @@ export function BuyerDataWizardStep({ value, onChange }: BuyerDataWizardStepProp
           <p className="rate-limit-section__help">{copy.ownNote}</p>
           <BuyerDataRulesEditor
             name="wizard"
+            collapseExample
             rules={rules}
             onChange={(next) => onChange({ choice: 'own', rules: { ...next, enabled: false } })}
           />
         </>
       ) : (
-        <Alert tone="info">
-          {interpolate(copy.inheritNote, { summary: summarise(globalRules) })}
-        </Alert>
+        <>
+          <p className="rate-limit-section__help">{copy.inheritNote}</p>
+          <p className="rate-limit-section__help">
+            {interpolate(copy.summary, { summary: summarise(globalRules) })}
+          </p>
+        </>
       )}
     </section>
   );

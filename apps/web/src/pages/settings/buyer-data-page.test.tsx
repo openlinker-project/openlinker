@@ -82,7 +82,7 @@ describe('BuyerDataPage (#4289)', () => {
     render();
     expect(await screen.findByText('These are default settings')).toBeInTheDocument();
     expect(
-      screen.getByText(/Every new connection and every connection without its own rules/)
+      screen.getByText(/Every new connection and every one without its own rules/)
     ).toBeInTheDocument();
     expect(screen.getByTestId('buyer-data-off-note')).toHaveTextContent(
       'Nothing changes until you turn the rules on'
@@ -103,7 +103,7 @@ describe('BuyerDataPage (#4289)', () => {
     await userEvent.click(screen.getByTestId('buyer-data-save'));
     const dialog = await screen.findByRole('dialog');
     expect(update).not.toHaveBeenCalled();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Turn on' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Turn on the rules' }));
 
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith({
@@ -118,7 +118,7 @@ describe('BuyerDataPage (#4289)', () => {
   it('should list connections and mark the one with its own rules', async () => {
     render();
     const table = await screen.findByTestId('buyer-data-connections');
-    expect(within(table).getByText('Own')).toBeInTheDocument();
+    expect(within(table).getByText('Own rules')).toBeInTheDocument();
     expect(within(table).getByText('Same as general')).toBeInTheDocument();
     expect(
       screen.getByText(

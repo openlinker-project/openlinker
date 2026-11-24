@@ -47,7 +47,7 @@ describe('BuyerDataSection (#4289)', () => {
       apiClient: createMockApiClient(),
     });
 
-    expect(await screen.findByText(/Inherited from the general settings/)).toBeInTheDocument();
+    expect(await screen.findByText(/Same as the general settings/)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Same as general' })).toBeChecked();
     expect(screen.queryByTestId('buyer-data-period-connection-hide')).not.toBeInTheDocument();
   });
