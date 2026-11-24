@@ -31,7 +31,7 @@ function LocationProbe(): ReactElement {
     </>
   );
 }
-import type { ConnectionSyncStatus } from '../api/connections.types';
+import type { ConnectionStatus, ConnectionSyncStatus } from '../api/connections.types';
 
 function makeStatus(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSyncStatus {
   return {
@@ -71,9 +71,24 @@ const CONNECTION = {
 
 type GetSyncStatus = (connectionId: string) => Promise<ConnectionSyncStatus>;
 
-function renderPanel(getSyncStatus: Mock<GetSyncStatus>): void {
-  const apiClient = createMockApiClient({ connections: { getSyncStatus } });
-  renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
+function renderPanel(
+  getSyncStatus: Mock<GetSyncStatus>,
+  status?: ConnectionStatus
+): void {
+  const apiClient = createMockApiClient({
+    connections: { getSyncStatus },
+    adapters: {
+      list: vi.fn().mockResolvedValue([
+        {
+          adapterKey: 'prestashop.webservice.v1',
+          platformType: 'prestashop',
+          orderSyncStartModes: ['now', 'from', 'all'],
+          orderWindowImport: true,
+        },
+      ]),
+    },
+  });
+  renderWithProviders(<OrderSyncPanel connection={{ ...CONNECTION, status }} />, {
     apiClient,
     sessionAdapter: createAuthenticatedSessionAdapter(),
   });
@@ -541,6 +556,62 @@ describe('OrderSyncPanel', () => {
 
       expect(screen.getByRole('button', { name: 'Apply change' })).toBeDisabled();
       expect(restartOrderSync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a connection that is not active', () => {
+    const staleImport = {
+      importedLast24h: 0,
+      lastPolledAt: '2026-11-10T10:00:00.000Z',
+      failedLast7d: 0,
+      failures: [],
+      waiting: 0,
+      lastImportedAt: null,
+      activeImport: null,
+    };
+    const cases: Array<[ConnectionStatus, string, RegExp]> = [
+      ['needs_reauth', 'Sign-in needed', /Re-authenticate first/],
+      ['disabled', 'Paused', /Enable the connection first/],
+      ['error', 'Connection error', /Fix the connection first/],
+      ['archived', 'Archived', /Restore the connection first/],
+    ];
+
+    it.each(cases)(
+      'should say what to do and disable the actions when the status is %s',
+      async (status, verdict, next) => {
+        renderPanel(
+          vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderImport: staleImport })),
+          status
+        );
+
+        expect(await screen.findByText(verdict)).toBeInTheDocument();
+        expect(screen.getByText(next)).toBeInTheDocument();
+        expect(screen.queryByText('Behind')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Click Check for new orders/)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Check for new orders' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /Get orders from a period/ })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /Change where syncing starts/ })).toBeDisabled();
+      }
+    );
+
+    it('should link a connection that needs re-authentication to the place that fixes it', async () => {
+      renderPanel(
+        vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderImport: staleImport })),
+        'needs_reauth'
+      );
+
+      const link = await screen.findByRole('link', { name: 'Re-authenticate' });
+      expect(link).toHaveAttribute('href', '/connections/conn_1/edit');
+    });
+
+    it('should keep the actions enabled when the connection is active', async () => {
+      renderPanel(
+        vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus({ orderImport: staleImport })),
+        'active'
+      );
+
+      expect(await screen.findByText('Behind')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Check for new orders' })).toBeEnabled();
     });
   });
 });

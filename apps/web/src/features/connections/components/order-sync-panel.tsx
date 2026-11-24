@@ -17,7 +17,8 @@
  * @module features/connections/components
  */
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactElement } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { usePlatform } from '../../../shared/plugins';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useEnqueueSyncJobMutation, useRetryGroupedSyncJobsMutation } from '../../sync-jobs';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
@@ -29,7 +30,7 @@ import { useAdaptersQuery } from '../../adapters';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
-import type { Connection, OrderStartStatus } from '../api/connections.types';
+import type { Connection, ConnectionStatus, OrderStartStatus } from '../api/connections.types';
 import { ORDER_SYNC_START_DEFAULT_MODES } from '../lib/order-sync-start';
 import { computeRipple, GUIDED_PRESS_MS, type RippleGeometry } from '../lib/guided-jump';
 import { prefersMotion } from '../../../shared/ui/prefers-motion';
@@ -47,12 +48,28 @@ const VERDICT_TONE: Record<OrderImportVerdict, StatusBadgeTone> = {
   unknown: 'neutral',
 };
 
+/** Statuses in which no import job runs, so no action here could succeed. */
+type PausedStatus = Exclude<ConnectionStatus, 'active'>;
+
+const PAUSED_TONE: Record<PausedStatus, StatusBadgeTone> = {
+  needs_reauth: 'warning',
+  error: 'warning',
+  disabled: 'neutral',
+  archived: 'neutral',
+};
+
 interface OrderSyncPanelProps {
-  connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'>;
+  /** `status` defaults to active, so a caller with no status keeps every action available. */
+  connection: Pick<Connection, 'id' | 'platformType' | 'adapterKey'> & {
+    status?: ConnectionStatus;
+  };
 }
 
 export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElement {
   const connectionId = connection.id;
+  const pausedStatus: PausedStatus | null =
+    connection.status === undefined || connection.status === 'active' ? null : connection.status;
+  const platform = usePlatform(connection.platformType);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [ripple, setRipple] = useState<RippleGeometry | null>(null);
@@ -84,7 +101,7 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   // as something the click did; the tab underline then travels from this tab to Actions.
   // A second click during the press is ignored. Reduced motion jumps at once.
   function goToPeriodSync(event: MouseEvent<HTMLButtonElement>): void {
-    if (pressed) return;
+    if (pressed || pausedStatus !== null) return;
     const go = (): void => {
       setPressed(false);
       void navigate(`/connections/${connectionId}?tab=actions&sync=orders&scope=range`, {
@@ -136,7 +153,18 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
   const startedAt = data?.orderSyncStartedAt ?? null;
   const verdict = deriveOrderImportVerdict(data?.orderImport ?? null, new Date(), data?.status);
   // What to do about the verdict. Failures carry their own fix inside each cause's card.
-  const nextStep = verdict === 'ok' || verdict === 'failing' ? null : copy.verdictNext[verdict];
+  const nextStep =
+    pausedStatus !== null
+      ? copy.paused[pausedStatus].next
+      : verdict === 'ok' || verdict === 'failing'
+        ? null
+        : copy.verdictNext[verdict];
+  const pausedReason = pausedStatus !== null ? copy.paused[pausedStatus].reason : undefined;
+  // The same recovery targets the connection page's re-authentication banner offers.
+  const reauthTo =
+    platform?.requiresExternalAuthRedirect && platform.setupCard?.to
+      ? `${platform.setupCard.to}?reauth=${connectionId}`
+      : `/connections/${connectionId}/edit`;
 
   // The start is stated as the SETTING it is (what was chosen and what that means for
   // older orders), never as activity, and never with a date that is only the time a
@@ -174,7 +202,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
             <Button
               tone="secondary"
               onClick={() => void checkNow()}
-              disabled={enqueueCheck.isPending || sync.demoReadOnly}
+              disabled={enqueueCheck.isPending || sync.demoReadOnly || pausedStatus !== null}
+              title={pausedReason}
             >
               {copy.syncNow}
             </Button>
@@ -184,7 +213,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
               tone="secondary"
               className={pressed ? 'guided-press' : undefined}
               onClick={goToPeriodSync}
-              disabled={sync.demoReadOnly}
+              disabled={sync.demoReadOnly || pausedStatus !== null}
+              title={pausedReason}
             >
               {copy.getPeriod}
               {ripple ? (
@@ -229,15 +259,22 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
       <div className="order-sync-panel__verdict" role="status">
         {data ? (
           <>
-            <StatusBadge tone={VERDICT_TONE[verdict]} withDot>
-              {copy.verdict[verdict]}
+            <StatusBadge
+              tone={pausedStatus !== null ? PAUSED_TONE[pausedStatus] : VERDICT_TONE[verdict]}
+              withDot
+            >
+              {pausedStatus !== null ? copy.paused[pausedStatus].verdict : copy.verdict[verdict]}
             </StatusBadge>
             <p className="order-sync-panel__verdict-text">
-              {interpolate(copy.verdictText[verdict], {
-                when: data.orderImport?.lastPolledAt
-                  ? format.relativeTime(data.orderImport.lastPolledAt)
-                  : '',
-              })}
+              {pausedStatus !== null
+                ? copy.paused[pausedStatus].text
+                : verdict === 'behind' && !data.orderImport?.lastPolledAt
+                  ? copy.verdictText.behindQueued
+                  : interpolate(copy.verdictText[verdict], {
+                      when: data.orderImport?.lastPolledAt
+                        ? format.relativeTime(data.orderImport.lastPolledAt)
+                        : '',
+                    })}
             </p>
           </>
         ) : null}
@@ -248,6 +285,12 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
           {nextStep !== null ? (
             <p className="order-sync-panel__next">
               <strong>{copy.nextLabel}</strong> {nextStep}
+              {pausedStatus === 'needs_reauth' ? (
+                <>
+                  {' '}
+                  <Link to={reauthTo}>{copy.paused.needs_reauth.link}</Link>
+                </>
+              ) : null}
             </p>
           ) : null}
           {hasStartChoice ? (
@@ -262,7 +305,8 @@ export function OrderSyncPanel({ connection }: OrderSyncPanelProps): ReactElemen
                 <Button
                   tone="secondary"
                   onClick={() => setDialogOpen(true)}
-                  disabled={write.demoReadOnly}
+                  disabled={write.demoReadOnly || pausedStatus !== null}
+                  title={pausedReason}
                 >
                   {copy.change}
                 </Button>

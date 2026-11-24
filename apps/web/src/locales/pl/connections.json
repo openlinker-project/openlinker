@@ -206,6 +206,12 @@
       "body": "To połączenie jest nieaktywne dla wszystkich możliwości. Żadne zadanie synchronizacji z niego nie skorzysta.",
       "title": "Brak włączonych możliwości"
     },
+    "orderOff": {
+      "body": "Nowe zamówienia z tego połączenia nie będą importowane, dopóki nie włączysz tego ponownie. Zamówienia już zaimportowane zostają.",
+      "cancel": "Anuluj",
+      "confirm": "Wyłącz",
+      "title": "Przestać pobierać zamówienia?"
+    },
     "orderStart": {
       "cancel": "Anuluj",
       "confirm": "Włącz pobieranie zamówień"
@@ -1167,6 +1173,33 @@
       "newest": "od najnowszych",
       "oldest": "od najstarszych"
     },
+    "paused": {
+      "archived": {
+        "next": "Najpierw przywróć połączenie.",
+        "reason": "Niedostępne, gdy połączenie jest zarchiwizowane.",
+        "text": "To połączenie jest zarchiwizowane, więc zamówienia nie są importowane.",
+        "verdict": "Zarchiwizowane"
+      },
+      "disabled": {
+        "next": "Najpierw włącz połączenie (Włącz połączenie, u góry tej strony).",
+        "reason": "Niedostępne, gdy połączenie jest wyłączone.",
+        "text": "To połączenie jest wyłączone, więc zamówienia nie są importowane.",
+        "verdict": "Wstrzymane"
+      },
+      "error": {
+        "next": "Najpierw napraw połączenie: zajrzyj do zakładki Kondycja, potem edytuj połączenie.",
+        "reason": "Niedostępne, gdy połączenie jest w stanie błędu.",
+        "text": "Połączenie jest w stanie błędu, więc import zamówień nie działa.",
+        "verdict": "Błąd połączenia"
+      },
+      "needs_reauth": {
+        "link": "Uwierzytelnij ponownie",
+        "next": "Najpierw uwierzytelnij połączenie ponownie; sprawdzanie i import nie ruszą wcześniej.",
+        "reason": "Niedostępne do czasu ponownego uwierzytelnienia połączenia.",
+        "text": "OpenLinker nie może już zalogować się do sklepu, więc import zamówień jest wstrzymany.",
+        "verdict": "Wymagane logowanie"
+      }
+    },
     "restart": {
       "alreadyFollowingNote": "To połączenie już czyta zamówienia ze sklepu. Aby sięgnąć dalej wstecz, wybierz datę albo wszystkie zamówienia.",
       "cancel": "Anuluj",
@@ -1210,7 +1243,8 @@
       "unknown": "Odśwież stronę. Jeśli to zostaje, zajrzyj do zakładki Kondycja."
     },
     "verdictText": {
-      "behind": "Sklepu nie sprawdzano od {when}.",
+      "behind": "Ostatnie sprawdzenie sklepu: {when}.",
+      "behindQueued": "Sprawdzone zamówienia czekają w kolejce na import.",
       "failing": "Nie wszystkie zamówienia udało się zaimportować.",
       "notChecked": "Sklep nie miał jeszcze udanego sprawdzenia.",
       "ok": "Sklep był niedawno sprawdzany i wszystkie zamówienia wchodzą bez błędów.",

@@ -419,19 +419,26 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     if (startCursor === null || startCursor.trim() === '') {
-      // The source has no orders yet. Writing the marker here would make the next
-      // poll read the WHOLE history once orders appear, so nothing is written:
-      // the intent stays and the next poll retries the head read.
-      this.logger.log(
-        `Order source has no head to start from yet; will retry on the next poll. cursorKey=${cursorKey} (connection: ${connectionId})`
-      );
-      return {
-        fetched: 0,
-        enqueued: 0,
-        nextCursor: null,
-        committed: false,
-        skippedDueToLock: false,
-      };
+      if (intent?.mode === 'from') {
+        // Older orders may exist before the date, so reading from the beginning
+        // would import history the operator did not ask for: retry next poll.
+        this.logger.log(
+          `Order source has no cursor for the chosen date yet; will retry on the next poll. cursorKey=${cursorKey} (connection: ${connectionId})`
+        );
+        return {
+          fetched: 0,
+          enqueued: 0,
+          nextCursor: null,
+          committed: false,
+          skippedDueToLock: false,
+        };
+      }
+      // An empty head means the source has NO orders, so "only new orders" is the
+      // same as "every order". Leaving the intent pending would let orders that
+      // arrive before the next poll become the head and be skipped for good; the
+      // marker makes this same poll read from the beginning instead.
+      await this.markEmptySourceStarted(connectionId, seededKey, cursorKey);
+      return null;
     }
 
     await this.syncCursors.advanceCursor(connectionId, cursorKey, startCursor);
@@ -469,7 +476,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     seededKey: string,
     orderSource: OrderSourcePort,
     intent: Exclude<OrderSyncStart, { mode: 'now' }>
-  ): Promise<OrderIngestionResult> {
+  ): Promise<OrderIngestionResult | null> {
     if (!isOrderWindowReader(orderSource) || !isOrderFeedBootstrap(orderSource)) {
       throw new OrderSyncStartUnavailableError(
         `Order import was set to start with the newest orders, but this adapter cannot read orders in that order. Choose "oldest first" instead (connection: ${connectionId})`
@@ -477,10 +484,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
     const head = await orderSource.headCursor();
     if (head === null || head.trim() === '') {
-      this.logger.log(
-        `Order source has no head to start from yet; will retry on the next poll. cursorKey=${cursorKey} (connection: ${connectionId})`
-      );
-      return { fetched: 0, enqueued: 0, nextCursor: null, committed: false, skippedDueToLock: false };
+      // Nothing exists to import backwards, and the live feed from the beginning
+      // picks up whatever arrives, so no import chain is started.
+      await this.markEmptySourceStarted(connectionId, seededKey, cursorKey);
+      return null;
     }
 
     // Pre-flight: one window read BEFORE anything is written, so a typed refusal
@@ -524,6 +531,24 @@ export class OrderIngestionService implements IOrderIngestionService {
       `Seeded order cursor at the source head and started a newest-first history import${intent.mode === 'from' ? ` from ${intent.from}` : ''}. cursorKey=${cursorKey}, cursor=${head} (connection: ${connectionId})`
     );
     return { fetched: 0, enqueued: 0, nextCursor: head, committed: true, skippedDueToLock: false };
+  }
+
+  /**
+   * The source reported no head, i.e. it holds no orders. Record the start as
+   * applied (an effective "all") and write no cursor, so the poll that called us
+   * reads the feed from the beginning and ingests anything that has arrived.
+   */
+  private async markEmptySourceStarted(
+    connectionId: string,
+    seededKey: string,
+    cursorKey: string
+  ): Promise<void> {
+    await this.syncCursors.advanceCursor(connectionId, seededKey, new Date().toISOString());
+    await this.recordAppliedStart(connectionId, { mode: 'now' });
+    await this.syncCursors.deleteCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY);
+    this.logger.log(
+      `Order source has no orders yet; starting from the beginning of the feed. cursorKey=${cursorKey} (connection: ${connectionId})`
+    );
   }
 
   /**

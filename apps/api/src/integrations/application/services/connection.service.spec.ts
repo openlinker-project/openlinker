@@ -2923,6 +2923,25 @@ describe('ConnectionService', () => {
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
+    it.each([
+      [{ from: '2999-01-01' }, 'in-future', 'from'],
+      [{ to: '2999-01-01' }, 'in-future', 'to'],
+      [{ from: '1990-01-01' }, 'too-old', 'from'],
+      [{ to: '1990-01-01' }, 'too-old', 'to'],
+    ])('should refuse the out-of-bounds range %j', async (range, reason, field) => {
+      connectionPort.get.mockResolvedValue(importConnection());
+
+      const failure = await service
+        .startOrderImport('connection-123', { ...range, direction: 'oldest-first' })
+        .catch((error: unknown) => error);
+
+      expect((failure as BadRequestException).getResponse()).toMatchObject({
+        code: 'ORDER_IMPORT_RANGE_INVALID',
+        params: { reason, field },
+      });
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
     it('should fail rather than report success when the first page key already exists', async () => {
       connectionPort.get.mockResolvedValue(importConnection());
       jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j1', isExisting: true });

@@ -112,6 +112,7 @@ export function ConnectionCapabilitiesPanel({
   const [pending, setPending] = useState<CoreCapability | null>(null);
   const adapters = useAdaptersQuery();
   const [startPrompt, setStartPrompt] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
   const [startValue, setStartValue] = useState<OrderSyncStartValue>(ORDER_SYNC_START_DEFAULT_VALUE);
   const adapter =
     adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
@@ -177,6 +178,12 @@ export function ConnectionCapabilitiesPanel({
       setStartPrompt(true);
       return;
     }
+    // Switching order reading off stops new orders arriving without any further sign, so it
+    // is confirmed first (the confirm step runs the toggle again with the flag set).
+    if (capability === 'OrderSource' && !checked && enabled.has('OrderSource') && !confirmOff) {
+      setConfirmOff(true);
+      return;
+    }
     const next = new Set(enabled);
     if (checked) {
       next.add(capability);
@@ -193,6 +200,7 @@ export function ConnectionCapabilitiesPanel({
         },
       });
       setStartPrompt(false);
+      setConfirmOff(false);
       setStartValue(ORDER_SYNC_START_DEFAULT_VALUE);
       showToast({
         tone: 'success',
@@ -327,6 +335,30 @@ export function ConnectionCapabilitiesPanel({
               disabled={!startParsed.success || updateMutation.isPending}
             >
               {copy.orderStart.confirm}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmOff ? (
+        <div className="capability-list__order-start" data-testid="capability-order-off-confirm">
+          <Alert tone="warning" title={copy.orderOff.title}>
+            {copy.orderOff.body}
+          </Alert>
+          <div className="capability-list__order-start-actions">
+            <Button
+              tone="secondary"
+              onClick={() => setConfirmOff(false)}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderOff.cancel}
+            </Button>
+            <Button
+              tone="primary"
+              onClick={() => void handleToggle('OrderSource', false)}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderOff.confirm}
             </Button>
           </div>
         </div>

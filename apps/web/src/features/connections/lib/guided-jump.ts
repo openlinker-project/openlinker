@@ -101,3 +101,23 @@ export function onGuidedLanded(callback: () => void): () => void {
   window.addEventListener(LANDED_EVENT, callback);
   return () => window.removeEventListener(LANDED_EVENT, callback);
 }
+
+/**
+ * The location as the browser holds it RIGHT NOW. Two components replace the history entry in
+ * the same tick (the panel drops its `sync`/`scope` params, the page drops the guided flag) and
+ * each used the location from its own render, so whichever ran second restored what the other
+ * had just removed. A react-router browser history entry carries `idx`; when it does, the live
+ * `window.location` and entry state are the truth, otherwise (memory router) the render's own
+ * values are all there is.
+ */
+export function readLiveLocation<S>(fallback: { search: string; state: S }): {
+  search: string;
+  state: S | null;
+} {
+  const entry: unknown = typeof window === 'undefined' ? null : window.history.state;
+  if (typeof entry === 'object' && entry !== null && 'idx' in entry) {
+    const usr = (entry as { usr?: S | null }).usr;
+    return { search: window.location.search, state: usr ?? null };
+  }
+  return fallback;
+}

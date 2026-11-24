@@ -122,7 +122,7 @@ export function OrderSyncRestartDialog({
             restart
           />
           {value.mode === 'now' ? (
-            <p className="muted-text">
+            <p className="order-sync-start__note">
               {hasFeedPosition ? copy.alreadyFollowingNote : copy.nowNote}
             </p>
           ) : null}

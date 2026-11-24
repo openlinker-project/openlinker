@@ -499,4 +499,58 @@ describe('ConnectionCapabilitiesPanel', () => {
       });
     });
   });
+
+  describe('switching order reading off', () => {
+    const live: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster', 'OrderSource'],
+    };
+
+    it('should ask first and send nothing when the operator cancels', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+      expect(await screen.findByText('Stop reading orders?')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByText('Stop reading orders?')).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /OrderSource/ })).toBeChecked();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('should send the update only after the operator confirms', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+      await screen.findByText('Stop reading orders?');
+      expect(update).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
+
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith(
+          live.id,
+          expect.objectContaining({ enabledCapabilities: ['ProductMaster'] })
+        )
+      );
+    });
+
+    it('should not ask when another capability is switched off', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /ProductMaster/ }));
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(screen.queryByText('Stop reading orders?')).not.toBeInTheDocument();
+    });
+  });
 });

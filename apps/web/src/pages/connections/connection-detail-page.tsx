@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type CSSProperties, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactElement } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { hasPricingSyncPage } from '../../features/connections/lib/pricing-destination';
@@ -35,7 +35,7 @@ import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useGuidedTabTravel } from '../../features/connections/hooks/use-guided-tab-travel';
-import { GUIDED_FLAG_FALLBACK_MS } from '../../features/connections/lib/guided-jump';
+import { GUIDED_FLAG_FALLBACK_MS, readLiveLocation } from '../../features/connections/lib/guided-jump';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
@@ -365,9 +365,15 @@ export function ConnectionDetailPage(): ReactElement {
   const navigate = useNavigate();
   const guidedState = location.state as { guided?: boolean; fromTab?: string } | null;
   const guided = guidedState?.guided === true;
+  const locationRef = useRef(location);
+  locationRef.current = location;
   const clearGuided = useCallback((): void => {
-    void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-  }, [location.pathname, location.search, navigate]);
+    // The search is read live: the Actions panel drops its sync params in the same tick, and
+    // navigating to the render's copy would put them back.
+    const current = locationRef.current;
+    const live = readLiveLocation(current);
+    void navigate(`${current.pathname}${live.search}`, { replace: true, state: null });
+  }, [navigate]);
   useEffect(() => {
     if (!guided) return undefined;
     const timer = window.setTimeout(clearGuided, GUIDED_FLAG_FALLBACK_MS);

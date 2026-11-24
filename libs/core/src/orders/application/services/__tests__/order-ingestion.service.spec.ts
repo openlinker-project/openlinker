@@ -1001,6 +1001,25 @@ describe('OrderIngestionService', () => {
         );
       });
 
+      it('should start no import and read the live feed from the beginning when the head is empty', async () => {
+        headCursor.mockResolvedValue(null);
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
+
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+
+        expect(jobQueue.enqueueDetailed).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          connectionId,
+          seededKey,
+          expect.any(String)
+        );
+        expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
+        expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
+          expect.objectContaining({ fromCursor: null })
+        );
+      });
+
       it('should mint a different run id for every seed when the head is unchanged', async () => {
         await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
         await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
@@ -1272,33 +1291,40 @@ describe('OrderIngestionService', () => {
         expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
       });
 
-      it('should write nothing and read no history while the source has no orders yet', async () => {
+      it('should mark the start applied and read the feed from the beginning when the source has no orders', async () => {
         headCursor.mockResolvedValue(null);
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
 
-        const result = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
 
-        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
-        expect(syncCursors.deleteCursor).not.toHaveBeenCalled();
-        expect(result.committed).toBe(false);
-        expect(result.nextCursor).toBeNull();
-        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+          connectionId,
+          seededKey,
+          expect.any(String)
+        );
+        expect(syncCursors.advanceCursor).not.toHaveBeenCalledWith(
+          connectionId,
+          cursorKey,
+          expect.anything()
+        );
+        expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
+        expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
+          expect.objectContaining({ fromCursor: null })
+        );
       });
 
-      it('should seed on the third poll after two empty head reads, never reading history in between', async () => {
-        headCursor
-          .mockResolvedValueOnce(null)
-          .mockResolvedValueOnce('')
-          .mockResolvedValueOnce('event-900');
+      it('should treat a blank head like an empty source when seeding', async () => {
+        headCursor.mockResolvedValue('  ');
+        orderSource.listOrderFeed.mockResolvedValue({ items: [], nextCursor: null });
+        jobQueue.enqueueBulk.mockResolvedValue([]);
 
         await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
-        await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
-        expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
 
-        const third = await service.ingestOrders(connectionId, { cursorKey, limit: 10 });
-
-        expect(third.committed).toBe(true);
-        expect(syncCursors.advanceCursor).toHaveBeenCalledWith(connectionId, cursorKey, 'event-900');
-        expect(orderSource.listOrderFeed).not.toHaveBeenCalled();
+        expect(syncCursors.deleteCursor).toHaveBeenCalledWith(connectionId, 'orders.syncStart');
+        expect(orderSource.listOrderFeed).toHaveBeenCalledWith(
+          expect.objectContaining({ fromCursor: null })
+        );
       });
 
       it('should not seed when the connection already has a cursor', async () => {

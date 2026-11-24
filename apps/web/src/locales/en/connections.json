@@ -206,6 +206,12 @@
       "body": "This connection is inactive for every capability. No sync jobs will use it.",
       "title": "No capabilities enabled"
     },
+    "orderOff": {
+      "body": "New orders from this connection will no longer be imported until you turn this on again. Orders already imported stay.",
+      "cancel": "Cancel",
+      "confirm": "Turn off",
+      "title": "Stop reading orders?"
+    },
     "orderStart": {
       "cancel": "Cancel",
       "confirm": "Enable order reading"
@@ -1139,6 +1145,33 @@
       "newest": "newest first",
       "oldest": "oldest first"
     },
+    "paused": {
+      "archived": {
+        "next": "Restore the connection first.",
+        "reason": "Unavailable while the connection is archived.",
+        "text": "This connection is archived, so no orders are imported.",
+        "verdict": "Archived"
+      },
+      "disabled": {
+        "next": "Enable the connection first (Enable connection, at the top of this page).",
+        "reason": "Unavailable while the connection is disabled.",
+        "text": "This connection is disabled, so no orders are imported.",
+        "verdict": "Paused"
+      },
+      "error": {
+        "next": "Fix the connection first: look at the Health tab, then edit the connection.",
+        "reason": "Unavailable while the connection is in an error state.",
+        "text": "The connection is in an error state, so order import is not running.",
+        "verdict": "Connection error"
+      },
+      "needs_reauth": {
+        "link": "Re-authenticate",
+        "next": "Re-authenticate first; checks and imports will not run until then.",
+        "reason": "Unavailable until the connection is re-authenticated.",
+        "text": "OpenLinker can no longer sign in to the shop, so order import is paused.",
+        "verdict": "Sign-in needed"
+      }
+    },
     "restart": {
       "alreadyFollowingNote": "This connection is already reading orders from the shop. To go further back, choose a date or every order.",
       "cancel": "Cancel",
@@ -1182,7 +1215,8 @@
       "unknown": "Reload the page. If this stays, look at the Health tab."
     },
     "verdictText": {
-      "behind": "The shop has not been checked for {when}.",
+      "behind": "Last check of the shop: {when}.",
+      "behindQueued": "Checked orders are waiting in the queue to be imported.",
       "failing": "Some orders could not be imported.",
       "notChecked": "There is no successful check of the shop yet.",
       "ok": "The shop was checked recently and every order came in without errors.",

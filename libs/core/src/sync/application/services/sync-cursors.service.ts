@@ -61,16 +61,35 @@ export class SyncCursorsService implements ISyncCursorsService {
   }
 
   async hasOrderFeedCursor(connectionId: string): Promise<boolean> {
-    const page = await this.cursorRepository.findMany({ connectionId }, { limit: 200, offset: 0 });
-    return page.items.some((item) => isOrderFeedCursorKey(item.cursorKey));
+    return (await this.listAllCursorKeys(connectionId)).some(isOrderFeedCursorKey);
   }
 
   async deleteOrderFeedCursors(connectionId: string): Promise<string[]> {
-    const page = await this.cursorRepository.findMany({ connectionId }, { limit: 200, offset: 0 });
-    const keys = page.items.map((item) => item.cursorKey).filter(isOrderFeedCursorKey);
+    // Collect first, delete after: deleting while paging would shift the offsets
+    // of a result ordered by update time and skip rows.
+    const keys = (await this.listAllCursorKeys(connectionId)).filter(isOrderFeedCursorKey);
     for (const key of keys) {
       await this.cursorRepository.delete(connectionId, key);
     }
     return keys;
+  }
+
+  /**
+   * Every cursor key of the connection. A single page would miss an order cursor
+   * that sits past it on a connection with many sweep cursors.
+   */
+  private async listAllCursorKeys(connectionId: string): Promise<string[]> {
+    const pageSize = 200;
+    const keys: string[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await this.cursorRepository.findMany(
+        { connectionId },
+        { limit: pageSize, offset }
+      );
+      keys.push(...page.items.map((item) => item.cursorKey));
+      if (page.items.length < pageSize) {
+        return keys;
+      }
+    }
   }
 }
