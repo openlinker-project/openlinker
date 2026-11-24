@@ -1548,12 +1548,14 @@
   },
   "orderDetailHeader": {
     "allIssues": "All issues ({count})",
+    "copyId": "Copy id",
     "items": {
       "one": "{n} item",
       "other": "{n} items"
     },
     "moreItems": "+{count} more",
     "noDestination": "no destination",
+    "paidOn": "Paid on {channel}",
     "payment": {
       "awaiting": "Awaiting payment",
       "cod": "Cash on delivery",
@@ -1580,6 +1582,7 @@
       "one": "{n} destination failed",
       "other": "{n} destinations failed"
     },
+    "generateLabel": "Generate label",
     "loadErrorTitle": "Unable to load order",
     "loadingMessage": "Fetching order details…",
     "loadingTitle": "Loading order",
@@ -1596,6 +1599,13 @@
       "open": "Open {tab}",
       "readyToShip": "Ready to ship",
       "shipByOverdue": "The ship-by date has passed",
+      "short": {
+        "document-blocked": "Document needs attention",
+        "failed-destinations": "Destination failed",
+        "on-hold": "On hold",
+        "ready-to-ship": "Ready to ship",
+        "ship-by-overdue": "Past ship-by date"
+      },
       "showAll": "Show all"
     },
     "notFound": "Order not found",

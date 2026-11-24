@@ -40447,3 +40447,26 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-header__facts { color: var(--text-secondary); font-size: 0.875rem; gap: 6px 18px; }
 .order-header__shipby--error { color: var(--status-error); font-weight: 600; }
 .order-header__shipby--warning { color: var(--status-warning-strong, var(--status-warning)); font-weight: 600; }
+/* header details per the mockup */
+.order-header__avatar { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--accent-primary); color: #fff; font-size: 0.6875rem; font-weight: 700; margin-right: 6px; }
+.order-header__channel { padding: 3px 10px 3px 4px; }
+.order-header__icon { width: 15px; height: 15px; flex: none; }
+.order-header__fact { display: inline-flex; align-items: center; gap: 6px; }
+.order-header__tags-label, .order-header__tags .text-muted { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.order-header__phase-note:empty { display: none; }
+/* header grid: title and price, identity and paid, status and actions (desktop) */
+@media (min-width: 761px) {
+  .order-header__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; row-gap: 10px; }
+  .order-header__main, .order-header__aside { display: contents; }
+  .order-header__main > .order-header__top:not(.order-header__status-row) { grid-column: 1; grid-row: 1; }
+  .order-header__total { grid-column: 2; grid-row: 1; justify-self: end; }
+  .order-header__identity { grid-column: 1; grid-row: 2; }
+  .order-header__paid { grid-column: 2; grid-row: 2; justify-self: end; }
+  .order-header__status-row { grid-column: 1; grid-row: 3; align-self: center; }
+  .order-header__actions { grid-column: 2; grid-row: 3; justify-self: end; margin-top: 0; }
+  .order-header__facts { grid-column: 1 / -1; grid-row: 4; }
+  .order-header__tags { grid-column: 1 / -1; grid-row: 5; }
+  .order-header__summary-line { grid-column: 1 / -1; grid-row: 6; }
+  .order-header__phase-note { flex: 1 1 auto; min-width: 0; }
+}
+.order-header__tags .button, .order-header__tags [class*='add'] { border: 1px dashed var(--border-default); border-radius: var(--radius-pill); padding: 4px 12px; font-size: 0.8125rem; background: transparent; }

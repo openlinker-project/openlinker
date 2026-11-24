@@ -1630,6 +1630,7 @@
   },
   "orderDetailHeader": {
     "allIssues": "Wszystkie problemy ({count})",
+    "copyId": "Kopiuj id",
     "items": {
       "few": "{n} pozycje",
       "many": "{n} pozycji",
@@ -1638,6 +1639,7 @@
     },
     "moreItems": "+{count} więcej",
     "noDestination": "brak kanału docelowego",
+    "paidOn": "Opłacone w {channel}",
     "payment": {
       "awaiting": "Czeka na płatność",
       "cod": "Za pobraniem",
@@ -1668,6 +1670,7 @@
       "one": "{n} kanał docelowy z błędem",
       "other": "{n} kanału docelowego z błędem"
     },
+    "generateLabel": "Wygeneruj etykietę",
     "loadErrorTitle": "Nie udało się wczytać zamówienia",
     "loadingMessage": "Pobieranie szczegółów zamówienia…",
     "loadingTitle": "Wczytywanie zamówienia",
@@ -1686,6 +1689,13 @@
       "open": "Otwórz: {tab}",
       "readyToShip": "Gotowe do wysyłki",
       "shipByOverdue": "Minął termin wysyłki",
+      "short": {
+        "document-blocked": "Dokument wymaga uwagi",
+        "failed-destinations": "Miejsce docelowe nie przyjęło",
+        "on-hold": "Wstrzymane",
+        "ready-to-ship": "Gotowe do wysyłki",
+        "ship-by-overdue": "Minął termin wysyłki"
+      },
       "showAll": "Pokaż wszystkie"
     },
     "notFound": "Nie znaleziono zamówienia",

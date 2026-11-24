@@ -51,6 +51,8 @@ interface OrderDetailHeaderProps {
   deliveryFact?: string | null;
   shipByFact?: { iso: string; tone: StatusBadgeTone } | null;
   channelName?: string | null;
+  /** The most urgent problem as a status pill; falls back to the health badge when there is none. */
+  statusPill?: { tone: StatusBadgeTone; label: string } | null;
 }
 
 const HEALTH_TONE: Record<OrderHealthLevel, StatusBadgeTone> = {
@@ -60,13 +62,6 @@ const HEALTH_TONE: Record<OrderHealthLevel, StatusBadgeTone> = {
   unknown: 'neutral',
 };
 
-/** Payment-status chip tone + label (#928). Colour is reinforcement, not the only signal. */
-const PAYMENT_TONE: Record<PaymentStatus, StatusBadgeTone> = {
-  paid: 'success',
-  cod: 'info',
-  awaiting: 'warning',
-  refunded: 'neutral',
-};
 
 /** C-23: OL cancelled the order but the channel snapshot has not caught up. */
 export function isChannelStatusStale(phase: string | null | undefined, channelStatus: string): boolean {
@@ -86,6 +81,7 @@ export function OrderDetailHeader({
   deliveryFact = null,
   shipByFact = null,
   channelName = null,
+  statusPill = null,
 }: OrderDetailHeaderProps): ReactElement {
   const copy = useMessages('orders').orderDetailHeader;
   const paymentLabels: Record<PaymentStatus, string> = copy.payment;
@@ -114,9 +110,20 @@ export function OrderDetailHeader({
         <h1 className="order-header__title" title={rawNumber}>
           {title}
         </h1>
-        <CopyableId id={order.internalOrderId} />
+        <CopyableId id={order.internalOrderId} label={copy.copyId} />
+        {/* The chip reads "Copy id"; the full id stays in the page text for assistive tech, search and tests. */}
+        <span className="sr-only">{order.internalOrderId}</span>
         <span className="order-header__channel">
-          <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
+          {channelName ? (
+            <>
+              <span className="order-header__avatar" aria-hidden="true">
+                {channelName.trim().charAt(0).toUpperCase()}
+              </span>
+              {channelName}
+            </>
+          ) : (
+            <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} showCopy={false} />
+          )}
         </span>
       </div>
 
@@ -144,50 +151,54 @@ export function OrderDetailHeader({
       </div>
 
       <div className="order-header__top order-header__status-row">
-        <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
-          {healthLabel(healthLevel, order.handledInOpenLinker)}
-        </StatusBadge>
-        {/* #2310 — beside the health badge, never instead of it (ADR-059).
-            Header badges are full-size, so no `compact` here. */}
+        {statusPill ? (
+          <StatusBadge tone={statusPill.tone} withDot>
+            {statusPill.label}
+          </StatusBadge>
+        ) : (
+          <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
+            {healthLabel(healthLevel, order.handledInOpenLinker)}
+          </StatusBadge>
+        )}
+        {/* #2310 — beside the health badge, never instead of it (ADR-059). */}
         <OrderPhaseOrWaitingBadge order={order} />
         {issuesCount > 0 && onShowIssues ? (
           <button type="button" className="order-header__issues" onClick={onShowIssues}>
             {interpolate(copy.allIssues, { count: issuesCount })}
           </button>
         ) : null}
-        {/* One line answering the operator's actual question — what is this order
-            waiting on. Detail only (#2081). */}
-        {isOrderLifecyclePhase(order.lifecyclePhase) ? (
-          <span className="order-header__phase-note text-muted">
-            {orderLifecyclePhaseWaitingOn(order.lifecyclePhase)}
-          </span>
-        ) : null}
+        <span className="order-header__phase-note text-muted">
+          {[
+            isOrderLifecyclePhase(order.lifecyclePhase)
+              ? orderLifecyclePhaseWaitingOn(order.lifecyclePhase)
+              : null,
+            // C-23: the channel snapshot keeps saying `processing` until a re-poll, so beside a Cancelled phase it would read as a second status.
+            snapshot.status && !isChannelStatusStale(order.lifecyclePhase, snapshot.status)
+              ? snapshot.status
+              : null,
+            methodLabel,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
         <OrderEditedBadge
           edited={order.editedInOpenLinker}
           needsAttention={order.editsNeedAttention}
         />
-        {/* C-23: the channel snapshot keeps saying `processing` until a re-poll,
-            so beside a Cancelled phase badge it reads as a second, contradicting
-            status. The summary row carries it, labelled as the channel's own. */}
-        {snapshot.status && !isChannelStatusStale(order.lifecyclePhase, snapshot.status) ? (
-          <StatusBadge tone="neutral" withDot>
-            {snapshot.status}
-          </StatusBadge>
-        ) : null}
-        {snapshot.paymentStatus ? (
-          <StatusBadge tone={PAYMENT_TONE[snapshot.paymentStatus]} withDot>
-            {paymentLabels[snapshot.paymentStatus]}
-          </StatusBadge>
-        ) : null}
         <OrderRefundStateBadge refundState={order.refundState} />
-        {methodLabel ? <StatusBadge tone="neutral">{methodLabel}</StatusBadge> : null}
       </div>
 
       {deliveryFact || shipByFact ? (
         <div className="order-header__facts">
-          {deliveryFact ? <span>{deliveryFact}</span> : null}
+          {deliveryFact ? (
+            <span className="order-header__fact">
+              <svg className="order-header__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM17 19a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+              {deliveryFact}
+            </span>
+          ) : null}
           {shipByFact ? (
-            <span className={`order-header__shipby order-header__shipby--${shipByFact.tone}`}>
+            <span className={`order-header__fact order-header__shipby order-header__shipby--${shipByFact.tone}`}>
+              <svg className="order-header__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
               {copy.shipBy} <TimeDisplay iso={shipByFact.iso} format="datetime" className="tabular" />
             </span>
           ) : null}
@@ -231,7 +242,9 @@ export function OrderDetailHeader({
         {snapshot.paymentStatus ? (
           <span className="order-header__paid text-muted">
             {snapshot.paymentStatus === 'paid' ? <span aria-hidden="true">✓ </span> : null}
-            {paymentLabels[snapshot.paymentStatus]}
+            {snapshot.paymentStatus === 'paid' && channelName
+              ? interpolate(copy.paidOn, { channel: channelName })
+              : paymentLabels[snapshot.paymentStatus]}
           </span>
         ) : null}
         {actions ? <div className="order-header__actions">{actions}</div> : null}

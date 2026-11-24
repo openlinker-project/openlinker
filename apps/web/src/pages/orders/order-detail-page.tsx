@@ -662,6 +662,8 @@ export function OrderDetailPage(): ReactElement {
     { id: 'technical', label: copy.tabs.technical, count: failedDestinations.length + snapshot.parseWarnings.length, flag: issueTabs.has('technical') },
   ];
 
+  const canGenerateLabel =
+    fulfillment === 'not-shipped' && snapshot.status !== 'cancelled' && hasShippingCapability;
   const headerActions = (
     <>
     <OrderConfirmRefundAction
@@ -695,6 +697,16 @@ export function OrderDetailPage(): ReactElement {
       onSaved={handleOrderEdited}
       onGoTo={scrollToRemedy}
     />
+    {canGenerateLabel ? (
+      <Button
+        className="button--sm"
+        onClick={() => {
+          handleTabChange('shipping');
+        }}
+      >
+        {copy.generateLabel}
+      </Button>
+    ) : null}
     <OrderHeaderMenu label={copy.tabs.seeMore}>
     <GiftsGuide variant="detail" />
     <OrderAddGiftAction
@@ -769,6 +781,12 @@ export function OrderDetailPage(): ReactElement {
           [snapshot.shippingAddress?.firstName, snapshot.shippingAddress?.lastName]
             .filter(Boolean)
             .join(' ') || null
+        }
+        channelName={cancelSourceName}
+        statusPill={
+          nextStep && nextStep.tone !== 'info'
+            ? { tone: nextStep.tone === 'error' ? 'error' : 'warning', label: copy.nextStep.short[nextStep.kind] }
+            : null
         }
         deliveryFact={[carrier, snapshot.pickupPoint?.name].filter(Boolean).join(', ') || null}
         shipByFact={
