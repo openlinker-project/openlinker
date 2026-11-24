@@ -175,6 +175,8 @@ target, #1498). Both are off on a new connection, which stays a marketplace.
 
 ## Connecting
 
+Step-by-step guide with screenshots: [docs/empik-setup-guide.md](./docs/empik-setup-guide.md).
+
 1. In the operator's seller panel, open the user menu and generate an API key
    (Empik: "Klucz API"). One key per shop.
 2. Create the connection in OpenLinker with the key and the environment
