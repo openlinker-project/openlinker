@@ -26,7 +26,7 @@ When you connect a shop or marketplace, you choose which orders OpenLinker bring
 You can change this later on the connection's **Orders** tab (**Order import** panel):
 
 - **Check for new orders** runs a check right now.
-- **Get orders from a period...** reads the orders placed between two days, once. New orders keep syncing as before, and orders OpenLinker already has are updated, never created twice. Only shops that can read a period offer it.
+- **Get orders from a period...** takes you to **Actions**, **Trigger sync**, **Sync orders** with the period option chosen. It reads the orders placed between two days, once. New orders keep syncing as before, and orders OpenLinker already has are updated, never created twice. Only shops that can read a period offer it.
 - **Change where syncing starts...** (next to "Import start") is a setting: it changes where OpenLinker starts reading orders from now on. Orders already imported stay. If a check is running at that moment, wait a moment and try again.
 
 What each platform offers:
