@@ -36,6 +36,7 @@ import { useCreateConnectionMutation } from '../hooks/use-create-connection-muta
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
+  SUBIEKT_GT_IDENTITY,
   SUBIEKT_SETUP_DEFAULT_VALUES,
   buildSubiektSetupSchema,
   toCreateConnectionInput,
@@ -86,6 +87,8 @@ export function SubiektSetupForm({
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === identity.adapterKey);
   // Capabilities are not chosen here, so the adapter's own set decides: Subiekt GT
   // reads orders, nexo is invoicing only. Unknown until the registry answers.
+  // nexo reads no orders: its pending/error states must never show the start note.
+  const isGtIdentity = identity.adapterKey === SUBIEKT_GT_IDENTITY.adapterKey;
   const willReadOrders = readsOrders(adapterMetadata?.supportedCapabilities);
   const [createdConnectionId, setCreatedConnectionId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
@@ -248,7 +251,7 @@ export function SubiektSetupForm({
 
       {/* Whether this product reads orders is only known once the adapter list answers,
           so the section also covers the loading and failed states itself. */}
-      {(willReadOrders || adaptersQuery.isPending || adaptersQuery.isError) && !createdConnectionId ? (
+      {isGtIdentity && (willReadOrders || adaptersQuery.isPending || adaptersQuery.isError) && !createdConnectionId ? (
         <OrderSyncStartSection
           adapterKey={identity.adapterKey}
           value={form.watch('orderSyncStart') ?? ORDER_SYNC_START_DEFAULT_VALUE}

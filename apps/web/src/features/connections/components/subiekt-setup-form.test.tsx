@@ -474,6 +474,16 @@ describe('SubiektSetupForm', () => {
       ).toBeGreaterThan(1);
     });
 
+    it('should render no start note for nexo when the adapters query fails', async () => {
+      const list = vi.fn().mockRejectedValue(new Error('boom'));
+      const apiClient = createMockApiClient({ adapters: { list } });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_NEXO_IDENTITY} />, { apiClient });
+
+      await waitFor(() => expect(list).toHaveBeenCalled());
+      expect(screen.queryByText(getMessages('connections').orderSyncStart.loadFailed)).toBeNull();
+      expect(screen.queryByText(getMessages('connections').orderSyncStart.loading)).toBeNull();
+    });
+
     it('does not ask for a start when the adapter does not read orders', async () => {
       const list = adapters('subiekt.nexo.v1', ['Invoicing']).list;
       const apiClient = createMockApiClient({ adapters: { list } });
