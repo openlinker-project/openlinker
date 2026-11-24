@@ -1108,7 +1108,7 @@
     "wizardsChip": "Kreatory dla każdej platformy"
   },
   "orderSyncPanel": {
-    "change": "Zmień start…",
+    "change": "Zmień początek synchronizacji…",
     "checkNowStartedMessage": "OpenLinker sprawdza teraz w sklepie nowe zamówienia.",
     "checkNowStartedTitle": "Sprawdzanie rozpoczęte",
     "errorTitle": "Nie udało się wczytać importu zamówień",

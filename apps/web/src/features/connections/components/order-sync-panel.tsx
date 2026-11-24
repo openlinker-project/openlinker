@@ -3,7 +3,7 @@
  *
  * Orders-tab panel for the order import (#4228): where it started, when the
  * shop was last checked and how the import is doing. "Check for new orders" runs
- * the check from here; "Get orders from a period…" and "Change start…" each open
+ * the check from here; "Get orders from a period…" and "Change where syncing starts…" each open
  * their own dialog (an action and a setting, kept apart). Presentation only - the read is the existing
  * `use-connection-sync-status-query` (same query key as the queue panel, so no
  * extra request).

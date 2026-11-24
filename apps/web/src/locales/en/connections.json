@@ -1082,7 +1082,7 @@
     "wizardsChip": "Per-platform wizards"
   },
   "orderSyncPanel": {
-    "change": "Change start…",
+    "change": "Change where syncing starts…",
     "checkNowStartedMessage": "OpenLinker is checking the shop for new orders now.",
     "checkNowStartedTitle": "Check started",
     "errorTitle": "Could not load order import",
