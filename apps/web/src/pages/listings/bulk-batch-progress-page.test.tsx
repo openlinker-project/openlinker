@@ -121,7 +121,9 @@ describe('BulkBatchProgressPage', () => {
 
     renderPage(apiClient);
 
-    expect(await screen.findByRole('button', { name: /Retry unchanged/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Retry unchanged/ }),
+    ).toBeInTheDocument();
   });
 
   it('should show an account-level refusal once and offer no per-row fix for it (#4004)', async () => {
@@ -185,10 +187,7 @@ describe('BulkBatchProgressPage', () => {
   });
 
   it('should not claim nothing went live while the batch is still running (#4004)', async () => {
-    const refusal = {
-      code: 'SellerAccountWithSellBlockadeException',
-      message: 'Konto zablokowane.',
-    };
+    const refusal = { code: 'SellerAccountWithSellBlockadeException', message: 'Konto zablokowane.' };
     const apiClient = createMockApiClient({
       connections: {
         list: vi.fn().mockResolvedValue([
@@ -237,7 +236,9 @@ describe('BulkBatchProgressPage', () => {
     renderPage(apiClient);
 
     await screen.findByText('Total');
-    expect(screen.queryByRole('button', { name: /Retry unchanged/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Retry unchanged/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the recovery bar on a fully failed batch', async () => {
@@ -257,7 +258,9 @@ describe('BulkBatchProgressPage', () => {
 
     renderPage(apiClient);
 
-    expect(await screen.findByText('1 variant failed. Nothing went live.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('1 variant failed. Nothing went live.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Retry unchanged \(1\)/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Fix and resubmit \(1\)/ })).toBeInTheDocument();
   });
@@ -306,7 +309,9 @@ describe('BulkBatchProgressPage', () => {
 
     renderPage(apiClient);
 
-    expect(await screen.findByRole('button', { name: /Fix and resubmit/ })).toBeDisabled();
+    expect(
+      await screen.findByRole('button', { name: /Fix and resubmit/ }),
+    ).toBeDisabled();
     expect(
       screen.getByText(/needs the product link, which this batch did not record/),
     ).toBeInTheDocument();

@@ -81,7 +81,7 @@ export function BulkBatchProgressPage(): ReactElement {
   // offer-level failures are something the wizard can fix.
   const split = useMemo(
     () => splitAccountLevelFailures(failedRecords, accountRefusal?.errorCodes ?? []),
-    [failedRecords, accountRefusal],
+    [failedRecords, accountRefusal]
   );
   const accountLevelRecordIds = useMemo(() => new Set(split.account.map((r) => r.id)), [split]);
   const fixTarget = useMemo(() => resolveBatchFixTarget(split.offer), [split]);
@@ -103,7 +103,7 @@ export function BulkBatchProgressPage(): ReactElement {
         batchId: batchId_,
       });
     },
-    [batchId_, batchConnectionId],
+    [batchId_, batchConnectionId]
   );
 
   const inProgress = useMemo(() => {
@@ -127,7 +127,7 @@ export function BulkBatchProgressPage(): ReactElement {
         description: serverErrorText(
           common.serverSaid,
           (error as Error).message,
-          common.unknownError,
+          common.unknownError
         ),
       });
     }
@@ -204,12 +204,12 @@ export function BulkBatchProgressPage(): ReactElement {
             </span>
           ),
         },
-        { batchId: batch.id.slice(0, 8) },
+        { batchId: batch.id.slice(0, 8) }
       )}
       description={renderRich(
         plural(batch.totalCount, copy.statusLine),
         { status: () => <BatchStatusLabel status={batch.status} copy={copy} /> },
-        { connection: connectionName },
+        { connection: connectionName }
       )}
       actions={
         <Link to="/listings" className="button">
@@ -408,7 +408,7 @@ export function BulkBatchProgressPage(): ReactElement {
             <strong>
               {interpolate(
                 batch.status === 'completed' ? copy.summary.completedIn : copy.summary.endedIn,
-                { elapsed },
+                { elapsed }
               )}
             </strong>{' '}
             <span aria-hidden="true">·</span> {plural(batch.succeededCount, copy.summary.created)}{' '}
