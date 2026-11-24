@@ -17,6 +17,8 @@ import {
   type IBuyerDataRetentionService,
 } from '@openlinker/core/orders';
 import {
+  BUYER_DATA_PERIOD_MAX_DAYS,
+  BUYER_DATA_PERIOD_MIN_DAYS,
   isBuyerDataPeriodOrderValid,
   isValidBuyerDataPeriod,
 } from '@openlinker/core/operational-settings';
@@ -58,7 +60,7 @@ export class BuyerDataRetentionController {
       throw codedHttpError(
         HttpStatus.BAD_REQUEST,
         'OPERATIONAL_SETTING_INVALID',
-        'A period must be 0 (never) or a whole number of days between 30 and 3650',
+        `A period must be 0 (never) or a whole number of days between ${String(BUYER_DATA_PERIOD_MIN_DAYS)} and ${String(BUYER_DATA_PERIOD_MAX_DAYS)}`,
         { field: 'hideAfterDays', rule: 'buyer-data-period' }
       );
     }

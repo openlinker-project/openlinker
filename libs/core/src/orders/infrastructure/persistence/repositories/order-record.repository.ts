@@ -3544,6 +3544,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
       `SELECT
          COUNT(*) FILTER (WHERE (${e.hide} OR ${e.eraseHides}) AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_hide,
          COUNT(*) FILTER (WHERE ${e.erase} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_erase,
+         COUNT(*) FILTER (WHERE ${e.erase} AND rec."hiddenAt" IS NOT NULL AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS already_hidden_due_for_erase,
          COUNT(*) FILTER (WHERE ${e.any} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS total,
          COUNT(*) FILTER (WHERE ${BUYER_DATA_PROTECTED_SQL}) AS skipped,
          COUNT(*) FILTER (WHERE ${BUYER_DATA_OPEN_RETURN_SQL}) AS skipped_open_return,
@@ -3556,6 +3557,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     )) as {
       to_hide: string;
       to_erase: string;
+      already_hidden_due_for_erase: string;
       total: string;
       skipped: string;
       skipped_open_return: string;
@@ -3566,6 +3568,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     return {
       toHide: Number(row?.to_hide ?? 0),
       toErase: Number(row?.to_erase ?? 0),
+      alreadyHiddenDueForErase: Number(row?.already_hidden_due_for_erase ?? 0),
       total: Number(row?.total ?? 0),
       skippedProtected: Number(row?.skipped ?? 0),
       skippedByReason: {
@@ -3597,7 +3600,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
       `SELECT
          LEAST(${String(BUYER_DATA_HISTOGRAM_CAP_MONTHS)},
                GREATEST(0, FLOOR(EXTRACT(EPOCH FROM ($1::timestamptz - ${BUYER_DATA_AGE_SQL})) / 86400 / 30)))::int AS age_months,
-         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NULL) AS visible,
+         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NULL AND rec."personalDataErasedAt" IS NULL) AS visible,
          COUNT(*) FILTER (WHERE rec."hiddenAt" IS NOT NULL AND rec."personalDataErasedAt" IS NULL) AS hidden,
          COUNT(*) FILTER (WHERE rec."personalDataErasedAt" IS NOT NULL) AS erased,
          COUNT(*) AS total,
@@ -3728,7 +3731,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     let erased = 0;
     for (const erasure of erasures) {
       // `orderEdits.address` is an operator-typed buyer address and goes with
-      // the rest. The guard on `personalDataErasedAt` makes a replay a no-op;
+      // the rest; so does the recipient on `buyer_email_deliveries` and
+      // `document_email_deliveries` (nulled right after, same order id). The guard on `personalDataErasedAt` makes a replay a no-op;
       // the protected re-check closes the window between the page read and this
       // write, in which an operator may have placed a hold.
       const rows = (await this.repository.query(
@@ -3758,6 +3762,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
         ? (rows[0] as { customer_id: string | null }[])
         : (rows as { customer_id: string | null }[]);
       erased += returned.length;
+      if (returned.length > 0) {
+        // The buyer's address is also kept in clear text on the delivery logs
+        // (nullable columns), keyed by the same order id. Only for rows this
+        // statement actually erased, so a protected order keeps its history.
+        await this.repository.query(
+          `UPDATE "buyer_email_deliveries" SET "recipient" = NULL
+           WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+          [erasure.internalOrderId]
+        );
+        await this.repository.query(
+          `UPDATE "document_email_deliveries" SET "recipient" = NULL
+           WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+          [erasure.internalOrderId]
+        );
+      }
       for (const row of returned) {
         if (row.customer_id !== null) {
           customerIds.add(row.customer_id);

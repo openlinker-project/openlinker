@@ -28,6 +28,13 @@ export interface BuyerDataRetentionScope {
 export interface BuyerDataRetentionCounts {
   readonly toHide: number;
   readonly toErase: number;
+  /**
+   * Of `toErase`, the orders already hidden (an earlier rule or an operator hid
+   * them). They are in `toErase` and `total` but not in the visible list count,
+   * so a surface that adds "already hidden" to a "to erase" figure must take
+   * these out of one of the two or it counts the same order twice.
+   */
+  readonly alreadyHiddenDueForErase: number;
   /** Distinct orders that would be hidden OR erased. */
   readonly total: number;
   /** Orders the rule would reach but skips: open hold, open return or a document being issued. */

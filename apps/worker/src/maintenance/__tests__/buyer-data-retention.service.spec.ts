@@ -14,6 +14,7 @@ describe('BuyerDataRetentionSweepService', () => {
   beforeEach(() => {
     retention = {
       preview: jest.fn(),
+      getAgeHistogram: jest.fn(),
       runOnce: jest
         .fn()
         .mockResolvedValue({ hidden: 1, erased: 0, customersCleared: 0, budgetExhausted: false }),

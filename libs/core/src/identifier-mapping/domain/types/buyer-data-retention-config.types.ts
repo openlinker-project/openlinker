@@ -14,6 +14,9 @@
  * @module libs/core/src/identifier-mapping/domain/types
  */
 import {
+  BUYER_DATA_ERASE_MODES,
+  BUYER_DATA_PERIOD_MAX_DAYS,
+  BUYER_DATA_PERIOD_MIN_DAYS,
   isBuyerDataEraseMode,
   isBuyerDataPeriodOrderValid,
   isValidBuyerDataPeriod,
@@ -95,8 +98,8 @@ export function findBuyerDataRetentionConfigIssue(
       return {
         field: `config.buyerDataRetention.${key}`,
         rule: 'range',
-        message: `config.buyerDataRetention.${key} must be 0 (never) or a whole number of days between 30 and 3650`,
-        bounds: { min: 30, max: 3650 },
+        message: `config.buyerDataRetention.${key} must be 0 (never) or a whole number of days between ${String(BUYER_DATA_PERIOD_MIN_DAYS)} and ${String(BUYER_DATA_PERIOD_MAX_DAYS)}`,
+        bounds: { min: BUYER_DATA_PERIOD_MIN_DAYS, max: BUYER_DATA_PERIOD_MAX_DAYS },
       };
     }
   }
@@ -104,8 +107,8 @@ export function findBuyerDataRetentionConfigIssue(
     return {
       field: 'config.buyerDataRetention.mode',
       rule: 'one-of',
-      message: 'config.buyerDataRetention.mode must be personal-data or whole-order',
-      bounds: { allowed: 'personal-data, whole-order' },
+      message: `config.buyerDataRetention.mode must be ${BUYER_DATA_ERASE_MODES.join(' or ')}`,
+      bounds: { allowed: BUYER_DATA_ERASE_MODES.join(', ') },
     };
   }
   const hide = record.hideAfterDays;

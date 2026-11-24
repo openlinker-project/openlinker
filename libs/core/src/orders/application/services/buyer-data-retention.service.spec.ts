@@ -27,6 +27,7 @@ describe('BuyerDataRetentionService', () => {
         .mockResolvedValue({
           toHide: 2,
           toErase: 1,
+          alreadyHiddenDueForErase: 0,
           total: 2,
           skippedProtected: 3,
           skippedByReason: { openReturn: 1, hold: 1, invoicePending: 1 },

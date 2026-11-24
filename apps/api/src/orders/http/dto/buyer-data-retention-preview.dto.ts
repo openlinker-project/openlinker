@@ -67,6 +67,11 @@ export class BuyerDataSkippedByReasonDto {
 export class BuyerDataRetentionPreviewResponseDto {
   @ApiProperty({ description: 'Orders that would be hidden.' }) toHide!: number;
   @ApiProperty({ description: 'Orders whose personal data would be erased.' }) toErase!: number;
+  @ApiProperty({
+    description:
+      'Of toErase, the orders that are already hidden. They are part of toErase and total but not of totalOrders.',
+  })
+  alreadyHiddenDueForErase!: number;
   @ApiProperty({ description: 'Distinct orders that would be hidden or erased.' }) total!: number;
   @ApiProperty({
     description: 'Every order still on the list (not hidden) in scope, past the periods or not.',
@@ -92,6 +97,7 @@ export class BuyerDataRetentionPreviewResponseDto {
     const dto = new BuyerDataRetentionPreviewResponseDto();
     dto.toHide = preview.toHide;
     dto.toErase = preview.toErase;
+    dto.alreadyHiddenDueForErase = preview.alreadyHiddenDueForErase;
     dto.total = preview.total;
     dto.totalOrders = preview.totalOrders;
     dto.skippedProtected = preview.skippedProtected;

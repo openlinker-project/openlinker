@@ -222,6 +222,81 @@ describe('Buyer data retention (integration)', () => {
     expect(row.hiddenAt).not.toBeNull();
   });
 
+  it('should null the buyer email on the delivery logs of an erased order only', async () => {
+    const erasedOrder = await seed('ol_order_ret_e1');
+    const keptOrder = await seed('ol_order_ret_e2');
+    const ds = harness.getDataSource();
+    for (const id of [erasedOrder.internalOrderId, keptOrder.internalOrderId]) {
+      await ds.query(
+        `INSERT INTO buyer_email_deliveries ("internalOrderId", "connectionId", "templateKey", "subjectRef", outcome, recipient) VALUES ($1, $2, 'shipped', 's', 'sent', 'jan@example.com')`,
+        [id, CONNECTION_ID]
+      );
+      await ds.query(
+        `INSERT INTO document_email_deliveries ("internalOrderId", "documentKind", "documentId", outcome, recipient) VALUES ($1, 'invoice', 'd1', 'sent', 'jan@example.com')`,
+        [id]
+      );
+    }
+    await repository.erasePersonalDataForRetention(
+      [
+        {
+          internalOrderId: erasedOrder.internalOrderId,
+          orderSnapshot: eraseBuyerPersonalDataFromSnapshot(
+            PII_SNAPSHOT,
+            erasedOrder.internalOrderId
+          ),
+          searchText: 'a-1',
+          hide: false,
+        },
+      ],
+      new Date()
+    );
+    for (const table of ['buyer_email_deliveries', 'document_email_deliveries']) {
+      const rows = (await ds.query(
+        `SELECT "internalOrderId", recipient FROM ${table} ORDER BY "internalOrderId"`
+      )) as { internalOrderId: string; recipient: string | null }[];
+      expect(rows).toHaveLength(2);
+      expect(
+        rows.find((r) => r.internalOrderId === erasedOrder.internalOrderId)?.recipient
+      ).toBeNull();
+      expect(rows.find((r) => r.internalOrderId === keptOrder.internalOrderId)?.recipient).toBe(
+        'jan@example.com'
+      );
+    }
+  });
+
+  it('should report an already hidden order due for erasure apart, and keep the histogram a partition', async () => {
+    const hiddenDue = await seed('ol_order_ret_hd');
+    const erasedVisible = await seed('ol_order_ret_ev');
+    const ds = harness.getDataSource();
+    await ds.query(`UPDATE order_records SET "hiddenAt" = now() WHERE "internalOrderId" = $1`, [
+      hiddenDue.internalOrderId,
+    ]);
+    await ds.query(
+      `UPDATE order_records SET "personalDataErasedAt" = now() WHERE "internalOrderId" = $1`,
+      [erasedVisible.internalOrderId]
+    );
+
+    const preview = await service.preview({
+      hideAfterDays: 0,
+      eraseAfterDays: 365,
+      mode: 'personal-data',
+    });
+    expect(preview.toErase).toBe(1);
+    expect(preview.alreadyHiddenDueForErase).toBe(1);
+
+    const histogram = await service.getAgeHistogram();
+    const sum = histogram.buckets.reduce(
+      (n, b) => ({
+        visible: n.visible + b.visible,
+        hidden: n.hidden + b.hidden,
+        erased: n.erased + b.erased,
+      }),
+      { visible: 0, hidden: 0, erased: 0 }
+    );
+    expect(sum).toEqual({ visible: 0, hidden: 1, erased: 1 });
+    expect(sum.visible + sum.hidden + sum.erased).toBe(histogram.totalOrders);
+  });
+
   it('should keep hidden orders out of the list total, the summary and the preview total alike', async () => {
     const hidden = await seed('ol_order_ret_h');
     await seed('ol_order_ret_v');
