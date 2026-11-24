@@ -29,8 +29,8 @@ describe('CatalogueModeFieldset', () => {
     );
 
     expect(screen.getByText('master picker')).toBeInTheDocument();
-    expect(screen.queryByText('No catalog')).not.toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /^Linked/ })).toBeChecked();
+    expect(screen.queryByText(/not matched to products/)).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^Linked to a catalog/ })).toBeChecked();
   });
 
   it('should replace the picker with the notice while none', () => {
@@ -41,8 +41,8 @@ describe('CatalogueModeFieldset', () => {
     );
 
     expect(screen.queryByText('master picker')).not.toBeInTheDocument();
-    expect(screen.getByText('No catalog')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /^None/ })).toBeChecked();
+    expect(screen.getByText(/not matched to products/)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^No catalog/ })).toBeChecked();
   });
 
   it('should report the chosen mode', async () => {
@@ -53,9 +53,36 @@ describe('CatalogueModeFieldset', () => {
       </CatalogueModeFieldset>,
     );
 
-    await userEvent.click(screen.getByRole('radio', { name: /^None/ }));
+    await userEvent.click(screen.getByRole('radio', { name: /^No catalog/ }));
 
     expect(onChange).toHaveBeenCalledWith('none');
+  });
+
+  it('should only animate the panel after the operator changes the choice', async () => {
+    const panel = (container: HTMLElement): Element | null =>
+      container.querySelector('.catalogue-mode__panel');
+    const { container, rerender } = renderWithProviders(
+      <CatalogueModeFieldset value="linked" disabled={false} onChange={vi.fn()}>
+        <div>master picker</div>
+      </CatalogueModeFieldset>,
+    );
+    expect(panel(container)).not.toHaveClass('catalogue-mode__panel--enter');
+
+    // A preselection changes the value with no click: it must not move.
+    rerender(
+      <CatalogueModeFieldset value="none" disabled={false} onChange={vi.fn()}>
+        <div>master picker</div>
+      </CatalogueModeFieldset>,
+    );
+    expect(panel(container)).not.toHaveClass('catalogue-mode__panel--enter');
+
+    await userEvent.click(screen.getByRole('radio', { name: /^Linked to a catalog/ }));
+    rerender(
+      <CatalogueModeFieldset value="linked" disabled={false} onChange={vi.fn()}>
+        <div>master picker</div>
+      </CatalogueModeFieldset>,
+    );
+    expect(panel(container)).toHaveClass('catalogue-mode__panel--enter');
   });
 
   it('should disable both choices when the raw config is not parseable', () => {

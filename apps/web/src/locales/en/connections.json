@@ -792,9 +792,10 @@
     "catalogueMode": {
       "help": "Orders and offers work without a catalog. Barcode linking and product mapping are off while no catalog is used.",
       "legend": "Product catalog",
-      "linked": "Linked: use a product catalog connection (barcode and EAN linking)",
-      "none": "None: this marketplace only, no product catalog",
+      "linkedBody": "Match orders and offers to products by barcode.",
+      "linkedTitle": "Linked to a catalog",
       "noneBody": "Orders arrive with the marketplace's own lines (offer, SKU, name, price) and are not matched to products. Stock, catalog offers and per-product reports do not apply to these orders.",
+      "noneHint": "Only this marketplace. Order lines stay as the marketplace sent them.",
       "noneTitle": "No catalog"
     },
     "errorTitle": "Unable to update connection",

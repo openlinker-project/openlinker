@@ -1,16 +1,20 @@
 /**
  * Catalogue Mode Fieldset (#4281)
  *
- * The edit-page control for `config.catalogueMode` (#4280): whether this
- * marketplace connection expects its order lines to resolve to catalog
- * products (`linked`, the historical behaviour) or accepts them as the
- * marketplace's own lines with no product behind them (`none`).
+ * The control for `config.catalogueMode` (#4280): whether this marketplace
+ * connection expects its order lines to resolve to catalog products (`linked`,
+ * the historical behaviour) or accepts them as the marketplace's own lines with
+ * no product behind them (`none`).
  *
- * A native `<fieldset>` with two radios, because the edit page uses native
- * controls (checkboxes and `Select`), not `SegmentedControl`. The master-catalog
- * picker is passed in as `children` and shown only while `linked`: a connection
- * with no catalog has nothing to pick, and leaving the picker visible would
- * suggest the choice still matters.
+ * Two choice cards (the shared `RadioCardGroup`, so it reads like the other
+ * either-or choices in setup) and, below them, whatever the chosen card needs:
+ * the master-catalog picker while `linked`, a short statement of what changes
+ * while `none`. A connection with no catalog has nothing to pick, so the picker
+ * is not rendered then at all rather than hidden.
+ *
+ * The panel fades in when the operator changes the choice and otherwise stays
+ * still, so opening a form (or a wizard preselecting a mode) never animates by
+ * itself.
  *
  * Marketplace-neutral by construction: the parent mounts it for every pricing
  * destination (capability-driven, never `platformType`), so Allegro and Erli
@@ -18,8 +22,8 @@
  *
  * @module apps/web/src/features/connections/components
  */
-import type { ReactElement, ReactNode } from 'react';
-import { Alert } from '../../../shared/ui/alert';
+import { useRef, type ReactElement, type ReactNode } from 'react';
+import { RadioCardGroup } from '../../../shared/ui/radio-card-group';
 import { useMessages } from '../../../shared/i18n';
 import type { CatalogueMode } from '../lib/catalogue-mode';
 
@@ -27,7 +31,7 @@ interface CatalogueModeFieldsetProps {
   value: CatalogueMode;
   disabled: boolean;
   onChange: (value: CatalogueMode) => void;
-  /** The master-catalog picker; rendered only while `linked`. */
+  /** The master-catalog picker (or a hint); rendered only while `linked`. */
   children: ReactNode;
 }
 
@@ -38,6 +42,15 @@ export function CatalogueModeFieldset({
   children,
 }: CatalogueModeFieldsetProps): ReactElement {
   const copy = useMessages('connections').editConnectionForm.catalogueMode;
+
+  // The entrance answers the operator's own click and nothing else: the form
+  // opening, or a wizard preselecting "No catalog" once it knows the installation
+  // has none, changes the value without anyone acting, and must not move.
+  const chosenByOperator = useRef(false);
+  function handleChange(next: CatalogueMode): void {
+    chosenByOperator.current = true;
+    onChange(next);
+  }
 
   // The <fieldset>/<legend> pair is the accessible group; the visible title and
   // spacing come from the same `rate-limit-section` block every sibling section
@@ -52,33 +65,28 @@ export function CatalogueModeFieldset({
           {copy.legend}
         </h3>
         <p className="rate-limit-section__help">{copy.help}</p>
-        <label className="rate-limit-section__toggle">
-          <input
-            type="radio"
-            name="catalogueMode"
-            value="linked"
-            checked={value === 'linked'}
-            onChange={() => onChange('linked')}
-          />
-          <span>{copy.linked}</span>
-        </label>
-        <label className="rate-limit-section__toggle">
-          <input
-            type="radio"
-            name="catalogueMode"
-            value="none"
-            checked={value === 'none'}
-            onChange={() => onChange('none')}
-          />
-          <span>{copy.none}</span>
-        </label>
-        {value === 'none' ? (
-          <Alert tone="info" title={copy.noneTitle}>
-            {copy.noneBody}
-          </Alert>
-        ) : (
-          children
-        )}
+        <RadioCardGroup<CatalogueMode>
+          name="catalogueMode"
+          aria-label={copy.legend}
+          value={value}
+          disabled={disabled}
+          onChange={handleChange}
+          options={[
+            { value: 'linked', title: copy.linkedTitle, description: copy.linkedBody },
+            { value: 'none', title: copy.noneTitle, description: copy.noneHint },
+          ]}
+        />
+        <div
+          key={value}
+          className={[
+            'catalogue-mode__panel',
+            chosenByOperator.current ? 'catalogue-mode__panel--enter' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {value === 'none' ? <p className="catalogue-mode__note">{copy.noneBody}</p> : children}
+        </div>
       </div>
     </fieldset>
   );

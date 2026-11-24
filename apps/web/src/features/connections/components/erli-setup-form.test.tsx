@@ -142,7 +142,7 @@ describe('ErliSetupForm', () => {
 
       renderWithProviders(<ErliSetupForm />, { apiClient });
 
-      await waitFor(() => expect(screen.getByRole('radio', { name: /^None:/ })).toBeChecked());
+      await waitFor(() => expect(screen.getByRole('radio', { name: /^No catalog/ })).toBeChecked());
       await fillAndReachReview();
       expect(screen.getByText('No catalog (marketplace only)')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
@@ -166,7 +166,7 @@ describe('ErliSetupForm', () => {
 
       renderWithProviders(<ErliSetupForm />, { apiClient });
 
-      expect(await screen.findByRole('radio', { name: /^Linked:/ })).toBeChecked();
+      expect(await screen.findByRole('radio', { name: /^Linked to a catalog/ })).toBeChecked();
       await fillAndReachReview();
       fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
@@ -182,8 +182,8 @@ describe('ErliSetupForm', () => {
 
       renderWithProviders(<ErliSetupForm />, { apiClient });
 
-      await waitFor(() => expect(screen.getByRole('radio', { name: /^None:/ })).toBeChecked());
-      fireEvent.click(screen.getByRole('radio', { name: /^Linked:/ }));
+      await waitFor(() => expect(screen.getByRole('radio', { name: /^No catalog/ })).toBeChecked());
+      fireEvent.click(screen.getByRole('radio', { name: /^Linked to a catalog/ }));
       await fillAndReachReview();
       fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 

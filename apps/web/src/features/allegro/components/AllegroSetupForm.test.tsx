@@ -101,7 +101,7 @@ describe('AllegroSetupForm', () => {
     // An installation with no catalogue connection is the marketplace-only case
     // (#4281): the step opens on "None" and the picker is not offered.
     await advanceOneStep(container, 'Product catalogue');
-    expect(within(container).getByRole('radio', { name: /^None:/ })).toBeChecked();
+    expect(within(container).getByRole('radio', { name: /^No catalog/ })).toBeChecked();
     expect(within(container).queryByLabelText(/product catalogue connection/i)).toBeNull();
 
     await advanceOneStep(container, 'Sales documents');
@@ -193,7 +193,7 @@ describe('AllegroSetupForm', () => {
       await advanceOneStep(container, 'Environment');
       await advanceOneStep(container, 'Product catalogue');
 
-      expect(within(container).getByRole('radio', { name: /^Linked:/ })).toBeChecked();
+      expect(within(container).getByRole('radio', { name: /^Linked to a catalog/ })).toBeChecked();
       expect(
         await within(container).findByLabelText(/product catalogue connection/i)
       ).toBeInTheDocument();
@@ -210,7 +210,7 @@ describe('AllegroSetupForm', () => {
       fillCredentialsStep(container);
       await advanceOneStep(container, 'Environment');
       await advanceOneStep(container, 'Product catalogue');
-      fireEvent.click(within(container).getByRole('radio', { name: /^Linked:/ }));
+      fireEvent.click(within(container).getByRole('radio', { name: /^Linked to a catalog/ }));
       await advanceOneStep(container, 'Sales documents');
       await advanceOneStep(container, 'Review & connect');
       fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
@@ -228,7 +228,7 @@ describe('AllegroSetupForm', () => {
       await advanceOneStep(container, 'Product catalogue');
 
       expect(within(container).queryByText('Link the product catalogue')).toBeNull();
-      fireEvent.click(within(container).getByRole('radio', { name: /^Linked:/ }));
+      fireEvent.click(within(container).getByRole('radio', { name: /^Linked to a catalog/ }));
       expect(await within(container).findByText('Link the product catalogue')).toBeInTheDocument();
     });
 
